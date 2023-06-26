@@ -1,0 +1,176 @@
+import {
+  Application as PixiApplication,
+  IApplicationOptions,
+  Assets,
+  ResolverAssetsArray,
+  ResolverAssetsObject,
+} from "pixi.js";
+import { Scene } from "../Scene";
+import { Executor } from "../Executor";
+import { delayP } from "../utils/time";
+import { fit } from "./utils";
+import { Process } from "../Process";
+
+const DEFAULT_OPTIONS = {
+  width: 512,
+  height: 384,
+  unit: 1,
+  virtualWidth: 512,
+  virtualHeight: 384,
+  resizeTo: document.body,
+};
+
+export class Game<GameScene extends Scene<any, any>> {
+  scene?: GameScene;
+  app: PixiApplication<HTMLCanvasElement>;
+  virtualScreen = {
+    width: 512,
+    height: 384,
+  };
+  constructor(
+    gameOptions: IApplicationOptions & {
+      virtualWidth?: number;
+      virtualHeight?: number;
+    }
+  ) {
+    const mergedOptions = { ...DEFAULT_OPTIONS, ...gameOptions };
+    this.app = new PixiApplication({ ...mergedOptions });
+    this.app.stage.sortableChildren = true;
+    this.virtualScreen.height =
+      mergedOptions.virtualHeight ?? mergedOptions.height;
+    this.virtualScreen.width =
+      mergedOptions.virtualWidth ?? mergedOptions.width;
+    this.handleResize(window.innerWidth, window.innerHeight);
+    window.addEventListener("resize", (ev) =>
+      this.handleResize(window.innerWidth, window.innerHeight)
+    );
+  }
+
+  handleResize = (w: number, h: number) => {
+    fit(
+      true,
+      this.app.stage,
+      w,
+      h,
+      this.virtualScreen.width,
+      this.virtualScreen.height
+    );
+  };
+
+  private setup() {
+    document.body.appendChild(this.app.view);
+    this.addPlayerInputEvents();
+  }
+
+  private teardown() {}
+
+  async init() {
+    await import("@dimforge/rapier2d");
+    Executor.setContext({ game: this });
+    if (document.readyState === "complete") {
+      this.setup();
+    } else {
+      document.addEventListener("readystatechange", (ev) => {
+        if (document.readyState === "complete") {
+          this.setup();
+        }
+      });
+    }
+    return this;
+  }
+
+  async loadScene<S extends GameScene>(scene: S) {
+    this.scene = scene;
+    await scene.onLoad();
+    this.app.stage.addChild(scene.display);
+  }
+
+  async preloadScene<S extends GameScene>(scene: GameScene) {}
+
+  setScene<S extends GameScene>(scene: S) {
+    this.scene = scene;
+    this.app.stage.addChild(scene.display);
+  }
+
+  render() {
+    this.app.render();
+  }
+
+  async loadAssets(
+    assetsBundle: ResolverAssetsArray | ResolverAssetsObject,
+    assetsBundleName: string
+  ): Promise<void> {
+    console.log("assets");
+    Assets.addBundle(assetsBundleName, assetsBundle);
+    await Assets.loadBundle(assetsBundleName);
+  }
+
+  async unloadScene() {
+    if (!this.scene) {
+      return;
+    }
+    this.scene.onBeforeUnload();
+    await delayP();
+    this.app.stage.removeChild(this.scene?.display);
+    this.scene = undefined;
+  }
+
+  async linearTransition(
+    fromScene: GameScene,
+    toScene: GameScene,
+    duration: number
+  ): Promise<void> {
+    const halfDuration = duration / 2;
+    await new Promise<void>((resolve) => {
+      Executor.setContext({ scene: fromScene });
+      Process.spawn({
+        onTick({ totalElapsed }) {
+          const t = totalElapsed / halfDuration;
+          fromScene.display.alpha = 1 - t;
+        },
+        duration: halfDuration,
+        onComplete: () => resolve(),
+      });
+    });
+
+    await new Promise<void>((resolve) => {
+      Executor.setContext({ scene: toScene });
+      Process.spawn({
+        onTick({ totalElapsed }) {
+          const t = totalElapsed / halfDuration;
+          toScene.display.alpha = t;
+        },
+        duration: halfDuration,
+      });
+    });
+  }
+
+  async transitionTo(
+    scene: GameScene,
+    duration = 750,
+    transitionFn: (
+      fromScene: GameScene,
+      toScene: GameScene,
+      duration: number
+    ) => Promise<void> = this.linearTransition
+  ) {
+    await scene.onLoad();
+    scene.display.alpha = 0;
+    this.app.stage.addChild(scene.display);
+    await transitionFn(this.scene, scene, duration);
+    const oldScene = this.scene;
+    this.scene = scene;
+    oldScene.onBeforeUnload();
+    this.app.stage.removeChild(oldScene.display);
+  }
+
+  playerInput: Record<string, boolean> = {};
+  addPlayerInputEvents() {
+    window.addEventListener("keydown", (e) => {
+      this.playerInput[e.code] = true;
+    });
+    window.addEventListener("keyup", (e) => {
+      this.playerInput[e.code] = false;
+    });
+  }
+}

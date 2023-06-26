@@ -1,0 +1,61 @@
+{
+  "name": "yage",
+  "version": "0.0.1",
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/esm/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run build-cjs:watch\" \"npm run build-types:watch\"",
+    "build-types:watch": "tsc --project ./tsconfig.types.json --watch",
+    "build-cjs:watch": "tsc --project ./tsconfig.cjs.json --watch",
+    "build-esm:watch": "tsc --project ./tsconfig.esm.json --watch",
+    "preview": "vite preview",
+    "start": "vite build && vite",
+    "watch": "vite build --watch",
+    "build": "vite build",
+    "build-types": "tsc --project ./tsconfig.types.json",
+    "build-cjs": "tsc --project ./tsconfig.cjs.json",
+    "build-esm": "tsc --project ./tsconfig.esm.json",
+    "tsc": "npx del-cli dist && npm run build-cjs && npm run build-esm && npm run build-types && echo 'Successfully built'",
+    "docs": "typedoc --out ./docs/ --readme README.md ./src/",
+    "lint": "eslint . --ignore-path .gitignore",
+    "test": "vitest --run --reporter verbose",
+    "prepare": "npm run tsc"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "package.json",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@pixi/eslint-config": "^4.0.1",
+    "@types/node": "^18.14.6",
+    "concurrently": "^8.2.0",
+    "del-cli": "^5.0.0",
+    "eslint": "^8.35.0",
+    "prettier": "^2.8.8",
+    "typescript": "^5.0.2",
+    "vite": "^4.3.9",
+    "vite-plugin-dts": "^2.3.0",
+    "vitest": "^0.29.2"
+  },
+  "dependencies": {
+    "@dimforge/rapier2d": "^0.11.2",
+    "pixi.js": "^7.0.4",
+    "@pixi/sound": "^5.2.0",
+    "@pixi/tilemap": "^4.0.0",
+    "@pixi/ui": "^0.7.3",
+    "pixi-viewport": "^5.0.1",
+    "xstate": "^4.37.2"
+  },
+  "peerDependencies": {
+    "@dimforge/rapier2d": "^0.11.2",
+    "pixi.js": "^7.0.4",
+    "@pixi/sound": "^5.2.0",
+    "@pixi/tilemap": "^4.0.0",
+    "@pixi/ui": "^0.7.3",
+    "pixi-viewport": "^5.0.1",
+    "xstate": "^4.37.2"
+  }
+}
