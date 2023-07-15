@@ -28,7 +28,7 @@ export class Game<GameScene extends Scene<any, any>> {
     height: 384,
   };
   constructor(
-    gameOptions: IApplicationOptions & {
+    gameOptions: Partial<IApplicationOptions> & {
       virtualWidth?: number;
       virtualHeight?: number;
     }
