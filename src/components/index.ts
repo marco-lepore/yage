@@ -4,5 +4,7 @@ export { AnimatedGraphicComponent } from "./AnimatedGraphicComponent";
 export { InputComponent } from "./InputComponent";
 export { ScriptComponent } from "./ScriptComponent";
 export { TilemapComponent } from "./TilemapComponent";
+export type { TileObject } from "./TilemapComponent";
+export { RapierBodyComponent } from "./RapierBodyComponent";
 export { FSMComponent } from "./FSMComponent";
 export * from "./UI";

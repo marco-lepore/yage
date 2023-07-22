@@ -188,3 +188,5 @@ export class TilemapComponent<
     this.parent.scene.display.removeChild(this.tilemap);
   }
 }
+
+export type { TileObject } from "./types";

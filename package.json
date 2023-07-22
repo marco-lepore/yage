@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
-  "module": "./dist/esm/index.js",
+  "module": "./dist/index.js",
   "scripts": {
     "dev": "concurrently \"npm run build-cjs:watch\" \"npm run build-types:watch\"",
     "build-types:watch": "tsc --project ./tsconfig.types.json --watch",
