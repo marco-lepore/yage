@@ -61,11 +61,11 @@ export class RapierBodyComponent<
 
   destroy(): void {
     if (this.rigidBody) {
-      this.removeFromWorld();
       RapierBodyComponent.bodyComponentMap.delete(this.rigidBody.handle);
       this.forEachCollider((collider) => {
         RapierBodyComponent.colliderComponentMap.delete(collider.handle);
       });
+      this.removeFromWorld();
       super.destroy();
     }
   }
@@ -73,11 +73,11 @@ export class RapierBodyComponent<
   onRemoved(): void {
     super.onRemoved();
     if (this.rigidBody) {
-      this.removeFromWorld();
       RapierBodyComponent.bodyComponentMap.delete(this.rigidBody.handle);
       this.forEachCollider((collider) => {
         RapierBodyComponent.colliderComponentMap.delete(collider.handle);
       });
+      this.removeFromWorld();
     }
   }
 
@@ -146,6 +146,7 @@ export class RapierBodyComponent<
   removeFromWorld() {
     if (this.rigidBody) {
       this.parent.scene.rapier.world.removeRigidBody(this.rigidBody);
+      this.rigidBody = null;
     }
   }
 
