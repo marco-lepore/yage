@@ -171,9 +171,11 @@ export class Game<GameScene extends Scene<any, any>> {
   addPlayerInputEvents() {
     window.addEventListener("keydown", (e) => {
       this.playerInput[e.code] = true;
+      e.preventDefault();
     });
     window.addEventListener("keyup", (e) => {
       this.playerInput[e.code] = false;
+      e.preventDefault();
     });
   }
 }
