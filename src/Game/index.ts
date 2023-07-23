@@ -141,6 +141,7 @@ export class Game<GameScene extends Scene<any, any>> {
           toScene.display.alpha = t;
         },
         duration: halfDuration,
+        onComplete: () => resolve(),
       });
     });
   }
@@ -160,8 +161,10 @@ export class Game<GameScene extends Scene<any, any>> {
     await transitionFn(this.scene, scene, duration);
     const oldScene = this.scene;
     this.scene = scene;
-    oldScene.onBeforeUnload();
     this.app.stage.removeChild(oldScene.display);
+    oldScene.onBeforeUnload();
+    oldScene.destroy();
+    Executor.setContext({ scene });
   }
 
   playerInput: Record<string, boolean> = {};

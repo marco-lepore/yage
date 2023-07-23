@@ -42,6 +42,8 @@ export class Scene<
     return this.state;
   }
 
+  destroyed = false;
+
   constructor(initialState: State) {
     Executor.setContext({ scene: this });
     this.setup();
@@ -60,10 +62,16 @@ export class Scene<
   protected teardown() {
     this.ticker.destroy();
     this.gameObjects.forEach((go) => go.destroy());
+    this.display.removeFromParent();
+    this.display.destroy();
   }
 
   destroy() {
+    if (this.destroyed) {
+      return;
+    }
     this.teardown();
+    this.destroyed = true;
   }
 
   eventTarget = new TypedEventTarget<Events>();
@@ -105,7 +113,7 @@ export class Scene<
     this.onTick(dt);
     setTimeout(() => {
       Executor.setContext({ scene: this });
-      this.onAfterTick(dt)
+      this.onAfterTick(dt);
     }, 0);
   };
   fixedTickerCallback = (timestepMS: number) => {
@@ -114,7 +122,7 @@ export class Scene<
     this.onFixedTick(timestepMS);
     setTimeout(() => {
       Executor.setContext({ scene: this });
-      this.onAfterFixedTick(timestepMS)
+      this.onAfterFixedTick(timestepMS);
     }, 0);
   };
 
