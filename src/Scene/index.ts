@@ -32,7 +32,7 @@ export class Scene<
   assetsBundle: ResolverAssetsObject = {};
   assetsBundleId = "scene_assets";
   gameObjects: IGameObject[] = [];
-  ticker = new Ticker(60);
+  ticker = new Ticker();
   display!: Display;
 
   rapier = new Rapier();
