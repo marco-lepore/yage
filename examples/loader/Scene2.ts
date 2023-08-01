@@ -1,0 +1,68 @@
+import { Vector2 } from '@dimforge/rapier2d'
+import {
+  GameObject,
+  GraphicComponent,
+  Scene,
+  UITextComponent,
+  getGame,
+  getPlayAreaBounds,
+} from '../../src'
+import { Graphics, Sprite, TextStyle } from 'pixi.js'
+import { Scene1 } from './Scene1'
+import { Loader } from './Loader'
+
+class Text extends GameObject<Scene1> {
+  constructor(parent: Scene1, x: number, y: number, w: number, h: number) {
+    super(parent)
+
+    const graphic = new Graphics()
+    graphic.beginFill(0x00ff00)
+    graphic.drawRect(x - w / 2, y - h / 2, w, h)
+    graphic.endFill()
+    const bg = this.addComponent(GraphicComponent, {
+      graphic,
+    })
+
+    bg.graphic.eventMode = 'static'
+
+    bg.graphic.addEventListener('pointertap', this.scene.changeScene)
+
+    const text = this.addComponent(UITextComponent, {
+      text: 'Level2',
+      style: new TextStyle(),
+      x,
+      y,
+    })
+  }
+}
+
+export class Scene2 extends Scene<any, any> {
+  assetsBundleId = 'scene2'
+  assetsBundle = {
+    bgm3: '/assets/examples/loader/bgm3.mp3',
+    bgm4: '/assets/examples/loader/bgm4.mp3',
+    bgm5: '/assets/examples/loader/bgm5.mp3',
+    img1: '/assets/examples/loader/img1.png',
+    img2: '/assets/examples/loader/img2.png',
+    img3: '/assets/examples/loader/img3.png',
+  }
+  onLoad() {
+    super.onLoad()
+    this.rapier.pixelToMeterRatio = 10
+    this.rapier.world.gravity = new Vector2(0, 0)
+    const { width, height } = getPlayAreaBounds()
+    const ball = this.instantiateGameObject(
+      Text,
+      width / 2,
+      height / 2,
+      width * 0.5,
+      height * 0.5,
+    )
+  }
+
+  changeScene = () => {
+    const next = new Scene1({})
+    const loader = new Loader({ next })
+    getGame().transitionTo(loader)
+  }
+}
