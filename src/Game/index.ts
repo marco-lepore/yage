@@ -4,12 +4,12 @@ import {
   Assets,
   ResolverAssetsArray,
   ResolverAssetsObject,
-} from "pixi.js";
-import { Scene } from "../Scene";
-import { Executor } from "../Executor";
-import { delayP } from "../utils/time";
-import { fit } from "./utils";
-import { Process } from "../Process";
+} from 'pixi.js'
+import { Scene } from '../Scene'
+import { Executor } from '../Executor'
+import { delayP } from '../utils/time'
+import { fit } from './utils'
+import { Process } from '../Process'
 
 const DEFAULT_OPTIONS = {
   width: 512,
@@ -18,32 +18,31 @@ const DEFAULT_OPTIONS = {
   virtualWidth: 512,
   virtualHeight: 384,
   resizeTo: document.body,
-};
+}
 
 export class Game<GameScene extends Scene<any, any>> {
-  scene?: GameScene;
-  app: PixiApplication<HTMLCanvasElement>;
+  scene?: GameScene
+  app: PixiApplication<HTMLCanvasElement>
   virtualScreen = {
     width: 512,
     height: 384,
-  };
+  }
   constructor(
     gameOptions: Partial<IApplicationOptions> & {
-      virtualWidth?: number;
-      virtualHeight?: number;
-    }
+      virtualWidth?: number
+      virtualHeight?: number
+    },
   ) {
-    const mergedOptions = { ...DEFAULT_OPTIONS, ...gameOptions };
-    this.app = new PixiApplication({ ...mergedOptions });
-    this.app.stage.sortableChildren = true;
+    const mergedOptions = { ...DEFAULT_OPTIONS, ...gameOptions }
+    this.app = new PixiApplication({ ...mergedOptions })
+    this.app.stage.sortableChildren = true
     this.virtualScreen.height =
-      mergedOptions.virtualHeight ?? mergedOptions.height;
-    this.virtualScreen.width =
-      mergedOptions.virtualWidth ?? mergedOptions.width;
-    this.handleResize(window.innerWidth, window.innerHeight);
-    window.addEventListener("resize", (ev) =>
-      this.handleResize(window.innerWidth, window.innerHeight)
-    );
+      mergedOptions.virtualHeight ?? mergedOptions.height
+    this.virtualScreen.width = mergedOptions.virtualWidth ?? mergedOptions.width
+    this.handleResize(window.innerWidth, window.innerHeight)
+    window.addEventListener('resize', (ev) =>
+      this.handleResize(window.innerWidth, window.innerHeight),
+    )
   }
 
   handleResize = (w: number, h: number) => {
@@ -53,97 +52,100 @@ export class Game<GameScene extends Scene<any, any>> {
       w,
       h,
       this.virtualScreen.width,
-      this.virtualScreen.height
-    );
-  };
+      this.virtualScreen.height,
+    )
+  }
 
   private setup() {
-    document.body.appendChild(this.app.view);
-    this.addPlayerInputEvents();
+    document.body.appendChild(this.app.view)
+    this.addPlayerInputEvents()
   }
 
   private teardown() {}
 
   async init() {
-    await import("@dimforge/rapier2d");
-    Executor.setContext({ game: this });
-    if (document.readyState === "complete") {
-      this.setup();
+    await import('@dimforge/rapier2d')
+    Executor.setContext({ game: this })
+    if (document.readyState === 'complete') {
+      this.setup()
     } else {
-      document.addEventListener("readystatechange", (ev) => {
-        if (document.readyState === "complete") {
-          this.setup();
+      document.addEventListener('readystatechange', (ev) => {
+        if (document.readyState === 'complete') {
+          this.setup()
         }
-      });
+      })
     }
-    return this;
+    return this
   }
 
   async loadScene<S extends GameScene>(scene: S) {
-    this.scene = scene;
-    await scene.onLoad();
-    this.app.stage.addChild(scene.display);
+    this.scene = scene
+    await scene.load()
+    this.app.stage.addChild(scene.display)
   }
 
   async preloadScene<S extends GameScene>(scene: GameScene) {}
 
   setScene<S extends GameScene>(scene: S) {
-    this.scene = scene;
-    this.app.stage.addChild(scene.display);
+    this.scene = scene
+    this.app.stage.addChild(scene.display)
   }
 
   render() {
-    this.app.render();
+    this.app.render()
   }
 
   async loadAssets(
     assetsBundle: ResolverAssetsArray | ResolverAssetsObject,
-    assetsBundleName: string
+    assetsBundleName: string,
   ): Promise<void> {
-    console.log("assets");
-    Assets.addBundle(assetsBundleName, assetsBundle);
-    await Assets.loadBundle(assetsBundleName);
+    console.log('assets')
+    Assets.addBundle(assetsBundleName, assetsBundle)
+    await Assets.loadBundle(assetsBundleName)
   }
 
   async unloadScene() {
     if (!this.scene) {
-      return;
+      return
     }
-    this.scene.onBeforeUnload();
-    await delayP();
-    this.app.stage.removeChild(this.scene?.display);
-    this.scene = undefined;
+    this.scene.onBeforeUnload()
+    await delayP()
+    this.app.stage.removeChild(this.scene?.display)
+    this.scene = undefined
   }
 
   async linearTransition(
-    fromScene: GameScene,
-    toScene: GameScene,
-    duration: number
+    fromScene?: GameScene,
+    toScene?: GameScene,
+    duration: number = 1000,
   ): Promise<void> {
-    const halfDuration = duration / 2;
-    await new Promise<void>((resolve) => {
-      Executor.setContext({ scene: fromScene });
-      Process.spawn({
-        onTick({ totalElapsed }) {
-          const t = totalElapsed / halfDuration;
-          fromScene.display.alpha = 1 - t;
-        },
-        duration: halfDuration,
-        onComplete: () => resolve(),
-      });
-    });
-
-    await new Promise<void>((resolve) => {
-      Executor.setContext({ scene: toScene });
-      Process.spawn({
-        onTick({ totalElapsed }) {
-          const t = totalElapsed / halfDuration;
-          toScene.display.alpha = t;
-        },
-        duration: halfDuration,
-        onComplete: () => resolve(),
-      });
-    });
+    const halfDuration = duration / 2
+    if (fromScene) {
+      await new Promise<void>((resolve) => {
+        Executor.setContext({ scene: fromScene })
+        Process.spawn({
+          onTick({ totalElapsed }) {
+            const t = totalElapsed / halfDuration
+            fromScene.display.alpha = 1 - t
+          },
+          duration: halfDuration,
+          onComplete: () => resolve(),
+        })
+      })
+    }
+    if (toScene) {
+      await new Promise<void>((resolve) => {
+        Executor.setContext({ scene: toScene })
+        Process.spawn({
+          onTick({ totalElapsed }) {
+            const t = totalElapsed / halfDuration
+            toScene.display.alpha = t
+          },
+          duration: halfDuration,
+          onComplete: () => resolve(),
+        })
+      })
+    }
   }
 
   async transitionTo(
@@ -152,30 +154,33 @@ export class Game<GameScene extends Scene<any, any>> {
     transitionFn: (
       fromScene: GameScene,
       toScene: GameScene,
-      duration: number
-    ) => Promise<void> = this.linearTransition
+      duration: number,
+    ) => Promise<void> = this.linearTransition,
   ) {
-    await scene.onLoad();
-    scene.display.alpha = 0;
-    this.app.stage.addChild(scene.display);
-    await transitionFn(this.scene, scene, duration);
-    const oldScene = this.scene;
-    this.scene = scene;
-    this.app.stage.removeChild(oldScene.display);
-    oldScene.onBeforeUnload();
-    oldScene.destroy();
-    Executor.setContext({ scene });
+    await scene.load()
+    scene.display.alpha = 0
+    this.app.stage.addChild(scene.display)
+    await transitionFn(this.scene, scene, duration)
+    const oldScene = this.scene
+    this.scene = scene
+    if (oldScene) {
+      this.app.stage.removeChild(oldScene.display)
+      oldScene.onBeforeUnload()
+      oldScene.destroy()
+    }
+    Executor.setContext({ scene })
+    scene.onTransitionCompleted()
   }
 
-  playerInput: Record<string, boolean> = {};
+  playerInput: Record<string, boolean> = {}
   addPlayerInputEvents() {
-    window.addEventListener("keydown", (e) => {
-      this.playerInput[e.code] = true;
-      e.preventDefault();
-    });
-    window.addEventListener("keyup", (e) => {
-      this.playerInput[e.code] = false;
-      e.preventDefault();
-    });
+    window.addEventListener('keydown', (e) => {
+      this.playerInput[e.code] = true
+      e.preventDefault()
+    })
+    window.addEventListener('keyup', (e) => {
+      this.playerInput[e.code] = false
+      e.preventDefault()
+    })
   }
 }
