@@ -44,6 +44,8 @@
     "@pixi/sound": "^5.2.0",
     "@pixi/tilemap": "^4.0.0",
     "@pixi/ui": "^0.7.3",
+    "@types/lodash": "^4.14.196",
+    "lodash": "^4.17.21",
     "pixi-viewport": "^5.0.1",
     "pixi.js": "^7.0.4",
     "vite-plugin-top-level-await": "^1.3.1",
