@@ -27,7 +27,7 @@ export type Animation<T extends Animatable> = {
   predicate: (data: T) => void
   keyframes: Keyframe<T>[]
   loop?: boolean
-  speed: number
+  speed?: number
   duration?: number
   easing?: Easing // https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function
   runOnFixedUpdate?: boolean
@@ -70,7 +70,12 @@ export class AnimationControllerComponent<
           })
         }
       }
-      const normalizedAnimation = { ...animation, keyframes, duration }
+      const normalizedAnimation = {
+        ...animation,
+        keyframes,
+        duration,
+        speed: typeof animation.speed === 'undefined' ? 1 : animation.speed,
+      }
 
       return normalizedAnimation
     })
@@ -137,7 +142,7 @@ export class AnimationControllerComponent<
     nextKeyframeIndex = nextKeyframeIndex === -1 ? 0 : nextKeyframeIndex
 
     const currentKeyframeIndex =
-      nextKeyframeIndex > 0 ? nextKeyframeIndex - 1 : keyframes.length - 1
+      nextKeyframeIndex >= 0 ? nextKeyframeIndex - 1 : keyframes.length - 1
 
     const {
       time: currentTime,

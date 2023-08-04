@@ -8,11 +8,51 @@ import {
   getPlayAreaBounds,
   pu,
   Animation,
+  Keyframe,
 } from '../../../src'
 import { Graphics } from 'pixi.js'
 
+const keyframes1 = [
+  {
+    time: 0,
+    data: 1,
+    easing: 'easeOut',
+  },
+  {
+    time: 3000,
+    data: 1.5,
+    easing: 'easeIn',
+  },
+  {
+    time: 6000,
+    data: 1,
+  },
+] satisfies Keyframe<number>[]
+
+const keyframes2 = [
+  {
+    time: 0,
+    data: 1,
+    easing: 'linear',
+  },
+  {
+    time: 3000,
+    data: 1.5,
+    easing: 'linear',
+  },
+  {
+    time: 6000,
+    data: 1,
+  },
+] satisfies Keyframe<number>[]
+
 class Ball extends GameObject {
-  constructor(parent: Scene<any, any>, x: number, y: number) {
+  constructor(
+    parent: Scene<any, any>,
+    x: number,
+    y: number,
+    keyframes: Keyframe<number>[],
+  ) {
     super(parent)
     const [px, py] = pu(x, y)
     const rigidBody = RigidBodyDesc.dynamic().setTranslation(px, py)
@@ -27,7 +67,7 @@ class Ball extends GameObject {
       graphic,
       linkedTransform: phys.transform,
     })
-    const animations = this.createAnimations(graphic)
+    const animations = this.createAnimations(graphic, keyframes)
     const animationController = this.addComponent(
       AnimationControllerComponent,
       animations,
@@ -36,41 +76,17 @@ class Ball extends GameObject {
     animationController.play('idle')
   }
 
-  createAnimations(graphic: Graphics) {
-    const predicate = (data: { x: number; y: number }) => {
-      graphic.scale.set(data.x, data.y)
+  createAnimations(graphic: Graphics, keyframes: Keyframe<number>[]) {
+    const predicate = (data: number) => {
+      graphic.scale.set(data)
     }
-    const idle: Animation<{ x: number; y: number }> = {
+    const idle: Animation<number> = {
       predicate,
       runOnFixedUpdate: true,
       speed: 1,
 
-      easing: 'easeInOut',
       loop: true,
-      keyframes: [
-        {
-          time: 0,
-          data: {
-            x: 1,
-            y: 1,
-          },
-          easing: 'easeIn',
-        },
-        {
-          time: 1500,
-          data: {
-            x: 1.5,
-            y: 1.5,
-          },
-        },
-        {
-          time: 3000,
-          data: {
-            x: 1,
-            y: 1,
-          },
-        },
-      ],
+      keyframes,
     }
     return { idle }
   }
@@ -109,7 +125,8 @@ export class LevelScene extends Scene<any, any> {
     this.rapier.pixelToMeterRatio = 10
     this.rapier.world.gravity = new Vector2(0, 0)
     const { width, height } = getPlayAreaBounds()
-    const ball = this.instantiateGameObject(Ball, width / 2, height / 2)
+    this.instantiateGameObject(Ball, width * 0.25, height / 2, keyframes1)
+    this.instantiateGameObject(Ball, width * 0.75, height / 2, keyframes2)
 
     this.instantiateGameObject(Wall, 0, height / 2, 30, height)
     this.instantiateGameObject(Wall, width, height / 2, 30, height)
