@@ -1,11 +1,24 @@
 import { first, isObject, last, mapValues } from 'lodash'
 import { GameObject } from '../../GameObject'
 import { Component } from '../BaseComponent'
-import { lerp } from '../../utils'
+import { getCubicBezierEasing, lerp } from '../../utils'
+
+const EASINGS = {
+  linear: (t: number) => t,
+  ease: getCubicBezierEasing(0.25, 0.1, 0.25, 1.0),
+  easeIn: getCubicBezierEasing(0.42, 0.0, 1.0, 1.0),
+  easeOut: getCubicBezierEasing(0.0, 0.0, 0.58, 1.0),
+  easeInOut: getCubicBezierEasing(0.42, 0.0, 0.58, 1.0),
+  holdStart: (t: number) => (t === 1 ? t : 0),
+  jumpEnd: (t: number) => (t === 0 ? t : 1),
+}
+
+type Easing = keyof typeof EASINGS | ((t: number) => number)
 
 export type Keyframe<T> = {
   time: number
   data: T
+  easing?: keyof typeof EASINGS | ((t: number) => number)
 }
 
 type Animatable = number | Record<string | number, number> | number[]
@@ -16,7 +29,7 @@ export type Animation<T extends Animatable> = {
   loop?: boolean
   speed: number
   duration?: number
-  easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' // https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function
+  easing?: Easing // https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function
   runOnFixedUpdate?: boolean
 }
 
@@ -49,6 +62,13 @@ export class AnimationControllerComponent<
       let duration = animation.duration
       if (!duration) {
         duration = last(keyframes).time
+      } else {
+        if (duration > last(keyframes).time) {
+          keyframes.push({
+            ...last(keyframes),
+            time: duration,
+          })
+        }
       }
       const normalizedAnimation = { ...animation, keyframes, duration }
 
@@ -101,8 +121,15 @@ export class AnimationControllerComponent<
     if (!this.currentAnimation) {
       return
     }
-    const { duration, speed, keyframes, predicate } = this.currentAnimation
-    this.currentTime += elapsedMS
+    const { duration, speed, loop, keyframes, predicate, easing } =
+      this.currentAnimation
+    this.currentTime += elapsedMS * speed
+
+    if (!loop && this.currentTime > duration) {
+      this.stop()
+      return
+    }
+
     let nextKeyframeIndex = keyframes.findIndex(
       (kf) => kf.time > this.currentTime % duration,
     )
@@ -112,8 +139,11 @@ export class AnimationControllerComponent<
     const currentKeyframeIndex =
       nextKeyframeIndex > 0 ? nextKeyframeIndex - 1 : keyframes.length - 1
 
-    const { time: currentTime, data: currentData } =
-      keyframes[currentKeyframeIndex]
+    const {
+      time: currentTime,
+      data: currentData,
+      easing: frameEasing,
+    } = keyframes[currentKeyframeIndex]
     const { time: nextTime, data: _nextData } = keyframes[nextKeyframeIndex]
 
     const t =
@@ -121,20 +151,28 @@ export class AnimationControllerComponent<
 
     let interpolatedValue: Animatable
 
+    const easingFromOptions = frameEasing ?? easing ?? 'linear'
+
+    const easingFn =
+      typeof easingFromOptions === 'function'
+        ? easingFromOptions
+        : EASINGS[easingFromOptions]
+    const easedT = easingFn(t)
+
     if (typeof currentData === 'number') {
       const nextData = _nextData as typeof currentData
-      interpolatedValue = lerp(currentData, nextData, t)
+      interpolatedValue = lerp(currentData, nextData, easedT)
     } else if (Array.isArray(currentData)) {
       const nextData = _nextData as typeof currentData
       interpolatedValue = currentData.map((current, index) => {
         const next = nextData[index]
-        return lerp(current, next, t)
+        return lerp(current, next, easedT)
       })
     } else {
       const nextData = _nextData as typeof currentData
       interpolatedValue = mapValues(currentData, (current, key) => {
         const next = nextData[key]
-        return lerp(current, next, t)
+        return lerp(current, next, easedT)
       })
     }
 

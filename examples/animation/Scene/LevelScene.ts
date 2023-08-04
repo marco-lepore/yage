@@ -34,18 +34,19 @@ class Ball extends GameObject {
     )
 
     animationController.play('idle')
-
-    phys.rigidBody.applyImpulse(new Vector2(200, 2), true)
   }
 
   createAnimations(graphic: Graphics) {
     const predicate = (data: { x: number; y: number }) => {
       graphic.scale.set(data.x, data.y)
     }
-    const idle: Animation<Parameters<typeof predicate>[0]> = {
+    const idle: Animation<{ x: number; y: number }> = {
       predicate,
       runOnFixedUpdate: true,
       speed: 1,
+
+      easing: 'easeInOut',
+      loop: true,
       keyframes: [
         {
           time: 0,
@@ -53,23 +54,17 @@ class Ball extends GameObject {
             x: 1,
             y: 1,
           },
-        },
-        {
-          time: 500,
-          data: {
-            x: 1.4,
-            y: 1.1,
-          },
-        },
-        {
-          time: 1000,
-          data: {
-            x: 1.2,
-            y: 0.6,
-          },
+          easing: 'easeIn',
         },
         {
           time: 1500,
+          data: {
+            x: 1.5,
+            y: 1.5,
+          },
+        },
+        {
+          time: 3000,
           data: {
             x: 1,
             y: 1,
