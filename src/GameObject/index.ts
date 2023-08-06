@@ -48,11 +48,7 @@ export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
     this.teardown()
   }
 
-  onAdded() {
-    this.components.forEach((c) => {
-      c.onAdded()
-    })
-  }
+  onAdded() {}
 
   onBeforeTick(dt: number) {
     this.components.forEach((c) => c.onBeforeTick(dt))
@@ -121,12 +117,17 @@ export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
 
   registerComponents = (...components: Component[]) => {
     this.components.push(...components)
-    components.forEach((c) => c.setParent(this))
+    components.forEach((c) => {
+      c.onAdded()
+    })
   }
 
   unregisterComponent(...components: Component[]) {
     this.components = this.components.filter((c) => !components.includes(c))
-    components.forEach((c) => c.destroy())
+    components.forEach((c) => {
+      c.onRemoved()
+      c.destroy()
+    })
   }
 
   addComponent = <C extends Component, P extends any[]>(
