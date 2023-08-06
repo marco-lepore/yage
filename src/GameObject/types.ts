@@ -43,3 +43,5 @@ export interface IGameObject<
 export type GameObjectFactory<ParentScene extends Scene<any, any>> = {
   new (scene: ParentScene, ...args: any[]): IGameObject
 }
+
+export type ProcessMode = 'pausable' | 'whenPaused' | 'always' | 'disabled'

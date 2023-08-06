@@ -1,13 +1,15 @@
 import { AssetsMap } from '../types'
 import type { Component } from '../components/BaseComponent'
 import { Scene } from '../Scene'
-import { IGameObject } from './types'
+import { IGameObject, ProcessMode } from './types'
 
 export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
   implements IGameObject<ParentScene>
 {
   static assetsMap: AssetsMap = {}
   components: Component[] = []
+
+  processMode: ProcessMode = 'pausable'
 
   private _scene!: ParentScene
   get scene() {

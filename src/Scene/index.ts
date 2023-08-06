@@ -37,6 +37,8 @@ export class Scene<
 
   rapier = new Rapier()
 
+  paused = false
+
   protected state: State
   getState(): State {
     return this.state
@@ -148,31 +150,36 @@ export class Scene<
     }, 0)
   }
 
+  filterByProcessMode = (go: GameObject) => {
+    if (this.paused) {
+      return go.processMode === 'whenPaused' || go.processMode === 'always'
+    } else {
+      return go.processMode === 'pausable' || go.processMode === 'always'
+    }
+  }
+
   onBeforeTick(dt: number) {
-    this.gameObjects.forEach((go) => {
+    this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onBeforeTick) go.onBeforeTick(dt)
     })
   }
 
   onTick(dt: number) {
-    if (this.ticker.elapsedMS > 17) {
-      console.log(this.ticker.elapsedMS, dt, this.ticker)
-    }
     this.rapier.addGameTime(this.ticker.elapsedMS)
     this.rapier.simulate(this.onBeforeFixedTick, this.onFixedTick)
-    this.gameObjects.forEach((go) => {
+    this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onTick) go.onTick(dt)
     })
   }
 
   onBeforeFixedTick(timestepMS: number) {
-    this.gameObjects.forEach((go) => {
+    this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onBeforeFixedTick) go.onBeforeFixedTick(timestepMS)
     })
   }
 
   onAfterTick(timestepMS: number) {
-    this.gameObjects.forEach((go) => {
+    this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onAfterTick) go.onAfterTick(timestepMS)
     })
   }
@@ -180,14 +187,14 @@ export class Scene<
   onFixedTick(timestepMS: number) {
     Process.onTick(timestepMS)
 
-    this.gameObjects.forEach((go) => {
+    this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onFixedTick) go.onFixedTick(timestepMS)
     })
     this.onAfterFixedTick(timestepMS)
   }
 
   onAfterFixedTick(dt: number) {
-    this.gameObjects.forEach((go) => {
+    this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onAfterFixedTick) go.onAfterFixedTick(dt)
     })
   }
