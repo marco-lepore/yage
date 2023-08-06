@@ -70,6 +70,7 @@ export class InputComponent<
   updateSingleInputState(input: string, isActive: boolean, elapsedMS: number) {
     // key is pressed
     if (isActive) {
+      this.justReleased.delete(input)
       if (!this.active.has(input)) {
         // key was just pressed this frame
         // add "just pressed" state
