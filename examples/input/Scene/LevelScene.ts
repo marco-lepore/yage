@@ -26,16 +26,12 @@ class BaseText extends UITextComponent {
 class RisingText extends BaseText {
   constructor(parent: TextManager, text: string, x: number, y: number) {
     super(parent, text, x, y)
-
-    Process.spawn({
-      duration: 2000,
-      onTick: ({ elapsed, totalElapsed }) => {
-        this.setPosition(x, y - (totalElapsed / 2000) * 100)
-      },
-      onComplete: () => {
+    Process.tweenProperty(this.textElement, 'alpha', 0, 2000)
+    Process.tween((n) => this.setPosition(x, y + n), 0, -100, 2000)
+      .toPromise()
+      ?.then(() => {
         this.parent.unregisterComponent(this)
-      },
-    })
+      })
   }
 }
 
