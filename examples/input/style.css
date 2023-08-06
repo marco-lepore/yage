@@ -1,0 +1,14 @@
+body,
+html {
+  overflow: hidden;
+  margin: 0 auto;
+  background-color: rgb(221, 221, 221);
+  height: 100%;
+}
+
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: transparent !important;
+}
