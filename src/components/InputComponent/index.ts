@@ -38,7 +38,7 @@ export class InputComponent<
 
   justPressed = new Set<string>()
   active = new Set<string>()
-  justReleased = new Set<string>()
+  justReleased = new Map<string, number>()
   holding = new Map<string, number>()
 
   onBeforeFixedTick(elapsedMS: number): void {
@@ -96,9 +96,10 @@ export class InputComponent<
         // probably no effect but remove from just pressed just in case
         this.justPressed.delete(input)
         // remove entry from hold time map
+        const holdTime = this.holding.get(input)
         this.holding.delete(input)
         // add "just released" state
-        this.justReleased.add(input)
+        this.justReleased.set(input, holdTime)
       } else if (this.justReleased.has(input)) {
         // key was released for 1 frame
         this.justReleased.delete(input)
@@ -135,6 +136,6 @@ export class InputComponent<
   }
 
   getHoldingTime(input: string) {
-    return this.holding.get(input) ?? null
+    return this.holding.get(input) ?? this.justReleased.get(input) ?? null
   }
 }
