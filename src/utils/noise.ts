@@ -1,4 +1,4 @@
-import { smootherstep } from './values'
+import { smootherstep } from './interpolation'
 
 export class Perlin {
   nodes: { x: number; y: number }[] = []

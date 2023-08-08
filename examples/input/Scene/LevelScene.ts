@@ -18,16 +18,14 @@ import { Graphics, TextStyle } from 'pixi.js'
 class BaseText extends UITextComponent {
   constructor(parent: TextManager, text: string, x: number, y: number) {
     super(parent, { text, x, y, style: new TextStyle({ fill: 0xffffff }) })
-    console.log(text, x, y)
-    console.log(this.textElement)
   }
 }
 
 class RisingText extends BaseText {
   constructor(parent: TextManager, text: string, x: number, y: number) {
     super(parent, text, x, y)
-    Process.tweenProperty(this.textElement, 'alpha', 0, 2000)
-    Process.tween((n) => this.setPosition(x, y + n), 0, -100, 2000)
+    Process.tweenProperty(this.textElement, 'alpha', 0, 2000, 'easeOut')
+    Process.tween((n) => this.setPosition(x, y + n), 0, -100, 2000, 'easeIn')
       .toPromise()
       ?.then(() => {
         this.parent.unregisterComponent(this)

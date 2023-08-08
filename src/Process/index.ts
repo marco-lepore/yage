@@ -1,5 +1,12 @@
 import { Scene } from '../Scene'
-import { KeysOfValue, getScene } from '../utils'
+import {
+  Easing,
+  Interpolatable,
+  KeysOfValue,
+  getScene,
+  interpolate,
+  isInterpolatable,
+} from '../utils'
 
 type ProcessData<S> = {
   totalElapsed: number
@@ -175,35 +182,34 @@ export class Process<S> {
     return new Process(options)
   }
 
-  static tween(
-    callback: (n: number) => void,
-    from: number,
-    to: number,
+  static tween<T extends Interpolatable>(
+    callback: (n: T) => void,
+    from: T,
+    to: T,
     duration: number,
+    easing?: Easing,
   ) {
     return new Process({
       duration,
       onTick: ({ progress }) => {
-        callback(from + (to - from) * progress)
+        callback(interpolate(from, to, progress, easing))
       },
     })
   }
 
-  static tweenProperty<O extends Object, K extends KeysOfValue<O, number>>(
-    object: O,
-    property: K,
-    to: number,
-    duration: number,
-  ) {
-    const value = object[property] as number
+  static tweenProperty<
+    O extends Object,
+    K extends KeysOfValue<O, number>,
+    T extends Interpolatable,
+  >(object: O, property: K, to: T, duration: number, easing?: Easing) {
+    const value = object[property] as T
+    if (!isInterpolatable(value)) {
+      throw new Error('property is not a interpolatable')
+    }
     return new Process({
       duration,
       onTick: ({ progress }) => {
-        if (typeof object[property] !== 'number') {
-          throw new Error('property is not a number')
-        }
-
-        ;(object[property] as number) = value + (to - value) * progress
+        ;(object[property] as T) = interpolate(value, to, progress, easing)
       },
     })
   }

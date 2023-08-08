@@ -1,21 +1,9 @@
 import { first, isObject, last, mapValues } from 'lodash'
 import { GameObject } from '../../GameObject'
 import { Component } from '../BaseComponent'
-import { getCubicBezierEasing, lerp } from '../../utils'
+import { lerp, EASINGS, Easing, Interpolatable, interpolate } from '../../utils'
 
-const EASINGS = {
-  linear: (t: number) => t,
-  ease: getCubicBezierEasing(0.25, 0.1, 0.25, 1.0),
-  easeIn: getCubicBezierEasing(0.42, 0.0, 1.0, 1.0),
-  easeOut: getCubicBezierEasing(0.0, 0.0, 0.58, 1.0),
-  easeInOut: getCubicBezierEasing(0.42, 0.0, 0.58, 1.0),
-  holdStart: (t: number) => (t === 1 ? t : 0),
-  jumpEnd: (t: number) => (t === 0 ? t : 1),
-}
-
-type Easing = keyof typeof EASINGS | ((t: number) => number)
-
-export type Keyframe<T> = {
+export type Keyframe<T extends Interpolatable> = {
   time: number
   data: T
   easing?: keyof typeof EASINGS | ((t: number) => number)
@@ -23,7 +11,7 @@ export type Keyframe<T> = {
 
 type Animatable = number | Record<string | number, number> | number[]
 
-export type Animation<T extends Animatable> = {
+export type Animation<T extends Interpolatable> = {
   predicate: (data: T) => void
   keyframes: Keyframe<T>[]
   loop?: boolean
@@ -154,37 +142,16 @@ export class AnimationControllerComponent<
     const t =
       ((this.currentTime % duration) - currentTime) / (nextTime - currentTime)
 
-    let interpolatedValue: Animatable
-
     const easingFromOptions = frameEasing ?? easing ?? 'linear'
+    const nextData = _nextData as typeof currentData
 
-    const easingFn =
-      typeof easingFromOptions === 'function'
-        ? easingFromOptions
-        : EASINGS[easingFromOptions]
-    const easedT = easingFn(t)
-
-    if (typeof currentData === 'number') {
-      const nextData = _nextData as typeof currentData
-      interpolatedValue = lerp(currentData, nextData, easedT)
-    } else if (Array.isArray(currentData)) {
-      const nextData = _nextData as typeof currentData
-      interpolatedValue = currentData.map((current, index) => {
-        const next = nextData[index]
-        return lerp(current, next, easedT)
-      })
-    } else {
-      const nextData = _nextData as typeof currentData
-      interpolatedValue = mapValues(currentData, (current, key) => {
-        const next = nextData[key]
-        return lerp(current, next, easedT)
-      })
-    }
+    const interpolatedValue = interpolate(
+      currentData,
+      nextData,
+      t,
+      easingFromOptions,
+    )
 
     predicate(interpolatedValue)
-
-    // Interpolate values
-    // Execute predicate
-    // check loop
   }
 }
