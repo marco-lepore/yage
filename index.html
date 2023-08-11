@@ -2,16 +2,56 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + TS</title>
+    <title>Yet Another (Javascript) Game Engine</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        background-color: black;
+      }
+      #list {
+        flex: auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 24px;
+      }
+      #list a {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 16px;
+        color: white;
+      }
+      #frame-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        flex: 90%;
+      }
+      iframe {
+        width: 640px;
+        height: 640px;
+      }
+    </style>
   </head>
   <body>
-    <div id="app">
-      <a href="examples/bounce/">bounce</a>
-      <a href="examples/loader/">loader</a>
-      <a href="examples/animation/">animation</a>
-      <a href="examples/input/">input</a>
+    <div id="list">
+      <a href="examples/bounce/" target="game">bounce</a>
+      <a href="examples/loader/" target="game">loader</a>
+      <a href="examples/animation/" target="game">animation</a>
+      <a href="examples/input/" target="game">input</a>
+    </div>
+    <div id="frame-wrapper">
+      <iframe seamless name="game"></iframe>
     </div>
   </body>
 </html>
