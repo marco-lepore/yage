@@ -1,75 +1,70 @@
-import {
-  AnimatedSprite,
-  Container,
-  DisplayObject,
-  Graphics,
-  Point,
-  Sprite,
-  Transform,
-} from 'pixi.js'
+import { Container, Point, Transform } from 'pixi.js'
 import { Component } from '../BaseComponent'
 import { GameObject } from '../../GameObject'
-import { CompositeTilemap } from '@pixi/tilemap'
+import {
+  Emitter,
+  LinkedListContainer,
+  EmitterConfigV3,
+} from '@pixi/particle-emitter'
 
-export class GraphicComponent<
+export class ParticlesEmitterComponent<
   Parent extends GameObject = GameObject,
 > extends Component<Parent> {
-  name = 'GraphicComponent'
-  // container = new Container()
-  graphic: Sprite | AnimatedSprite | Graphics | Container | CompositeTilemap
+  name = 'ParticlesEmitterComponent'
+  private container = new LinkedListContainer()
+  emitter: Emitter
   renderLayer?: Container
   constructor(
     parent: Parent,
     {
-      graphic,
+      config,
       linkedTransform,
       linkedTransformOffset,
       renderLayer,
+      autoEmit,
     }: {
-      graphic: Sprite | AnimatedSprite | Graphics | Container | CompositeTilemap
+      config: EmitterConfigV3
       linkedTransform?: Transform
       linkedTransformOffset?: Point
-
       renderLayer?: Container
+      autoEmit?: boolean
     },
   ) {
     super(parent)
-    this.graphic = graphic
+    this.emitter = new Emitter(this.container, config)
     this.renderLayer = renderLayer
     if (linkedTransform) {
+      console.log(linkedTransform, linkedTransformOffset)
       this.linkTransform(linkedTransform, linkedTransformOffset)
       this.updateTransform()
-      console.log(
-        linkedTransform.position.x,
-        linkedTransform.position.y,
-        parent.name,
-      )
+      this.emitter.resetPositionTracking()
+      console.log(this.emitter)
     }
     this.enabled = false
+    this.emitter.emit = autoEmit ?? false
   }
 
   onAdded(): void {
     super.onAdded()
-    console.log(this.graphic.position.x, this.graphic.position.y)
     if (this.renderLayer) {
-      this.renderLayer.addChild(this.graphic)
+      this.renderLayer.addChild(this.container)
     } else {
-      this.parent.scene.display.addChild(this.graphic)
+      this.parent.scene.display.addChild(this.container)
     }
     this.enabled = true
   }
 
   onRemoved(): void {
     super.onRemoved()
-    if (this.graphic.parent) {
-      this.graphic.parent.removeChild(this.graphic)
+    if (this.container.parent) {
+      this.container.parent.removeChild(this.container)
     }
     this.enabled = false
   }
 
   onTick(dt: number): void {
     super.onTick(dt)
-
+    this.emitter.update(this.parent.scene.ticker.elapsedMS / 1000)
     this.updateTransform()
   }
 
@@ -94,14 +89,9 @@ export class GraphicComponent<
           ? this.linkedTransform()
           : this.linkedTransform
 
-      // maybe also update scale etc? or leave it to the graphic object
-      console.log(this.parent.name, transform.position.x, transform.position.y)
-      this.graphic.setTransform(
+      this.emitter.updateOwnerPos(
         transform.position.x + this.linkedTransformOffset.x,
         transform.position.y + this.linkedTransformOffset.y,
-        this.graphic.scale.x,
-        this.graphic.scale.y,
-        transform.rotation,
       )
     }
   }
@@ -115,6 +105,6 @@ export class GraphicComponent<
     if (v) {
       this.updateTransform()
     }
-    this.graphic.renderable = v
+    this.container.renderable = v
   }
 }

@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@dimforge/rapier2d": "^0.11.2",
+    "@pixi/particle-emitter": "^5.0.8",
     "@pixi/sound": "^5.2.0",
     "@pixi/tilemap": "^4.0.0",
     "@pixi/ui": "^0.7.3",
