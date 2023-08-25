@@ -119,6 +119,7 @@ export class Process<S> {
     this.destroy()
     if (this.loop) {
       this.totalElapsed = 0
+      this.completed = false
       this.start()
     } else if (this.resolvePromise) {
       this.resolvePromise(this.getProcessData())

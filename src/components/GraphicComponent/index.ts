@@ -1,22 +1,53 @@
 import {
   AnimatedSprite,
+  BitmapText,
   Container,
-  DisplayObject,
+  Text,
   Graphics,
+  Mesh,
+  NineSlicePlane,
   Point,
+  SimpleMesh,
+  SimplePlane,
+  SimpleRope,
   Sprite,
+  TilingSprite,
   Transform,
 } from 'pixi.js'
 import { Component } from '../BaseComponent'
 import { GameObject } from '../../GameObject'
 import { CompositeTilemap } from '@pixi/tilemap'
 
+type GraphicObject =
+  | Container
+  | Graphics
+  | Sprite
+  | Text
+  | BitmapText
+  | TilingSprite
+  | AnimatedSprite
+  | Mesh
+  | NineSlicePlane
+  | SimpleMesh
+  | SimplePlane
+  | SimpleRope
+  | CompositeTilemap
+
+type GraphicComponentOptions<Graphic> = {
+  graphic: Graphic
+  linkedTransform?: Transform
+  linkedTransformOffset?: Point
+
+  renderLayer?: Container
+}
+
 export class GraphicComponent<
   Parent extends GameObject = GameObject,
+  Graphic extends GraphicObject = GraphicObject,
 > extends Component<Parent> {
   name = 'GraphicComponent'
   // container = new Container()
-  graphic: Sprite | AnimatedSprite | Graphics | Container | CompositeTilemap
+  graphic: Graphic
   renderLayer?: Container
   constructor(
     parent: Parent,
@@ -25,13 +56,7 @@ export class GraphicComponent<
       linkedTransform,
       linkedTransformOffset,
       renderLayer,
-    }: {
-      graphic: Sprite | AnimatedSprite | Graphics | Container | CompositeTilemap
-      linkedTransform?: Transform
-      linkedTransformOffset?: Point
-
-      renderLayer?: Container
-    },
+    }: GraphicComponentOptions<Graphic>,
   ) {
     super(parent)
     this.graphic = graphic
@@ -50,7 +75,6 @@ export class GraphicComponent<
 
   onAdded(): void {
     super.onAdded()
-    console.log(this.graphic.position.x, this.graphic.position.y)
     if (this.renderLayer) {
       this.renderLayer.addChild(this.graphic)
     } else {
@@ -95,7 +119,6 @@ export class GraphicComponent<
           : this.linkedTransform
 
       // maybe also update scale etc? or leave it to the graphic object
-      console.log(this.parent.name, transform.position.x, transform.position.y)
       this.graphic.setTransform(
         transform.position.x + this.linkedTransformOffset.x,
         transform.position.y + this.linkedTransformOffset.y,
