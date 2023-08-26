@@ -19,7 +19,7 @@
     "docs": "typedoc --out ./docs/ --readme README.md ./src/",
     "lint": "eslint . --ignore-path .gitignore",
     "test": "vitest --run --reporter verbose",
-    "prepare": "npm run tsc"
+    "prepare": "npm run build"
   },
   "files": [
     "dist/",
