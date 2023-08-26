@@ -126,7 +126,7 @@ export class Process<S> {
     }
   }
 
-  getProcessData() {
+  getProcessData(): ProcessData<S> {
     return {
       totalElapsed: this.totalElapsed,
       progress: Math.min(this.totalElapsed / this.duration, 1),
