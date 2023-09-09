@@ -6,7 +6,6 @@ import { TypedEventTarget } from './TypedEventTarget'
 import { Rapier } from './Rapier'
 import { Display } from './Display'
 import { Process } from '../Process'
-import { IGameObject } from '../GameObject/types'
 import { soundAsset } from '@pixi/sound'
 import { AnyEvents, AnyState } from './types'
 extensions.add(soundAsset)
@@ -17,7 +16,7 @@ export class Scene<
 > {
   assetsBundle: ResolverAssetsObject = {}
   assetsBundleId = 'scene_assets'
-  gameObjects: IGameObject[] = []
+  gameObjects: GameObject[] = []
   ticker = new Ticker()
   display!: Display
 
@@ -195,40 +194,44 @@ export class Scene<
     this.destroy()
   }
 
+  get activeGameObjects(): GameObject[] {
+    return this.gameObjects.filter(({ queuedForDestroy }) => !queuedForDestroy)
+  }
+
   getGameObjectByClass<G extends GameObject>(ctor: {
     new (): G
   }): G | undefined {
-    const go = this.gameObjects.find((go) => go instanceof ctor)
+    const go = this.activeGameObjects.find((go) => go instanceof ctor)
 
     if (go) {
       return go as G
     }
   }
   getGameObjectByName<G extends GameObject>(name: string): G | undefined {
-    const go = this.gameObjects.find((go) => go.name === name)
+    const go = this.activeGameObjects.find((go) => go.name === name)
 
     if (go) {
       return go as G
     }
   }
   getGameObjectByTag<G extends GameObject>(tag: string): G | undefined {
-    const go = this.gameObjects.find((go) => go.tags.includes(tag))
+    const go = this.activeGameObjects.find((go) => go.tags.includes(tag))
 
     if (go) {
       return go as G
     }
   }
   getGameObjectsByClass<G extends GameObject>(ctor: { new (): G }): G[] {
-    return this.gameObjects.filter((go) => go instanceof ctor) as G[]
+    return this.activeGameObjects.filter((go) => go instanceof ctor) as G[]
   }
   getGameObjectsByName<G extends GameObject>(name: string): G[] {
-    return this.gameObjects.filter((go) => go.name === name) as G[]
+    return this.activeGameObjects.filter((go) => go.name === name) as G[]
   }
   getGameObjectsByTag<G extends GameObject>(tag: string): G[] {
-    return this.gameObjects.filter((go) => go.tags.includes(tag)) as G[]
+    return this.activeGameObjects.filter((go) => go.tags.includes(tag)) as G[]
   }
 
-  addGameObjects = (...gameObjects: IGameObject[]) => {
+  addGameObjects = (...gameObjects: GameObject[]) => {
     this.gameObjects.push(...gameObjects)
     gameObjects.forEach((go) => {
       go.scene = this
@@ -236,7 +239,7 @@ export class Scene<
     })
   }
 
-  removeGameObjects(...gameObjects: IGameObject[]) {
+  removeGameObjects(...gameObjects: GameObject[]) {
     this.gameObjects = this.gameObjects.filter((c) => !gameObjects.includes(c))
     gameObjects.forEach((go) => go.destroy())
   }
