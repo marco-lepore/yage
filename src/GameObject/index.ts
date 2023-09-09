@@ -26,8 +26,14 @@ export class GameObject<ParentScene extends AnyScene = AnyScene>
     this.scene = parentScene
   }
 
-  private teardown() {
-    this.components.forEach((go) => go.destroy())
+  private destroyed = false
+  destroy() {
+    if (this.destroyed) {
+      return
+    }
+    this.destroyed = true
+    this.unregisterComponent(...this.components)
+    this.scene.removeGameObjects(this)
   }
 
   dispatchSceneEvent<
@@ -37,15 +43,9 @@ export class GameObject<ParentScene extends AnyScene = AnyScene>
     return this.scene.dispatch(event)
   }
 
-  addSceneEventListener<
-    S extends ParentScene,
-    P extends Parameters<S['addEventListener']>,
-  >(type: P[0], callback: P[1]) {
-    return this.scene.addEventListener(type, callback)
-  }
-
-  destroy() {
-    this.teardown()
+  queuedForDestroy = false
+  queueDestroy() {
+    this.queuedForDestroy = true
   }
 
   onAdded() {}
@@ -72,9 +72,6 @@ export class GameObject<ParentScene extends AnyScene = AnyScene>
 
   onAfterTick(dt: number) {
     this.components.forEach((c) => c.onAfterTick(dt))
-  }
-  onRemoved() {
-    this.components.forEach((c) => c.onRemoved())
   }
 
   // Memoize these?

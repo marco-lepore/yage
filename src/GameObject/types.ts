@@ -12,20 +12,18 @@ export interface IGameObject<ParentScene extends AnyScene = AnyScene> {
 
   setup?(): void
 
+  processMode: ProcessMode
+
+  destroy(): void
+  queuedForDestroy: boolean
+  queueDestroy(): void
+
   dispatchSceneEvent<
     S extends ParentScene,
     P extends Parameters<S['dispatch']>,
   >(
     event: P[0],
   ): void
-
-  addSceneEventListener<
-    S extends ParentScene,
-    P extends Parameters<S['addEventListener']>,
-  >(
-    type: P[0],
-    callback: P[1],
-  ): () => void
 
   destroy(): void
   onAdded?(): void

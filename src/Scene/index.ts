@@ -181,6 +181,9 @@ export class Scene<
     this.gameObjects.filter(this.filterByProcessMode).forEach((go) => {
       if (go.onAfterFixedTick) go.onAfterFixedTick(dt)
     })
+    this.gameObjects
+      .filter(({ queuedForDestroy }) => queuedForDestroy)
+      .forEach((go) => go.destroy())
   }
 
   onBeforeUnload() {
