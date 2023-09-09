@@ -28,11 +28,13 @@
     "README.md"
   ],
   "devDependencies": {
-    "@pixi/eslint-config": "^4.0.1",
     "@types/node": "^18.14.6",
+    "@typescript-eslint/eslint-plugin": "^6.5.0",
+    "@typescript-eslint/parser": "^6.5.0",
     "concurrently": "^8.2.0",
     "del-cli": "^5.0.0",
-    "eslint": "^8.35.0",
+    "eslint": "^8.48.0",
+    "eslint-plugin-unicorn": "^48.0.1",
     "prettier": "^2.8.8",
     "typescript": "^5.0.2",
     "vite": "^4.3.9",
@@ -46,6 +48,7 @@
     "@pixi/tilemap": "github:marcoinscatola/pixi-tilemap",
     "@pixi/ui": "^0.7.3",
     "@types/lodash": "^4.14.196",
+    "eslint-plugin-yage": "github:marcoinscatola/eslint-plugin-yage",
     "lodash": "^4.17.21",
     "pixi-viewport": "^5.0.1",
     "pixi.js": "^7.0.4",
