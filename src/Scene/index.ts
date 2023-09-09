@@ -1,33 +1,19 @@
-import {
-  Application,
-  Assets,
-  Container,
-  ResolverAssetsArray,
-  ResolverAssetsObject,
-  extensions,
-} from 'pixi.js'
-import { Viewport } from 'pixi-viewport'
+import { Assets, ResolverAssetsObject, extensions } from 'pixi.js'
 import { Ticker } from './Ticker'
 import { GameObject } from '../GameObject'
 import { Executor } from '../Executor'
-import { TypedEventTarget, CustomEventMap } from './TypedEventTarget'
+import { TypedEventTarget } from './TypedEventTarget'
 import { Rapier } from './Rapier'
 import { Display } from './Display'
 import { Process } from '../Process'
-import { GameObjectFactory, IGameObject } from '../GameObject/types'
-import { getGame } from '../utils'
+import { IGameObject } from '../GameObject/types'
 import { soundAsset } from '@pixi/sound'
+import { AnyEvents, AnyState } from './types'
 extensions.add(soundAsset)
 
-type WithoutScene<G extends GameObjectFactory<any>> = G extends {
-  new (s: unknown, ...p: infer Params): IGameObject
-}
-  ? Params
-  : []
-
 export class Scene<
-  State extends Record<string, unknown>,
-  Events extends CustomEventMap,
+  State extends AnyState = AnyState,
+  Events extends AnyEvents = AnyEvents,
 > {
   assetsBundle: ResolverAssetsObject = {}
   assetsBundleId = 'scene_assets'
@@ -76,19 +62,19 @@ export class Scene<
     this.destroyed = true
   }
 
-  eventTarget = new TypedEventTarget<Events>()
+  protected eventTarget = new TypedEventTarget<Events>()
 
-  dispatch<E extends Events[keyof Events]>(ev: E) {
+  dispatch<E extends Events[keyof Events]>(event: E) {
     Executor.setContext({ scene: this })
-    this.eventTarget.dispatchEvent(ev)
+    this.eventTarget.dispatchEvent(event)
   }
 
   addEventListener<T extends keyof Events>(
     type: T,
-    cb: (ev: Events[T]) => void,
+    callback: (event: Events[T]) => void,
   ) {
-    this.eventTarget.addEventListener(type, cb)
-    return () => this.eventTarget.removeEventListener(type, cb)
+    this.eventTarget.addEventListener(type, callback)
+    return () => this.eventTarget.removeEventListener(type, callback)
   }
 
   autostart = true
@@ -151,11 +137,9 @@ export class Scene<
   }
 
   filterByProcessMode = (go: GameObject) => {
-    if (this.paused) {
-      return go.processMode === 'whenPaused' || go.processMode === 'always'
-    } else {
-      return go.processMode === 'pausable' || go.processMode === 'always'
-    }
+    return this.paused
+      ? go.processMode === 'whenPaused' || go.processMode === 'always'
+      : go.processMode === 'pausable' || go.processMode === 'always'
   }
 
   onBeforeTick(dt: number) {
@@ -254,11 +238,12 @@ export class Scene<
     gameObjects.forEach((go) => go.destroy())
   }
 
-  instantiateGameObject = <G extends GameObject, P extends any[]>(
-    ctor: { new (scene: any, ...params: P): G },
-    ...params: P
+  instantiateGameObject = <G extends GameObject, P extends unknown[]>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ctor: { new (scene: any, ...parameters: P): G },
+    ...parameters: P
   ) => {
-    const go = new ctor(this, ...params)
+    const go = new ctor(this, ...parameters)
     this.addGameObjects(go)
     return go
   }

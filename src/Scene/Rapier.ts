@@ -4,13 +4,13 @@ import { RapierBodyComponent } from '../components/RapierBodyComponent'
 const MAX_SIMULATED_STEPS_PER_FRAME = 10
 const DEFAULT_PIXEL_TO_METER_RATIO = 50
 const DEFAULT_FIXED_TIMESTEP_MS = 1000 / 60
-
+const DEFAULT_GRAVITY = { x: 0, y: 9.8 }
 export class Rapier {
   world: World
   eventQueue = new EventQueue(true)
   pixelToMeterRatio = DEFAULT_PIXEL_TO_METER_RATIO
 
-  constructor(gravity: Vector2 = { x: 0, y: 9.8 }, pixelToMeterRatio?: number) {
+  constructor(gravity: Vector2 = DEFAULT_GRAVITY, pixelToMeterRatio?: number) {
     this.world = new World(gravity)
     this.pixelToMeterRatio = pixelToMeterRatio ?? this.pixelToMeterRatio
   }

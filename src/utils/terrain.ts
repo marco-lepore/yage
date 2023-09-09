@@ -1,7 +1,7 @@
 import { FlagTester } from './flags'
 import { findRelativeIndex } from './matrix'
 
-type TilesDir = 'TL' | 'T' | 'TR' | 'L' | 'R' | 'BL' | 'B' | 'BR'
+type TilesDirection = 'TL' | 'T' | 'TR' | 'L' | 'R' | 'BL' | 'B' | 'BR'
 
 const enum Tiles {
   TL = 2,
@@ -15,7 +15,7 @@ const enum Tiles {
 }
 
 const TILES_DATA: Record<
-  TilesDir,
+  TilesDirection,
   { value: number; offset: [number, number] }
 > = {
   TL: { value: 2, offset: [-1, -1] },
@@ -137,12 +137,12 @@ export const getTileTypeByValue = (v: number): TileType => {
 }
 
 export const getTileTypeMatrix = (matrix: number[], w: number, h: number) => {
-  return matrix.map((v, i) => {
+  return matrix.map((v, index) => {
     if (v === 0) return 'Empty'
     let flags = 0
     Object.values(TILES_DATA).forEach(({ value, offset }) => {
-      const adjacentIndex = findRelativeIndex(i, ...offset, w, h)
-      const adjacentValue = adjacentIndex !== null ? matrix[adjacentIndex] : 0
+      const adjacentIndex = findRelativeIndex(index, ...offset, w, h)
+      const adjacentValue = adjacentIndex === null ? 0 : matrix[adjacentIndex]
 
       if (adjacentValue) {
         flags += value

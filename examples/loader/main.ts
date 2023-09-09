@@ -12,6 +12,5 @@ const game = new Game({
 
 const firstScene = new Scene1({})
 const loader = new Loader({ next: firstScene })
-Executor.execute(game).then((g) => {
-  g.transitionTo(loader)
-})
+const g = await Executor.execute(game)
+g.transitionTo(loader)

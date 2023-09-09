@@ -9,7 +9,6 @@ const game = new Game({
   virtualHeight: 300,
 })
 
-const firstScene = new LevelScene({})
-Executor.execute(game).then((g) => {
-  g.loadScene(firstScene)
-})
+const firstScene = new LevelScene()
+const g = await Executor.execute(game)
+g.loadScene(firstScene)

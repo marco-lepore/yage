@@ -23,7 +23,7 @@ export const getCubicBezierEasing =
   (x1: number, y1: number, x2: number, y2: number) => (t: number) => {
     const [x3, y3] = pointInLine(0, 0, x1, y2, t)
     const [x4, y4] = pointInLine(x2, y2, 1, 1, t)
-    const [x5, y5] = pointInLine(x3, y3, x4, y4, t)
+    const [, y5] = pointInLine(x3, y3, x4, y4, t)
     return y5
   }
 
@@ -80,7 +80,7 @@ const valuesIsCustomInterpolatableValue = (
     isObject(value) &&
     typeof (value as Partial<CustomInterpolatableValue>)?.interpolate ===
       'function' &&
-    typeof (value as Partial<CustomInterpolatableValue>)?.value !== 'undefined'
+    (value as Partial<CustomInterpolatableValue>)?.value !== undefined
   )
 }
 

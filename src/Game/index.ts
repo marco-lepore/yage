@@ -20,7 +20,7 @@ const DEFAULT_OPTIONS = {
   resizeTo: document.body,
 }
 
-export class Game<GameScene extends Scene<any, any>> {
+export class Game<GameScene extends Scene> {
   scene?: GameScene
   app: PixiApplication<HTMLCanvasElement>
   virtualScreen = {
@@ -40,7 +40,7 @@ export class Game<GameScene extends Scene<any, any>> {
       mergedOptions.virtualHeight ?? mergedOptions.height
     this.virtualScreen.width = mergedOptions.virtualWidth ?? mergedOptions.width
     this.handleResize(window.innerWidth, window.innerHeight)
-    window.addEventListener('resize', (ev) =>
+    window.addEventListener('resize', () =>
       this.handleResize(window.innerWidth, window.innerHeight),
     )
   }
@@ -57,7 +57,7 @@ export class Game<GameScene extends Scene<any, any>> {
   }
 
   private setup() {
-    document.body.appendChild(this.app.view)
+    document.body.append(this.app.view)
     this.addPlayerInputEvents()
   }
 
@@ -69,7 +69,7 @@ export class Game<GameScene extends Scene<any, any>> {
     if (document.readyState === 'complete') {
       this.setup()
     } else {
-      document.addEventListener('readystatechange', (ev) => {
+      document.addEventListener('readystatechange', (event) => {
         if (document.readyState === 'complete') {
           this.setup()
         }
@@ -83,8 +83,6 @@ export class Game<GameScene extends Scene<any, any>> {
     await scene.load()
     this.app.stage.addChild(scene.display)
   }
-
-  async preloadScene<S extends GameScene>(scene: GameScene) {}
 
   setScene<S extends GameScene>(scene: S) {
     this.scene = scene
@@ -151,7 +149,7 @@ export class Game<GameScene extends Scene<any, any>> {
   async transitionTo(
     scene: GameScene,
     duration = 750,
-    transitionFn: (
+    transitionFunction: (
       fromScene: GameScene,
       toScene: GameScene,
       duration: number,
@@ -160,7 +158,7 @@ export class Game<GameScene extends Scene<any, any>> {
     await scene.load()
     scene.display.alpha = 0
     this.app.stage.addChild(scene.display)
-    await transitionFn(this.scene, scene, duration)
+    await transitionFunction(this.scene, scene, duration)
     const oldScene = this.scene
     this.scene = scene
     if (oldScene) {
@@ -174,13 +172,13 @@ export class Game<GameScene extends Scene<any, any>> {
 
   playerInput: Record<string, boolean> = {}
   addPlayerInputEvents() {
-    window.addEventListener('keydown', (e) => {
-      this.playerInput[e.code] = true
-      e.preventDefault()
+    window.addEventListener('keydown', (keyEvent) => {
+      this.playerInput[keyEvent.code] = true
+      keyEvent.preventDefault()
     })
-    window.addEventListener('keyup', (e) => {
-      this.playerInput[e.code] = false
-      e.preventDefault()
+    window.addEventListener('keyup', (keyEvent) => {
+      this.playerInput[keyEvent.code] = false
+      keyEvent.preventDefault()
     })
   }
 }

@@ -37,7 +37,7 @@ export class FSMComponent<
   }
 
   onBeforeFixedTick(dt: number): void {
-    super.onBeforeTick(dt)
+    super.onBeforeFixedTick(dt)
     this.state = this.service.getSnapshot() as StateFrom<Machine>
   }
 }

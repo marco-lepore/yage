@@ -10,7 +10,8 @@ import {
 } from '@dimforge/rapier2d'
 
 type CollisionEvent = {
-  otherComponent?: RapierBodyComponent
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  otherComponent?: RapierBodyComponent<any>
   otherCollider: Collider
   collider: Collider
   started: boolean
@@ -30,8 +31,8 @@ type CollidersFormat<CDF> = CDF extends ColliderDesc[]
   : never
 
 export class RapierBodyComponent<
+  CDF extends CollidersDescFormat,
   Parent extends GameObject = GameObject,
-  CDF extends CollidersDescFormat = CollidersDescFormat,
 > extends Component<Parent> {
   name = 'RapierBodyComponent'
   bodyDesc: RigidBodyDesc
@@ -139,8 +140,8 @@ export class RapierBodyComponent<
     )
   }
 
-  collisionEventHandlers: ((ev: CollisionEvent) => void)[] = []
-  onCollision(handler: (ev: CollisionEvent) => void) {
+  collisionEventHandlers: ((event: CollisionEvent) => void)[] = []
+  onCollision(handler: (event: CollisionEvent) => void) {
     this.collisionEventHandlers.push(handler)
   }
 
@@ -157,7 +158,8 @@ export class RapierBodyComponent<
     this.updateTransform()
   }
 
-  onBeforeFixedTick(dt: number): void {
+  onBeforeFixedTick(elapsedMs: number): void {
+    super.onBeforeFixedTick(elapsedMs)
     this.prevTranslation = this.rigidBody.translation()
   }
 
@@ -177,9 +179,10 @@ export class RapierBodyComponent<
 
     if (body) {
       const { x, y } = body.translation()
-      const { x: prevX, y: prevY } = this.prevTranslation ?? body.translation()
-      const ix = prevX + (x - prevX) * factor
-      const iy = prevY + (y - prevY) * factor
+      const { x: previousX, y: previousY } =
+        this.prevTranslation ?? body.translation()
+      const ix = previousX + (x - previousX) * factor
+      const iy = previousY + (y - previousY) * factor
       transform.position.set(ix * pixelToMeterRatio, iy * pixelToMeterRatio)
       transform.rotation = body.rotation()
     }
@@ -194,6 +197,8 @@ export class RapierBodyComponent<
     this.rigidBody?.setEnabled(v)
   }
 
-  static bodyComponentMap = new Map<number, RapierBodyComponent<any, any>>()
-  static colliderComponentMap = new Map<number, RapierBodyComponent<any, any>>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static bodyComponentMap = new Map<number, RapierBodyComponent<any>>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static colliderComponentMap = new Map<number, RapierBodyComponent<any>>()
 }

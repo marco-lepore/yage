@@ -1,5 +1,3 @@
-import { QueryFilterFlags } from '@dimforge/rapier2d'
-
 export enum QueryFilterFlagsFixed {
   /**
    * Exclude from the query any collider attached to a fixed rigid-body and colliders with no rigid-body attached.

@@ -1,32 +1,17 @@
-import { DisplayObject } from 'pixi.js'
 import { GameObject } from '../../../GameObject'
 import { Scene } from '../../../Scene'
 import type { Dialogue } from './types'
 import { DialogueWindow } from './DialogueWindow'
 
-const example: Dialogue = {
-  data: {
-    start: {
-      id: 'start',
-      messages: [],
-      next: 'end',
-    },
-    end: {
-      id: 'end',
-      messages: [],
-      next: null,
-    },
-  },
-  initial: 'start',
-}
-
 export class DialoguePlayer<
-  Parent extends Scene<any, any> = Scene<any, any>,
+  Parent extends Scene = Scene,
   D extends Dialogue = Dialogue,
 > extends GameObject<Parent> {
   dialogue?: D
   currentNode?: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dialogueWindow: DialogueWindow<Parent, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(parent: Parent, dialogueWindow: DialogueWindow<Parent, any>) {
     super(parent)
     this.dialogueWindow = dialogueWindow

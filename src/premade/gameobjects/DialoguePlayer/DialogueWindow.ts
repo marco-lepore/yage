@@ -1,13 +1,8 @@
-import { Container, Point, Sprite, TextStyle, loadWebFont } from 'pixi.js'
+import { Container, Point, Sprite, TextStyle } from 'pixi.js'
 import { GameObject } from '../../../GameObject'
 import { Scene } from '../../../Scene'
 import { DialogueMessage, DialogueNode } from './types'
-import {
-  AudioComponent,
-  GraphicComponent,
-  UIBitmapTextComponent,
-  UITextComponent,
-} from '../../../components'
+import { GraphicComponent, UITextComponent } from '../../../components'
 import { Process } from '../../../Process'
 
 type TextPadding = [number, number, number, number]
@@ -27,7 +22,7 @@ type UpdateTextEvent<Message> = {
 }
 
 export class DialogueWindow<
-  Parent extends Scene<any, any> = Scene<any, any>,
+  Parent extends Scene = Scene,
   Message extends DialogueMessage = DialogueMessage,
 > extends GameObject<Parent> {
   groupComponent: GraphicComponent
@@ -92,14 +87,14 @@ export class DialogueWindow<
   createTextStyle(baseStyle: TextStyle, padding: TextPadding, lines?: number) {
     const clone = baseStyle.clone()
     const {
-      graphic: { width, height },
+      graphic: { height },
     } = this.windowComponent
 
-    const [top, right, bottom, left] = padding
+    const [top, bottom] = padding
     clone.align = 'left'
     clone.wordWrap = true
 
-    if (typeof lines !== 'undefined') {
+    if (lines !== undefined) {
       const textHeight = height - top - bottom
       clone.lineHeight = textHeight / lines
       clone.fontSize = clone.lineHeight * 0.8
@@ -128,7 +123,7 @@ export class DialogueWindow<
     return this.currentMessage.text
   }
 
-  private textTween?: Process<any>
+  private textTween?: Process
 
   private textUpdateListeners: ((data: UpdateTextEvent<Message>) => void)[] = []
 
@@ -163,10 +158,10 @@ export class DialogueWindow<
   }
 
   protected showTextProgressively = (n: number) => {
-    const i = Math.floor(n)
-    const complete = i === this.currentMessageText.length
-    if (i > this.currentTextIndex) {
-      this.currentTextIndex = i
+    const index = Math.floor(n)
+    const complete = index === this.currentMessageText.length
+    if (index > this.currentTextIndex) {
+      this.currentTextIndex = index
       this.updateText()
 
       this.textUpdateListeners.forEach((listener) =>
@@ -174,7 +169,7 @@ export class DialogueWindow<
       )
     }
     if (complete) {
-      this.currentTextIndex = i
+      this.currentTextIndex = index
       this.updateText()
       this.textTweenCompleted()
     }
@@ -190,10 +185,10 @@ export class DialogueWindow<
 
   protected updateTextLayout() {
     const {
-      graphic: { width, height },
+      graphic: { width },
     } = this.windowComponent
 
-    const [top, right, bottom, left] = this.padding
+    const [top, right, left] = this.padding
     const { textElement } = this.textComponent
 
     //textElement.maxWidth = width - right - left

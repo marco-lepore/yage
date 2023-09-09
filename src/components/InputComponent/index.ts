@@ -71,7 +71,14 @@ export class InputComponent<
     // key is pressed
     if (isActive) {
       this.justReleased.delete(input)
-      if (!this.active.has(input)) {
+      if (this.active.has(input)) {
+        // key has been pressed for n frames
+        // remove "just pressed" state
+        this.justPressed.delete(input)
+        // update hold time
+        const holdTime = this.holding.get(input)
+        this.holding.set(input, holdTime + elapsedMS)
+      } else {
         // key was just pressed this frame
         // add "just pressed" state
         this.justPressed.add(input)
@@ -79,13 +86,6 @@ export class InputComponent<
         this.active.add(input)
         // initialize hold time to 0
         this.holding.set(input, 0)
-      } else {
-        // key has been pressed for n frames
-        // remove "just pressed" state
-        this.justPressed.delete(input)
-        // update hold time
-        const holdTime = this.holding.get(input)
-        this.holding.set(input, holdTime + elapsedMS)
       }
     } else {
       // key is not pressed

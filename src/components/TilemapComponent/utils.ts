@@ -1,46 +1,51 @@
-import { ColliderDesc } from "@dimforge/rapier2d";
-import { getPixelToPhysicsUnitConverter } from "../../utils";
-import { RectangleObject, PolygonObject, TileObject } from "./types";
+import { ColliderDesc } from '@dimforge/rapier2d'
+import { getPixelToPhysicsUnitConverter } from '../../utils'
+import { RectangleObject, PolygonObject, TileObject } from './types'
 
 export const objectToRapierColliderDesc = (
-  obj: RectangleObject | PolygonObject,
-  postActions: (colliderDesc: ColliderDesc, object: TileObject) => void
+  object: RectangleObject | PolygonObject,
+  postActions: (colliderDesc: ColliderDesc, object: TileObject) => void,
 ) => {
-  const px2pu = getPixelToPhysicsUnitConverter();
-  const [objX, objY, objW, objH] = px2pu(obj.x, obj.y, obj.width, obj.height);
+  const px2pu = getPixelToPhysicsUnitConverter()
+  const [objectX, objectY, objectW, objectH] = px2pu(
+    object.x,
+    object.y,
+    object.width,
+    object.height,
+  )
 
-  if (obj.polygon) {
-    const vertices = px2pu(...obj.polygon.flatMap(({ x, y }) => [x, y]));
+  if (object.polygon) {
+    const vertices = px2pu(...object.polygon.flatMap(({ x, y }) => [x, y]))
 
     const colliderDesc = ColliderDesc.convexHull(
-      new Float32Array(vertices)
-    )?.setTranslation(objX, objY);
+      new Float32Array(vertices),
+    )?.setTranslation(objectX, objectY)
     if (!colliderDesc) {
-      throw new Error(`couldn't create collider for object ${obj.id}`);
+      throw new Error(`couldn't create collider for object ${object.id}`)
     }
-    postActions(colliderDesc, obj);
+    postActions(colliderDesc, object)
 
-    return colliderDesc;
+    return colliderDesc
   }
 
-  const colliderDesc = ColliderDesc.cuboid(objW / 2, objH / 2).setTranslation(
-    objX + objW / 2,
-    objY + objH / 2
-  );
+  const colliderDesc = ColliderDesc.cuboid(
+    objectW / 2,
+    objectH / 2,
+  ).setTranslation(objectX + objectW / 2, objectY + objectH / 2)
 
-  postActions(colliderDesc, obj);
+  postActions(colliderDesc, object)
 
-  return colliderDesc;
-};
+  return colliderDesc
+}
 
 export const objectsToRapierCollidersDesc = (
   objects: TileObject[],
-  postActions: (colliderDesc: ColliderDesc, object: TileObject) => void
+  postActions: (colliderDesc: ColliderDesc, object: TileObject) => void,
 ) => {
   return objects
     .filter(
-      (obj): obj is PolygonObject | RectangleObject =>
-        !!obj.polygon || !obj.point
+      (object): object is PolygonObject | RectangleObject =>
+        !!object.polygon || !object.point,
     )
-    .map((obj) => objectToRapierColliderDesc(obj, postActions));
-};
+    .map((object) => objectToRapierColliderDesc(object, postActions))
+}

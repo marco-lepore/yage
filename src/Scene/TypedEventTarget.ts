@@ -1,28 +1,22 @@
-export class TickEvent extends CustomEvent<{ dt: number }> {
-  constructor(dt: number) {
-    super('tick', { detail: { dt } })
-  }
-}
-
-export type CustomEventMap = Record<string, CustomEvent>
+import { AnyEvents } from './types'
 
 export class TypedEventTarget<
-  EventMap extends CustomEventMap = CustomEventMap,
+  Events extends AnyEvents = AnyEvents,
 > extends EventTarget {
-  public dispatchEvent(e: EventMap[keyof EventMap]): boolean {
-    return super.dispatchEvent(e)
+  public dispatchEvent(event: Events[keyof Events]): boolean {
+    return super.dispatchEvent(event)
   }
 
-  public addEventListener<T extends keyof EventMap = keyof EventMap>(
+  public addEventListener<T extends keyof Events>(
     type: T,
-    listener: ((e: EventMap[T]) => void) | EventListenerObject | null,
+    listener: ((event: Events[T]) => void) | EventListenerObject | null,
   ) {
     super.addEventListener(type as string, listener as EventListener)
   }
 
-  public removeEventListener<T extends keyof EventMap = keyof EventMap>(
+  public removeEventListener<T extends keyof Events>(
     type: T,
-    listener: ((e: EventMap[T]) => void) | EventListenerObject | null,
+    listener: ((event: Events[T]) => void) | EventListenerObject | null,
   ) {
     super.removeEventListener(type as string, listener as EventListener)
   }

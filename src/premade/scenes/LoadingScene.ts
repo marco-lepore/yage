@@ -1,7 +1,7 @@
 import { Scene } from '../../Scene'
 import { getGame } from '../../utils'
 
-export class LoadingScene extends Scene<{ next: Scene<any, any> }, any> {
+export class LoadingScene extends Scene<{ next: Scene }> {
   onLoad() {
     super.onLoad()
   }
@@ -17,5 +17,6 @@ export class LoadingScene extends Scene<{ next: Scene<any, any> }, any> {
     await getGame().transitionTo(next)
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onProgress(n: number) {}
 }

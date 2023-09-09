@@ -1,56 +1,49 @@
-import {
-  Container,
-  DisplayObject,
-  FederatedPointerEvent,
-  Text,
-  TextStyle,
-  Transform,
-} from "pixi.js";
-import { GameObject } from "../../GameObject";
-import { GraphicComponent } from "../GraphicComponent";
-import { FancyButton } from "@pixi/ui";
+import { Container, FederatedPointerEvent, Transform } from 'pixi.js'
+import { GameObject } from '../../GameObject'
+import { GraphicComponent } from '../GraphicComponent'
+import { FancyButton } from '@pixi/ui'
 
 export class UIButtonComponent<
-  Parent extends GameObject = GameObject
+  Parent extends GameObject = GameObject,
 > extends GraphicComponent<Parent> {
-  name = "UIButtonComponent";
-  element: FancyButton;
-  transform: Transform;
+  name = 'UIButtonComponent'
+  element: FancyButton
+  transform: Transform
   constructor(
     parent: Parent,
     options: ConstructorParameters<typeof FancyButton>[0],
-    linkedTransform?: Transform, 
-    renderLayer?: Container
+    linkedTransform?: Transform,
+    renderLayer?: Container,
   ) {
-    const element = new FancyButton(options);
-    const transform = new Transform();
+    const element = new FancyButton(options)
+    const transform = new Transform()
 
     super(parent, {
       graphic: element,
       renderLayer,
       linkedTransform: linkedTransform ?? transform,
-    });
-    this.transform = transform;
-    this.element = element;
+    })
+    this.transform = transform
+    this.element = element
   }
 
   setText(text: string) {
-    this.element.text = text;
+    this.element.text = text
   }
 
   setPosition(x = 0, y = 0) {
-    this.transform.position.set(x, y);
+    this.transform.position.set(x, y)
   }
 
   onPress = (
-    callback: (btn: FancyButton, ev: FederatedPointerEvent) => void
+    callback: (button: FancyButton, event: FederatedPointerEvent) => void,
   ) => {
-    this.element.onPress.connect(callback);
-  };
+    this.element.onPress.connect(callback)
+  }
 
   destroy(): void {
-    this.element.onPress.disconnectAll();
-    this.element.destroy();
-    super.destroy();
+    this.element.onPress.disconnectAll()
+    this.element.destroy()
+    super.destroy()
   }
 }

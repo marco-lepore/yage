@@ -10,6 +10,5 @@ const game = new Game({
 })
 
 const firstScene = new LevelScene({})
-Executor.execute(game).then((g) => {
-  g.loadScene(firstScene)
-})
+const g = await Executor.execute(game)
+g.loadScene(firstScene)

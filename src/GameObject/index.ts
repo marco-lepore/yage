@@ -1,8 +1,8 @@
 import type { Component } from '../components/BaseComponent'
-import { Scene } from '../Scene'
+import { AnyScene } from '../Scene/types'
 import { IGameObject, ProcessMode } from './types'
 
-export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
+export class GameObject<ParentScene extends AnyScene = AnyScene>
   implements IGameObject<ParentScene>
 {
   components: Component[] = []
@@ -33,8 +33,8 @@ export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
   dispatchSceneEvent<
     S extends ParentScene,
     P extends Parameters<S['dispatch']>,
-  >(ev: P[0]) {
-    return this.scene.dispatch(ev)
+  >(event: P[0]) {
+    return this.scene.dispatch(event)
   }
 
   addSceneEventListener<
@@ -79,7 +79,7 @@ export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
 
   // Memoize these?
   getComponentByClass<C extends Component>(ctor: {
-    new (...args: any): C
+    new (...arguments_: unknown[]): C
   }): C | undefined {
     const go = this.components.find((component) => component instanceof ctor)
 
@@ -130,11 +130,12 @@ export class GameObject<ParentScene extends Scene<any, any> = Scene<any, any>>
     })
   }
 
-  addComponent = <C extends Component, P extends any[]>(
-    ctor: { new (gameobject: any, ...params: P): C },
-    ...params: P
+  addComponent = <C extends Component, P extends unknown[]>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ctor: { new (gameobject: any, ...parameters: P): C },
+    ...parameters: P
   ) => {
-    const comp = new ctor(this, ...params)
+    const comp = new ctor(this, ...parameters)
     this.registerComponents(comp)
     return comp
   }

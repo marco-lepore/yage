@@ -15,8 +15,10 @@ type ProcessData<S> = {
   context: S extends () => infer C ? C : S
 }
 
-type ProcessCallback<S, WithElapsed extends Boolean = false> = (
-  data: ProcessData<S> & (WithElapsed extends true ? { elapsed: number } : {}),
+type ProcessCallback<S, WithElapsed extends boolean = false> = (
+  data: WithElapsed extends true
+    ? ProcessData<S> & { elapsed: number }
+    : ProcessData<S>,
 ) => void
 
 type ProcessOptions<S> = {
@@ -28,7 +30,7 @@ type ProcessOptions<S> = {
   setup?: S
 }
 
-export class Process<S> {
+export class Process<S = unknown> {
   tags: string[] = []
   duration = 0
   totalElapsed = 0
@@ -70,7 +72,7 @@ export class Process<S> {
   getSceneProcesses() {
     const scene = getScene()
     if (!Process.processesByScene.has(scene)) {
-      Process.processesByScene.set(scene, new Set<Process<any>>())
+      Process.processesByScene.set(scene, new Set<Process>())
     }
     return Process.processesByScene.get(scene)
   }
@@ -103,11 +105,11 @@ export class Process<S> {
       })
     }
     if (this.totalElapsed > this.duration) {
-      this._onComplete(elapsed)
+      this._onComplete()
     }
   }
 
-  private _onComplete(elapsed: number) {
+  private _onComplete() {
     if (this.completed) {
       return
     }
@@ -146,12 +148,9 @@ export class Process<S> {
     sceneProcesses.delete(this)
   }
 
-  private static processes = new Set<Process<any>>()
-  private static processesByScene = new WeakMap<
-    Scene<any, any>,
-    Set<Process<any>>
-  >()
-  private static contexts = new Map<Process<any>, any>()
+  private static processes = new Set<Process>()
+  private static processesByScene = new WeakMap<Scene, Set<Process>>()
+  private static contexts = new Map<Process, unknown>()
   static onTick = (dt: number) => {
     const scene = getScene()
 
@@ -199,7 +198,7 @@ export class Process<S> {
   }
 
   static tweenProperty<
-    O extends Object,
+    O extends object,
     K extends KeysOfValue<O, number>,
     T extends Interpolatable,
   >(object: O, property: K, to: T, duration: number, easing?: Easing) {
@@ -210,7 +209,7 @@ export class Process<S> {
     return new Process({
       duration,
       onTick: ({ progress }) => {
-        ;(object[property] as T) = interpolate(value, to, progress, easing)
+        object[property] = interpolate(value, to, progress, easing)
       },
     })
   }

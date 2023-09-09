@@ -27,9 +27,9 @@ export const getIndexFromCoords = (x: number, y: number, w: number) => {
 }
 
 export const get2xMatrix = <T>(matrix: T[], w: number, h: number) => {
-  const doubleMatrix = Array.from(Array(matrix.length * 4))
-  matrix.forEach((v, i) => {
-    const [x, y] = getCoordsFromIndex(i, w)
+  const doubleMatrix = Array.from({ length: matrix.length * 4 })
+  matrix.forEach((v, index) => {
+    const [x, y] = getCoordsFromIndex(index, w)
     const baseIndex = y * w * 4 + x * 2
     const tl = baseIndex
     const tr = findRelativeIndex(baseIndex, 1, 0, w * 2, h * 2)

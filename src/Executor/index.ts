@@ -1,39 +1,43 @@
 import type { Game } from '../Game'
 import type { Scene } from '../Scene'
+import { AnyScene } from '../Scene/types'
 
 export class Executor {
   test = true
   static _ctx: {
-    game?: Game<any>
-    scene?: Scene<any, any>
+    game?: Game<AnyScene>
+    scene?: Scene
   } = {}
 
   static get ctx() {
     if (!this._ctx.game || !this._ctx.scene) {
       throw new Error('game or scene not defined in Executor context')
     }
-    return this._ctx as { game: Game<any>; scene: Scene<any, any> }
+    return this._ctx as { game: Game<AnyScene>; scene: Scene }
   }
 
-  static set ctx(ctx: { game?: Game<any>; scene?: Scene<any, any> }) {
-    if (ctx.game) {
-      this._ctx.game = ctx.game
+  static set ctx(context: { game?: Game<AnyScene>; scene?: Scene }) {
+    if (context.game) {
+      this._ctx.game = context.game
     }
-    if (ctx.scene) {
-      this._ctx.scene = ctx.scene
-    }
-  }
-
-  static setContext(ctx: { game?: Game<any>; scene?: Scene<any, any> }) {
-    if (ctx.game) {
-      this._ctx.game = ctx.game
-    }
-    if (ctx.scene) {
-      this._ctx.scene = ctx.scene
+    if (context.scene) {
+      this._ctx.scene = context.scene
     }
   }
 
-  static execute(game: Game<any>) {
+  static setContext<S extends AnyScene>(context: {
+    game?: Game<AnyScene>
+    scene?: S
+  }) {
+    if (context.game) {
+      this._ctx.game = context.game
+    }
+    if (context.scene) {
+      this._ctx.scene = context.scene
+    }
+  }
+
+  static execute(game: Game<AnyScene>) {
     return game.init()
   }
 }

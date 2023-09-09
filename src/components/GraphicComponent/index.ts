@@ -64,11 +64,6 @@ export class GraphicComponent<
     if (linkedTransform) {
       this.linkTransform(linkedTransform, linkedTransformOffset)
       this.updateTransform()
-      console.log(
-        linkedTransform.position.x,
-        linkedTransform.position.y,
-        parent.name,
-      )
     }
     this.enabled = false
   }

@@ -1,9 +1,7 @@
-import { Scene } from '../Scene'
+import { AnyScene } from '../Scene/types'
 import { Component } from '../components/BaseComponent'
 
-export interface IGameObject<
-  ParentScene extends Scene<any, any> = Scene<any, any>,
-> {
+export interface IGameObject<ParentScene extends AnyScene = AnyScene> {
   components: Component[]
 
   name: string
@@ -18,7 +16,7 @@ export interface IGameObject<
     S extends ParentScene,
     P extends Parameters<S['dispatch']>,
   >(
-    ev: P[0],
+    event: P[0],
   ): void
 
   addSceneEventListener<
@@ -38,10 +36,6 @@ export interface IGameObject<
   onAfterFixedTick?(dt: number): void
   onAfterTick?(dt: number): void
   onRemoved?(): void
-}
-
-export type GameObjectFactory<ParentScene extends Scene<any, any>> = {
-  new (scene: ParentScene, ...args: any[]): IGameObject
 }
 
 export type ProcessMode = 'pausable' | 'whenPaused' | 'always' | 'disabled'

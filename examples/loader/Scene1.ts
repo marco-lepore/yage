@@ -7,7 +7,7 @@ import {
   getGame,
   getPlayAreaBounds,
 } from '../../src'
-import { Graphics, ResolverAssetsObject, Sprite, TextStyle } from 'pixi.js'
+import { Graphics, TextStyle } from 'pixi.js'
 import { Scene2 } from './Scene2'
 import { Loader } from './Loader'
 
@@ -16,7 +16,7 @@ class Text extends GameObject<Scene1> {
     super(parent)
 
     const graphic = new Graphics()
-    graphic.beginFill(0xff0000)
+    graphic.beginFill(0xFF0000)
     graphic.drawRect(x - w / 2, y - h / 2, w, h)
     graphic.endFill()
     const bg = this.addComponent(GraphicComponent, {
@@ -27,7 +27,7 @@ class Text extends GameObject<Scene1> {
 
     bg.graphic.addEventListener('pointertap', this.scene.changeScene)
 
-    const text = this.addComponent(UITextComponent, {
+    this.addComponent(UITextComponent, {
       text: 'Level1',
       style: new TextStyle(),
       x,
@@ -36,7 +36,7 @@ class Text extends GameObject<Scene1> {
   }
 }
 
-export class Scene1 extends Scene<any, any> {
+export class Scene1 extends Scene {
   assetsBundleId = 'scene1'
   assetsBundle = {
     bgm1: '/assets/examples/loader/bgm1.mp3',
@@ -49,7 +49,7 @@ export class Scene1 extends Scene<any, any> {
     this.rapier.pixelToMeterRatio = 10
     this.rapier.world.gravity = new Vector2(0, 0)
     const { width, height } = getPlayAreaBounds()
-    const ball = this.instantiateGameObject(
+    this.instantiateGameObject(
       Text,
       width / 2,
       height / 2,

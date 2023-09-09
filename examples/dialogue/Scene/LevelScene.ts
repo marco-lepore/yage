@@ -1,16 +1,8 @@
-import { ColliderDesc, RigidBodyDesc, Vector2 } from '@dimforge/rapier2d'
+import { Vector2 } from '@dimforge/rapier2d'
 import {
-  AnimationControllerComponent,
-  GameObject,
-  GraphicComponent,
-  RapierBodyComponent,
   Scene,
   getPlayAreaBounds,
-  pu,
-  Animation,
-  Keyframe,
   InputComponent,
-  UITextComponent,
   Process,
   DialoguePlayer,
   Dialogue,
@@ -20,7 +12,6 @@ import {
   DialogueMessageWithActorData,
 } from '../../../src'
 import {
-  Graphics,
   NineSlicePlane,
   Point,
   SCALE_MODES,
@@ -171,7 +162,7 @@ class CustomDialoguePlayer extends DialoguePlayer {
 
   isPlaying = false
 
-  constructor(parent: Scene<any, any>, dialogueWindow: CustomDialogueWindow) {
+  constructor(parent: LevelScene, dialogueWindow: CustomDialogueWindow) {
     super(parent, dialogueWindow)
     this.input = this.addComponent(
       InputComponent,
@@ -183,17 +174,17 @@ class CustomDialoguePlayer extends DialoguePlayer {
     super.onFixedTick(elapsedMS)
 
     if (this.input.isJustPressed('next')) {
-      if (!this.isPlaying) {
+      if (this.isPlaying) {
+        this.advance()
+      } else {
         this.play(example)
         this.isPlaying = true
-      } else {
-        this.advance()
       }
     }
   }
 }
 
-export class LevelScene extends Scene<any, any> {
+export class LevelScene extends Scene<void> {
   assetsBundleId = 'dialogue-scene'
   assetsBundle = {
     font: '/assets/examples/dialogue/Kenney Pixel.fnt',
@@ -212,14 +203,12 @@ export class LevelScene extends Scene<any, any> {
     'seizar-avatar': '/assets/examples/dialogue/seizar-avatar.png',
     'calliopae-avatar': '/assets/examples/dialogue/calliopae-avatar.png',
   }
+
   onLoad() {
     super.onLoad()
     this.rapier.pixelToMeterRatio = 10
     this.rapier.world.gravity = new Vector2(0, 0)
     const dialogueWindow = this.instantiateGameObject(CustomDialogueWindow)
-    const player = this.instantiateGameObject(
-      CustomDialoguePlayer,
-      dialogueWindow,
-    )
+    this.instantiateGameObject(CustomDialoguePlayer, dialogueWindow)
   }
 }

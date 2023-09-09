@@ -24,25 +24,30 @@ export function pu<H extends number, R extends number[]>(
   px: H,
   ...pxs: R
 ): [H, ...R]
-export function pu<T extends string | number>(pxObj: { [key in T]: number }): {
+export function pu<T extends string | number>(pxObject: {
+  [key in T]: number
+}): {
   [key in T]: number
 }
 export function pu<T extends string | number>(
-  pxObjOrNumber: number | { [key in T]: number },
+  pxObjectOrNumber: number | { [key in T]: number },
   ...pxs: number[]
 ) {
   const {
     rapier: { pixelToMeterRatio },
   } = getScene()
 
-  if (typeof pxObjOrNumber === 'number') {
-    return [pxObjOrNumber, ...pxs].map((px) => px / pixelToMeterRatio)
+  if (typeof pxObjectOrNumber === 'number') {
+    return [pxObjectOrNumber, ...pxs].map((px) => px / pixelToMeterRatio)
   }
 
-  return Object.entries<number>(pxObjOrNumber).reduce((prev, [key, value]) => {
-    prev[key as T] = value / pixelToMeterRatio
-    return prev
-  }, {} as { [key in T]: number })
+  return Object.entries<number>(pxObjectOrNumber).reduce(
+    (previous, [key, value]) => {
+      previous[key as T] = value / pixelToMeterRatio
+      return previous
+    },
+    {} as { [key in T]: number },
+  )
 }
 
 export const getPixelToPhysicsUnitConverter = () => {

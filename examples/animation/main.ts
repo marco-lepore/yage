@@ -1,6 +1,6 @@
 import './style.css'
 import { Game, Executor } from '../../src/index'
-import { LevelScene } from './Scene/LevelScene'
+import { AnimationScene } from './Scene/LevelScene'
 
 const game = new Game({
   width: 640,
@@ -9,7 +9,6 @@ const game = new Game({
   virtualHeight: 300,
 })
 
-const firstScene = new LevelScene({})
-Executor.execute(game).then((g) => {
-  g.loadScene(firstScene)
-})
+const firstScene = new AnimationScene()
+const g = await Executor.execute(game)
+g.loadScene(firstScene)

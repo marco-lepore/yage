@@ -2,8 +2,6 @@ import {
   AnimatedSprite,
   Assets,
   Container,
-  Graphics,
-  Sprite,
   Spritesheet,
   Texture,
   Transform,
@@ -56,7 +54,7 @@ export class AnimatedGraphicComponent<
 
   play(animationName: string, speed?: number) {
     if (!this.anim[animationName]) {
-      throw Error('Animation name ' + animationName + ' not found')
+      throw new Error('Animation name ' + animationName + ' not found')
     }
     if (this.currentAnimation === animationName) {
       return

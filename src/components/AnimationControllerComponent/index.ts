@@ -1,15 +1,13 @@
-import { first, isObject, last, mapValues } from 'lodash'
+import { last, mapValues } from 'lodash'
 import { GameObject } from '../../GameObject'
 import { Component } from '../BaseComponent'
-import { lerp, EASINGS, Easing, Interpolatable, interpolate } from '../../utils'
+import { EASINGS, Easing, Interpolatable, interpolate } from '../../utils'
 
 export type Keyframe<T extends Interpolatable> = {
   time: number
   data: T
   easing?: keyof typeof EASINGS | ((t: number) => number)
 }
-
-type Animatable = number | Record<string | number, number> | number[]
 
 export type Animation<T extends Interpolatable> = {
   predicate: (data: T) => void
@@ -22,11 +20,9 @@ export type Animation<T extends Interpolatable> = {
 }
 
 export class AnimationControllerComponent<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Animations extends Record<string, Animation<any>>,
   Parent extends GameObject = GameObject,
-  Animations extends Record<string, Animation<any>> = Record<
-    string,
-    Animation<any>
-  >,
 > extends Component<Parent> {
   name = 'AnimationControllerComponent'
   animations: { [key in keyof Animations]: Animations[keyof Animations] }
@@ -43,26 +39,26 @@ export class AnimationControllerComponent<
     [key in keyof Animations]: Animations[keyof Animations]
   } {
     const normalizedAnimations = mapValues(animations, (animation) => {
-      const keyframes = Array.from(animation.keyframes)
+      const keyframes = [...animation.keyframes]
 
       keyframes.sort((a, b) => (a.time > b.time ? 1 : -1))
 
       let duration = animation.duration
-      if (!duration) {
-        duration = last(keyframes).time
-      } else {
+      if (duration) {
         if (duration > last(keyframes).time) {
           keyframes.push({
             ...last(keyframes),
             time: duration,
           })
         }
+      } else {
+        duration = last(keyframes).time
       }
       const normalizedAnimation = {
         ...animation,
         keyframes,
         duration,
-        speed: typeof animation.speed === 'undefined' ? 1 : animation.speed,
+        speed: animation.speed === undefined ? 1 : animation.speed,
       }
 
       return normalizedAnimation

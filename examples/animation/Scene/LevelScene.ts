@@ -48,7 +48,7 @@ const keyframes2 = [
 
 class Ball extends GameObject {
   constructor(
-    parent: Scene<any, any>,
+    parent: AnimationScene,
     x: number,
     y: number,
     keyframes: Keyframe<number>[],
@@ -60,7 +60,7 @@ class Ball extends GameObject {
     const phys = this.addComponent(RapierBodyComponent, rigidBody, collider)
 
     const graphic = new Graphics()
-    graphic.beginFill(0xffffff)
+    graphic.beginFill(0xFFFFFF)
     graphic.drawCircle(0, 0, 20)
     graphic.endFill()
     this.addComponent(GraphicComponent, {
@@ -94,7 +94,7 @@ class Ball extends GameObject {
 
 class Wall extends GameObject {
   constructor(
-    parent: Scene<any, any>,
+    parent: AnimationScene,
     x: number,
     y: number,
     w: number,
@@ -109,7 +109,7 @@ class Wall extends GameObject {
     const phys = this.addComponent(RapierBodyComponent, rigidBody, collider)
 
     const graphic = new Graphics()
-    graphic.beginFill(0xffffff)
+    graphic.beginFill(0xFFFFFF)
     graphic.drawRect(x - w / 2, y - h / 2, w, h)
     graphic.endFill()
     this.addComponent(GraphicComponent, {
@@ -119,7 +119,7 @@ class Wall extends GameObject {
   }
 }
 
-export class LevelScene extends Scene<any, any> {
+export class AnimationScene extends Scene<void> {
   onLoad() {
     super.onLoad()
     this.rapier.pixelToMeterRatio = 10

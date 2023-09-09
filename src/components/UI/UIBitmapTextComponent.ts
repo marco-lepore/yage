@@ -1,8 +1,6 @@
 import {
   Container,
-  DisplayObject,
   BitmapText,
-  IBitmapTextStyle,
   Transform,
   ITextStyle,
   BitmapFont,
@@ -40,6 +38,7 @@ export class UIBitmapTextComponent<
     const font = BitmapFont.from(fontName, style, {
       chars: BitmapFont.ASCII,
     })
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     font.lineHeight = style.lineHeight
 

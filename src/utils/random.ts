@@ -1,10 +1,10 @@
-export const getRandomValueInArray = (arr: any[], weights?: number[]) => {
+export const getRandomValueInArray = <T>(array: T[], weights?: number[]): T => {
   if (weights && weights.length > 0) {
-    const weightedArray = arr.flatMap((v, i) => {
-      return Array(weights[i] ?? 1).fill(v)
+    const weightedArray = array.flatMap((v, index) => {
+      return Array.from<T>({ length: weights[index] ?? 1 }).fill(v)
     })
     return weightedArray[Math.floor(Math.random() * weightedArray.length)]
   }
 
-  return arr[Math.floor(Math.random() * arr.length)]
+  return array[Math.floor(Math.random() * array.length)]
 }

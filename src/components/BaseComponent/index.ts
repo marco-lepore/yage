@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { GameObject } from '../../GameObject'
 
 const enabled = Symbol('enabled')

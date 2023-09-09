@@ -16,7 +16,7 @@ import { upgradeConfig } from '@pixi/particle-emitter'
 class Ball extends GameObject {
   name = 'Ball'
   collisionEmitter: ParticlesEmitterComponent
-  constructor(parent: Scene<any, any>, x: number, y: number) {
+  constructor(parent: Scene, x: number, y: number) {
     super(parent)
     const radius = 40
     const [px, py, pr] = pu(x, y, radius)
@@ -27,7 +27,7 @@ class Ball extends GameObject {
     const particle = Texture.from('particle')
     const spark = Texture.from('sparks')
 
-    const emitter = this.addComponent(ParticlesEmitterComponent, {
+    this.addComponent(ParticlesEmitterComponent, {
       config: upgradeConfig(config, [particle]),
       linkedTransform: phys.transform,
       autoEmit: true,
@@ -38,7 +38,7 @@ class Ball extends GameObject {
     })
 
     const graphic = new Graphics()
-    graphic.beginFill(0xffffff)
+    graphic.beginFill(0xFFFFFF)
     graphic.drawCircle(0, 0, radius)
     graphic.endFill()
     this.addComponent(GraphicComponent, {
@@ -51,13 +51,7 @@ class Ball extends GameObject {
 }
 
 class Wall extends GameObject {
-  constructor(
-    parent: Scene<any, any>,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-  ) {
+  constructor(parent: Scene, x: number, y: number, w: number, h: number) {
     super(parent)
     const [px, py, pw, ph] = pu(x, y, w, h)
     const rigidBody = RigidBodyDesc.fixed()
@@ -67,7 +61,7 @@ class Wall extends GameObject {
     const phys = this.addComponent(RapierBodyComponent, rigidBody, collider)
 
     const graphic = new Graphics()
-    graphic.beginFill(0xffffff)
+    graphic.beginFill(0xFFFFFF)
     graphic.drawRect(x - w / 2, y - h / 2, w, h)
     graphic.endFill()
     this.addComponent(GraphicComponent, {
@@ -77,7 +71,7 @@ class Wall extends GameObject {
   }
 }
 
-export class LevelScene extends Scene<any, any> {
+export class LevelScene extends Scene {
   assetsBundleId = 'scene1'
   assetsBundle = {
     particle: '/assets/examples/particles/particle.png',
@@ -88,7 +82,7 @@ export class LevelScene extends Scene<any, any> {
     this.rapier.pixelToMeterRatio = 10
     this.rapier.world.gravity = new Vector2(0, 0)
     const { width, height } = getPlayAreaBounds()
-    const ball = this.instantiateGameObject(Ball, width / 2, height / 2)
+    this.instantiateGameObject(Ball, width / 2, height / 2)
 
     this.instantiateGameObject(Wall, 0, height / 2, 30, height)
     this.instantiateGameObject(Wall, width, height / 2, 30, height)

@@ -1,22 +1,7 @@
-import {
-  Container,
-  Point,
-  SCALE_MODES,
-  Sprite,
-  TextStyle,
-  Texture,
-  loadWebFont,
-} from 'pixi.js'
-import { GameObject } from '../../../GameObject'
+import { Sprite, Texture } from 'pixi.js'
 import { Scene } from '../../../Scene'
-import { DialogueMessage, DialogueNode } from './types'
-import {
-  AudioComponent,
-  GraphicComponent,
-  UIBitmapTextComponent,
-  UITextComponent,
-} from '../../../components'
-import { Process } from '../../../Process'
+import { DialogueMessage } from './types'
+import { GraphicComponent, UITextComponent } from '../../../components'
 import { DialogueWindow } from './DialogueWindow'
 
 export type DialogueActor = {
@@ -31,14 +16,14 @@ export type DialogueMessageWithActorData = DialogueMessage & {
 }
 
 type Options<
-  Parent extends Scene<any, any>,
+  Parent extends Scene,
   Message extends DialogueMessage,
 > = ConstructorParameters<typeof DialogueWindow<Parent, Message>>[1] & {
   actors: Record<string, DialogueActor>
 }
 
 export class DialogueWindowWithActors<
-  Parent extends Scene<any, any> = Scene<any, any>,
+  Parent extends Scene = Scene,
   Message extends DialogueMessageWithActorData = DialogueMessageWithActorData,
 > extends DialogueWindow<Parent, Message> {
   actors: Record<string, DialogueActor> = {}
@@ -70,12 +55,10 @@ export class DialogueWindowWithActors<
       },
     )
 
-    const actorNameStyle = textStyle.clone()
-
     textStyle.fontSize = window.height / 6
     textStyle.stroke = 0x000000
     textStyle.strokeThickness = 4
-    textStyle.fill = 0xffffff
+    textStyle.fill = 0xFFFFFF
 
     this.actorNameComponent = this.addComponent(UITextComponent, {
       text: '',
@@ -108,7 +91,6 @@ export class DialogueWindowWithActors<
     }
 
     const availWidth = width - left - right
-    const availHeight = height - top - bottom
 
     const portraitHeight = height
     const portraitWidth = height
