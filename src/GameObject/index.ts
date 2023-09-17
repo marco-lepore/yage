@@ -98,7 +98,10 @@ export class GameObject<ParentScene extends AnyScene = AnyScene>
       return go as C
     }
   }
-  getComponentsByClass<C extends Component>(ctor: { new (): C }): C[] {
+  getComponentsByClass<C extends Component>(ctor: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    new (...parameters: any[]): C
+  }): C[] {
     return this.components.filter(
       (component) => component instanceof ctor,
     ) as C[]

@@ -17,15 +17,24 @@ const keyframes1 = [
     time: 0,
     data: 1,
     easing: 'easeOut',
+    event() {
+      console.log('animation 1 start')
+    },
   },
   {
     time: 3000,
     data: 1.5,
     easing: 'easeIn',
+    event() {
+      console.log('animation 1 50%')
+    },
   },
   {
     time: 6000,
     data: 1,
+    event() {
+      console.log('animation 1 end')
+    },
   },
 ] satisfies Keyframe<number>[]
 
@@ -84,9 +93,14 @@ class Ball extends GameObject {
       predicate,
       runOnFixedUpdate: true,
       speed: 1,
-
       loop: true,
       keyframes,
+      onEnter() {
+        console.log('onEnter')
+      },
+      onExit(complete) {
+        console.log('onExit', complete)
+      },
     }
     return { idle }
   }

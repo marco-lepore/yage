@@ -7,6 +7,7 @@ export type Keyframe<T extends Interpolatable> = {
   time: number
   data: T
   easing?: keyof typeof EASINGS | ((t: number) => number)
+  event?: () => void
 }
 
 export type Animation<T extends Interpolatable> = {
@@ -17,6 +18,8 @@ export type Animation<T extends Interpolatable> = {
   duration?: number
   easing?: Easing // https://developer.mozilla.org/en-US/docs/Web/CSS/easing-function
   runOnFixedUpdate?: boolean
+  onEnter?: () => void
+  onExit?: (complete: boolean) => void
 }
 
 export class AnimationControllerComponent<
@@ -28,6 +31,7 @@ export class AnimationControllerComponent<
   animations: { [key in keyof Animations]: Animations[keyof Animations] }
   private currentAnimation?: Animations[keyof Animations]
   private currentTime = 0
+  private loops = 0
   private paused = false
 
   constructor(parent: Parent, animations: Animations) {
@@ -71,16 +75,27 @@ export class AnimationControllerComponent<
     if (this.currentAnimation === animation && !restart) {
       return
     }
+    if (this.currentAnimation && this.currentAnimation !== animation) {
+      this._stop(false)
+    }
     this.currentAnimation = animation
-    this.currentTime = 0
+    this.loops = 0
+    this.currentTime = -this.currentAnimation.speed
+    this.currentAnimation.onEnter?.()
+    this.execute(this.currentAnimation.speed)
   }
 
   setPaused(v: boolean) {
     this.paused = v
   }
 
-  stop() {
+  private _stop(complete: boolean) {
+    this.currentAnimation.onExit?.(complete)
     this.currentAnimation = undefined
+  }
+
+  stop() {
+    this._stop(false)
   }
 
   onTick(dt: number): void {
@@ -112,42 +127,74 @@ export class AnimationControllerComponent<
     }
     const { duration, speed, loop, keyframes, predicate, easing } =
       this.currentAnimation
+    const previousTime = this.currentTime
     this.currentTime += elapsedMS * speed
+    const currentTime = this.currentTime
 
-    if (!loop && this.currentTime > duration) {
-      this.stop()
-      return
+    if (this.currentTime > duration * (this.loops + 1)) {
+      this.loops++
     }
 
-    let nextKeyframeIndex = keyframes.findIndex(
-      (kf) => kf.time > this.currentTime % duration,
+    const timelineLoops = loop
+      ? (this.loops === 0
+        ? [this.loops, this.loops + 1]
+        : [this.loops - 1, this.loops, this.loops + 1])
+      : [0]
+
+    const timelineKeyframes = timelineLoops.flatMap((loopNumber) =>
+      keyframes.map((frame) => ({
+        ...frame,
+        time: frame.time + duration * loopNumber,
+      })),
+    )
+
+    let nextKeyframeIndex = timelineKeyframes.findIndex(
+      (kf) => kf.time > this.currentTime,
     )
 
     nextKeyframeIndex = nextKeyframeIndex === -1 ? 0 : nextKeyframeIndex
 
     const currentKeyframeIndex =
-      nextKeyframeIndex >= 0 ? nextKeyframeIndex - 1 : keyframes.length - 1
+      nextKeyframeIndex >= 0
+        ? nextKeyframeIndex - 1
+        : timelineKeyframes.length - 1
 
     const {
-      time: currentTime,
-      data: currentData,
-      easing: frameEasing,
-    } = keyframes[currentKeyframeIndex]
-    const { time: nextTime, data: _nextData } = keyframes[nextKeyframeIndex]
+      time: currentFrameTime,
+      data: currentFrameData,
+      easing: currentFrameEasing,
+    } = timelineKeyframes[currentKeyframeIndex]
+    const { time: nextTime, data: _nextData } =
+      timelineKeyframes[nextKeyframeIndex]
 
-    const t =
-      ((this.currentTime % duration) - currentTime) / (nextTime - currentTime)
+    const t = (currentTime - currentFrameTime) / (nextTime - currentFrameTime)
 
-    const easingFromOptions = frameEasing ?? easing ?? 'linear'
-    const nextData = _nextData as typeof currentData
+    const easingFromOptions = currentFrameEasing ?? easing ?? 'linear'
+    const nextData = _nextData as typeof currentFrameData
 
     const interpolatedValue = interpolate(
-      currentData,
+      currentFrameData,
       nextData,
       t,
       easingFromOptions,
     )
 
     predicate(interpolatedValue)
+    const events = timelineKeyframes.reduce((events, frame) => {
+      if (
+        frame.event &&
+        frame.time > previousTime &&
+        frame.time <= currentTime
+      ) {
+        events.push(frame.event)
+      }
+      return events
+    }, [] as (() => void)[])
+
+    events.forEach((event) => event())
+
+    if (!loop && this.currentTime > duration) {
+      this._stop(true)
+    }
   }
 }
