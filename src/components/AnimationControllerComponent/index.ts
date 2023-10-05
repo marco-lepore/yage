@@ -148,36 +148,36 @@ export class AnimationControllerComponent<
       })),
     )
 
-    let nextKeyframeIndex = timelineKeyframes.findIndex(
+    const nextKeyframeIndex = timelineKeyframes.findIndex(
       (kf) => kf.time > this.currentTime,
     )
 
-    nextKeyframeIndex = nextKeyframeIndex === -1 ? 0 : nextKeyframeIndex
+    let interpolatedValue
+    if (nextKeyframeIndex === -1) {
+      interpolatedValue = timelineKeyframes.at(-1).data
+    } else if (nextKeyframeIndex === 0) {
+      interpolatedValue = timelineKeyframes[0].data
+    } else {
+      const currentKeyframeIndex = nextKeyframeIndex - 1
+      const {
+        time: currentFrameTime,
+        data: currentFrameData,
+        easing: currentFrameEasing,
+      } = timelineKeyframes[currentKeyframeIndex]
+      const { time: nextTime, data: _nextData } =
+        timelineKeyframes[nextKeyframeIndex]
+      const t = (currentTime - currentFrameTime) / (nextTime - currentFrameTime)
 
-    const currentKeyframeIndex =
-      nextKeyframeIndex >= 0
-        ? nextKeyframeIndex - 1
-        : timelineKeyframes.length - 1
+      const easingFromOptions = currentFrameEasing ?? easing ?? 'linear'
+      const nextData = _nextData as typeof currentFrameData
 
-    const {
-      time: currentFrameTime,
-      data: currentFrameData,
-      easing: currentFrameEasing,
-    } = timelineKeyframes[currentKeyframeIndex]
-    const { time: nextTime, data: _nextData } =
-      timelineKeyframes[nextKeyframeIndex]
-
-    const t = (currentTime - currentFrameTime) / (nextTime - currentFrameTime)
-
-    const easingFromOptions = currentFrameEasing ?? easing ?? 'linear'
-    const nextData = _nextData as typeof currentFrameData
-
-    const interpolatedValue = interpolate(
-      currentFrameData,
-      nextData,
-      t,
-      easingFromOptions,
-    )
+      interpolatedValue = interpolate(
+        currentFrameData,
+        nextData,
+        t,
+        easingFromOptions,
+      )
+    }
 
     predicate(interpolatedValue)
     const events = timelineKeyframes.reduce((events, frame) => {
