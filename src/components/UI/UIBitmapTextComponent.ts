@@ -10,7 +10,7 @@ import { GraphicComponent } from '../GraphicComponent'
 
 export class UIBitmapTextComponent<
   Parent extends GameObject = GameObject,
-> extends GraphicComponent<Parent> {
+> extends GraphicComponent<Parent, BitmapText> {
   name = 'UIBitmapTextComponent'
   textElement: BitmapText
   transform: Transform
