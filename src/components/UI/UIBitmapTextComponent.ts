@@ -23,18 +23,19 @@ export class UIBitmapTextComponent<
       style,
       x = 0,
       y = 0,
+      fontName,
       renderLayer,
       linkedTransform,
     }: {
       text: string
       style: ITextStyle
+      fontName?: string
       x?: number
       y?: number
       renderLayer?: Container
       linkedTransform?: Transform
     },
   ) {
-    const fontName = Math.random().toString()
     const font = BitmapFont.from(fontName, style, {
       chars: BitmapFont.ASCII,
     })
@@ -43,7 +44,7 @@ export class UIBitmapTextComponent<
     font.lineHeight = style.lineHeight
 
     const textElement = new BitmapText(text, {
-      fontName: fontName,
+      fontName: fontName ?? Math.random().toString(),
       maxWidth: style.wordWrapWidth,
     })
 
