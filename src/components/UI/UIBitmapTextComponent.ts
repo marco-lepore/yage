@@ -36,12 +36,15 @@ export class UIBitmapTextComponent<
       linkedTransform?: Transform
     },
   ) {
-    const font = BitmapFont.from(fontName, style, {
-      chars: BitmapFont.ASCII,
-    })
+    const font =
+      BitmapFont.available[fontName] ??
+      BitmapFont.from(fontName, style, {
+        chars: BitmapFont.ASCII,
+      })
+
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    font.lineHeight = style.lineHeight
+    font.lineHeight = style.lineHeight ?? font.lineHeight
 
     const textElement = new BitmapText(text, {
       fontName: fontName ?? Math.random().toString(),
