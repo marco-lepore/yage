@@ -116,6 +116,7 @@ export interface TileLayer {
 
 export interface RectangleObject {
   class: string
+  type: string
   height: number
   id: number
   name: string
@@ -130,6 +131,7 @@ export interface RectangleObject {
 
 export interface PolygonObject {
   class: string
+  type: string
   height: number
   id: number
   name: string
@@ -144,6 +146,7 @@ export interface PolygonObject {
 
 export interface PointObject {
   class: string
+  type: string
   height: number
   id: number
   name: string

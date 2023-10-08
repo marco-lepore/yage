@@ -98,7 +98,7 @@ const makeObjects = (
   objectGroup: ObjectGroup,
 ) => {
   objectGroup.objects.forEach((object) => {
-    const c = object.class
+    const c = object.class ?? object.type ?? object.name
     if (!objects[c]) {
       objects[c] = []
     }
