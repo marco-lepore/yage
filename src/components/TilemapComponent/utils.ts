@@ -2,9 +2,12 @@ import { ColliderDesc } from '@dimforge/rapier2d'
 import { getPixelToPhysicsUnitConverter } from '../../utils'
 import { RectangleObject, PolygonObject, TileObject } from './types'
 
+const scaleValue = (scale: number) => (v: number) => v * scale
+
 export const objectToRapierColliderDesc = (
   object: RectangleObject | PolygonObject,
   postActions: (colliderDesc: ColliderDesc, object: TileObject) => void,
+  scale = 1,
 ) => {
   const px2pu = getPixelToPhysicsUnitConverter()
   const [objectX, objectY, objectW, objectH] = px2pu(
@@ -12,10 +15,12 @@ export const objectToRapierColliderDesc = (
     object.y,
     object.width,
     object.height,
-  )
+  ).map(scaleValue(scale))
 
   if (object.polygon) {
-    const vertices = px2pu(...object.polygon.flatMap(({ x, y }) => [x, y]))
+    const vertices = px2pu(...object.polygon.flatMap(({ x, y }) => [x, y])).map(
+      scaleValue(scale),
+    )
 
     const colliderDesc = ColliderDesc.convexHull(
       new Float32Array(vertices),
@@ -41,11 +46,12 @@ export const objectToRapierColliderDesc = (
 export const objectsToRapierCollidersDesc = (
   objects: TileObject[],
   postActions: (colliderDesc: ColliderDesc, object: TileObject) => void,
+  scale = 1,
 ) => {
   return objects
     .filter(
       (object): object is PolygonObject | RectangleObject =>
         !!object.polygon || !object.point,
     )
-    .map((object) => objectToRapierColliderDesc(object, postActions))
+    .map((object) => objectToRapierColliderDesc(object, postActions, scale))
 }
