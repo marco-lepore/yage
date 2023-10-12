@@ -1,4 +1,5 @@
 import { CompositeTilemap } from '@pixi/tilemap'
+
 export interface PhysicsData {
   [key: string]: PhysicsObject
 }
