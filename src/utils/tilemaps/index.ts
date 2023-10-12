@@ -198,7 +198,10 @@ export const parseMapAsset = (mapName: string, scale = 1) => {
 
   const objects = layers
     .filter((l): l is ObjectGroup => l.type === 'objectgroup')
-    .reduce((previous, current) => makeObjects(previous, current, scale), {})
+    .reduce<Record<string, TileObject[]>>(
+      (previous, current) => makeObjects(previous, current, scale),
+      {},
+    )
 
   return { tilemaps, objects }
 }
