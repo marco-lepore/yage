@@ -1,7 +1,6 @@
 import {
   AnimatedSprite,
   Assets,
-  Container,
   Spritesheet,
   Texture,
   Transform,
@@ -11,25 +10,41 @@ import { GraphicComponent } from '../GraphicComponent'
 
 export class AnimatedGraphicComponent<
   Parent extends GameObject = GameObject,
-> extends GraphicComponent<Parent> {
+> extends GraphicComponent<Parent, AnimatedSprite> {
   name = 'AnimatedGraphicComponent'
-  container = new Container()
-  sprite: AnimatedSprite
   baseSpeed: number
   anim: Record<string, Texture[]>
   currentAnimation: string | null = null
+  get currentFrame() {
+    return this.graphic.currentFrame
+  }
+  get isPlaying() {
+    return this.graphic.playing
+  }
+
+  get animationState() {
+    const { currentAnimation, currentFrame, isPlaying } = this
+    return {
+      currentAnimation,
+      currentFrame,
+      isPlaying,
+    }
+  }
+
   constructor(
     parent: Parent,
-    spritesheet: Spritesheet | string,
-    linkedTransform?: Transform,
-    baseSpeed?: number,
+    options: {
+      spritesheet: Spritesheet | string
+      linkedTransform?: Transform
+      baseSpeed?: number
+    },
   ) {
+    const { spritesheet, linkedTransform, baseSpeed } = options
     const animatedSprite = new AnimatedSprite([Texture.EMPTY])
     super(parent, { graphic: animatedSprite, linkedTransform })
-    this.sprite = animatedSprite
     this.baseSpeed = baseSpeed ?? 0.1
-    this.sprite.animationSpeed = this.baseSpeed
-    this.sprite.updateAnchor = true
+    this.graphic.animationSpeed = this.baseSpeed
+    this.graphic.updateAnchor = true
     if (typeof spritesheet === 'string') {
       const asset: Spritesheet = Assets.get(spritesheet)
       if (!asset) {
@@ -39,7 +54,6 @@ export class AnimatedGraphicComponent<
     } else {
       this.anim = this.makeAnimations(spritesheet)
     }
-    this.container.addChild(this.sprite)
   }
 
   makeAnimations(spritesheet: Spritesheet) {
@@ -52,21 +66,35 @@ export class AnimatedGraphicComponent<
     return anim
   }
 
-  play(animationName: string, speed?: number) {
+  play(
+    animationName: string,
+    options?: {
+      restartOnPlay?: boolean
+      speed?: number
+      loop?: boolean
+      onComplete?: () => void
+      onFrameChange?: (currentFrame: number) => void
+      onLoop?: () => void
+    },
+  ) {
     if (!this.anim[animationName]) {
       throw new Error('Animation name ' + animationName + ' not found')
     }
-    if (this.currentAnimation === animationName) {
+    if (this.currentAnimation === animationName && !options.restartOnPlay) {
       return
     }
     this.currentAnimation = animationName
-    this.sprite.textures = this.anim[animationName]
-    this.sprite.loop = true
-    this.sprite.play()
-    this.sprite.animationSpeed = speed ?? this.baseSpeed
+    this.graphic.textures = this.anim[animationName]
+    this.graphic.loop = options?.loop ?? false
+    this.graphic.play()
+    this.graphic.animationSpeed = options?.speed ?? this.baseSpeed
+    this.graphic.onComplete = options?.onComplete
+    this.graphic.onLoop = options?.onLoop
+    this.graphic.onFrameChange = options?.onFrameChange
   }
 
   stop() {
-    this.sprite.stop()
+    this.graphic.stop()
+    this.currentAnimation = null
   }
 }
