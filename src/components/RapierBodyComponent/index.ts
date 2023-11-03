@@ -163,6 +163,11 @@ export class RapierBodyComponent<
     this.prevTranslation = this.rigidBody.translation()
   }
 
+  forceUpdateTransform() {
+    this.prevTranslation = this.rigidBody.translation()
+    this.updateTransform()
+  }
+
   updateTransform() {
     const transform = this.transform
     const { pixelToMeterRatio } = this.parent.scene.rapier

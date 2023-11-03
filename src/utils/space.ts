@@ -20,10 +20,7 @@ export const getPlayAreaBounds = () => {
   }
 }
 
-export function pu<H extends number, R extends number[]>(
-  px: H,
-  ...pxs: R
-): [H, ...R]
+export function pu<R extends number[]>(...pxs: R): [...R]
 export function pu<T extends string | number>(pxObject: {
   [key in T]: number
 }): {
