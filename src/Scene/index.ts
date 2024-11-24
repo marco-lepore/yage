@@ -8,8 +8,9 @@ import { Display } from './Display'
 import { Process } from '../Process'
 import { soundAsset } from '@pixi/sound'
 import { AnyEvents, AnyState } from './types'
+import { midiAsset } from '../utils/midi-loader'
 extensions.add(soundAsset)
-
+extensions.add(midiAsset)
 export class Scene<
   State extends AnyState = AnyState,
   Events extends AnyEvents = AnyEvents,

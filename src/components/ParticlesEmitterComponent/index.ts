@@ -34,11 +34,9 @@ export class ParticlesEmitterComponent<
     this.emitter = new Emitter(this.container, config)
     this.renderLayer = renderLayer
     if (linkedTransform) {
-      console.log(linkedTransform, linkedTransformOffset)
       this.linkTransform(linkedTransform, linkedTransformOffset)
       this.updateTransform()
       this.emitter.resetPositionTracking()
-      console.log(this.emitter)
     }
     this.enabled = false
     this.emitter.emit = autoEmit ?? false
