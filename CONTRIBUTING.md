@@ -50,9 +50,6 @@ npm run build-types
 ```bash
 # Run all tests
 npm test
-
-# Run tests in watch mode
-npm run test:watch
 ```
 
 ### Linting
@@ -168,7 +165,8 @@ import { GameObject } from '../../GameObject'
 export class MyComponent extends Component<GameObject> {
   name = 'my-component'
 
-  private setup() {
+  constructor(parent: GameObject) {
+    super(parent)
     // Initialization logic
   }
 
@@ -180,8 +178,13 @@ export class MyComponent extends Component<GameObject> {
     // Update logic
   }
 
-  private teardown() {
+  onRemoved() {
+    // Called when removed from GameObject
+  }
+
+  destroy() {
     // Cleanup logic
+    super.destroy()
   }
 }
 ```

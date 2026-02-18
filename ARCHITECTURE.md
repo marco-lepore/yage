@@ -240,9 +240,9 @@ Built on PixiJS:
    - Frame-based animations
 
 3. **AnimationControllerComponent** (`src/components/AnimationControllerComponent/index.ts`)
-   - State machine for animations
-   - Transition management
-   - Animation blending
+   - Keyframe-based animation system
+   - Multiple easing functions and interpolation
+   - Loop support and event callbacks
 
 ### Physics Components
 
@@ -317,7 +317,7 @@ Located in `src/components/UI/`:
 - **space.ts**: Coordinate system conversions (pu - pixel units)
 - **tilemaps/**: Tilemap utilities and parsing
 - **tileset-loader.ts**: Tileset asset loading
-- **midi-loader.ts**: MIDI file loading
+- **midi-loader.ts**: MIDI file loading (internal, used by Scene)
 - **terrain.ts**: Terrain generation
 - **object-pool.ts**: Object pooling
 
@@ -409,7 +409,8 @@ FSMComponent uses XState for finite state machines.
 import { Component } from 'yage'
 
 export class MyComponent extends Component {
-  setup() {
+  constructor(parent: GameObject, options: MyOptions) {
+    super(parent)
     // Initialize component
   }
 
@@ -421,8 +422,13 @@ export class MyComponent extends Component {
     // Update logic each frame
   }
 
-  teardown() {
+  onRemoved() {
+    // Called when removed from GameObject
+  }
+
+  destroy() {
     // Cleanup
+    super.destroy()
   }
 }
 ```

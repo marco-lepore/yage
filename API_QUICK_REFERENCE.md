@@ -259,8 +259,9 @@ graphic.endFill()
 
 gameObject.addComponent(GraphicComponent, {
   graphic: graphic,
-  linkedTransform?: transform, // Optional: sync with transform
-  zIndex?: 0,
+  linkedTransform?: transform,       // Optional: sync with transform
+  linkedTransformOffset?: offset,    // Optional: Point offset
+  renderLayer?: container,           // Optional: render to specific container
 })
 ```
 
@@ -270,17 +271,24 @@ gameObject.addComponent(GraphicComponent, {
 import { AnimatedGraphicComponent } from 'yage'
 
 gameObject.addComponent(AnimatedGraphicComponent, {
-  animations: {
-    'idle': [texture1, texture2],
-    'walk': [texture3, texture4],
-  },
-  initialAnimation: 'idle',
-  animationSpeed: 0.1,
+  spritesheet: 'spritesheet-asset-id', // Spritesheet asset key or Spritesheet instance
+  linkedTransform?: transform,          // Optional: sync with transform
+  baseSpeed?: 0.1,                      // Optional: animation speed
 })
 
 const anim = gameObject.getComponentByClass(AnimatedGraphicComponent)
-anim.play('walk')
+anim.play('walk', {
+  loop: true,
+  speed: 0.15,
+  onComplete: () => {},
+  onFrameChange: (frame) => {},
+  onLoop: () => {},
+  restartOnPlay: false,
+})
 anim.stop()
+anim.currentFrame     // Current frame number
+anim.isPlaying        // Whether animation is playing
+anim.animationState   // { currentAnimation, currentFrame, isPlaying }
 ```
 
 ### RapierBodyComponent
@@ -311,15 +319,17 @@ physics.transform
 ```typescript
 import { AudioComponent } from 'yage'
 
-const audio = gameObject.addComponent(AudioComponent, {
-  sound: 'sound-id', // Asset ID
-  volume: 1.0,
-  loop: false,
-})
+const audio = gameObject.addComponent(AudioComponent)
 
-audio.play()
-audio.stop()
-audio.pause()
+// All methods require an alias (asset ID) parameter
+await audio.play('sound-alias', { loop: false, volume: 1.0 })
+await audio.playRandom(['sound1', 'sound2'])
+audio.stop('sound-alias')
+audio.pause('sound-alias')
+audio.resume('sound-alias')
+audio.volume('sound-alias', 0.5)
+audio.volumeAll(0.5)         // Set volume on all active instances
+audio.isPlaying()            // Whether any sound is playing
 ```
 
 ### ParticlesEmitterComponent
@@ -327,11 +337,13 @@ audio.pause()
 ```typescript
 import { ParticlesEmitterComponent } from 'yage'
 
-const particles = gameObject.addComponent(
-  ParticlesEmitterComponent,
-  emitterConfig, // Particle emitter config object
-  textures       // Array of textures
-)
+const particles = gameObject.addComponent(ParticlesEmitterComponent, {
+  config: emitterConfig,           // EmitterConfigV3 object
+  linkedTransform?: transform,     // Optional: sync position with transform
+  linkedTransformOffset?: offset,  // Optional: Point offset
+  renderLayer?: container,         // Optional: render target
+  autoEmit?: true,                 // Optional: start emitting immediately
+})
 
 particles.emitter.emit = true
 ```
@@ -341,16 +353,25 @@ particles.emitter.emit = true
 ```typescript
 import { InputComponent } from 'yage'
 
-const input = gameObject.addComponent(InputComponent, {
-  bindings: {
-    'jump': ['Space', 'KeyW'],
-    'shoot': ['KeyJ'],
-  }
-})
+// Keymap is a Map<string, string[]> mapping action names to key codes
+const keymap = new Map([
+  ['jump', ['Space', 'KeyW']],
+  ['shoot', ['KeyJ']],
+])
+const input = gameObject.addComponent(InputComponent, keymap)
 
-input.isActionPressed('jump')
-input.isActionJustPressed('jump')
-input.isActionJustReleased('jump')
+// Query input state
+input.isActive('jump')          // Currently held down
+input.isJustPressed('jump')     // Pressed this frame
+input.isJustReleased('jump')    // Released this frame
+input.isInputActive('jump')     // Raw check against game.playerInput
+input.isHoldingFor('jump', 500) // Held for at least 500ms
+input.getHoldingTime('jump')    // Duration held in ms (or null)
+
+// Modify keymap at runtime
+input.addInput('dash', 'ShiftLeft')
+input.replaceInput('jump', 'ArrowUp')
+input.deleteInput('shoot')
 ```
 
 ### FSMComponent
@@ -367,54 +388,70 @@ const machine = createMachine({
   }
 })
 
-const fsm = gameObject.addComponent(FSMComponent, machine)
+const fsm = gameObject.addComponent(FSMComponent, machine, initialContext)
 
-fsm.send('WALK')
-fsm.state.value // Current state
+fsm.service.send('WALK') // Send events via the XState service
+fsm.state.value           // Current state value (updated each fixed tick)
 ```
 
 ### TilemapComponent
 
 ```typescript
 import { TilemapComponent } from 'yage'
+import { CompositeTilemap } from '@pixi/tilemap'
 
-const tilemap = gameObject.addComponent(TilemapComponent, {
-  tilemapData: data,
-  tilesets: tilesets,
-})
+// Takes a CompositeTilemap instance directly
+const tilemap = gameObject.addComponent(TilemapComponent, compositeTilemap)
+
+// Static helpers
+TilemapComponent.parseMapAsset(mapAsset)
+TilemapComponent.objectToRapierColliderDesc(object)
+TilemapComponent.objectsToRapierCollidersDescs(objects)
+TilemapComponent.createTilemapComponents(gameObject, tilemaps)
 ```
 
 ### UI Components
 
 ```typescript
-import { UITextComponent, UIButtonComponent } from 'yage'
+import { UITextComponent, UIButtonComponent, UIBitmapTextComponent } from 'yage'
 
 // Text
 const text = gameObject.addComponent(UITextComponent, {
   text: 'Hello',
-  style: { fontSize: 24, fill: 0xFFFFFF },
+  style: new TextStyle({ fontSize: 24, fill: 0xFFFFFF }),
+  x: 100,            // Optional
+  y: 50,             // Optional
+  renderLayer: layer, // Optional
+  linkedTransform: t, // Optional
 })
+text.setText('New text')
+text.setPosition(200, 100)
 
-// Button
+// Button (uses @pixi/ui FancyButton options)
 const button = gameObject.addComponent(UIButtonComponent, {
   text: 'Click Me',
-  onClick: () => { console.log('Clicked!') },
+  // ... FancyButton constructor options
 })
+button.onPress((btn, event) => { console.log('Clicked!') })
+button.setText('New label')
+button.setPosition(100, 200)
 ```
 
 ## Utilities
 
 ```typescript
 import {
-  pu,                    // Pixel units conversion
-  getScene,              // Get current scene
-  getGame,               // Get current game
-  delayP,                // Promise delay
-  interpolate,           // Interpolate values
-  clamp,                 // Clamp value
-  randomRange,           // Random in range
-  Vector2D,              // 2D vector utilities
-  getPlayAreaBounds,     // Get play area
+  pu,                      // Pixel units conversion
+  getScene,                // Get current scene
+  getGame,                 // Get current game
+  getRapier,               // Get current rapier instance
+  getWorld,                // Get current physics world
+  delayP,                  // Promise delay
+  interpolate,             // Interpolate values
+  clamp,                   // Clamp value
+  getRandomValueInArray,   // Pick random element (with optional weights)
+  AdvancedVector2,         // 2D vector utilities (extends Rapier Vector2)
+  getPlayAreaBounds,       // Get play area bounds
 } from 'yage'
 
 // Pixel units
@@ -434,13 +471,17 @@ const value = interpolate(0, 100, 0.5, 'linear')
 const clamped = clamp(value, 0, 100)
 
 // Random
-const random = randomRange(0, 100)
+const item = getRandomValueInArray(['a', 'b', 'c'])
+const weighted = getRandomValueInArray(['a', 'b', 'c'], [1, 2, 5])
 
 // Vector
-const vec = new Vector2D(x, y)
+const vec = new AdvancedVector2(x, y)
 vec.add(other)
 vec.normalize()
-vec.magnitude()
+vec.length()
+vec.scale(2)
+AdvancedVector2.distance(vec1, vec2)
+AdvancedVector2.lerp(vec1, vec2, 0.5)
 ```
 
 ## Event Types
@@ -499,26 +540,24 @@ class Player extends GameObject {
     })
 
     // Input
-    this.addComponent(InputComponent, {
-      bindings: {
-        'left': ['KeyA', 'ArrowLeft'],
-        'right': ['KeyD', 'ArrowRight'],
-        'jump': ['Space'],
-      }
-    })
+    this.addComponent(InputComponent, new Map([
+      ['left', ['KeyA', 'ArrowLeft']],
+      ['right', ['KeyD', 'ArrowRight']],
+      ['jump', ['Space']],
+    ]))
   }
 
   onFixedTick(dt: number) {
     const input = this.getComponentByClass(InputComponent)
     const physics = this.getComponentByClass(RapierBodyComponent)
 
-    if (input.isActionPressed('left')) {
+    if (input.isActive('left')) {
       physics.rigidBody.applyImpulse({ x: -10, y: 0 }, true)
     }
-    if (input.isActionPressed('right')) {
+    if (input.isActive('right')) {
       physics.rigidBody.applyImpulse({ x: 10, y: 0 }, true)
     }
-    if (input.isActionJustPressed('jump')) {
+    if (input.isJustPressed('jump')) {
       physics.rigidBody.applyImpulse({ x: 0, y: -100 }, true)
     }
   }

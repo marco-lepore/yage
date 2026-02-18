@@ -128,9 +128,15 @@ export class YourComponent extends Component<GameObject> {
     // Physics logic
   }
 
-  // Cleanup
-  private teardown() {
+  // Called when removed from GameObject
+  onRemoved() {
     // Cleanup logic
+  }
+
+  // Final cleanup
+  destroy() {
+    // Cleanup resources
+    super.destroy()
   }
 }
 ```
@@ -508,15 +514,16 @@ onAdded() {
   this.scene.addEventListener('event', this.handler)
 }
 
-// ✅ Correct - cleanup in teardown
+// ✅ Correct - cleanup on removal
 private removeListener?: () => void
 
 onAdded() {
   this.removeListener = this.scene.addEventListener('event', this.handler)
 }
 
-private teardown() {
+destroy() {
   this.removeListener?.()
+  super.destroy()
 }
 ```
 
@@ -535,8 +542,9 @@ onAdded() {
   this.process = Process.spawn({ duration: 10000, onTick: () => { /* ... */ } })
 }
 
-private teardown() {
+destroy() {
   this.process?.destroy()
+  super.destroy()
 }
 ```
 
@@ -582,9 +590,11 @@ this.removeGameObjects(...toRemove)
 
 The project builds to multiple targets:
 
-1. **ESM** (`dist/esm/`): ES Modules for modern bundlers
-2. **CJS** (`dist/cjs/`): CommonJS for Node.js
-3. **Types** (`dist/types/`): TypeScript declarations
+1. **ESM**: ES Modules for modern bundlers
+2. **CJS**: CommonJS for Node.js
+3. **Types**: TypeScript declarations
+
+Output goes to `dist/` (see `package.json` `main`, `module`, and `types` fields).
 
 Each target has its own `tsconfig`:
 - `tsconfig.esm.json`
