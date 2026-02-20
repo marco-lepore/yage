@@ -407,7 +407,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 |---|---|
 | **Immutable Vec2** | `Vec2` is immutable. All operations return new instances. Never mutate `v.x`/`v.y` directly. |
 | **Transform is mutable** | `Transform` is the one mutable component. Use `setPosition()`, `translate()`, etc. |
-| **Systems drive updates** | Components store data. Systems contain logic. Don't put update loops in components. |
+| **Components own game logic** | Components can have `update(dt)` and `fixedUpdate(dt)` methods — the built-in `ComponentUpdateSystem` calls them. Systems are for engine internals and cross-cutting concerns (physics, rendering). |
 | **Phase assignment** | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`. |
 | **ServiceKey for DI** | Always use `ServiceKey<T>` for type-safe service resolution. Never use string keys directly. |
 | **Plain objects for config** | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config. |
@@ -419,7 +419,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 
 | Pitfall | Why | Instead |
 |---|---|---|
-| **Adding lifecycle methods to Component base** | Breaks the system-driven architecture. Components become self-updating, disabled state becomes hard to enforce. | Put update logic in a System that queries for the component. |
+| **Putting engine-level cross-cutting concerns in Components** | Physics stepping, render sync, and collision dispatch need efficient cross-entity queries and strict phase ordering. Putting these in Components means duplicate work and no centralized control. | Use Systems for engine-level concerns (physics, rendering, audio). Components are for game logic. |
 | **Importing PixiJS types into `@yage/core`** | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee. | Keep PixiJS types inside `@yage/renderer`. Use abstract interfaces in core if needed. |
 | **Using `context.resolve()` in a constructor** | Context may not be fully populated during plugin installation. | Use `onRegister()` for systems or `onEnter()` for scenes to resolve services. |
 | **Mutating Vec2** | Vec2 is immutable by design. Mutations would break assumptions in caching and comparison. | Use `vec.add()`, `vec.scale()`, etc. which return new instances. |
@@ -448,7 +448,7 @@ For the rationale behind key decisions, see [TDD.md](./TDD.md). Quick summary:
 | Decision | Rationale |
 |---|---|
 | No global state (`EngineContext` instead of `Executor`) | Prevents stale refs in async, supports multiple engines in tests |
-| Systems drive updates, not components | Disabled components are never called; query cache enables O(matched) iteration |
+| Components own game logic; Systems power engine plugins | ComponentUpdateSystem calls component update/fixedUpdate (enabled check built in); Systems use QueryCache for efficient cross-entity iteration |
 | Cached queries (`QueryCache`) | O(1) registration, O(matched) iteration, only updates on archetype changes |
 | Deterministic frame phases | Predictable execution order; no setTimeout, no async in game loop |
 | Physics is optional | Core has zero knowledge of physics; no WASM download for non-physics games |

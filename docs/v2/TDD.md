@@ -205,7 +205,7 @@ yage (meta-package)
 
 ## 2. Core Kernel (`@yage/core`)
 
-`@yage/core` has **zero runtime dependencies**. It defines the ECS kernel, game loop contract, scene management, event system, and all supporting infrastructure. It runs in any JavaScript environment (browser, Node.js, workers).
+`@yage/core` has **zero runtime dependencies**. It defines the hybrid OOP + ECS kernel, game loop contract, scene management, event system, and all supporting infrastructure. It runs in any JavaScript environment (browser, Node.js, workers).
 
 ### 2.1 Engine
 
@@ -329,15 +329,18 @@ export type ComponentClass<C extends Component = Component> = new (...args: any[
 
 ### 2.4 Component
 
-Base class with no lifecycle methods. Systems call updates, not components. This ensures disabled components are never accidentally ticked.
+Base class with lifecycle hooks and optional per-frame update methods. Components are the primary authoring model — game developers write behavior in components. The built-in `ComponentUpdateSystem` calls update/fixedUpdate methods automatically.
 
 ```typescript
 export abstract class Component {
   /** Set by the engine when added to an entity. */
   entity!: Entity;
 
-  /** Whether this component is active. Systems skip disabled components. */
+  /** Whether this component is active. Disabled components are skipped by ComponentUpdateSystem. */
   enabled: boolean = true;
+
+  /** Access the EngineContext from the entity's scene. */
+  get context(): EngineContext;
 
   /** Called when the component is added to an entity. */
   onAdd?(): void;
@@ -347,10 +350,16 @@ export abstract class Component {
 
   /** Called when the component is destroyed (entity destroyed or component removed). */
   onDestroy?(): void;
+
+  /** Called every frame by the built-in ComponentUpdateSystem. */
+  update?(dt: number): void;
+
+  /** Called every fixed timestep by the built-in ComponentUpdateSystem. */
+  fixedUpdate?(dt: number): void;
 }
 ```
 
-**Key design decision**: No `onTick`, `onFixedTick`, or any update methods on `Component`. All per-frame work is done by `System` classes that query for components. This inverts the v1 model where every component was responsible for its own update, and disabled components were still iterated.
+**Key design decision**: Components CAN have per-frame update methods (`update`, `fixedUpdate`). The built-in `ComponentUpdateSystem` iterates all entities in the active scene and calls these methods on enabled components. This is the primary path for game logic. Systems are still used for engine plugins (physics, rendering, audio) that need efficient cross-entity queries via QueryCache, but game developers write Components by default. Disabled components are skipped by `ComponentUpdateSystem` checking `component.enabled` before invoking update/fixedUpdate.
 
 ### 2.5 System
 
@@ -2095,7 +2104,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 | # | v1 Pain Point | v2 Resolution |
 |---|---|---|
-| 1 | **No enabled check in component lifecycle dispatch** -- disabled components still receive lifecycle calls | Components have no lifecycle update methods. Systems query and iterate; `ErrorBoundary.wrapComponent` checks `component.enabled` before invoking any callback. Disabled components are never called. |
+| 1 | **No enabled check in component lifecycle dispatch** -- disabled components still receive lifecycle calls | The built-in `ComponentUpdateSystem` checks `component.enabled` before calling `update()`/`fixedUpdate()`. `ErrorBoundary.wrapComponent` wraps each call — on error, the component is disabled. Disabled components are never ticked. |
 | 2 | **Async `onAfterTick` via `setTimeout(..., 0)`** -- deferred execution causes ordering bugs | All game loop phases are synchronous. `endOfFrame` is a proper phase, not a setTimeout. No async in the game loop. |
 | 3 | **`onAfterFixedTick` called inside `onFixedTick`** -- coupled lifecycle steps | Phases are distinct and scheduled by `SystemScheduler`. FixedUpdate systems complete fully before the next phase. No implicit coupling. |
 | 4 | **Global mutable context via Executor** -- fragile singleton, stale refs in async | `EngineContext` DI container replaces `Executor`. No global state. Systems receive context via `onRegister()`. All access is explicit. |

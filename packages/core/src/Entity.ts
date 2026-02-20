@@ -1,0 +1,134 @@
+import type { Component } from "./Component.js";
+import type { ComponentClass } from "./types.js";
+
+/** Auto-incrementing entity ID counter. */
+let nextEntityId = 1;
+
+/** Reset the entity ID counter. Exposed for testing only. */
+export function _resetEntityIdCounter(): void {
+  nextEntityId = 1;
+}
+
+/**
+ * Callback interface for notifying external systems (QueryCache, EventBus)
+ * about entity component changes. Injected by Scene.
+ */
+export interface EntityCallbacks {
+  onComponentAdded(entity: Entity, componentClass: ComponentClass): void;
+  onComponentRemoved(entity: Entity, componentClass: ComponentClass): void;
+}
+
+/**
+ * An entity is a named container of components with O(1) lookups by type.
+ */
+export class Entity {
+  /** Unique auto-incrementing ID. */
+  readonly id: number;
+  /** Display name for debugging. */
+  readonly name: string;
+  /** Tags for group queries. */
+  readonly tags: Set<string>;
+
+  private components = new Map<ComponentClass, Component>();
+  private _destroyed = false;
+  private _scene: import("./Scene.js").Scene | null = null;
+  private callbacks: EntityCallbacks | null = null;
+
+  constructor(name: string = "Entity", tags?: Iterable<string>) {
+    this.id = nextEntityId++;
+    this.name = name;
+    this.tags = new Set(tags);
+  }
+
+  /** The scene this entity belongs to, or null. */
+  get scene(): import("./Scene.js").Scene | null {
+    return this._scene;
+  }
+
+  /** True if destroy() has been called. */
+  get isDestroyed(): boolean {
+    return this._destroyed;
+  }
+
+  /** Add a component instance. Returns the component for chaining. */
+  add<C extends Component>(component: C): C {
+    const cls = component.constructor as ComponentClass;
+    if (this.components.has(cls)) {
+      throw new Error(
+        `Entity "${this.name}" already has component ${cls.name}.`,
+      );
+    }
+    component.entity = this;
+    this.components.set(cls, component);
+    component.onAdd?.();
+    this.callbacks?.onComponentAdded(this, cls);
+    return component;
+  }
+
+  /** Get a component by class. Throws if not found. */
+  get<C extends Component>(cls: ComponentClass<C>): C {
+    const comp = this.components.get(cls);
+    if (!comp) {
+      throw new Error(
+        `Entity "${this.name}" does not have component ${cls.name}.`,
+      );
+    }
+    return comp as C;
+  }
+
+  /** Get a component by class, or undefined if not found. */
+  tryGet<C extends Component>(cls: ComponentClass<C>): C | undefined {
+    return this.components.get(cls) as C | undefined;
+  }
+
+  /** Check if entity has a component of the given class. */
+  has(cls: ComponentClass): boolean {
+    return this.components.has(cls);
+  }
+
+  /** Remove a component by class. */
+  remove(cls: ComponentClass): void {
+    const comp = this.components.get(cls);
+    if (!comp) return;
+    comp.onRemove?.();
+    comp.onDestroy?.();
+    this.components.delete(cls);
+    this.callbacks?.onComponentRemoved(this, cls);
+  }
+
+  /** Get all components as an iterable. */
+  getAll(): Iterable<Component> {
+    return this.components.values();
+  }
+
+  /** Mark for deferred destruction. Actual cleanup happens at end of frame. */
+  destroy(): void {
+    this._destroyed = true;
+  }
+
+  /**
+   * Internal: perform actual destruction — remove all components and clear state.
+   * Called by Scene during endOfFrame flush.
+   * @internal
+   */
+  _performDestroy(): void {
+    for (const [cls, comp] of this.components) {
+      comp.onRemove?.();
+      comp.onDestroy?.();
+      this.callbacks?.onComponentRemoved(this, cls);
+    }
+    this.components.clear();
+  }
+
+  /**
+   * Internal: set the scene and callbacks. Called by Scene.spawn().
+   * @internal
+   */
+  _setScene(
+    scene: import("./Scene.js").Scene | null,
+    callbacks: EntityCallbacks | null,
+  ): void {
+    this._scene = scene;
+    this.callbacks = callbacks;
+  }
+}

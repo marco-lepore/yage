@@ -11,7 +11,7 @@
 1. **DX-first**: The API should feel obvious. Common operations should be short. Boilerplate is a bug.
 2. **Modular by default**: The core is tiny. Every feature (physics, audio, particles) is an opt-in plugin. You don't pay for what you don't use.
 3. **TypeScript-native**: Full type safety, autocompletion, and zero `any` in the public API. Types are documentation.
-4. **Composition over inheritance**: Entities are bags of components. Systems drive behavior. Class hierarchies stay shallow.
+4. **Composition over inheritance**: Entities are bags of components. Components own behavior. Systems power engine plugins. Class hierarchies stay shallow.
 5. **Test-friendly**: The engine exposes first-class inspection and structured logging APIs. Games are testable with Playwright out of the box.
 
 ---
@@ -135,7 +135,7 @@ These are explicitly out of scope for v2.0 and have no planned timeline:
 | **Kaboom.js/Kaplay** | Incredible simplicity, game-jam friendly | YAGE offers more structure for larger projects while matching Kaboom's simplicity for small ones. Proper scene management, prefabs, and type safety. |
 | **LittleJS** | Ultra-lightweight, zero dependencies | YAGE offers more features (physics, ECS, plugins) while remaining modular. LittleJS is intentionally minimal. |
 
-YAGE v2's positioning: **The TypeScript-native engine for solo devs who want Phaser's features without Phaser's baggage, with an ECS that stays out of your way and a testing story that AI agents can actually use.**
+YAGE v2's positioning: **The TypeScript-native engine for solo devs who want Phaser's features without Phaser's baggage, with an OOP component model that stays out of your way and a testing story that AI agents can actually use.**
 
 ---
 
