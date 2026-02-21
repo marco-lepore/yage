@@ -26,6 +26,8 @@ export abstract class Scene {
   private _context!: EngineContext;
   private _paused = false;
   private entityCallbacks!: EntityCallbacks;
+  private queryCache: QueryCache | undefined;
+  private bus: EventBus<EngineEvents> | undefined;
 
   /** Access the EngineContext. */
   get context(): EngineContext {
@@ -42,13 +44,7 @@ export abstract class Scene {
     const entity = new Entity(name);
     entity._setScene(this, this.entityCallbacks);
     this.entities.add(entity);
-
-    // Emit event
-    const bus = this._context.tryResolve(EventBusKey) as
-      | EventBus<EngineEvents>
-      | undefined;
-    bus?.emit("entity:created", { entity });
-
+    this.bus?.emit("entity:created", { entity });
     return entity;
   }
 
@@ -59,6 +55,7 @@ export abstract class Scene {
 
   /** Mark an entity for destruction. Deferred to endOfFrame flush. */
   destroyEntity(entity: Entity): void {
+    if (entity.isDestroyed) return;
     entity.destroy();
     this.destroyQueue.push(entity);
   }
@@ -107,24 +104,24 @@ export abstract class Scene {
    */
   _setContext(context: EngineContext): void {
     this._context = context;
-    const queryCache = context.tryResolve(QueryCacheKey) as
+    this.queryCache = context.tryResolve(QueryCacheKey) as
       | QueryCache
       | undefined;
-    const bus = context.tryResolve(EventBusKey) as
+    this.bus = context.tryResolve(EventBusKey) as
       | EventBus<EngineEvents>
       | undefined;
 
     this.entityCallbacks = {
       onComponentAdded: (entity, cls) => {
-        queryCache?.onComponentAdded(entity);
-        bus?.emit("component:added", {
+        this.queryCache?.onComponentAdded(entity);
+        this.bus?.emit("component:added", {
           entity,
           component: entity.get(cls),
         });
       },
       onComponentRemoved: (entity, cls) => {
-        queryCache?.onComponentRemoved(entity);
-        bus?.emit("component:removed", { entity, componentClass: cls });
+        this.queryCache?.onComponentRemoved(entity);
+        this.bus?.emit("component:removed", { entity, componentClass: cls });
       },
     };
   }
@@ -143,18 +140,11 @@ export abstract class Scene {
    * @internal
    */
   _flushDestroyQueue(): void {
-    const bus = this._context?.tryResolve(EventBusKey) as
-      | EventBus<EngineEvents>
-      | undefined;
-    const queryCache = this._context?.tryResolve(QueryCacheKey) as
-      | QueryCache
-      | undefined;
-
     for (const entity of this.destroyQueue) {
       entity._performDestroy();
-      queryCache?.onEntityDestroyed(entity);
+      this.queryCache?.onEntityDestroyed(entity);
       this.entities.delete(entity);
-      bus?.emit("entity:destroyed", { entity });
+      this.bus?.emit("entity:destroyed", { entity });
     }
     this.destroyQueue.length = 0;
   }
@@ -164,13 +154,9 @@ export abstract class Scene {
    * @internal
    */
   _destroyAllEntities(): void {
-    const queryCache = this._context?.tryResolve(QueryCacheKey) as
-      | QueryCache
-      | undefined;
-
     for (const entity of this.entities) {
       entity._performDestroy();
-      queryCache?.onEntityDestroyed(entity);
+      this.queryCache?.onEntityDestroyed(entity);
     }
     this.entities.clear();
     this.destroyQueue.length = 0;

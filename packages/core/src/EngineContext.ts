@@ -81,3 +81,8 @@ export const ErrorBoundaryKey = new ServiceKey<
 export const GameLoopKey = new ServiceKey<
   import("./GameLoop.js").GameLoop
 >("gameLoop");
+
+/** Key for the SystemScheduler instance. */
+export const SystemSchedulerKey = new ServiceKey<
+  import("./SystemScheduler.js").SystemScheduler
+>("systemScheduler");

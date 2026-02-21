@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { System } from "./System.js";
 import { Phase } from "./types.js";
+import { EngineContext, LoggerKey } from "./EngineContext.js";
+import { Logger } from "./Logger.js";
 
 class TestSystem extends System {
   readonly phase = Phase.Update;
@@ -37,5 +39,37 @@ describe("System", () => {
     const sys = new TestSystem();
     expect(sys.onRegister).toBeUndefined();
     expect(sys.onUnregister).toBeUndefined();
+  });
+
+  describe("use()", () => {
+    class UseSystem extends System {
+      readonly phase = Phase.Update;
+      update() {}
+      getLogger() {
+        return this.use(LoggerKey);
+      }
+    }
+
+    function systemWithContext() {
+      const ctx = new EngineContext();
+      const logger = new Logger();
+      ctx.register(LoggerKey, logger);
+      const sys = new UseSystem();
+      sys._setContext(ctx);
+      return { sys, logger };
+    }
+
+    it("resolves a service by key", () => {
+      const { sys, logger } = systemWithContext();
+      expect(sys.getLogger()).toBe(logger);
+    });
+
+    it("caches the result on subsequent calls", () => {
+      const { sys, logger } = systemWithContext();
+      const first = sys.getLogger();
+      const second = sys.getLogger();
+      expect(first).toBe(logger);
+      expect(second).toBe(logger);
+    });
   });
 });

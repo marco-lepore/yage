@@ -3,15 +3,11 @@ import type { Entity } from "./Entity.js";
 import type { Component } from "./Component.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { GameLoop } from "./GameLoop.js";
-import type { SystemScheduler } from "./SystemScheduler.js";
 import {
   EngineContext,
-  ServiceKey,
   ErrorBoundaryKey,
+  SystemSchedulerKey,
 } from "./EngineContext.js";
-
-// Key for SystemScheduler (registered by Engine)
-const SystemSchedulerKey = new ServiceKey<SystemScheduler>("systemScheduler");
 
 /** Full engine state snapshot. */
 export interface EngineSnapshot {
@@ -87,18 +83,14 @@ export class Inspector {
 
   /** Find entity by name in the active scene. */
   getEntityByName(name: string): EntitySnapshot | undefined {
-    const scene = this.engine.scenes.active;
-    if (!scene) return undefined;
-    const entity = scene.findEntity(name);
+    const entity = this.findActiveEntity(name);
     if (!entity) return undefined;
     return this.entityToSnapshot(entity);
   }
 
   /** Get entity position (from Transform component). */
   getEntityPosition(name: string): { x: number; y: number } | undefined {
-    const scene = this.engine.scenes.active;
-    if (!scene) return undefined;
-    const entity = scene.findEntity(name);
+    const entity = this.findActiveEntity(name);
     if (!entity) return undefined;
     const transform = this.getTransform(entity);
     if (!transform) return undefined;
@@ -107,28 +99,14 @@ export class Inspector {
 
   /** Check if an entity has a component by class name string. */
   hasComponent(entityName: string, componentClass: string): boolean {
-    const scene = this.engine.scenes.active;
-    if (!scene) return false;
-    const entity = scene.findEntity(entityName);
-    if (!entity) return false;
-    for (const comp of entity.getAll()) {
-      if (comp.constructor.name === componentClass) return true;
-    }
-    return false;
+    return this.findComponentByName(entityName, componentClass) !== undefined;
   }
 
   /** Get component data (serializable subset) by class name string. */
   getComponentData(entityName: string, componentClass: string): unknown {
-    const scene = this.engine.scenes.active;
-    if (!scene) return undefined;
-    const entity = scene.findEntity(entityName);
-    if (!entity) return undefined;
-    for (const comp of entity.getAll()) {
-      if (comp.constructor.name === componentClass) {
-        return this.serializeComponent(comp);
-      }
-    }
-    return undefined;
+    const comp = this.findComponentByName(entityName, componentClass);
+    if (!comp) return undefined;
+    return this.serializeComponent(comp);
   }
 
   /** Get all entities in the active scene as snapshots. */
@@ -180,6 +158,22 @@ export class Inspector {
         error: c.error,
       })),
     };
+  }
+
+  private findActiveEntity(name: string): Entity | undefined {
+    return this.engine.scenes.active?.findEntity(name);
+  }
+
+  private findComponentByName(
+    entityName: string,
+    componentClass: string,
+  ): Component | undefined {
+    const entity = this.findActiveEntity(entityName);
+    if (!entity) return undefined;
+    for (const comp of entity.getAll()) {
+      if (comp.constructor.name === componentClass) return comp;
+    }
+    return undefined;
   }
 
   private entityToSnapshot(entity: Entity): EntitySnapshot {

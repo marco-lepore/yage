@@ -1,5 +1,5 @@
-import { EngineContext, ServiceKey } from "./EngineContext.js";
 import {
+  EngineContext,
   EngineKey,
   EventBusKey,
   SceneManagerKey,
@@ -8,6 +8,7 @@ import {
   QueryCacheKey,
   ErrorBoundaryKey,
   GameLoopKey,
+  SystemSchedulerKey,
 } from "./EngineContext.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -25,9 +26,6 @@ import {
 } from "./ComponentUpdateSystem.js";
 import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
-
-/** Key for the SystemScheduler (used by Inspector). */
-const SystemSchedulerKey = new ServiceKey<SystemScheduler>("systemScheduler");
 
 /** Engine configuration. */
 export interface EngineConfig {
@@ -63,6 +61,7 @@ export class Engine {
   private readonly errorBoundary: ErrorBoundary;
   private readonly queryCache: QueryCache;
   private readonly plugins: Map<string, Plugin> = new Map();
+  private sortedPlugins: Plugin[] = [];
   private started = false;
   private readonly debug: boolean;
 
@@ -75,10 +74,7 @@ export class Engine {
     this.logger = new Logger(config?.logger);
     this.queryCache = new QueryCache();
     this.errorBoundary = new ErrorBoundary(this.logger);
-    const loopConfig: import("./GameLoop.js").GameLoopConfig = {};
-    if (config?.fixedTimestep !== undefined) loopConfig.fixedTimestep = config.fixedTimestep;
-    if (config?.maxFixedStepsPerFrame !== undefined) loopConfig.maxFixedStepsPerFrame = config.maxFixedStepsPerFrame;
-    this.loop = new GameLoop(loopConfig);
+    this.loop = new GameLoop(config);
     this.scenes = new SceneManager();
     this.scheduler = new SystemScheduler();
     this.inspector = new Inspector(this);
@@ -134,8 +130,9 @@ export class Engine {
     if (this.started) return;
     this.started = true;
 
-    // Topological sort of plugins
-    const sorted = this.topologicalSort();
+    // Topological sort of plugins (cached for reverse teardown)
+    this.sortedPlugins = this.topologicalSort();
+    const sorted = this.sortedPlugins;
 
     // Install each plugin
     for (const plugin of sorted) {
@@ -149,7 +146,7 @@ export class Engine {
 
     // Initialize systems
     for (const sys of this.scheduler.getAllSystems()) {
-      sys["context"] = this.context;
+      sys._setContext(this.context);
       sys.onRegister?.(this.context);
     }
 
@@ -184,10 +181,9 @@ export class Engine {
     // Clear scenes
     this.scenes.clear();
 
-    // Destroy plugins in reverse order
-    const sorted = [...this.plugins.values()];
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      const plugin = sorted[i];
+    // Destroy plugins in reverse topological order (dependents first)
+    for (let i = this.sortedPlugins.length - 1; i >= 0; i--) {
+      const plugin = this.sortedPlugins[i];
       if (plugin) plugin.onDestroy?.();
     }
 

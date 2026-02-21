@@ -12,6 +12,8 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
-    "yage": "*"
+    "@yage/core": "*",
+    "@yage/renderer": "*",
+    "pixi.js": "^8.0.0"
   }
 }

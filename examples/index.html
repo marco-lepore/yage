@@ -3,31 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YAGE Examples</title>
+    <title>YAGE Camera Demo</title>
     <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
+        background: #111;
+        color: #ccc;
         font-family: system-ui, sans-serif;
-        max-width: 640px;
-        margin: 2rem auto;
-        padding: 0 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        gap: 0.75rem;
       }
-      ul {
-        list-style: none;
-        padding: 0;
+      h1 { font-size: 1.2rem; color: #eee; }
+      #game-container { border: 1px solid #333; }
+      .controls {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: center;
       }
-      li {
-        margin: 0.5rem 0;
+      .controls kbd {
+        background: #222;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.85rem;
+        color: #fff;
       }
-      a {
-        color: #0066cc;
-      }
+      .controls span { font-size: 0.85rem; }
     </style>
   </head>
   <body>
-    <h1>YAGE v2 Examples</h1>
-    <p>Examples will be added as packages are implemented.</p>
-    <ul>
-      <!-- <li><a href="/basic/">Basic - Hello World</a></li> -->
-    </ul>
+    <h1>YAGE v2 — Camera Demo</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span><kbd>WASD</kbd> move</span>
+      <span><kbd>Space</kbd> shake</span>
+      <span><kbd>Q</kbd>/<kbd>E</kbd> zoom</span>
+      <span><kbd>R</kbd> reset zoom</span>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

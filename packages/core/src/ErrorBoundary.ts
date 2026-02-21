@@ -22,7 +22,7 @@ export class ErrorBoundary {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       system.enabled = false;
-      this.disabledSystems.push({ item: system, error: message });
+      this.disabledSystems.push({ system, error: message });
       this.logger.error(
         "core",
         `System ${system.constructor.name} threw and was disabled`,
@@ -38,7 +38,7 @@ export class ErrorBoundary {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       component.enabled = false;
-      this.disabledComponents.push({ item: component, error: message });
+      this.disabledComponents.push({ component, error: message });
       const entityName = component.entity?.name ?? "unknown";
       this.logger.error(
         "core",
@@ -54,14 +54,8 @@ export class ErrorBoundary {
     components: ReadonlyArray<{ component: Component; error: string }>;
   } {
     return {
-      systems: this.disabledSystems.map((e) => ({
-        system: e.item,
-        error: e.error,
-      })),
-      components: this.disabledComponents.map((e) => ({
-        component: e.item,
-        error: e.error,
-      })),
+      systems: this.disabledSystems,
+      components: this.disabledComponents,
     };
   }
 }

@@ -1,8 +1,5 @@
-import type { EngineContext } from "./EngineContext.js";
-import { Phase } from "./types.js";
-
-// Re-export Phase so consumers can import from System.ts if desired
-export { Phase };
+import type { EngineContext, ServiceKey } from "./EngineContext.js";
+import type { Phase } from "./types.js";
 
 /**
  * Base class for systems. Systems run in a specific game loop phase,
@@ -23,6 +20,27 @@ export abstract class System {
 
   /** Reference to the engine context, set on registration. */
   protected context!: EngineContext;
+
+  private _serviceCache: Map<string, unknown> | undefined;
+
+  /**
+   * Set the engine context. Called by Engine during startup.
+   * @internal
+   */
+  _setContext(context: EngineContext): void {
+    this.context = context;
+  }
+
+  /** Resolve a service by key, cached after first lookup. */
+  protected use<T>(key: ServiceKey<T>): T {
+    this._serviceCache ??= new Map();
+    let value = this._serviceCache.get(key.id);
+    if (value === undefined) {
+      value = this.context.resolve(key);
+      this._serviceCache.set(key.id, value);
+    }
+    return value as T;
+  }
 
   /** Called once when the system is registered with the engine. */
   onRegister?(context: EngineContext): void;

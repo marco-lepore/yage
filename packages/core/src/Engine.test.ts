@@ -169,6 +169,35 @@ describe("Engine", () => {
       engine.destroy();
       expect(order).toEqual(["b", "a"]);
     });
+
+    it("calls onDestroy in reverse topological order (dependents first)", async () => {
+      const order: string[] = [];
+      const engine = new Engine();
+      // "c" depends on "b", "b" depends on "a"
+      // Install order: a → b → c
+      // Destroy order should be: c → b → a (reverse topological)
+      engine
+        .use({
+          name: "c",
+          version: "1.0.0",
+          dependencies: ["b"],
+          onDestroy: () => order.push("c"),
+        })
+        .use({
+          name: "a",
+          version: "1.0.0",
+          onDestroy: () => order.push("a"),
+        })
+        .use({
+          name: "b",
+          version: "1.0.0",
+          dependencies: ["a"],
+          onDestroy: () => order.push("b"),
+        });
+      await engine.start();
+      engine.destroy();
+      expect(order).toEqual(["c", "b", "a"]);
+    });
   });
 
   describe("game loop integration", () => {

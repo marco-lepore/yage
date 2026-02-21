@@ -215,4 +215,16 @@ describe("Scene", () => {
     const entity = scene.spawnPrefab(prefab, { name: "captain" });
     expect(entity.name).toBe("captain");
   });
+
+  it("destroyEntity ignores already-destroyed entities", () => {
+    const { ctx } = createContext();
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const e = scene.spawn("test");
+    scene.destroyEntity(e);
+    // Call again — should not add duplicate to queue
+    scene.destroyEntity(e);
+    scene._flushDestroyQueue();
+    expect(scene.getEntities().size).toBe(0);
+  });
 });

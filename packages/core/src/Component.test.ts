@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Component } from "./Component.js";
+import { EngineContext, LoggerKey } from "./EngineContext.js";
+import { Logger } from "./Logger.js";
 
 class TestComponent extends Component {}
 
@@ -83,5 +85,36 @@ describe("Component", () => {
     c.fixedUpdate(8);
     expect(c.lastDt).toBe(16);
     expect(c.lastFixedDt).toBe(8);
+  });
+
+  describe("use()", () => {
+    function componentWithContext() {
+      const ctx = new EngineContext();
+      const logger = new Logger();
+      ctx.register(LoggerKey, logger);
+
+      class UseComponent extends Component {
+        getLogger() {
+          return this.use(LoggerKey);
+        }
+      }
+
+      const c = new UseComponent();
+      c.entity = { scene: { context: ctx } } as never;
+      return { c, logger };
+    }
+
+    it("resolves a service by key", () => {
+      const { c, logger } = componentWithContext();
+      expect(c.getLogger()).toBe(logger);
+    });
+
+    it("caches the result on subsequent calls", () => {
+      const { c, logger } = componentWithContext();
+      const first = c.getLogger();
+      const second = c.getLogger();
+      expect(first).toBe(logger);
+      expect(second).toBe(logger);
+    });
   });
 });

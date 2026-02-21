@@ -64,11 +64,11 @@ describe("ComponentUpdateSystem", () => {
     ctx.register(ErrorBoundaryKey, boundary);
 
     const updateSys = new ComponentUpdateSystem();
-    updateSys["context"] = ctx;
+    updateSys._setContext(ctx);
     updateSys.onRegister?.(ctx);
 
     const fixedSys = new ComponentFixedUpdateSystem();
-    fixedSys["context"] = ctx;
+    fixedSys._setContext(ctx);
     fixedSys.onRegister?.(ctx);
 
     return { updateSys, fixedSys, sceneManager, boundary, logger };

@@ -7,6 +7,7 @@ import { EventBusKey } from "./EngineContext.js";
 export class SceneManager {
   private stack: Scene[] = [];
   private _context!: EngineContext;
+  private bus: EventBus<EngineEvents> | undefined;
 
   /**
    * Set the engine context.
@@ -14,6 +15,9 @@ export class SceneManager {
    */
   _setContext(context: EngineContext): void {
     this._context = context;
+    this.bus = context.tryResolve(EventBusKey) as
+      | EventBus<EngineEvents>
+      | undefined;
   }
 
   /** The topmost (active) scene. */
@@ -104,9 +108,4 @@ export class SceneManager {
     }
   }
 
-  private get bus(): EventBus<EngineEvents> | undefined {
-    return this._context?.tryResolve(EventBusKey) as
-      | EventBus<EngineEvents>
-      | undefined;
-  }
 }

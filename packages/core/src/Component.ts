@@ -1,4 +1,4 @@
-import type { EngineContext } from "./EngineContext.js";
+import type { EngineContext, ServiceKey } from "./EngineContext.js";
 
 /**
  * Base class for all components.
@@ -17,6 +17,8 @@ export abstract class Component {
   /** Whether this component is active. Disabled components are skipped by ComponentUpdateSystem. */
   enabled = true;
 
+  private _serviceCache: Map<string, unknown> | undefined;
+
   /**
    * Access the EngineContext from the entity's scene.
    * Throws if the entity is not in a scene.
@@ -29,6 +31,17 @@ export abstract class Component {
       );
     }
     return scene.context;
+  }
+
+  /** Resolve a service by key, cached after first lookup. */
+  protected use<T>(key: ServiceKey<T>): T {
+    this._serviceCache ??= new Map();
+    let value = this._serviceCache.get(key.id);
+    if (value === undefined) {
+      value = this.context.resolve(key);
+      this._serviceCache.set(key.id, value);
+    }
+    return value as T;
   }
 
   /** Called when the component is added to an entity. */

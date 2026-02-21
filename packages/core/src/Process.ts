@@ -90,7 +90,7 @@ export class Process {
     if (this.duration !== undefined && this.elapsed >= this.duration) {
       const result = this.updateFn(dt, this.elapsed);
       if (this.loop && result !== true) {
-        this.elapsed = 0;
+        this.elapsed = this.elapsed % this.duration;
         return;
       }
       this.complete();

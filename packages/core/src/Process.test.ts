@@ -131,6 +131,23 @@ describe("Process", () => {
     expect(proc.completed).toBe(false);
   });
 
+  it("loop carries overshoot remainder forward", () => {
+    const elapsed: number[] = [];
+    const proc = new Process({
+      duration: 100,
+      loop: true,
+      update: (_dt, e) => {
+        elapsed.push(e);
+      },
+    });
+    // Tick overshoots by 8ms: elapsed=108, loops to 108%100=8
+    proc._update(108);
+    expect(proc.completed).toBe(false);
+    // Next tick adds 50ms: elapsed should be 8+50=58
+    proc._update(50);
+    expect(elapsed[elapsed.length - 1]).toBeCloseTo(58);
+  });
+
   it("stores tags", () => {
     const proc = new Process({
       update: () => {},
