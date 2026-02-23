@@ -51,6 +51,11 @@ export class GameLoop {
     return this.running;
   }
 
+  /** Ratio of accumulated time to fixed timestep, for physics interpolation. */
+  get interpolationAlpha(): number {
+    return this.accumulator / this.fixedTimestep;
+  }
+
   /** Provide the callbacks that the loop invokes each frame. */
   setCallbacks(callbacks: GameLoopCallbacks): void {
     this.callbacks = callbacks;

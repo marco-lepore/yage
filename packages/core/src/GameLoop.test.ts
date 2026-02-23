@@ -262,6 +262,42 @@ describe("GameLoop", () => {
     });
   });
 
+  describe("interpolationAlpha", () => {
+    it("is 0 initially", () => {
+      const loop = new GameLoop({ fixedTimestep: 10 });
+      loop.start();
+      expect(loop.interpolationAlpha).toBe(0);
+      loop.stop();
+    });
+
+    it("returns correct ratio after partial tick", () => {
+      const loop = new GameLoop({ fixedTimestep: 10 });
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(7); // accumulator = 7, no fixed step → alpha = 7/10
+      expect(loop.interpolationAlpha).toBeCloseTo(0.7);
+    });
+
+    it("is 0 after exact fixed step", () => {
+      const loop = new GameLoop({ fixedTimestep: 10 });
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(10); // accumulator = 10, one fixed step, remainder = 0
+      expect(loop.interpolationAlpha).toBeCloseTo(0);
+    });
+
+    it("returns remainder ratio after overshoot", () => {
+      const loop = new GameLoop({ fixedTimestep: 10 });
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(13); // accumulator = 13, one fixed step, remainder = 3 → alpha = 3/10
+      expect(loop.interpolationAlpha).toBeCloseTo(0.3);
+    });
+  });
+
   describe("attachTicker", () => {
     it("uses external ticker instead of rAF", () => {
       const loop = new GameLoop({ fixedTimestep: 16 });

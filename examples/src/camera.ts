@@ -6,13 +6,9 @@ import {
   RenderLayerManagerKey,
 } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
+import { injectStyles, keys, getContainer } from "./shared.js";
 
-// ---------------------------------------------------------------------------
-// Input tracker
-// ---------------------------------------------------------------------------
-const keys = new Set<string>();
-window.addEventListener("keydown", (e) => keys.add(e.key.toLowerCase()));
-window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
+injectStyles();
 
 // ---------------------------------------------------------------------------
 // PlayerController — moves with WASD, triggers shake/zoom
@@ -102,8 +98,8 @@ class Bobble extends Component {
 // ---------------------------------------------------------------------------
 // Demo scene
 // ---------------------------------------------------------------------------
-class DemoScene extends Scene {
-  readonly name = "demo";
+class CameraScene extends Scene {
+  readonly name = "camera";
 
   onEnter(): void {
     const layers = this.context.resolve(RenderLayerManagerKey);
@@ -199,11 +195,6 @@ class DemoScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  const container = document.getElementById("game-container");
-  if (!container) {
-    throw new Error("game-container element not found");
-  }
-
   engine.use(
     new RendererPlugin({
       width: 800,
@@ -211,12 +202,12 @@ async function main() {
       virtualWidth: 800,
       virtualHeight: 600,
       backgroundColor: 0x0a0a0a,
-      container,
+      container: getContainer(),
     }),
   );
 
   await engine.start();
-  engine.scenes.push(new DemoScene());
+  engine.scenes.push(new CameraScene());
 }
 
 main().catch(console.error);
