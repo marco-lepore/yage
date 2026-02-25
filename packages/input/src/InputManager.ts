@@ -1,10 +1,5 @@
 import { Vec2 } from "@yage/core";
-import type { ActionMapDefinition } from "./types.js";
-
-/** Minimal Camera interface to avoid a hard dependency on @yage/renderer. */
-interface CameraLike {
-  screenToWorld(screenX: number, screenY: number): { x: number; y: number };
-}
+import type { ActionMapDefinition, CameraLike } from "./types.js";
 
 /** Central input state manager. Resolved via DI with InputManagerKey. */
 export class InputManager {
@@ -16,36 +11,31 @@ export class InputManager {
   private pointerScreenPos = Vec2.ZERO;
   private pointerDownState = false;
   private camera: CameraLike | null = null;
-  private elapsedProvider: (() => number) | null = null;
+  private elapsedMs = 0;
 
   // -- Action-based queries --
 
   /** Whether any key mapped to this action is currently held. */
   isPressed(action: string): boolean {
-    const keys = this.actionMap.get(action);
-    if (!keys) return false;
-    for (const key of keys) {
-      if (this.pressedKeys.has(key)) return true;
-    }
-    return false;
+    return this.anyKeyInSet(action, this.pressedKeys);
   }
 
   /** Whether any key mapped to this action was pressed this frame. */
   isJustPressed(action: string): boolean {
-    const keys = this.actionMap.get(action);
-    if (!keys) return false;
-    for (const key of keys) {
-      if (this.justPressedKeys.has(key)) return true;
-    }
-    return false;
+    return this.anyKeyInSet(action, this.justPressedKeys);
   }
 
   /** Whether any key mapped to this action was released this frame. */
   isJustReleased(action: string): boolean {
+    return this.anyKeyInSet(action, this.justReleasedKeys);
+  }
+
+  /** Returns true if any key bound to the action exists in the given set. */
+  private anyKeyInSet(action: string, set: Set<string>): boolean {
     const keys = this.actionMap.get(action);
     if (!keys) return false;
     for (const key of keys) {
-      if (this.justReleasedKeys.has(key)) return true;
+      if (set.has(key)) return true;
     }
     return false;
   }
@@ -54,12 +44,11 @@ export class InputManager {
   getHoldDuration(action: string): number {
     const keys = this.actionMap.get(action);
     if (!keys) return 0;
-    const now = this.elapsedProvider ? this.elapsedProvider() : 0;
     let maxDuration = 0;
     for (const key of keys) {
       const start = this.holdStart.get(key);
       if (start !== undefined) {
-        maxDuration = Math.max(maxDuration, now - start);
+        maxDuration = Math.max(maxDuration, this.elapsedMs - start);
       }
     }
     return maxDuration;
@@ -152,8 +141,7 @@ export class InputManager {
     if (!this.pressedKeys.has(code)) {
       this.pressedKeys.add(code);
       this.justPressedKeys.add(code);
-      const now = this.elapsedProvider ? this.elapsedProvider() : 0;
-      this.holdStart.set(code, now);
+      this.holdStart.set(code, this.elapsedMs);
     }
   }
 
@@ -192,8 +180,8 @@ export class InputManager {
     this.camera = camera;
   }
 
-  /** @internal Set elapsed time provider (ms since game start). */
-  _setElapsedProvider(fn: () => number): void {
-    this.elapsedProvider = fn;
+  /** @internal Advance the elapsed game-time clock. Called by InputPollSystem. */
+  _advanceTime(dtMs: number): void {
+    this.elapsedMs += dtMs;
   }
 }

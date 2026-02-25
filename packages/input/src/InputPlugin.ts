@@ -1,9 +1,6 @@
-import { GameLoopKey } from "@yage/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
-import { CameraKey, RendererKey } from "@yage/renderer";
 import { InputManager } from "./InputManager.js";
-import { InputManagerKey } from "./types.js";
-import type { InputConfig } from "./types.js";
+import { InputManagerKey, type InputConfig } from "./types.js";
 import { InputPollSystem } from "./InputPollSystem.js";
 import { InputClearSystem } from "./InputClearSystem.js";
 
@@ -33,22 +30,16 @@ export class InputPlugin implements Plugin {
       this.manager.setActionMap(this.config.actions);
     }
 
-    // Use game-time (accumulated dt) so hold durations pause when the loop pauses
-    const gameLoop = context.resolve(GameLoopKey);
-    let elapsedMs = 0;
-    const originalTick = gameLoop.tick.bind(gameLoop);
-    gameLoop.tick = (dtMs: number) => {
-      elapsedMs += dtMs;
-      originalTick(dtMs);
-    };
-    this.manager._setElapsedProvider(() => elapsedMs);
-
-    const camera = context.tryResolve(CameraKey);
-    if (camera) {
-      this.manager._setCamera(camera);
+    if (this.config.cameraKey) {
+      const camera = context.tryResolve(this.config.cameraKey);
+      if (camera) {
+        this.manager._setCamera(camera);
+      }
     }
 
-    const renderer = context.tryResolve(RendererKey);
+    const renderer = this.config.rendererKey
+      ? context.tryResolve(this.config.rendererKey)
+      : undefined;
     const pointerTarget: EventTarget =
       this.config.target ?? renderer?.canvas ?? document;
 

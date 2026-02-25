@@ -80,52 +80,38 @@ describe("InputManager", () => {
   // -- getHoldDuration / isHeldFor --
 
   it("getHoldDuration returns ms since key press", () => {
-    let elapsed = 0;
-    input._setElapsedProvider(() => elapsed);
-
-    elapsed = 100;
+    input._advanceTime(100);
     input._onKeyDown("Space");
 
-    elapsed = 350;
+    input._advanceTime(250);
     expect(input.getHoldDuration("jump")).toBe(250);
   });
 
   it("getHoldDuration returns 0 when not held", () => {
-    input._setElapsedProvider(() => 500);
+    input._advanceTime(500);
     expect(input.getHoldDuration("jump")).toBe(0);
   });
 
   it("getHoldDuration returns max duration across multiple mapped keys", () => {
-    let elapsed = 0;
-    input._setElapsedProvider(() => elapsed);
-
-    elapsed = 100;
+    input._advanceTime(100);
     input._onKeyDown("KeyA");
-    elapsed = 200;
+    input._advanceTime(100);
     input._onKeyDown("ArrowLeft");
 
-    elapsed = 400;
+    input._advanceTime(200);
     // KeyA held for 300ms, ArrowLeft held for 200ms — should return 300
     expect(input.getHoldDuration("moveLeft")).toBe(300);
   });
 
   it("isHeldFor returns true when held long enough", () => {
-    let elapsed = 0;
-    input._setElapsedProvider(() => elapsed);
-
-    elapsed = 0;
     input._onKeyDown("Space");
-    elapsed = 500;
+    input._advanceTime(500);
     expect(input.isHeldFor("jump", 500)).toBe(true);
   });
 
   it("isHeldFor returns false when not held long enough", () => {
-    let elapsed = 0;
-    input._setElapsedProvider(() => elapsed);
-
-    elapsed = 0;
     input._onKeyDown("Space");
-    elapsed = 200;
+    input._advanceTime(200);
     expect(input.isHeldFor("jump", 500)).toBe(false);
   });
 

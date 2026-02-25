@@ -1,8 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   EngineContext,
-  GameLoop,
-  GameLoopKey,
   ServiceKey,
   Vec2,
   SystemScheduler,
@@ -24,7 +22,6 @@ function createContext(options?: {
   canvas?: HTMLCanvasElement;
 }): EngineContext {
   const context = new EngineContext();
-  context.register(GameLoopKey, new GameLoop());
 
   if (options?.withRenderer) {
     const canvas = options.canvas ?? document.createElement("canvas");
@@ -93,7 +90,7 @@ describe("InputPlugin", () => {
   it("attaches pointer listeners to canvas when renderer is available", () => {
     const canvas = document.createElement("canvas");
     context = createContext({ withRenderer: true, canvas });
-    plugin = new InputPlugin();
+    plugin = new InputPlugin({ rendererKey: RendererKey });
     plugin.install(context);
 
     const manager = context.resolve(InputManagerKey);
@@ -220,7 +217,7 @@ describe("InputPlugin", () => {
 
   it("wires camera for pointer world-coordinate conversion", () => {
     context = createContext({ withCamera: true });
-    plugin = new InputPlugin();
+    plugin = new InputPlugin({ cameraKey: CameraKey });
     plugin.install(context);
 
     const manager = context.resolve(InputManagerKey);
