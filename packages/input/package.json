@@ -28,5 +28,13 @@
   },
   "dependencies": {
     "@yage/core": "*"
+  },
+  "peerDependencies": {
+    "@yage/renderer": "*"
+  },
+  "peerDependenciesMeta": {
+    "@yage/renderer": {
+      "optional": true
+    }
   }
 }

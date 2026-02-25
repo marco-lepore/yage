@@ -86,3 +86,8 @@ export const GameLoopKey = new ServiceKey<
 export const SystemSchedulerKey = new ServiceKey<
   import("./SystemScheduler.js").SystemScheduler
 >("systemScheduler");
+
+/** Key for the ProcessSystem instance. */
+export const ProcessSystemKey = new ServiceKey<
+  import("./ProcessSystem.js").ProcessSystem
+>("processSystem");

@@ -1,8 +1,8 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, Process } from "@yage/core";
 import {
   RendererPlugin,
-  CameraKey,
   GraphicsComponent,
+  CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
@@ -37,8 +37,8 @@ class PlayerController extends Component {
     if (keys.has("d") || keys.has("arrowright")) dx += 1;
 
     if (dx !== 0 || dy !== 0) {
-      const len = Math.sqrt(dx * dx + dy * dy);
-      t.translate((dx / len) * this.speed * dt, (dy / len) * this.speed * dt);
+      const move = new Vec2(dx, dy).normalize().scale(this.speed * dt);
+      t.translate(move.x, move.y);
     }
 
     // Rotate the player slowly
@@ -63,35 +63,6 @@ class PlayerController extends Component {
       this.camera.zoomTo(1, 600);
       keys.delete("r");
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Bobble — makes an entity bob up and down
-// ---------------------------------------------------------------------------
-class Bobble extends Component {
-  private origin!: Vec2;
-  private elapsed = 0;
-  private amplitude: number;
-  private freq: number;
-
-  constructor(amplitude = 8, freq = 0.003) {
-    super();
-    this.amplitude = amplitude;
-    this.freq = freq;
-  }
-
-  onAdd(): void {
-    this.origin = this.entity.get(Transform).position;
-  }
-
-  update(dt: number): void {
-    this.elapsed += dt;
-    const t = this.entity.get(Transform);
-    t.setPosition(
-      this.origin.x,
-      this.origin.y + Math.sin(this.elapsed * this.freq) * this.amplitude,
-    );
   }
 }
 
@@ -166,7 +137,19 @@ class CameraScene extends Scene {
           g.circle(0, 0, radius).stroke({ color, width: 2, alpha: 0.9 });
         }),
       );
-      e.add(new Bobble(rng(3, 12), rng(0.001, 0.004)));
+      const amplitude = rng(3, 12);
+      const freq = rng(0.001, 0.004);
+      const origin = new Vec2(x, y);
+      const transform = e.get(Transform);
+      const pc = e.add(new ProcessComponent());
+      pc.add(new Process({
+        update: (_dt, elapsed) => {
+          transform.setPosition(
+            origin.x,
+            origin.y + Math.sin(elapsed * freq) * amplitude,
+          );
+        },
+      }));
     }
 
     // A few rectangular "buildings"

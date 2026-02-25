@@ -9,6 +9,7 @@ import {
   ErrorBoundaryKey,
   GameLoopKey,
   SystemSchedulerKey,
+  ProcessSystemKey,
 } from "./EngineContext.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -24,6 +25,7 @@ import {
   ComponentUpdateSystem,
   ComponentFixedUpdateSystem,
 } from "./ComponentUpdateSystem.js";
+import { ProcessSystem } from "./ProcessSystem.js";
 import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
 
@@ -203,8 +205,11 @@ export class Engine {
   private registerBuiltInSystems(): void {
     const fixedUpdate = new ComponentFixedUpdateSystem();
     const update = new ComponentUpdateSystem();
+    const processSystem = new ProcessSystem();
     this.scheduler.add(fixedUpdate);
     this.scheduler.add(update);
+    this.scheduler.add(processSystem);
+    this.context.register(ProcessSystemKey, processSystem);
   }
 
   /**

@@ -17,6 +17,7 @@ export default defineConfig({
         "physics-basics": resolve(__dirname, "physics-basics.html"),
         "physics-collisions": resolve(__dirname, "physics-collisions.html"),
         platformer: resolve(__dirname, "platformer.html"),
+        shooter: resolve(__dirname, "shooter.html"),
       },
     },
   },

@@ -25,6 +25,7 @@ export {
   ErrorBoundaryKey,
   GameLoopKey,
   SystemSchedulerKey,
+  ProcessSystemKey,
 } from "./EngineContext.js";
 
 export { Component } from "./Component.js";
@@ -67,6 +68,10 @@ export {
 export { Tween } from "./Tween.js";
 
 export { Sequence } from "./Sequence.js";
+
+export { ProcessComponent } from "./ProcessComponent.js";
+
+export { ProcessSystem } from "./ProcessSystem.js";
 
 export { Prefab } from "./Prefab.js";
 

@@ -166,16 +166,23 @@ Phase 7: Debug Plugin                                  (all above)
     - Sequence with then/wait/call/parallel
     - Tests: duration, loop, cancel, promise resolution, easing accuracy, sequence ordering
 
-13. **Prefab**
-    - Builder pattern: `new Prefab(name).tag().with().child()`
-    - `scene.spawnPrefab()` with overrides
+13. **ProcessSystem** *(follow-up — primitives exist but lack auto-driving)*
+    - `ProcessComponent` for entity-scoped processes (auto-cancel on entity destroy)
+    - Scene-level `ProcessRegistry` for global processes (screen fades, transitions)
+    - `ProcessSystem` in `Phase.Update` at priority ~500 (before `ComponentUpdateSystem` at 1000) ticks both
+    - Tests: auto-tick, completion removal, entity destroy cancellation, scene-level lifecycle
+
+14. **Prefab** *(SPIKE — current API insufficient, needs exploration)*
+    - Current: static template with fixed constructor args and class-keyed overrides
+    - Problem: real entity creation patterns are parametric factories where shared params (e.g. width/height) feed multiple components, post-construction methods (`.draw()`, `.onCollision()`) can't be expressed as constructor args, and runtime-computed closures reference entity instances
+    - Spike needed to evaluate: (a) redesign into `Prefab<P>` with typed params + post-construction hooks, (b) remove in favor of plain factory functions, or (c) narrow scope to truly static entities only
     - Tests: build and spawn, overrides, nested children
 
-14. **Inspector**
+15. **Inspector**
     - snapshot(), getEntityByName(), getEntityPosition(), hasComponent(), getComponentData()
     - Tests: snapshot accuracy, entity queries, component inspection
 
-15. **Engine**
+16. **Engine**
     - Orchestrates all of the above: plugin registration, start/destroy
     - Tests: engine lifecycle, plugin install order, context wiring
 

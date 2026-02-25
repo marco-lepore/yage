@@ -63,10 +63,9 @@ class PlayerController extends Component {
     if (keys.has("d") || keys.has("arrowright")) dx += 1;
 
     if (dx !== 0 || dy !== 0) {
-      const len = Math.sqrt(dx * dx + dy * dy);
-      rb.setVelocity(new Vec2((dx / len) * PLAYER_SPEED, (dy / len) * PLAYER_SPEED));
+      rb.setVelocity(new Vec2(dx, dy).normalize().scale(PLAYER_SPEED));
     } else {
-      rb.setVelocity(new Vec2(0, 0));
+      rb.setVelocity(Vec2.ZERO);
     }
   }
 }
