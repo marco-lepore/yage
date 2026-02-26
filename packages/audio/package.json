@@ -29,6 +29,9 @@
   "dependencies": {
     "@yage/core": "*"
   },
+  "devDependencies": {
+    "@pixi/sound": "^6.0.0"
+  },
   "peerDependencies": {
     "@pixi/sound": "^6.0.0"
   }

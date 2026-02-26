@@ -19,6 +19,7 @@ export default defineConfig({
         platformer: resolve(__dirname, "platformer.html"),
         shooter: resolve(__dirname, "shooter.html"),
         particles: resolve(__dirname, "particles.html"),
+        audio: resolve(__dirname, "audio.html"),
       },
     },
   },
