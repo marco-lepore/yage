@@ -43,6 +43,13 @@ export class InputPlugin implements Plugin {
     const pointerTarget: EventTarget =
       this.config.target ?? renderer?.canvas ?? document;
 
+    // Element used to convert clientX/clientY to element-relative coordinates.
+    // Falls back to null if the target is `document` or another non-element.
+    const pointerElement: Element | null =
+      this.config.target ??
+      renderer?.canvas ??
+      null;
+
     const preventSet = new Set(this.config.preventDefaultKeys ?? []);
 
     // Keyboard listeners
@@ -68,7 +75,12 @@ export class InputPlugin implements Plugin {
     // so releases outside the target element are still captured
     const onPointerMove = (e: Event): void => {
       const pe = e as PointerEvent;
-      this.manager._onPointerMove(pe.clientX, pe.clientY);
+      if (pointerElement) {
+        const rect = pointerElement.getBoundingClientRect();
+        this.manager._onPointerMove(pe.clientX - rect.left, pe.clientY - rect.top);
+      } else {
+        this.manager._onPointerMove(pe.clientX, pe.clientY);
+      }
     };
     const onPointerDown = (e: Event): void => {
       const pe = e as PointerEvent;

@@ -18,6 +18,7 @@ export default defineConfig({
         "physics-collisions": resolve(__dirname, "physics-collisions.html"),
         platformer: resolve(__dirname, "platformer.html"),
         shooter: resolve(__dirname, "shooter.html"),
+        particles: resolve(__dirname, "particles.html"),
       },
     },
   },
