@@ -1,5 +1,6 @@
 import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
+import type { EventToken } from "./EventToken.js";
 
 /** Auto-incrementing entity ID counter. */
 let nextEntityId = 1;
@@ -33,6 +34,7 @@ export class Entity {
   private _destroyed = false;
   private _scene: import("./Scene.js").Scene | null = null;
   private callbacks: EntityCallbacks | null = null;
+  private _eventHandlers?: Map<string, Set<(data: never) => void>>;
 
   constructor(name: string = "Entity", tags?: Iterable<string>) {
     this.id = nextEntityId++;
@@ -90,10 +92,43 @@ export class Entity {
   remove(cls: ComponentClass): void {
     const comp = this.components.get(cls);
     if (!comp) return;
+    comp._runCleanups();
     comp.onRemove?.();
     comp.onDestroy?.();
     this.components.delete(cls);
     this.callbacks?.onComponentRemoved(this, cls);
+  }
+
+  /** Subscribe to a typed event on this entity. Returns an unsubscribe function. */
+  on<T>(token: EventToken<T>, handler: (data: T) => void): () => void {
+    this._eventHandlers ??= new Map();
+    let handlers = this._eventHandlers.get(token.name);
+    if (!handlers) {
+      handlers = new Set();
+      this._eventHandlers.set(token.name, handlers);
+    }
+    handlers.add(handler as (data: never) => void);
+
+    return () => {
+      handlers.delete(handler as (data: never) => void);
+    };
+  }
+
+  /** Emit a typed event on this entity. Bubbles to the scene. */
+  emit(token: EventToken<void>): void;
+  emit<T>(token: EventToken<T>, data: T): void;
+  emit<T>(token: EventToken<T>, data?: T): void {
+    if (this._destroyed) return;
+
+    const handlers = this._eventHandlers?.get(token.name);
+    if (handlers) {
+      // Snapshot for safe unsubscribe during iteration
+      for (const handler of [...handlers]) {
+        handler(data as never);
+      }
+    }
+
+    this._scene?._onEntityEvent(token.name, data, this);
   }
 
   /** Get all components as an iterable. */
@@ -113,11 +148,13 @@ export class Entity {
    */
   _performDestroy(): void {
     for (const [cls, comp] of this.components) {
+      comp._runCleanups();
       comp.onRemove?.();
       comp.onDestroy?.();
       this.callbacks?.onComponentRemoved(this, cls);
     }
     this.components.clear();
+    this._eventHandlers?.clear();
   }
 
   /**

@@ -4,7 +4,9 @@ import type { EngineContext } from "./EngineContext.js";
 import type { QueryCache } from "./QueryCache.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
 import type { Prefab } from "./Prefab.js";
+import type { Blueprint } from "./Blueprint.js";
 import type { PrefabOverrides } from "./types.js";
+import type { EventToken } from "./EventToken.js";
 import { QueryCacheKey, EventBusKey } from "./EngineContext.js";
 
 /**
@@ -28,6 +30,10 @@ export abstract class Scene {
   private entityCallbacks!: EntityCallbacks;
   private queryCache: QueryCache | undefined;
   private bus: EventBus<EngineEvents> | undefined;
+  private _entityEventHandlers?: Map<
+    string,
+    Set<(data: never, entity: Entity) => void>
+  >;
 
   /** Access the EngineContext. */
   get context(): EngineContext {
@@ -40,11 +46,31 @@ export abstract class Scene {
   }
 
   /** Spawn a new entity in this scene. */
-  spawn(name?: string): Entity {
+  spawn(name?: string): Entity;
+  spawn<P>(blueprint: Blueprint<P>, params: P): Entity;
+  spawn(blueprint: Blueprint<void>): Entity;
+  spawn(
+    nameOrBlueprint?: string | Blueprint<unknown>,
+    params?: unknown,
+  ): Entity {
+    const isBlueprint =
+      typeof nameOrBlueprint === "object" &&
+      nameOrBlueprint !== null &&
+      "build" in nameOrBlueprint;
+
+    const name = isBlueprint
+      ? (nameOrBlueprint as Blueprint<unknown>).name
+      : (nameOrBlueprint as string | undefined);
+
     const entity = new Entity(name);
     entity._setScene(this, this.entityCallbacks);
     this.entities.add(entity);
     this.bus?.emit("entity:created", { entity });
+
+    if (isBlueprint) {
+      (nameOrBlueprint as Blueprint<unknown>).build(entity, params);
+    }
+
     return entity;
   }
 
@@ -80,6 +106,37 @@ export abstract class Scene {
       if (e.tags.has(tag) && !e.isDestroyed) result.push(e);
     }
     return result;
+  }
+
+  /** Subscribe to bubbled entity events at the scene level. Handler receives (data, emittingEntity). */
+  on<T>(
+    token: EventToken<T>,
+    handler: (data: T, entity: Entity) => void,
+  ): () => void {
+    this._entityEventHandlers ??= new Map();
+    let handlers = this._entityEventHandlers.get(token.name);
+    if (!handlers) {
+      handlers = new Set();
+      this._entityEventHandlers.set(token.name, handlers);
+    }
+    handlers.add(handler as (data: never, entity: Entity) => void);
+
+    return () => {
+      handlers.delete(handler as (data: never, entity: Entity) => void);
+    };
+  }
+
+  /**
+   * Called by Entity.emit() for bubbling entity events to the scene.
+   * @internal
+   */
+  _onEntityEvent(eventName: string, data: unknown, entity: Entity): void {
+    const handlers = this._entityEventHandlers?.get(eventName);
+    if (handlers) {
+      for (const handler of [...handlers]) {
+        (handler as (data: unknown, entity: Entity) => void)(data, entity);
+      }
+    }
   }
 
   // ---- Lifecycle hooks (override in subclasses) ----
@@ -160,5 +217,6 @@ export abstract class Scene {
     }
     this.entities.clear();
     this.destroyQueue.length = 0;
+    this._entityEventHandlers?.clear();
   }
 }

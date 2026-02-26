@@ -1,4 +1,6 @@
 import type { EngineContext, ServiceKey } from "./EngineContext.js";
+import type { Entity } from "./Entity.js";
+import type { EventToken } from "./EventToken.js";
 
 /**
  * Base class for all components.
@@ -18,6 +20,7 @@ export abstract class Component {
   enabled = true;
 
   private _serviceCache: Map<string, unknown> | undefined;
+  private _cleanups?: Array<() => void>;
 
   /**
    * Access the EngineContext from the entity's scene.
@@ -42,6 +45,51 @@ export abstract class Component {
       this._serviceCache.set(key.id, value);
     }
     return value as T;
+  }
+
+  /** Subscribe to events on any entity, auto-unsubscribe on removal. */
+  protected listen<T>(
+    entity: Entity,
+    token: EventToken<T>,
+    handler: (data: T) => void,
+  ): void {
+    const unsub = entity.on(token, handler);
+    this.addCleanup(unsub);
+  }
+
+  /** Subscribe to scene-level bubbled events, auto-unsubscribe on removal. */
+  protected listenScene<T>(
+    token: EventToken<T>,
+    handler: (data: T, entity: Entity) => void,
+  ): void {
+    const scene = this.entity.scene;
+    if (!scene) {
+      throw new Error(
+        "Cannot listenScene: entity is not attached to a scene.",
+      );
+    }
+    const unsub = scene.on(token, handler);
+    this.addCleanup(unsub);
+  }
+
+  /** Register a cleanup function to run when this component is removed or destroyed. */
+  protected addCleanup(fn: () => void): void {
+    this._cleanups ??= [];
+    this._cleanups.push(fn);
+  }
+
+  /**
+   * Run and clear all registered cleanups.
+   * Called by Entity.remove() and Entity._performDestroy() before onRemove/onDestroy.
+   * @internal
+   */
+  _runCleanups(): void {
+    if (this._cleanups) {
+      for (const fn of this._cleanups) {
+        fn();
+      }
+      this._cleanups.length = 0;
+    }
   }
 
   /** Called when the component is added to an entity. */

@@ -1,7 +1,12 @@
 export const VERSION = "0.0.0";
 
 export { Phase } from "./types.js";
-export type { ComponentClass, Plugin, PrefabOverrides, EasingFunction } from "./types.js";
+export type {
+  ComponentClass,
+  Plugin,
+  PrefabOverrides,
+  EasingFunction,
+} from "./types.js";
 
 export { Vec2 } from "./Vec2.js";
 
@@ -27,6 +32,11 @@ export {
   SystemSchedulerKey,
   ProcessSystemKey,
 } from "./EngineContext.js";
+
+export { EventToken, defineEvent } from "./EventToken.js";
+
+export { defineBlueprint } from "./Blueprint.js";
+export type { Blueprint } from "./Blueprint.js";
 
 export { Component } from "./Component.js";
 
