@@ -1,4 +1,4 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, Process } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, Process, defineEvent, defineBlueprint } from "@yage/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -97,6 +97,12 @@ function showWin(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+const Hurt = defineEvent<{ dir: number }>("hurt");
+const EnemyKilled = defineEvent("enemy:killed");
+
+// ---------------------------------------------------------------------------
 // Particle spawning helpers
 // ---------------------------------------------------------------------------
 function spawnParticles(
@@ -137,7 +143,7 @@ function spawnParticles(
         transform.translate(vel.x * dtSec, vel.y * dtSec);
         gfx.graphics.alpha = 1 - elapsed / lt;
       },
-      onComplete: () => { scene.destroyEntity(p); },
+      onComplete: () => { p.destroy(); },
     }));
   }
 }
@@ -231,6 +237,14 @@ class PlayerController extends Component {
       maxX: WORLD_W,
       maxY: WORLD_H,
     };
+
+    // Handle contact damage from enemies
+    const collider = this.entity.get(ColliderComponent);
+    collider.onCollision((ev) => {
+      if (ev.started && ev.other.tags.has("enemy")) {
+        this.takeDamage();
+      }
+    });
   }
 
   update(dt: number): void {
@@ -342,7 +356,7 @@ class PlayerController extends Component {
     }));
   }
 
-  takeDamage(): void {
+  private takeDamage(): void {
     if (this.invincible) return;
     this.invincible = true;
 
@@ -367,65 +381,11 @@ class PlayerController extends Component {
   }
 
   private spawnBullet(): void {
-    const scene = this.entity.scene!;
+    const scene = this.entity.scene;
+    if (!scene) return;
     const pos = this.entity.get(Transform).position;
     const dir = this.facingRight ? 1 : -1;
-    const spawnX = pos.x + dir * 16;
-
-    const bullet = scene.spawn("bullet");
-    bullet.tags.add("bullet");
-    bullet.add(new Transform({ position: new Vec2(spawnX, pos.y) }));
-    bullet.add(
-      new GraphicsComponent({ layer: "bullets" }).draw((g) => {
-        g.rect(-4, -2, 8, 4).fill({ color: 0x38bdf8 });
-      }),
-    );
-    bullet.add(
-      new RigidBodyComponent({
-        type: "dynamic",
-        fixedRotation: true,
-        gravityScale: 0,
-        ccd: true,
-      }),
-    );
-
-    const collider = new ColliderComponent({
-      shape: { type: "box", width: 8, height: 4 },
-      friction: 0,
-      layers: LAYER_BULLET,
-      mask: LAYER_PLATFORM | LAYER_ENEMY,
-    });
-    bullet.add(collider);
-
-    // Self-destruct after 1200ms
-    const bpc = bullet.add(new ProcessComponent());
-    bpc.add(new Process({
-      duration: 1200,
-      update: () => {},
-      onComplete: () => { scene.destroyEntity(bullet); },
-    }));
-
-    // Set bullet velocity after body is created
-    bullet.get(RigidBodyComponent).setVelocity(new Vec2(dir * 600, 0));
-
-    // Collision handler
-    collider.onCollision((ev) => {
-      if (!ev.started) return;
-      const bPos = bullet.get(Transform).position;
-
-      if (ev.other.tags.has("enemy")) {
-        // Hit enemy
-        const enemy = ev.other.tryGet(EnemyController);
-        if (enemy) enemy.takeDamage(dir);
-        spawnEnemyHitParticles(scene, bPos.x, bPos.y);
-        this.camera.shake(3, 120);
-      } else {
-        // Hit platform
-        const normalAngle = dir > 0 ? Math.PI : 0;
-        spawnBulletImpactParticles(scene, bPos.x, bPos.y, normalAngle);
-      }
-      scene.destroyEntity(bullet);
-    });
+    scene.spawn(BulletBP, { x: pos.x + dir * 16, y: pos.y, dir });
   }
 }
 
@@ -463,9 +423,12 @@ class EnemyController extends Component {
     this.physicsWorld = this.use(PhysicsWorldKey);
     this.camera = this.use(CameraKey);
     this.graphics = this.entity.get(GraphicsComponent);
+
+    // React to damage events on this entity
+    this.listen(this.entity, Hurt, ({ dir }) => this.takeDamage(dir));
   }
 
-  update(dt: number): void {
+  update(): void {
     if (this.dying) return;
 
     const rb = this.entity.get(RigidBodyComponent);
@@ -491,7 +454,7 @@ class EnemyController extends Component {
     rb.setVelocity(new Vec2(this.patrolDir * EnemyController.SPEED, vel.y));
   }
 
-  takeDamage(bulletDir: number): void {
+  private takeDamage(bulletDir: number): void {
     if (this.dying) return;
 
     this.hp--;
@@ -542,7 +505,7 @@ class EnemyController extends Component {
     }));
 
     // Camera shake
-    this.camera.shake(3, 120, { decay: 0.8 });
+    this.camera.shake(4, 150, { decay: 0.8 });
 
     if (this.hp <= 0) {
       this.die();
@@ -558,7 +521,9 @@ class EnemyController extends Component {
     this.graphics.graphics.position.set(0, 0);
 
     const pos = this.entity.get(Transform).position;
-    spawnEnemyDeathParticles(this.entity.scene!, pos.x, pos.y, ENEMY_COLOR);
+    if (this.entity.scene) {
+      spawnEnemyDeathParticles(this.entity.scene, pos.x, pos.y, ENEMY_COLOR);
+    }
     this.camera.shake(6, 250, { decay: 0.7 });
 
     const transform = this.entity.get(Transform);
@@ -569,14 +534,11 @@ class EnemyController extends Component {
         transform.setScale(s, s);
       },
       onComplete: () => {
-        this.entity.scene?.destroyEntity(this.entity);
+        this.entity.destroy();
       },
     }));
 
-    setKills(killCount + 1);
-    if (killCount >= TOTAL_ENEMIES) {
-      showWin();
-    }
+    this.entity.emit(EnemyKilled);
   }
 }
 
@@ -609,6 +571,143 @@ function drawEnemyGraphics(g: import("pixi.js").Graphics): void {
 }
 
 // ---------------------------------------------------------------------------
+// Blueprints
+// ---------------------------------------------------------------------------
+const PlayerBP = defineBlueprint("player", (entity) => {
+  entity.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
+  entity.add(
+    new GraphicsComponent({ layer: "player" }).draw(drawPlayerGraphics),
+  );
+  entity.add(
+    new RigidBodyComponent({
+      type: "dynamic",
+      fixedRotation: true,
+      ccd: true,
+    }),
+  );
+  entity.add(
+    new ColliderComponent({
+      shape: { type: "box", width: 24, height: 36 },
+      friction: 0,
+      layers: LAYER_PLAYER,
+      mask: LAYER_PLATFORM | LAYER_ENEMY,
+    }),
+  );
+  entity.add(new ProcessComponent());
+  entity.add(new PlayerController());
+});
+
+const PlatformBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>(
+  "platform",
+  (entity, { x, y, w, h }) => {
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x475569 });
+        g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0x64748b });
+      }),
+    );
+    entity.add(new RigidBodyComponent({ type: "static" }));
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        friction: 0,
+        layers: LAYER_PLATFORM,
+        mask: LAYER_PLAYER | LAYER_BULLET | LAYER_ENEMY,
+      }),
+    );
+  },
+);
+
+const EnemyBP = defineBlueprint<{
+  x: number;
+  y: number;
+  patrolLeft: number;
+  patrolRight: number;
+}>(
+  "enemy",
+  (entity, { x, y, patrolLeft, patrolRight }) => {
+    entity.tags.add("enemy");
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(
+      new GraphicsComponent({ layer: "world" }).draw(drawEnemyGraphics),
+    );
+    entity.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+      }),
+    );
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 28, height: 28 },
+        friction: 0,
+        layers: LAYER_ENEMY,
+        mask: LAYER_PLATFORM | LAYER_PLAYER | LAYER_BULLET,
+      }),
+    );
+    entity.add(new ProcessComponent());
+    entity.add(new EnemyController(patrolLeft, patrolRight));
+  },
+);
+
+const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
+  "bullet",
+  (entity, { x, y, dir }) => {
+    entity.tags.add("bullet");
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(
+      new GraphicsComponent({ layer: "bullets" }).draw((g) => {
+        g.rect(-4, -2, 8, 4).fill({ color: 0x38bdf8 });
+      }),
+    );
+    entity.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+        gravityScale: 0,
+        ccd: true,
+      }),
+    );
+
+    const collider = new ColliderComponent({
+      shape: { type: "box", width: 8, height: 4 },
+      friction: 0,
+      layers: LAYER_BULLET,
+      mask: LAYER_PLATFORM | LAYER_ENEMY,
+    });
+    entity.add(collider);
+
+    // Self-destruct after 1200ms
+    const pc = entity.add(new ProcessComponent());
+    pc.add(new Process({
+      duration: 1200,
+      update: () => {},
+      onComplete: () => { entity.destroy(); },
+    }));
+
+    // Set bullet velocity after body is created
+    entity.get(RigidBodyComponent).setVelocity(new Vec2(dir * 600, 0));
+
+    // Collision handler
+    collider.onCollision((ev) => {
+      if (!ev.started || !entity.scene) return;
+      const scene = entity.scene;
+      const bPos = entity.get(Transform).position;
+
+      if (ev.other.tags.has("enemy")) {
+        ev.other.emit(Hurt, { dir });
+        spawnEnemyHitParticles(scene, bPos.x, bPos.y);
+      } else {
+        const normalAngle = dir > 0 ? Math.PI : 0;
+        spawnBulletImpactParticles(scene, bPos.x, bPos.y, normalAngle);
+      }
+      entity.destroy();
+    });
+  },
+);
+
+// ---------------------------------------------------------------------------
 // ShooterScene
 // ---------------------------------------------------------------------------
 class ShooterScene extends Scene {
@@ -625,10 +724,16 @@ class ShooterScene extends Scene {
     won = false;
     winMsg.style.display = "none";
 
+    // Scene-level event listener: track enemy kills
+    this.on(EnemyKilled, () => {
+      setKills(killCount + 1);
+      if (killCount >= TOTAL_ENEMIES) showWin();
+    });
+
     this.drawBackground();
     this.buildLevel();
     this.spawnEnemies();
-    this.spawnPlayer();
+    this.spawn(PlayerBP);
   }
 
   // -- Background --
@@ -652,120 +757,30 @@ class ShooterScene extends Scene {
     );
   }
 
-  // -- Player --
-  private spawnPlayer(): void {
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
-    player.add(
-      new GraphicsComponent({ layer: "player" }).draw((g) => {
-        drawPlayerGraphics(g);
-      }),
-    );
-    player.add(
-      new RigidBodyComponent({
-        type: "dynamic",
-        fixedRotation: true,
-        ccd: true,
-      }),
-    );
-    const collider = new ColliderComponent({
-      shape: { type: "box", width: 24, height: 36 },
-      friction: 0,
-      layers: LAYER_PLAYER,
-      mask: LAYER_PLATFORM | LAYER_ENEMY,
-    });
-    player.add(collider);
-    player.add(new ProcessComponent());
-
-    const controller = new PlayerController();
-    player.add(controller);
-
-    // Player-enemy contact damage
-    collider.onCollision((ev) => {
-      if (ev.started && ev.other.tags.has("enemy")) {
-        controller.takeDamage();
-      }
-    });
-  }
-
   // -- Level geometry --
   private buildLevel(): void {
     // Full-width ground floor
-    this.createPlatform(WORLD_W / 2, 750, WORLD_W, 100);
+    this.spawn(PlatformBP, { x: WORLD_W / 2, y: 750, w: WORLD_W, h: 100 });
 
     // Left wall
-    this.createPlatform(-5, WORLD_H / 2, 10, WORLD_H);
+    this.spawn(PlatformBP, { x: -5, y: WORLD_H / 2, w: 10, h: WORLD_H });
     // Right wall
-    this.createPlatform(WORLD_W + 5, WORLD_H / 2, 10, WORLD_H);
+    this.spawn(PlatformBP, { x: WORLD_W + 5, y: WORLD_H / 2, w: 10, h: WORLD_H });
 
     // Elevated platforms for verticality
-    this.createPlatform(300, 620, 120, 20);   // lower-left platform
-    this.createPlatform(550, 540, 100, 20);   // mid-left platform
-    this.createPlatform(800, 600, 140, 20);   // mid-right platform
-    this.createPlatform(1000, 520, 120, 20);  // upper-right platform
-    this.createPlatform(700, 440, 100, 20);   // high central platform
+    this.spawn(PlatformBP, { x: 300, y: 620, w: 120, h: 20 });   // lower-left platform
+    this.spawn(PlatformBP, { x: 550, y: 540, w: 100, h: 20 });   // mid-left platform
+    this.spawn(PlatformBP, { x: 800, y: 600, w: 140, h: 20 });   // mid-right platform
+    this.spawn(PlatformBP, { x: 1000, y: 520, w: 120, h: 20 });  // upper-right platform
+    this.spawn(PlatformBP, { x: 700, y: 440, w: 100, h: 20 });   // high central platform
   }
 
   // -- Enemies --
   private spawnEnemies(): void {
-    this.createEnemy(200, 680, 100, 350);     // ground left
-    this.createEnemy(500, 680, 400, 650);     // ground mid
-    this.createEnemy(850, 530, 770, 940);     // on mid-right platform
-    this.createEnemy(1050, 450, 940, 1150);   // on upper-right platform
-  }
-
-  // -- Helpers --
-
-  private createPlatform(x: number, y: number, w: number, h: number): void {
-    const e = this.spawn("platform");
-    e.add(new Transform({ position: new Vec2(x, y) }));
-    e.add(
-      new GraphicsComponent({ layer: "world" }).draw((g) => {
-        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x475569 });
-        g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0x64748b });
-      }),
-    );
-    e.add(new RigidBodyComponent({ type: "static" }));
-    e.add(
-      new ColliderComponent({
-        shape: { type: "box", width: w, height: h },
-        friction: 0,
-        layers: LAYER_PLATFORM,
-        mask: LAYER_PLAYER | LAYER_BULLET | LAYER_ENEMY,
-      }),
-    );
-  }
-
-  private createEnemy(
-    x: number,
-    y: number,
-    patrolLeft: number,
-    patrolRight: number,
-  ): void {
-    const enemy = this.spawn("enemy");
-    enemy.tags.add("enemy");
-    enemy.add(new Transform({ position: new Vec2(x, y) }));
-    enemy.add(
-      new GraphicsComponent({ layer: "world" }).draw((g) => {
-        drawEnemyGraphics(g);
-      }),
-    );
-    enemy.add(
-      new RigidBodyComponent({
-        type: "dynamic",
-        fixedRotation: true,
-      }),
-    );
-    enemy.add(
-      new ColliderComponent({
-        shape: { type: "box", width: 28, height: 28 },
-        friction: 0,
-        layers: LAYER_ENEMY,
-        mask: LAYER_PLATFORM | LAYER_PLAYER | LAYER_BULLET,
-      }),
-    );
-    enemy.add(new ProcessComponent());
-    enemy.add(new EnemyController(patrolLeft, patrolRight));
+    this.spawn(EnemyBP, { x: 200, y: 680, patrolLeft: 100, patrolRight: 350 });     // ground left
+    this.spawn(EnemyBP, { x: 500, y: 680, patrolLeft: 400, patrolRight: 650 });     // ground mid
+    this.spawn(EnemyBP, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940 });     // on mid-right platform
+    this.spawn(EnemyBP, { x: 1050, y: 450, patrolLeft: 940, patrolRight: 1150 });   // on upper-right platform
   }
 }
 

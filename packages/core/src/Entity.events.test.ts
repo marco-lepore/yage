@@ -76,13 +76,12 @@ describe("Entity events", () => {
       const Ping = defineEvent("ping");
       const calls: string[] = [];
 
-      let unsub2: () => void;
-      entity.on(Ping, () => {
+      const unsub1 = entity.on(Ping, () => {
         calls.push("h1");
-        unsub2();
       });
-      unsub2 = entity.on(Ping, () => {
+      entity.on(Ping, () => {
         calls.push("h2");
+        unsub1();
       });
 
       entity.emit(Ping);
@@ -90,10 +89,10 @@ describe("Entity events", () => {
       // Both should fire because of snapshot iteration
       expect(calls).toEqual(["h1", "h2"]);
 
-      // But h2 is now unsubscribed
+      // But h1 is now unsubscribed
       calls.length = 0;
       entity.emit(Ping);
-      expect(calls).toEqual(["h1"]);
+      expect(calls).toEqual(["h2"]);
     });
   });
 

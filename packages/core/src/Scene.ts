@@ -81,8 +81,14 @@ export abstract class Scene {
 
   /** Mark an entity for destruction. Deferred to endOfFrame flush. */
   destroyEntity(entity: Entity): void {
-    if (entity.isDestroyed) return;
     entity.destroy();
+  }
+
+  /**
+   * Add an entity to the destroy queue. Called by Entity.destroy().
+   * @internal
+   */
+  _queueDestroy(entity: Entity): void {
     this.destroyQueue.push(entity);
   }
 

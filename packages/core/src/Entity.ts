@@ -138,7 +138,9 @@ export class Entity {
 
   /** Mark for deferred destruction. Actual cleanup happens at end of frame. */
   destroy(): void {
+    if (this._destroyed) return;
     this._destroyed = true;
+    this._scene?._queueDestroy(this);
   }
 
   /**
