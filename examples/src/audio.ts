@@ -2,11 +2,11 @@ import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
 import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
 import { InputPlugin, InputManagerKey } from "@yage/input";
 import type { InputManager } from "@yage/input";
-import { sound } from "@pixi/sound";
 import {
   AudioPlugin,
   AudioManagerKey,
   SoundComponent,
+  sound,
 } from "@yage/audio";
 import type { AudioManager, SoundHandle } from "@yage/audio";
 import { injectStyles, getContainer } from "./shared.js";
@@ -19,20 +19,17 @@ const WIDTH = 800;
 const HEIGHT = 600;
 
 // ---------------------------------------------------------------------------
-// Preload sounds into @pixi/sound's global library
+// Sound asset handles (loaded via scene preload)
 // ---------------------------------------------------------------------------
-sound.add("laser_shot", { url: "/assets/laser_gun_shot.wav", preload: true });
-sound.add("laser_burst", {
-  url: "/assets/laser_gun_burst.wav",
-  preload: true,
-});
-sound.add("explosion", { url: "/assets/explosion.wav", preload: true });
-sound.add("music", {
-  url: "/assets/Walen - Gameboy.mp3",
-  preload: true,
-});
+const SFX_HANDLES = {
+  laser_shot: sound("assets/laser_gun_shot.wav"),
+  laser_burst: sound("assets/laser_gun_burst.wav"),
+  explosion: sound("assets/explosion.wav"),
+} as const;
 
-const SFX_ALIASES = ["laser_shot", "laser_burst", "explosion"] as const;
+const BgMusic = sound("assets/bgm.mp3");
+
+const SFX_ALIASES = Object.keys(SFX_HANDLES) as (keyof typeof SFX_HANDLES)[];
 
 // Colors for each SFX
 const SFX_COLORS = {
@@ -179,8 +176,8 @@ class AudioController extends Component {
     }
   }
 
-  private _playSfx(alias: string): void {
-    this._audio.play(alias, { channel: "sfx" });
+  private _playSfx(alias: keyof typeof SFX_HANDLES): void {
+    this._audio.play(SFX_HANDLES[alias].path, { channel: "sfx" });
     this._flashers.get(alias)?.flash();
   }
 
@@ -190,7 +187,7 @@ class AudioController extends Component {
       this._musicHandle = null;
       this._musicIndicator.setPlaying(false);
     } else {
-      this._musicHandle = this._audio.play("music", {
+      this._musicHandle = this._audio.play(BgMusic.path, {
         channel: "music",
         loop: true,
       });
@@ -210,6 +207,7 @@ class AudioController extends Component {
 // ---------------------------------------------------------------------------
 class AudioScene extends Scene {
   readonly name = "audio-demo";
+  readonly preload = [...Object.values(SFX_HANDLES), BgMusic];
 
   onEnter(): void {
     const camera = this.context.resolve(CameraKey);
@@ -322,7 +320,7 @@ class AudioScene extends Scene {
     ambientEntity.add(new Transform({ position: new Vec2(0, 0) }));
     ambientEntity.add(
       new SoundComponent({
-        alias: "music",
+        alias: BgMusic.path,
         channel: "music",
         loop: true,
         playOnAdd: false,
@@ -376,7 +374,7 @@ async function main() {
   engine.use(new AudioPlugin());
 
   await engine.start();
-  engine.scenes.push(new AudioScene());
+  await engine.scenes.push(new AudioScene());
 }
 
 main().catch(console.error);

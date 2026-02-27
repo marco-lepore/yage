@@ -91,3 +91,8 @@ export const SystemSchedulerKey = new ServiceKey<
 export const ProcessSystemKey = new ServiceKey<
   import("./ProcessSystem.js").ProcessSystem
 >("processSystem");
+
+/** Key for the AssetManager instance. */
+export const AssetManagerKey = new ServiceKey<
+  import("./AssetManager.js").AssetManager
+>("assetManager");

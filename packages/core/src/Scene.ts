@@ -7,7 +7,9 @@ import type { Prefab } from "./Prefab.js";
 import type { Blueprint } from "./Blueprint.js";
 import type { PrefabOverrides } from "./types.js";
 import type { EventToken } from "./EventToken.js";
-import { QueryCacheKey, EventBusKey } from "./EngineContext.js";
+import type { AssetHandle } from "./AssetHandle.js";
+import type { AssetManager } from "./AssetManager.js";
+import { QueryCacheKey, EventBusKey, AssetManagerKey } from "./EngineContext.js";
 
 /**
  * Scenes own entities and define lifecycle hooks.
@@ -22,6 +24,9 @@ export abstract class Scene {
 
   /** Whether scenes below this one should still render. Default: false. */
   readonly transparentBelow: boolean = false;
+
+  /** Asset handles to load before onEnter(). Override in subclasses. */
+  readonly preload?: readonly AssetHandle<unknown>[];
 
   private entities = new Set<Entity>();
   private destroyQueue: Entity[] = [];
@@ -43,6 +48,11 @@ export abstract class Scene {
   /** Whether this scene is currently paused. */
   get paused(): boolean {
     return this._paused;
+  }
+
+  /** Convenience accessor for the AssetManager. */
+  get assets(): AssetManager {
+    return this._context.resolve(AssetManagerKey);
   }
 
   /** Spawn a new entity in this scene. */
@@ -147,7 +157,10 @@ export abstract class Scene {
 
   // ---- Lifecycle hooks (override in subclasses) ----
 
-  /** Called when the scene is entered. */
+  /** Called during asset preloading with progress ratio (0→1). */
+  onProgress?(ratio: number): void;
+
+  /** Called when the scene is entered (after preload completes). */
   onEnter?(): void;
 
   /** Called when the scene is exited (popped or replaced). */

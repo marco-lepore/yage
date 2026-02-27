@@ -10,7 +10,9 @@ import {
   GameLoopKey,
   SystemSchedulerKey,
   ProcessSystemKey,
+  AssetManagerKey,
 } from "./EngineContext.js";
+import { AssetManager } from "./AssetManager.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { Logger } from "./Logger.js";
@@ -62,6 +64,9 @@ export class Engine {
   private readonly scheduler: SystemScheduler;
   private readonly errorBoundary: ErrorBoundary;
   private readonly queryCache: QueryCache;
+  /** The asset manager. */
+  readonly assets: AssetManager;
+
   private readonly plugins: Map<string, Plugin> = new Map();
   private sortedPlugins: Plugin[] = [];
   private started = false;
@@ -80,6 +85,7 @@ export class Engine {
     this.scenes = new SceneManager();
     this.scheduler = new SystemScheduler();
     this.inspector = new Inspector(this);
+    this.assets = new AssetManager();
 
     // Wire up the scheduler with error boundary
     this.scheduler.setErrorBoundary(this.errorBoundary);
@@ -94,6 +100,7 @@ export class Engine {
     this.context.register(GameLoopKey, this.loop);
     this.context.register(InspectorKey, this.inspector);
     this.context.register(SystemSchedulerKey, this.scheduler);
+    this.context.register(AssetManagerKey, this.assets);
 
     // Wire scene manager with context
     this.scenes._setContext(this.context);

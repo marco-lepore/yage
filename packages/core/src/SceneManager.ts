@@ -1,13 +1,15 @@
 import type { Scene } from "./Scene.js";
 import type { EngineContext } from "./EngineContext.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
-import { EventBusKey } from "./EngineContext.js";
+import type { AssetManager } from "./AssetManager.js";
+import { EventBusKey, AssetManagerKey } from "./EngineContext.js";
 
 /** Stack-based scene manager with push/pop/replace semantics. */
 export class SceneManager {
   private stack: Scene[] = [];
   private _context!: EngineContext;
   private bus: EventBus<EngineEvents> | undefined;
+  private assetManager: AssetManager | undefined;
 
   /**
    * Set the engine context.
@@ -18,6 +20,7 @@ export class SceneManager {
     this.bus = context.tryResolve(EventBusKey) as
       | EventBus<EngineEvents>
       | undefined;
+    this.assetManager = context.tryResolve(AssetManagerKey);
   }
 
   /** The topmost (active) scene. */
@@ -30,8 +33,12 @@ export class SceneManager {
     return this.stack;
   }
 
-  /** Push a scene onto the stack. Previous scene receives onPause(). */
-  push(scene: Scene): void {
+  /**
+   * Push a scene onto the stack. Previous scene receives onPause().
+   * If the scene declares a `preload` array, assets are loaded before onEnter().
+   * Await the returned promise when using preloaded scenes.
+   */
+  push(scene: Scene): Promise<void> {
     const previous = this.active;
     if (previous && scene.pauseBelow) {
       previous._setPaused(true);
@@ -40,9 +47,19 @@ export class SceneManager {
 
     scene._setContext(this._context);
     this.stack.push(scene);
-    scene.onEnter?.();
 
+    if (scene.preload?.length && this.assetManager) {
+      return this.assetManager
+        .loadAll(scene.preload, scene.onProgress?.bind(scene))
+        .then(() => {
+          scene.onEnter?.();
+          this.bus?.emit("scene:pushed", { scene });
+        });
+    }
+
+    scene.onEnter?.();
     this.bus?.emit("scene:pushed", { scene });
+    return Promise.resolve();
   }
 
   /** Pop the top scene. Next scene receives onResume(). */
@@ -66,9 +83,9 @@ export class SceneManager {
 
   /**
    * Replace the top scene. Old scene receives onExit().
-   * New scene receives onEnter().
+   * New scene receives onEnter() (after preload, if declared).
    */
-  replace(scene: Scene): void {
+  replace(scene: Scene): Promise<void> {
     const old = this.stack.pop();
     if (old) {
       old.onExit?.();
@@ -77,13 +94,27 @@ export class SceneManager {
 
     scene._setContext(this._context);
     this.stack.push(scene);
-    scene.onEnter?.();
 
+    if (scene.preload?.length && this.assetManager) {
+      return this.assetManager
+        .loadAll(scene.preload, scene.onProgress?.bind(scene))
+        .then(() => {
+          scene.onEnter?.();
+          if (old) {
+            this.bus?.emit("scene:replaced", { oldScene: old, newScene: scene });
+          } else {
+            this.bus?.emit("scene:pushed", { scene });
+          }
+        });
+    }
+
+    scene.onEnter?.();
     if (old) {
       this.bus?.emit("scene:replaced", { oldScene: old, newScene: scene });
     } else {
       this.bus?.emit("scene:pushed", { scene });
     }
+    return Promise.resolve();
   }
 
   /** Clear all scenes. Each receives onExit() from top to bottom. */
@@ -107,5 +138,4 @@ export class SceneManager {
       scene._flushDestroyQueue();
     }
   }
-
 }

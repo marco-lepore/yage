@@ -29,3 +29,6 @@ export type {
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";
 export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
+
+// Asset factories
+export { texture } from "./assets.js";

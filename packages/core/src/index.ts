@@ -31,9 +31,15 @@ export {
   GameLoopKey,
   SystemSchedulerKey,
   ProcessSystemKey,
+  AssetManagerKey,
 } from "./EngineContext.js";
 
 export { EventToken, defineEvent } from "./EventToken.js";
+
+export { AssetHandle } from "./AssetHandle.js";
+export type { AssetLoader } from "./AssetHandle.js";
+
+export { AssetManager } from "./AssetManager.js";
 
 export { defineBlueprint } from "./Blueprint.js";
 export type { Blueprint } from "./Blueprint.js";

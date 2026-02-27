@@ -6,6 +6,7 @@ import {
   ColliderComponent,
   CollisionLayers,
 } from "@yage/physics";
+import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
 import { injectStyles, keys, getContainer } from "./shared.js";
 
 injectStyles(`
@@ -54,6 +55,12 @@ function setScore(v: number): void {
 // ---------------------------------------------------------------------------
 const CoinCollected = defineEvent("coin:collected");
 const DangerEntered = defineEvent("danger:entered");
+
+// ---------------------------------------------------------------------------
+// Sound asset handles
+// ---------------------------------------------------------------------------
+const CoinSfx = sound("assets/coin.wav");
+const HurtSfx = sound("assets/hurt.wav");
 
 // ---------------------------------------------------------------------------
 // PlayerController — WASD dynamic movement via velocity
@@ -198,6 +205,7 @@ const DangerBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>
 // ---------------------------------------------------------------------------
 class CollisionsScene extends Scene {
   readonly name = "physics-collisions";
+  readonly preload = [CoinSfx, HurtSfx];
 
   onEnter(): void {
     // Center camera on the arena
@@ -206,9 +214,15 @@ class CollisionsScene extends Scene {
 
     setScore(0);
 
+    const audio = this.context.resolve(AudioManagerKey);
+
     // Scene-level event listeners
-    this.on(CoinCollected, () => setScore(score + 10));
+    this.on(CoinCollected, () => {
+      setScore(score + 10);
+      audio.play(CoinSfx.path, { channel: "sfx" });
+    });
     this.on(DangerEntered, () => {
+      audio.play(HurtSfx.path, { channel: "sfx" });
       setScore(0);
       const player = this.findEntity("player");
       if (player) {
@@ -264,9 +278,10 @@ async function main() {
       gravity: { x: 0, y: 0 }, // top-down, no gravity
     }),
   );
+  engine.use(new AudioPlugin());
 
   await engine.start();
-  engine.scenes.push(new CollisionsScene());
+  await engine.scenes.push(new CollisionsScene());
 }
 
 main().catch(console.error);

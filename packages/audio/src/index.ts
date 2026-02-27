@@ -18,3 +18,6 @@ export type {
   AudioPlayOptions,
   SoundComponentOptions,
 } from "./types.js";
+
+// Asset factories
+export { sound } from "./assets.js";

@@ -14,6 +14,8 @@ import {
   CollisionLayers,
   PhysicsWorldKey,
 } from "@yage/physics";
+import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
+import type { AudioManager } from "@yage/audio";
 import { injectStyles, keys, getContainer } from "./shared.js";
 
 injectStyles(`
@@ -107,6 +109,16 @@ const PlayerDied = defineEvent("player:died");
 const GoalReached = defineEvent("goal:reached");
 
 // ---------------------------------------------------------------------------
+// Sound asset handles
+// ---------------------------------------------------------------------------
+const JumpSfx = sound("assets/jump.wav");
+const LandSfx = sound("assets/land.wav");
+const CoinSfx = sound("assets/coin.wav");
+const HurtSfx = sound("assets/hurt.wav");
+const WinSfx = sound("assets/win.wav");
+const BgMusic = sound("assets/bgm.mp3");
+
+// ---------------------------------------------------------------------------
 // Triangle wave for ping-pong lerp: 0→1→0→1…
 // ---------------------------------------------------------------------------
 function triangleWave(t: number): number {
@@ -159,6 +171,7 @@ class PlayerController extends Component {
   private camera!: Camera;
   private physicsWorld!: PhysicsWorld;
   private graphics!: GraphicsComponent;
+  private audio!: AudioManager;
 
   private grounded = false;
   private coyoteTimer = 0; // ms remaining
@@ -178,6 +191,7 @@ class PlayerController extends Component {
     this.camera = this.use(CameraKey);
     this.physicsWorld = this.use(PhysicsWorldKey);
     this.graphics = this.entity.get(GraphicsComponent);
+    this.audio = this.use(AudioManagerKey);
 
     // Camera follow
     this.camera.follow(this.entity.get(Transform), {
@@ -270,11 +284,13 @@ class PlayerController extends Component {
       this.grounded = false;
       this.coyoteTimer = 0;
       this.jumpBufferTimer = 0;
+      this.audio.play(JumpSfx.path, { channel: "sfx" });
     }
 
     // -- Visual swap based on airborne state --
     const airborne = !onGround;
     if (airborne !== this.wasAirborne) {
+      if (!airborne) this.audio.play(LandSfx.path, { channel: "sfx" });
       this.wasAirborne = airborne;
       this.redrawPlayer(airborne);
     }
@@ -495,6 +511,7 @@ const GoalBP = defineBlueprint<{ x: number; y: number }>(
 // ---------------------------------------------------------------------------
 class PlatformerScene extends Scene {
   readonly name = "platformer";
+  readonly preload = [JumpSfx, LandSfx, CoinSfx, HurtSfx, WinSfx, BgMusic];
 
   onEnter(): void {
     const layerMgr = this.context.resolve(RenderLayerManagerKey);
@@ -506,9 +523,17 @@ class PlatformerScene extends Scene {
     won = false;
     winMsg.style.display = "none";
 
+    // Background music
+    const audio = this.context.resolve(AudioManagerKey);
+    audio.play(BgMusic.path, { channel: "music", loop: true });
+
     // Scene-level event listeners
-    this.on(CoinCollected, () => setCoins(coins + 1));
+    this.on(CoinCollected, () => {
+      setCoins(coins + 1);
+      audio.play(CoinSfx.path, { channel: "sfx" });
+    });
     this.on(PlayerDied, () => {
+      audio.play(HurtSfx.path, { channel: "sfx" });
       const player = this.findEntity("player");
       if (player) {
         const rb = player.get(RigidBodyComponent);
@@ -517,7 +542,10 @@ class PlatformerScene extends Scene {
         player.get(Transform).setPosition(SPAWN.x, SPAWN.y);
       }
     });
-    this.on(GoalReached, () => showWin());
+    this.on(GoalReached, () => {
+      audio.play(WinSfx.path, { channel: "sfx" });
+      showWin();
+    });
 
     this.drawBackground();
     this.buildLevel();
@@ -657,9 +685,10 @@ async function main() {
       gravity: { x: 0, y: 980 },
     }),
   );
+  engine.use(new AudioPlugin());
 
   await engine.start();
-  engine.scenes.push(new PlatformerScene());
+  await engine.scenes.push(new PlatformerScene());
 }
 
 main().catch(console.error);
