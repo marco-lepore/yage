@@ -9,7 +9,7 @@ export class InputClearSystem extends System {
   readonly phase = Phase.EndOfFrame;
   readonly priority = 9000;
 
-  update(_dt: number): void {
+  update(): void {
     this.use(InputManagerKey)._clearFrameState();
   }
 }
