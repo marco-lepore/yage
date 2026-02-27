@@ -66,7 +66,7 @@ const HurtSfx = sound("assets/hurt.wav");
 // PlayerController — WASD dynamic movement via velocity
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
-  update(_dt: number): void {
+  update(): void {
     const rb = this.entity.get(RigidBodyComponent);
     let dx = 0;
     let dy = 0;

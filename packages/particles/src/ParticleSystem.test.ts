@@ -20,7 +20,6 @@ const { mocks } = vi.hoisted(() => {
     children: unknown[] = [];
     parent: unknown = null;
     destroyed = false;
-    constructor(_opts?: unknown) {}
     addParticle(p: unknown): unknown { this.children.push(p); return p; }
     removeParticle(p: unknown): unknown {
       const idx = this.children.indexOf(p);

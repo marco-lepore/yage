@@ -27,7 +27,7 @@ class InputController extends Component {
     this.world = this.use(PhysicsWorldKey);
   }
 
-  update(_dt: number): void {
+  update(): void {
     const scene = this.entity.scene!;
 
     // Space — drop a random shape

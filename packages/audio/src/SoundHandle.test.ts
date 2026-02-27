@@ -6,7 +6,7 @@ import { SoundHandle } from "./SoundHandle.js";
 type MockMediaInstance = IMediaInstance & { _emit(event: string): void };
 
 function createMockInstance(id = 1): MockMediaInstance {
-  const listeners = new Map<string, Function[]>();
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   return {
     id,
     progress: 0,
@@ -26,7 +26,7 @@ function createMockInstance(id = 1): MockMediaInstance {
     destroy: vi.fn(),
     toString: vi.fn(() => ""),
     set: vi.fn(),
-    once: vi.fn((event: string, fn: Function) => {
+    once: vi.fn((event: string, fn: (...args: unknown[]) => void) => {
       const list = listeners.get(event) ?? [];
       list.push(fn);
       listeners.set(event, list);

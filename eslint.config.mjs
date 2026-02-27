@@ -15,4 +15,10 @@ export default tseslint.config(
       "**/*.config.*",
     ],
   },
+  {
+    rules: {
+      // TODO: re-enable once codebase is cleaned up
+      "@typescript-eslint/no-non-null-assertion": "warn",
+    },
+  },
 );

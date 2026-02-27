@@ -156,7 +156,6 @@ class ParticlesScene extends Scene {
     const startX = 400 - (presets.length - 1) * 30;
 
     for (let i = 0; i < presets.length; i++) {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const name = presets[i]!;
       const color = colors[name];
       const x = startX + i * 60;

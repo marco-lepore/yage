@@ -25,7 +25,7 @@ class MockScene {
   getEntities(): ReadonlySet<Entity> {
     return this.entities;
   }
-  _queueDestroy(_entity: Entity): void {}
+  _queueDestroy(): void {}
 }
 
 describe("ProcessSystem", () => {
