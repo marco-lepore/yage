@@ -22,12 +22,12 @@ const HEIGHT = 600;
 // Sound asset handles (loaded via scene preload)
 // ---------------------------------------------------------------------------
 const SFX_HANDLES = {
-  laser_shot: sound("assets/laser_gun_shot.wav"),
-  laser_burst: sound("assets/laser_gun_burst.wav"),
-  explosion: sound("assets/explosion.wav"),
+  laser_shot: sound("/assets/laser_gun_shot.wav"),
+  laser_burst: sound("/assets/laser_gun_burst.wav"),
+  explosion: sound("/assets/explosion.wav"),
 } as const;
 
-const BgMusic = sound("assets/bgm.mp3");
+const BgMusic = sound("/assets/bgm.mp3");
 
 const SFX_ALIASES = Object.keys(SFX_HANDLES) as (keyof typeof SFX_HANDLES)[];
 

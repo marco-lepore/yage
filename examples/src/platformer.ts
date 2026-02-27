@@ -111,12 +111,12 @@ const GoalReached = defineEvent("goal:reached");
 // ---------------------------------------------------------------------------
 // Sound asset handles
 // ---------------------------------------------------------------------------
-const JumpSfx = sound("assets/jump.wav");
-const LandSfx = sound("assets/land.wav");
-const CoinSfx = sound("assets/coin.wav");
-const HurtSfx = sound("assets/hurt.wav");
-const WinSfx = sound("assets/win.wav");
-const BgMusic = sound("assets/bgm.mp3");
+const JumpSfx = sound("/assets/jump.wav");
+const LandSfx = sound("/assets/land.wav");
+const CoinSfx = sound("/assets/coin.wav");
+const HurtSfx = sound("/assets/hurt.wav");
+const WinSfx = sound("/assets/win.wav");
+const BgMusic = sound("/assets/bgm.mp3");
 
 // ---------------------------------------------------------------------------
 // Triangle wave for ping-pong lerp: 0→1→0→1…

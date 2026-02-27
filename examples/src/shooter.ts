@@ -82,29 +82,29 @@ document.body.appendChild(winMsg);
 // ---------------------------------------------------------------------------
 // Sound asset handles
 // ---------------------------------------------------------------------------
-const ShootSfx = sound("assets/laser_gun_shot.wav");
-const HurtSfx = sound("assets/hurt.wav");
-const ExplosionSfx = sound("assets/explosion.wav");
-const JumpSfx = sound("assets/jump.wav");
-const LandSfx = sound("assets/land.wav");
-const BgMusic = sound("assets/bgm.mp3");
+const ShootSfx = sound("/assets/laser_gun_shot.wav");
+const HurtSfx = sound("/assets/hurt.wav");
+const ExplosionSfx = sound("/assets/explosion.wav");
+const JumpSfx = sound("/assets/jump.wav");
+const LandSfx = sound("/assets/land.wav");
+const BgMusic = sound("/assets/bgm.mp3");
 
 // ---------------------------------------------------------------------------
 // Texture asset handles
 // ---------------------------------------------------------------------------
-const PlayerIdleTex = texture("assets/player_idle.png");
-const PlayerWalkTex = texture("assets/player_walk.png");
-const PlayerJumpTex = texture("assets/player_jump.png");
-const PlayerLandTex = texture("assets/player_land.png");
-const PlayerShootTex = texture("assets/player_shoot.png");
-const PlayerHurtTex = texture("assets/player_hurt.png");
+const PlayerIdleTex = texture("/assets/player_idle.png");
+const PlayerWalkTex = texture("/assets/player_walk.png");
+const PlayerJumpTex = texture("/assets/player_jump.png");
+const PlayerLandTex = texture("/assets/player_land.png");
+const PlayerShootTex = texture("/assets/player_shoot.png");
+const PlayerHurtTex = texture("/assets/player_hurt.png");
 
-const EnemyIdleTex = texture("assets/skeleton_idle.png");
-const EnemyWalkTex = texture("assets/skeleton_walk.png");
-const EnemyReactTex = texture("assets/skeleton_react.png");
-const EnemyAttackTex = texture("assets/skeleton_attack.png");
-const EnemyHitTex = texture("assets/skeleton_hit.png");
-const EnemyDieTex = texture("assets/skeleton_die.png");
+const EnemyIdleTex = texture("/assets/skeleton_idle.png");
+const EnemyWalkTex = texture("/assets/skeleton_walk.png");
+const EnemyReactTex = texture("/assets/skeleton_react.png");
+const EnemyAttackTex = texture("/assets/skeleton_attack.png");
+const EnemyHitTex = texture("/assets/skeleton_hit.png");
+const EnemyDieTex = texture("/assets/skeleton_die.png");
 
 const FRAME_SIZE = 48;
 
@@ -564,6 +564,8 @@ class PlayerController extends Component {
     if (this.invincible) return;
     this.invincible = true;
     this.stunned = true;
+
+    this.audio.play(HurtSfx.path, { channel: "sfx" });
 
     // Knockback
     const rb = this.entity.get(RigidBodyComponent);
