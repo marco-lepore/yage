@@ -39,6 +39,8 @@ export interface RendererConfig {
   canvas?: HTMLCanvasElement;
   /** Container element — canvas will be auto-appended here. */
   container?: HTMLElement;
+  /** Device pixel ratio. Defaults to `window.devicePixelRatio` for crisp rendering on HiDPI displays. Set to 1 to disable. */
+  resolution?: number;
   /** Additional PixiJS Application options. */
   pixi?: Record<string, unknown>;
 }

@@ -35,10 +35,14 @@ export class RendererPlugin implements Plugin {
   async install(context: EngineContext): Promise<void> {
     // 1. Create & init PixiJS Application
     this.app = new Application();
+    const resolution =
+      this.config.resolution ?? (typeof window !== "undefined" ? window.devicePixelRatio : 1);
     await this.app.init({
       width: this.config.width,
       height: this.config.height,
       backgroundColor: this.config.backgroundColor ?? 0x000000,
+      resolution,
+      autoDensity: true,
       ...this.config.pixi,
       ...(this.config.canvas ? { canvas: this.config.canvas } : undefined),
     });
