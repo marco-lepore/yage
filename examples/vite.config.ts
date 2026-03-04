@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
+import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
-  plugins: [wasm(), topLevelAwait()],
+  plugins: [react(), wasm(), topLevelAwait()],
   server: {
     port: 5199,
   },
@@ -20,6 +21,9 @@ export default defineConfig({
         shooter: resolve(__dirname, "shooter.html"),
         particles: resolve(__dirname, "particles.html"),
         audio: resolve(__dirname, "audio.html"),
+        ui: resolve(__dirname, "ui.html"),
+        "ui-react": resolve(__dirname, "ui-react.html"),
+        "pixi-ui-kitchen-sink": resolve(__dirname, "pixi-ui-kitchen-sink.html"),
       },
     },
   },

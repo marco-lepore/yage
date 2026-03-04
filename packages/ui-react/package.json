@@ -1,5 +1,5 @@
 {
-  "name": "@yage/ui",
+  "name": "@yage/ui-react",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -29,15 +29,20 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@pixi/ui": "^2.3.2",
     "@yage/core": "*",
-    "@yage/renderer": "*",
-    "yoga-layout": "^3.2.1"
+    "@yage/ui": "*",
+    "react-reconciler": "^0.31.0"
   },
   "peerDependencies": {
-    "pixi.js": "^8.0.0"
+    "pixi.js": "^8.0.0",
+    "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
-    "pixi.js": "^8.16.0"
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-reconciler": "^0.28.9",
+    "pixi.js": "^8.16.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.2.4"
   }
 }
