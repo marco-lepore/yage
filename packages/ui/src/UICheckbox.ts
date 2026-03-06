@@ -148,10 +148,8 @@ export class UICheckbox implements UIElement {
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible === false) {
-      this.container.visible = false;
-    } else if (p.visible === true) {
-      this.container.visible = true;
+    if (p.visible !== undefined) {
+      this.visible = p.visible;
     }
   }
 

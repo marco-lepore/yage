@@ -58,8 +58,7 @@ export abstract class PixiUIBase<T extends Container> implements UIElement {
   }
 
   /** Bridge a @pixi/ui Signal to a callback prop. Only reconnects if ref changed. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected bridgeSignal<F extends (...args: any[]) => void>(
+  protected bridgeSignal<F extends (...args: unknown[]) => void>(
     signal: { connect: (cb: F) => void; disconnect: (cb: F) => void },
     key: string,
     newProps: Record<string, unknown>,

@@ -120,6 +120,7 @@ export interface UIElement {
   readonly displayObject: Container;
   readonly yogaNode: YogaNode;
   visible: boolean;
+  applyLayout?(): void;
   update(props: Record<string, unknown>): void;
   destroy(): void;
 }
@@ -334,7 +335,7 @@ export interface PixiRadioGroupProps extends LayoutProps {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy options interfaces (kept for backward-compat builder API)
+// Component options
 // ---------------------------------------------------------------------------
 
 /** Options for creating a root UIPanel (attached to an entity as a Component). */
@@ -343,20 +344,6 @@ export interface UIPanelOptions extends PanelProps {
   offset?: { x: number; y: number };
 }
 
-/** Options for creating a nested child panel (not a Component). */
-export type UIChildPanelOptions = PanelProps;
-
-/** Options for creating a UIButton via the builder API. */
-export interface UIButtonOptions {
-  width: number;
-  height: number;
-  onClick?: () => void;
-  background?: BackgroundOptions;
-  hoverBackground?: BackgroundOptions;
-  pressBackground?: BackgroundOptions;
-  textStyle?: Partial<TextStyleOptions>;
-  disabled?: boolean;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

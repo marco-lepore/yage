@@ -1,108 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import ReactReconciler from "react-reconciler";
 import type { Container } from "pixi.js";
-import {
-  PanelNode,
-  UIText,
-  UIButton,
-  UIImage,
-  UINineSlice,
-  UIProgressBar,
-  UICheckbox,
-  PixiFancyButton,
-  PixiCheckbox,
-  PixiProgressBar,
-  PixiSlider,
-  PixiInput,
-  PixiScrollBox,
-  PixiSelect,
-  PixiRadioGroup,
-} from "@yage/ui";
 import type { UIElement, UIContainerElement } from "@yage/ui";
-
-// ---------------------------------------------------------------------------
-// Element factory registry
-// ---------------------------------------------------------------------------
-
-export interface ElementDef {
-  factory: (props: Record<string, unknown>) => UIElement;
-  consumesText: boolean;
-}
-
-const registry = new Map<string, ElementDef>();
-
-// Built-in registrations
-registry.set("panel", {
-  factory: (p) => new PanelNode(p as any),
-  consumesText: false,
-});
-registry.set("ui-text", {
-  factory: (p) => new UIText(p as any),
-  consumesText: true,
-});
-registry.set("button", {
-  factory: (p) => new UIButton(p as any),
-  consumesText: true,
-});
-registry.set("ui-button", {
-  factory: (p) => new UIButton(p as any),
-  consumesText: true,
-});
-registry.set("ui-image", {
-  factory: (p) => new UIImage(p as any),
-  consumesText: false,
-});
-registry.set("ui-nine-slice", {
-  factory: (p) => new UINineSlice(p as any),
-  consumesText: false,
-});
-registry.set("ui-progress-bar", {
-  factory: (p) => new UIProgressBar(p as any),
-  consumesText: false,
-});
-registry.set("ui-checkbox", {
-  factory: (p) => new UICheckbox(p as any),
-  consumesText: false,
-});
-
-// @pixi/ui wrappers
-registry.set("pixi-fancy-button", {
-  factory: (p) => new PixiFancyButton(p as any),
-  consumesText: false,
-});
-registry.set("pixi-checkbox", {
-  factory: (p) => new PixiCheckbox(p as any),
-  consumesText: false,
-});
-registry.set("pixi-progress-bar", {
-  factory: (p) => new PixiProgressBar(p as any),
-  consumesText: false,
-});
-registry.set("pixi-slider", {
-  factory: (p) => new PixiSlider(p as any),
-  consumesText: false,
-});
-registry.set("pixi-input", {
-  factory: (p) => new PixiInput(p as any),
-  consumesText: false,
-});
-registry.set("pixi-scroll-box", {
-  factory: (p) => new PixiScrollBox(p as any),
-  consumesText: false,
-});
-registry.set("pixi-select", {
-  factory: (p) => new PixiSelect(p as any),
-  consumesText: false,
-});
-registry.set("pixi-radio-group", {
-  factory: (p) => new PixiRadioGroup(p as any),
-  consumesText: false,
-});
-
-/** Register a custom element type for use in JSX. */
-export function registerElement(type: string, def: ElementDef): void {
-  registry.set(type, def);
-}
 
 // ---------------------------------------------------------------------------
 // Root instance tracking
@@ -116,11 +14,15 @@ export function getRootInstances(
   return rootInstanceMap.get(container);
 }
 
-/** Callback invoked after each React commit so UIRoot can re-run layout. */
-let onCommitCallback: (() => void) | null = null;
+/** Callbacks invoked after each React commit so UIRoots can re-run layout. */
+const onCommitCallbacks = new Set<() => void>();
 
-export function setOnCommit(cb: (() => void) | null): void {
-  onCommitCallback = cb;
+export function addOnCommit(cb: () => void): void {
+  onCommitCallbacks.add(cb);
+}
+
+export function removeOnCommit(cb: () => void): void {
+  onCommitCallbacks.delete(cb);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +31,15 @@ export function setOnCommit(cb: (() => void) | null): void {
 
 function isContainer(el: UIElement): el is UIContainerElement {
   return "addElement" in el;
+}
+
+/** Strip reconciler-internal props before forwarding to UI elements. */
+function stripInternal(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k in props) {
+    if (k !== "_ctor" && k !== "_consumesText") out[k] = props[k];
+  }
+  return out;
 }
 
 // Track current update priority (required by react-reconciler 0.31+)
@@ -140,7 +51,7 @@ const noop = (): void => { /* noop */ };
 // Reconciler host config — GENERIC, zero per-type logic
 // ---------------------------------------------------------------------------
 
-const hostConfig: any = {
+const hostConfig = {
   supportsMutation: true,
   supportsPersistence: false,
   supportsHydration: false,
@@ -176,10 +87,10 @@ const hostConfig: any = {
 
   // ---- Instance lifecycle (generic via registry) ----
 
-  createInstance(type: string, props: Record<string, unknown>) {
-    const def = registry.get(type);
-    if (!def) throw new Error(`Unknown UI element type: ${type}`);
-    return def.factory(props);
+  createInstance(_type: string, props: Record<string, unknown>) {
+    const Ctor = props._ctor as new (p: Record<string, unknown>) => UIElement;
+    if (!Ctor) throw new Error("Missing _ctor prop on <ui-element>");
+    return new Ctor(stripInternal(props));
   },
 
   createTextInstance() {
@@ -259,27 +170,27 @@ const hostConfig: any = {
     return true;
   },
 
-  commitUpdate(instance: UIElement, _type: string, _oldProps: any, newProps: any) {
-    instance.update(newProps);
+  commitUpdate(instance: UIElement, _type: string, _oldProps: Record<string, unknown>, newProps: Record<string, unknown>) {
+    instance.update(stripInternal(newProps));
   },
 
   commitTextUpdate() {
     // No bare text nodes
   },
 
-  shouldSetTextContent(type: string) {
-    return registry.get(type)?.consumesText ?? false;
+  shouldSetTextContent(_type: string, props: Record<string, unknown>) {
+    return (props._consumesText as boolean) ?? false;
   },
 
   getRootHostContext() {
     return {};
   },
 
-  getChildHostContext(parentHostContext: any) {
+  getChildHostContext(parentHostContext: Record<string, unknown>) {
     return parentHostContext;
   },
 
-  getPublicInstance(instance: any) {
+  getPublicInstance(instance: UIElement) {
     return instance;
   },
 
@@ -288,7 +199,7 @@ const hostConfig: any = {
   },
 
   resetAfterCommit() {
-    onCommitCallback?.();
+    for (const cb of onCommitCallbacks) cb();
   },
 
   preparePortalMount: noop,
@@ -343,7 +254,8 @@ const hostConfig: any = {
   resolveEventTimeStamp: () => -1.1,
 };
 
-const reconciler = ReactReconciler(hostConfig);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const reconciler = ReactReconciler(hostConfig as any);
 
 /** Opaque root handle. */
 export interface ReconcilerRoot {
@@ -364,14 +276,24 @@ export function createRoot(container: Container): ReconcilerRoot {
     null, // transitionCallbacks
   );
 
+  const reconcilerInternal = reconciler as unknown as {
+    updateContainerSync(
+      element: React.ReactElement | null,
+      container: unknown,
+      parentComponent: null,
+      callback: null,
+    ): void;
+    flushSyncWork(): void;
+  };
+
   return {
     render(element: React.ReactElement) {
-      (reconciler as any).updateContainerSync(element, fiberRoot, null, null);
-      (reconciler as any).flushSyncWork();
+      reconcilerInternal.updateContainerSync(element, fiberRoot, null, null);
+      reconcilerInternal.flushSyncWork();
     },
     unmount() {
-      (reconciler as any).updateContainerSync(null, fiberRoot, null, null);
-      (reconciler as any).flushSyncWork();
+      reconcilerInternal.updateContainerSync(null, fiberRoot, null, null);
+      reconcilerInternal.flushSyncWork();
       rootInstanceMap.delete(container);
     },
   };

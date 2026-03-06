@@ -6,11 +6,11 @@ import {
   Anchor,
   UIContainerKey,
   resolveAnchor,
-  PanelNode,
 } from "@yage/ui";
 import {
   createRoot,
-  setOnCommit,
+  addOnCommit,
+  removeOnCommit,
   getRootInstances,
 } from "./reconciler.js";
 import type { ReconcilerRoot } from "./reconciler.js";
@@ -37,6 +37,7 @@ export class UIRoot extends Component {
   private readonly _container: Container;
   private readonly _anchor: Anchor | undefined;
   private readonly _offset: { x: number; y: number };
+  private _onCommit: (() => void) | null = null;
 
   constructor(opts?: UIRootOptions) {
     super();
@@ -52,7 +53,8 @@ export class UIRoot extends Component {
     this.root = createRoot(this._container);
 
     // When React commits, re-run layout and anchor
-    setOnCommit(() => this._layoutAndAnchor());
+    this._onCommit = () => this._layoutAndAnchor();
+    addOnCommit(this._onCommit);
   }
 
   /** Render a React element tree into this UI root. */
@@ -102,9 +104,7 @@ export class UIRoot extends Component {
       inst.yogaNode.calculateLayout(undefined, undefined);
 
       // Apply layout recursively
-      if (inst instanceof PanelNode) {
-        inst.applyLayout();
-      }
+      inst.applyLayout?.();
 
       const w = inst.yogaNode.getComputedWidth();
       const h = inst.yogaNode.getComputedHeight();
@@ -134,7 +134,7 @@ export class UIRoot extends Component {
   }
 
   onDestroy(): void {
-    setOnCommit(null);
+    if (this._onCommit) removeOnCommit(this._onCommit);
     this.root?.unmount();
     this.root = null;
     this._container.removeFromParent();

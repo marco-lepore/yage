@@ -1,7 +1,7 @@
 import { Container, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
-import type { BackgroundOptions, UIElement, UIButtonOptions, UIButtonProps } from "./types.js";
+import type { BackgroundOptions, UIElement, UIButtonProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 
@@ -31,6 +31,8 @@ export class UIButton implements UIElement {
   private bgRenderer: BackgroundRenderer;
   private label: Text;
   private _disabled = false;
+  private _isHovered = false;
+  private _isPressed = false;
   private _width: number;
   private _height: number;
   private bgOpts: BackgroundOptions;
@@ -38,92 +40,59 @@ export class UIButton implements UIElement {
   private pressBgOpts: BackgroundOptions;
   private onClick: (() => void) | undefined;
 
-  constructor(text: string, opts: UIButtonOptions);
-  constructor(props: UIButtonProps);
-  constructor(
-    textOrProps: string | UIButtonProps,
-    opts?: UIButtonOptions,
-  ) {
+  constructor(p: UIButtonProps) {
     this.yogaNode = createYogaNode();
 
-    if (typeof textOrProps === "string") {
-      // Legacy constructor: (text, opts)
-      const o = opts!;
-      this._width = o.width;
-      this._height = o.height;
-      this.onClick = o.onClick;
-      this.bgOpts = mergeBg(DEFAULT_BG, o.background);
-      this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, o.hoverBackground);
-      this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, o.pressBackground);
+    this._width = typeof p.width === "number" ? p.width : 100;
+    this._height = typeof p.height === "number" ? p.height : 40;
+    this.onClick = p.onClick;
+    this.bgOpts = mergeBg(DEFAULT_BG, p.background);
+    this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
+    this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, p.pressBackground);
 
-      this.container = new Container();
-      this.container.eventMode = "static";
-      this.container.cursor = "pointer";
+    this.container = new Container();
+    this.container.eventMode = "static";
+    this.container.cursor = "pointer";
 
-      this.bgRenderer = new BackgroundRenderer();
-      this.bgRenderer.set(this.bgOpts, this.container, 0);
-      this.bgRenderer.resize(this._width, this._height);
+    this.bgRenderer = new BackgroundRenderer();
+    this.bgRenderer.set(this.bgOpts, this.container, 0);
+    this.bgRenderer.resize(this._width, this._height);
 
-      this.label = new Text({
-        text: textOrProps,
-        style: { fontSize: 14, fill: 0xffffff, ...o.textStyle },
-      });
-      this.label.anchor.set(0.5, 0.5);
-      this.label.position.set(this._width / 2, this._height / 2);
-      this.container.addChild(this.label);
+    this.label = new Text({
+      text: p.children ?? "",
+      style: { fontSize: 14, fill: 0xffffff, ...p.textStyle },
+    });
+    this.label.anchor.set(0.5, 0.5);
+    this.label.position.set(this._width / 2, this._height / 2);
+    this.container.addChild(this.label);
 
-      // Set fixed size on Yoga node
-      this.yogaNode.setWidth(this._width);
-      this.yogaNode.setHeight(this._height);
+    this.yogaNode.setWidth(this._width);
+    this.yogaNode.setHeight(this._height);
+    applyLayoutProps(this.yogaNode, p);
 
-      if (o.disabled) this.setDisabled(true);
-    } else {
-      // Props-driven constructor
-      const p = textOrProps;
-      this._width = typeof p.width === "number" ? p.width : 100;
-      this._height = typeof p.height === "number" ? p.height : 40;
-      this.onClick = p.onClick;
-      this.bgOpts = mergeBg(DEFAULT_BG, p.background);
-      this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
-      this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, p.pressBackground);
-
-      this.container = new Container();
-      this.container.eventMode = "static";
-      this.container.cursor = "pointer";
-
-      this.bgRenderer = new BackgroundRenderer();
-      this.bgRenderer.set(this.bgOpts, this.container, 0);
-      this.bgRenderer.resize(this._width, this._height);
-
-      this.label = new Text({
-        text: p.children ?? "",
-        style: { fontSize: 14, fill: 0xffffff, ...p.textStyle },
-      });
-      this.label.anchor.set(0.5, 0.5);
-      this.label.position.set(this._width / 2, this._height / 2);
-      this.container.addChild(this.label);
-
-      // Apply layout props (including width/height) to Yoga node
-      this.yogaNode.setWidth(this._width);
-      this.yogaNode.setHeight(this._height);
-      applyLayoutProps(this.yogaNode, p);
-
-      if (p.disabled) this.setDisabled(true);
-      if (p.visible === false) this.container.visible = false;
-    }
+    if (p.disabled) this.setDisabled(true);
+    if (p.visible === false) this.visible = false;
 
     // Interaction handlers — read from mutable fields so update() changes work
     this.container.on("pointerover", () => {
-      if (!this._disabled) this.applyBg(this.hoverBgOpts);
+      if (this._disabled) return;
+      this._isHovered = true;
+      this.applyBg(this.hoverBgOpts);
     });
     this.container.on("pointerout", () => {
-      if (!this._disabled) this.applyBg(this.bgOpts);
+      if (this._disabled) return;
+      this._isHovered = false;
+      this._isPressed = false;
+      this.applyBg(this.bgOpts);
     });
     this.container.on("pointerdown", () => {
-      if (!this._disabled) this.applyBg(this.pressBgOpts);
+      if (this._disabled) return;
+      this._isPressed = true;
+      this.applyBg(this.pressBgOpts);
     });
     this.container.on("pointerup", () => {
       if (this._disabled) return;
+      this._isPressed = false;
       this.applyBg(this.hoverBgOpts);
       this.onClick?.();
     });
@@ -132,6 +101,12 @@ export class UIButton implements UIElement {
   private applyBg(opts: BackgroundOptions): void {
     this.bgRenderer.set(opts, this.container, 0);
     this.bgRenderer.resize(this._width, this._height);
+  }
+
+  private applyCurrentBg(): void {
+    if (this._isPressed) this.applyBg(this.pressBgOpts);
+    else if (this._isHovered) this.applyBg(this.hoverBgOpts);
+    else this.applyBg(this.bgOpts);
   }
 
   setText(s: string): void {
@@ -143,7 +118,11 @@ export class UIButton implements UIElement {
     this.container.eventMode = v ? "none" : "static";
     this.container.cursor = v ? "default" : "pointer";
     this.container.alpha = v ? 0.5 : 1;
-    this.applyBg(this.bgOpts);
+    if (v) {
+      this.applyBg(this.bgOpts);
+    } else {
+      this.applyCurrentBg();
+    }
   }
 
   get disabled(): boolean {
@@ -168,7 +147,6 @@ export class UIButton implements UIElement {
 
     if (p.background) {
       this.bgOpts = mergeBg(DEFAULT_BG, p.background);
-      if (!this._disabled) this.applyBg(this.bgOpts);
     }
     if (p.hoverBackground) {
       this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
@@ -176,13 +154,14 @@ export class UIButton implements UIElement {
     if (p.pressBackground) {
       this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, p.pressBackground);
     }
+    if ((p.background || p.hoverBackground || p.pressBackground) && !this._disabled) {
+      this.applyCurrentBg();
+    }
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible === false) {
-      this.container.visible = false;
-    } else if (p.visible === true) {
-      this.container.visible = true;
+    if (p.visible !== undefined) {
+      this.visible = p.visible;
     }
   }
 

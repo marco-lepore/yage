@@ -3,8 +3,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 const { mocks } = vi.hoisted(() => {
   // @pixi/ui reads navigator at import time — stub it for Node
   if (typeof globalThis.navigator === "undefined") {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).navigator = { userAgent: "" };
+    (globalThis as unknown as { navigator: { userAgent: string } }).navigator = { userAgent: "" };
   }
   class MockContainer {
     children: MockContainer[] = [];
@@ -112,9 +111,9 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
-import { setYoga } from "@yage/ui";
+import { setYoga, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yage/ui";
 import { createElement } from "react";
-import { createRoot, getRootInstances, setOnCommit } from "./reconciler.js";
+import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -126,7 +125,6 @@ describe("reconciler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     container = new mocks.MockContainer();
-    setOnCommit(null);
   });
 
   it("createRoot returns render and unmount", () => {
@@ -137,7 +135,7 @@ describe("reconciler", () => {
 
   it("renders a panel element into the container", () => {
     const root = createRoot(container as never);
-    root.render(createElement("panel", { direction: "column" }));
+    root.render(createElement("ui-element", { _ctor: PanelNode, direction: "column" }));
 
     // React reconciler is synchronous for our config
     expect(container.children.length).toBe(1);
@@ -145,7 +143,7 @@ describe("reconciler", () => {
 
   it("renders a text element", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-text", { style: { fontSize: 20 } }, "Hello"));
+    root.render(createElement("ui-element", { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } }, "Hello"));
 
     expect(container.children.length).toBe(1);
   });
@@ -153,7 +151,7 @@ describe("reconciler", () => {
   it("renders a button element", () => {
     const root = createRoot(container as never);
     root.render(
-      createElement("ui-button", { width: 100, height: 40 }, "Click"),
+      createElement("ui-element", { _ctor: UIButtonNode, _consumesText: true, width: 100, height: 40 }, "Click"),
     );
 
     expect(container.children.length).toBe(1);
@@ -161,7 +159,7 @@ describe("reconciler", () => {
 
   it("unmount removes all children", () => {
     const root = createRoot(container as never);
-    root.render(createElement("panel", null));
+    root.render(createElement("ui-element", { _ctor: PanelNode }));
 
     expect(container.children.length).toBe(1);
 
@@ -171,32 +169,32 @@ describe("reconciler", () => {
 
   it("tracks root instances for layout", () => {
     const root = createRoot(container as never);
-    root.render(createElement("panel", { direction: "column" }));
+    root.render(createElement("ui-element", { _ctor: PanelNode, direction: "column" }));
 
     const instances = getRootInstances(container as never);
     expect(instances).toBeDefined();
     expect(instances!.length).toBe(1);
   });
 
-  it("calls onCommit callback after render", () => {
+  it("calls onCommit callbacks after render", () => {
     const cb = vi.fn();
-    setOnCommit(cb);
+    addOnCommit(cb);
 
     const root = createRoot(container as never);
-    root.render(createElement("panel", null));
+    root.render(createElement("ui-element", { _ctor: PanelNode }));
 
     expect(cb).toHaveBeenCalled();
-    setOnCommit(null);
+    removeOnCommit(cb);
   });
 
   it("nested children are tracked in panel instances", () => {
     const root = createRoot(container as never);
     root.render(
       createElement(
-        "panel",
-        { direction: "column" },
-        createElement("ui-text", null, "Hello"),
-        createElement("ui-button", { width: 80, height: 30 }, "OK"),
+        "ui-element",
+        { _ctor: PanelNode, direction: "column" },
+        createElement("ui-element", { _ctor: UITextNode, _consumesText: true }, "Hello"),
+        createElement("ui-element", { _ctor: UIButtonNode, _consumesText: true, width: 80, height: 30 }, "OK"),
       ),
     );
 
@@ -208,23 +206,23 @@ describe("reconciler", () => {
     expect(panelChildren.length).toBe(2);
   });
 
-  it("does not crash on unknown element type (React catches the error)", () => {
+  it("does not crash on missing _ctor (React catches the error)", () => {
     const root = createRoot(container as never);
     // React's error recovery catches the throw from createInstance,
     // so it won't propagate — but the container should remain empty.
-    root.render(createElement("unknown-type" as "panel", null));
+    root.render(createElement("ui-element" as never, null));
     expect(container.children.length).toBe(0);
   });
 
   it("commitUpdate calls instance.update()", () => {
     const root = createRoot(container as never);
     root.render(
-      createElement("ui-text", { style: { fontSize: 20 } }, "Hello"),
+      createElement("ui-element", { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } }, "Hello"),
     );
 
     // Update with new text
     root.render(
-      createElement("ui-text", { style: { fontSize: 20 } }, "World"),
+      createElement("ui-element", { _ctor: UITextNode, _consumesText: true, style: { fontSize: 20 } }, "World"),
     );
 
     // Should not crash and text should be updated

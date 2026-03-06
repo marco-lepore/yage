@@ -155,6 +155,7 @@ export class BackgroundRenderer {
 
   private destroyDisplayObject(): void {
     if (this.displayObject) {
+      (this.displayObject as unknown as Container).removeFromParent();
       (this.displayObject as unknown as Container).destroy();
       this.displayObject = undefined;
     }

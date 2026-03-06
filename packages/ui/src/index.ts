@@ -7,8 +7,6 @@ export type {
   ColorBackground,
   TextureBackground,
   UIPanelOptions,
-  UIChildPanelOptions,
-  UIButtonOptions,
   UIElement,
   UIContainerElement,
   LayoutProps,

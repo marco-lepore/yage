@@ -1,4 +1,5 @@
 import type { Node as YogaNode } from "yoga-layout";
+import type YogaDefault from "yoga-layout";
 import {
   Align,
   Display,
@@ -6,22 +7,21 @@ import {
 } from "yoga-layout";
 import type { LayoutProps, LayoutValue } from "./types.js";
 
+type Yoga = typeof YogaDefault;
+
 // ---------------------------------------------------------------------------
 // Module-level Yoga instance (set by UIPlugin.install)
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let yoga: any;
+let yoga: Yoga | undefined;
 
 /** Store the loaded Yoga instance for element constructors to use. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function setYoga(y: any): void {
+export function setYoga(y: Yoga): void {
   yoga = y;
 }
 
 /** Retrieve the Yoga instance. Throws if not yet initialized. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getYoga(): any {
+export function getYoga(): Yoga {
   if (!yoga) throw new Error("Yoga not initialized. Did you add UIPlugin?");
   return yoga;
 }

@@ -303,7 +303,6 @@ async function main() {
       virtualHeight: 700,
       backgroundColor: 0x0a0a0a,
       container: getContainer(),
-      pixi: { resolution: window.devicePixelRatio, autoDensity: true },
     }),
   );
 

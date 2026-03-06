@@ -164,7 +164,7 @@ describe("UIButton", () => {
   });
 
   it("creates a button with text and dimensions", () => {
-    const btn = new UIButton("Click Me", { width: 200, height: 40 });
+    const btn = new UIButton({ children: "Click Me", width: 200, height: 40 });
     expect(btn.displayObject).toBeDefined();
     expect(btn.visible).toBe(true);
     expect(btn.yogaNode.getComputedWidth()).toBeNaN(); // Not laid out yet
@@ -172,7 +172,7 @@ describe("UIButton", () => {
 
   it("fires onClick when pointer up", () => {
     const onClick = vi.fn();
-    const btn = new UIButton("Test", { width: 100, height: 30, onClick });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick });
     const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
     container.emit("pointerup");
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -180,7 +180,7 @@ describe("UIButton", () => {
 
   it("does not fire onClick when disabled", () => {
     const onClick = vi.fn();
-    const btn = new UIButton("Test", { width: 100, height: 30, onClick });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick });
     btn.setDisabled(true);
     const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
     container.emit("pointerup");
@@ -188,7 +188,7 @@ describe("UIButton", () => {
   });
 
   it("disabled state changes cursor and alpha", () => {
-    const btn = new UIButton("Test", { width: 100, height: 30 });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(container.cursor).toBe("pointer");
     expect(container.alpha).toBe(1);
@@ -205,25 +205,25 @@ describe("UIButton", () => {
   });
 
   it("disabled via constructor option", () => {
-    const btn = new UIButton("Test", { width: 100, height: 30, disabled: true });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30, disabled: true });
     expect(btn.disabled).toBe(true);
   });
 
   it("setText updates the label", () => {
-    const btn = new UIButton("Hello", { width: 100, height: 30 });
+    const btn = new UIButton({ children: "Hello", width: 100, height: 30 });
     btn.setText("World");
     // No throw; label updated internally
   });
 
   it("visibility can be toggled", () => {
-    const btn = new UIButton("Test", { width: 100, height: 30 });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     expect(btn.visible).toBe(true);
     btn.visible = false;
     expect(btn.visible).toBe(false);
   });
 
   it("hover state changes background", () => {
-    const btn = new UIButton("Test", { width: 100, height: 30 });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
     // Should not throw on hover/out events
     container.emit("pointerover");
@@ -231,42 +231,54 @@ describe("UIButton", () => {
   });
 
   it("press state changes background", () => {
-    const btn = new UIButton("Test", { width: 100, height: 30 });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
     // Should not throw on down event
     container.emit("pointerdown");
   });
 
   it("destroy cleans up", () => {
-    const btn = new UIButton("Test", { width: 100, height: 30 });
+    const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     btn.destroy();
     const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(container.destroyed).toBe(true);
   });
 
-  describe("props-driven constructor", () => {
-    it("creates a button from props object", () => {
-      const onClick = vi.fn();
-      const btn = new UIButton({
-        children: "Props Button",
-        width: 150,
-        height: 50,
-        onClick,
-      });
-      expect(btn.displayObject).toBeDefined();
-      expect(btn.visible).toBe(true);
+  it("update() preserves hover state", () => {
+    const btn = new UIButton({
+      children: "Test",
+      width: 100,
+      height: 30,
+      background: { color: 0x444444 },
+      hoverBackground: { color: 0xff0000 },
     });
+    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
 
-    it("update() changes onClick handler", () => {
-      const onClick1 = vi.fn();
-      const onClick2 = vi.fn();
-      const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick: onClick1 });
-      btn.update({ onClick: onClick2 });
+    // Simulate hover
+    container.emit("pointerover");
 
-      const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
-      container.emit("pointerup");
-      expect(onClick1).not.toHaveBeenCalled();
-      expect(onClick2).toHaveBeenCalledTimes(1);
-    });
+    // Spy on bgRenderer.set via the container's first child (the bg graphics)
+    const applyBgSpy = vi.spyOn(btn as never, "applyBg" as never);
+
+    // Re-render with same background prop (simulates sibling re-render)
+    btn.update({ background: { color: 0x444444 } });
+
+    // applyCurrentBg should have been called, which should apply hoverBgOpts, not bgOpts
+    expect(applyBgSpy).toHaveBeenCalledTimes(1);
+    // The argument should be the hover background (merged with defaults)
+    const appliedBg = applyBgSpy.mock.calls[0][0] as Record<string, unknown>;
+    expect(appliedBg).toHaveProperty("color", 0xff0000);
+  });
+
+  it("update() changes onClick handler", () => {
+    const onClick1 = vi.fn();
+    const onClick2 = vi.fn();
+    const btn = new UIButton({ children: "Test", width: 100, height: 30, onClick: onClick1 });
+    btn.update({ onClick: onClick2 });
+
+    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    container.emit("pointerup");
+    expect(onClick1).not.toHaveBeenCalled();
+    expect(onClick2).toHaveBeenCalledTimes(1);
   });
 });

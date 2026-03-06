@@ -25,6 +25,3 @@ export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hoo
 export { Anchor } from "@yage/ui";
 export type { PixiViewType, FancyButtonAnimations } from "@yage/ui";
 
-// Element registry for extensibility
-export { registerElement } from "./reconciler.js";
-export type { ElementDef } from "./reconciler.js";

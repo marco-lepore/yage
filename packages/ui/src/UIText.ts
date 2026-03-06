@@ -12,29 +12,15 @@ export class UIText implements UIElement {
   readonly yogaNode: YogaNode;
   private readonly text: Text;
 
-  constructor(content: string, style?: Partial<TextStyleOptions>);
-  constructor(props: UITextProps);
-  constructor(
-    contentOrProps: string | UITextProps,
-    style?: Partial<TextStyleOptions>,
-  ) {
+  constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
 
-    if (typeof contentOrProps === "string") {
-      // Legacy constructor: (content, style?)
-      this.text = style
-        ? new Text({ text: contentOrProps, style })
-        : new Text({ text: contentOrProps });
-    } else {
-      // Props-driven constructor
-      const props = contentOrProps;
-      const s = props.style ?? {};
-      this.text = new Text({ text: props.children ?? "", style: s });
-      applyLayoutProps(this.yogaNode, props);
+    const s = props.style ?? {};
+    this.text = new Text({ text: props.children ?? "", style: s });
+    applyLayoutProps(this.yogaNode, props);
 
-      if (props.visible === false) {
-        this.text.visible = false;
-      }
+    if (props.visible === false) {
+      this.text.visible = false;
     }
 
     this.displayObject = this.text;
@@ -65,7 +51,6 @@ export class UIText implements UIElement {
   }
 
   setStyle(s: Partial<TextStyleOptions>): void {
-    console.log(this.text.style, s);
     this.text.style = s;
     this.yogaNode.markDirty();
   }
@@ -80,7 +65,6 @@ export class UIText implements UIElement {
   }
 
   update(props: Record<string, unknown>): void {
-    console.log(props);
     const p = props as UITextProps;
     const textContent = p.children;
     if (textContent !== this.text.text) {
@@ -91,10 +75,8 @@ export class UIText implements UIElement {
     }
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible === false) {
-      this.displayObject.visible = false;
-    } else if (p.visible === true) {
-      this.displayObject.visible = true;
+    if (p.visible !== undefined) {
+      this.visible = p.visible;
     }
   }
 

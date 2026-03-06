@@ -1,6 +1,23 @@
 import type { PropsWithChildren } from "react";
 import type { ColorSource, Container, PointData, TextStyleOptions, Texture } from "pixi.js";
 import type { AssetHandle } from "@yage/core";
+import {
+  PanelNode,
+  UIText as UITextNode,
+  UIButton as UIButtonNode,
+  UIImage as UIImageNode,
+  UINineSlice as UINineSliceNode,
+  UIProgressBar as UIProgressBarNode,
+  UICheckbox as UICheckboxNode,
+  PixiFancyButton as PixiFancyButtonNode,
+  PixiCheckbox as PixiCheckboxNode,
+  PixiProgressBar as PixiProgressBarNode,
+  PixiSlider as PixiSliderNode,
+  PixiInput as PixiInputNode,
+  PixiScrollBox as PixiScrollBoxNode,
+  PixiSelect as PixiSelectNode,
+  PixiRadioGroup as PixiRadioGroupNode,
+} from "@yage/ui";
 import type {
   BackgroundOptions,
   FancyButtonAnimations,
@@ -93,45 +110,45 @@ export interface CheckboxProps extends LayoutProps {
 export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   const { children, bg, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <panel {...rest} background={bg}>{children}</panel>;
+  return <ui-element _ctor={PanelNode} {...rest} background={bg}>{children}</ui-element>;
 }
 
 /** A text label. */
 export function UIText(props: TextProps): React.JSX.Element {
   const { children, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-text {...rest}>{children}</ui-text>;
+  return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
 }
 
 /** An interactive button. */
 export function Button(props: ButtonProps): React.JSX.Element {
   const { children, bg, hoverBg, pressBg, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-button {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{children}</ui-button>;
+  return <ui-element _ctor={UIButtonNode} _consumesText {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{children}</ui-element>;
 }
 
 /** An image element displaying a texture. */
 export function Image(props: ImageProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <ui-image {...props} />;
+  return <ui-element _ctor={UIImageNode} {...props} />;
 }
 
 /** A nine-slice panel with texture borders. */
 export function NineSlice(props: NineSliceProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <ui-nine-slice {...props} />;
+  return <ui-element _ctor={UINineSliceNode} {...props} />;
 }
 
 /** A progress bar with track and fill. */
 export function ProgressBar(props: ProgressBarProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <ui-progress-bar {...props} />;
+  return <ui-element _ctor={UIProgressBarNode} {...props} />;
 }
 
 /** An interactive checkbox with optional label. */
 export function Checkbox(props: CheckboxProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <ui-checkbox {...props} />;
+  return <ui-element _ctor={UICheckboxNode} {...props} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +176,7 @@ export interface PixiFancyButtonReactProps extends LayoutProps {
 /** @pixi/ui FancyButton with Yoga layout. */
 export function PixiFancyButton(props: PixiFancyButtonReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-fancy-button {...props} />;
+  return <ui-element _ctor={PixiFancyButtonNode} {...props} />;
 }
 
 export interface PixiCheckboxReactProps extends LayoutProps {
@@ -175,7 +192,7 @@ export interface PixiCheckboxReactProps extends LayoutProps {
 /** @pixi/ui CheckBox with Yoga layout. */
 export function PixiCheckbox(props: PixiCheckboxReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-checkbox {...props} />;
+  return <ui-element _ctor={PixiCheckboxNode} {...props} />;
 }
 
 export interface PixiProgressBarReactProps extends LayoutProps {
@@ -189,7 +206,7 @@ export interface PixiProgressBarReactProps extends LayoutProps {
 /** @pixi/ui ProgressBar with Yoga layout. */
 export function PixiProgressBar(props: PixiProgressBarReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-progress-bar {...props} />;
+  return <ui-element _ctor={PixiProgressBarNode} {...props} />;
 }
 
 export interface PixiSliderReactProps extends LayoutProps {
@@ -211,7 +228,7 @@ export interface PixiSliderReactProps extends LayoutProps {
 /** @pixi/ui Slider with Yoga layout. */
 export function PixiSlider(props: PixiSliderReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-slider {...props} />;
+  return <ui-element _ctor={PixiSliderNode} {...props} />;
 }
 
 export interface PixiInputReactProps extends LayoutProps {
@@ -231,7 +248,7 @@ export interface PixiInputReactProps extends LayoutProps {
 /** @pixi/ui Input with Yoga layout. */
 export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-input {...props} />;
+  return <ui-element _ctor={PixiInputNode} {...props} />;
 }
 
 export interface PixiScrollBoxReactProps extends LayoutProps {
@@ -248,7 +265,7 @@ export interface PixiScrollBoxReactProps extends LayoutProps {
 /** @pixi/ui ScrollBox with Yoga layout. */
 export function PixiScrollBox(props: PixiScrollBoxReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-scroll-box {...props} />;
+  return <ui-element _ctor={PixiScrollBoxNode} {...props} />;
 }
 
 export interface PixiSelectReactProps extends LayoutProps {
@@ -270,7 +287,7 @@ export interface PixiSelectReactProps extends LayoutProps {
 /** @pixi/ui Select dropdown with Yoga layout. */
 export function PixiSelect(props: PixiSelectReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-select {...props} />;
+  return <ui-element _ctor={PixiSelectNode} {...props} />;
 }
 
 export interface PixiRadioGroupReactProps extends LayoutProps {
@@ -284,5 +301,5 @@ export interface PixiRadioGroupReactProps extends LayoutProps {
 /** @pixi/ui RadioGroup with Yoga layout. */
 export function PixiRadioGroup(props: PixiRadioGroupReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
-  return <pixi-radio-group {...props} />;
+  return <ui-element _ctor={PixiRadioGroupNode} {...props} />;
 }

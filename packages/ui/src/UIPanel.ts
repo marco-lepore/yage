@@ -12,8 +12,7 @@ import type {
   UIElement,
   UIContainerElement,
   UIPanelOptions,
-  UIChildPanelOptions,
-  UIButtonOptions,
+  UIButtonProps,
   PanelProps,
 } from "./types.js";
 import type { Anchor } from "./types.js";
@@ -64,63 +63,10 @@ export class PanelNode implements UIContainerElement {
   private bgOpts: BackgroundOptions | undefined;
   private _overflow: "visible" | "hidden" = "visible";
 
-  constructor(opts: PanelProps & { visible?: boolean }) {
+  constructor(opts: PanelProps) {
     this.container = new Container();
     this.yogaNode = createYogaNode();
-
-    // Flex direction
-    const dir = opts.direction ?? "column";
-    this.yogaNode.setFlexDirection(
-      dir === "row" ? YogaFlexDirection.Row : YogaFlexDirection.Column,
-    );
-
-    // Gap
-    if (opts.gap !== undefined) {
-      this.yogaNode.setGap(Gutter.All, opts.gap);
-    }
-
-    // Padding
-    if (opts.padding !== undefined) {
-      const p = resolvePadding(opts.padding);
-      this.yogaNode.setPadding(Edge.Top, p.top);
-      this.yogaNode.setPadding(Edge.Right, p.right);
-      this.yogaNode.setPadding(Edge.Bottom, p.bottom);
-      this.yogaNode.setPadding(Edge.Left, p.left);
-    }
-
-    // Alignment
-    if (opts.alignItems !== undefined) {
-      this.yogaNode.setAlignItems(
-        ALIGN_ITEMS_MAP[opts.alignItems] ?? Align.FlexStart,
-      );
-    }
-    if (opts.justifyContent !== undefined) {
-      this.yogaNode.setJustifyContent(
-        JUSTIFY_MAP[opts.justifyContent] ?? Justify.FlexStart,
-      );
-    }
-
-    // Overflow
-    if (opts.overflow === "hidden") {
-      this._overflow = "hidden";
-      this.yogaNode.setOverflow(Overflow.Hidden);
-    }
-
-    // Background
-    this.bgOpts = opts.background;
-    if (this.bgOpts) {
-      this.bgRenderer = new BackgroundRenderer();
-      this.bgRenderer.set(this.bgOpts, this.container, 0);
-    }
-
-    // Apply common layout props (width, height, flexGrow, etc.)
-    applyLayoutProps(this.yogaNode, opts);
-
-    // Visibility
-    if (opts.visible === false) {
-      this.container.visible = false;
-      this.yogaNode.setDisplay(Display.None);
-    }
+    this._applyProps({ direction: "column", ...opts });
   }
 
   // ---------------------------------------------------------------------------
@@ -170,20 +116,20 @@ export class PanelNode implements UIContainerElement {
 
   /** Add a text element. */
   text(content: string, style?: Partial<TextStyleOptions>): UIText {
-    const t = new UIText(content, style);
+    const t = new UIText(style ? { children: content, style } : { children: content });
     this.addElement(t);
     return t;
   }
 
   /** Add a button element. */
-  button(label: string, opts: UIButtonOptions): UIButton {
-    const b = new UIButton(label, opts);
+  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
+    const b = new UIButton({ children: label, ...opts });
     this.addElement(b);
     return b;
   }
 
   /** Add a nested child panel. */
-  panel(opts?: UIChildPanelOptions): PanelNode {
+  panel(opts?: PanelProps): PanelNode {
     const p = new PanelNode(opts ?? {});
     this.addElement(p);
     return p;
@@ -215,10 +161,7 @@ export class PanelNode implements UIContainerElement {
       const layout = child.yogaNode.getComputedLayout();
       child.displayObject.position.set(layout.left, layout.top);
 
-      // Recurse into any child with an applyLayout method (duck-typed)
-      if ("applyLayout" in child && typeof (child as { applyLayout: unknown }).applyLayout === "function") {
-        (child as { applyLayout: () => void }).applyLayout();
-      }
+      child.applyLayout?.();
     }
 
     // Update background to match computed panel size
@@ -254,8 +197,14 @@ export class PanelNode implements UIContainerElement {
   // ---------------------------------------------------------------------------
 
   update(props: Record<string, unknown>): void {
-    const p = props as PanelProps & { visible?: boolean };
+    this._applyProps(props as PanelProps);
+  }
 
+  // ---------------------------------------------------------------------------
+  // Shared prop application (used by constructor and update)
+  // ---------------------------------------------------------------------------
+
+  private _applyProps(p: PanelProps): void {
     if (p.direction !== undefined) {
       this.yogaNode.setFlexDirection(
         p.direction === "row"
@@ -292,7 +241,6 @@ export class PanelNode implements UIContainerElement {
       this.yogaNode.setOverflow(
         p.overflow === "hidden" ? Overflow.Hidden : Overflow.Visible,
       );
-      // Remove mask if switching to visible
       if (p.overflow === "visible" && this.mask) {
         this.container.mask = null;
         this.mask.destroy();
@@ -315,10 +263,8 @@ export class PanelNode implements UIContainerElement {
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible === false) {
-      this.container.visible = false;
-    } else if (p.visible === true) {
-      this.container.visible = true;
+    if (p.visible !== undefined) {
+      this.visible = p.visible;
     }
   }
 
@@ -333,7 +279,7 @@ export class PanelNode implements UIContainerElement {
     this._children.length = 0;
     this.bgRenderer?.destroy();
     this.mask?.destroy();
-    this.yogaNode.freeRecursive();
+    this.yogaNode.free();
     this.container.destroy();
   }
 }
@@ -370,12 +316,12 @@ export class UIPanel extends Component {
   }
 
   /** Add a button element. */
-  button(label: string, opts: UIButtonOptions): UIButton {
+  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
     return this._node.button(label, opts);
   }
 
   /** Add a nested child panel. */
-  panel(opts?: UIChildPanelOptions): PanelNode {
+  panel(opts?: PanelProps): PanelNode {
     return this._node.panel(opts);
   }
 
