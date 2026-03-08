@@ -24,6 +24,7 @@ export default defineConfig({
         ui: resolve(__dirname, "ui.html"),
         "ui-react": resolve(__dirname, "ui-react.html"),
         "pixi-ui-kitchen-sink": resolve(__dirname, "pixi-ui-kitchen-sink.html"),
+        tilemap: resolve(__dirname, "tilemap.html"),
       },
     },
   },

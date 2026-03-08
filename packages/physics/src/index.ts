@@ -25,3 +25,6 @@ export { PhysicsSystem } from "./PhysicsSystem.js";
 export { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
 
 export { PhysicsPlugin } from "./PhysicsPlugin.js";
+
+export { toRapierColliders } from "./toRapierColliders.js";
+export type { RapierModule, RapierColliderDesc } from "./toRapierColliders.js";

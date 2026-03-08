@@ -23,6 +23,7 @@
     "@yage/particles": "*",
     "@yage/physics": "*",
     "@yage/renderer": "*",
+    "@yage/tilemap": "*",
     "@yage/ui": "*",
     "@yage/ui-react": "*",
     "pixi.js": "^8.0.0",

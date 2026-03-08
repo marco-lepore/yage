@@ -28,6 +28,19 @@
   },
   "dependencies": {
     "@yage/core": "*",
-    "@yage/renderer": "*"
+    "@yage/renderer": "*",
+    "@pixi/tilemap": "^5.0.0"
+  },
+  "devDependencies": {
+    "@yage/physics": "*"
+  },
+  "peerDependencies": {
+    "pixi.js": ">=8.5.0",
+    "@yage/physics": "*"
+  },
+  "peerDependenciesMeta": {
+    "@yage/physics": {
+      "optional": true
+    }
   }
 }
