@@ -110,7 +110,10 @@ export class Engine {
 
     // Wire game loop callbacks
     this.loop.setCallbacks({
-      earlyUpdate: (dt) => this.scheduler.run(Phase.EarlyUpdate, dt),
+      earlyUpdate: (dt) => {
+        this.logger.setFrame(this.loop.frameCount);
+        this.scheduler.run(Phase.EarlyUpdate, dt);
+      },
       fixedUpdate: (dt) => this.scheduler.run(Phase.FixedUpdate, dt),
       update: (dt) => this.scheduler.run(Phase.Update, dt),
       lateUpdate: (dt) => this.scheduler.run(Phase.LateUpdate, dt),
@@ -189,6 +192,12 @@ export class Engine {
 
     // Clear scenes
     this.scenes.clear();
+
+    // Unregister all systems (reverse order for clean teardown)
+    const allSystems = this.scheduler.getAllSystems();
+    for (let i = allSystems.length - 1; i >= 0; i--) {
+      allSystems[i]!.onUnregister?.();
+    }
 
     // Destroy plugins in reverse topological order (dependents first)
     for (let i = this.sortedPlugins.length - 1; i >= 0; i--) {
