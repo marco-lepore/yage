@@ -1,24 +1,23 @@
-import { Vec2 } from "@yage/core";
 import type { ColliderConfig as PhysicsColliderConfig } from "@yage/physics";
-import type { ColliderConfig } from "./types.js";
+import type { TilemapColliderConfig } from "./types.js";
 
 /**
- * Convert tilemap ColliderConfig[] (top-left origin rects/polygons) into
+ * Convert tilemap TilemapColliderConfig[] (top-left origin rects/polygons) into
  * physics-package ColliderConfig[] (center-origin shape + offset).
  */
 export function toPhysicsColliders(
-  shapes: ColliderConfig[],
+  shapes: TilemapColliderConfig[],
 ): PhysicsColliderConfig[] {
   return shapes.map(toPhysicsCollider);
 }
 
-function toPhysicsCollider(config: ColliderConfig): PhysicsColliderConfig {
+function toPhysicsCollider(config: TilemapColliderConfig): PhysicsColliderConfig {
   switch (config.type) {
     case "polygon":
       return {
         shape: {
           type: "polygon",
-          vertices: config.vertices.map((v) => new Vec2(v.x, v.y)),
+          vertices: config.vertices,
         },
         offset: { x: config.x, y: config.y },
       };

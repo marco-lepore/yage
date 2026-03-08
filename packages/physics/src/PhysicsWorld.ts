@@ -1,6 +1,6 @@
 import RAPIER from "@dimforge/rapier2d";
 import { Vec2 } from "@yage/core";
-import type { Entity } from "@yage/core";
+import type { Entity, Vec2Like } from "@yage/core";
 import { CollisionLayers } from "./CollisionLayers.js";
 import type {
   PhysicsConfig,
@@ -228,8 +228,8 @@ export class PhysicsWorld {
 
   /** Cast a ray and return the first hit. All values in pixels. */
   raycast(
-    origin: Vec2,
-    direction: Vec2,
+    origin: Vec2Like,
+    direction: Vec2Like,
     maxDistance: number,
     options?: { filterGroups?: number },
   ): RaycastHit | null {

@@ -1,4 +1,3 @@
-import { Vec2 } from "@yage/core";
 import { describe, it, expect, vi } from "vitest";
 import { toRapierColliders } from "./toRapierColliders.js";
 import type { RapierModule, RapierColliderDesc } from "./toRapierColliders.js";
@@ -69,9 +68,9 @@ describe("toRapierColliders", () => {
         shape: {
           type: "polygon",
           vertices: [
-            new Vec2(0, 0),
-            new Vec2(50, 0),
-            new Vec2(50, 50),
+            { x: 0, y: 0 },
+            { x: 50, y: 0 },
+            { x: 50, y: 50 },
           ],
         },
         offset: { x: 100, y: 200 },
@@ -95,7 +94,7 @@ describe("toRapierColliders", () => {
       {
         shape: {
           type: "polygon",
-          vertices: [new Vec2(0, 0)],
+          vertices: [{ x: 0, y: 0 }],
         },
       },
     ];

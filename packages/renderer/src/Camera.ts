@@ -1,5 +1,5 @@
 import { Vec2 } from "@yage/core";
-import type { EasingFunction } from "@yage/core";
+import type { EasingFunction, Vec2Like } from "@yage/core";
 
 /** Bounding rectangle for camera clamping. */
 export interface CameraBounds {
@@ -14,7 +14,7 @@ export interface CameraFollowOptions {
   /** Smoothing factor 0..1. 1 = instant snap, lower = smoother. Default: 1. */
   smoothing?: number;
   /** Offset from the target position. */
-  offset?: Vec2;
+  offset?: Vec2Like;
   /** Deadzone rectangle (half-width, half-height). Camera won't move when target is inside. */
   deadzone?: { halfWidth: number; halfHeight: number };
 }
@@ -42,7 +42,7 @@ export class Camera {
   readonly viewportHeight: number;
 
   // Follow state
-  private followTarget: { position: Vec2 } | null = null;
+  private followTarget: { position: Vec2Like } | null = null;
   private followSmoothing = 1;
   private followOffset: Vec2 = Vec2.ZERO;
   private followDeadzone: { halfWidth: number; halfHeight: number } | null = null;
@@ -69,12 +69,14 @@ export class Camera {
 
   /** Start following a target. */
   follow(
-    target: { position: Vec2 },
+    target: { position: Vec2Like },
     options?: CameraFollowOptions,
   ): void {
     this.followTarget = target;
     this.followSmoothing = options?.smoothing ?? 1;
-    this.followOffset = options?.offset ?? Vec2.ZERO;
+    this.followOffset = options?.offset
+      ? new Vec2(options.offset.x, options.offset.y)
+      : Vec2.ZERO;
     this.followDeadzone = options?.deadzone ?? null;
   }
 
@@ -143,7 +145,11 @@ export class Camera {
   private updateFollow(dt: number): void {
     if (!this.followTarget) return;
 
-    const targetPos = this.followTarget.position.add(this.followOffset);
+    const pos = this.followTarget.position;
+    const targetPos = new Vec2(
+      pos.x + this.followOffset.x,
+      pos.y + this.followOffset.y,
+    );
 
     if (this.followDeadzone) {
       const dx = targetPos.x - this.position.x;

@@ -9,6 +9,7 @@ export type {
 } from "./types.js";
 
 export { Vec2 } from "./Vec2.js";
+export type { Vec2Like } from "./Vec2.js";
 
 export { MathUtils } from "./MathUtils.js";
 

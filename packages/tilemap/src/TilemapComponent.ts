@@ -7,9 +7,8 @@ import { extractCollisionShapes } from "./colliders.js";
 import type { TiledMapData } from "./tiled/types.js";
 import type {
   TilemapData,
-  TileLayerData,
   MapObject,
-  ColliderConfig,
+  TilemapColliderConfig,
 } from "./types.js";
 
 /** Options for creating a TilemapComponent. */
@@ -111,7 +110,7 @@ export class TilemapComponent extends Component {
   }
 
   /** Extract physics-agnostic collision shapes from object layers. */
-  getCollisionShapes(objectLayerName?: string): ColliderConfig[] {
+  getCollisionShapes(objectLayerName?: string): TilemapColliderConfig[] {
     return extractCollisionShapes(this.data, objectLayerName);
   }
 

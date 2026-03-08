@@ -1,5 +1,6 @@
 import { Component } from "./Component.js";
 import { Vec2 } from "./Vec2.js";
+import type { Vec2Like } from "./Vec2.js";
 
 /** Mutable transform component for entity positioning. */
 export class Transform extends Component {
@@ -11,14 +12,18 @@ export class Transform extends Component {
   scale: Vec2;
 
   constructor(options?: {
-    position?: Vec2;
+    position?: Vec2Like;
     rotation?: number;
-    scale?: Vec2;
+    scale?: Vec2Like;
   }) {
     super();
-    this.position = options?.position ?? Vec2.ZERO;
+    this.position = options?.position
+      ? new Vec2(options.position.x, options.position.y)
+      : Vec2.ZERO;
     this.rotation = options?.rotation ?? 0;
-    this.scale = options?.scale ?? Vec2.ONE;
+    this.scale = options?.scale
+      ? new Vec2(options.scale.x, options.scale.y)
+      : Vec2.ONE;
   }
 
   /** Set position directly. */

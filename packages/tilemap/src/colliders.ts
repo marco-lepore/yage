@@ -1,7 +1,7 @@
 import type {
   TilemapData,
   MapObject,
-  ColliderConfig,
+  TilemapColliderConfig,
   RectColliderConfig,
   PolygonColliderConfig,
 } from "./types.js";
@@ -19,12 +19,12 @@ import type {
 export function extractCollisionShapes(
   map: TilemapData,
   objectLayerName?: string,
-): ColliderConfig[] {
+): TilemapColliderConfig[] {
   const filtered = objectLayerName
     ? map.objectLayers.filter((l) => l.name === objectLayerName)
     : map.objectLayers;
 
-  const shapes: ColliderConfig[] = [];
+  const shapes: TilemapColliderConfig[] = [];
 
   for (const layer of filtered) {
     for (const obj of layer.objects) {
@@ -40,7 +40,7 @@ export function extractCollisionShapes(
  * Convert a single MapObject to a ColliderConfig.
  * Returns null for point objects (not collision shapes).
  */
-function objectToColliderConfig(obj: MapObject): ColliderConfig | null {
+function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
   // Skip point objects
   if (obj.point) return null;
 

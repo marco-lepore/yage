@@ -1,4 +1,5 @@
 import { Component, Transform, Vec2 } from "@yage/core";
+import type { Vec2Like } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
@@ -68,7 +69,7 @@ export class RigidBodyComponent extends Component {
   }
 
   /** Apply a force (in pixels) at the center of mass. */
-  applyForce(force: Vec2): void {
+  applyForce(force: Vec2Like): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     body.addForce(
@@ -81,7 +82,7 @@ export class RigidBodyComponent extends Component {
   }
 
   /** Apply an impulse (in pixels) at the center of mass. */
-  applyImpulse(impulse: Vec2): void {
+  applyImpulse(impulse: Vec2Like): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     body.applyImpulse(
@@ -94,7 +95,7 @@ export class RigidBodyComponent extends Component {
   }
 
   /** Set linear velocity in pixels/s. */
-  setVelocity(velocity: Vec2): void {
+  setVelocity(velocity: Vec2Like): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return;
     body.setLinvel(

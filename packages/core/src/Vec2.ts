@@ -1,8 +1,14 @@
 /** Default epsilon for floating-point comparisons. */
 const EPSILON = 1e-6;
 
+/** Any object with x and y numeric properties. */
+export interface Vec2Like {
+  readonly x: number;
+  readonly y: number;
+}
+
 /** Immutable 2D vector. All operations return new instances. */
-export class Vec2 {
+export class Vec2 implements Vec2Like {
   /** The zero vector (0, 0). */
   static readonly ZERO = new Vec2(0, 0);
   /** The one vector (1, 1). */
@@ -24,12 +30,12 @@ export class Vec2 {
   ) {}
 
   /** Add another vector. */
-  add(other: Vec2): Vec2 {
+  add(other: Vec2Like): Vec2 {
     return new Vec2(this.x + other.x, this.y + other.y);
   }
 
   /** Subtract another vector. */
-  sub(other: Vec2): Vec2 {
+  sub(other: Vec2Like): Vec2 {
     return new Vec2(this.x - other.x, this.y - other.y);
   }
 
@@ -39,12 +45,12 @@ export class Vec2 {
   }
 
   /** Dot product with another vector. */
-  dot(other: Vec2): number {
+  dot(other: Vec2Like): number {
     return this.x * other.x + this.y * other.y;
   }
 
   /** Cross product (z-component of the 3D cross product). */
-  cross(other: Vec2): number {
+  cross(other: Vec2Like): number {
     return this.x * other.y - this.y * other.x;
   }
 
@@ -66,21 +72,21 @@ export class Vec2 {
   }
 
   /** Euclidean distance to another vector. */
-  distance(other: Vec2): number {
+  distance(other: Vec2Like): number {
     const dx = this.x - other.x;
     const dy = this.y - other.y;
     return Math.sqrt(dx * dx + dy * dy);
   }
 
   /** Squared distance to another vector (avoids sqrt). */
-  distanceSq(other: Vec2): number {
+  distanceSq(other: Vec2Like): number {
     const dx = this.x - other.x;
     const dy = this.y - other.y;
     return dx * dx + dy * dy;
   }
 
   /** Linear interpolation toward another vector. */
-  lerp(other: Vec2, t: number): Vec2 {
+  lerp(other: Vec2Like, t: number): Vec2 {
     return new Vec2(
       this.x + (other.x - this.x) * t,
       this.y + (other.y - this.y) * t,
@@ -100,7 +106,7 @@ export class Vec2 {
   }
 
   /** Check equality with optional epsilon tolerance. */
-  equals(other: Vec2, epsilon: number = EPSILON): boolean {
+  equals(other: Vec2Like, epsilon: number = EPSILON): boolean {
     return (
       Math.abs(this.x - other.x) < epsilon &&
       Math.abs(this.y - other.y) < epsilon
@@ -118,12 +124,14 @@ export class Vec2 {
   }
 
   /** Euclidean distance between two vectors. */
-  static distance(a: Vec2, b: Vec2): number {
-    return a.distance(b);
+  static distance(a: Vec2Like, b: Vec2Like): number {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   /** Linear interpolation between two vectors. */
-  static lerp(a: Vec2, b: Vec2, t: number): Vec2 {
-    return a.lerp(b, t);
+  static lerp(a: Vec2Like, b: Vec2Like, t: number): Vec2 {
+    return new Vec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
   }
 }

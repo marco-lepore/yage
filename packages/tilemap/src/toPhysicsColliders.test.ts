@@ -1,11 +1,10 @@
-import { Vec2 } from "@yage/core";
 import { describe, it, expect } from "vitest";
 import { toPhysicsColliders } from "./toPhysicsColliders.js";
-import type { ColliderConfig } from "./types.js";
+import type { TilemapColliderConfig } from "./types.js";
 
 describe("toPhysicsColliders", () => {
   it("converts rect to box with centered offset", () => {
-    const shapes: ColliderConfig[] = [
+    const shapes: TilemapColliderConfig[] = [
       { type: "rect", x: 32, y: 48, width: 64, height: 16 },
     ];
 
@@ -19,7 +18,7 @@ describe("toPhysicsColliders", () => {
   });
 
   it("converts polygon with origin offset", () => {
-    const shapes: ColliderConfig[] = [
+    const shapes: TilemapColliderConfig[] = [
       {
         type: "polygon",
         x: 10,
@@ -39,9 +38,9 @@ describe("toPhysicsColliders", () => {
       shape: {
         type: "polygon",
         vertices: [
-          new Vec2(0, 0),
-          new Vec2(32, 0),
-          new Vec2(32, 32),
+          { x: 0, y: 0 },
+          { x: 32, y: 0 },
+          { x: 32, y: 32 },
         ],
       },
       offset: { x: 10, y: 20 },
@@ -53,7 +52,7 @@ describe("toPhysicsColliders", () => {
   });
 
   it("handles mixed rect and polygon shapes", () => {
-    const shapes: ColliderConfig[] = [
+    const shapes: TilemapColliderConfig[] = [
       { type: "rect", x: 0, y: 0, width: 16, height: 16 },
       {
         type: "polygon",

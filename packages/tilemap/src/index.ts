@@ -31,10 +31,9 @@ export type {
   MapObject,
   MapObjectProperty,
   HasProperties,
-  ColliderConfig,
+  TilemapColliderConfig,
   RectColliderConfig,
   PolygonColliderConfig,
-  TiledColliderConfig,
 } from "./types.js";
 
 // Tiled-specific (re-exported for backward compatibility)

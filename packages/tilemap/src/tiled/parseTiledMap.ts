@@ -52,24 +52,30 @@ export function toTilemapData(map: TiledMapData): TilemapData {
 }
 
 function tiledObjectToMapObject(obj: TileObject): MapObject {
-  return {
+  const result: MapObject = {
     id: obj.id,
     name: obj.name,
-    class: obj.class ?? obj.type,
     x: obj.x,
     y: obj.y,
     width: obj.width,
     height: obj.height,
     rotation: obj.rotation,
     visible: obj.visible,
-    point: obj.point === true ? true : undefined,
-    polygon: obj.polygon ?? undefined,
-    properties: obj.properties?.map((p) => ({
+  };
+
+  const cls = obj.class ?? obj.type;
+  if (cls) result.class = cls;
+  if (obj.point === true) result.point = true;
+  if (obj.polygon) result.polygon = obj.polygon;
+  if (obj.properties) {
+    result.properties = obj.properties.map((p) => ({
       name: p.name,
       type: p.type,
       value: p.value,
-    })),
-  };
+    }));
+  }
+
+  return result;
 }
 
 // ─── Tiled-specific rendering ───────────────────────────────────────

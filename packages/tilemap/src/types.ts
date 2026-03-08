@@ -66,7 +66,4 @@ export interface PolygonColliderConfig {
   vertices: { x: number; y: number }[];
 }
 
-export type ColliderConfig = RectColliderConfig | PolygonColliderConfig;
-
-/** @deprecated Use `ColliderConfig` instead. */
-export type TiledColliderConfig = ColliderConfig;
+export type TilemapColliderConfig = RectColliderConfig | PolygonColliderConfig;

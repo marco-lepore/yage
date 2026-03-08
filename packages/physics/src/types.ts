@@ -1,5 +1,5 @@
 import { ServiceKey } from "@yage/core";
-import type { Entity } from "@yage/core";
+import type { Entity, Vec2Like } from "@yage/core";
 import type { Vec2 } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
@@ -39,7 +39,7 @@ export type ColliderShape =
   | { type: "box"; width: number; height: number }
   | { type: "circle"; radius: number }
   | { type: "capsule"; halfHeight: number; radius: number }
-  | { type: "polygon"; vertices: Vec2[] };
+  | { type: "polygon"; vertices: Vec2Like[] };
 
 /** Configuration for creating a collider. */
 export interface ColliderConfig {

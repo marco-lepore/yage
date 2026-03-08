@@ -3,6 +3,7 @@ import {
   easeLinear,
 } from "./Process.js";
 import { Vec2 } from "./Vec2.js";
+import type { Vec2Like } from "./Vec2.js";
 import type { EasingFunction } from "./types.js";
 
 /** Static factory for creating tween Processes. */
@@ -45,8 +46,8 @@ export const Tween = {
   /** Tween a Vec2 value. */
   vec2(
     setter: (value: Vec2) => void,
-    from: Vec2,
-    to: Vec2,
+    from: Vec2Like,
+    to: Vec2Like,
     duration: number,
     easing: EasingFunction = easeLinear,
   ): Process {
