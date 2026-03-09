@@ -1,6 +1,6 @@
 import { Component, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent, CameraKey } from "@yage/renderer";
-import { createGame, defineScene } from "yage";
+import { GraphicsComponent } from "@yage/renderer";
+import { createGame, defineInlineScene } from "yage";
 import { injectStyles } from "./shared.js";
 
 injectStyles();
@@ -25,8 +25,7 @@ class Spin extends Component {
 await createGame({
   backgroundColor: 0x0a0a0a,
   debug: true,
-  scene: defineScene("hello-world", (scene) => {
-    const camera = scene.context.resolve(CameraKey);
+  scene: defineInlineScene("hello-world", (scene, { camera }) => {
     camera.position = new Vec2(400, 300);
 
     // Blue circle

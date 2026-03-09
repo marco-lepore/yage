@@ -15,7 +15,6 @@ import {
   RenderLayerManagerKey,
   texture,
 } from "@yage/renderer";
-import type { Camera } from "@yage/renderer";
 import { Texture, Rectangle } from "pixi.js";
 import {
   RigidBodyComponent,
@@ -23,9 +22,7 @@ import {
   CollisionLayers,
   PhysicsWorldKey,
 } from "@yage/physics";
-import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
-import type { AudioManager } from "@yage/audio";
 import { createGame } from "yage";
 import { injectStyles, keys } from "./shared.js";
 

@@ -1,14 +1,36 @@
 import { Engine, Scene } from "@yage/core";
 import type { EngineConfig } from "@yage/core";
 import type { Plugin } from "@yage/core";
-import { RendererPlugin, CameraKey } from "@yage/renderer";
+import { RendererPlugin } from "@yage/renderer";
 import type { RendererConfig } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
+import { CameraKey } from "@yage/renderer";
+import type { InputManager } from "@yage/input";
+import { InputManagerKey } from "@yage/input";
+import type { PhysicsWorld } from "@yage/physics";
+import { PhysicsWorldKey } from "@yage/physics";
+import type { AudioManager } from "@yage/audio";
+import { AudioManagerKey } from "@yage/audio";
+import type { AssetManager } from "@yage/core";
 
 // ---- Types ----
 
-/** Callback for inline scene definition via `defineScene()`. */
-export type SceneSetup = (scene: Scene) => void;
+/** Pre-resolved services passed to inline scene callbacks. */
+export interface SceneServices {
+  /** Camera (always present — renderer is always registered). */
+  camera: Camera;
+  /** Asset manager (always present — core). */
+  assets: AssetManager;
+  /** Input manager (only if input plugin registered). */
+  input?: InputManager;
+  /** Physics world (only if physics plugin registered). */
+  physics?: PhysicsWorld;
+  /** Audio manager (only if audio plugin registered). */
+  audio?: AudioManager;
+}
+
+/** Callback for inline scene definition via `defineInlineScene()`. */
+export type InlineSceneSetup = (scene: Scene, services: SceneServices) => void;
 
 /** Options for `createGame()`. */
 export interface CreateGameOptions {
@@ -36,17 +58,16 @@ export interface CreateGameOptions {
   engine?: Omit<EngineConfig, "debug">;
 
   // Initial scene
-  scene?: Scene | SceneSetup;
+  scene?: Scene | InlineSceneSetup;
 }
 
 /** Handle returned by `createGame()`. */
 export interface GameHandle {
+  /** The underlying engine instance. Use `engine.context` to resolve services inside scenes. */
   engine: Engine;
-  camera: Camera;
-  input?: import("@yage/input").InputManager | undefined;
-  physics?: import("@yage/physics").PhysicsWorld | undefined;
-  audio?: import("@yage/audio").AudioManager | undefined;
-  pushScene(scene: Scene | SceneSetup): Promise<void>;
+  /** Push a scene (or inline setup) onto the scene stack. */
+  pushScene(scene: Scene | InlineSceneSetup): Promise<void>;
+  /** Destroy the engine and clean up all resources. */
   destroy(): void;
 }
 
@@ -54,16 +75,26 @@ export interface GameHandle {
 
 class InlineScene extends Scene {
   readonly name: string;
-  private readonly _setup: SceneSetup;
+  private readonly _setup: InlineSceneSetup;
 
-  constructor(name: string, setup: SceneSetup) {
+  constructor(name: string, setup: InlineSceneSetup) {
     super();
     this.name = name;
     this._setup = setup;
   }
 
   onEnter(): void {
-    this._setup(this);
+    const services: SceneServices = {
+      camera: this.context.resolve(CameraKey),
+      assets: this.assets,
+    };
+    const input = this.context.tryResolve(InputManagerKey);
+    if (input) services.input = input;
+    const physics = this.context.tryResolve(PhysicsWorldKey);
+    if (physics) services.physics = physics;
+    const audio = this.context.tryResolve(AudioManagerKey);
+    if (audio) services.audio = audio;
+    this._setup(this, services);
   }
 }
 
@@ -71,13 +102,13 @@ class InlineScene extends Scene {
  * Create an inline scene without a class.
  *
  * ```ts
- * defineScene("my-scene", (scene) => {
- *   const e = scene.spawn("player");
+ * defineInlineScene("my-scene", (scene, { camera, input }) => {
+ *   camera.follow(scene.spawn("player"));
  *   // ...
  * });
  * ```
  */
-export function defineScene(name: string, setup: SceneSetup): Scene {
+export function defineInlineScene(name: string, setup: InlineSceneSetup): Scene {
   return new InlineScene(name, setup);
 }
 
@@ -103,7 +134,7 @@ function resolveContainer(
 
 // ---- Scene from SceneSetup ----
 
-function toScene(sceneOrSetup: Scene | SceneSetup): Scene {
+function toScene(sceneOrSetup: Scene | InlineSceneSetup): Scene {
   if (sceneOrSetup instanceof Scene) return sceneOrSetup;
   return new InlineScene("inline", sceneOrSetup);
 }
@@ -225,33 +256,6 @@ export async function createGame(
   // Start
   await engine.start();
 
-  // Resolve optional services
-  const camera = engine.context.resolve(CameraKey);
-
-  let inputManager: import("@yage/input").InputManager | undefined;
-  if (input) {
-    const { InputManagerKey } = await import("@yage/input");
-    inputManager = engine.context.tryResolve(InputManagerKey) as
-      | import("@yage/input").InputManager
-      | undefined;
-  }
-
-  let physicsWorld: import("@yage/physics").PhysicsWorld | undefined;
-  if (physics) {
-    const { PhysicsWorldKey } = await import("@yage/physics");
-    physicsWorld = engine.context.tryResolve(PhysicsWorldKey) as
-      | import("@yage/physics").PhysicsWorld
-      | undefined;
-  }
-
-  let audioManager: import("@yage/audio").AudioManager | undefined;
-  if (audio) {
-    const { AudioManagerKey } = await import("@yage/audio");
-    audioManager = engine.context.tryResolve(AudioManagerKey) as
-      | import("@yage/audio").AudioManager
-      | undefined;
-  }
-
   // Push initial scene
   if (scene) {
     engine.scenes.push(toScene(scene));
@@ -260,11 +264,7 @@ export async function createGame(
   // Build handle
   const handle: GameHandle = {
     engine,
-    camera,
-    input: inputManager,
-    physics: physicsWorld,
-    audio: audioManager,
-    async pushScene(s: Scene | SceneSetup) {
+    async pushScene(s: Scene | InlineSceneSetup) {
       engine.scenes.push(toScene(s));
     },
     destroy() {

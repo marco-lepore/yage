@@ -5,7 +5,6 @@ import {
   RigidBodyComponent,
   ColliderComponent,
 } from "@yage/physics";
-import type { PhysicsWorld } from "@yage/physics";
 import { createGame } from "yage";
 import { injectStyles, keys } from "./shared.js";
 

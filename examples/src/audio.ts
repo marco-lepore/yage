@@ -1,13 +1,12 @@
 import { Scene, Component, Transform, Vec2 } from "@yage/core";
 import { GraphicsComponent, CameraKey } from "@yage/renderer";
 import { InputManagerKey } from "@yage/input";
-import type { InputManager } from "@yage/input";
 import {
   AudioManagerKey,
   SoundComponent,
   sound,
 } from "@yage/audio";
-import type { AudioManager, SoundHandle } from "@yage/audio";
+import type { SoundHandle } from "@yage/audio";
 import { createGame } from "yage";
 import { injectStyles } from "./shared.js";
 

@@ -4,16 +4,13 @@ import {
   CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
-import type { Camera } from "@yage/renderer";
 import {
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldKey,
 } from "@yage/physics";
-import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
-import type { AudioManager } from "@yage/audio";
 import { createGame } from "yage";
 import { injectStyles, keys } from "./shared.js";
 

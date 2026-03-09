@@ -6,7 +6,6 @@ import {
   GraphicsComponent,
 } from "@yage/renderer";
 import { InputManagerKey } from "@yage/input";
-import type { InputManager } from "@yage/input";
 import {
   ParticleEmitterComponent,
   ParticlePresets,
