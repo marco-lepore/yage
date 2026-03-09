@@ -171,7 +171,7 @@ describe("TilemapRenderSystem", () => {
     }));
     const comp = entity.add(new TilemapComponent({ map: testMap }));
 
-    system.update(16);
+    system.update();
 
     const container = comp.container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(container.position.x).toBe(50);
@@ -193,7 +193,7 @@ describe("TilemapRenderSystem", () => {
 
     comp.enabled = false;
 
-    system.update(16);
+    system.update();
 
     const container = comp.container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(container.position.x).toBe(0); // Not synced
