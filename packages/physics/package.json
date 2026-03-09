@@ -37,7 +37,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*"
+    "@yage/core": "*",
+    "@yage/debug": "*"
   },
   "devDependencies": {
     "@dimforge/rapier2d": "^0.19.0"

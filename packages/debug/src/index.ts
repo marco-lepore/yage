@@ -1,1 +1,4 @@
-export { VERSION } from "@yage/core";
+export { DebugPlugin } from "./DebugPlugin.js";
+export type { DebugConfig } from "./DebugPlugin.js";
+export { DebugRegistryImpl } from "./DebugRegistryImpl.js";
+export { StatsStore } from "./StatsStore.js";

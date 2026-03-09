@@ -27,6 +27,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*"
+    "@yage/core": "*",
+    "@yage/debug": "*"
   }
 }

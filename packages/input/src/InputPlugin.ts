@@ -1,8 +1,10 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
+import { DebugRegistryKey } from "@yage/debug/api";
 import { InputManager } from "./InputManager.js";
 import { InputManagerKey, type InputConfig } from "./types.js";
 import { InputPollSystem } from "./InputPollSystem.js";
 import { InputClearSystem } from "./InputClearSystem.js";
+import { InputDebugContributor } from "./InputDebugContributor.js";
 
 const MOUSE_BUTTON_MAP: Record<number, string> = {
   0: "MouseLeft",
@@ -17,6 +19,7 @@ export class InputPlugin implements Plugin {
 
   private readonly config: InputConfig;
   private manager!: InputManager;
+  private context!: EngineContext;
   private cleanupFns: Array<() => void> = [];
 
   constructor(config?: InputConfig) {
@@ -24,6 +27,7 @@ export class InputPlugin implements Plugin {
   }
 
   install(context: EngineContext): void {
+    this.context = context;
     this.manager = new InputManager();
 
     if (this.config.actions) {
@@ -118,6 +122,11 @@ export class InputPlugin implements Plugin {
   registerSystems(scheduler: SystemScheduler): void {
     scheduler.add(new InputPollSystem());
     scheduler.add(new InputClearSystem());
+  }
+
+  onStart(): void {
+    const registry = this.context.tryResolve(DebugRegistryKey);
+    registry?.register(new InputDebugContributor(this.manager));
   }
 
   onDestroy(): void {

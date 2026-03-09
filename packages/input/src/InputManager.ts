@@ -180,6 +180,11 @@ export class InputManager {
     this.camera = camera;
   }
 
+  /** Get all configured action names. */
+  getActionNames(): string[] {
+    return Array.from(this.actionMap.keys());
+  }
+
   /** @internal Advance the elapsed game-time clock. Called by InputPollSystem. */
   _advanceTime(dtMs: number): void {
     this.elapsedMs += dtMs;

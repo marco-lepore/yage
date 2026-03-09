@@ -1,9 +1,11 @@
 import type { EngineContext, SystemScheduler, Plugin } from "@yage/core";
+import { DebugRegistryKey } from "@yage/debug/api";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
+import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
 
 /**
  * Physics plugin that installs Rapier2D physics into the YAGE engine.
@@ -18,12 +20,14 @@ export class PhysicsPlugin implements Plugin {
 
   private readonly config: PhysicsConfig | undefined;
   private physicsWorld!: PhysicsWorld;
+  private context!: EngineContext;
 
   constructor(config?: PhysicsConfig) {
     this.config = config;
   }
 
   install(context: EngineContext): void {
+    this.context = context;
     this.physicsWorld = new PhysicsWorld(this.config);
     context.register(PhysicsWorldKey, this.physicsWorld);
   }
@@ -31,6 +35,11 @@ export class PhysicsPlugin implements Plugin {
   registerSystems(scheduler: SystemScheduler): void {
     scheduler.add(new PhysicsSystem());
     scheduler.add(new PhysicsInterpolationSystem());
+  }
+
+  onStart(): void {
+    const registry = this.context.tryResolve(DebugRegistryKey);
+    registry?.register(new PhysicsDebugContributor(this.physicsWorld));
   }
 
   onDestroy(): void {

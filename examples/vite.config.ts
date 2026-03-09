@@ -13,6 +13,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),
+        debug: resolve(__dirname, "debug.html"),
         "hello-world": resolve(__dirname, "hello-world.html"),
         camera: resolve(__dirname, "camera.html"),
         "physics-basics": resolve(__dirname, "physics-basics.html"),

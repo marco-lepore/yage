@@ -1,13 +1,16 @@
 import { Engine, Scene, Component, Transform, Vec2, defineBlueprint } from "@yage/core";
 import {
   RendererPlugin,
-  GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
 import { Assets } from "pixi.js";
 import { TilemapPlugin, TilemapComponent, tiledMap } from "@yage/tilemap";
+import { DebugPlugin } from "@yage/debug";
+import { DebugRegistryKey } from "@yage/debug/api";
+import type { DebugContributor, WorldDebugApi } from "@yage/debug/api";
+import type { RectColliderConfig } from "@yage/tilemap";
 import { injectStyles, keys, getContainer } from "./shared.js";
 
 injectStyles();
@@ -65,28 +68,37 @@ class CameraPan extends Component {
 }
 
 // ---------------------------------------------------------------------------
+// WallDebugContributor — draws tilemap wall collision shapes via debug overlay
+// ---------------------------------------------------------------------------
+class WallDebugContributor implements DebugContributor {
+  readonly name = "walls";
+  readonly flags = ["shapes"] as const;
+
+  constructor(private readonly shapes: readonly RectColliderConfig[]) {}
+
+  drawWorld(api: WorldDebugApi): void {
+    if (!api.isFlagEnabled("shapes")) return;
+
+    for (const shape of this.shapes) {
+      const g = api.acquireGraphics();
+      if (!g) return;
+      g.rect(shape.x, shape.y, shape.width, shape.height)
+        .fill({ color: 0xff0000, alpha: 0.15 })
+        .stroke({ width: 1 / api.cameraZoom, color: 0xff0000, alpha: 0.5 });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Blueprints
 // ---------------------------------------------------------------------------
-import type { TiledMapData, RectColliderConfig } from "@yage/tilemap";
+import type { TiledMapData } from "@yage/tilemap";
 
 const DungeonMapBP = defineBlueprint<{ map: TiledMapData }>(
   "dungeon-map",
   (entity, { map }) => {
     entity.add(new Transform());
     entity.add(new TilemapComponent({ map, layer: "map" }));
-  },
-);
-
-const WallOverlayBP = defineBlueprint<RectColliderConfig>(
-  "wall-overlay",
-  (entity, { x, y, width, height }) => {
-    entity.add(new Transform());
-    entity.add(
-      new GraphicsComponent({ layer: "debug" }).draw((g) => {
-        g.rect(x, y, width, height).fill({ color: 0xff0000, alpha: 0.2 });
-        g.rect(x, y, width, height).stroke({ color: 0xff0000, width: 1, alpha: 0.5 });
-      }),
-    );
   },
 );
 
@@ -105,7 +117,6 @@ class TilemapScene extends Scene {
   onEnter(): void {
     const layerMgr = this.context.resolve(RenderLayerManagerKey);
     layerMgr.create("map", -10);
-    layerMgr.create("debug", 0);
 
     // -- Tilemap entity --
     const mapData = this.assets.get(DungeonMap);
@@ -126,11 +137,13 @@ class TilemapScene extends Scene {
     camera.position = new Vec2(startX, startY);
     camera.bounds = { minX: 0, minY: 0, maxX: mapW, maxY: mapH };
 
-    // -- Debug: visualize wall collision rects --
+    // -- Register wall collision shapes as a debug contributor --
     const shapes = tilemap.getCollisionShapes("walls");
-    for (const shape of shapes) {
-      if (shape.type === "rect") this.spawn(WallOverlayBP, shape);
-    }
+    const rectShapes = shapes.filter(
+      (s): s is RectColliderConfig => s.type === "rect",
+    );
+    const registry = this.context.tryResolve(DebugRegistryKey);
+    registry?.register(new WallDebugContributor(rectShapes));
 
     // -- Camera controller --
     this.spawn(CameraCtrlBP);
@@ -154,6 +167,7 @@ async function main() {
     }),
   );
   engine.use(new TilemapPlugin());
+  engine.use(new DebugPlugin({ startEnabled: true }));
 
   await engine.start();
 

@@ -19,6 +19,7 @@
     "@pixi/sound": "^6.0.0",
     "@yage/audio": "*",
     "@yage/core": "*",
+    "@yage/debug": "*",
     "@yage/input": "*",
     "@yage/particles": "*",
     "@yage/physics": "*",
