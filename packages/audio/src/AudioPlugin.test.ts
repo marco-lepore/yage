@@ -30,7 +30,7 @@ describe("AudioPlugin", () => {
 
   it("has no dependencies", () => {
     const plugin = new AudioPlugin();
-    expect((plugin as Record<string, unknown>).dependencies).toBeUndefined();
+    expect((plugin as unknown as Record<string, unknown>).dependencies).toBeUndefined();
   });
 
   it("install() registers AudioManager on context", () => {

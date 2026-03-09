@@ -107,6 +107,18 @@ export class RigidBodyComponent extends Component {
     );
   }
 
+  /** Set only the X component of velocity (px/s), preserving Y. */
+  setVelocityX(vx: number): void {
+    const vel = this.getVelocity();
+    this.setVelocity({ x: vx, y: vel.y });
+  }
+
+  /** Set only the Y component of velocity (px/s), preserving X. */
+  setVelocityY(vy: number): void {
+    const vel = this.getVelocity();
+    this.setVelocity({ x: vel.x, y: vy });
+  }
+
   /** Get linear velocity in pixels/s. */
   getVelocity(): Vec2 {
     const body = this.physicsWorld.getBody(this._bodyHandle);

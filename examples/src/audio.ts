@@ -1,15 +1,15 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { InputPlugin, InputManagerKey } from "@yage/input";
+import { Scene, Component, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, CameraKey } from "@yage/renderer";
+import { InputManagerKey } from "@yage/input";
 import type { InputManager } from "@yage/input";
 import {
-  AudioPlugin,
   AudioManagerKey,
   SoundComponent,
   sound,
 } from "@yage/audio";
 import type { AudioManager, SoundHandle } from "@yage/audio";
-import { injectStyles, getContainer } from "./shared.js";
+import { createGame } from "yage";
+import { injectStyles } from "./shared.js";
 
 injectStyles(`
   .controls kbd { min-width: 24px; text-align: center; }
@@ -42,7 +42,8 @@ const SFX_COLORS = {
 // FlashOnPlay — visual ring that flashes when its SFX fires
 // ---------------------------------------------------------------------------
 class FlashOnPlay extends Component {
-  private _gfx!: GraphicsComponent;
+  private readonly _gfx = this.sibling(GraphicsComponent);
+  private readonly _transform = this.sibling(Transform);
   private _timer = 0;
 
   update(dt: number): void {
@@ -51,13 +52,12 @@ class FlashOnPlay extends Component {
       const t = this._timer / 200;
       this._gfx.graphics.alpha = 0.3 + 0.7 * t;
       const s = 1 + 0.3 * t;
-      this.entity.get(Transform).setScale(s, s);
+      this._transform.setScale(s, s);
     }
   }
 
   flash(): void {
     this._timer = 200;
-    this._gfx ??= this.entity.get(GraphicsComponent);
   }
 }
 
@@ -67,18 +67,13 @@ class FlashOnPlay extends Component {
 class VolumeBar extends Component {
   private _channel: string;
   private _color: number;
-  private _audio!: AudioManager;
-  private _gfx!: GraphicsComponent;
+  private readonly _audio = this.service(AudioManagerKey);
+  private readonly _gfx = this.sibling(GraphicsComponent);
 
   constructor(channel: string, color: number) {
     super();
     this._channel = channel;
     this._color = color;
-  }
-
-  onAdd(): void {
-    this._audio = this.use(AudioManagerKey);
-    this._gfx = this.entity.get(GraphicsComponent);
   }
 
   update(): void {
@@ -100,6 +95,7 @@ class VolumeBar extends Component {
 // MusicIndicator — pulses while music is playing
 // ---------------------------------------------------------------------------
 class MusicIndicator extends Component {
+  private readonly _gfx = this.sibling(GraphicsComponent);
   private _time = 0;
   private _playing = false;
 
@@ -107,13 +103,13 @@ class MusicIndicator extends Component {
     if (!this._playing) return;
     this._time += dt;
     const pulse = 0.6 + 0.4 * Math.sin(this._time * 0.006);
-    this.entity.get(GraphicsComponent).graphics.alpha = pulse;
+    this._gfx.graphics.alpha = pulse;
   }
 
   setPlaying(v: boolean): void {
     this._playing = v;
     if (!v) {
-      this.entity.get(GraphicsComponent).graphics.alpha = 0.2;
+      this._gfx.graphics.alpha = 0.2;
     }
   }
 }
@@ -122,8 +118,8 @@ class MusicIndicator extends Component {
 // AudioController — main controller handling all input
 // ---------------------------------------------------------------------------
 class AudioController extends Component {
-  private _audio!: AudioManager;
-  private _input!: InputManager;
+  private readonly _audio = this.service(AudioManagerKey);
+  private readonly _input = this.service(InputManagerKey);
   private _flashers = new Map<string, FlashOnPlay>();
   private _musicHandle: SoundHandle | null = null;
   private _musicIndicator!: MusicIndicator;
@@ -135,11 +131,6 @@ class AudioController extends Component {
 
   setMusicIndicator(indicator: MusicIndicator): void {
     this._musicIndicator = indicator;
-  }
-
-  onAdd(): void {
-    this._audio = this.use(AudioManagerKey);
-    this._input = this.use(InputManagerKey);
   }
 
   update(): void {
@@ -339,42 +330,26 @@ class AudioScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      virtualWidth: WIDTH,
-      virtualHeight: HEIGHT,
-      backgroundColor: 0x0a0a0a,
-      container: getContainer(),
-    }),
-  );
-
-  engine.use(
-    new InputPlugin({
-      actions: {
-        sfx1: ["Digit1"],
-        sfx2: ["Digit2"],
-        sfx3: ["Digit3"],
-        random: ["KeyR"],
-        music: ["KeyM"],
-        musicUp: ["ArrowUp"],
-        musicDown: ["ArrowDown"],
-        sfxUp: ["ArrowRight"],
-        sfxDown: ["ArrowLeft"],
-        muteAll: ["Space"],
-      },
-      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
-    }),
-  );
-
-  engine.use(new AudioPlugin());
-
-  await engine.start();
-  await engine.scenes.push(new AudioScene());
-}
-
-main().catch(console.error);
+await createGame({
+  width: WIDTH,
+  height: HEIGHT,
+  backgroundColor: 0x0a0a0a,
+  input: {
+    actions: {
+      sfx1: ["Digit1"],
+      sfx2: ["Digit2"],
+      sfx3: ["Digit3"],
+      random: ["KeyR"],
+      music: ["KeyM"],
+      musicUp: ["ArrowUp"],
+      musicDown: ["ArrowDown"],
+      sfxUp: ["ArrowRight"],
+      sfxDown: ["ArrowLeft"],
+      muteAll: ["Space"],
+    },
+    preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
+  },
+  audio: true,
+  debug: true,
+  scene: new AudioScene(),
+});

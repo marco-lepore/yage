@@ -9,7 +9,12 @@ import type { PrefabOverrides } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
-import { QueryCacheKey, EventBusKey, AssetManagerKey } from "./EngineContext.js";
+import type { ServiceKey } from "./EngineContext.js";
+import {
+  QueryCacheKey,
+  EventBusKey,
+  AssetManagerKey,
+} from "./EngineContext.js";
 
 /**
  * Scenes own entities and define lifecycle hooks.
@@ -53,6 +58,31 @@ export abstract class Scene {
   /** Convenience accessor for the AssetManager. */
   get assets(): AssetManager {
     return this._context.resolve(AssetManagerKey);
+  }
+
+  /**
+   * Lazy proxy-based service resolution. Can be used at field-declaration time:
+   * ```ts
+   * readonly layers = this.service(RenderLayerManagerKey);
+   * ```
+   * The actual resolution is deferred until first property access.
+   */
+  protected service<T extends object>(key: ServiceKey<T>): T {
+    let resolved: T | undefined;
+    return new Proxy({} as object, {
+      get: (_target, prop) => {
+        resolved ??= this._context.resolve(key);
+        const value = (resolved as Record<string | symbol, unknown>)[prop];
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(resolved)
+          : value;
+      },
+      set: (_target, prop, value) => {
+        resolved ??= this._context.resolve(key);
+        (resolved as Record<string | symbol, unknown>)[prop] = value;
+        return true;
+      },
+    }) as T;
   }
 
   /** Spawn a new entity in this scene. */

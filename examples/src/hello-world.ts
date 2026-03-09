@@ -1,6 +1,7 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { injectStyles, getContainer } from "./shared.js";
+import { Component, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, CameraKey } from "@yage/renderer";
+import { createGame, defineScene } from "yage";
+import { injectStyles } from "./shared.js";
 
 injectStyles();
 
@@ -19,17 +20,17 @@ class Spin extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// Scene
+// Boot
 // ---------------------------------------------------------------------------
-class HelloWorldScene extends Scene {
-  readonly name = "hello-world";
-
-  onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
+await createGame({
+  backgroundColor: 0x0a0a0a,
+  debug: true,
+  scene: defineScene("hello-world", (scene) => {
+    const camera = scene.context.resolve(CameraKey);
     camera.position = new Vec2(400, 300);
 
     // Blue circle
-    const circle = this.spawn("circle");
+    const circle = scene.spawn("circle");
     circle.add(new Transform({ position: new Vec2(250, 300) }));
     circle.add(
       new GraphicsComponent().draw((g) => {
@@ -39,7 +40,7 @@ class HelloWorldScene extends Scene {
     );
 
     // Orange rectangle
-    const rect = this.spawn("rect");
+    const rect = scene.spawn("rect");
     rect.add(new Transform({ position: new Vec2(550, 300) }));
     rect.add(
       new GraphicsComponent().draw((g) => {
@@ -49,7 +50,7 @@ class HelloWorldScene extends Scene {
     );
 
     // Green rotating triangle
-    const tri = this.spawn("triangle");
+    const tri = scene.spawn("triangle");
     tri.add(new Transform({ position: new Vec2(400, 200) }));
     tri.add(
       new GraphicsComponent().draw((g) => {
@@ -60,7 +61,7 @@ class HelloWorldScene extends Scene {
     tri.add(new Spin(0.002));
 
     // Small purple rotating diamond
-    const diamond = this.spawn("diamond");
+    const diamond = scene.spawn("diamond");
     diamond.add(new Transform({ position: new Vec2(400, 430) }));
     diamond.add(
       new GraphicsComponent().draw((g) => {
@@ -72,28 +73,5 @@ class HelloWorldScene extends Scene {
       }),
     );
     diamond.add(new Spin(-0.003));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Boot
-// ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: 800,
-      height: 600,
-      virtualWidth: 800,
-      virtualHeight: 600,
-      backgroundColor: 0x0a0a0a,
-      container: getContainer(),
-    }),
-  );
-
-  await engine.start();
-  engine.scenes.push(new HelloWorldScene());
-}
-
-main().catch(console.error);
+  }),
+});

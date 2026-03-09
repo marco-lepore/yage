@@ -16,7 +16,7 @@ function makeMapObject(
   name: string,
   properties?: HasProperties["properties"],
 ): MapObject {
-  return {
+  const obj: MapObject = {
     id,
     name,
     x: 0,
@@ -25,8 +25,9 @@ function makeMapObject(
     height: 0,
     rotation: 0,
     visible: true,
-    properties,
   };
+  if (properties !== undefined) obj.properties = properties;
+  return obj;
 }
 
 describe("getProperty", () => {

@@ -14,7 +14,7 @@ export class TilemapRenderSystem extends System {
     this.query = queryCache.register([Transform, TilemapComponent]);
   }
 
-  update(_dt: number): void {
+  update(): void {
     for (const entity of this.query) {
       const transform = entity.get(Transform);
       const tilemap = entity.get(TilemapComponent);

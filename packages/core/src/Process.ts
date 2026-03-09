@@ -4,7 +4,7 @@ import type { EasingFunction } from "./types.js";
 export interface ProcessOptions {
   /** Called each frame with dt (ms) and elapsed (ms). Return true to complete early. */
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-  update: (dt: number, elapsed: number) => boolean | void;
+  update?: (dt: number, elapsed: number) => boolean | void;
   /** Called when the process completes. */
   onComplete?: () => void;
   /** Auto-complete after this duration in ms. */
@@ -34,8 +34,16 @@ export class Process {
   private _cancelled = false;
   private resolvePromise?: () => void;
 
+  /** Create a timer that fires `onComplete` after `duration` ms. */
+  static delay(duration: number, onComplete?: () => void, tags?: string[]): Process {
+    const opts: ProcessOptions = { duration };
+    if (onComplete !== undefined) opts.onComplete = onComplete;
+    if (tags !== undefined) opts.tags = tags;
+    return new Process(opts);
+  }
+
   constructor(options: ProcessOptions) {
-    this.updateFn = options.update;
+    this.updateFn = options.update ?? (() => {});
     this.onCompleteFn = options.onComplete;
     this.duration = options.duration;
     this.loop = options.loop ?? false;

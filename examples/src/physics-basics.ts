@@ -1,13 +1,13 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { Scene, Component, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, CameraKey } from "@yage/renderer";
 import {
-  PhysicsPlugin,
   PhysicsWorldKey,
   RigidBodyComponent,
   ColliderComponent,
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { createGame } from "yage";
+import { injectStyles, keys } from "./shared.js";
 
 injectStyles();
 
@@ -19,13 +19,9 @@ const WALL = 20;
 // InputController — handles spawning shapes, impulse, gravity flip
 // ---------------------------------------------------------------------------
 class InputController extends Component {
-  private world!: PhysicsWorld;
+  private readonly world = this.service(PhysicsWorldKey);
   private gravityDown = true;
   private shapeCount = 0;
-
-  onAdd(): void {
-    this.world = this.use(PhysicsWorldKey);
-  }
 
   update(): void {
     const scene = this.entity.scene!;
@@ -170,23 +166,11 @@ function randomColor(): number {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      virtualWidth: WIDTH,
-      virtualHeight: HEIGHT,
-      backgroundColor: 0x0a0a0a,
-      container: getContainer(),
-    }),
-  );
-  engine.use(new PhysicsPlugin());
-
-  await engine.start();
-  engine.scenes.push(new PhysicsBasicsScene());
-}
-
-main().catch(console.error);
+await createGame({
+  width: WIDTH,
+  height: HEIGHT,
+  backgroundColor: 0x0a0a0a,
+  physics: true,
+  debug: true,
+  scene: new PhysicsBasicsScene(),
+});

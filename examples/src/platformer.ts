@@ -1,22 +1,21 @@
-import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
+import { Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
 import {
-  RendererPlugin,
   GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
 import {
-  PhysicsPlugin,
-  PhysicsWorld,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldKey,
 } from "@yage/physics";
-import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
+import type { PhysicsWorld } from "@yage/physics";
+import { AudioManagerKey, sound } from "@yage/audio";
 import type { AudioManager } from "@yage/audio";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { createGame } from "yage";
+import { injectStyles, keys } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -168,10 +167,12 @@ class MovingPlatform extends Component {
 // PlayerController
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
-  private camera!: Camera;
-  private physicsWorld!: PhysicsWorld;
-  private graphics!: GraphicsComponent;
-  private audio!: AudioManager;
+  private readonly camera = this.service(CameraKey);
+  private readonly physicsWorld = this.service(PhysicsWorldKey);
+  private readonly audio = this.service(AudioManagerKey);
+  private readonly graphics = this.sibling(GraphicsComponent);
+  private readonly transform = this.sibling(Transform);
+  private readonly rb = this.sibling(RigidBodyComponent);
 
   private grounded = false;
   private coyoteTimer = 0; // ms remaining
@@ -179,22 +180,15 @@ class PlayerController extends Component {
   private wasAirborne = false;
 
   private static readonly SPEED = 220;
-  // Jump velocity in px/s — derived from desired jump height:
-  // v = sqrt(2 * gravity * height) = sqrt(2 * 980 * 130) ≈ 505
   private static readonly JUMP_VELOCITY = 505;
   private static readonly COYOTE_MS = 100;
   private static readonly JUMP_BUFFER_MS = 120;
-  private static readonly GROUND_RAY_DIST = 22; // half-height(18) + 4px tolerance
-  private static readonly WALL_RAY_DIST = 16; // half-width(12) + 4px tolerance
+  private static readonly GROUND_RAY_DIST = 22;
+  private static readonly WALL_RAY_DIST = 16;
 
   onAdd(): void {
-    this.camera = this.use(CameraKey);
-    this.physicsWorld = this.use(PhysicsWorldKey);
-    this.graphics = this.entity.get(GraphicsComponent);
-    this.audio = this.use(AudioManagerKey);
-
     // Camera follow
-    this.camera.follow(this.entity.get(Transform), {
+    this.camera.follow(this.transform, {
       smoothing: 0.12,
       offset: new Vec2(0, -60),
       deadzone: { halfWidth: 60, halfHeight: 40 },
@@ -210,11 +204,10 @@ class PlayerController extends Component {
   update(dt: number): void {
     if (won) return;
 
-    const rb = this.entity.get(RigidBodyComponent);
-    const vel = rb.getVelocity();
+    const vel = this.rb.getVelocity();
 
     // -- Ground detection via raycast --
-    const pos = this.entity.get(Transform).position;
+    const pos = this.transform.position;
     const filterGroups = CollisionLayers.interactionGroups(
       LAYER_PLAYER,
       LAYER_PLATFORM,
@@ -261,7 +254,7 @@ class PlayerController extends Component {
       if (wallHit) dx = 0;
     }
 
-    rb.setVelocity(
+    this.rb.setVelocity(
       new Vec2(dx * PlayerController.SPEED + platformVelX, vel.y),
     );
 
@@ -275,12 +268,7 @@ class PlayerController extends Component {
 
     // -- Jump execution --
     if (this.jumpBufferTimer > 0 && this.grounded) {
-      // Set upward velocity directly — mass-independent and predictable.
-      // Using setVelocity (px/s) instead of applyImpulse avoids needing to
-      // account for body mass, which depends on collider area and density.
-      rb.setVelocity(
-        new Vec2(rb.getVelocity().x, -PlayerController.JUMP_VELOCITY),
-      );
+      this.rb.setVelocityY(-PlayerController.JUMP_VELOCITY);
       this.grounded = false;
       this.coyoteTimer = 0;
       this.jumpBufferTimer = 0;
@@ -513,27 +501,28 @@ class PlatformerScene extends Scene {
   readonly name = "platformer";
   readonly preload = [JumpSfx, LandSfx, CoinSfx, HurtSfx, WinSfx, BgMusic];
 
+  private readonly layerMgr = this.service(RenderLayerManagerKey);
+  private readonly audio = this.service(AudioManagerKey);
+
   onEnter(): void {
-    const layerMgr = this.context.resolve(RenderLayerManagerKey);
-    layerMgr.create("bg", -10);
-    layerMgr.create("world", 0);
-    layerMgr.create("player", 10);
+    this.layerMgr.create("bg", -10);
+    this.layerMgr.create("world", 0);
+    this.layerMgr.create("player", 10);
 
     setCoins(0);
     won = false;
     winMsg.style.display = "none";
 
     // Background music
-    const audio = this.context.resolve(AudioManagerKey);
-    audio.play(BgMusic.path, { channel: "music", loop: true });
+    this.audio.play(BgMusic.path, { channel: "music", loop: true });
 
     // Scene-level event listeners
     this.on(CoinCollected, () => {
       setCoins(coins + 1);
-      audio.play(CoinSfx.path, { channel: "sfx" });
+      this.audio.play(CoinSfx.path, { channel: "sfx" });
     });
     this.on(PlayerDied, () => {
-      audio.play(HurtSfx.path, { channel: "sfx" });
+      this.audio.play(HurtSfx.path, { channel: "sfx" });
       const player = this.findEntity("player");
       if (player) {
         const rb = player.get(RigidBodyComponent);
@@ -543,7 +532,7 @@ class PlatformerScene extends Scene {
       }
     });
     this.on(GoalReached, () => {
-      audio.play(WinSfx.path, { channel: "sfx" });
+      this.audio.play(WinSfx.path, { channel: "sfx" });
       showWin();
     });
 
@@ -667,28 +656,12 @@ class PlatformerScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      virtualWidth: WIDTH,
-      virtualHeight: HEIGHT,
-      backgroundColor: 0x0f172a,
-      container: getContainer(),
-    }),
-  );
-  engine.use(
-    new PhysicsPlugin({
-      gravity: { x: 0, y: 980 },
-    }),
-  );
-  engine.use(new AudioPlugin());
-
-  await engine.start();
-  await engine.scenes.push(new PlatformerScene());
-}
-
-main().catch(console.error);
+await createGame({
+  width: WIDTH,
+  height: HEIGHT,
+  backgroundColor: 0x0f172a,
+  physics: { gravity: { x: 0, y: 980 } },
+  audio: true,
+  debug: true,
+  scene: new PlatformerScene(),
+});

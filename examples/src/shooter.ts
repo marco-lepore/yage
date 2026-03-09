@@ -1,5 +1,4 @@
 import {
-  Engine,
   Scene,
   Component,
   Transform,
@@ -10,7 +9,6 @@ import {
   defineBlueprint,
 } from "@yage/core";
 import {
-  RendererPlugin,
   GraphicsComponent,
   AnimatedSpriteComponent,
   CameraKey,
@@ -20,16 +18,16 @@ import {
 import type { Camera } from "@yage/renderer";
 import { Texture, Rectangle } from "pixi.js";
 import {
-  PhysicsPlugin,
-  PhysicsWorld,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldKey,
 } from "@yage/physics";
-import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
+import type { PhysicsWorld } from "@yage/physics";
+import { AudioManagerKey, sound } from "@yage/audio";
 import type { AudioManager } from "@yage/audio";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { createGame } from "yage";
+import { injectStyles, keys } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -286,10 +284,13 @@ function spawnEnemyDeathParticles(
 type PlayerAnim = "idle" | "walk" | "jump" | "land" | "shoot" | "hurt";
 
 class PlayerController extends Component {
-  private camera!: Camera;
-  private physicsWorld!: PhysicsWorld;
-  private anim!: AnimatedSpriteComponent;
-  private audio!: AudioManager;
+  private readonly camera = this.service(CameraKey);
+  private readonly physicsWorld = this.service(PhysicsWorldKey);
+  private readonly audio = this.service(AudioManagerKey);
+  private readonly anim = this.sibling(AnimatedSpriteComponent);
+  private readonly transform = this.sibling(Transform);
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly pc = this.sibling(ProcessComponent);
 
   private animations!: Record<PlayerAnim, Texture[]>;
   private currentAnim = "";
@@ -317,16 +318,7 @@ class PlayerController extends Component {
   private static readonly WALL_RAY_DIST = 16;
   private static readonly SHOOT_COOLDOWN_MS = 200;
 
-  private get pc(): ProcessComponent {
-    return this.entity.get(ProcessComponent);
-  }
-
   onAdd(): void {
-    this.camera = this.use(CameraKey);
-    this.physicsWorld = this.use(PhysicsWorldKey);
-    this.anim = this.entity.get(AnimatedSpriteComponent);
-    this.audio = this.use(AudioManagerKey);
-
     // Build frame arrays from preloaded spritesheets
     this.animations = {
       idle: sliceSheet(PlayerIdleTex.path, FRAME_SIZE),
@@ -339,7 +331,7 @@ class PlayerController extends Component {
 
     this.playAnim("idle", 0.15, true);
 
-    this.camera.follow(this.entity.get(Transform), {
+    this.camera.follow(this.transform, {
       smoothing: 0.12,
       offset: new Vec2(0, -60),
       deadzone: { halfWidth: 60, halfHeight: 40 },
@@ -366,16 +358,15 @@ class PlayerController extends Component {
 
   update(dt: number): void {
     if (won) {
-      this.entity.get(RigidBodyComponent).setVelocity(Vec2.ZERO);
+      this.rb.setVelocity(Vec2.ZERO);
       this.playAnim("idle", 0.15, true);
       return;
     }
 
     if (this.stunned) return;
 
-    const rb = this.entity.get(RigidBodyComponent);
-    const vel = rb.getVelocity();
-    const pos = this.entity.get(Transform).position;
+    const vel = this.rb.getVelocity();
+    const pos = this.transform.position;
 
     // -- Ground detection --
     const filterGroups = CollisionLayers.interactionGroups(
@@ -436,7 +427,7 @@ class PlayerController extends Component {
       this.currentAnim === "shoot"
         ? PlayerController.SPEED * 0.15
         : PlayerController.SPEED;
-    rb.setVelocity(new Vec2(dx * speed, vel.y));
+    this.rb.setVelocityX(dx * speed);
 
     // -- Jump buffering --
     if (keys.has(" ")) {
@@ -448,9 +439,7 @@ class PlayerController extends Component {
 
     // -- Jump execution --
     if (this.jumpBufferTimer > 0 && this.grounded) {
-      rb.setVelocity(
-        new Vec2(rb.getVelocity().x, -PlayerController.JUMP_VELOCITY),
-      );
+      this.rb.setVelocityY(-PlayerController.JUMP_VELOCITY);
       this.grounded = false;
       this.coyoteTimer = 0;
       this.jumpBufferTimer = 0;
@@ -466,12 +455,8 @@ class PlayerController extends Component {
       keys.delete("k");
       this.canShoot = false;
       this.pc.add(
-        new Process({
-          duration: PlayerController.SHOOT_COOLDOWN_MS,
-          update: () => {},
-          onComplete: () => {
-            this.canShoot = true;
-          },
+        Process.delay(PlayerController.SHOOT_COOLDOWN_MS, () => {
+          this.canShoot = true;
         }),
       );
       this.spawnBullet();
@@ -492,11 +477,11 @@ class PlayerController extends Component {
     }
 
     // -- Visual flip for facing direction --
-    const currentScale = this.entity.get(Transform).scale;
+    const currentScale = this.transform.scale;
     const flipX = this.facingRight
       ? Math.abs(currentScale.x)
       : -Math.abs(currentScale.x);
-    this.entity.get(Transform).setScale(flipX, currentScale.y);
+    this.transform.setScale(flipX, currentScale.y);
   }
 
   private playAnim(name: PlayerAnim, speed: number, loop: boolean): void {
@@ -523,22 +508,16 @@ class PlayerController extends Component {
     as.gotoAndPlay(0);
     this.pc.cancel("anim-lock");
     this.pc.add(
-      new Process({
-        duration: durationMs,
-        update: () => {},
-        onComplete: () => {
-          this.animLocked = false;
-          this.currentAnim = "";
-        },
-        tags: ["anim-lock"],
-      }),
+      Process.delay(durationMs, () => {
+        this.animLocked = false;
+        this.currentAnim = "";
+      }, ["anim-lock"]),
     );
   }
 
   private startSquash(scaleX: number, scaleY: number): void {
     this.pc.cancel("squash");
-    const transform = this.entity.get(Transform);
-    transform.setScale(scaleX, scaleY);
+    this.transform.setScale(scaleX, scaleY);
     this.pc.add(
       new Process({
         duration: 120,
@@ -546,10 +525,10 @@ class PlayerController extends Component {
           const t = Math.max(0, 1 - elapsed / 120);
           const sx = 1 + (scaleX - 1) * t;
           const sy = 1 + (scaleY - 1) * t;
-          transform.setScale(sx, sy);
+          this.transform.setScale(sx, sy);
         },
         onComplete: () => {
-          transform.setScale(1, 1);
+          this.transform.setScale(1, 1);
         },
         tags: ["squash"],
       }),
@@ -568,8 +547,7 @@ class PlayerController extends Component {
     this.audio.play(HurtSfx.path, { channel: "sfx" });
 
     // Knockback
-    const rb = this.entity.get(RigidBodyComponent);
-    rb.setVelocity(
+    this.rb.setVelocity(
       new Vec2(
         knockDir * PlayerController.KNOCKBACK_X,
         PlayerController.KNOCKBACK_Y,
@@ -580,45 +558,31 @@ class PlayerController extends Component {
     this.anim.animatedSprite.tint = 0xff4444;
     this.pc.cancel("flash");
     this.pc.add(
-      new Process({
-        duration: 100,
-        update: () => {},
-        onComplete: () => {
-          this.anim.animatedSprite.tint = 0xffffff;
-        },
-        tags: ["flash"],
-      }),
+      Process.delay(100, () => {
+        this.anim.animatedSprite.tint = 0xffffff;
+      }, ["flash"]),
     );
 
     // Hurt animation + stun
     this.playOneShot("hurt", 0.3, PlayerController.STUN_MS);
     this.pc.cancel("stun");
     this.pc.add(
-      new Process({
-        duration: PlayerController.STUN_MS,
-        update: () => {},
-        onComplete: () => {
-          this.stunned = false;
-        },
-        tags: ["stun"],
-      }),
+      Process.delay(PlayerController.STUN_MS, () => {
+        this.stunned = false;
+      }, ["stun"]),
     );
 
     // Invincibility (lasts longer than stun)
     this.pc.add(
-      new Process({
-        duration: 500,
-        update: () => {},
-        onComplete: () => {
-          this.invincible = false;
-          // Re-check: still touching an enemy?
-          for (const enemy of this.overlappingEnemies) {
-            if (enemy.scene) {
-              this.tryDamageFrom(enemy);
-              break;
-            }
+      Process.delay(500, () => {
+        this.invincible = false;
+        // Re-check: still touching an enemy?
+        for (const enemy of this.overlappingEnemies) {
+          if (enemy.scene) {
+            this.tryDamageFrom(enemy);
+            break;
           }
-        },
+        }
       }),
     );
 
@@ -628,7 +592,7 @@ class PlayerController extends Component {
   private tryDamageFrom(enemy: import("@yage/core").Entity): void {
     if (this.invincible) return;
     const enemyX = enemy.get(Transform).position.x;
-    const playerX = this.entity.get(Transform).position.x;
+    const playerX = this.transform.position.x;
     const knockDir = playerX >= enemyX ? 1 : -1;
     this.takeDamage(knockDir);
   }
@@ -636,7 +600,7 @@ class PlayerController extends Component {
   private spawnBullet(): void {
     const scene = this.entity.scene;
     if (!scene) return;
-    const pos = this.entity.get(Transform).position;
+    const pos = this.transform.position;
     const dir = this.facingRight ? 1 : -1;
     scene.spawn(BulletBP, { x: pos.x + dir * 18, y: pos.y - 6, dir });
   }
@@ -666,10 +630,13 @@ const ENEMY_ANCHORS: Record<EnemyAnim, { x: number; y: number }> = {
 };
 
 class EnemyController extends Component {
-  private physicsWorld!: PhysicsWorld;
-  private camera!: Camera;
-  private anim!: AnimatedSpriteComponent;
-  private audio!: AudioManager;
+  private readonly physicsWorld = this.service(PhysicsWorldKey);
+  private readonly camera = this.service(CameraKey);
+  private readonly audio = this.service(AudioManagerKey);
+  private readonly anim = this.sibling(AnimatedSpriteComponent);
+  private readonly transform = this.sibling(Transform);
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly pc = this.sibling(ProcessComponent);
 
   private animations!: Record<EnemyAnim, Texture[]>;
   private currentAnim = "";
@@ -689,14 +656,10 @@ class EnemyController extends Component {
   private static readonly DETECT_RANGE = 120;
   private static readonly DETECT_Y = 60;
   private static readonly REACT_DURATION = 200;
-  private static readonly ATTACK_MAX_DURATION = 1000; // matches full 18-frame anim at speed 0.3
-  private static readonly SLASH_FRAME_START = 4; // 0-based: movement begins
-  private static readonly SLASH_FRAME_END = 9; // 0-based: movement ends (inclusive)
+  private static readonly ATTACK_MAX_DURATION = 1000;
+  private static readonly SLASH_FRAME_START = 4;
+  private static readonly SLASH_FRAME_END = 9;
   private static readonly COOLDOWN_DURATION = 500;
-
-  private get pc(): ProcessComponent {
-    return this.entity.get(ProcessComponent);
-  }
 
   constructor(patrolLeft: number, patrolRight: number) {
     super();
@@ -705,11 +668,6 @@ class EnemyController extends Component {
   }
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldKey);
-    this.camera = this.use(CameraKey);
-    this.anim = this.entity.get(AnimatedSpriteComponent);
-    this.audio = this.use(AudioManagerKey);
-
     // Build frame arrays from preloaded spritesheets
     this.animations = {
       idle: sliceSheet(EnemyIdleTex.path, 24, 32),
@@ -727,9 +685,7 @@ class EnemyController extends Component {
   }
 
   update(dt: number): void {
-    const rb = this.entity.get(RigidBodyComponent);
-    const pos = this.entity.get(Transform).position;
-    const vel = rb.getVelocity();
+    const pos = this.transform.position;
 
     switch (this.state) {
       case "patrol": {
@@ -748,7 +704,7 @@ class EnemyController extends Component {
         });
         if (wallHit) this.patrolDir *= -1;
 
-        rb.setVelocity(new Vec2(this.patrolDir * EnemyController.SPEED, vel.y));
+        this.rb.setVelocityX(this.patrolDir * EnemyController.SPEED);
         this.playAnim("walk", 0.15, true);
         this.updateFacing(this.patrolDir);
 
@@ -768,7 +724,7 @@ class EnemyController extends Component {
       }
 
       case "react":
-        rb.setVelocity(new Vec2(0, vel.y));
+        this.rb.setVelocityX(0);
         // Animation completion triggers transition to attack (set up in enterReact)
         break;
 
@@ -795,18 +751,18 @@ class EnemyController extends Component {
             filterGroups,
           });
           if (wallHit) {
-            rb.setVelocity(new Vec2(0, vel.y));
+            this.rb.setVelocityX(0);
           } else {
-            rb.setVelocity(new Vec2(dir * EnemyController.CHARGE_SPEED, vel.y));
+            this.rb.setVelocityX(dir * EnemyController.CHARGE_SPEED);
           }
         } else {
-          rb.setVelocity(new Vec2(0, vel.y));
+          this.rb.setVelocityX(0);
         }
         break;
       }
 
       case "cooldown":
-        rb.setVelocity(new Vec2(0, vel.y));
+        this.rb.setVelocityX(0);
         this.cooldownTimer -= dt;
         if (this.cooldownTimer <= 0) {
           this.state = "patrol";
@@ -819,7 +775,7 @@ class EnemyController extends Component {
         break;
 
       case "die":
-        rb.setVelocity(new Vec2(0, vel.y));
+        this.rb.setVelocityX(0);
         break;
     }
   }
@@ -829,25 +785,20 @@ class EnemyController extends Component {
     this.targetX = playerX;
 
     // Face toward player
-    const pos = this.entity.get(Transform).position;
+    const pos = this.transform.position;
     this.updateFacing(playerX > pos.x ? 1 : -1);
 
     this.playAnim("react", 0.2, false);
     this.pc.cancel("state-transition");
     this.pc.add(
-      new Process({
-        duration: EnemyController.REACT_DURATION,
-        update: () => {},
-        onComplete: () => {
-          if (this.state === "react") this.enterAttack();
-        },
-        tags: ["state-transition"],
-      }),
+      Process.delay(EnemyController.REACT_DURATION, () => {
+        if (this.state === "react") this.enterAttack();
+      }, ["state-transition"]),
     );
   }
 
   private enterAttack(): void {
-    const pos = this.entity.get(Transform).position;
+    const pos = this.transform.position;
 
     this.state = "attack";
     this.attackTimer = EnemyController.ATTACK_MAX_DURATION;
@@ -860,18 +811,14 @@ class EnemyController extends Component {
   private enterCooldown(): void {
     this.state = "cooldown";
     this.cooldownTimer = EnemyController.COOLDOWN_DURATION;
-    this.entity
-      .get(RigidBodyComponent)
-      .setVelocity(
-        new Vec2(0, this.entity.get(RigidBodyComponent).getVelocity().y),
-      );
+    this.rb.setVelocityX(0);
     this.playAnim("idle", 0.15, true);
   }
 
   private updateFacing(dir: number): void {
-    const scale = this.entity.get(Transform).scale;
+    const scale = this.transform.scale;
     const flipX = dir >= 0 ? Math.abs(scale.x) : -Math.abs(scale.x);
-    this.entity.get(Transform).setScale(flipX, scale.y);
+    this.transform.setScale(flipX, scale.y);
   }
 
   private playAnim(name: EnemyAnim, speed: number, loop: boolean): void {
@@ -893,9 +840,8 @@ class EnemyController extends Component {
     this.audio.play(HurtSfx.path, { channel: "sfx" });
 
     // Knockback (light)
-    const rb = this.entity.get(RigidBodyComponent);
-    const vel = rb.getVelocity();
-    rb.setVelocity(new Vec2(bulletDir * 30, vel.y - 10));
+    const vel = this.rb.getVelocity();
+    this.rb.setVelocity(new Vec2(bulletDir * 30, vel.y - 10));
 
     // Face toward the bullet
     this.updateFacing(-bulletDir);
@@ -909,27 +855,21 @@ class EnemyController extends Component {
     this.state = "hit";
     this.pc.cancel("state-transition");
 
-    const pc = this.pc;
     const sprite = this.anim.animatedSprite;
 
     // Flash white
-    pc.cancel("flash");
+    this.pc.cancel("flash");
     sprite.tint = 0xffffff;
-    pc.add(
-      new Process({
-        duration: 80,
-        update: () => {},
-        onComplete: () => {
-          sprite.tint = 0xffffff;
-        },
-        tags: ["flash"],
-      }),
+    this.pc.add(
+      Process.delay(80, () => {
+        sprite.tint = 0xffffff;
+      }, ["flash"]),
     );
 
     // Shake
-    pc.cancel("shake");
+    this.pc.cancel("shake");
     sprite.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
-    pc.add(
+    this.pc.add(
       new Process({
         duration: 150,
         update: () => {
@@ -947,21 +887,16 @@ class EnemyController extends Component {
 
     // Play hit animation and return to patrol when done
     this.playAnim("hit", 0.25, false);
-    const hitDuration = (this.animations.hit.length * (1000 / 60)) / 0.25; // frames / (fps * speed)
-    pc.cancel("hit-recovery");
-    pc.add(
-      new Process({
-        duration: Math.min(hitDuration, 400),
-        update: () => {},
-        onComplete: () => {
-          if (this.state === "hit") {
-            this.state = "patrol";
-            this.currentAnim = "";
-            this.playAnim("walk", 0.15, true);
-          }
-        },
-        tags: ["hit-recovery"],
-      }),
+    const hitDuration = (this.animations.hit.length * (1000 / 60)) / 0.25;
+    this.pc.cancel("hit-recovery");
+    this.pc.add(
+      Process.delay(Math.min(hitDuration, 400), () => {
+        if (this.state === "hit") {
+          this.state = "patrol";
+          this.currentAnim = "";
+          this.playAnim("walk", 0.15, true);
+        }
+      }, ["hit-recovery"]),
     );
 
     // Camera shake
@@ -977,14 +912,13 @@ class EnemyController extends Component {
     this.entity.tags.add("dead");
     this.entity.get(ColliderComponent).setSensor(true);
 
-    const pc = this.pc;
-    pc.cancel(); // cancel all feedback processes
+    this.pc.cancel(); // cancel all feedback processes
 
     const sprite = this.anim.animatedSprite;
     sprite.tint = 0xffffff;
     sprite.position.set(0, 0);
 
-    const pos = this.entity.get(Transform).position;
+    const pos = this.transform.position;
     if (this.entity.scene) {
       spawnEnemyDeathParticles(this.entity.scene, pos.x, pos.y, ENEMY_COLOR);
     }
@@ -993,13 +927,9 @@ class EnemyController extends Component {
     // Play die animation, then destroy
     this.playAnim("die", 0.2, false);
     const dieDuration = (this.animations.die.length * (1000 / 60)) / 0.2;
-    pc.add(
-      new Process({
-        duration: dieDuration,
-        update: () => {},
-        onComplete: () => {
-          this.entity.destroy();
-        },
+    this.pc.add(
+      Process.delay(dieDuration, () => {
+        this.entity.destroy();
       }),
     );
 
@@ -1130,12 +1060,8 @@ const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
     // Self-destruct after 1200ms
     const pc = entity.add(new ProcessComponent());
     pc.add(
-      new Process({
-        duration: 1200,
-        update: () => {},
-        onComplete: () => {
-          entity.destroy();
-        },
+      Process.delay(1200, () => {
+        entity.destroy();
       }),
     );
 
@@ -1187,20 +1113,21 @@ class ShooterScene extends Scene {
     EnemyDieTex,
   ];
 
+  private readonly layerMgr = this.service(RenderLayerManagerKey);
+  private readonly audio = this.service(AudioManagerKey);
+
   onEnter(): void {
-    const layerMgr = this.context.resolve(RenderLayerManagerKey);
-    layerMgr.create("bg", -10);
-    layerMgr.create("world", 0);
-    layerMgr.create("bullets", 5);
-    layerMgr.create("player", 10);
+    this.layerMgr.create("bg", -10);
+    this.layerMgr.create("world", 0);
+    this.layerMgr.create("bullets", 5);
+    this.layerMgr.create("player", 10);
 
     setKills(0);
     won = false;
     winMsg.style.display = "none";
 
     // Background music
-    const audio = this.context.resolve(AudioManagerKey);
-    audio.play(BgMusic.path, { channel: "music", loop: true });
+    this.audio.play(BgMusic.path, { channel: "music", loop: true });
 
     // Scene-level event listener: track enemy kills
     this.on(EnemyKilled, () => {
@@ -1281,29 +1208,13 @@ class ShooterScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      virtualWidth: WIDTH,
-      virtualHeight: HEIGHT,
-      backgroundColor: 0x0f172a,
-      container: getContainer(),
-      pixi: { roundPixels: true },
-    }),
-  );
-  engine.use(
-    new PhysicsPlugin({
-      gravity: { x: 0, y: 980 },
-    }),
-  );
-  engine.use(new AudioPlugin());
-
-  await engine.start();
-  await engine.scenes.push(new ShooterScene());
-}
-
-main().catch(console.error);
+await createGame({
+  width: WIDTH,
+  height: HEIGHT,
+  backgroundColor: 0x0f172a,
+  renderer: { pixi: { roundPixels: true } },
+  physics: { gravity: { x: 0, y: 980 } },
+  audio: true,
+  debug: true,
+  scene: new ShooterScene(),
+});

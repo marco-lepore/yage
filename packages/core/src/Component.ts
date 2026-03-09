@@ -1,6 +1,7 @@
 import type { EngineContext, ServiceKey } from "./EngineContext.js";
 import type { Entity } from "./Entity.js";
 import type { EventToken } from "./EventToken.js";
+import type { ComponentClass } from "./types.js";
 
 /**
  * Base class for all components.
@@ -45,6 +46,56 @@ export abstract class Component {
       this._serviceCache.set(key.id, value);
     }
     return value as T;
+  }
+
+  /**
+   * Lazy proxy-based service resolution. Can be used at field-declaration time:
+   * ```ts
+   * readonly camera = this.service(CameraKey);
+   * ```
+   * The actual resolution is deferred until first property access.
+   */
+  protected service<T extends object>(key: ServiceKey<T>): T {
+    let resolved: T | undefined;
+    return new Proxy({} as object, {
+      get: (_target, prop) => {
+        resolved ??= this.use(key);
+        const value = (resolved as Record<string | symbol, unknown>)[prop];
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(resolved)
+          : value;
+      },
+      set: (_target, prop, value) => {
+        resolved ??= this.use(key);
+        (resolved as Record<string | symbol, unknown>)[prop] = value;
+        return true;
+      },
+    }) as T;
+  }
+
+  /**
+   * Lazy proxy-based sibling component resolution. Can be used at field-declaration time:
+   * ```ts
+   * readonly anim = this.sibling(AnimatedSpriteComponent);
+   * ```
+   * The actual resolution is deferred until first property access.
+   */
+  protected sibling<C extends Component>(cls: ComponentClass<C>): C {
+    let resolved: C | undefined;
+    return new Proxy({} as object, {
+      get: (_target, prop) => {
+        resolved ??= this.entity.get(cls);
+        const value = (resolved as Record<string | symbol, unknown>)[prop];
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(resolved)
+          : value;
+      },
+      set: (_target, prop, value) => {
+        resolved ??= this.entity.get(cls);
+        (resolved as Record<string | symbol, unknown>)[prop] = value;
+        return true;
+      },
+    }) as C;
   }
 
   /** Subscribe to events on any entity, auto-unsubscribe on removal. */

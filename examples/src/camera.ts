@@ -1,12 +1,11 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, Process } from "@yage/core";
+import { Scene, Component, Transform, Vec2, ProcessComponent, Process } from "@yage/core";
 import {
-  RendererPlugin,
   GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
-import type { Camera } from "@yage/renderer";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { createGame } from "yage";
+import { injectStyles, keys } from "./shared.js";
 
 injectStyles();
 
@@ -15,10 +14,9 @@ injectStyles();
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private speed = 0.25; // px per ms
-  private camera!: Camera;
+  private readonly camera = this.service(CameraKey);
 
   onAdd(): void {
-    this.camera = this.use(CameraKey);
     // Smooth follow with a deadzone so camera doesn't jitter on tiny movements
     this.camera.follow(this.entity.get(Transform), {
       smoothing: 0.15,
@@ -72,11 +70,12 @@ class PlayerController extends Component {
 class CameraScene extends Scene {
   readonly name = "camera";
 
+  private readonly layerMgr = this.service(RenderLayerManagerKey);
+
   onEnter(): void {
-    const layers = this.context.resolve(RenderLayerManagerKey);
-    layers.create("bg", -10);
-    layers.create("world", 0);
-    layers.create("player", 10);
+    this.layerMgr.create("bg", -10);
+    this.layerMgr.create("world", 0);
+    this.layerMgr.create("player", 10);
 
     // Grid background (2000x2000 world)
     this.drawGrid();
@@ -175,22 +174,8 @@ class CameraScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: 800,
-      height: 600,
-      virtualWidth: 800,
-      virtualHeight: 600,
-      backgroundColor: 0x0a0a0a,
-      container: getContainer(),
-    }),
-  );
-
-  await engine.start();
-  engine.scenes.push(new CameraScene());
-}
-
-main().catch(console.error);
+await createGame({
+  backgroundColor: 0x0a0a0a,
+  debug: true,
+  scene: new CameraScene(),
+});

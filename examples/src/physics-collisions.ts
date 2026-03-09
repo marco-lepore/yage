@@ -1,13 +1,13 @@
-import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
+import { GraphicsComponent, CameraKey } from "@yage/renderer";
 import {
-  PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
 } from "@yage/physics";
-import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { AudioManagerKey, sound } from "@yage/audio";
+import { createGame } from "yage";
+import { injectStyles, keys } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -66,8 +66,9 @@ const HurtSfx = sound("assets/hurt.wav");
 // PlayerController — WASD dynamic movement via velocity
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+
   update(): void {
-    const rb = this.entity.get(RigidBodyComponent);
     let dx = 0;
     let dy = 0;
     if (keys.has("w") || keys.has("arrowup")) dy -= 1;
@@ -76,9 +77,9 @@ class PlayerController extends Component {
     if (keys.has("d") || keys.has("arrowright")) dx += 1;
 
     if (dx !== 0 || dy !== 0) {
-      rb.setVelocity(new Vec2(dx, dy).normalize().scale(PLAYER_SPEED));
+      this.rb.setVelocity(new Vec2(dx, dy).normalize().scale(PLAYER_SPEED));
     } else {
-      rb.setVelocity(Vec2.ZERO);
+      this.rb.setVelocity(Vec2.ZERO);
     }
   }
 }
@@ -207,6 +208,8 @@ class CollisionsScene extends Scene {
   readonly name = "physics-collisions";
   readonly preload = [CoinSfx, HurtSfx];
 
+  private readonly audio = this.service(AudioManagerKey);
+
   onEnter(): void {
     // Center camera on the arena
     const camera = this.context.resolve(CameraKey);
@@ -214,15 +217,13 @@ class CollisionsScene extends Scene {
 
     setScore(0);
 
-    const audio = this.context.resolve(AudioManagerKey);
-
     // Scene-level event listeners
     this.on(CoinCollected, () => {
       setScore(score + 10);
-      audio.play(CoinSfx.path, { channel: "sfx" });
+      this.audio.play(CoinSfx.path, { channel: "sfx" });
     });
     this.on(DangerEntered, () => {
-      audio.play(HurtSfx.path, { channel: "sfx" });
+      this.audio.play(HurtSfx.path, { channel: "sfx" });
       setScore(0);
       const player = this.findEntity("player");
       if (player) {
@@ -260,28 +261,12 @@ class CollisionsScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      virtualWidth: WIDTH,
-      virtualHeight: HEIGHT,
-      backgroundColor: 0x0a0a0a,
-      container: getContainer(),
-    }),
-  );
-  engine.use(
-    new PhysicsPlugin({
-      gravity: { x: 0, y: 0 }, // top-down, no gravity
-    }),
-  );
-  engine.use(new AudioPlugin());
-
-  await engine.start();
-  await engine.scenes.push(new CollisionsScene());
-}
-
-main().catch(console.error);
+await createGame({
+  width: WIDTH,
+  height: HEIGHT,
+  backgroundColor: 0x0a0a0a,
+  physics: { gravity: { x: 0, y: 0 } },
+  audio: true,
+  debug: true,
+  scene: new CollisionsScene(),
+});

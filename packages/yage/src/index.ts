@@ -8,3 +8,4 @@ export * from "@yage/tilemap";
 export * from "@yage/ui";
 export * from "@yage/debug";
 export * from "@yage/debug/api";
+export * from "./createGame.js";

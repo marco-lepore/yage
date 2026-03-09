@@ -1,22 +1,21 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
+import { Scene, Component, Transform, Vec2 } from "@yage/core";
 import type { Entity } from "@yage/core";
 import {
-  RendererPlugin,
   RendererKey,
   CameraKey,
   GraphicsComponent,
 } from "@yage/renderer";
-import { InputPlugin, InputManagerKey } from "@yage/input";
+import { InputManagerKey } from "@yage/input";
 import type { InputManager } from "@yage/input";
 import {
-  ParticlesPlugin,
   ParticleEmitterComponent,
   ParticlePresets,
 } from "@yage/particles";
 import type { EmitterConfig } from "@yage/particles";
 import { Graphics } from "pixi.js";
 import type { Texture } from "pixi.js";
-import { injectStyles, getContainer } from "./shared.js";
+import { createGame } from "yage";
+import { injectStyles } from "./shared.js";
 
 injectStyles();
 
@@ -47,11 +46,10 @@ const PRESET_FACTORIES: Record<
 //                      1-4 keys to switch presets
 // ---------------------------------------------------------------------------
 class ParticleController extends Component {
-  private input!: InputManager;
+  private readonly input = this.service(InputManagerKey);
   scene!: ParticlesScene;
 
   onAdd(): void {
-    this.input = this.use(InputManagerKey);
     this.scene = this.entity.scene as ParticlesScene;
   }
 
@@ -202,11 +200,7 @@ class ParticlesScene extends Scene {
 // CrosshairFollow — tiny component to track mouse for the crosshair
 // ---------------------------------------------------------------------------
 class CrosshairFollow extends Component {
-  private input!: InputManager;
-
-  onAdd(): void {
-    this.input = this.use(InputManagerKey);
-  }
+  private readonly input = this.service(InputManagerKey);
 
   update(): void {
     const pos = this.input.getPointerPosition();
@@ -217,39 +211,21 @@ class CrosshairFollow extends Component {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-async function main() {
-  const engine = new Engine({ debug: true });
-
-  engine.use(
-    new RendererPlugin({
-      width: 800,
-      height: 600,
-      virtualWidth: 800,
-      virtualHeight: 600,
-      backgroundColor: 0x0a0a0a,
-      container: getContainer(),
-    }),
-  );
-
-  engine.use(
-    new InputPlugin({
-      actions: {
-        burst: ["Space"],
-        preset_fire: ["Digit1"],
-        preset_smoke: ["Digit2"],
-        preset_sparks: ["Digit3"],
-        preset_rain: ["Digit4"],
-      },
-      preventDefaultKeys: ["Space"],
-      cameraKey: CameraKey as never,
-      rendererKey: RendererKey as never,
-    }),
-  );
-
-  engine.use(new ParticlesPlugin());
-
-  await engine.start();
-  engine.scenes.push(new ParticlesScene());
-}
-
-main().catch(console.error);
+await createGame({
+  backgroundColor: 0x0a0a0a,
+  input: {
+    actions: {
+      burst: ["Space"],
+      preset_fire: ["Digit1"],
+      preset_smoke: ["Digit2"],
+      preset_sparks: ["Digit3"],
+      preset_rain: ["Digit4"],
+    },
+    preventDefaultKeys: ["Space"],
+    cameraKey: CameraKey as never,
+    rendererKey: RendererKey as never,
+  },
+  particles: true,
+  debug: true,
+  scene: new ParticlesScene(),
+});

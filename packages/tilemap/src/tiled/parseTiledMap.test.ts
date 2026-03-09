@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock PixiJS and @pixi/tilemap before importing modules
 const { mockCompositeTilemap, mockAssets, mockRectangle } = vi.hoisted(() => {
   class MockCompositeTilemap {
-    tile(_texture: unknown, _x: number, _y: number) {
+    tile() {
       return this;
     }
   }
