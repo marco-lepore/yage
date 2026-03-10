@@ -4,7 +4,6 @@ export { Phase } from "./types.js";
 export type {
   ComponentClass,
   Plugin,
-  PrefabOverrides,
   EasingFunction,
 } from "./types.js";
 
@@ -90,7 +89,6 @@ export { ProcessComponent } from "./ProcessComponent.js";
 
 export { ProcessSystem } from "./ProcessSystem.js";
 
-export { Prefab } from "./Prefab.js";
 
 export { Inspector } from "./Inspector.js";
 export type {

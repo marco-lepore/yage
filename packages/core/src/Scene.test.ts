@@ -6,8 +6,6 @@ import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { _resetEntityIdCounter } from "./Entity.js";
-import { Prefab } from "./Prefab.js";
-import { Transform } from "./Transform.js";
 
 class TestScene extends Scene {
   readonly name = "test";
@@ -194,26 +192,6 @@ describe("Scene", () => {
     const scene = new TestScene();
     scene._setContext(ctx);
     expect(scene.context).toBe(ctx);
-  });
-
-  it("spawnPrefab creates an entity from a prefab", () => {
-    const { ctx } = createContext();
-    const scene = new TestScene();
-    scene._setContext(ctx);
-    const prefab = new Prefab("soldier").tag("enemy").with(Transform);
-    const entity = scene.spawnPrefab(prefab);
-    expect(entity.name).toBe("soldier");
-    expect(entity.tags.has("enemy")).toBe(true);
-    expect(entity.has(Transform)).toBe(true);
-  });
-
-  it("spawnPrefab passes overrides to the prefab", () => {
-    const { ctx } = createContext();
-    const scene = new TestScene();
-    scene._setContext(ctx);
-    const prefab = new Prefab("soldier").with(Transform);
-    const entity = scene.spawnPrefab(prefab, { name: "captain" });
-    expect(entity.name).toBe("captain");
   });
 
   it("destroyEntity ignores already-destroyed entities", () => {

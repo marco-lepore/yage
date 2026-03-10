@@ -435,22 +435,27 @@ const seq = new Sequence()
 
 ---
 
-## Prefabs
+## Blueprints
 
 ```typescript
-import { Prefab, Transform } from "@yage/core";
+import { defineBlueprint, Transform } from "@yage/core";
 
-const soldierPrefab = new Prefab("soldier")
-  .tag("enemy", "npc")
-  .with(Transform)
-  .with(Health, 50)                             // constructor args
-  .child(new Prefab("weapon").with(Weapon));
+const SoldierBlueprint = defineBlueprint<{
+  hp: number;
+  isBoss?: boolean;
+}>("soldier", (entity, params) => {
+  entity.tags.add("enemy");
+  entity.tags.add("npc");
+  if (params.isBoss) entity.tags.add("boss");
 
-// Spawn with optional overrides
-const entity = scene.spawnPrefab(soldierPrefab, {
-  name: "captain",
-  tags: ["boss"],
-  components: [{ cls: Health, args: [200] }],   // override Health args
+  entity.add(new Transform());
+  entity.add(new Health(params.hp));
+  entity.add(new Weapon());
+});
+
+const entity = scene.spawn(SoldierBlueprint, {
+  hp: 200,
+  isBoss: true,
 });
 ```
 

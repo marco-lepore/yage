@@ -3,9 +3,7 @@ import type { EntityCallbacks } from "./Entity.js";
 import type { EngineContext } from "./EngineContext.js";
 import type { QueryCache } from "./QueryCache.js";
 import type { EventBus, EngineEvents } from "./EventBus.js";
-import type { Prefab } from "./Prefab.js";
 import type { Blueprint } from "./Blueprint.js";
-import type { PrefabOverrides } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
@@ -114,10 +112,6 @@ export abstract class Scene {
     return entity;
   }
 
-  /** Spawn an entity from a prefab. */
-  spawnPrefab(prefab: Prefab, overrides?: PrefabOverrides): Entity {
-    return prefab.spawn(this, overrides);
-  }
 
   /** Mark an entity for destruction. Deferred to endOfFrame flush. */
   destroyEntity(entity: Entity): void {

@@ -172,11 +172,11 @@ Phase 7: Debug Plugin                                  (all above)
     - `ProcessSystem` in `Phase.Update` at priority ~500 (before `ComponentUpdateSystem` at 1000) ticks both
     - Tests: auto-tick, completion removal, entity destroy cancellation, scene-level lifecycle
 
-14. **Prefab** *(SPIKE — current API insufficient, needs exploration)*
-    - Current: static template with fixed constructor args and class-keyed overrides
-    - Problem: real entity creation patterns are parametric factories where shared params (e.g. width/height) feed multiple components, post-construction methods (`.draw()`, `.onCollision()`) can't be expressed as constructor args, and runtime-computed closures reference entity instances
-    - Spike needed to evaluate: (a) redesign into `Prefab<P>` with typed params + post-construction hooks, (b) remove in favor of plain factory functions, or (c) narrow scope to truly static entities only
-    - Tests: build and spawn, overrides, nested children
+14. **Blueprint templates**
+    - `defineBlueprint(name, build)` for reusable, parametric entity assembly
+    - `Scene.spawn(blueprint, params)` as the canonical template spawn path
+    - Supports runtime-computed setup and post-construction configuration inside `build(entity, params)`
+    - Tests: build and spawn, parameterized blueprints, class-based blueprint implementations
 
 15. **Inspector**
     - snapshot(), getEntityByName(), getEntityPosition(), hasComponent(), getComponentData()

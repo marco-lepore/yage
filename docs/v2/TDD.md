@@ -58,8 +58,8 @@ yage/
 │   │   │   ├── Process.test.ts
 │   │   │   ├── Tween.ts
 │   │   │   ├── Sequence.ts
-│   │   │   ├── Prefab.ts
-│   │   │   ├── Prefab.test.ts
+│   │   │   ├── Blueprint.ts
+│   │   │   ├── Blueprint.test.ts
 │   │   │   ├── ErrorBoundary.ts
 │   │   │   ├── ErrorBoundary.test.ts
 │   │   │   ├── Inspector.ts
@@ -289,14 +289,14 @@ export class EngineContext {
 }
 
 // Well-known service keys (exported from @yage/core)
-export const EngineKey = new ServiceKey<Engine>('engine');
-export const EventBusKey = new ServiceKey<EventBus>('eventBus');
-export const SceneManagerKey = new ServiceKey<SceneManager>('sceneManager');
-export const LoggerKey = new ServiceKey<Logger>('logger');
-export const InspectorKey = new ServiceKey<Inspector>('inspector');
-export const QueryCacheKey = new ServiceKey<QueryCache>('queryCache');
-export const ErrorBoundaryKey = new ServiceKey<ErrorBoundary>('errorBoundary');
-export const GameLoopKey = new ServiceKey<GameLoop>('gameLoop');
+export const EngineKey = new ServiceKey<Engine>("engine");
+export const EventBusKey = new ServiceKey<EventBus>("eventBus");
+export const SceneManagerKey = new ServiceKey<SceneManager>("sceneManager");
+export const LoggerKey = new ServiceKey<Logger>("logger");
+export const InspectorKey = new ServiceKey<Inspector>("inspector");
+export const QueryCacheKey = new ServiceKey<QueryCache>("queryCache");
+export const ErrorBoundaryKey = new ServiceKey<ErrorBoundary>("errorBoundary");
+export const GameLoopKey = new ServiceKey<GameLoop>("gameLoop");
 ```
 
 ### 2.3 Entity
@@ -339,7 +339,9 @@ export class Entity {
 }
 
 /** Constructor type for components */
-export type ComponentClass<C extends Component = Component> = new (...args: any[]) => C;
+export type ComponentClass<C extends Component = Component> = new (
+  ...args: any[]
+) => C;
 ```
 
 ### 2.4 Component
@@ -382,12 +384,12 @@ Systems are the workhorses. Each System runs in a specific game loop phase, quer
 
 ```typescript
 export enum Phase {
-  EarlyUpdate = 'earlyUpdate',
-  FixedUpdate = 'fixedUpdate',
-  Update = 'update',
-  LateUpdate = 'lateUpdate',
-  Render = 'render',
-  EndOfFrame = 'endOfFrame',
+  EarlyUpdate = "earlyUpdate",
+  FixedUpdate = "fixedUpdate",
+  Update = "update",
+  LateUpdate = "lateUpdate",
+  Render = "render",
+  EndOfFrame = "endOfFrame",
 }
 
 export abstract class System {
@@ -562,15 +564,15 @@ export class EventBus<E extends EventMap = EventMap> {
 
 // Well-known engine events
 export interface EngineEvents {
-  'entity:created': { entity: Entity };
-  'entity:destroyed': { entity: Entity };
-  'component:added': { entity: Entity; component: Component };
-  'component:removed': { entity: Entity; componentClass: ComponentClass };
-  'scene:pushed': { scene: Scene };
-  'scene:popped': { scene: Scene };
-  'scene:replaced': { oldScene: Scene; newScene: Scene };
-  'engine:started': void;
-  'engine:stopped': void;
+  "entity:created": { entity: Entity };
+  "entity:destroyed": { entity: Entity };
+  "component:added": { entity: Entity; component: Component };
+  "component:removed": { entity: Entity; componentClass: ComponentClass };
+  "scene:pushed": { scene: Scene };
+  "scene:popped": { scene: Scene };
+  "scene:replaced": { oldScene: Scene; newScene: Scene };
+  "engine:started": void;
+  "engine:stopped": void;
 }
 ```
 
@@ -637,8 +639,9 @@ export abstract class Scene {
   /** Spawn a new entity in this scene. */
   spawn(name?: string): Entity;
 
-  /** Spawn an entity from a prefab. */
-  spawnPrefab(prefab: Prefab, overrides?: PrefabOverrides): Entity;
+  /** Spawn a new entity from a blueprint template. */
+  spawn<P>(blueprint: Blueprint<P>, params: P): Entity;
+  spawn(blueprint: Blueprint<void>): Entity;
 
   /** Destroy an entity. Deferred to endOfFrame. */
   destroyEntity(entity: Entity): void;
@@ -752,47 +755,33 @@ export class Sequence {
 }
 ```
 
-### 2.13 Prefab
+### 2.13 Blueprint
 
-> **Note**: For parametric entity factories where shared parameters feed multiple components or post-construction logic is needed, prefer `Blueprint` (see [§7.2](#72-blueprint-system)). Prefab is best suited for truly static entity templates.
-
-Declarative entity templates with a builder pattern.
+Reusable entity templates defined as build callbacks.
 
 ```typescript
-export class Prefab {
-  private name: string;
-  private tags: string[] = [];
-  private components: Array<{ cls: ComponentClass; args: unknown[] }> = [];
-  private children: Prefab[] = [];
-
-  constructor(name: string);
-
-  /** Add a tag. */
-  tag(...tags: string[]): this;
-
-  /** Add a component with constructor args. */
-  with<C extends Component>(cls: ComponentClass<C>, ...args: ConstructorArgs<C>): this;
-
-  /** Add a child prefab. */
-  child(prefab: Prefab): this;
-
-  /** Build the entity in a scene. */
-  spawn(scene: Scene, overrides?: PrefabOverrides): Entity;
+export interface Blueprint<P = void> {
+  readonly name: string;
+  build(entity: Entity, params: P): void;
 }
 
-export interface PrefabOverrides {
-  name?: string;
-  tags?: string[];
-  components?: Array<{ cls: ComponentClass; args: unknown[] }>;
-}
+export function defineBlueprint<P = void>(
+  name: string,
+  build: (entity: Entity, params: P) => void,
+): Blueprint<P>;
 
 // Usage example:
-const EnemyPrefab = new Prefab('enemy')
-  .tag('enemy', 'damageable')
-  .with(SpriteComponent, 'enemy.png')
-  .with(RigidBodyComponent, { type: 'dynamic' })
-  .with(ColliderComponent, { shape: 'circle', radius: 16 })
-  .with(HealthComponent, 100);
+const EnemyBlueprint = defineBlueprint<{ hp: number }>(
+  "enemy",
+  (entity, params) => {
+    entity.tags.add("enemy");
+    entity.tags.add("damageable");
+    entity.add(new SpriteComponent("enemy.png"));
+    entity.add(new RigidBodyComponent({ type: "dynamic" }));
+    entity.add(new ColliderComponent({ shape: "circle", radius: 16 }));
+    entity.add(new HealthComponent(params.hp));
+  },
+);
 ```
 
 ### 2.14 ErrorBoundary
@@ -813,7 +802,10 @@ export class ErrorBoundary {
   wrapComponent(component: Component, fn: () => void): void;
 
   /** Get all disabled systems/components for inspection. */
-  getDisabled(): { systems: readonly System[]; components: readonly Component[] };
+  getDisabled(): {
+    systems: readonly System[];
+    components: readonly Component[];
+  };
 }
 ```
 
@@ -886,7 +878,11 @@ export interface SystemSnapshot {
 
 export interface ErrorSnapshot {
   disabledSystems: string[];
-  disabledComponents: Array<{ entity: string; component: string; error: string }>;
+  disabledComponents: Array<{
+    entity: string;
+    component: string;
+    error: string;
+  }>;
 }
 ```
 
@@ -905,9 +901,9 @@ export enum LogLevel {
 
 export interface LoggerConfig {
   level?: LogLevel;
-  categories?: string[];        // Whitelist. Empty = all.
-  bufferSize?: number;          // Ring buffer size (default: 500)
-  output?: (entry: LogEntry) => void;  // Custom output handler
+  categories?: string[]; // Whitelist. Empty = all.
+  bufferSize?: number; // Ring buffer size (default: 500)
+  output?: (entry: LogEntry) => void; // Custom output handler
 }
 
 export interface LogEntry {
@@ -1025,12 +1021,12 @@ export const MathUtils = {
 ### 3.1 RendererPlugin
 
 ```typescript
-import { Plugin, ServiceKey, Phase } from '@yage/core';
-import { Application, Container } from 'pixi.js';
+import { Plugin, ServiceKey, Phase } from "@yage/core";
+import { Application, Container } from "pixi.js";
 
-export const RendererKey = new ServiceKey<RendererPlugin>('renderer');
-export const StageKey = new ServiceKey<Container>('stage');
-export const CameraKey = new ServiceKey<Camera>('camera');
+export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
+export const StageKey = new ServiceKey<Container>("stage");
+export const CameraKey = new ServiceKey<Camera>("camera");
 
 export interface RendererConfig {
   /** Canvas width in CSS pixels. */
@@ -1050,8 +1046,8 @@ export interface RendererConfig {
 }
 
 export class RendererPlugin implements Plugin {
-  readonly name = 'renderer';
-  readonly version = '2.0.0';
+  readonly name = "renderer";
+  readonly version = "2.0.0";
 
   private app!: Application;
   private config: RendererConfig;
@@ -1105,16 +1101,16 @@ export class AnimatedSpriteComponent extends Component {
   animatedSprite: AnimatedSprite;
   layer: number;
 
-  constructor(options: {
-    spritesheet: string | Spritesheet;
-    layer?: number;
-  });
+  constructor(options: { spritesheet: string | Spritesheet; layer?: number });
 
-  play(animation: string, options?: {
-    speed?: number;
-    loop?: boolean;
-    onComplete?: () => void;
-  }): void;
+  play(
+    animation: string,
+    options?: {
+      speed?: number;
+      loop?: boolean;
+      onComplete?: () => void;
+    },
+  ): void;
 
   stop(): void;
   get currentAnimation(): string | null;
@@ -1132,20 +1128,27 @@ export class Camera {
   bounds?: { x: number; y: number; width: number; height: number };
 
   /** Follow an entity with optional deadzone and smoothing. */
-  follow(entity: Entity, options?: {
-    deadzone?: { width: number; height: number };
-    smoothing?: number;  // 0-1, lower = smoother
-    offset?: Vec2;
-  }): void;
+  follow(
+    entity: Entity,
+    options?: {
+      deadzone?: { width: number; height: number };
+      smoothing?: number; // 0-1, lower = smoother
+      offset?: Vec2;
+    },
+  ): void;
 
   /** Stop following. */
   unfollow(): void;
 
   /** Apply screen shake. */
-  shake(intensity: number, duration: number, options?: {
-    frequency?: number;
-    decay?: boolean;
-  }): void;
+  shake(
+    intensity: number,
+    duration: number,
+    options?: {
+      frequency?: number;
+      decay?: boolean;
+    },
+  ): void;
 
   /** Smoothly zoom to a target level. */
   zoomTo(target: number, duration: number, easing?: EasingFunction): void;
@@ -1185,7 +1188,7 @@ Named layers for draw order control.
 ```typescript
 export class RenderLayer {
   readonly name: string;
-  readonly order: number;     // Lower = drawn first (behind)
+  readonly order: number; // Lower = drawn first (behind)
   readonly container: Container;
 
   constructor(name: string, order: number);
@@ -1202,9 +1205,9 @@ export class RenderLayer {
 ### 4.1 PhysicsPlugin
 
 ```typescript
-import { Plugin, ServiceKey, Phase } from '@yage/core';
+import { Plugin, ServiceKey, Phase } from "@yage/core";
 
-export const PhysicsWorldKey = new ServiceKey<PhysicsWorld>('physicsWorld');
+export const PhysicsWorldKey = new ServiceKey<PhysicsWorld>("physicsWorld");
 
 export interface PhysicsConfig {
   /** Gravity in pixels/s^2. Default: { x: 0, y: 980 } */
@@ -1214,8 +1217,8 @@ export interface PhysicsConfig {
 }
 
 export class PhysicsPlugin implements Plugin {
-  readonly name = 'physics';
-  readonly version = '2.0.0';
+  readonly name = "physics";
+  readonly version = "2.0.0";
 
   constructor(config?: PhysicsConfig);
 
@@ -1252,10 +1255,15 @@ export class PhysicsWorld {
   processCollisionEvents(): void;
 
   /** Cast a ray. Returns results in pixel coordinates. */
-  raycast(origin: Vec2, direction: Vec2, maxDistance: number, options?: {
-    layers?: number;
-    excludeEntity?: Entity;
-  }): RaycastHit | null;
+  raycast(
+    origin: Vec2,
+    direction: Vec2,
+    maxDistance: number,
+    options?: {
+      layers?: number;
+      excludeEntity?: Entity;
+    },
+  ): RaycastHit | null;
 
   /** Set gravity in pixels/s^2. */
   setGravity(x: number, y: number): void;
@@ -1264,7 +1272,11 @@ export class PhysicsWorld {
   createBody(entity: Entity, desc: RigidBodyConfig): number;
 
   /** Internal: register a collider on a body. */
-  createCollider(entity: Entity, bodyHandle: number, desc: ColliderConfig): number;
+  createCollider(
+    entity: Entity,
+    bodyHandle: number,
+    desc: ColliderConfig,
+  ): number;
 
   /** Internal: remove a body and its colliders. */
   removeBody(handle: number): void;
@@ -1283,7 +1295,7 @@ export interface RaycastHit {
 ### 4.3 Components
 
 ```typescript
-export type BodyType = 'dynamic' | 'static' | 'kinematic';
+export type BodyType = "dynamic" | "static" | "kinematic";
 
 export interface RigidBodyConfig {
   type: BodyType;
@@ -1331,10 +1343,10 @@ export class RigidBodyComponent extends Component {
 }
 
 export type ColliderShape =
-  | { type: 'box'; width: number; height: number }
-  | { type: 'circle'; radius: number }
-  | { type: 'capsule'; halfHeight: number; radius: number }
-  | { type: 'polygon'; vertices: Vec2[] };
+  | { type: "box"; width: number; height: number }
+  | { type: "circle"; radius: number }
+  | { type: "capsule"; halfHeight: number; radius: number }
+  | { type: "polygon"; vertices: Vec2[] };
 
 export interface ColliderConfig {
   shape: ColliderShape;
@@ -1373,15 +1385,15 @@ export class ColliderComponent extends Component {
 export interface CollisionEvent {
   other: Entity;
   otherCollider: ColliderComponent;
-  started: boolean;      // true = contact began, false = contact ended
-  contactNormal?: Vec2;  // Only present on start
-  contactPoint?: Vec2;   // Only present on start
+  started: boolean; // true = contact began, false = contact ended
+  contactNormal?: Vec2; // Only present on start
+  contactPoint?: Vec2; // Only present on start
 }
 
 export interface TriggerEvent {
   other: Entity;
   otherCollider: ColliderComponent;
-  entered: boolean;      // true = entered, false = exited
+  entered: boolean; // true = entered, false = exited
 }
 ```
 
@@ -1391,15 +1403,17 @@ For multiple colliders, `ColliderComponent` supports array-style usage:
 
 ```typescript
 // Entity with compound colliders
-const entity = scene.spawn('player');
+const entity = scene.spawn("player");
 entity.add(new Transform({ position: new Vec2(100, 200) }));
-entity.add(new RigidBodyComponent({ type: 'dynamic' }));
-entity.add(new ColliderComponent({
-  shape: { type: 'capsule', halfHeight: 16, radius: 8 },
-}));
+entity.add(new RigidBodyComponent({ type: "dynamic" }));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "capsule", halfHeight: 16, radius: 8 },
+  }),
+);
 // Additional sensor for ground detection stored separately
 const groundSensor = new ColliderComponent({
-  shape: { type: 'box', width: 12, height: 4 },
+  shape: { type: "box", width: 12, height: 4 },
   offset: new Vec2(0, 20),
   sensor: true,
 });
@@ -1425,7 +1439,7 @@ export class PhysicsSystem extends System {
 
 export class PhysicsInterpolationSystem extends System {
   readonly phase = Phase.LateUpdate;
-  readonly priority = 100;  // Runs after other LateUpdate systems
+  readonly priority = 100; // Runs after other LateUpdate systems
 
   update(dt: number): void;
   // Interpolates Transform between previous and current physics state
@@ -1451,17 +1465,19 @@ export class CollisionLayers {
 
 // Usage:
 const layers = new CollisionLayers();
-const PLAYER = layers.define('player');
-const ENEMY = layers.define('enemy');
-const GROUND = layers.define('ground');
-const PROJECTILE = layers.define('projectile');
+const PLAYER = layers.define("player");
+const ENEMY = layers.define("enemy");
+const GROUND = layers.define("ground");
+const PROJECTILE = layers.define("projectile");
 
 // Player collides with enemy and ground
-entity.add(new ColliderComponent({
-  shape: { type: 'capsule', halfHeight: 16, radius: 8 },
-  layers: PLAYER,
-  mask: layers.combine('enemy', 'ground'),
-}));
+entity.add(
+  new ColliderComponent({
+    shape: { type: "capsule", halfHeight: 16, radius: 8 },
+    layers: PLAYER,
+    mask: layers.combine("enemy", "ground"),
+  }),
+);
 ```
 
 ---
@@ -1471,11 +1487,11 @@ entity.add(new ColliderComponent({
 ### 5.1 InputPlugin
 
 ```typescript
-export const InputManagerKey = new ServiceKey<InputManager>('inputManager');
+export const InputManagerKey = new ServiceKey<InputManager>("inputManager");
 
 export class InputPlugin implements Plugin {
-  readonly name = 'input';
-  readonly version = '2.0.0';
+  readonly name = "input";
+  readonly version = "2.0.0";
 
   constructor(config?: InputConfig);
 
@@ -1587,11 +1603,11 @@ export class InputSystem extends System {
 ### 6.1 AudioPlugin
 
 ```typescript
-export const AudioManagerKey = new ServiceKey<AudioManager>('audioManager');
+export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
 
 export class AudioPlugin implements Plugin {
-  readonly name = 'audio';
-  readonly version = '2.0.0';
+  readonly name = "audio";
+  readonly version = "2.0.0";
 
   constructor(config?: AudioConfig);
 
@@ -1610,12 +1626,15 @@ export interface AudioConfig {
 ```typescript
 export class AudioManager {
   /** Play a sound on a channel. */
-  play(alias: string, options?: {
-    channel?: string;    // Default: 'sfx'
-    volume?: number;     // Override channel volume
-    loop?: boolean;
-    speed?: number;
-  }): SoundHandle;
+  play(
+    alias: string,
+    options?: {
+      channel?: string; // Default: 'sfx'
+      volume?: number; // Override channel volume
+      loop?: boolean;
+      speed?: number;
+    },
+  ): SoundHandle;
 
   /** Play a random sound from a list. */
   playRandom(aliases: string[], options?: PlayOptions): SoundHandle;
@@ -1659,8 +1678,8 @@ export interface SoundHandle {
 ### 6.3 Asset Handle Factory
 
 ```typescript
-import { AssetHandle } from '@yage/core';
-import { Sound } from '@pixi/sound';
+import { AssetHandle } from "@yage/core";
+import { Sound } from "@pixi/sound";
 
 /** Create a typed asset handle for a sound file. */
 export function sound(path: string): AssetHandle<Sound>;
@@ -1695,8 +1714,8 @@ export class SoundComponent extends Component {
 
 ```typescript
 export class ParticlesPlugin implements Plugin {
-  readonly name = 'particles';
-  readonly dependencies = ['renderer'];
+  readonly name = "particles";
+  readonly dependencies = ["renderer"];
   // ...
 }
 
@@ -1745,8 +1764,8 @@ export const ParticlePresets = {
 
 ```typescript
 export class TilemapPlugin implements Plugin {
-  readonly name = 'tilemap';
-  readonly dependencies = ['renderer'];
+  readonly name = "tilemap";
+  readonly dependencies = ["renderer"];
   // ...
 }
 
@@ -1779,33 +1798,33 @@ export function tiledMap(path: string): AssetHandle<TilemapData>;
 /** Extract objects from Tiled map, grouped by class/type. */
 export function extractObjects(
   map: TiledMapData,
-  objectLayerName?: string
+  objectLayerName?: string,
 ): Record<string, TileObject[]>;
 
 /** Get a single property value by name from a Tiled object. */
 export function getProperty<T = unknown>(
   obj: HasProperties,
-  name: string
+  name: string,
 ): T | undefined;
 
 /** Get pseudo-array of properties using indexed naming (e.g., spawns[0], spawns[1]). */
 export function getPropertyArray<T = unknown>(
   obj: HasProperties,
-  name: string
+  name: string,
 ): T[];
 
 /** Resolve a property of type "object" (ID reference) to the actual MapObject. */
 export function resolveObjectRef(
   obj: HasProperties,
   propName: string,
-  allObjects: MapObject[]
+  allObjects: MapObject[],
 ): MapObject | undefined;
 
 /** Resolve pseudo-array of object ID references to actual MapObjects. */
 export function resolveObjectRefArray(
   obj: HasProperties,
   propName: string,
-  allObjects: MapObject[]
+  allObjects: MapObject[],
 ): MapObject[];
 ```
 
@@ -1815,7 +1834,7 @@ export function resolveObjectRefArray(
 /** Extract physics-agnostic collision shapes from object layers. */
 export function extractCollisionShapes(
   map: TilemapData,
-  objectLayerName?: string
+  objectLayerName?: string,
 ): TilemapColliderConfig[];
 ```
 
@@ -1823,8 +1842,8 @@ export function extractCollisionShapes(
 
 ```typescript
 export class UIPlugin implements Plugin {
-  readonly name = 'ui';
-  readonly dependencies = ['renderer'];
+  readonly name = "ui";
+  readonly dependencies = ["renderer"];
   // Registers UIContainerKey service
 }
 ```
@@ -1899,14 +1918,14 @@ export class PixiRadioGroup { ... }     // Radio button group
 export type BackgroundOptions = ColorBackground | TextureBackground;
 
 export interface ColorBackground {
-  type: 'color';
+  type: "color";
   color: number;
   alpha?: number;
   borderRadius?: number;
 }
 
 export interface TextureBackground {
-  type: 'texture';
+  type: "texture";
   texture: Texture;
 }
 ```
@@ -1914,11 +1933,11 @@ export interface TextureBackground {
 ### 7.4 Debug Plugin (`@yage/debug`)
 
 ```typescript
-export const DebugRegistryKey = new ServiceKey<DebugRegistry>('debugRegistry');
+export const DebugRegistryKey = new ServiceKey<DebugRegistry>("debugRegistry");
 
 export class DebugPlugin implements Plugin {
-  readonly name = 'debug';
-  readonly dependencies = ['renderer'];
+  readonly name = "debug";
+  readonly dependencies = ["renderer"];
   // Registers DebugRegistryKey service
 }
 
@@ -2002,7 +2021,7 @@ export class StatsStore {
 Asset management is part of `@yage/core` with pluggable loaders registered by plugin packages.
 
 ```typescript
-export const AssetManagerKey = new ServiceKey<AssetManager>('assetManager');
+export const AssetManagerKey = new ServiceKey<AssetManager>("assetManager");
 
 /** Phantom-typed handle for type-safe deferred asset loading. */
 export class AssetHandle<T> {
@@ -2031,7 +2050,7 @@ export class AssetManager {
   /** Load multiple assets with optional progress callback (0→1). */
   async loadAll(
     handles: AssetHandle<unknown>[],
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
   ): Promise<void>;
 
   /** Unload a single asset. */
@@ -2046,9 +2065,9 @@ export class AssetManager {
 
 ```typescript
 // Define handles at module scope
-const heroTexture = texture('hero.png');
-const jumpSound = sound('jump.wav');
-const level1Map = tiledMap('level1.json');
+const heroTexture = texture("hero.png");
+const jumpSound = sound("jump.wav");
+const level1Map = tiledMap("level1.json");
 
 // Load in scene onEnter
 class GameScene extends Scene {
@@ -2056,7 +2075,7 @@ class GameScene extends Scene {
     const assets = this.context.resolve(AssetManagerKey);
     await assets.loadAll([heroTexture, jumpSound, level1Map]);
 
-    const player = this.spawn('player');
+    const player = this.spawn("player");
     player.add(new SpriteComponent({ texture: assets.get(heroTexture) }));
   }
 }
@@ -2066,11 +2085,11 @@ class GameScene extends Scene {
 
 Each plugin that registers an asset loader also exports a factory function:
 
-| Factory | Package | Returns |
-|---|---|---|
-| `texture(path)` | `@yage/renderer` | `AssetHandle<Texture>` |
-| `sound(path)` | `@yage/audio` | `AssetHandle<Sound>` |
-| `tiledMap(path)` | `@yage/tilemap` | `AssetHandle<TilemapData>` |
+| Factory          | Package          | Returns                    |
+| ---------------- | ---------------- | -------------------------- |
+| `texture(path)`  | `@yage/renderer` | `AssetHandle<Texture>`     |
+| `sound(path)`    | `@yage/audio`    | `AssetHandle<Sound>`       |
+| `tiledMap(path)` | `@yage/tilemap`  | `AssetHandle<TilemapData>` |
 
 ### 7.6 Blueprint System (`@yage/core`)
 
@@ -2086,40 +2105,43 @@ export interface Blueprint<P = void> {
 /** Create a reusable blueprint. */
 export function defineBlueprint<P = void>(
   name: string,
-  build: (entity: Entity, params: P) => void
+  build: (entity: Entity, params: P) => void,
 ): Blueprint<P>;
 ```
 
 **When to use**:
+
 - **Blueprint**: Parametric factories where shared parameters feed multiple components, post-construction methods (`.draw()`, `.onCollision()`) are needed, or runtime-computed closures reference entity instances.
 - **Prefab**: Truly static entity templates with fixed component configurations.
 
 ```typescript
 // Example: parametric enemy blueprint
 const EnemyBlueprint = defineBlueprint<{ hp: number; speed: number }>(
-  'enemy',
+  "enemy",
   (entity, { hp, speed }) => {
     entity.add(new Transform());
-    entity.add(new RigidBodyComponent({ type: 'dynamic' }));
-    entity.add(new ColliderComponent({
-      shape: { type: 'circle', radius: 16 },
-    }));
+    entity.add(new RigidBodyComponent({ type: "dynamic" }));
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 16 },
+      }),
+    );
     entity.add(new HealthComponent(hp));
 
     const gfx = entity.add(new GraphicsComponent());
-    gfx.draw(g => g.circle(0, 0, 16).fill(0xff0000));
+    gfx.draw((g) => g.circle(0, 0, 16).fill(0xff0000));
 
     // Post-construction logic using closures
-    entity.get(ColliderComponent).onCollision(event => {
-      if (event.started && event.other.tags.has('projectile')) {
+    entity.get(ColliderComponent).onCollision((event) => {
+      if (event.started && event.other.tags.has("projectile")) {
         entity.get(HealthComponent).damage(10);
       }
     });
-  }
+  },
 );
 
 // Usage in a scene
-const enemy = scene.spawn('goblin');
+const enemy = scene.spawn("goblin");
 EnemyBlueprint.build(enemy, { hp: 50, speed: 100 });
 ```
 
@@ -2142,8 +2164,8 @@ export function defineEvent<T = void>(name: string): EventToken<T>;
 
 ```typescript
 // Define events at module scope
-const DamageEvent = defineEvent<{ amount: number; source: Entity }>('damage');
-const DeathEvent = defineEvent('death');
+const DamageEvent = defineEvent<{ amount: number; source: Entity }>("damage");
+const DeathEvent = defineEvent("death");
 
 // Subscribe on an entity
 entity.on(DamageEvent, ({ amount, source }) => {
@@ -2160,6 +2182,7 @@ entity.emit(DeathEvent);
 ```
 
 **How it differs from EventBus**:
+
 - `EventBus` is global (engine-wide). Use for engine lifecycle events, cross-system communication.
 - `EventToken` / `entity.on()` / `entity.emit()` is entity-scoped. Use for game logic events tied to specific entities (damage, collection, state changes).
 
@@ -2171,7 +2194,7 @@ Custom React reconciler for rendering game UI with familiar React patterns over 
 export class UIRoot extends Component {
   constructor(opts?: UIRootOptions);
   render(element: ReactElement): void;
-  update(): void;  // Automatic via ComponentUpdateSystem
+  update(): void; // Automatic via ComponentUpdateSystem
 }
 
 export interface UIRootOptions {
@@ -2193,20 +2216,20 @@ export function useScene(): Scene;
 export function useStore<T extends Record<string, unknown>, R = T>(
   store: Store<T>,
   selector?: (state: T) => R,
-  isEqual?: (a: R, b: R) => boolean
+  isEqual?: (a: R, b: R) => boolean,
 ): R;
 
 /** Run an ECS query and map results through a selector. Frame-polled. */
 export function useQuery<R>(
   filter: ComponentClass[],
   selector: (result: QueryResult) => R,
-  isEqual?: (a: R, b: R) => boolean
+  isEqual?: (a: R, b: R) => boolean,
 ): R;
 
 /** Run arbitrary selector against current scene each frame. Escape hatch. */
 export function useSceneSelector<R>(
   selector: (scene: Scene) => R,
-  isEqual?: (a: R, b: R) => boolean
+  isEqual?: (a: R, b: R) => boolean,
 ): R;
 ```
 
@@ -2220,7 +2243,7 @@ export interface Store<T extends Record<string, unknown>> {
 }
 
 export function createStore<T extends Record<string, unknown>>(
-  initial: T
+  initial: T,
 ): Store<T>;
 ```
 
@@ -2251,8 +2274,16 @@ Wraps `@yage/ui` components as JSX elements:
 #### Example Usage
 
 ```tsx
-import { createStore, UIRoot, useStore, useQuery, Panel, Text, Button } from '@yage/ui-react';
-import { Transform } from '@yage/core';
+import {
+  createStore,
+  UIRoot,
+  useStore,
+  useQuery,
+  Panel,
+  Text,
+  Button,
+} from "@yage/ui-react";
+import { Transform } from "@yage/core";
 
 const gameStore = createStore({ score: 0, lives: 3 });
 
@@ -2270,7 +2301,7 @@ function HUD() {
 // In a scene
 class GameScene extends Scene {
   onEnter() {
-    const uiEntity = this.spawn('hud');
+    const uiEntity = this.spawn("hud");
     const uiRoot = uiEntity.add(new UIRoot({ anchor: Anchor.TopLeft }));
     uiRoot.render(<HUD />);
   }
@@ -2283,10 +2314,10 @@ The `yage` package re-exports all official packages and provides an ergonomic fa
 
 ```typescript
 export interface CreateGameOptions {
-  width?: number;           // Default: 800
-  height?: number;          // Default: 600
-  virtualWidth?: number;    // Default: width
-  virtualHeight?: number;   // Default: height
+  width?: number; // Default: 800
+  height?: number; // Default: 600
+  virtualWidth?: number; // Default: width
+  virtualHeight?: number; // Default: height
   backgroundColor?: number;
   container?: HTMLElement | string;
   canvas?: HTMLCanvasElement;
@@ -2301,17 +2332,17 @@ export interface CreateGameOptions {
   debug?: boolean | DebugConfig;
 
   plugins?: Plugin[];
-  engine?: Omit<EngineConfig, 'debug'>;
+  engine?: Omit<EngineConfig, "debug">;
   scene?: Scene | InlineSceneSetup;
 }
 
 /** Pre-resolved services passed to inline scene callbacks. */
 export interface SceneServices {
-  camera: Camera;          // always present (renderer always registered)
-  assets: AssetManager;    // always present (core)
-  input?: InputManager;    // only if input plugin registered
-  physics?: PhysicsWorld;  // only if physics plugin registered
-  audio?: AudioManager;    // only if audio plugin registered
+  camera: Camera; // always present (renderer always registered)
+  assets: AssetManager; // always present (core)
+  input?: InputManager; // only if input plugin registered
+  physics?: PhysicsWorld; // only if physics plugin registered
+  audio?: AudioManager; // only if audio plugin registered
 }
 
 /** Callback for inline scene definition via defineInlineScene(). */
@@ -2327,7 +2358,9 @@ export interface GameHandle {
 }
 
 /** One-call game bootstrap. */
-export async function createGame(options?: CreateGameOptions): Promise<GameHandle>;
+export async function createGame(
+  options?: CreateGameOptions,
+): Promise<GameHandle>;
 
 /** Create an inline scene without subclassing. */
 export function defineInlineScene(name: string, setup: InlineSceneSetup): Scene;
@@ -2335,25 +2368,26 @@ export function defineInlineScene(name: string, setup: InlineSceneSetup): Scene;
 
 #### Scene Approaches
 
-| | Class-based (`extends Scene`) | Inline (`defineInlineScene`) |
-|---|---|---|
-| **Best for** | Structured games, complex scenes | Quick prototypes, simple scenes |
-| **Service access** | `this.service(Key)` — lazy proxy, field-declarable | Destructure from `services` arg |
-| **Lifecycle hooks** | Full: `onEnter`, `onExit`, `onPause`, `onResume`, `preload` | `onEnter` only (the callback) |
-| **Asset preloading** | `preload` array on class | Must call `assets.loadAll()` manually |
-| **Reusability** | Importable class, testable in isolation | Tied to definition site |
+|                      | Class-based (`extends Scene`)                               | Inline (`defineInlineScene`)          |
+| -------------------- | ----------------------------------------------------------- | ------------------------------------- |
+| **Best for**         | Structured games, complex scenes                            | Quick prototypes, simple scenes       |
+| **Service access**   | `this.service(Key)` — lazy proxy, field-declarable          | Destructure from `services` arg       |
+| **Lifecycle hooks**  | Full: `onEnter`, `onExit`, `onPause`, `onResume`, `preload` | `onEnter` only (the callback)         |
+| **Asset preloading** | `preload` array on class                                    | Must call `assets.loadAll()` manually |
+| **Reusability**      | Importable class, testable in isolation                     | Tied to definition site               |
 
 **How it maps to manual setup**:
 
 ```typescript
 // With createGame (convenience)
 const game = await createGame({
-  width: 800, height: 600,
+  width: 800,
+  height: 600,
   physics: { gravity: { x: 0, y: 980 } },
-  input: { actions: { jump: ['Space'] } },
+  input: { actions: { jump: ["Space"] } },
   debug: true,
-  scene: defineInlineScene('game', (scene, { camera, input }) => {
-    camera.follow(scene.spawn('player'));
+  scene: defineInlineScene("game", (scene, { camera, input }) => {
+    camera.follow(scene.spawn("player"));
   }),
 });
 
@@ -2361,7 +2395,7 @@ const game = await createGame({
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
-engine.use(new InputPlugin({ actions: { jump: ['Space'] } }));
+engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
 engine.use(new DebugPlugin());
 await engine.start();
 engine.scenes.push(new GameScene());
@@ -2374,37 +2408,41 @@ engine.scenes.push(new GameScene());
 ### 8.1 Creating an Engine and Loading a Scene
 
 ```typescript
-import { Engine, Scene, Transform, Vec2 } from '@yage/core';
-import { RendererPlugin, SpriteComponent } from '@yage/renderer';
-import { InputPlugin } from '@yage/input';
+import { Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { RendererPlugin, SpriteComponent } from "@yage/renderer";
+import { InputPlugin } from "@yage/input";
 
 // Create engine with plugins
 const engine = new Engine({ debug: true });
 
 engine
-  .use(new RendererPlugin({
-    width: 800,
-    height: 600,
-    virtualWidth: 400,
-    virtualHeight: 300,
-    backgroundColor: 0x1a1a2e,
-  }))
-  .use(new InputPlugin({
-    actions: {
-      moveLeft: ['KeyA', 'ArrowLeft'],
-      moveRight: ['KeyD', 'ArrowRight'],
-      jump: ['Space', 'KeyW', 'ArrowUp'],
-    },
-  }));
+  .use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      virtualWidth: 400,
+      virtualHeight: 300,
+      backgroundColor: 0x1a1a2e,
+    }),
+  )
+  .use(
+    new InputPlugin({
+      actions: {
+        moveLeft: ["KeyA", "ArrowLeft"],
+        moveRight: ["KeyD", "ArrowRight"],
+        jump: ["Space", "KeyW", "ArrowUp"],
+      },
+    }),
+  );
 
 // Define a scene
 class GameScene extends Scene {
-  readonly name = 'game';
+  readonly name = "game";
 
   onEnter() {
-    const player = this.spawn('player');
+    const player = this.spawn("player");
     player.add(new Transform({ position: new Vec2(200, 150) }));
-    player.add(new SpriteComponent({ texture: 'hero.png' }));
+    player.add(new SpriteComponent({ texture: "hero.png" }));
   }
 }
 
@@ -2416,31 +2454,48 @@ engine.scenes.push(new GameScene());
 ### 8.2 Bouncing Ball (Complete Example, <10 Lines of User Code)
 
 ```typescript
-import { Engine, Scene, Transform, Vec2 } from '@yage/core';
-import { RendererPlugin, GraphicsComponent } from '@yage/renderer';
-import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from '@yage/physics';
+import { Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { RendererPlugin, GraphicsComponent } from "@yage/renderer";
+import {
+  PhysicsPlugin,
+  RigidBodyComponent,
+  ColliderComponent,
+} from "@yage/physics";
 
 const engine = new Engine();
-engine.use(new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }));
+engine.use(
+  new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }),
+);
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 
 class BounceScene extends Scene {
-  readonly name = 'bounce';
+  readonly name = "bounce";
 
   onEnter() {
     // Ball
-    const ball = this.spawn('ball');
+    const ball = this.spawn("ball");
     ball.add(new Transform({ position: new Vec2(400, 100) }));
-    ball.add(new RigidBodyComponent({ type: 'dynamic' }));
-    ball.add(new ColliderComponent({ shape: { type: 'circle', radius: 20 }, restitution: 0.8 }));
-    ball.add(new GraphicsComponent()).draw(g => g.circle(0, 0, 20).fill(0xffffff));
+    ball.add(new RigidBodyComponent({ type: "dynamic" }));
+    ball.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 20 },
+        restitution: 0.8,
+      }),
+    );
+    ball
+      .add(new GraphicsComponent())
+      .draw((g) => g.circle(0, 0, 20).fill(0xffffff));
 
     // Floor
-    const floor = this.spawn('floor');
+    const floor = this.spawn("floor");
     floor.add(new Transform({ position: new Vec2(400, 580) }));
-    floor.add(new RigidBodyComponent({ type: 'static' }));
-    floor.add(new ColliderComponent({ shape: { type: 'box', width: 800, height: 40 } }));
-    floor.add(new GraphicsComponent()).draw(g => g.rect(-400, -20, 800, 40).fill(0x333333));
+    floor.add(new RigidBodyComponent({ type: "static" }));
+    floor.add(
+      new ColliderComponent({ shape: { type: "box", width: 800, height: 40 } }),
+    );
+    floor
+      .add(new GraphicsComponent())
+      .draw((g) => g.rect(-400, -20, 800, 40).fill(0x333333));
   }
 }
 
@@ -2453,9 +2508,9 @@ Compare this to the v1 equivalent which required `pu()` conversion, `RigidBodyDe
 ### 8.3 Custom System
 
 ```typescript
-import { System, Phase, Entity, Transform, Vec2 } from '@yage/core';
-import { InputManagerKey } from '@yage/input';
-import { RigidBodyComponent } from '@yage/physics';
+import { System, Phase, Entity, Transform, Vec2 } from "@yage/core";
+import { InputManagerKey } from "@yage/input";
+import { RigidBodyComponent } from "@yage/physics";
 
 class PlayerMovementSystem extends System {
   readonly phase = Phase.FixedUpdate;
@@ -2465,20 +2520,23 @@ class PlayerMovementSystem extends System {
   private input!: InputManager;
 
   onRegister(context: EngineContext) {
-    this.query = context.resolve(QueryCacheKey).register([Transform, RigidBodyComponent]);
+    this.query = context
+      .resolve(QueryCacheKey)
+      .register([Transform, RigidBodyComponent]);
     this.input = context.resolve(InputManagerKey);
   }
 
   update(dt: number) {
     for (const entity of this.query) {
-      if (!entity.tags.has('player')) continue;
+      if (!entity.tags.has("player")) continue;
 
       const body = entity.get(RigidBodyComponent);
-      const moveX = this.input.getAxis('moveRight') - this.input.getAxis('moveLeft');
+      const moveX =
+        this.input.getAxis("moveRight") - this.input.getAxis("moveLeft");
 
       body.setVelocity(new Vec2(moveX * 200, body.getVelocity().y));
 
-      if (this.input.isJustPressed('jump')) {
+      if (this.input.isJustPressed("jump")) {
         body.applyImpulse(new Vec2(0, -300));
       }
     }
@@ -2490,7 +2548,7 @@ class PlayerMovementSystem extends System {
 
 ```typescript
 class GameScene extends Scene {
-  readonly name = 'game';
+  readonly name = "game";
   readonly pauseBelow = true;
 
   onEnter() {
@@ -2499,53 +2557,65 @@ class GameScene extends Scene {
 }
 
 class HUDScene extends Scene {
-  readonly name = 'hud';
-  readonly pauseBelow = false;       // Game scene keeps running
-  readonly transparentBelow = true;  // Game scene still renders
+  readonly name = "hud";
+  readonly pauseBelow = false; // Game scene keeps running
+  readonly transparentBelow = true; // Game scene still renders
 
   onEnter() {
-    const scoreText = this.spawn('score');
+    const scoreText = this.spawn("score");
     scoreText.add(new Transform({ position: new Vec2(10, 10) }));
-    scoreText.add(new UITextElement('Score: 0', { fill: 0xffffff, fontSize: 24 }));
+    scoreText.add(
+      new UITextElement("Score: 0", { fill: 0xffffff, fontSize: 24 }),
+    );
   }
 }
 
 class PauseScene extends Scene {
-  readonly name = 'pause';
-  readonly pauseBelow = true;        // Game freezes
-  readonly transparentBelow = true;  // Game still visible behind
+  readonly name = "pause";
+  readonly pauseBelow = true; // Game freezes
+  readonly transparentBelow = true; // Game still visible behind
 
   onEnter() {
-    const label = this.spawn('pauseLabel');
+    const label = this.spawn("pauseLabel");
     label.add(new Transform({ position: new Vec2(200, 150) }));
-    label.add(new UITextElement('PAUSED', { fill: 0xffffff, fontSize: 48 }));
+    label.add(new UITextElement("PAUSED", { fill: 0xffffff, fontSize: 48 }));
   }
 }
 
 // Usage:
-engine.scenes.push(new GameScene());  // Stack: [Game]
-engine.scenes.push(new HUDScene());   // Stack: [Game, HUD] -- both run, both render
+engine.scenes.push(new GameScene()); // Stack: [Game]
+engine.scenes.push(new HUDScene()); // Stack: [Game, HUD] -- both run, both render
 engine.scenes.push(new PauseScene()); // Stack: [Game, HUD, Pause] -- Game+HUD paused but visible
-engine.scenes.pop();                  // Stack: [Game, HUD] -- Game+HUD resume
+engine.scenes.pop(); // Stack: [Game, HUD] -- Game+HUD resume
 ```
 
-### 8.5 Prefabs
+### 8.5 Blueprint Templates
 
 ```typescript
-import { Prefab, Transform, Vec2 } from '@yage/core';
-import { SpriteComponent } from '@yage/renderer';
-import { RigidBodyComponent, ColliderComponent } from '@yage/physics';
+import { defineBlueprint, Transform, Vec2 } from "@yage/core";
+import { SpriteComponent } from "@yage/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
 
-const CoinPrefab = new Prefab('coin')
-  .tag('coin', 'collectible')
-  .with(Transform)
-  .with(SpriteComponent, { texture: 'coin.png' })
-  .with(RigidBodyComponent, { type: 'static' })
-  .with(ColliderComponent, { shape: { type: 'circle', radius: 8 }, sensor: true });
+const CoinBlueprint = defineBlueprint<{ position: Vec2 }>(
+  "coin",
+  (entity, params) => {
+    entity.tags.add("coin");
+    entity.tags.add("collectible");
+    entity.add(new Transform({ position: params.position }));
+    entity.add(new SpriteComponent({ texture: "coin.png" }));
+    entity.add(new RigidBodyComponent({ type: "static" }));
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 8 },
+        sensor: true,
+      }),
+    );
+  },
+);
 
 // Spawn many coins
 class LevelScene extends Scene {
-  readonly name = 'level';
+  readonly name = "level";
 
   onEnter() {
     const coinPositions = [
@@ -2554,10 +2624,8 @@ class LevelScene extends Scene {
       new Vec2(200, 200),
     ];
 
-    for (const pos of coinPositions) {
-      this.spawnPrefab(CoinPrefab, {
-        components: [{ cls: Transform, args: [{ position: pos }] }],
-      });
+    for (const position of coinPositions) {
+      this.spawn(CoinBlueprint, { position });
     }
   }
 }
@@ -2566,22 +2634,22 @@ class LevelScene extends Scene {
 ### 8.6 Process/Tween Chaining
 
 ```typescript
-import { Sequence, Tween, Process } from '@yage/core';
+import { Sequence, Tween, Process } from "@yage/core";
 
 // Animate a door opening sequence
 new Sequence()
-  .call(() => console.log('Door opening...'))
-  .then(Tween.to(doorTransform, 'rotation', Math.PI / 2, 500, 'easeOutQuad'))
+  .call(() => console.log("Door opening..."))
+  .then(Tween.to(doorTransform, "rotation", Math.PI / 2, 500, "easeOutQuad"))
   .wait(200)
   .parallel(
-    Tween.custom(v => light.setIntensity(v), 0, 1, 300),
-    Tween.custom(v => sound.setVolume(v), 0, 0.8, 300),
+    Tween.custom((v) => light.setIntensity(v), 0, 1, 300),
+    Tween.custom((v) => sound.setVolume(v), 0, 0.8, 300),
   )
-  .call(() => console.log('Door opened!'))
+  .call(() => console.log("Door opened!"))
   .start(scene);
 
 // Simple tween with promise
-await Tween.to(sprite, 'alpha', 0, 1000, 'easeInQuad').toPromise();
+await Tween.to(sprite, "alpha", 0, 1000, "easeInQuad").toPromise();
 ```
 
 ### 8.7 Collision Handling
@@ -2598,11 +2666,11 @@ class CoinCollectionSystem extends System {
 
   update(dt: number) {
     for (const entity of this.query) {
-      if (!entity.tags.has('coin')) continue;
+      if (!entity.tags.has("coin")) continue;
 
       const collider = entity.get(ColliderComponent);
-      collider.onCollision(event => {
-        if (event.started && event.other.tags.has('player')) {
+      collider.onCollision((event) => {
+        if (event.started && event.other.tags.has("player")) {
           // Play collect sound, add score, destroy coin
           entity.destroy();
         }
@@ -2618,8 +2686,8 @@ class CoinCollectionSystem extends System {
 class CollectibleComponent extends Component {
   onAdd() {
     const collider = this.entity.get(ColliderComponent);
-    collider.onCollision(event => {
-      if (event.started && event.other.tags.has('player')) {
+    collider.onCollision((event) => {
+      if (event.started && event.other.tags.has("player")) {
         this.entity.destroy();
       }
     });
@@ -2638,20 +2706,20 @@ const snapshot = inspector.snapshot();
 console.log(snapshot.entityCount, snapshot.sceneStack);
 
 // Check entity state
-const player = inspector.getEntityByName('player');
-console.log(player?.position);    // { x: 200, y: 150 }
-console.log(player?.components);  // ['Transform', 'SpriteComponent', 'RigidBodyComponent', 'ColliderComponent']
+const player = inspector.getEntityByName("player");
+console.log(player?.position); // { x: 200, y: 150 }
+console.log(player?.components); // ['Transform', 'SpriteComponent', 'RigidBodyComponent', 'ColliderComponent']
 
 // In Playwright test
-test('ball falls to floor', async ({ page }) => {
-  await page.goto('/examples/bouncing-ball');
+test("ball falls to floor", async ({ page }) => {
+  await page.goto("/examples/bouncing-ball");
   await page.waitForTimeout(2000);
 
   const pos = await page.evaluate(() =>
-    window.__yage__.inspector.getEntityPosition('ball')
+    window.__yage__.inspector.getEntityPosition("ball"),
   );
 
-  expect(pos!.y).toBeGreaterThan(400);  // Ball has fallen
+  expect(pos!.y).toBeGreaterThan(400); // Ball has fallen
 });
 ```
 
@@ -2663,7 +2731,7 @@ const engine = new Engine({
   debug: true,
   logger: {
     level: LogLevel.Debug,
-    categories: ['physics', 'input', 'core'],
+    categories: ["physics", "input", "core"],
     bufferSize: 1000,
   },
 });
@@ -2672,13 +2740,16 @@ const engine = new Engine({
 class EnemyAI extends System {
   update(dt: number) {
     const logger = this.context.resolve(LoggerKey);
-    logger.info('ai', 'Enemy spotted player', { enemy: 'goblin_1', distance: 45.2 });
+    logger.info("ai", "Enemy spotted player", {
+      enemy: "goblin_1",
+      distance: 45.2,
+    });
   }
 }
 
 // Read logs programmatically (Playwright)
 const logs = await page.evaluate(() =>
-  window.__yage__.logger.formatRecentLogs(20)
+  window.__yage__.logger.formatRecentLogs(20),
 );
 // Output:
 // [INFO][ai] f142 Enemy spotted player {enemy:"goblin_1", distance:45.2}
@@ -2693,92 +2764,92 @@ Key design decisions and their rationale.
 
 ### Architecture & Design
 
-| # | Problem | Solution |
-|---|---|---|
-| 1 | **No enabled check in component lifecycle dispatch** -- disabled components still receive lifecycle calls | The built-in `ComponentUpdateSystem` checks `component.enabled` before calling `update()`/`fixedUpdate()`. `ErrorBoundary.wrapComponent` wraps each call — on error, the component is disabled. Disabled components are never ticked. |
-| 2 | **Async `onAfterTick` via `setTimeout(..., 0)`** -- deferred execution causes ordering bugs | All game loop phases are synchronous. `endOfFrame` is a proper phase, not a setTimeout. No async in the game loop. |
-| 3 | **`onAfterFixedTick` called inside `onFixedTick`** -- coupled lifecycle steps | Phases are distinct and scheduled by `SystemScheduler`. FixedUpdate systems complete fully before the next phase. No implicit coupling. |
-| 4 | **Global mutable context via Executor** -- fragile singleton, stale refs in async | `EngineContext` DI container replaces `Executor`. No global state. Systems receive context via `onRegister()`. All access is explicit. |
+| #   | Problem                                                                                                   | Solution                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **No enabled check in component lifecycle dispatch** -- disabled components still receive lifecycle calls | The built-in `ComponentUpdateSystem` checks `component.enabled` before calling `update()`/`fixedUpdate()`. `ErrorBoundary.wrapComponent` wraps each call — on error, the component is disabled. Disabled components are never ticked. |
+| 2   | **Async `onAfterTick` via `setTimeout(..., 0)`** -- deferred execution causes ordering bugs               | All game loop phases are synchronous. `endOfFrame` is a proper phase, not a setTimeout. No async in the game loop.                                                                                                                    |
+| 3   | **`onAfterFixedTick` called inside `onFixedTick`** -- coupled lifecycle steps                             | Phases are distinct and scheduled by `SystemScheduler`. FixedUpdate systems complete fully before the next phase. No implicit coupling.                                                                                               |
+| 4   | **Global mutable context via Executor** -- fragile singleton, stale refs in async                         | `EngineContext` DI container replaces `Executor`. No global state. Systems receive context via `onRegister()`. All access is explicit.                                                                                                |
 
 ### Performance
 
-| # | Problem | Solution |
-|---|---|---|
-| 5 | **No query caching** -- O(n) linear scans on every `getComponentBy*` call | `QueryCache` with incremental archetype tracking. Queries update only on component add/remove. Entity.get() is a Map lookup: O(1). |
-| 6 | **Process mode filtering on every lifecycle hook** -- 6 full array filters per frame | `SceneManager` handles pause semantics at the scene level. Systems only iterate entities from active scenes. No per-frame filtering. |
-| 7 | **No spatial partitioning** | Not in core (out of scope for v2.0), but `PhysicsWorld.raycast()` and Rapier's own spatial queries are exposed. A spatial hash plugin is a P2 candidate. |
+| #   | Problem                                                                              | Solution                                                                                                                                                 |
+| --- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5   | **No query caching** -- O(n) linear scans on every `getComponentBy*` call            | `QueryCache` with incremental archetype tracking. Queries update only on component add/remove. Entity.get() is a Map lookup: O(1).                       |
+| 6   | **Process mode filtering on every lifecycle hook** -- 6 full array filters per frame | `SceneManager` handles pause semantics at the scene level. Systems only iterate entities from active scenes. No per-frame filtering.                     |
+| 7   | **No spatial partitioning**                                                          | Not in core (out of scope for v2.0), but `PhysicsWorld.raycast()` and Rapier's own spatial queries are exposed. A spatial hash plugin is a P2 candidate. |
 
 ### Missing Features
 
-| # | Problem | Solution |
-|---|---|---|
-| 8 | **No mouse/touch/gamepad input** | `@yage/input` supports keyboard, mouse, touch, and gamepad with a unified action map. `getPointerPosition()`, `getVector()`, `getGamepads()`. |
-| 9 | **No camera/viewport at engine level** | `Camera` class in `@yage/renderer` with follow, deadzone, zoom, shake, and bounds clamping. `screenToWorld()`/`worldToScreen()` conversion. |
-| 10 | **No audio spatialization or scene-level audio management** | `AudioManager` with named channels (sfx, music, ambient), per-channel volume/mute/pause. Global master mute. |
-| 11 | **No built-in collision event routing** -- infrastructure exists but isn't wired up | `PhysicsSystem` drains Rapier's event queue every fixed step and dispatches to `ColliderComponent.onCollision()` / `onTrigger()` handlers. Complete and working. |
-| 12 | **No scene stacking or layering** | `SceneManager` with push/pop/replace stack. `pauseBelow` and `transparentBelow` flags per scene for overlay/HUD support. |
-| 13 | **Node system is orphaned** | Removed entirely. No orphaned code in v2. |
+| #   | Problem                                                                             | Solution                                                                                                                                                         |
+| --- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8   | **No mouse/touch/gamepad input**                                                    | `@yage/input` supports keyboard, mouse, touch, and gamepad with a unified action map. `getPointerPosition()`, `getVector()`, `getGamepads()`.                    |
+| 9   | **No camera/viewport at engine level**                                              | `Camera` class in `@yage/renderer` with follow, deadzone, zoom, shake, and bounds clamping. `screenToWorld()`/`worldToScreen()` conversion.                      |
+| 10  | **No audio spatialization or scene-level audio management**                         | `AudioManager` with named channels (sfx, music, ambient), per-channel volume/mute/pause. Global master mute.                                                     |
+| 11  | **No built-in collision event routing** -- infrastructure exists but isn't wired up | `PhysicsSystem` drains Rapier's event queue every fixed step and dispatches to `ColliderComponent.onCollision()` / `onTrigger()` handlers. Complete and working. |
+| 12  | **No scene stacking or layering**                                                   | `SceneManager` with push/pop/replace stack. `pauseBelow` and `transparentBelow` flags per scene for overlay/HUD support.                                         |
+| 13  | **Node system is orphaned**                                                         | Removed entirely. No orphaned code in v2.                                                                                                                        |
 
 ### Developer Experience
 
-| # | Problem | Solution |
-|---|---|---|
-| 14 | **No tests exist** | 100% unit test coverage on `@yage/core` (Vitest). Playwright E2E tests per plugin. CI runs all tests on every PR. |
-| 15 | **`typedoc` not installed** | API docs generated via TypeDoc (properly installed) or TSDoc comments. All public APIs documented. |
-| 16 | **Private `setup()`/`teardown()` pattern is confusing** | `Component` uses clear lifecycle: `onAdd()`, `onRemove()`, `onDestroy()`. No private setup/teardown. No confusion about extension points. |
-| 17 | **PixiJS v7 lock-in** | v2 uses PixiJS v8 with its modern API (WebGPU-ready, new container model). |
-| 18 | **XState v4 lock-in** | XState is removed from core. State machines can be added as user-land components using any FSM library. |
-| 19 | **Mixed dependency placement** | Clean monorepo with proper dependency separation. Zero runtime deps in `@yage/core`. Each plugin declares its own deps. |
+| #   | Problem                                                 | Solution                                                                                                                                  |
+| --- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 14  | **No tests exist**                                      | 100% unit test coverage on `@yage/core` (Vitest). Playwright E2E tests per plugin. CI runs all tests on every PR.                         |
+| 15  | **`typedoc` not installed**                             | API docs generated via TypeDoc (properly installed) or TSDoc comments. All public APIs documented.                                        |
+| 16  | **Private `setup()`/`teardown()` pattern is confusing** | `Component` uses clear lifecycle: `onAdd()`, `onRemove()`, `onDestroy()`. No private setup/teardown. No confusion about extension points. |
+| 17  | **PixiJS v7 lock-in**                                   | v2 uses PixiJS v8 with its modern API (WebGPU-ready, new container model).                                                                |
+| 18  | **XState v4 lock-in**                                   | XState is removed from core. State machines can be added as user-land components using any FSM library.                                   |
+| 19  | **Mixed dependency placement**                          | Clean monorepo with proper dependency separation. Zero runtime deps in `@yage/core`. Each plugin declares its own deps.                   |
 
 ### Robustness
 
-| # | Problem | Solution |
-|---|---|---|
-| 20 | **No error boundaries** -- one bad component crashes the game | `ErrorBoundary` wraps all system and component execution. On throw, the offending system/component is disabled, error is logged, game loop continues. |
-| 21 | **`destroy()` can cause double-removal** -- bidirectional destroy calls | `Entity.destroy()` is one-way. The scene handles removal in `endOfFrame`. `isDestroyed` flag prevents double processing. No bidirectional calls. |
-| 22 | **`preventDefault()` on all key events** -- breaks browser shortcuts | `InputPlugin` accepts `preventDefaultKeys` config. Only specified keys are prevented. No global capture. |
+| #   | Problem                                                                 | Solution                                                                                                                                              |
+| --- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 20  | **No error boundaries** -- one bad component crashes the game           | `ErrorBoundary` wraps all system and component execution. On throw, the offending system/component is disabled, error is logged, game loop continues. |
+| 21  | **`destroy()` can cause double-removal** -- bidirectional destroy calls | `Entity.destroy()` is one-way. The scene handles removal in `endOfFrame`. `isDestroyed` flag prevents double processing. No bidirectional calls.      |
+| 22  | **`preventDefault()` on all key events** -- breaks browser shortcuts    | `InputPlugin` accepts `preventDefaultKeys` config. Only specified keys are prevented. No global capture.                                              |
 
 ### Ergonomics (from real example analysis)
 
-| # | Problem | Solution |
-|---|---|---|
-| 23 | **Massive physics boilerplate** -- 12+ lines for a physics sprite | 4 lines: `add(Transform)`, `add(RigidBodyComponent)`, `add(ColliderComponent)`, `add(SpriteComponent)`. No `pu()`, no raw Rapier types. |
-| 24 | **Physics is mandatory even when unused** | Physics is in `@yage/physics`. If you don't install it, no WASM download, no physics world. Core has zero physics knowledge. |
-| 25 | **InputComponent requires `Map` instead of plain object** | Action maps are plain objects: `{ jump: ['Space', 'KeyW'] }`. |
-| 26 | **Constructor-only initialization** -- no declarative composition | `Prefab` builder pattern for declarative entity templates. `scene.spawn().add()` chain for simple cases. |
-| 27 | **Verbose generics with no payoff** | No gratuitous generics. `Scene` is not generic. `Entity` is not generic. Components use concrete types. |
-| 28 | **Inconsistent Scene state initialization** | `Scene` has no generic state parameter. Scene-specific state is stored as regular class properties. |
-| 29 | **No example discovery or runner** | Examples have a shared dev server with URL routing (`/examples/bouncing-ball`, `/examples/platformer`, etc.). Index page lists all examples. |
-| 30 | **`pu()` conversion is a constant tax** | `PhysicsWorld` handles pixel-to-meter internally. All user-facing APIs work in pixels. `pu()` does not exist in v2. |
+| #   | Problem                                                           | Solution                                                                                                                                           |
+| --- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 23  | **Massive physics boilerplate** -- 12+ lines for a physics sprite | 4 lines: `add(Transform)`, `add(RigidBodyComponent)`, `add(ColliderComponent)`, `add(SpriteComponent)`. No `pu()`, no raw Rapier types.            |
+| 24  | **Physics is mandatory even when unused**                         | Physics is in `@yage/physics`. If you don't install it, no WASM download, no physics world. Core has zero physics knowledge.                       |
+| 25  | **InputComponent requires `Map` instead of plain object**         | Action maps are plain objects: `{ jump: ['Space', 'KeyW'] }`.                                                                                      |
+| 26  | **Constructor-only initialization** -- no declarative composition | `defineBlueprint()` + `scene.spawn(blueprint, params)` for declarative, parametric entity templates. `scene.spawn().add()` chain for simple cases. |
+| 27  | **Verbose generics with no payoff**                               | No gratuitous generics. `Scene` is not generic. `Entity` is not generic. Components use concrete types.                                            |
+| 28  | **Inconsistent Scene state initialization**                       | `Scene` has no generic state parameter. Scene-specific state is stored as regular class properties.                                                |
+| 29  | **No example discovery or runner**                                | Examples have a shared dev server with URL routing (`/examples/bouncing-ball`, `/examples/platformer`, etc.). Index page lists all examples.       |
+| 30  | **`pu()` conversion is a constant tax**                           | `PhysicsWorld` handles pixel-to-meter internally. All user-facing APIs work in pixels. `pu()` does not exist in v2.                                |
 
 ### Missing Abstractions
 
-| # | Problem | Solution |
-|---|---|---|
-| 31 | **No collision layers/masks** | `CollisionLayers` with named layer definitions and bitmask API. `ColliderComponent` accepts `layers` and `mask` config. |
-| 32 | **No debug rendering** | `@yage/debug` plugin renders physics shapes, entity labels, FPS, entity count, and system timing as a toggleable overlay. |
-| 33 | **No prefab or template system** | `Prefab` class with builder pattern, `scene.spawnPrefab()`, and override support. |
-| 34 | **No UI layout system** | `@yage/ui` plugin with flex-inspired layout, anchoring, text, buttons, and panels. |
-| 35 | **No screen shake or camera effects** | `Camera.shake()`, `Camera.zoomTo()`, `Camera.follow()` with deadzone and smoothing. |
-| 36 | **No entity lifecycle events** | `EventBus` emits `entity:created`, `entity:destroyed`, `component:added`, `component:removed`. |
+| #   | Problem                               | Solution                                                                                                                  |
+| --- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 31  | **No collision layers/masks**         | `CollisionLayers` with named layer definitions and bitmask API. `ColliderComponent` accepts `layers` and `mask` config.   |
+| 32  | **No debug rendering**                | `@yage/debug` plugin renders physics shapes, entity labels, FPS, entity count, and system timing as a toggleable overlay. |
+| 33  | **No prefab or template system**      | `Blueprint` templates via `defineBlueprint()` and `scene.spawn(blueprint, params)`.                                       |
+| 34  | **No UI layout system**               | `@yage/ui` plugin with flex-inspired layout, anchoring, text, buttons, and panels.                                        |
+| 35  | **No screen shake or camera effects** | `Camera.shake()`, `Camera.zoomTo()`, `Camera.follow()` with deadzone and smoothing.                                       |
+| 36  | **No entity lifecycle events**        | `EventBus` emits `entity:created`, `entity:destroyed`, `component:added`, `component:removed`.                            |
 
 ### Missing Core Features
 
-| # | Problem | Solution |
-|---|---|---|
-| 37 | **No save/load or serialization** | P2 feature. Not in v2.0 scope. Inspector's `snapshot()` provides read-only serialization as a stepping stone. |
-| 38 | **No plugin or middleware system** | Full plugin system with `Plugin` interface, dependency sorting, service registration, system registration, and lifecycle hooks. See [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md). |
-| 39 | **No tween chaining or sequencing** | `Sequence` class with `then()`, `wait()`, `call()`, `parallel()`, chained into a single `Process`. |
-| 40 | **No built-in pathfinding** | P2 feature. Not in v2.0 scope. |
-| 41 | **No networking or multiplayer** | P2 feature. Not in v2.0 scope. |
+| #   | Problem                             | Solution                                                                                                                                                                                |
+| --- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 37  | **No save/load or serialization**   | P2 feature. Not in v2.0 scope. Inspector's `snapshot()` provides read-only serialization as a stepping stone.                                                                           |
+| 38  | **No plugin or middleware system**  | Full plugin system with `Plugin` interface, dependency sorting, service registration, system registration, and lifecycle hooks. See [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md). |
+| 39  | **No tween chaining or sequencing** | `Sequence` class with `then()`, `wait()`, `call()`, `parallel()`, chained into a single `Process`.                                                                                      |
+| 40  | **No built-in pathfinding**         | P2 feature. Not in v2.0 scope.                                                                                                                                                          |
+| 41  | **No networking or multiplayer**    | P2 feature. Not in v2.0 scope.                                                                                                                                                          |
 
 ### Self-Acknowledged Issues
 
-| # | Problem | Solution |
-|---|---|---|
-| 42 | **Dialogue system is "basic and hard to customize"** | Premade systems (dialogue, loading screens) are not in v2.0 core. They may appear as community plugins or examples. |
-| 43 | **`// Memoize these?` comment on queries** | `QueryCache` fully solves this. The comment is gone because the problem is gone. |
-| 44 | **Collision emitter never fires** | `PhysicsSystem` completes the collision pipeline. Events are dispatched to handlers. No dead code. |
+| #   | Problem                                              | Solution                                                                                                            |
+| --- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 42  | **Dialogue system is "basic and hard to customize"** | Premade systems (dialogue, loading screens) are not in v2.0 core. They may appear as community plugins or examples. |
+| 43  | **`// Memoize these?` comment on queries**           | `QueryCache` fully solves this. The comment is gone because the problem is gone.                                    |
+| 44  | **Collision emitter never fires**                    | `PhysicsSystem` completes the collision pipeline. Events are dispatched to handlers. No dead code.                  |
 
 ---
 

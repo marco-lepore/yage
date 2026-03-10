@@ -33,15 +33,5 @@ export interface Plugin {
   onDestroy?(): void;
 }
 
-/** Overrides applied when spawning an entity from a Prefab. */
-export interface PrefabOverrides {
-  /** Override the entity name. */
-  name?: string;
-  /** Additional tags to add. */
-  tags?: string[];
-  /** Override or add components. */
-  components?: Array<{ cls: ComponentClass; args: unknown[] }>;
-}
-
 /** An easing function mapping t in [0,1] to a value in [0,1]. */
 export type EasingFunction = (t: number) => number;
