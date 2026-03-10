@@ -125,16 +125,18 @@ class ParticlesPlugin implements Plugin {
 The engine uses Kahn's algorithm (BFS topological sort) to determine install order:
 
 ```
-Input: [renderer, input, physics, particles]
+Input: [renderer, input, physics, particles, ui, ui-react, debug]
 Dependencies:
   renderer: []
   input: []
   physics: []
   particles: [renderer]
+  ui: [renderer]
+  ui-react: [renderer, ui]
+  debug: [renderer]
 
-Sorted: [renderer, input, physics, particles]
-  (or: [input, physics, renderer, particles] -- order among independent plugins is stable
-   based on registration order)
+Sorted: [renderer, input, physics, particles, ui, ui-react, debug]
+  (order among independent plugins is stable based on registration order)
 ```
 
 ### Error Cases
@@ -194,24 +196,30 @@ These keys are registered by `@yage/core` itself (not by plugins):
 | Key | Type | Registered by |
 |---|---|---|
 | `EngineKey` | `Engine` | Engine constructor |
-| `EventBusKey` | `EventBus` | Engine constructor |
+| `EventBusKey` | `EventBus<EngineEvents>` | Engine constructor |
 | `SceneManagerKey` | `SceneManager` | Engine constructor |
 | `LoggerKey` | `Logger` | Engine constructor |
 | `InspectorKey` | `Inspector` | Engine constructor |
 | `QueryCacheKey` | `QueryCache` | Engine constructor |
 | `ErrorBoundaryKey` | `ErrorBoundary` | Engine constructor |
 | `GameLoopKey` | `GameLoop` | Engine constructor |
+| `SystemSchedulerKey` | `SystemScheduler` | Engine constructor |
+| `ProcessSystemKey` | `ProcessSystem` | Engine constructor |
+| `AssetManagerKey` | `AssetManager` | Engine constructor |
 
 Keys registered by official plugins:
 
 | Key | Type | Registered by |
 |---|---|---|
-| `RendererKey` | `RendererPlugin` | `@yage/renderer` |
+| `RendererKey` | `Renderer` | `@yage/renderer` |
 | `StageKey` | `Container` (PixiJS) | `@yage/renderer` |
 | `CameraKey` | `Camera` | `@yage/renderer` |
+| `RenderLayerManagerKey` | `RenderLayerManager` | `@yage/renderer` |
 | `PhysicsWorldKey` | `PhysicsWorld` | `@yage/physics` |
 | `InputManagerKey` | `InputManager` | `@yage/input` |
 | `AudioManagerKey` | `AudioManager` | `@yage/audio` |
+| `UIContainerKey` | `Container` (PixiJS) | `@yage/ui` |
+| `DebugRegistryKey` | `DebugRegistry` | `@yage/debug` |
 
 ### Optional Dependencies
 
@@ -626,3 +634,4 @@ events.on('settings:changed', ({ key, value }) => {
 - [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) -- When each plugin is built
 - [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing patterns for plugins
 - [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- How to add/modify plugins as a coding agent
+- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Boundary between base plugins and recipes

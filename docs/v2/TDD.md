@@ -9,8 +9,17 @@
 5. [Input Plugin (`@yage/input`)](#5-input-plugin-yageinput)
 6. [Audio Plugin (`@yage/audio`)](#6-audio-plugin-yageaudio)
 7. [Other Plugins](#7-other-plugins)
+   - 7.1 [Particles](#71-particles-plugin-yageparticles)
+   - 7.2 [Tilemap](#72-tilemap-plugin-yagetilemap)
+   - 7.3 [UI](#73-ui-plugin-yageui)
+   - 7.4 [Debug](#74-debug-plugin-yagedebug)
+   - 7.5 [Asset Management](#75-asset-management-yagecore)
+   - 7.6 [Blueprint System](#76-blueprint-system-yagecore)
+   - 7.7 [Entity Events](#77-entity-events-yagecore)
+   - 7.8 [React UI](#78-react-ui-plugin-yageui-react)
+   - 7.9 [Meta-Package](#79-meta-package-yage)
 8. [API Sketches](#8-api-sketches)
-9. [v1 Pain Point Resolution Table](#9-v1-pain-point-resolution-table)
+9. [Design Decisions Table](#9-design-decisions-table)
 
 ---
 
@@ -145,6 +154,11 @@ yage/
 │   │   ├── package.json
 │   │   └── tsconfig.json
 │   │
+│   ├── ui-react/             # @yage/ui-react - React UI integration
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
 │   └── yage/                 # yage - Meta-package (re-exports all)
 │       ├── src/
 │       │   └── index.ts
@@ -189,6 +203,7 @@ yage (meta-package)
 ├── @yage/particles     → @yage/core, @yage/renderer
 ├── @yage/tilemap       → @yage/core, @yage/renderer, @yage/physics (optional peer)
 ├── @yage/ui            → @yage/core, @yage/renderer
+├── @yage/ui-react      → @yage/core, @yage/renderer, @yage/ui, react, react-dom
 └── @yage/debug         → @yage/core, @yage/renderer, @yage/physics (optional peer)
 ```
 
@@ -738,6 +753,8 @@ export class Sequence {
 ```
 
 ### 2.13 Prefab
+
+> **Note**: For parametric entity factories where shared parameters feed multiple components or post-construction logic is needed, prefer `Blueprint` (see [§7.2](#72-blueprint-system)). Prefab is best suited for truly static entity templates.
 
 Declarative entity templates with a builder pattern.
 
@@ -1561,6 +1578,8 @@ export class InputSystem extends System {
 
 **Key design decision**: Input is centralized in `InputManager`, not per-entity. This matches how real games work -- you check input state and act on it in your systems, rather than attaching input listeners to individual entities. The v1 `InputComponent` pattern (per-entity `Map<string, string[]>`) is replaced by a single action map.
 
+> **Note**: Gamepad support is planned but not yet implemented. The `getGamepads()`, `GamepadState`, and gamepad-related action map bindings (`GamepadA`, `GamepadLeftStickLeft`, etc.) are defined in the API but not yet wired up.
+
 ---
 
 ## 6. Audio Plugin (`@yage/audio`)
@@ -1637,7 +1656,19 @@ export interface SoundHandle {
 }
 ```
 
-### 6.3 SoundComponent
+### 6.3 Asset Handle Factory
+
+```typescript
+import { AssetHandle } from '@yage/core';
+import { Sound } from '@pixi/sound';
+
+/** Create a typed asset handle for a sound file. */
+export function sound(path: string): AssetHandle<Sound>;
+```
+
+Usage: Define sound handles at module scope, then include them in a scene's asset manifest for deferred loading via `AssetManager.loadAll()`.
+
+### 6.4 SoundComponent
 
 For entity-bound audio (e.g., a coin pickup sound when the coin is collected).
 
@@ -1682,6 +1713,32 @@ export class ParticleSystem extends System {
   readonly phase = Phase.Update;
   // Updates all active particle emitters
 }
+
+export class ParticlePool {
+  // Allocation-free particle recycling
+  acquire(): Particle | undefined;
+  release(particle: Particle): void;
+}
+```
+
+#### ParticlePresets
+
+Built-in preset configurations for common effects:
+
+```typescript
+export const ParticlePresets = {
+  /** Upward fire effect. Lifetime 0.4-0.8s, speed 80-160 px/s, orange tint. */
+  fire(texture: Texture): EmitterConfig;
+
+  /** Slow-rising smoke. Lifetime 1.0-2.0s, speed 20-50 px/s, gray tint. */
+  smoke(texture: Texture): EmitterConfig;
+
+  /** Fast directional sparks. Lifetime 0.2-0.5s, speed 200-400 px/s, yellow tint. */
+  sparks(texture: Texture): EmitterConfig;
+
+  /** Downward rain drops. Lifetime 0.5-1.0s, speed 300-500 px/s, cyan tint. */
+  rain(texture: Texture): EmitterConfig;
+} as const;
 ```
 
 ### 7.2 Tilemap Plugin (`@yage/tilemap`)
@@ -1709,71 +1766,605 @@ export class TilemapComponent extends Component {
 }
 ```
 
+#### Asset Handle Factory
+
+```typescript
+/** Create a typed asset handle for a Tiled JSON map. */
+export function tiledMap(path: string): AssetHandle<TilemapData>;
+```
+
+#### Object Extraction Utilities
+
+```typescript
+/** Extract objects from Tiled map, grouped by class/type. */
+export function extractObjects(
+  map: TiledMapData,
+  objectLayerName?: string
+): Record<string, TileObject[]>;
+
+/** Get a single property value by name from a Tiled object. */
+export function getProperty<T = unknown>(
+  obj: HasProperties,
+  name: string
+): T | undefined;
+
+/** Get pseudo-array of properties using indexed naming (e.g., spawns[0], spawns[1]). */
+export function getPropertyArray<T = unknown>(
+  obj: HasProperties,
+  name: string
+): T[];
+
+/** Resolve a property of type "object" (ID reference) to the actual MapObject. */
+export function resolveObjectRef(
+  obj: HasProperties,
+  propName: string,
+  allObjects: MapObject[]
+): MapObject | undefined;
+
+/** Resolve pseudo-array of object ID references to actual MapObjects. */
+export function resolveObjectRefArray(
+  obj: HasProperties,
+  propName: string,
+  allObjects: MapObject[]
+): MapObject[];
+```
+
+#### Collision Extraction
+
+```typescript
+/** Extract physics-agnostic collision shapes from object layers. */
+export function extractCollisionShapes(
+  map: TilemapData,
+  objectLayerName?: string
+): TilemapColliderConfig[];
+```
+
 ### 7.3 UI Plugin (`@yage/ui`)
 
 ```typescript
 export class UIPlugin implements Plugin {
   readonly name = 'ui';
   readonly dependencies = ['renderer'];
-  // ...
+  // Registers UIContainerKey service
 }
+```
 
-export class UIRootComponent extends Component {
-  constructor(options?: {
-    /** Anchor point (default: top-left). */
-    anchor?: 'top-left' | 'top-center' | 'top-right' | 'center-left' | 'center' | 'center-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
-    /** Layout direction. */
-    direction?: 'row' | 'column';
-    /** Gap between children in pixels. */
-    gap?: number;
-    /** Padding. */
-    padding?: number | { top: number; right: number; bottom: number; left: number };
-  });
+#### Core Components
 
+All UI components use Yoga flex layout for positioning and support `LayoutProps` for width, height, and positioning.
+
+```typescript
+/** Layout container with Yoga flexbox. Supports background color/texture. */
+export class UIPanel extends Component {
+  constructor(options?: UIPanelOptions);
   addChild(child: UIElement): void;
   removeChild(child: UIElement): void;
 }
 
-export class UITextElement extends Component implements UIElement {
+/** Text rendering with PixiJS Text. */
+export class UIText extends Component {
   constructor(text: string, style?: TextStyle);
   setText(text: string): void;
 }
 
-export class UIButtonElement extends Component implements UIElement {
-  constructor(label: string, onClick: () => void, style?: ButtonStyle);
+/** Interactive button with hover/press states. */
+export class UIButton extends Component {
+  constructor(options: UIButtonOptions);
   setLabel(label: string): void;
   setEnabled(enabled: boolean): void;
 }
 
-export class UIPanelElement extends Component implements UIElement {
-  constructor(options?: PanelStyle);
-  addChild(child: UIElement): void;
+/** Texture display component. */
+export class UIImage extends Component {
+  constructor(options: UIImageOptions);
+}
+
+/** 9-slice scaled sprite for scalable UI backgrounds. */
+export class UINineSlice extends Component {
+  constructor(options: UINineSliceOptions);
+}
+
+/** Progress indicator bar. */
+export class UIProgressBar extends Component {
+  constructor(options: UIProgressBarOptions);
+  setProgress(value: number): void; // 0-1
+}
+
+/** Toggle checkbox. */
+export class UICheckbox extends Component {
+  constructor(options: UICheckboxOptions);
+  get checked(): boolean;
+  setChecked(value: boolean): void;
+}
+```
+
+#### @pixi/ui Wrappers
+
+Convenience wrappers around `@pixi/ui` for advanced widget functionality:
+
+```typescript
+export class PixiFancyButton { ... }   // Animated button with scale/tint
+export class PixiCheckbox { ... }       // Checkbox
+export class PixiProgressBar { ... }    // Progress bar
+export class PixiSlider { ... }         // Slider input
+export class PixiInput { ... }          // Text input field
+export class PixiScrollBox { ... }      // Scrollable container
+export class PixiSelect { ... }         // Dropdown selector
+export class PixiRadioGroup { ... }     // Radio button group
+```
+
+#### Background Rendering
+
+```typescript
+export type BackgroundOptions = ColorBackground | TextureBackground;
+
+export interface ColorBackground {
+  type: 'color';
+  color: number;
+  alpha?: number;
+  borderRadius?: number;
+}
+
+export interface TextureBackground {
+  type: 'texture';
+  texture: Texture;
 }
 ```
 
 ### 7.4 Debug Plugin (`@yage/debug`)
 
 ```typescript
+export const DebugRegistryKey = new ServiceKey<DebugRegistry>('debugRegistry');
+
 export class DebugPlugin implements Plugin {
   readonly name = 'debug';
   readonly dependencies = ['renderer'];
-  // ...
+  // Registers DebugRegistryKey service
 }
 
 export interface DebugConfig {
-  /** Show FPS counter. */
-  fps?: boolean;
-  /** Show entity count. */
-  entityCount?: boolean;
-  /** Draw physics collider shapes. */
-  physicsShapes?: boolean;
-  /** Draw entity labels. */
-  entityLabels?: boolean;
-  /** Show system timing. */
-  systemTiming?: boolean;
   /** Toggle key (default: F12). */
   toggleKey?: string;
 }
+```
+
+#### Debug Registry
+
+```typescript
+/** Central registry for debug contributors with flag management. */
+export class DebugRegistryImpl implements DebugRegistry {
+  contributors: Map<string, DebugContributor>;
+  enabled: boolean;
+
+  register(contributor: DebugContributor): void;
+  isEnabled(): boolean;
+  isFlagEnabled(contributorName: string, flag: string): boolean;
+  toggle(): void;
+  toggleFlag(contributorName: string, flag: string): void;
+  setFlag(contributorName: string, flag: string, value: boolean): void;
+}
+```
+
+#### World-Space Debug Drawing
+
+```typescript
+/** World-space debug drawing via allocation-free GraphicsPool. */
+export class WorldDebugApiImpl implements WorldDebugApi {
+  setContributor(name: string): void;
+  acquireGraphics(): DebugGraphics | undefined;
+  isFlagEnabled(flag: string): boolean;
+  get cameraZoom(): number;
+}
+
+/** Allocation-free pool of PixiJS Graphics objects. */
+export class GraphicsPool {
+  acquire(): Graphics | undefined;
+  resetFrame(): void;
+  destroy(): void;
+}
+```
+
+#### HUD Debug Text
+
+```typescript
+/** Screen-space debug text via allocation-free TextPool. */
+export class HudDebugApiImpl implements HudDebugApi {
+  setContributor(name: string): void;
+  addLine(text: string): void;
+  isFlagEnabled(flag: string): boolean;
+  get screenWidth(): number;
+  get screenHeight(): number;
+}
+
+/** Allocation-free pool of PixiJS Text objects. */
+export class TextPool {
+  addLine(text: string): void;
+  resetFrame(): void;
+  destroy(): void;
+}
+```
+
+#### Stats Store
+
+```typescript
+/** Rolling-window statistics with Float64Array ring buffers (120-frame window). */
+export class StatsStore {
+  push(key: string, value: number): void;
+  average(key: string): number;
+  latest(key: string): number;
+  min(key: string): number;
+  max(key: string): number;
+}
+```
+
+### 7.5 Asset Management (`@yage/core`)
+
+Asset management is part of `@yage/core` with pluggable loaders registered by plugin packages.
+
+```typescript
+export const AssetManagerKey = new ServiceKey<AssetManager>('assetManager');
+
+/** Phantom-typed handle for type-safe deferred asset loading. */
+export class AssetHandle<T> {
+  readonly type: string;
+  readonly path: string;
+  constructor(type: string, path: string);
+}
+
+/** Interface for pluggable asset loaders. */
+export interface AssetLoader<T = unknown> {
+  load(path: string): Promise<T>;
+  unload?(path: string, asset: T): void;
+}
+
+/** Central orchestrator for asset loading. */
+export class AssetManager {
+  /** Register a loader for an asset type. */
+  registerLoader(type: string, loader: AssetLoader): void;
+
+  /** Retrieve a loaded asset. Throws if not yet loaded. */
+  get<T>(handle: AssetHandle<T>): T;
+
+  /** Check if an asset is loaded. */
+  has(handle: AssetHandle<unknown>): boolean;
+
+  /** Load multiple assets with optional progress callback (0→1). */
+  async loadAll(
+    handles: AssetHandle<unknown>[],
+    onProgress?: (progress: number) => void
+  ): Promise<void>;
+
+  /** Unload a single asset. */
+  unload(handle: AssetHandle<unknown>): void;
+
+  /** Unload all cached assets. */
+  clear(): void;
+}
+```
+
+**Pattern**: Handles are created at module scope, loaded in scene `assets` manifest:
+
+```typescript
+// Define handles at module scope
+const heroTexture = texture('hero.png');
+const jumpSound = sound('jump.wav');
+const level1Map = tiledMap('level1.json');
+
+// Load in scene onEnter
+class GameScene extends Scene {
+  async onEnter() {
+    const assets = this.context.resolve(AssetManagerKey);
+    await assets.loadAll([heroTexture, jumpSound, level1Map]);
+
+    const player = this.spawn('player');
+    player.add(new SpriteComponent({ texture: assets.get(heroTexture) }));
+  }
+}
+```
+
+#### Factory Helpers
+
+Each plugin that registers an asset loader also exports a factory function:
+
+| Factory | Package | Returns |
+|---|---|---|
+| `texture(path)` | `@yage/renderer` | `AssetHandle<Texture>` |
+| `sound(path)` | `@yage/audio` | `AssetHandle<Sound>` |
+| `tiledMap(path)` | `@yage/tilemap` | `AssetHandle<TilemapData>` |
+
+### 7.6 Blueprint System (`@yage/core`)
+
+Blueprints are a lightweight alternative to Prefab for parametric entity factories. Where Prefab is a static declarative template, Blueprint accepts typed parameters and supports post-construction logic.
+
+```typescript
+/** Blueprint interface for parametric entity factories. */
+export interface Blueprint<P = void> {
+  readonly name: string;
+  build(entity: Entity, params: P): void;
+}
+
+/** Create a reusable blueprint. */
+export function defineBlueprint<P = void>(
+  name: string,
+  build: (entity: Entity, params: P) => void
+): Blueprint<P>;
+```
+
+**When to use**:
+- **Blueprint**: Parametric factories where shared parameters feed multiple components, post-construction methods (`.draw()`, `.onCollision()`) are needed, or runtime-computed closures reference entity instances.
+- **Prefab**: Truly static entity templates with fixed component configurations.
+
+```typescript
+// Example: parametric enemy blueprint
+const EnemyBlueprint = defineBlueprint<{ hp: number; speed: number }>(
+  'enemy',
+  (entity, { hp, speed }) => {
+    entity.add(new Transform());
+    entity.add(new RigidBodyComponent({ type: 'dynamic' }));
+    entity.add(new ColliderComponent({
+      shape: { type: 'circle', radius: 16 },
+    }));
+    entity.add(new HealthComponent(hp));
+
+    const gfx = entity.add(new GraphicsComponent());
+    gfx.draw(g => g.circle(0, 0, 16).fill(0xff0000));
+
+    // Post-construction logic using closures
+    entity.get(ColliderComponent).onCollision(event => {
+      if (event.started && event.other.tags.has('projectile')) {
+        entity.get(HealthComponent).damage(10);
+      }
+    });
+  }
+);
+
+// Usage in a scene
+const enemy = scene.spawn('goblin');
+EnemyBlueprint.build(enemy, { hp: 50, speed: 100 });
+```
+
+### 7.7 Entity Events (`@yage/core`)
+
+Per-entity pub/sub using typed event tokens. Complements the global `EventBus` with entity-scoped events.
+
+```typescript
+/** Phantom-typed token for entity-level events. */
+export class EventToken<T = void> {
+  readonly name: string;
+  constructor(name: string);
+}
+
+/** Create a typed event token. */
+export function defineEvent<T = void>(name: string): EventToken<T>;
+```
+
+**Usage**:
+
+```typescript
+// Define events at module scope
+const DamageEvent = defineEvent<{ amount: number; source: Entity }>('damage');
+const DeathEvent = defineEvent('death');
+
+// Subscribe on an entity
+entity.on(DamageEvent, ({ amount, source }) => {
+  console.log(`${entity.name} took ${amount} damage from ${source.name}`);
+});
+
+entity.once(DeathEvent, () => {
+  console.log(`${entity.name} died`);
+});
+
+// Emit from anywhere with a reference to the entity
+entity.emit(DamageEvent, { amount: 25, source: playerEntity });
+entity.emit(DeathEvent);
+```
+
+**How it differs from EventBus**:
+- `EventBus` is global (engine-wide). Use for engine lifecycle events, cross-system communication.
+- `EventToken` / `entity.on()` / `entity.emit()` is entity-scoped. Use for game logic events tied to specific entities (damage, collection, state changes).
+
+### 7.8 React UI Plugin (`@yage/ui-react`)
+
+Custom React reconciler for rendering game UI with familiar React patterns over Yoga + PixiJS.
+
+```typescript
+export class UIRoot extends Component {
+  constructor(opts?: UIRootOptions);
+  render(element: ReactElement): void;
+  update(): void;  // Automatic via ComponentUpdateSystem
+}
+
+export interface UIRootOptions {
+  anchor?: Anchor;
+  offset?: { x: number; y: number };
+}
+```
+
+#### React Hooks
+
+```typescript
+/** Access the EngineContext from React components. */
+export function useEngine(): EngineContext;
+
+/** Access the current YAGE Scene. */
+export function useScene(): Scene;
+
+/** Read from a reactive Store with optional selector. */
+export function useStore<T extends Record<string, unknown>, R = T>(
+  store: Store<T>,
+  selector?: (state: T) => R,
+  isEqual?: (a: R, b: R) => boolean
+): R;
+
+/** Run an ECS query and map results through a selector. Frame-polled. */
+export function useQuery<R>(
+  filter: ComponentClass[],
+  selector: (result: QueryResult) => R,
+  isEqual?: (a: R, b: R) => boolean
+): R;
+
+/** Run arbitrary selector against current scene each frame. Escape hatch. */
+export function useSceneSelector<R>(
+  selector: (scene: Scene) => R,
+  isEqual?: (a: R, b: R) => boolean
+): R;
+```
+
+#### Reactive Store
+
+```typescript
+export interface Store<T extends Record<string, unknown>> {
+  get(): Readonly<T>;
+  set(partial: Partial<T>): void;
+  subscribe(listener: () => void): () => void;
+}
+
+export function createStore<T extends Record<string, unknown>>(
+  initial: T
+): Store<T>;
+```
+
+#### JSX Components
+
+Wraps `@yage/ui` components as JSX elements:
+
+```typescript
+// From @yage/ui
+<Panel width={200} height={100} background={{ type: 'color', color: 0x333333 }}>
+  <Text text="Hello" style={{ fill: 0xffffff }} />
+  <Button label="Click Me" onClick={() => { ... }} />
+  <Image texture={myTexture} />
+  <NineSlice texture={panelTexture} leftWidth={8} rightWidth={8} topHeight={8} bottomHeight={8} />
+  <ProgressBar progress={0.75} />
+  <Checkbox checked={true} onChange={(v) => { ... }} />
+</Panel>
+
+// From @pixi/ui (advanced widgets)
+<PixiFancyButton label="Fancy" />
+<PixiSlider min={0} max={100} value={50} />
+<PixiInput placeholder="Enter name..." />
+<PixiScrollBox width={300} height={200}>...</PixiScrollBox>
+<PixiSelect options={['Option A', 'Option B']} />
+<PixiRadioGroup options={['A', 'B', 'C']} />
+```
+
+#### Example Usage
+
+```tsx
+import { createStore, UIRoot, useStore, useQuery, Panel, Text, Button } from '@yage/ui-react';
+import { Transform } from '@yage/core';
+
+const gameStore = createStore({ score: 0, lives: 3 });
+
+function HUD() {
+  const { score, lives } = useStore(gameStore);
+
+  return (
+    <Panel direction="row" gap={20}>
+      <Text text={`Score: ${score}`} style={{ fill: 0xffffff }} />
+      <Text text={`Lives: ${lives}`} style={{ fill: 0xff0000 }} />
+    </Panel>
+  );
+}
+
+// In a scene
+class GameScene extends Scene {
+  onEnter() {
+    const uiEntity = this.spawn('hud');
+    const uiRoot = uiEntity.add(new UIRoot({ anchor: Anchor.TopLeft }));
+    uiRoot.render(<HUD />);
+  }
+}
+```
+
+### 7.9 Meta-Package (`yage`)
+
+The `yage` package re-exports all official packages and provides an ergonomic factory API.
+
+```typescript
+export interface CreateGameOptions {
+  width?: number;           // Default: 800
+  height?: number;          // Default: 600
+  virtualWidth?: number;    // Default: width
+  virtualHeight?: number;   // Default: height
+  backgroundColor?: number;
+  container?: HTMLElement | string;
+  canvas?: HTMLCanvasElement;
+  renderer?: Partial<RendererConfig>;
+
+  physics?: boolean | PhysicsConfig;
+  input?: boolean | InputConfig;
+  audio?: boolean | AudioConfig;
+  particles?: boolean;
+  tilemap?: boolean;
+  ui?: boolean;
+  debug?: boolean | DebugConfig;
+
+  plugins?: Plugin[];
+  engine?: Omit<EngineConfig, 'debug'>;
+  scene?: Scene | InlineSceneSetup;
+}
+
+/** Pre-resolved services passed to inline scene callbacks. */
+export interface SceneServices {
+  camera: Camera;          // always present (renderer always registered)
+  assets: AssetManager;    // always present (core)
+  input?: InputManager;    // only if input plugin registered
+  physics?: PhysicsWorld;  // only if physics plugin registered
+  audio?: AudioManager;    // only if audio plugin registered
+}
+
+/** Callback for inline scene definition via defineInlineScene(). */
+export type InlineSceneSetup = (scene: Scene, services: SceneServices) => void;
+
+export interface GameHandle {
+  /** The underlying engine instance. Use engine.context to resolve services inside scenes. */
+  engine: Engine;
+  /** Push a scene (or inline setup) onto the scene stack. */
+  pushScene(scene: Scene | InlineSceneSetup): Promise<void>;
+  /** Destroy the engine and clean up all resources. */
+  destroy(): void;
+}
+
+/** One-call game bootstrap. */
+export async function createGame(options?: CreateGameOptions): Promise<GameHandle>;
+
+/** Create an inline scene without subclassing. */
+export function defineInlineScene(name: string, setup: InlineSceneSetup): Scene;
+```
+
+#### Scene Approaches
+
+| | Class-based (`extends Scene`) | Inline (`defineInlineScene`) |
+|---|---|---|
+| **Best for** | Structured games, complex scenes | Quick prototypes, simple scenes |
+| **Service access** | `this.service(Key)` — lazy proxy, field-declarable | Destructure from `services` arg |
+| **Lifecycle hooks** | Full: `onEnter`, `onExit`, `onPause`, `onResume`, `preload` | `onEnter` only (the callback) |
+| **Asset preloading** | `preload` array on class | Must call `assets.loadAll()` manually |
+| **Reusability** | Importable class, testable in isolation | Tied to definition site |
+
+**How it maps to manual setup**:
+
+```typescript
+// With createGame (convenience)
+const game = await createGame({
+  width: 800, height: 600,
+  physics: { gravity: { x: 0, y: 980 } },
+  input: { actions: { jump: ['Space'] } },
+  debug: true,
+  scene: defineInlineScene('game', (scene, { camera, input }) => {
+    camera.follow(scene.spawn('player'));
+  }),
+});
+
+// Equivalent manual setup
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+engine.use(new InputPlugin({ actions: { jump: ['Space'] } }));
+engine.use(new DebugPlugin());
+await engine.start();
+engine.scenes.push(new GameScene());
 ```
 
 ---
@@ -2096,13 +2687,13 @@ const logs = await page.evaluate(() =>
 
 ---
 
-## 9. v1 Pain Point Resolution Table
+## 9. Design Decisions Table
 
-Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 solution.
+Key design decisions and their rationale.
 
 ### Architecture & Design
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 1 | **No enabled check in component lifecycle dispatch** -- disabled components still receive lifecycle calls | The built-in `ComponentUpdateSystem` checks `component.enabled` before calling `update()`/`fixedUpdate()`. `ErrorBoundary.wrapComponent` wraps each call — on error, the component is disabled. Disabled components are never ticked. |
 | 2 | **Async `onAfterTick` via `setTimeout(..., 0)`** -- deferred execution causes ordering bugs | All game loop phases are synchronous. `endOfFrame` is a proper phase, not a setTimeout. No async in the game loop. |
@@ -2111,7 +2702,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Performance
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 5 | **No query caching** -- O(n) linear scans on every `getComponentBy*` call | `QueryCache` with incremental archetype tracking. Queries update only on component add/remove. Entity.get() is a Map lookup: O(1). |
 | 6 | **Process mode filtering on every lifecycle hook** -- 6 full array filters per frame | `SceneManager` handles pause semantics at the scene level. Systems only iterate entities from active scenes. No per-frame filtering. |
@@ -2119,7 +2710,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Missing Features
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 8 | **No mouse/touch/gamepad input** | `@yage/input` supports keyboard, mouse, touch, and gamepad with a unified action map. `getPointerPosition()`, `getVector()`, `getGamepads()`. |
 | 9 | **No camera/viewport at engine level** | `Camera` class in `@yage/renderer` with follow, deadzone, zoom, shake, and bounds clamping. `screenToWorld()`/`worldToScreen()` conversion. |
@@ -2130,7 +2721,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Developer Experience
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 14 | **No tests exist** | 100% unit test coverage on `@yage/core` (Vitest). Playwright E2E tests per plugin. CI runs all tests on every PR. |
 | 15 | **`typedoc` not installed** | API docs generated via TypeDoc (properly installed) or TSDoc comments. All public APIs documented. |
@@ -2141,7 +2732,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Robustness
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 20 | **No error boundaries** -- one bad component crashes the game | `ErrorBoundary` wraps all system and component execution. On throw, the offending system/component is disabled, error is logged, game loop continues. |
 | 21 | **`destroy()` can cause double-removal** -- bidirectional destroy calls | `Entity.destroy()` is one-way. The scene handles removal in `endOfFrame`. `isDestroyed` flag prevents double processing. No bidirectional calls. |
@@ -2149,7 +2740,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Ergonomics (from real example analysis)
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 23 | **Massive physics boilerplate** -- 12+ lines for a physics sprite | 4 lines: `add(Transform)`, `add(RigidBodyComponent)`, `add(ColliderComponent)`, `add(SpriteComponent)`. No `pu()`, no raw Rapier types. |
 | 24 | **Physics is mandatory even when unused** | Physics is in `@yage/physics`. If you don't install it, no WASM download, no physics world. Core has zero physics knowledge. |
@@ -2162,7 +2753,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Missing Abstractions
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 31 | **No collision layers/masks** | `CollisionLayers` with named layer definitions and bitmask API. `ColliderComponent` accepts `layers` and `mask` config. |
 | 32 | **No debug rendering** | `@yage/debug` plugin renders physics shapes, entity labels, FPS, entity count, and system timing as a toggleable overlay. |
@@ -2173,7 +2764,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Missing Core Features
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 37 | **No save/load or serialization** | P2 feature. Not in v2.0 scope. Inspector's `snapshot()` provides read-only serialization as a stepping stone. |
 | 38 | **No plugin or middleware system** | Full plugin system with `Plugin` interface, dependency sorting, service registration, system registration, and lifecycle hooks. See [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md). |
@@ -2183,7 +2774,7 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 
 ### Self-Acknowledged Issues
 
-| # | v1 Pain Point | v2 Resolution |
+| # | Problem | Solution |
 |---|---|---|
 | 42 | **Dialogue system is "basic and hard to customize"** | Premade systems (dialogue, loading screens) are not in v2.0 core. They may appear as community plugins or examples. |
 | 43 | **`// Memoize these?` comment on queries** | `QueryCache` fully solves this. The comment is gone because the problem is gone. |
@@ -2198,4 +2789,4 @@ Every pain point from [PAIN_POINTS.md](../../PAIN_POINTS.md) mapped to its v2 so
 - [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing and debugging approach
 - [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md) -- Plugin system specification
 - [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- AI agent development guide
-- [PAIN_POINTS.md](../../PAIN_POINTS.md) -- v1 pain points catalog
+- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Planned recipes, signatures, and implementation approach

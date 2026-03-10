@@ -53,7 +53,7 @@
 | **Rendering** | PixiJS v8 integration: SpriteComponent, GraphicsComponent, AnimatedSpriteComponent, render layers, virtual resolution |
 | **Camera** | Follow target, deadzone, zoom, shake, bounds clamping |
 | **Physics** | Rapier2D wrapper: RigidBodyComponent, ColliderComponent (separated), collision layers/masks, event routing, internal pixel-to-meter conversion, interpolation |
-| **Input** | Keyboard, mouse, touch, gamepad. Action map system (plain objects). Axis/vector queries. Configurable preventDefault |
+| **Input** | Keyboard, mouse, touch. Action map system (plain objects). Axis/vector queries. Configurable preventDefault. Gamepad planned but not yet implemented |
 | **Audio** | AudioManager with channels (sfx, music, ambient). SoundComponent for entity-bound audio. Per-channel volume/mute |
 | **Prefabs** | Declarative entity templates with builder pattern. Spawn from template with overrides |
 | **Process/Tween** | Coroutine system with tween, sequence, parallel, delay. Chainable API. Promise interop |
@@ -63,17 +63,24 @@
 | **Structured Logging** | Logger with levels, categories, ring buffer, JSON-friendly format. `formatRecentLogs()` for agent consumption |
 | **Debug Overlay** | Physics shapes, entity labels, FPS/entity count, system timing |
 | **Math Utilities** | Vec2 (immutable value type), Transform, MathUtils (lerp, clamp, remap, random range) |
+| **Tilemap / Tiled Support** | Load Tiled JSON maps, render tile layers, extract collision shapes from object layers, `tiledMap()` asset handle, `extractObjects()` / `getProperty()` / `resolveObjectRef()` utilities |
+| **Particle System** | Particle emitter with `ParticlePresets` (fire, smoke, sparks, rain), `ParticlePool`, `ParticleEmitterComponent` |
+| **UI Layout System** | Yoga flex layout with `UIPanel`, `UIText`, `UIButton`, `UIImage`, `UINineSlice`, `UIProgressBar`, `UICheckbox`. @pixi/ui wrappers (`PixiFancyButton`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`). Responsive to virtual resolution |
+| **Asset Management** | `AssetManager` with pluggable `AssetLoader` interface, `AssetHandle<T>` for type-safe deferred loading, `loadAll()` with progress callback, factory helpers (`texture()`, `sound()`, `tiledMap()`) |
+| **Blueprint** | Lightweight alternative to Prefab — `defineBlueprint(name, buildFn)` for parametric entity factories with post-construction logic |
+| **Entity Events** | `EventToken<T>` / `defineEvent()` for typed per-entity pub/sub via `entity.on()` / `entity.emit()`. Complements the global `EventBus` with entity-scoped events |
+| **React UI** | `@yage/ui-react` — custom React reconciler for game UI over Yoga + PixiJS. Hooks: `useEngine()`, `useScene()`, `useQuery()`, `useStore()`. Reactive `Store` via `createStore()` |
+| **createGame()** | Ergonomic top-level factory in `yage` meta-package — configures engine + plugins in one call, returns `GameHandle` |
+| **Raycasting** | `PhysicsWorld.raycast(origin, direction, maxDistance)` → `RaycastHit | null` for line-of-sight, targeting, ground checks |
 
 ### P1 -- Fast-Follow (v2.1-v2.3)
 
 | Feature | Description |
 |---|---|
-| **Tilemap / Tiled Support** | Load Tiled JSON maps, render tile layers, extract collision shapes from object layers |
-| **Particle System** | GPU-friendly particle emitter with common presets (fire, smoke, sparks, rain) |
-| **UI Layout System** | Flexbox-inspired layout with anchoring, text, buttons, panels. Responsive to virtual resolution |
-| **Camera Effects** | Smooth follow algorithms, screen transitions (fade, wipe, iris), letterboxing |
+| **Gamepad Input** | Gamepad connection/disconnection, button/axis polling. Planned but not yet implemented |
+| **Camera Effects** | Screen transitions (fade, wipe, iris), letterboxing |
 | **Animation Controller** | State machine for sprite animations (idle > walk > jump) with transition conditions |
-| **Object Pooling** | Integrated pool with prefab system. Auto-recycle for bullets, particles, etc. |
+| **Object Pooling** | General-purpose entity/object pool. `ParticlePool` exists internally but a public pooling API is not yet exposed |
 
 ### P2 -- Future (v2.x+)
 
@@ -95,8 +102,7 @@ These are explicitly out of scope for v2.0 and have no planned timeline:
 2. **Server-side game logic**: YAGE runs in the browser. Server sync is a future primitive, not a core feature.
 3. **Visual editor at launch**: v2.0 is code-first. A visual editor is P2.
 4. **Mobile native builds**: Browser only. PWA is the deployment model for mobile.
-5. **Backward compatibility with v1**: v2 is a clean break. A migration guide will be provided, but v1 API shapes are not preserved.
-6. **Framework lock-in avoidance**: We commit to PixiJS v8 for rendering and Rapier2D for physics. These are hard dependencies of their respective plugins, not abstractable backends.
+5. **Framework lock-in avoidance**: We commit to PixiJS v8 for rendering and Rapier2D for physics. These are hard dependencies of their respective plugins, not abstractable backends.
 
 ---
 
@@ -132,18 +138,18 @@ These are explicitly out of scope for v2.0 and have no planned timeline:
 | **Phaser 3/4** | Massive ecosystem, huge community, mature | YAGE is TypeScript-first (Phaser is JS-first), modular (Phaser is monolithic), and has proper ECS (Phaser uses scene-level containers). YAGE's testing story is first-class. |
 | **Excalibur.js** | TypeScript-native, good DX, actor model | YAGE offers a hybrid ECS (not pure actor model), optional physics (Excalibur bundles its own), and Rapier2D for high-performance simulation. |
 | **PlayCanvas (2D)** | Powerful editor, WebGPU-ready | YAGE is code-first (no editor dependency), lighter weight, and focused purely on 2D. PlayCanvas is primarily a 3D engine. |
-| **Kaboom.js/Kaplay** | Incredible simplicity, game-jam friendly | YAGE offers more structure for larger projects while matching Kaboom's simplicity for small ones. Proper scene management, prefabs, and type safety. |
+| **Kaboom.js/Kaplay** | Incredible simplicity, game-jam friendly | YAGE offers more structure for larger projects while matching Kaboom's simplicity for small ones. Proper scene management, prefabs, and type safety. React-based UI lets web developers use familiar tools for game UI. |
 | **LittleJS** | Ultra-lightweight, zero dependencies | YAGE offers more features (physics, ECS, plugins) while remaining modular. LittleJS is intentionally minimal. |
 
-YAGE v2's positioning: **The TypeScript-native engine for solo devs who want Phaser's features without Phaser's baggage, with an OOP component model that stays out of your way and a testing story that AI agents can actually use.**
+YAGE v2's positioning: **The TypeScript-native engine for solo devs who want Phaser's features without Phaser's baggage, with an OOP component model that stays out of your way, a React-based UI system for game HUDs and menus, and a testing story that AI agents can actually use.**
 
 ---
 
 ## References
 
-- [PAIN_POINTS.md](../../PAIN_POINTS.md) -- Complete catalog of v1 issues driving v2 design
 - [TDD.md](./TDD.md) -- Technical Design Document with full architecture and API sketches
 - [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) -- Phased build roadmap
 - [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing and debugging approach
 - [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md) -- Plugin system specification
 - [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- AI agent development guide
+- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Recipe catalog direction and package boundaries

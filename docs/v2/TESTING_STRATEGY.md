@@ -62,8 +62,18 @@ packages/core/
 
 ### Coverage Target
 
-- `@yage/core`: **100% statement coverage**. Every public API path is tested. This is the foundation -- no shortcuts.
-- Other packages: **High coverage** on logic (camera math, collision layers, action map resolution). Rendering/audio that requires browser APIs are covered by E2E tests instead.
+- `@yage/core`: **100% statement coverage** target. 31 test files exist covering all core APIs. This is the foundation -- no shortcuts.
+- Other packages: **High coverage** on logic. Current test file counts:
+  - `@yage/renderer`: 8 test files
+  - `@yage/physics`: 10 test files
+  - `@yage/particles`: 6 test files
+  - `@yage/tilemap`: 6 test files
+  - `@yage/ui`: 8 test files
+  - `@yage/ui-react`: 4 test files
+  - `@yage/audio`: 4 test files
+  - `@yage/input`: 2 test files
+  - `@yage/debug`: 4 test files
+- Rendering/audio that requires browser APIs are covered by E2E tests instead.
 
 ### Test Patterns
 
@@ -612,9 +622,123 @@ export function advanceFrames(
 }
 ```
 
+### Test Patterns for Additional Features
+
+#### Asset Loading
+
+```typescript
+describe('AssetManager', () => {
+  it('loads assets via registered loader', async () => {
+    const manager = new AssetManager();
+    const mockLoader: AssetLoader<string> = {
+      load: vi.fn().mockResolvedValue('loaded-data'),
+    };
+    manager.registerLoader('test', mockLoader);
+
+    const handle = new AssetHandle<string>('test', 'path/to/asset');
+    await manager.loadAll([handle]);
+
+    expect(manager.get(handle)).toBe('loaded-data');
+    expect(manager.has(handle)).toBe(true);
+  });
+
+  it('reports progress during loadAll', async () => {
+    const manager = new AssetManager();
+    manager.registerLoader('test', { load: () => Promise.resolve('x') });
+
+    const progress: number[] = [];
+    const handles = [
+      new AssetHandle('test', 'a'),
+      new AssetHandle('test', 'b'),
+    ];
+
+    await manager.loadAll(handles, (p) => progress.push(p));
+    expect(progress[progress.length - 1]).toBe(1);
+  });
+});
+```
+
+#### Blueprint
+
+```typescript
+describe('defineBlueprint', () => {
+  it('builds entity with parameters', () => {
+    const bp = defineBlueprint<{ hp: number }>('test', (entity, { hp }) => {
+      entity.add(new Transform());
+      entity.add(new HealthComponent(hp));
+    });
+
+    const scene = createMockScene();
+    const entity = scene.spawn('e');
+    bp.build(entity, { hp: 50 });
+
+    expect(entity.has(Transform)).toBe(true);
+    expect(entity.get(HealthComponent).hp).toBe(50);
+  });
+});
+```
+
+#### Entity Events
+
+```typescript
+describe('Entity events', () => {
+  it('emits and receives typed events', () => {
+    const DamageEvent = defineEvent<{ amount: number }>('damage');
+    const entity = createMockEntity();
+    const handler = vi.fn();
+
+    entity.on(DamageEvent, handler);
+    entity.emit(DamageEvent, { amount: 25 });
+
+    expect(handler).toHaveBeenCalledWith({ amount: 25 });
+  });
+
+  it('once auto-unsubscribes', () => {
+    const HitEvent = defineEvent('hit');
+    const entity = createMockEntity();
+    const handler = vi.fn();
+
+    entity.once(HitEvent, handler);
+    entity.emit(HitEvent);
+    entity.emit(HitEvent);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+#### React UI / Store
+
+```typescript
+describe('createStore', () => {
+  it('notifies subscribers on set', () => {
+    const store = createStore({ score: 0 });
+    const listener = vi.fn();
+
+    store.subscribe(listener);
+    store.set({ score: 10 });
+
+    expect(listener).toHaveBeenCalled();
+    expect(store.get().score).toBe(10);
+  });
+
+  it('does not notify when value unchanged', () => {
+    const store = createStore({ score: 0 });
+    const listener = vi.fn();
+
+    store.subscribe(listener);
+    store.set({ score: 0 });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+```
+
 ---
 
 ## 2. Integration Tests (Playwright)
+
+> **Status**: E2E tests are planned but not yet implemented. The patterns and examples below serve as the target specification.
 
 ### Configuration
 

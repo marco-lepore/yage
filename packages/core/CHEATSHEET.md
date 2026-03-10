@@ -701,3 +701,9 @@ describe("FooPlugin", () => {
 - Entity IDs auto-reset between tests via the test utilities (they call `_resetEntityIdCounter`)
 - The ErrorBoundary catches all component/system errors — test that crashing components get `enabled = false`
 - Use `vi.fn()` and `vi.spyOn()` from Vitest for mocking callbacks and service methods
+
+---
+
+## Related Docs
+
+- [Recipes Plan](../../docs/v2/RECIPES_PLAN.md) -- Planned reusable gameplay modules and implementation details

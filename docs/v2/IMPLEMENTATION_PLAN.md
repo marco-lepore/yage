@@ -40,7 +40,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ---
 
-## Phase 0 -- Project Setup
+## Phase 0 -- Project Setup ✅ Complete
 
 **Depends on**: Nothing
 **Goal**: Scaffolded monorepo with build, lint, test, and CI infrastructure. Zero application code.
@@ -97,7 +97,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ---
 
-## Phase 1 -- Core Kernel
+## Phase 1 -- Core Kernel ✅ Complete
 
 **Depends on**: Phase 0
 **Goal**: Complete `@yage/core` with full unit test coverage. The kernel is functional but has no visual output -- all testing is via Vitest in Node.js.
@@ -196,7 +196,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ---
 
-## Phase 2 -- Renderer Plugin
+## Phase 2 -- Renderer Plugin ✅ Complete
 
 **Depends on**: Phase 1
 **Goal**: PixiJS v8 integration. First visual output. Entities with `Transform` + `SpriteComponent` render on screen.
@@ -242,10 +242,10 @@ Phase 7: Debug Plugin                                  (all above)
 
 ---
 
-## Phase 3 -- Input Plugin
+## Phase 3 -- Input Plugin ✅ Complete
 
 **Depends on**: Phase 2 (input needs the renderer's canvas for pointer coordinate conversion; keyboard can fall back to `document`)
-**Goal**: Full multi-device input with action maps.
+**Goal**: Multi-device input with action maps. Keyboard, mouse, and touch are implemented. Gamepad is planned but not yet implemented.
 
 ### Deliverables
 
@@ -273,7 +273,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ---
 
-## Phase 4 -- Physics Plugin
+## Phase 4 -- Physics Plugin ✅ Complete
 
 **Depends on**: Phase 2 (needs renderer for visual verification)
 **Goal**: Rapier2D integration with zero user-facing coordinate conversion. First playable example.
@@ -319,7 +319,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ---
 
-## Phase 5 -- Audio, Particles, Tilemap
+## Phase 5 -- Audio, Particles, Tilemap ✅ Complete
 
 **Depends on**: Phase 2 (renderer, for particles/tilemap rendering). Tilemap optionally integrates with Phase 4 (physics) for collision shapes, but this is not a hard dependency. Audio depends only on Phase 1 (core). These plugins are grouped into a single phase because they are independent of each other and can be built in parallel.
 **Goal**: Secondary plugins that round out the feature set.
@@ -330,59 +330,81 @@ Phase 7: Debug Plugin                                  (all above)
    - `AudioManager` with channels (sfx, music)
    - `SoundComponent` for entity-bound audio
    - Volume, mute, pause per channel
+   - `sound()` asset handle factory for typed asset loading
    - Audio example: music playback with SFX triggers
 
 2. **Particles Plugin** (`@yage/particles`)
-   - `ParticleEmitterComponent` with common presets
+   - `ParticleEmitterComponent` with configurable emitter properties
    - `ParticleSystem` updates emitters each frame
+   - `ParticlePool` for allocation-free particle recycling
+   - `ParticlePresets` with built-in presets: fire, smoke, sparks, rain
    - Particles example: fire, smoke, sparks
 
 3. **Tilemap Plugin** (`@yage/tilemap`)
-   - Load Tiled JSON maps
-   - Render tile layers via PixiJS
-   - Extract collision shapes for physics (optional integration)
+   - Load Tiled JSON maps via `tiledMap()` asset handle factory
+   - Render tile layers via PixiJS (`TilemapRenderSystem`)
+   - Extract collision shapes for physics (optional integration via `extractCollisionShapes()`)
+   - Object extraction utilities: `extractObjects()`, `getProperty()`, `getPropertyArray()`, `resolveObjectRef()`, `resolveObjectRefArray()`
    - Tilemap example: simple scrolling level
 
 ### Gate Criteria
 
-- [ ] Audio plays with correct channel routing and volume
-- [ ] Particle emitters create visual effects
-- [ ] Tiled JSON maps render correctly
-- [ ] Tilemap collision shapes integrate with physics (when both plugins installed)
-- [ ] Each plugin works independently (no mandatory cross-dependencies except where documented)
+- [x] Audio plays with correct channel routing and volume
+- [x] Particle emitters create visual effects
+- [x] Tiled JSON maps render correctly
+- [x] Tilemap collision shapes integrate with physics (when both plugins installed)
+- [x] Each plugin works independently (no mandatory cross-dependencies except where documented)
 
 ---
 
-## Phase 6 -- UI Plugin
+## Phase 6 -- UI Plugin ✅ Complete
 
 **Depends on**: Phase 2 (renderer)
-**Goal**: Layout system for menus, HUDs, and in-game UI.
+**Goal**: Layout system for menus, HUDs, and in-game UI. Exceeded original scope with React integration.
 
 ### Deliverables
 
-1. **UIPlugin**
+1. **UIPlugin** (`@yage/ui`)
+   - Yoga flex layout engine integration
    - UI root with anchor points
    - Flex-inspired layout (row, column, gap, padding)
+   - `BackgroundRenderer` for colored/textured panel backgrounds
 
-2. **UI Elements**
-   - `UITextElement`, `UIButtonElement`, `UIPanelElement`
-   - Responsive to virtual resolution changes
+2. **UI Elements** (`@yage/ui`)
+   - `UIPanel` — layout container with Yoga flexbox
+   - `UIText` — text rendering
+   - `UIButton` — interactive button with hover/press states
+   - `UIImage` — texture display
+   - `UINineSlice` — 9-slice scaled sprites
+   - `UIProgressBar` — progress indicator
+   - `UICheckbox` — toggle checkbox
+   - @pixi/ui wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`
 
-3. **UISystem**
+3. **React UI Plugin** (`@yage/ui-react`) — *added beyond original scope*
+   - Custom React reconciler over Yoga + PixiJS
+   - `UIRoot` component for hosting React trees in UI layer
+   - Hooks: `useEngine()`, `useScene()`, `useQuery()`, `useStore()`, `useSceneSelector()`
+   - Reactive state via `createStore()` / `Store<T>`
+   - JSX wrappers: `Panel`, `Text`, `Button`, `Image`, `NineSlice`, `ProgressBar`, `Checkbox`
+   - @pixi/ui JSX wrappers for advanced widgets
+
+4. **UISystem**
    - Layout calculation in LateUpdate phase
 
-4. **UI example**: Main menu with buttons, HUD overlay with score
+5. **Examples**: `ui` (non-React), `ui-react` (React hooks/store), `pixi-ui-kitchen-sink` (@pixi/ui components)
 
 ### Gate Criteria
 
-- [ ] Text renders with correct positioning and style
-- [ ] Buttons respond to click/touch with visual feedback
-- [ ] Layout reflows on resolution change
-- [ ] Panel nesting works (panels containing panels with different directions)
+- [x] Text renders with correct positioning and style
+- [x] Buttons respond to click/touch with visual feedback
+- [x] Layout reflows on resolution change
+- [x] Panel nesting works (panels containing panels with different directions)
+- [x] React reconciler renders JSX into game UI layer
+- [x] React hooks correctly read engine/scene state
 
 ---
 
-## Phase 7 -- Debug Plugin
+## Phase 7 -- Debug Plugin ✅ Complete
 
 **Depends on**: Phase 4 (physics shapes to render), Phase 2 (renderer)
 **Goal**: Developer overlay for debugging games.
@@ -390,11 +412,11 @@ Phase 7: Debug Plugin                                  (all above)
 ### Deliverables
 
 1. **DebugPlugin**
-   - FPS counter
-   - Entity count
-   - System timing breakdown
-   - Physics collider shape rendering
-   - Entity name labels
+   - `DebugRegistryImpl` — contributor registration, flag toggling, global enable/disable
+   - `WorldDebugApiImpl` — world-space debug drawing via `GraphicsPool` (allocation-free)
+   - `HudDebugApiImpl` — screen-space debug text via `TextPool` (allocation-free)
+   - `StatsStore` — rolling-window statistics with Float64Array ring buffers (120-frame window)
+   - Built-in contributors: FPS counter, entity count, system timing, physics shape rendering
    - Toggle via hotkey (F12)
 
 2. **Inspector integration**
@@ -403,88 +425,88 @@ Phase 7: Debug Plugin                                  (all above)
 
 ### Gate Criteria
 
-- [ ] Debug overlay toggles on/off with F12
-- [ ] Physics shapes render correctly over game entities
-- [ ] FPS and entity count are accurate
-- [ ] System timing shows per-system ms cost
-- [ ] `window.__yage__` is available and returns correct data
+- [x] Debug overlay toggles on/off with F12
+- [x] Physics shapes render correctly over game entities
+- [x] FPS and entity count are accurate
+- [x] System timing shows per-system ms cost
+- [x] `window.__yage__` is available and returns correct data
 
 ---
 
-## Phase 8 -- E2E Tests + Examples
+## Phase 8 -- E2E Tests + Examples 🟡 Partial
 
 **Depends on**: All plugin phases (5, 6, 7)
 **Goal**: Comprehensive Playwright test suite and polished examples.
 
-### Deliverables
+### Phase 8a -- Examples ✅ Complete
 
-1. **Playwright test suite**
-   - Bouncing ball: verify ball falls and bounces
-   - Input: verify keyboard actions trigger correctly
-   - Physics: verify collision events fire
-   - Scene transitions: verify push/pop/replace lifecycle
-   - UI: verify button click triggers callback
-   - Inspector: verify snapshot returns correct state
+13 examples covering all major features:
 
-2. **Examples** (6+)
-   - Bouncing ball (physics)
-   - Platformer (physics + input + camera)
-   - Top-down movement (input + camera + tilemap)
-   - Input demo (all input devices visualized)
-   - Particles demo (various emitter presets)
-   - Scene stack demo (game + HUD + pause menu)
+1. `hello-world` — basic rendering with shapes and rotation
+2. `camera` — camera follow, shake, bounds
+3. `physics-basics` — rigid bodies and colliders
+4. `physics-collisions` — collision events and triggers
+5. `platformer` — character controller + tilemap + physics
+6. `particles` — particle emitter presets
+7. `audio` — sound playback and audio manager
+8. `tilemap` — Tiled map rendering and collision
+9. `ui` — UI panel components (non-React)
+10. `ui-react` — React hooks, store, JSX components
+11. `pixi-ui-kitchen-sink` — @pixi/ui component showcase
+12. `debug` — debug HUD and profiling
+13. `shooter` — player shooting, enemy AI
 
-3. **Example index page**
-   - Lists all examples with thumbnails/descriptions
-   - URL routing for easy access
+Example index page with URL routing for easy access.
+
+### Phase 8b -- E2E Tests ❌ Not Started
+
+Planned Playwright test suite (not yet implemented):
+- Bouncing ball: verify ball falls and bounces
+- Input: verify keyboard actions trigger correctly
+- Physics: verify collision events fire
+- Scene transitions: verify push/pop/replace lifecycle
+- UI: verify button click triggers callback
+- Inspector: verify snapshot returns correct state
 
 ### Gate Criteria
 
 - [ ] All Playwright tests pass in CI (headless Chromium)
-- [ ] All examples run without errors
-- [ ] Examples cover every installed plugin
-- [ ] Examples demonstrate v2's DX improvement over v1 equivalents
+- [x] All examples run without errors
+- [x] Examples cover every installed plugin
 - [ ] Tests use Inspector API (not screenshots) for assertions
 
 ---
 
-## Phase 9 -- Polish & Release
+## Phase 9 -- Polish & Release 🟡 Partial
 
 **Depends on**: Phase 8
-**Goal**: Release-ready meta-package, documentation, and migration guide.
+**Goal**: Release-ready meta-package, documentation, and npm publish.
 
 ### Deliverables
 
-1. **Meta-package** (`yage`)
+1. **Meta-package** (`yage`) ✅ Complete
    - Re-exports all packages for convenience
+   - `createGame()` ergonomic factory with `GameHandle`
+   - `defineInlineScene()` for inline scene creation with pre-resolved `SceneServices`
    - Single `npm install yage` gets everything
 
-2. **API documentation**
+2. **API documentation** ❌ Not started
    - TypeDoc generated from TSDoc comments
    - Hosted on project website or GitHub Pages
 
-3. **Migration guide**
-   - v1 → v2 mapping for every class and utility
-   - Before/after code comparisons
-   - Breaking changes list
-
-4. **README.md**
+3. **README.md** ❌ Not started
    - Quick-start guide
    - Feature list with links to docs
    - Example code
 
-5. **CHANGELOG.md**
-   - v2.0.0 release notes
-
-6. **npm publish**
+4. **npm publish** ❌ Not started
    - All packages published to npm under `@yage/*` scope
    - Semantic versioning from 2.0.0
 
 ### Gate Criteria
 
-- [ ] `npm install yage` works and exposes all public APIs
+- [x] `npm install yage` works and exposes all public APIs
 - [ ] TypeDoc generates clean documentation for all packages
-- [ ] Migration guide covers every v1 API
 - [ ] README quick-start example runs without modification
 - [ ] All CI checks pass on the release commit
 - [ ] Packages published to npm (or ready to publish)
@@ -493,18 +515,18 @@ Phase 7: Debug Plugin                                  (all above)
 
 ## Summary Table
 
-| Phase | Name | Depends On | Key Output |
-|---|---|---|---|
-| 0 | Project Setup | -- | Monorepo, build, CI |
-| 1 | Core Kernel | 0 | `@yage/core` with 100% test coverage |
-| 2 | Renderer | 1 | First visual output (PixiJS v8) |
-| 3 | Input | 2 | Multi-device input |
-| 4 | Physics | 2 | Rapier2D, first playable example |
-| 5 | Audio, Particles, Tilemap | 1 (audio), 2 (particles/tilemap) | Secondary plugins |
-| 6 | UI | 2 | Layout system |
-| 7 | Debug | 4, 2 | Debug overlay, inspector |
-| 8 | E2E Tests + Examples | 5, 6, 7 | Playwright suite, 6+ examples |
-| 9 | Polish | 8 | Meta-package, docs, release |
+| Phase | Name | Depends On | Status | Key Output |
+|---|---|---|---|---|
+| 0 | Project Setup | -- | ✅ Complete | Monorepo, build, CI |
+| 1 | Core Kernel | 0 | ✅ Complete | `@yage/core` with 31 test files |
+| 2 | Renderer | 1 | ✅ Complete | First visual output (PixiJS v8) |
+| 3 | Input | 2 | ✅ Complete | Keyboard, mouse, touch (gamepad planned) |
+| 4 | Physics | 2 | ✅ Complete | Rapier2D, raycasting, first playable example |
+| 5 | Audio, Particles, Tilemap | 1 (audio), 2 (particles/tilemap) | ✅ Complete | Secondary plugins with asset handle factories |
+| 6 | UI | 2 | ✅ Complete | Yoga layout, @pixi/ui wrappers, React reconciler |
+| 7 | Debug | 4, 2 | ✅ Complete | Debug overlay, contributor system, stats store |
+| 8 | E2E Tests + Examples | 5, 6, 7 | 🟡 Partial | 13 examples complete, E2E tests not started |
+| 9 | Polish | 8 | 🟡 Partial | Meta-package done, docs/publish not started |
 
 ---
 
@@ -515,3 +537,4 @@ Phase 7: Debug Plugin                                  (all above)
 - [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing approach for each phase
 - [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md) -- Plugin system guiding Phase 1 design
 - [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- Agent workflow for implementing phases
+- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Recipe roadmap and implementation details

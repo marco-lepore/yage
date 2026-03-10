@@ -60,6 +60,8 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │     ├── @yage/particles (→ core, renderer)
   │     ├── @yage/tilemap (→ core, renderer; optional: physics)
   │     ├── @yage/ui (→ core, renderer)
+  │     │     ↓
+  │     │     └── @yage/ui-react (→ core, renderer, ui, react, react-dom)
   │     └── @yage/debug (→ core, renderer; optional: physics)
   │
   ├── @yage/physics (→ core, @dimforge/rapier2d)
@@ -68,7 +70,7 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   └── @yage/audio (→ core, @pixi/sound)
 
-yage (meta-package, re-exports all)
+yage (meta-package, re-exports all + createGame factory)
 ```
 
 ### Modification Order
@@ -105,6 +107,9 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/Scene.ts` | Scene base class (entity factory) |
 | `src/Process.ts` | Coroutine / tween / sequence |
 | `src/Prefab.ts` | Declarative entity templates |
+| `src/Blueprint.ts` | `defineBlueprint()` parametric entity factories |
+| `src/AssetManager.ts` | `AssetManager`, `AssetHandle<T>`, `AssetLoader` interface |
+| `src/EventToken.ts` | `EventToken<T>`, `defineEvent()` for per-entity pub/sub |
 | `src/ErrorBoundary.ts` | System/component error wrapping |
 | `src/Inspector.ts` | Programmatic state queries |
 | `src/Logger.ts` | Structured logging |
@@ -158,6 +163,72 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/AudioPlugin.ts` | Plugin entry |
 | `src/AudioManager.ts` | Channel-based playback control |
 | `src/SoundComponent.ts` | Entity-bound audio |
+
+### `@yage/particles`
+
+| File | Purpose |
+|---|---|
+| `src/ParticlesPlugin.ts` | Plugin entry |
+| `src/ParticleEmitterComponent.ts` | Emitter component with config |
+| `src/ParticleSystem.ts` | Update phase: tick emitters |
+| `src/ParticlePool.ts` | Allocation-free particle recycling |
+| `src/ParticlePresets.ts` | Built-in presets: fire, smoke, sparks, rain |
+
+### `@yage/tilemap`
+
+| File | Purpose |
+|---|---|
+| `src/TilemapPlugin.ts` | Plugin entry |
+| `src/TilemapComponent.ts` | Map rendering component |
+| `src/TilemapRenderSystem.ts` | Render phase: draw tile layers |
+| `src/loaders/` | Asset loaders for Tiled JSON |
+| `src/colliders.ts` | `extractCollisionShapes()` |
+| `src/tiled/parseTiledMap.ts` | `extractObjects()` |
+| `src/properties.ts` | `getProperty()`, `getPropertyArray()`, `resolveObjectRef()`, `resolveObjectRefArray()` |
+
+### `@yage/ui`
+
+| File | Purpose |
+|---|---|
+| `src/UIPlugin.ts` | Plugin entry, registers `UIContainerKey` |
+| `src/UIPanel.ts` | Layout container with Yoga flexbox |
+| `src/UIText.ts` | Text rendering |
+| `src/UIButton.ts` | Interactive button |
+| `src/UIImage.ts` | Texture display |
+| `src/UINineSlice.ts` | 9-slice scaled sprite |
+| `src/UIProgressBar.ts` | Progress indicator |
+| `src/UICheckbox.ts` | Toggle checkbox |
+| `src/BackgroundRenderer.ts` | Color/texture backgrounds for panels |
+| `src/pixi-ui/` | @pixi/ui wrappers (PixiFancyButton, PixiSlider, etc.) |
+
+### `@yage/ui-react`
+
+| File | Purpose |
+|---|---|
+| `src/UIRoot.ts` | Component that hosts React tree in UI layer |
+| `src/hooks.ts` | `useEngine()`, `useScene()`, `useQuery()`, `useStore()`, `useSceneSelector()` |
+| `src/store.ts` | `createStore()`, `Store<T>` reactive state |
+| `src/reconciler.ts` | Custom React reconciler over Yoga + PixiJS |
+| `src/components/` | JSX wrappers: Panel, Text, Button, Image, etc. |
+
+### `@yage/debug`
+
+| File | Purpose |
+|---|---|
+| `src/DebugPlugin.ts` | Plugin entry, registers `DebugRegistryKey` |
+| `src/DebugRegistryImpl.ts` | Contributor registry, flag management |
+| `src/WorldDebugApiImpl.ts` | World-space debug drawing |
+| `src/HudDebugApiImpl.ts` | Screen-space debug text |
+| `src/StatsStore.ts` | Rolling-window statistics (Float64Array ring buffers) |
+| `src/GraphicsPool.ts` | Allocation-free PixiJS Graphics pool |
+| `src/TextPool.ts` | Allocation-free PixiJS Text pool |
+
+### `yage` (meta-package)
+
+| File | Purpose |
+|---|---|
+| `src/index.ts` | Re-exports all packages |
+| `src/createGame.ts` | `createGame()` factory, `defineInlineScene()`, `CreateGameOptions`, `GameHandle`, `SceneServices`, `InlineSceneSetup` |
 
 ### Project Root
 
@@ -387,6 +458,103 @@ engine.scenes.push(new MyScene());
 4. Add to the example index page
 5. Write an E2E test in `e2e/<name>.spec.ts`
 
+### Add a New AssetHandle Factory
+
+1. In your plugin package, create a factory function:
+
+```typescript
+import { AssetHandle } from '@yage/core';
+
+export function myAsset(path: string): AssetHandle<MyAssetType> {
+  return new AssetHandle<MyAssetType>('myType', path);
+}
+```
+
+2. Register the loader in your plugin's `install()`:
+
+```typescript
+install(context: EngineContext) {
+  const assets = context.resolve(AssetManagerKey);
+  assets.registerLoader('myType', {
+    load: async (path) => { /* load and return asset */ },
+    unload: (path, asset) => { /* cleanup */ },
+  });
+}
+```
+
+3. Export the factory from `index.ts`
+
+### Define a Blueprint
+
+```typescript
+import { defineBlueprint, Transform } from '@yage/core';
+import { SpriteComponent } from '@yage/renderer';
+
+export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
+  'my-entity',
+  (entity, { x, y }) => {
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(new SpriteComponent({ texture: 'my-sprite.png' }));
+    // Post-construction logic here
+  }
+);
+
+// Usage: MyBlueprint.build(scene.spawn('instance'), { x: 100, y: 200 });
+```
+
+### Scene Class (Recommended for Real Games)
+
+Use a Scene subclass when you need full lifecycle hooks, asset preloading, or reusable/testable scenes. Services are accessed via `this.service(Key)` which returns a lazy proxy safe to assign as a field.
+
+```typescript
+import { Scene, Transform, Vec2 } from '@yage/core';
+import { CameraKey } from '@yage/renderer';
+import { InputManagerKey } from '@yage/input';
+import { PhysicsWorldKey } from '@yage/physics';
+
+class GameScene extends Scene {
+  readonly name = 'game';
+
+  // Lazy proxies — safe to declare as fields, resolved on first use
+  private camera = this.service(CameraKey);
+  private input = this.service(InputManagerKey);
+  private physics = this.service(PhysicsWorldKey);
+
+  onEnter() {
+    const player = this.spawn('player');
+    player.add(new Transform({ position: new Vec2(100, 200) }));
+    this.camera.follow(player);
+  }
+
+  onExit() {
+    // Cleanup logic
+  }
+}
+
+// Push onto engine
+engine.scenes.push(new GameScene());
+```
+
+### Use createGame() + defineInlineScene() for Quick Setup
+
+`defineInlineScene` is a lightweight alternative — great for prototypes, examples, and simple scenes. Common services are pre-resolved and passed as the second argument.
+
+```typescript
+import { createGame, defineInlineScene } from 'yage';
+
+const game = await createGame({
+  width: 800,
+  height: 600,
+  physics: true,
+  input: { actions: { jump: ['Space'] } },
+  debug: true,
+  scene: defineInlineScene('game', (scene, { camera, input, physics }) => {
+    camera.follow(scene.spawn('player'));
+    // For custom/uncommon services, fall back to scene.context.resolve(key)
+  }),
+});
+```
+
 ### Modify Entity/Component Lifecycle
 
 The lifecycle is controlled by:
@@ -414,6 +582,9 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Pixels everywhere** | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`. |
 | **co-located unit tests** | `Foo.ts` test goes in `Foo.test.ts` in the same directory. |
 | **E2E tests in `e2e/`** | Integration tests at repo root, not inside packages. |
+| **AssetHandle factories** | Each plugin exports a factory (e.g., `texture()`, `sound()`, `tiledMap()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle. |
+| **Blueprint over Prefab** | Use `defineBlueprint()` for parametric entity factories. Use `Prefab` only for truly static templates. |
+| **Entity events for game logic** | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events. |
 
 ### Pitfalls to Avoid
 
@@ -465,3 +636,4 @@ For the rationale behind key decisions, see [TDD.md](./TDD.md). Quick summary:
 - [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) -- Build phases and dependencies
 - [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing patterns and CI pipeline
 - [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md) -- Plugin system specification
+- [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Recipe roadmap for reusable gameplay modules
