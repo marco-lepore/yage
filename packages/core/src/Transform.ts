@@ -4,12 +4,19 @@ import type { Vec2Like } from "./Vec2.js";
 
 /** Mutable transform component for entity positioning. */
 export class Transform extends Component {
-  /** Position in world coordinates. */
+  /** Local position (relative to parent, or world if no parent). */
   position: Vec2;
-  /** Rotation in radians. */
+  /** Local rotation in radians. */
   rotation: number;
-  /** Scale factor. */
+  /** Local scale factor. */
   scale: Vec2;
+
+  /** Computed world position. Updated by TransformPropagationSystem. */
+  worldPosition: Vec2;
+  /** Computed world rotation. Updated by TransformPropagationSystem. */
+  worldRotation: number;
+  /** Computed world scale. Updated by TransformPropagationSystem. */
+  worldScale: Vec2;
 
   constructor(options?: {
     position?: Vec2Like;
@@ -24,6 +31,9 @@ export class Transform extends Component {
     this.scale = options?.scale
       ? new Vec2(options.scale.x, options.scale.y)
       : Vec2.ONE;
+    this.worldPosition = this.position;
+    this.worldRotation = this.rotation;
+    this.worldScale = this.scale;
   }
 
   /** Set position directly. */

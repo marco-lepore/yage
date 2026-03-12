@@ -35,6 +35,8 @@ export class Entity {
   private _scene: import("./Scene.js").Scene | null = null;
   private callbacks: EntityCallbacks | null = null;
   private _eventHandlers?: Map<string, Set<(data: never) => void>>;
+  private _parent: Entity | null = null;
+  private _children: Map<string, Entity> | null = null;
 
   constructor(name: string = "Entity", tags?: Iterable<string>) {
     this.id = nextEntityId++;
@@ -50,6 +52,70 @@ export class Entity {
   /** True if destroy() has been called. */
   get isDestroyed(): boolean {
     return this._destroyed;
+  }
+
+  /** The parent entity, or null if this is a root entity. */
+  get parent(): Entity | null {
+    return this._parent;
+  }
+
+  /** Named children as a read-only map. Empty map if no children. */
+  get children(): ReadonlyMap<string, Entity> {
+    return this._children ?? new Map();
+  }
+
+  /** Add a named child entity. Auto-adds to parent's scene if not already in one. */
+  addChild(name: string, child: Entity): void {
+    if (child === this) {
+      throw new Error(`Entity "${this.name}" cannot be a child of itself.`);
+    }
+    if (child._parent) {
+      throw new Error(
+        `Entity "${child.name}" already has a parent ("${child._parent.name}"). Remove it first.`,
+      );
+    }
+    this._children ??= new Map();
+    if (this._children.has(name)) {
+      throw new Error(
+        `Entity "${this.name}" already has a child named "${name}".`,
+      );
+    }
+    child._parent = this;
+    this._children.set(name, child);
+
+    // Auto-add to parent's scene
+    if (this._scene && !child._scene) {
+      this._scene._addExistingEntity(child);
+    }
+  }
+
+  /** Remove a named child. Returns the detached entity. */
+  removeChild(name: string): Entity {
+    const child = this._children?.get(name);
+    if (!child) {
+      throw new Error(
+        `Entity "${this.name}" has no child named "${name}".`,
+      );
+    }
+    child._parent = null;
+    this._children!.delete(name);
+    return child;
+  }
+
+  /** Get a child by name. Throws if not found. */
+  getChild(name: string): Entity {
+    const child = this._children?.get(name);
+    if (!child) {
+      throw new Error(
+        `Entity "${this.name}" has no child named "${name}".`,
+      );
+    }
+    return child;
+  }
+
+  /** Get a child by name, or undefined if not found. */
+  tryGetChild(name: string): Entity | undefined {
+    return this._children?.get(name);
   }
 
   /** Add a component instance. Returns the component for chaining. */
@@ -140,6 +206,14 @@ export class Entity {
   destroy(): void {
     if (this._destroyed) return;
     this._destroyed = true;
+
+    // Cascade to children
+    if (this._children) {
+      for (const child of this._children.values()) {
+        child.destroy();
+      }
+    }
+
     this._scene?._queueDestroy(this);
   }
 
@@ -149,6 +223,20 @@ export class Entity {
    * @internal
    */
   _performDestroy(): void {
+    // Detach from parent
+    if (this._parent?._children) {
+      for (const [name, child] of this._parent._children) {
+        if (child === this) {
+          this._parent._children.delete(name);
+          break;
+        }
+      }
+      this._parent = null;
+    }
+
+    // Clear own children references (they are destroyed separately via cascade)
+    this._children?.clear();
+
     for (const [cls, comp] of this.components) {
       comp._runCleanups();
       comp.onRemove?.();

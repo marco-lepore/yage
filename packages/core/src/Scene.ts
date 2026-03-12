@@ -113,6 +113,16 @@ export abstract class Scene {
   }
 
 
+  /**
+   * Add an existing entity to this scene (used by Entity.addChild for auto-scene-membership).
+   * @internal
+   */
+  _addExistingEntity(entity: Entity): void {
+    entity._setScene(this, this.entityCallbacks);
+    this.entities.add(entity);
+    this.bus?.emit("entity:created", { entity });
+  }
+
   /** Mark an entity for destruction. Deferred to endOfFrame flush. */
   destroyEntity(entity: Entity): void {
     entity.destroy();

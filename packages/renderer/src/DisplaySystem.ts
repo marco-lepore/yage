@@ -73,10 +73,10 @@ export class DisplaySystem extends System {
     transform: Transform,
     displayObject: Container,
   ): void {
-    displayObject.position.x = transform.position.x;
-    displayObject.position.y = transform.position.y;
-    displayObject.rotation = transform.rotation;
-    displayObject.scale.x = transform.scale.x;
-    displayObject.scale.y = transform.scale.y;
+    displayObject.position.x = transform.worldPosition.x;
+    displayObject.position.y = transform.worldPosition.y;
+    displayObject.rotation = transform.worldRotation;
+    displayObject.scale.x = transform.worldScale.x;
+    displayObject.scale.y = transform.worldScale.y;
   }
 }

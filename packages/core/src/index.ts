@@ -48,6 +48,8 @@ export { Component } from "./Component.js";
 
 export { Transform } from "./Transform.js";
 
+export { TransformPropagationSystem } from "./TransformPropagationSystem.js";
+
 export { Entity, _resetEntityIdCounter } from "./Entity.js";
 export type { EntityCallbacks } from "./Entity.js";
 
