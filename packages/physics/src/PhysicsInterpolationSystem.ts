@@ -40,8 +40,10 @@ export class PhysicsInterpolationSystem extends System {
 
       const transform = entity.get(Transform);
       transform.position = rb._prevPosition.lerp(rb._currPosition, alpha);
-      transform.rotation =
-        rb._prevRotation + (rb._currRotation - rb._prevRotation) * alpha;
+      if (rb.syncRotation) {
+        transform.rotation =
+          rb._prevRotation + (rb._currRotation - rb._prevRotation) * alpha;
+      }
     }
   }
 }

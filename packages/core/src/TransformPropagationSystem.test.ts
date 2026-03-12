@@ -48,7 +48,7 @@ describe("TransformPropagationSystem", () => {
     const { system, queryCache } = createSystem();
     const e = spawnEntity(queryCache, "root", { x: 100, y: 200 }, 0.5);
 
-    system.update(0);
+    system.update();
 
     const t = e.get(Transform);
     expect(t.worldPosition.x).toBe(100);
@@ -63,7 +63,7 @@ describe("TransformPropagationSystem", () => {
     const child = spawnEntity(queryCache, "child", { x: 20, y: 10 });
     parent.addChild("arm", child);
 
-    system.update(0);
+    system.update();
 
     const ct = child.get(Transform);
     expect(ct.worldPosition.x).toBe(120);
@@ -81,7 +81,7 @@ describe("TransformPropagationSystem", () => {
     const child = spawnEntity(queryCache, "child", { x: 10, y: 0 });
     parent.addChild("arm", child);
 
-    system.update(0);
+    system.update();
 
     const ct = child.get(Transform);
     // (10, 0) rotated 90° = (0, 10)
@@ -102,7 +102,7 @@ describe("TransformPropagationSystem", () => {
     const child = spawnEntity(queryCache, "child", { x: 10, y: 5 });
     parent.addChild("arm", child);
 
-    system.update(0);
+    system.update();
 
     const ct = child.get(Transform);
     expect(ct.worldPosition.x).toBe(20); // 10 * 2
@@ -119,7 +119,7 @@ describe("TransformPropagationSystem", () => {
     root.addChild("mid", mid);
     mid.addChild("leaf", leaf);
 
-    system.update(0);
+    system.update();
 
     const lt = leaf.get(Transform);
     expect(lt.worldPosition.x).toBe(115);
@@ -143,7 +143,7 @@ describe("TransformPropagationSystem", () => {
     );
     root.addChild("child", child);
 
-    system.update(0);
+    system.update();
 
     const ct = child.get(Transform);
     // (5, 0) * scale(2,2) = (10, 0), rotated 90° = (0, 10)

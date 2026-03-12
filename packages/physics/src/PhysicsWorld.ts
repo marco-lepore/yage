@@ -138,6 +138,9 @@ export class PhysicsWorld {
     if (config.ccd) {
       desc.setCcdEnabled(true);
     }
+    if (config.lockTranslationX || config.lockTranslationY) {
+      desc.enabledTranslations(!config.lockTranslationX, !config.lockTranslationY);
+    }
 
     const body = this.world.createRigidBody(desc);
     this.bodyMap.set(body.handle, entity);

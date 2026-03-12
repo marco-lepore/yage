@@ -84,7 +84,9 @@ export class PhysicsSystem extends System {
       // Update Transform (interpolation will override in LateUpdate)
       const transform = entity.get(Transform);
       transform.position = rb._currPosition;
-      transform.rotation = rb._currRotation;
+      if (rb.syncRotation) {
+        transform.rotation = rb._currRotation;
+      }
     }
 
     // 6. Process collision events

@@ -13,6 +13,9 @@ export class RigidBodyComponent extends Component {
   /** Body type (dynamic, static, kinematic). */
   readonly type: BodyType;
 
+  /** If false, physics will not write rotation back to Transform. */
+  syncRotation: boolean;
+
   /** @internal Rapier body handle, set during onAdd. */
   _bodyHandle = -1;
 
@@ -34,6 +37,7 @@ export class RigidBodyComponent extends Component {
     super();
     this.config = config;
     this.type = config.type;
+    this.syncRotation = config.syncRotation ?? true;
   }
 
   onAdd(): void {
@@ -149,6 +153,20 @@ export class RigidBodyComponent extends Component {
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (!body) return 0;
     return body.angvel();
+  }
+
+  /** Set which translation axes are enabled at runtime. */
+  setEnabledTranslations(enableX: boolean, enableY: boolean): void {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    body.setEnabledTranslations(enableX, enableY, true);
+  }
+
+  /** Lock or unlock rotations at runtime. */
+  lockRotations(locked: boolean): void {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return;
+    body.lockRotations(locked, true);
   }
 
   /** Teleport to a position in pixels. Skips interpolation on next frame. */
