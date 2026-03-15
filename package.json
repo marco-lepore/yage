@@ -4,11 +4,13 @@
   "packageManager": "npm@10.8.2",
   "workspaces": [
     "packages/*",
-    "examples"
+    "examples",
+    "e2e"
   ],
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "e2e": "turbo run e2e",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "dev": "turbo run dev",

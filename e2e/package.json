@@ -1,0 +1,20 @@
+{
+  "name": "@yage/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config fixtures/vite.config.ts",
+    "build": "vite build --config fixtures/vite.config.ts",
+    "preview": "vite preview --config fixtures/vite.config.ts",
+    "e2e": "playwright test -c ../playwright.config.ts"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0"
+  },
+  "dependencies": {
+    "yage": "*"
+  }
+}

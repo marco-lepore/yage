@@ -75,4 +75,4 @@ jobs:
       - run: npm ci
       - run: npx turbo build
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: npx turbo e2e
