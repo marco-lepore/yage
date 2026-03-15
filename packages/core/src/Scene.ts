@@ -87,18 +87,35 @@ export abstract class Scene {
   spawn(name?: string): Entity;
   spawn<P>(blueprint: Blueprint<P>, params: P): Entity;
   spawn(blueprint: Blueprint<void>): Entity;
+  /** Spawn an entity subclass with setup params. */
+  spawn<E extends Entity, P>(
+    Class: new () => E & { setup(params: P): void },
+    params: P,
+  ): E;
+  /** Spawn an entity subclass without setup params. */
+  spawn<E extends Entity>(Class: new () => E): E;
   spawn(
-    nameOrBlueprint?: string | Blueprint<unknown>,
+    nameOrBlueprintOrClass?: string | Blueprint<unknown> | (new () => Entity),
     params?: unknown,
   ): Entity {
+    // Class-based spawn: argument is a constructor function for an Entity subclass
+    if (typeof nameOrBlueprintOrClass === "function") {
+      const entity = new nameOrBlueprintOrClass();
+      entity._setScene(this, this.entityCallbacks);
+      this.entities.add(entity);
+      this.bus?.emit("entity:created", { entity });
+      entity.setup?.(params);
+      return entity;
+    }
+
     const isBlueprint =
-      typeof nameOrBlueprint === "object" &&
-      nameOrBlueprint !== null &&
-      "build" in nameOrBlueprint;
+      typeof nameOrBlueprintOrClass === "object" &&
+      nameOrBlueprintOrClass !== null &&
+      "build" in nameOrBlueprintOrClass;
 
     const name = isBlueprint
-      ? (nameOrBlueprint as Blueprint<unknown>).name
-      : (nameOrBlueprint as string | undefined);
+      ? (nameOrBlueprintOrClass as Blueprint<unknown>).name
+      : (nameOrBlueprintOrClass as string | undefined);
 
     const entity = new Entity(name);
     entity._setScene(this, this.entityCallbacks);
@@ -106,7 +123,7 @@ export abstract class Scene {
     this.bus?.emit("entity:created", { entity });
 
     if (isBlueprint) {
-      (nameOrBlueprint as Blueprint<unknown>).build(entity, params);
+      (nameOrBlueprintOrClass as Blueprint<unknown>).build(entity, params);
     }
 
     return entity;

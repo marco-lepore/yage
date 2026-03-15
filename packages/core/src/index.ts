@@ -44,6 +44,8 @@ export { AssetManager } from "./AssetManager.js";
 export { defineBlueprint } from "./Blueprint.js";
 export type { Blueprint } from "./Blueprint.js";
 
+export { TraitToken, defineTrait, trait } from "./Trait.js";
+
 export { Component } from "./Component.js";
 
 export { Transform } from "./Transform.js";

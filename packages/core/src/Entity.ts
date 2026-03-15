@@ -1,6 +1,7 @@
 import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
+import { TRAITS_KEY, type TraitToken } from "./Trait.js";
 
 /** Auto-incrementing entity ID counter. */
 let nextEntityId = 1;
@@ -23,6 +24,7 @@ export interface EntityCallbacks {
  * An entity is a named container of components with O(1) lookups by type.
  */
 export class Entity {
+  static [TRAITS_KEY]: Set<symbol> = new Set();
   /** Unique auto-incrementing ID. */
   readonly id: number;
   /** Display name for debugging. */
@@ -93,9 +95,7 @@ export class Entity {
   removeChild(name: string): Entity {
     const child = this._children?.get(name);
     if (!child) {
-      throw new Error(
-        `Entity "${this.name}" has no child named "${name}".`,
-      );
+      throw new Error(`Entity "${this.name}" has no child named "${name}".`);
     }
     child._parent = null;
     this._children!.delete(name);
@@ -106,9 +106,7 @@ export class Entity {
   getChild(name: string): Entity {
     const child = this._children?.get(name);
     if (!child) {
-      throw new Error(
-        `Entity "${this.name}" has no child named "${name}".`,
-      );
+      throw new Error(`Entity "${this.name}" has no child named "${name}".`);
     }
     return child;
   }
@@ -245,6 +243,26 @@ export class Entity {
     }
     this.components.clear();
     this._eventHandlers?.clear();
+  }
+
+  /**
+   * Optional setup method. Called by `scene.spawn(Class, params)` after the
+   * entity is wired to its scene, so components can access services.
+   * Override in subclasses — do NOT use the constructor for component setup.
+   */
+  setup?(params: unknown): void;
+
+  /** Check if this entity's class implements a given trait. Acts as a type guard. */
+  hasTrait<T>(token: TraitToken<T>): this is this & T {
+    // Walk the constructor chain so plain subclasses inherit parent traits
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let ctor: any = this.constructor;
+    while (ctor) {
+      const traits = ctor[TRAITS_KEY] as Set<symbol> | undefined;
+      if (traits?.has(token.symbol)) return true;
+      ctor = Object.getPrototypeOf(ctor);
+    }
+    return false;
   }
 
   /**

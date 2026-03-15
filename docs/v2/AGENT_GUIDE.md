@@ -108,7 +108,8 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/SceneManager.ts`    | Scene stack (push/pop/replace)                |
 | `src/Scene.ts`           | Scene base class (entity factory)             |
 | `src/Process.ts`         | Coroutine / tween / sequence                  |
-| `src/Blueprint.ts`       | Reusable entity templates (`defineBlueprint`) |
+| `src/Trait.ts`           | Trait system (`defineTrait`, `@trait`)          |
+| `src/Blueprint.ts`       | Reusable entity templates (deprecated)        |
 | `src/ErrorBoundary.ts`   | System/component error wrapping               |
 | `src/Inspector.ts`       | Programmatic state queries                    |
 | `src/Logger.ts`          | Structured logging                            |
@@ -484,7 +485,64 @@ install(context: EngineContext) {
 
 3. Export the factory from `index.ts`
 
-### Define a Blueprint
+### Define an Entity Subclass (recommended)
+
+Entities support two usage styles (mixable in the same project):
+
+- **Data containers (ECS-style)**: Plain ID + component bags. Systems query and manipulate components directly. Good for bulk processing (physics bodies, particles, tiles).
+- **Game object API layer**: Entity subclasses with methods that internally interact with components. Add `@trait()` for shared behaviors discoverable at runtime. Good for gameplay objects with rich interactions (NPCs, items, doors).
+
+Use `setup()` instead of the constructor — it runs after the entity is wired to the scene, so `onAdd` hooks and service resolution work.
+
+```typescript
+import { Entity, Transform, Vec2 } from "@yage/core";
+import { SpriteComponent } from "@yage/renderer";
+
+class MyEntity extends Entity {
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new SpriteComponent({ texture: "my-sprite.png" }));
+  }
+}
+
+// Usage: scene.spawn(MyEntity, { x: 100, y: 200 });
+```
+
+### Define Traits (discoverable capabilities)
+
+Traits declare capabilities that are enforced at compile time (via the `@trait()` decorator) and queryable at runtime via `hasTrait()`.
+
+```typescript
+import { Entity, defineTrait, trait } from "@yage/core";
+
+const Interactable = defineTrait<{ interact(): void; priority: number }>(
+  "Interactable",
+);
+
+@trait(Interactable)
+class LightEntity extends Entity {
+  priority = 4;
+
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+
+  interact() {
+    // toggle light
+  }
+}
+
+// Runtime trait check (type guard)
+for (const entity of scene.getEntities()) {
+  if (entity.hasTrait(Interactable)) {
+    entity.interact(); // correctly typed
+  }
+}
+```
+
+### Define a Blueprint (deprecated)
+
+Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
 import { defineBlueprint, Transform } from "@yage/core";
@@ -495,11 +553,10 @@ export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
   (entity, { x, y }) => {
     entity.add(new Transform({ position: new Vec2(x, y) }));
     entity.add(new SpriteComponent({ texture: "my-sprite.png" }));
-    // Post-construction logic here
   },
 );
 
-// Usage: MyBlueprint.build(scene.spawn('instance'), { x: 100, y: 200 });
+// Usage: scene.spawn(MyBlueprint, { x: 100, y: 200 });
 ```
 
 ### Scene Class (Recommended for Real Games)
@@ -521,8 +578,7 @@ class GameScene extends Scene {
   private physics = this.service(PhysicsWorldKey);
 
   onEnter() {
-    const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(100, 200) }));
+    const player = this.spawn(PlayerEntity, { x: 100, y: 200 });
     this.camera.follow(player);
   }
 
@@ -584,7 +640,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **co-located unit tests**        | `Foo.ts` test goes in `Foo.test.ts` in the same directory.                                                                                                                                          |
 | **E2E tests in `e2e/`**          | Integration tests at repo root, not inside packages.                                                                                                                                                |
 | **AssetHandle factories**        | Each plugin exports a factory (e.g., `texture()`, `sound()`, `tiledMap()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                                  |
-| **Blueprint over Prefab**        | Use `defineBlueprint()` for parametric entity factories. Use `Prefab` only for truly static templates.                                                                                              |
+| **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                               |
 | **Entity events for game logic** | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                            |
 
 ### Pitfalls to Avoid

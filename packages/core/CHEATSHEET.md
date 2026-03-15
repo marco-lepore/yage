@@ -239,6 +239,11 @@ class DisplaySyncSystem extends System {
 
 ## Entities
 
+Entities support two usage styles, and you can mix both in the same project:
+
+- **Data containers (ECS-style)**: Use entities as plain ID + component bags. Systems or other actors query and manipulate components directly. Good for bulk processing (physics bodies, particles, tiles).
+- **Game object API layer**: Use entity subclasses with methods that internally interact with components, exposing a clean public API. Add `@trait()` for shared behaviors that are discoverable at runtime. Good for gameplay objects with rich interactions (NPCs, items, doors).
+
 ```typescript
 // Spawn from a scene
 const entity = scene.spawn("player");
@@ -435,7 +440,71 @@ const seq = new Sequence()
 
 ---
 
-## Blueprints
+## Entity Subclasses (recommended)
+
+The preferred way to define entity types. Use `setup()` instead of the constructor — it runs after the entity is wired to its scene, so components can access services.
+
+### With traits (discoverable capabilities)
+
+```typescript
+import { Entity, defineTrait, trait, Transform, Vec2 } from "@yage/core";
+
+// Define a trait (reusable across entity types)
+const Interactable = defineTrait<{ interact(): void; priority: number }>(
+  "Interactable",
+);
+
+// @trait() enforces that the class implements all trait members at compile time
+@trait(Interactable)
+class LightEntity extends Entity {
+  priority = 4;
+
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+
+  interact() {
+    // toggle light
+  }
+}
+
+// Spawn — params are typed from setup()
+const light = scene.spawn(LightEntity, { x: 100, y: 200 });
+
+// Runtime trait check (type guard)
+if (entity.hasTrait(Interactable)) {
+  entity.interact(); // correctly typed
+}
+```
+
+### Without traits (custom logic, not discoverable)
+
+```typescript
+class Wall extends Entity {
+  setup({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new ColliderComponent({ shape: { type: "box", width: w, height: h } }));
+  }
+}
+
+const wall = scene.spawn(Wall, { x: 0, y: 0, w: 100, h: 10 });
+```
+
+### Why `setup()` instead of constructor?
+
+When `scene.spawn(Class, params)` runs, it:
+1. Creates the entity (`new Class()`)
+2. Wires it to the scene (`_setScene`)
+3. Emits `entity:created`
+4. Calls `setup(params)` — scene is available, so `onAdd` hooks and service resolution work
+
+If you put component setup in the constructor, the entity isn't wired to a scene yet and service resolution will fail.
+
+---
+
+## Blueprints (deprecated)
+
+Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
 import { defineBlueprint, Transform } from "@yage/core";
