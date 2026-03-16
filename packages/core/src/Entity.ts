@@ -2,9 +2,13 @@ import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import { TRAITS_KEY, type TraitToken } from "./Trait.js";
+import { Transform } from "./Transform.js";
 
 /** Auto-incrementing entity ID counter. */
 let nextEntityId = 1;
+
+/** Shared empty map returned by `children` when no children exist. */
+const EMPTY_CHILDREN: ReadonlyMap<string, Entity> = new Map();
 
 /** Reset the entity ID counter. Exposed for testing only. */
 export function _resetEntityIdCounter(): void {
@@ -63,7 +67,7 @@ export class Entity {
 
   /** Named children as a read-only map. Empty map if no children. */
   get children(): ReadonlyMap<string, Entity> {
-    return this._children ?? new Map();
+    return this._children ?? EMPTY_CHILDREN;
   }
 
   /** Add a named child entity. Auto-adds to parent's scene if not already in one. */
@@ -85,6 +89,9 @@ export class Entity {
     child._parent = this;
     this._children.set(name, child);
 
+    // Mark child transform dirty so world values recompute with new parent
+    child.tryGet(Transform)?._markDirty();
+
     // Auto-add to parent's scene
     if (this._scene && !child._scene) {
       this._scene._addExistingEntity(child);
@@ -99,6 +106,10 @@ export class Entity {
     }
     child._parent = null;
     this._children!.delete(name);
+
+    // Mark child transform dirty so world values recompute without parent
+    child.tryGet(Transform)?._markDirty();
+
     return child;
   }
 
@@ -229,8 +240,8 @@ export class Entity {
           break;
         }
       }
-      this._parent = null;
     }
+    this._parent = null;
 
     // Clear own children references (they are destroyed separately via cascade)
     this._children?.clear();

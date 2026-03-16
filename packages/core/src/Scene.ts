@@ -129,7 +129,6 @@ export abstract class Scene {
     return entity;
   }
 
-
   /**
    * Add an existing entity to this scene (used by Entity.addChild for auto-scene-membership).
    * @internal
@@ -138,6 +137,11 @@ export abstract class Scene {
     entity._setScene(this, this.entityCallbacks);
     this.entities.add(entity);
     this.bus?.emit("entity:created", { entity });
+
+    // Register pre-existing components with QueryCache
+    if (!entity.getAll()[Symbol.iterator]().next().done) {
+      this.queryCache?.onComponentAdded(entity);
+    }
   }
 
   /** Mark an entity for destruction. Deferred to endOfFrame flush. */
