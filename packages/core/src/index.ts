@@ -50,8 +50,6 @@ export { Component } from "./Component.js";
 
 export { Transform } from "./Transform.js";
 
-export { TransformPropagationSystem } from "./TransformPropagationSystem.js";
-
 export { Entity, _resetEntityIdCounter } from "./Entity.js";
 export type { EntityCallbacks } from "./Entity.js";
 
@@ -92,7 +90,6 @@ export { Sequence } from "./Sequence.js";
 export { ProcessComponent } from "./ProcessComponent.js";
 
 export { ProcessSystem } from "./ProcessSystem.js";
-
 
 export { Inspector } from "./Inspector.js";
 export type {

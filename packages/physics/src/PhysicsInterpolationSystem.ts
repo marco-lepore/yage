@@ -39,9 +39,9 @@ export class PhysicsInterpolationSystem extends System {
       if (!rb || rb._bodyHandle === -1 || rb.type !== "dynamic") continue;
 
       const transform = entity.get(Transform);
-      transform.position = rb._prevPosition.lerp(rb._currPosition, alpha);
+      transform.worldPosition = rb._prevPosition.lerp(rb._currPosition, alpha);
       if (rb.syncRotation) {
-        transform.rotation =
+        transform.worldRotation =
           rb._prevRotation + (rb._currRotation - rb._prevRotation) * alpha;
       }
     }

@@ -46,23 +46,23 @@ export class RigidBodyComponent extends Component {
 
     this._bodyHandle = this.physicsWorld.createBody(this.entity, this.config);
 
-    // Set initial position from Transform
+    // Set initial position from Transform (use world coords for Rapier)
     const body = this.physicsWorld.getBody(this._bodyHandle);
     if (body) {
       body.setTranslation(
         {
-          x: this.physicsWorld.toMeters(transform.position.x),
-          y: this.physicsWorld.toMeters(transform.position.y),
+          x: this.physicsWorld.toMeters(transform.worldPosition.x),
+          y: this.physicsWorld.toMeters(transform.worldPosition.y),
         },
         true,
       );
-      body.setRotation(transform.rotation, true);
+      body.setRotation(transform.worldRotation, true);
     }
 
-    this._prevPosition = transform.position;
-    this._currPosition = transform.position;
-    this._prevRotation = transform.rotation;
-    this._currRotation = transform.rotation;
+    this._prevPosition = transform.worldPosition;
+    this._currPosition = transform.worldPosition;
+    this._prevRotation = transform.worldRotation;
+    this._currRotation = transform.worldRotation;
   }
 
   onDestroy(): void {

@@ -28,7 +28,6 @@ import {
   ComponentFixedUpdateSystem,
 } from "./ComponentUpdateSystem.js";
 import { ProcessSystem } from "./ProcessSystem.js";
-import { TransformPropagationSystem } from "./TransformPropagationSystem.js";
 import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
 
@@ -223,11 +222,9 @@ export class Engine {
     const fixedUpdate = new ComponentFixedUpdateSystem();
     const update = new ComponentUpdateSystem();
     const processSystem = new ProcessSystem();
-    const transformPropagation = new TransformPropagationSystem();
     this.scheduler.add(fixedUpdate);
     this.scheduler.add(update);
     this.scheduler.add(processSystem);
-    this.scheduler.add(transformPropagation);
     this.context.register(ProcessSystemKey, processSystem);
   }
 

@@ -45,14 +45,14 @@ export class PhysicsSystem extends System {
       rb._prevPosition = rb._currPosition;
       rb._prevRotation = rb._currRotation;
 
-      // 2. Sync Transform → Rapier for kinematic bodies
+      // 2. Sync Transform → Rapier for kinematic bodies (use world coords)
       if (body.isKinematic()) {
         const transform = entity.get(Transform);
         body.setNextKinematicTranslation({
-          x: this.physicsWorld.toMeters(transform.position.x),
-          y: this.physicsWorld.toMeters(transform.position.y),
+          x: this.physicsWorld.toMeters(transform.worldPosition.x),
+          y: this.physicsWorld.toMeters(transform.worldPosition.y),
         });
-        body.setNextKinematicRotation(transform.rotation);
+        body.setNextKinematicRotation(transform.worldRotation);
       }
 
       // 3. Clear teleport flag (already snapped prev=curr in setPosition)
@@ -81,11 +81,11 @@ export class PhysicsSystem extends System {
       );
       rb._currRotation = rotation;
 
-      // Update Transform (interpolation will override in LateUpdate)
+      // Update Transform — set world-space values (setter back-computes local)
       const transform = entity.get(Transform);
-      transform.position = rb._currPosition;
+      transform.worldPosition = rb._currPosition;
       if (rb.syncRotation) {
-        transform.rotation = rb._currRotation;
+        transform.worldRotation = rb._currRotation;
       }
     }
 
