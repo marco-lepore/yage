@@ -17,6 +17,7 @@ const DEFAULT_CHANNELS: Record<string, { volume: number }> = {
 export class AudioManager {
   private readonly _sound: SoundLibrary;
   private readonly _channels = new Map<string, ChannelState>();
+  private readonly _handleAliases = new WeakMap<SoundHandle, string>();
 
   constructor(sound: SoundLibrary, config?: AudioConfig) {
     this._sound = sound;
@@ -66,6 +67,31 @@ export class AudioManager {
       handle.paused = true;
     }
 
+    return handle;
+  }
+
+  /**
+   * Play a sound only if it isn't already playing (via a prior `playOnce` call).
+   * Returns the existing handle if still playing, or a new one otherwise.
+   * Note: only deduplicates against handles created by `playOnce`, not `play`.
+   */
+  playOnce(alias: string, options?: AudioPlayOptions): SoundHandle {
+    const channelName = options?.channel ?? "sfx";
+    const channel = this._ensureChannel(channelName);
+
+    // Check if any existing handle for this alias is still playing
+    for (const handle of channel.handles.keys()) {
+      if (handle.playing) {
+        // We can't check alias on SoundHandle, so we track it with a WeakMap
+        const trackedAlias = this._handleAliases.get(handle);
+        if (trackedAlias === alias) {
+          return handle;
+        }
+      }
+    }
+
+    const handle = this.play(alias, options);
+    this._handleAliases.set(handle, alias);
     return handle;
   }
 
