@@ -116,6 +116,18 @@ export class Process {
     }
   }
 
+  /**
+   * Reset the process to its initial state so it can be re-run.
+   * @internal Used by Sequence for loop/repeat with direct instances.
+   */
+  _reset(): void {
+    this.elapsed = 0;
+    this._completed = false;
+    this._paused = false;
+    this._cancelled = false;
+    delete this.resolvePromise;
+  }
+
   private complete(): void {
     this._completed = true;
     this.onCompleteFn?.();

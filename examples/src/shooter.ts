@@ -8,6 +8,7 @@ import {
   defineEvent,
   defineBlueprint,
 } from "@yage/core";
+import type { ProcessSlot } from "@yage/core";
 import {
   GraphicsComponent,
   AnimatedSpriteComponent,
@@ -198,7 +199,7 @@ function spawnParticles(
     const transform = p.get(Transform);
     const gfx = p.get(GraphicsComponent);
     const pc = p.add(new ProcessComponent());
-    pc.add(
+    pc.run(
       new Process({
         duration: lt,
         update: (dt, elapsed) => {
@@ -291,7 +292,6 @@ class PlayerController extends Component {
 
   private animations!: Record<PlayerAnim, Texture[]>;
   private currentAnim = "";
-  private animLocked = false;
 
   private grounded = false;
   private coyoteTimer = 0;
@@ -299,12 +299,14 @@ class PlayerController extends Component {
   private wasGrounded = false;
   facingRight = true;
 
-  // Shooting
-  private canShoot = true;
+  // Slots
+  private shootCd!: ProcessSlot;
+  private animLock!: ProcessSlot;
+  private invincibility!: ProcessSlot;
+  private stun!: ProcessSlot;
+  private flash!: ProcessSlot;
+  private squash!: ProcessSlot;
 
-  // Hit flash / invincibility / stun
-  private invincible = false;
-  private stunned = false;
   private overlappingEnemies = new Set<import("@yage/core").Entity>();
 
   private static readonly SPEED = 220;
@@ -314,6 +316,9 @@ class PlayerController extends Component {
   private static readonly GROUND_RAY_DIST = 22;
   private static readonly WALL_RAY_DIST = 16;
   private static readonly SHOOT_COOLDOWN_MS = 200;
+  private static readonly STUN_MS = 300;
+  private static readonly KNOCKBACK_X = 200;
+  private static readonly KNOCKBACK_Y = -180;
 
   onAdd(): void {
     // Build frame arrays from preloaded spritesheets
@@ -327,6 +332,33 @@ class PlayerController extends Component {
     };
 
     this.playAnim("idle", 0.15, true);
+
+    // Slots
+    this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_MS });
+    this.animLock = this.pc.slot({
+      duration: 0,
+      cleanup: () => { this.currentAnim = ""; },
+    });
+    this.invincibility = this.pc.slot({
+      duration: 500,
+      cleanup: () => {
+        // Re-check: still touching an enemy?
+        for (const enemy of this.overlappingEnemies) {
+          if (enemy.scene) {
+            this.tryDamageFrom(enemy);
+            break;
+          }
+        }
+      },
+    });
+    this.stun = this.pc.slot({ duration: PlayerController.STUN_MS });
+    this.flash = this.pc.slot({
+      duration: 100,
+      cleanup: () => { this.anim.animatedSprite.tint = 0xffffff; },
+    });
+    this.squash = this.pc.slot({
+      cleanup: () => { this.transform.setScale(1, 1); },
+    });
 
     this.camera.follow(this.transform, {
       smoothing: 0.12,
@@ -360,7 +392,7 @@ class PlayerController extends Component {
       return;
     }
 
-    if (this.stunned) return;
+    if (!this.stun.completed) return;
 
     const vel = this.rb.getVelocity();
     const pos = this.transform.position;
@@ -447,15 +479,10 @@ class PlayerController extends Component {
     }
 
     // -- Shooting --
-    if ((keys.has("j") || keys.has("k")) && this.canShoot) {
+    if ((keys.has("j") || keys.has("k")) && this.shootCd.completed) {
       keys.delete("j");
       keys.delete("k");
-      this.canShoot = false;
-      this.pc.add(
-        Process.delay(PlayerController.SHOOT_COOLDOWN_MS, () => {
-          this.canShoot = true;
-        }),
-      );
+      this.shootCd.start();
       this.spawnBullet();
       this.playOneShot("shoot", 0.4, PlayerController.SHOOT_COOLDOWN_MS);
       this.audio.play(ShootSfx.path, { channel: "sfx" });
@@ -463,7 +490,7 @@ class PlayerController extends Component {
     }
 
     // -- Animation state (when not locked by one-shot) --
-    if (!this.animLocked) {
+    if (this.animLock.completed) {
       if (!onGround) {
         this.playAnim("jump", 0.12, false);
       } else if (dx !== 0) {
@@ -497,49 +524,29 @@ class PlayerController extends Component {
     durationMs: number,
   ): void {
     this.currentAnim = name;
-    this.animLocked = true;
     const as = this.anim.animatedSprite;
     as.textures = this.animations[name];
     as.loop = false;
     as.animationSpeed = speed;
     as.gotoAndPlay(0);
-    this.pc.cancel("anim-lock");
-    this.pc.add(
-      Process.delay(durationMs, () => {
-        this.animLocked = false;
-        this.currentAnim = "";
-      }, ["anim-lock"]),
-    );
+    this.animLock.restart({ duration: durationMs });
   }
 
   private startSquash(scaleX: number, scaleY: number): void {
-    this.pc.cancel("squash");
     this.transform.setScale(scaleX, scaleY);
-    this.pc.add(
-      new Process({
-        duration: 120,
-        update: (_dt, elapsed) => {
-          const t = Math.max(0, 1 - elapsed / 120);
-          const sx = 1 + (scaleX - 1) * t;
-          const sy = 1 + (scaleY - 1) * t;
-          this.transform.setScale(sx, sy);
-        },
-        onComplete: () => {
-          this.transform.setScale(1, 1);
-        },
-        tags: ["squash"],
-      }),
-    );
+    this.squash.restart({
+      duration: 120,
+      update: (_dt, elapsed) => {
+        const t = Math.max(0, 1 - elapsed / 120);
+        const sx = 1 + (scaleX - 1) * t;
+        const sy = 1 + (scaleY - 1) * t;
+        this.transform.setScale(sx, sy);
+      },
+    });
   }
 
-  private static readonly STUN_MS = 300;
-  private static readonly KNOCKBACK_X = 200;
-  private static readonly KNOCKBACK_Y = -180;
-
   private takeDamage(knockDir: number): void {
-    if (this.invincible) return;
-    this.invincible = true;
-    this.stunned = true;
+    if (!this.invincibility.completed) return;
 
     this.audio.play(HurtSfx.path, { channel: "sfx" });
 
@@ -551,43 +558,22 @@ class PlayerController extends Component {
       ),
     );
 
-    // Flash red
+    // Flash red (cleanup resets tint)
     this.anim.animatedSprite.tint = 0xff4444;
-    this.pc.cancel("flash");
-    this.pc.add(
-      Process.delay(100, () => {
-        this.anim.animatedSprite.tint = 0xffffff;
-      }, ["flash"]),
-    );
+    this.flash.restart();
 
     // Hurt animation + stun
     this.playOneShot("hurt", 0.3, PlayerController.STUN_MS);
-    this.pc.cancel("stun");
-    this.pc.add(
-      Process.delay(PlayerController.STUN_MS, () => {
-        this.stunned = false;
-      }, ["stun"]),
-    );
+    this.stun.restart();
 
-    // Invincibility (lasts longer than stun)
-    this.pc.add(
-      Process.delay(500, () => {
-        this.invincible = false;
-        // Re-check: still touching an enemy?
-        for (const enemy of this.overlappingEnemies) {
-          if (enemy.scene) {
-            this.tryDamageFrom(enemy);
-            break;
-          }
-        }
-      }),
-    );
+    // Invincibility (lasts longer than stun; cleanup re-checks overlap)
+    this.invincibility.restart();
 
     this.camera.shake(5, 200, { decay: 0.7 });
   }
 
   private tryDamageFrom(enemy: import("@yage/core").Entity): void {
-    if (this.invincible) return;
+    if (!this.invincibility.completed) return;
     const enemyX = enemy.get(Transform).position.x;
     const playerX = this.transform.position.x;
     const knockDir = playerX >= enemyX ? 1 : -1;
@@ -648,6 +634,11 @@ class EnemyController extends Component {
   private cooldownTimer = 0;
   private attackTimer = 0;
 
+  // Slots
+  private flashSlot!: ProcessSlot;
+  private shakeSlot!: ProcessSlot;
+  private hitRecovery!: ProcessSlot;
+
   private static readonly SPEED = 60;
   private static readonly CHARGE_SPEED = 350;
   private static readonly DETECT_RANGE = 120;
@@ -674,6 +665,32 @@ class EnemyController extends Component {
       hit: sliceSheet(EnemyHitTex.path, 30, 32),
       die: sliceSheet(EnemyDieTex.path, 33, 32),
     };
+
+    // Slots
+    this.flashSlot = this.pc.slot({
+      duration: 80,
+      cleanup: () => { this.anim.animatedSprite.tint = 0xffffff; },
+    });
+    this.shakeSlot = this.pc.slot({
+      duration: 150,
+      update: () => {
+        const sprite = this.anim.animatedSprite;
+        sprite.position.set(
+          (Math.random() - 0.5) * 4,
+          (Math.random() - 0.5) * 4,
+        );
+      },
+      cleanup: () => { this.anim.animatedSprite.position.set(0, 0); },
+    });
+    this.hitRecovery = this.pc.slot({
+      onComplete: () => {
+        if (this.state === "hit") {
+          this.state = "patrol";
+          this.currentAnim = "";
+          this.playAnim("walk", 0.15, true);
+        }
+      },
+    });
 
     this.playAnim("walk", 0.15, true);
 
@@ -787,10 +804,11 @@ class EnemyController extends Component {
 
     this.playAnim("react", 0.2, false);
     this.pc.cancel("state-transition");
-    this.pc.add(
+    this.pc.run(
       Process.delay(EnemyController.REACT_DURATION, () => {
         if (this.state === "react") this.enterAttack();
-      }, ["state-transition"]),
+      }),
+      { tags: ["state-transition"] },
     );
   }
 
@@ -852,49 +870,16 @@ class EnemyController extends Component {
     this.state = "hit";
     this.pc.cancel("state-transition");
 
-    const sprite = this.anim.animatedSprite;
+    // Flash white (cleanup resets tint)
+    this.flashSlot.restart();
 
-    // Flash white
-    this.pc.cancel("flash");
-    sprite.tint = 0xffffff;
-    this.pc.add(
-      Process.delay(80, () => {
-        sprite.tint = 0xffffff;
-      }, ["flash"]),
-    );
+    // Shake (cleanup resets position)
+    this.shakeSlot.restart();
 
-    // Shake
-    this.pc.cancel("shake");
-    sprite.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
-    this.pc.add(
-      new Process({
-        duration: 150,
-        update: () => {
-          sprite.position.set(
-            (Math.random() - 0.5) * 4,
-            (Math.random() - 0.5) * 4,
-          );
-        },
-        onComplete: () => {
-          sprite.position.set(0, 0);
-        },
-        tags: ["shake"],
-      }),
-    );
-
-    // Play hit animation and return to patrol when done
+    // Play hit animation and return to patrol when done (cleanup handles state)
     this.playAnim("hit", 0.25, false);
     const hitDuration = (this.animations.hit.length * (1000 / 60)) / 0.25;
-    this.pc.cancel("hit-recovery");
-    this.pc.add(
-      Process.delay(Math.min(hitDuration, 400), () => {
-        if (this.state === "hit") {
-          this.state = "patrol";
-          this.currentAnim = "";
-          this.playAnim("walk", 0.15, true);
-        }
-      }, ["hit-recovery"]),
-    );
+    this.hitRecovery.restart({ duration: Math.min(hitDuration, 400) });
 
     // Camera shake
     this.camera.shake(4, 150, { decay: 0.8 });
@@ -924,7 +909,7 @@ class EnemyController extends Component {
     // Play die animation, then destroy
     this.playAnim("die", 0.2, false);
     const dieDuration = (this.animations.die.length * (1000 / 60)) / 0.2;
-    this.pc.add(
+    this.pc.run(
       Process.delay(dieDuration, () => {
         this.entity.destroy();
       }),
@@ -1056,7 +1041,7 @@ const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
 
     // Self-destruct after 1200ms
     const pc = entity.add(new ProcessComponent());
-    pc.add(
+    pc.run(
       Process.delay(1200, () => {
         entity.destroy();
       }),

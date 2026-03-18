@@ -13,12 +13,14 @@ interface Step {
  */
 export class Sequence {
   private steps: Step[] = [];
+  private _loop = false;
+  private _repeatCount: number | undefined;
 
   /** Add a step (Process or factory function). */
   then(step: Process | StepFactory): this {
     this.steps.push({
       type: "single",
-      factories: [typeof step === "function" ? step : () => step],
+      factories: [typeof step === "function" ? step : wrapInstance(step)],
     });
     return this;
   }
@@ -59,8 +61,22 @@ export class Sequence {
   parallel(...steps: Array<Process | StepFactory>): this {
     this.steps.push({
       type: "parallel",
-      factories: steps.map((s) => (typeof s === "function" ? s : () => s)),
+      factories: steps.map((s) =>
+        typeof s === "function" ? s : wrapInstance(s),
+      ),
     });
+    return this;
+  }
+
+  /** Loop the sequence indefinitely. */
+  loop(): this {
+    this._loop = true;
+    return this;
+  }
+
+  /** Repeat the sequence a fixed number of times (1 = play once, 2 = play twice, etc.). */
+  repeat(times: number): this {
+    this._repeatCount = times;
     return this;
   }
 
@@ -71,8 +87,11 @@ export class Sequence {
    */
   _build(): Process {
     const steps = this.steps;
+    const looping = this._loop;
+    const repeatCount = this._repeatCount;
     let stepIndex = 0;
     let active: Process[] = [];
+    let iteration = 1;
 
     return new Process({
       update: (dt) => {
@@ -93,6 +112,16 @@ export class Sequence {
           active = [];
           stepIndex++;
           if (stepIndex >= steps.length) {
+            // Check if we should loop/repeat
+            if (looping) {
+              stepIndex = 0;
+              return false;
+            }
+            if (repeatCount !== undefined && iteration < repeatCount) {
+              iteration++;
+              stepIndex = 0;
+              return false;
+            }
             return true; // sequence complete
           }
         }
@@ -106,4 +135,12 @@ export class Sequence {
   start(): Process {
     return this._build();
   }
+}
+
+/** Wrap a direct Process instance so it gets _reset() before each re-use. */
+function wrapInstance(proc: Process): StepFactory {
+  return () => {
+    proc._reset();
+    return proc;
+  };
 }

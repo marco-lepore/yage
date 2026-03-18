@@ -108,6 +108,9 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/SceneManager.ts`    | Scene stack (push/pop/replace)                |
 | `src/Scene.ts`           | Scene base class (entity factory)             |
 | `src/Process.ts`         | Coroutine / tween / sequence                  |
+| `src/ProcessSlot.ts`     | Reusable restartable process handle (cooldowns, effects) |
+| `src/ProcessComponent.ts`| Entity component for slots + one-off processes |
+| `src/TimerEntity.ts`     | Pre-built entity exposing ProcessComponent API |
 | `src/Trait.ts`           | Trait system (`defineTrait`, `@trait`)          |
 | `src/Blueprint.ts`       | Reusable entity templates (deprecated)        |
 | `src/ErrorBoundary.ts`   | System/component error wrapping               |
@@ -655,7 +658,8 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Forgetting to export from `index.ts`**                      | Unexported types won't be available to consumers.                                                                                                                                                 | Always add new public types to the package's barrel export.                                                       |
 | **Registering duplicate ServiceKeys**                         | `EngineContext.register()` throws on duplicates.                                                                                                                                                  | Check with `context.has()` first, or ensure only one plugin registers each key.                                   |
 | **Putting unit tests in `e2e/`**                              | Unit tests should be fast and not require a browser.                                                                                                                                              | Co-locate with source. Only put browser-dependent tests in `e2e/`.                                                |
-| **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `Process`, `Tween`, or `Sequence` for time-based logic.                                                       |
+| **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing. |
+| **Using boolean flags for cooldown state**                    | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                    |
 | **Assuming render order = spawn order**                       | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                            |
 
 ### Type Safety Checklist

@@ -56,7 +56,7 @@ describe("ProcessSystem", () => {
     const pc = new ProcessComponent();
     entity.add(pc);
     const spy = vi.fn();
-    pc.add(new Process({ update: spy }));
+    pc.run(new Process({ update: spy }));
     sys.update(16);
     expect(spy).toHaveBeenCalledWith(16, 16);
   });
@@ -69,7 +69,7 @@ describe("ProcessSystem", () => {
     const pc = new ProcessComponent();
     entity.add(pc);
     const spy = vi.fn();
-    pc.add(new Process({ update: spy }));
+    pc.run(new Process({ update: spy }));
     entity.destroy();
     sys.update(16);
     expect(spy).not.toHaveBeenCalled();
@@ -109,7 +109,7 @@ describe("ProcessSystem", () => {
       const pc = new ProcessComponent();
       entity.add(pc);
       const entitySpy = vi.fn();
-      pc.add(new Process({ update: entitySpy }));
+      pc.run(new Process({ update: entitySpy }));
       const sceneSpy = vi.fn();
       sys.add(new Process({ update: sceneSpy }));
       sys.update(16);
@@ -154,7 +154,7 @@ describe("ProcessSystem", () => {
       const pc = new ProcessComponent();
       entity.add(pc);
       const spy = vi.fn();
-      pc.add(new Process({ update: spy }));
+      pc.run(new Process({ update: spy }));
       sys.update(16);
       expect(spy).toHaveBeenCalledWith(8, 8);
     });
@@ -178,7 +178,7 @@ describe("ProcessSystem", () => {
       const pc = new ProcessComponent();
       entity.add(pc);
       const spy = vi.fn();
-      pc.add(new Process({ update: spy }));
+      pc.run(new Process({ update: spy }));
       sys.update(16);
       expect(spy).toHaveBeenCalledWith(32, 32);
     });

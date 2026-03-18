@@ -141,7 +141,7 @@ class CameraScene extends Scene {
       const origin = new Vec2(x, y);
       const transform = e.get(Transform);
       const pc = e.add(new ProcessComponent());
-      pc.add(new Process({
+      pc.run(new Process({
         update: (_dt, elapsed) => {
           transform.setPosition(
             origin.x,

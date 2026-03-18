@@ -376,6 +376,86 @@ enemies.toArray();  // snapshot as array (allocates)
 
 ## Processes, Tweens & Sequences
 
+### ProcessComponent (entity-level timing)
+
+Add a `ProcessComponent` to any entity that needs timers, tweens, or cooldowns. Ticked automatically by `ProcessSystem` each frame (game-time aware — respects pause and timeScale).
+
+```typescript
+import { ProcessComponent, Process, Tween } from "@yage/core";
+
+// Add to entity
+entity.add(new ProcessComponent());
+const pc = entity.get(ProcessComponent);
+
+// --- Slots: reusable, restartable process handles ---
+// Slots start in `completed` state. Call start() to activate.
+const shootCd = pc.slot({ duration: 300 });
+const flash = pc.slot({
+  duration: 100,
+  cleanup: () => { sprite.tint = 0xffffff; },  // runs on complete, cancel, OR restart
+});
+const shake = pc.slot({
+  duration: 150,
+  update: (dt, elapsed) => {
+    sprite.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+  },
+  cleanup: () => sprite.position.set(0, 0),
+});
+
+// Use slots
+if (shootCd.completed) { shootCd.start(); /* fire bullet */ }
+flash.restart();                           // cleanup + cancel + start
+shake.restart({ duration: 200 });          // override config for this run
+shootCd.completed;                         // true when not running
+shootCd.elapsed;                           // ms since start
+shootCd.ratio;                             // 0..1 (elapsed / duration)
+shootCd.pause();
+shootCd.resume();
+shootCd.cancel();                          // calls cleanup if running
+
+// --- One-off processes: fire-and-forget ---
+pc.run(Process.delay(500, () => entity.destroy()));
+pc.run(Tween.to(sprite, "alpha", 0, 300));
+pc.run(myProcess, { tags: ["vfx"] });      // tag for cancel-by-tag
+
+// Cancel
+pc.cancel("vfx");                          // cancel slots and one-offs with tag
+pc.cancel();                               // cancel everything
+```
+
+Slots are created in `onAdd()` (the sibling ProcessComponent must be resolved):
+
+```typescript
+class PlayerController extends Component {
+  private pc = this.sibling(ProcessComponent);
+  private shootCd!: ProcessSlot;
+
+  onAdd(): void {
+    this.shootCd = this.pc.slot({ duration: 300 });
+  }
+
+  shoot(): void {
+    if (!this.shootCd.completed) return;
+    this.shootCd.start();
+    // spawn bullet...
+  }
+}
+```
+
+### TimerEntity (scene-level timing)
+
+Pre-built entity that exposes the ProcessComponent API directly. Use for scene-level orchestration instead of `setTimeout`.
+
+```typescript
+import { TimerEntity, Process } from "@yage/core";
+
+// In a Scene:
+const timers = this.spawn(TimerEntity);
+timers.run(Process.delay(500, () => { controller.inputEnabled = true; }));
+timers.slot({ duration: 1000 });
+timers.cancel();
+```
+
 ### Process (low-level coroutine)
 
 ```typescript
@@ -435,7 +515,11 @@ const seq = new Sequence()
     Tween.to(obj, "x", 0, 500),
     Tween.to(obj, "alpha", 0, 500, easeOutQuad),
   )
+  .loop()                                       // loop indefinitely
   .start();                                     // returns a Process
+
+// Or repeat a fixed number of times:
+new Sequence().call(() => flash()).wait(100).repeat(3).start();
 ```
 
 ---
@@ -697,13 +781,13 @@ describe("Movement integration", () => {
 });
 ```
 
-### Testing Processes and Tweens
+### Testing Processes, Slots, and Tweens
 
-Processes are updated manually via `_update(dt)` — no game loop needed:
+Processes are updated manually via `_update(dt)` — no game loop needed. ProcessSlot uses `_tick(dt)`:
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { Process, Tween, Sequence, easeLinear } from "@yage/core";
+import { Process, Tween, Sequence, ProcessSlot, easeLinear } from "@yage/core";
 
 describe("Tween", () => {
   it("tweens a value over duration", () => {
@@ -716,6 +800,27 @@ describe("Tween", () => {
     proc._update(500);  // done
     expect(obj.x).toBeCloseTo(100);
     expect(proc.completed).toBe(true);
+  });
+});
+
+describe("ProcessSlot", () => {
+  it("acts as a cooldown timer", () => {
+    const slot = new ProcessSlot({ duration: 300 });
+    expect(slot.completed).toBe(true);   // starts completed (ready)
+
+    slot.start();
+    expect(slot.completed).toBe(false);
+
+    slot._tick(300);
+    expect(slot.completed).toBe(true);   // cooldown done
+  });
+
+  it("calls cleanup on cancel and restart", () => {
+    const cleanup = vi.fn();
+    const slot = new ProcessSlot({ duration: 100, cleanup });
+    slot.start();
+    slot.restart();              // cleanup called, then restarted
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 });
 
@@ -771,6 +876,7 @@ describe("FooPlugin", () => {
 - Use `createTestEngine` + `advanceFrames` for integration tests involving the game loop
 - Call `engine.destroy()` at the end of every integration test to clean up
 - Process and Tween tests use `_update(dt)` for direct control — no game loop needed
+- ProcessSlot tests use `_tick(dt)` for direct control
 - Sequences use `_build()` in tests instead of `start()` for direct control
 - Entity IDs auto-reset between tests via the test utilities (they call `_resetEntityIdCounter`)
 - The ErrorBoundary catches all component/system errors — test that crashing components get `enabled = false`

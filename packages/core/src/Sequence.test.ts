@@ -142,6 +142,103 @@ describe("Sequence", () => {
     expect(proc.completed).toBe(true);
   });
 
+  it("loop() makes the sequence repeat indefinitely", () => {
+    let count = 0;
+    const proc = new Sequence()
+      .call(() => count++)
+      .loop()
+      ._build();
+
+    proc._update(0); // iteration 1
+    proc._update(0); // restarts, iteration 2
+    proc._update(0); // restarts, iteration 3
+    expect(count).toBe(3);
+    expect(proc.completed).toBe(false);
+  });
+
+  it("repeat(n) makes the sequence run n times", () => {
+    let count = 0;
+    const proc = new Sequence()
+      .call(() => count++)
+      .repeat(3)
+      ._build();
+
+    proc._update(0); // iteration 1
+    proc._update(0); // iteration 2
+    proc._update(0); // iteration 3
+    expect(count).toBe(3);
+    expect(proc.completed).toBe(true);
+  });
+
+  it("repeat(1) runs once (same as no repeat)", () => {
+    let count = 0;
+    const proc = new Sequence()
+      .call(() => count++)
+      .repeat(1)
+      ._build();
+
+    proc._update(0);
+    expect(count).toBe(1);
+    expect(proc.completed).toBe(true);
+  });
+
+  it("loop() resets direct Process instances between iterations", () => {
+    let count = 0;
+    const inner = new Process({
+      duration: 50,
+      update: () => { count++; },
+    });
+    const proc = new Sequence()
+      .then(inner)
+      .loop()
+      ._build();
+
+    // Iteration 1: inner runs for 50ms
+    proc._update(50);
+    const count1 = count;
+    expect(count1).toBeGreaterThan(0);
+
+    // Iteration 2: inner should be reset and run again
+    proc._update(50);
+    expect(count).toBeGreaterThan(count1);
+    expect(proc.completed).toBe(false);
+  });
+
+  it("repeat() resets direct Process instances between iterations", () => {
+    let count = 0;
+    const inner = new Process({
+      update: () => { count++; return true; },
+    });
+    const proc = new Sequence()
+      .then(inner)
+      .repeat(3)
+      ._build();
+
+    proc._update(0); // iteration 1
+    proc._update(0); // iteration 2
+    proc._update(0); // iteration 3
+    expect(count).toBe(3);
+    expect(proc.completed).toBe(true);
+  });
+
+  it("parallel() resets direct Process instances on loop", () => {
+    let a = 0;
+    let b = 0;
+    const procA = new Process({ update: () => { a++; return true; } });
+    const procB = new Process({ update: () => { b++; return true; } });
+
+    const seq = new Sequence()
+      .parallel(procA, procB)
+      .loop()
+      ._build();
+
+    seq._update(0); // iteration 1: both run and complete
+    seq._update(0); // iteration 2: both should be reset and run again
+    seq._update(0); // iteration 3
+    expect(a).toBe(3);
+    expect(b).toBe(3);
+  });
+
   it("complex chain works", () => {
     const order: string[] = [];
     const proc = new Sequence()

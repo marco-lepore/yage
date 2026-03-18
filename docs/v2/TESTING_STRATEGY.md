@@ -418,12 +418,12 @@ describe('ErrorBoundary', () => {
 });
 ```
 
-#### Process / Tween
+#### Process / Tween / ProcessSlot
 
 ```typescript
 // Process.test.ts
 import { describe, it, expect, vi } from 'vitest';
-import { Process, Tween, Sequence } from './Process';
+import { Process, Tween, Sequence, ProcessSlot } from '@yage/core';
 
 describe('Tween', () => {
   it('interpolates from start to end over duration', () => {
@@ -458,6 +458,46 @@ describe('Tween', () => {
     process._update(100);
 
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProcessSlot', () => {
+  it('starts completed and activates on start()', () => {
+    const slot = new ProcessSlot({ duration: 300 });
+    expect(slot.completed).toBe(true);
+
+    slot.start();
+    expect(slot.completed).toBe(false);
+
+    slot._tick(300);
+    expect(slot.completed).toBe(true);
+  });
+
+  it('cleanup runs on complete, cancel, and restart', () => {
+    const cleanup = vi.fn();
+    const slot = new ProcessSlot({ duration: 100, cleanup });
+
+    slot.start();
+    slot._tick(100);               // natural completion
+    expect(cleanup).toHaveBeenCalledTimes(1);
+
+    slot.restart();
+    slot.cancel();                 // cancel while running
+    expect(cleanup).toHaveBeenCalledTimes(2);
+
+    slot.restart();
+    slot._tick(10);
+    slot.restart();                // restart while running
+    expect(cleanup).toHaveBeenCalledTimes(3);
+  });
+
+  it('start(overrides) merges config', () => {
+    const slot = new ProcessSlot({ duration: 100 });
+    slot.start({ duration: 200 });
+    slot._tick(150);
+    expect(slot.completed).toBe(false);
+    slot._tick(50);
+    expect(slot.completed).toBe(true);
   });
 });
 

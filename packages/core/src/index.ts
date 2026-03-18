@@ -89,6 +89,11 @@ export { Sequence } from "./Sequence.js";
 
 export { ProcessComponent } from "./ProcessComponent.js";
 
+export { ProcessSlot } from "./ProcessSlot.js";
+export type { ProcessSlotConfig } from "./ProcessSlot.js";
+
+export { TimerEntity } from "./TimerEntity.js";
+
 export { ProcessSystem } from "./ProcessSystem.js";
 
 export { Inspector } from "./Inspector.js";
