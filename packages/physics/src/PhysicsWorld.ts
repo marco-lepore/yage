@@ -267,6 +267,23 @@ export class PhysicsWorld {
     };
   }
 
+  /** Return all entities whose colliders currently overlap the given collider. */
+  queryOverlapping(colliderHandle: number): Entity[] {
+    const collider = this.getCollider(colliderHandle);
+    if (!collider) return [];
+    const result: Entity[] = [];
+    const seen = new Set<Entity>();
+    this.world.intersectionPairsWith(collider, (other) => {
+      const entity = this.colliderMap.get(other.handle);
+      if (entity && !seen.has(entity)) {
+        seen.add(entity);
+        result.push(entity);
+      }
+      return true; // continue iteration
+    });
+    return result;
+  }
+
   /** Destroy the physics world and free resources. */
   destroy(): void {
     this.eventQueue.free();

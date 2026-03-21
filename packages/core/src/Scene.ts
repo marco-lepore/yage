@@ -8,6 +8,9 @@ import type { EventToken } from "./EventToken.js";
 import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
 import type { ServiceKey } from "./EngineContext.js";
+import { filterEntities } from "./EntityFilter.js";
+import type { EntityFilter } from "./EntityFilter.js";
+import type { TraitToken } from "./Trait.js";
 import {
   QueryCacheKey,
   EventBusKey,
@@ -177,6 +180,20 @@ export abstract class Scene {
       if (e.tags.has(tag) && !e.isDestroyed) result.push(e);
     }
     return result;
+  }
+
+  /** Find entities matching a filter. Trait filter narrows the return type. */
+  findEntities<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
+  findEntities(filter?: EntityFilter): Entity[];
+  findEntities(filter?: EntityFilter): Entity[] {
+    if (!filter) {
+      const result: Entity[] = [];
+      for (const e of this.entities) {
+        if (!e.isDestroyed) result.push(e);
+      }
+      return result;
+    }
+    return filterEntities(this.entities, filter);
   }
 
   /** Subscribe to bubbled entity events at the scene level. Handler receives (data, emittingEntity). */

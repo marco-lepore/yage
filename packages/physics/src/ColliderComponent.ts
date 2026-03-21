@@ -1,4 +1,5 @@
-import { Component } from "@yage/core";
+import { Component, filterEntities } from "@yage/core";
+import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
@@ -58,6 +59,24 @@ export class ColliderComponent extends Component {
       const idx = this.triggerHandlers.indexOf(handler);
       if (idx !== -1) this.triggerHandlers.splice(idx, 1);
     };
+  }
+
+  /** Return all entities whose colliders currently overlap this one, optionally filtered. */
+  getOverlapping<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
+  getOverlapping(filter?: EntityFilter): Entity[];
+  getOverlapping(filter?: EntityFilter): Entity[] {
+    const entities = this.physicsWorld.queryOverlapping(this._colliderHandle);
+    return filter ? filterEntities(entities, filter) : entities;
+  }
+
+  /** Return components of type C from all overlapping entities that have one. */
+  getOverlappingComponents<C extends Component>(cls: ComponentClass<C>): C[] {
+    const result: C[] = [];
+    for (const entity of this.getOverlapping()) {
+      const comp = entity.tryGet(cls);
+      if (comp) result.push(comp);
+    }
+    return result;
   }
 
   /** Set whether this collider is a sensor. */

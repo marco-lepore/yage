@@ -46,6 +46,9 @@ export type { Blueprint } from "./Blueprint.js";
 
 export { TraitToken, defineTrait, trait } from "./Trait.js";
 
+export { filterEntities } from "./EntityFilter.js";
+export type { EntityFilter } from "./EntityFilter.js";
+
 export { Component } from "./Component.js";
 
 export { Transform } from "./Transform.js";
