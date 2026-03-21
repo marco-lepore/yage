@@ -43,6 +43,33 @@ export class SpriteComponent extends Component {
     }
   }
 
+  /** Replace the sprite's texture. Accepts a texture key string or Texture object. */
+  setTexture(texture: Texture | string): void {
+    this.sprite.texture = typeof texture === "string"
+      ? Sprite.from(texture).texture
+      : texture;
+  }
+
+  /** Set the sprite's tint color. */
+  set tint(color: number) {
+    this.sprite.tint = color;
+  }
+
+  /** Get the sprite's tint color. */
+  get tint(): number {
+    return this.sprite.tint;
+  }
+
+  /** Set the sprite's alpha (opacity). */
+  set alpha(alpha: number) {
+    this.sprite.alpha = alpha;
+  }
+
+  /** Get the sprite's alpha (opacity). */
+  get alpha(): number {
+    return this.sprite.alpha;
+  }
+
   onAdd(): void {
     const layers = this.use(RenderLayerManagerKey);
     const layer = layers.get(this.layerName);
