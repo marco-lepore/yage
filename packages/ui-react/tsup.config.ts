@@ -6,5 +6,6 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
+  keepNames: true,
   external: ["react", "react-reconciler"],
 });

@@ -9,6 +9,9 @@ export default defineConfig({
   server: {
     port: 5199,
   },
+  esbuild: {
+    keepNames: true,
+  },
   build: {
     rollupOptions: {
       input: {
