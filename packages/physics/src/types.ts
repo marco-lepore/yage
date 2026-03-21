@@ -32,6 +32,12 @@ export interface RigidBodyConfig {
   gravityScale?: number;
   /** Enable continuous collision detection. */
   ccd?: boolean;
+  /** If true, disable translation on the X axis. */
+  lockTranslationX?: boolean;
+  /** If true, disable translation on the Y axis. */
+  lockTranslationY?: boolean;
+  /** If false, physics will not write rotation back to Transform. Default: true. */
+  syncRotation?: boolean;
 }
 
 /** Discriminated union for collider shapes. All dimensions in pixels. */

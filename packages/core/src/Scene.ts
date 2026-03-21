@@ -8,6 +8,9 @@ import type { EventToken } from "./EventToken.js";
 import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
 import type { ServiceKey } from "./EngineContext.js";
+import { filterEntities } from "./EntityFilter.js";
+import type { EntityFilter } from "./EntityFilter.js";
+import type { TraitToken } from "./Trait.js";
 import {
   QueryCacheKey,
   EventBusKey,
@@ -87,18 +90,35 @@ export abstract class Scene {
   spawn(name?: string): Entity;
   spawn<P>(blueprint: Blueprint<P>, params: P): Entity;
   spawn(blueprint: Blueprint<void>): Entity;
+  /** Spawn an entity subclass with setup params. */
+  spawn<E extends Entity, P>(
+    Class: new () => E & { setup(params: P): void },
+    params: P,
+  ): E;
+  /** Spawn an entity subclass without setup params. */
+  spawn<E extends Entity>(Class: new () => E): E;
   spawn(
-    nameOrBlueprint?: string | Blueprint<unknown>,
+    nameOrBlueprintOrClass?: string | Blueprint<unknown> | (new () => Entity),
     params?: unknown,
   ): Entity {
+    // Class-based spawn: argument is a constructor function for an Entity subclass
+    if (typeof nameOrBlueprintOrClass === "function") {
+      const entity = new nameOrBlueprintOrClass();
+      entity._setScene(this, this.entityCallbacks);
+      this.entities.add(entity);
+      this.bus?.emit("entity:created", { entity });
+      entity.setup?.(params);
+      return entity;
+    }
+
     const isBlueprint =
-      typeof nameOrBlueprint === "object" &&
-      nameOrBlueprint !== null &&
-      "build" in nameOrBlueprint;
+      typeof nameOrBlueprintOrClass === "object" &&
+      nameOrBlueprintOrClass !== null &&
+      "build" in nameOrBlueprintOrClass;
 
     const name = isBlueprint
-      ? (nameOrBlueprint as Blueprint<unknown>).name
-      : (nameOrBlueprint as string | undefined);
+      ? (nameOrBlueprintOrClass as Blueprint<unknown>).name
+      : (nameOrBlueprintOrClass as string | undefined);
 
     const entity = new Entity(name);
     entity._setScene(this, this.entityCallbacks);
@@ -106,12 +126,26 @@ export abstract class Scene {
     this.bus?.emit("entity:created", { entity });
 
     if (isBlueprint) {
-      (nameOrBlueprint as Blueprint<unknown>).build(entity, params);
+      (nameOrBlueprintOrClass as Blueprint<unknown>).build(entity, params);
     }
 
     return entity;
   }
 
+  /**
+   * Add an existing entity to this scene (used by Entity.addChild for auto-scene-membership).
+   * @internal
+   */
+  _addExistingEntity(entity: Entity): void {
+    entity._setScene(this, this.entityCallbacks);
+    this.entities.add(entity);
+    this.bus?.emit("entity:created", { entity });
+
+    // Register pre-existing components with QueryCache
+    if (!entity.getAll()[Symbol.iterator]().next().done) {
+      this.queryCache?.onComponentAdded(entity);
+    }
+  }
 
   /** Mark an entity for destruction. Deferred to endOfFrame flush. */
   destroyEntity(entity: Entity): void {
@@ -146,6 +180,20 @@ export abstract class Scene {
       if (e.tags.has(tag) && !e.isDestroyed) result.push(e);
     }
     return result;
+  }
+
+  /** Find entities matching a filter. Trait filter narrows the return type. */
+  findEntities<T>(filter: EntityFilter & { trait: TraitToken<T> }): (Entity & T)[];
+  findEntities(filter?: EntityFilter): Entity[];
+  findEntities(filter?: EntityFilter): Entity[] {
+    if (!filter) {
+      const result: Entity[] = [];
+      for (const e of this.entities) {
+        if (!e.isDestroyed) result.push(e);
+      }
+      return result;
+    }
+    return filterEntities(this.entities, filter);
   }
 
   /** Subscribe to bubbled entity events at the scene level. Handler receives (data, emittingEntity). */

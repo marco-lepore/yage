@@ -44,6 +44,11 @@ export class Vec2 implements Vec2Like {
     return new Vec2(this.x * scalar, this.y * scalar);
   }
 
+  /** Component-wise multiply with another vector. */
+  multiply(other: Vec2Like): Vec2 {
+    return new Vec2(this.x * other.x, this.y * other.y);
+  }
+
   /** Dot product with another vector. */
   dot(other: Vec2Like): number {
     return this.x * other.x + this.y * other.y;

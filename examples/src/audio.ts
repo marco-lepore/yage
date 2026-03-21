@@ -1,4 +1,4 @@
-import { Scene, Component, Transform, Vec2 } from "@yage/core";
+import { Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yage/core";
 import { GraphicsComponent, CameraKey } from "@yage/renderer";
 import { InputManagerKey } from "@yage/input";
 import {
@@ -91,23 +91,17 @@ class VolumeBar extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// MusicIndicator — pulses while music is playing
+// MusicIndicator — pulses while music is playing (using KeyframeAnimator)
 // ---------------------------------------------------------------------------
 class MusicIndicator extends Component {
   private readonly _gfx = this.sibling(GraphicsComponent);
-  private _time = 0;
-  private _playing = false;
-
-  update(dt: number): void {
-    if (!this._playing) return;
-    this._time += dt;
-    const pulse = 0.6 + 0.4 * Math.sin(this._time * 0.006);
-    this._gfx.graphics.alpha = pulse;
-  }
+  private readonly _anim = this.sibling(KeyframeAnimator) as KeyframeAnimator<"pulse">;
 
   setPlaying(v: boolean): void {
-    this._playing = v;
-    if (!v) {
+    if (v) {
+      this._anim.play("pulse");
+    } else {
+      this._anim.stop("pulse");
       this._gfx.graphics.alpha = 0.2;
     }
   }
@@ -241,7 +235,7 @@ class AudioScene extends Scene {
     const musicY = 380;
     const musicEnt = this.spawn("music-indicator");
     musicEnt.add(new Transform({ position: new Vec2(WIDTH / 2, musicY) }));
-    musicEnt.add(
+    const musicGfx = musicEnt.add(
       new GraphicsComponent().draw((g) => {
         // Disc shape
         g.circle(0, 0, 35).fill({ color: 0xa78bfa, alpha: 0.2 });
@@ -252,6 +246,19 @@ class AudioScene extends Scene {
         g.circle(0, 0, 25).stroke({ color: 0x7c3aed, width: 1, alpha: 0.3 });
       }),
     );
+    musicEnt.add(new ProcessComponent());
+    musicEnt.add(new KeyframeAnimator({
+      pulse: {
+        keyframes: [
+          { time: 0, data: 0.6 },
+          { time: 525, data: 1.0 },
+          { time: 1050, data: 0.6 },
+        ],
+        setter: (alpha) => { musicGfx.graphics.alpha = alpha as number; },
+        loop: true,
+        easing: easeInOutQuad,
+      },
+    }));
     const musicIndicator = musicEnt.add(new MusicIndicator());
     musicIndicator.setPlaying(false);
 

@@ -1,4 +1,4 @@
-import type { Transform } from "./Transform.js";
+import { Transform } from "./Transform.js";
 import type { Entity } from "./Entity.js";
 import type { Component } from "./Component.js";
 import type { SceneManager } from "./SceneManager.js";
@@ -194,12 +194,7 @@ export class Inspector {
   }
 
   private getTransform(entity: Entity): Transform | undefined {
-    for (const comp of entity.getAll()) {
-      if (comp.constructor.name === "Transform") {
-        return comp as Transform;
-      }
-    }
-    return undefined;
+    return entity.has(Transform) ? entity.get(Transform) : undefined;
   }
 
   private serializeComponent(comp: Component): unknown {

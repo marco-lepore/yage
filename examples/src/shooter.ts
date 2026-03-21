@@ -8,14 +8,16 @@ import {
   defineEvent,
   defineBlueprint,
 } from "@yage/core";
+import type { ProcessSlot } from "@yage/core";
 import {
   GraphicsComponent,
   AnimatedSpriteComponent,
+  AnimationController,
   CameraKey,
   RenderLayerManagerKey,
   texture,
+  sliceSheet,
 } from "@yage/renderer";
-import { Texture, Rectangle } from "pixi.js";
 import {
   RigidBodyComponent,
   ColliderComponent,
@@ -103,28 +105,6 @@ const EnemyDieTex = texture("/assets/skeleton_die.png");
 
 const FRAME_SIZE = 48;
 
-/** Slice a horizontal spritesheet into individual frame Textures. */
-function sliceSheet(
-  path: string,
-  frameWidth: number,
-  frameHeight?: number,
-): Texture[] {
-  const base = Texture.from(path);
-  base.source.scaleMode = "nearest";
-  const h = frameHeight ?? frameWidth;
-  const count = Math.floor(base.width / frameWidth);
-  const frames: Texture[] = [];
-  for (let i = 0; i < count; i++) {
-    frames.push(
-      new Texture({
-        source: base.source,
-        frame: new Rectangle(i * frameWidth, 0, frameWidth, h),
-      }),
-    );
-  }
-  return frames;
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -198,7 +178,7 @@ function spawnParticles(
     const transform = p.get(Transform);
     const gfx = p.get(GraphicsComponent);
     const pc = p.add(new ProcessComponent());
-    pc.add(
+    pc.run(
       new Process({
         duration: lt,
         update: (dt, elapsed) => {
@@ -284,14 +264,11 @@ class PlayerController extends Component {
   private readonly camera = this.service(CameraKey);
   private readonly physicsWorld = this.service(PhysicsWorldKey);
   private readonly audio = this.service(AudioManagerKey);
-  private readonly anim = this.sibling(AnimatedSpriteComponent);
+  private readonly anim = this.sibling(AnimationController) as AnimationController<PlayerAnim>;
+  private readonly sprite = this.sibling(AnimatedSpriteComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly pc = this.sibling(ProcessComponent);
-
-  private animations!: Record<PlayerAnim, Texture[]>;
-  private currentAnim = "";
-  private animLocked = false;
 
   private grounded = false;
   private coyoteTimer = 0;
@@ -299,13 +276,12 @@ class PlayerController extends Component {
   private wasGrounded = false;
   facingRight = true;
 
-  // Shooting
-  private canShoot = true;
-
-  // Hit flash / invincibility / stun
-  private invincible = false;
-  private stunned = false;
-  private overlappingEnemies = new Set<import("@yage/core").Entity>();
+  // Slots
+  private shootCd!: ProcessSlot;
+  private invincibility!: ProcessSlot;
+  private stun!: ProcessSlot;
+  private flash!: ProcessSlot;
+  private squash!: ProcessSlot;
 
   private static readonly SPEED = 220;
   private static readonly JUMP_VELOCITY = 505;
@@ -314,19 +290,32 @@ class PlayerController extends Component {
   private static readonly GROUND_RAY_DIST = 22;
   private static readonly WALL_RAY_DIST = 16;
   private static readonly SHOOT_COOLDOWN_MS = 200;
+  private static readonly STUN_MS = 300;
+  private static readonly KNOCKBACK_X = 200;
+  private static readonly KNOCKBACK_Y = -180;
 
   onAdd(): void {
-    // Build frame arrays from preloaded spritesheets
-    this.animations = {
-      idle: sliceSheet(PlayerIdleTex.path, FRAME_SIZE),
-      walk: sliceSheet(PlayerWalkTex.path, FRAME_SIZE),
-      jump: sliceSheet(PlayerJumpTex.path, FRAME_SIZE),
-      land: sliceSheet(PlayerLandTex.path, FRAME_SIZE),
-      shoot: sliceSheet(PlayerShootTex.path, FRAME_SIZE),
-      hurt: sliceSheet(PlayerHurtTex.path, FRAME_SIZE),
-    };
-
-    this.playAnim("idle", 0.15, true);
+    // Slots
+    this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_MS });
+    this.invincibility = this.pc.slot({
+      duration: 500,
+      cleanup: () => {
+        // Re-check: still touching an enemy?
+        const collider = this.entity.get(ColliderComponent);
+        const enemies = collider.getOverlapping({ tags: ["enemy"] });
+        if (enemies[0]) {
+          this.tryDamageFrom(enemies[0]);
+        }
+      },
+    });
+    this.stun = this.pc.slot({ duration: PlayerController.STUN_MS });
+    this.flash = this.pc.slot({
+      duration: 100,
+      cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
+    });
+    this.squash = this.pc.slot({
+      cleanup: () => { this.transform.setScale(1, 1); },
+    });
 
     this.camera.follow(this.transform, {
       smoothing: 0.12,
@@ -343,12 +332,8 @@ class PlayerController extends Component {
     // Handle contact damage from enemies
     const collider = this.entity.get(ColliderComponent);
     collider.onCollision((ev) => {
-      if (!ev.other.tags.has("enemy")) return;
-      if (ev.started) {
-        this.overlappingEnemies.add(ev.other);
+      if (ev.started && ev.other.tags.has("enemy")) {
         this.tryDamageFrom(ev.other);
-      } else {
-        this.overlappingEnemies.delete(ev.other);
       }
     });
   }
@@ -356,11 +341,12 @@ class PlayerController extends Component {
   update(dt: number): void {
     if (won) {
       this.rb.setVelocity(Vec2.ZERO);
-      this.playAnim("idle", 0.15, true);
+      this.anim.unlock();
+      this.anim.play("idle");
       return;
     }
 
-    if (this.stunned) return;
+    if (!this.stun.completed) return;
 
     const vel = this.rb.getVelocity();
     const pos = this.transform.position;
@@ -393,7 +379,7 @@ class PlayerController extends Component {
       const squashY = 1 - 0.3 * impact; // 1.0 – 0.7
       if (impact > 0.15) {
         this.startSquash(squashX, squashY);
-        this.playOneShot("land", 0.5, 120);
+        this.anim.playOneShot("land", { duration: 120 });
       }
       this.audio.play(LandSfx.path, { channel: "sfx" });
     }
@@ -421,7 +407,7 @@ class PlayerController extends Component {
     }
 
     const speed =
-      this.currentAnim === "shoot"
+      this.anim.current === "shoot"
         ? PlayerController.SPEED * 0.15
         : PlayerController.SPEED;
     this.rb.setVelocityX(dx * speed);
@@ -447,29 +433,24 @@ class PlayerController extends Component {
     }
 
     // -- Shooting --
-    if ((keys.has("j") || keys.has("k")) && this.canShoot) {
+    if ((keys.has("j") || keys.has("k")) && this.shootCd.completed) {
       keys.delete("j");
       keys.delete("k");
-      this.canShoot = false;
-      this.pc.add(
-        Process.delay(PlayerController.SHOOT_COOLDOWN_MS, () => {
-          this.canShoot = true;
-        }),
-      );
+      this.shootCd.start();
       this.spawnBullet();
-      this.playOneShot("shoot", 0.4, PlayerController.SHOOT_COOLDOWN_MS);
+      this.anim.playOneShot("shoot", { duration: PlayerController.SHOOT_COOLDOWN_MS });
       this.audio.play(ShootSfx.path, { channel: "sfx" });
       this.camera.shake(2, 100, { decay: 0.8 });
     }
 
     // -- Animation state (when not locked by one-shot) --
-    if (!this.animLocked) {
+    if (!this.anim.locked) {
       if (!onGround) {
-        this.playAnim("jump", 0.12, false);
+        this.anim.play("jump");
       } else if (dx !== 0) {
-        this.playAnim("walk", 0.2, true);
+        this.anim.play("walk");
       } else {
-        this.playAnim("idle", 0.15, true);
+        this.anim.play("idle");
       }
     }
 
@@ -481,65 +462,21 @@ class PlayerController extends Component {
     this.transform.setScale(flipX, currentScale.y);
   }
 
-  private playAnim(name: PlayerAnim, speed: number, loop: boolean): void {
-    if (this.currentAnim === name) return;
-    this.currentAnim = name;
-    const as = this.anim.animatedSprite;
-    as.textures = this.animations[name];
-    as.loop = loop;
-    as.animationSpeed = speed;
-    as.gotoAndPlay(0);
-  }
-
-  private playOneShot(
-    name: PlayerAnim,
-    speed: number,
-    durationMs: number,
-  ): void {
-    this.currentAnim = name;
-    this.animLocked = true;
-    const as = this.anim.animatedSprite;
-    as.textures = this.animations[name];
-    as.loop = false;
-    as.animationSpeed = speed;
-    as.gotoAndPlay(0);
-    this.pc.cancel("anim-lock");
-    this.pc.add(
-      Process.delay(durationMs, () => {
-        this.animLocked = false;
-        this.currentAnim = "";
-      }, ["anim-lock"]),
-    );
-  }
-
   private startSquash(scaleX: number, scaleY: number): void {
-    this.pc.cancel("squash");
     this.transform.setScale(scaleX, scaleY);
-    this.pc.add(
-      new Process({
-        duration: 120,
-        update: (_dt, elapsed) => {
-          const t = Math.max(0, 1 - elapsed / 120);
-          const sx = 1 + (scaleX - 1) * t;
-          const sy = 1 + (scaleY - 1) * t;
-          this.transform.setScale(sx, sy);
-        },
-        onComplete: () => {
-          this.transform.setScale(1, 1);
-        },
-        tags: ["squash"],
-      }),
-    );
+    this.squash.restart({
+      duration: 120,
+      update: (_dt, elapsed) => {
+        const t = Math.max(0, 1 - elapsed / 120);
+        const sx = 1 + (scaleX - 1) * t;
+        const sy = 1 + (scaleY - 1) * t;
+        this.transform.setScale(sx, sy);
+      },
+    });
   }
-
-  private static readonly STUN_MS = 300;
-  private static readonly KNOCKBACK_X = 200;
-  private static readonly KNOCKBACK_Y = -180;
 
   private takeDamage(knockDir: number): void {
-    if (this.invincible) return;
-    this.invincible = true;
-    this.stunned = true;
+    if (!this.invincibility.completed) return;
 
     this.audio.play(HurtSfx.path, { channel: "sfx" });
 
@@ -551,43 +488,22 @@ class PlayerController extends Component {
       ),
     );
 
-    // Flash red
-    this.anim.animatedSprite.tint = 0xff4444;
-    this.pc.cancel("flash");
-    this.pc.add(
-      Process.delay(100, () => {
-        this.anim.animatedSprite.tint = 0xffffff;
-      }, ["flash"]),
-    );
+    // Flash red (cleanup resets tint)
+    this.sprite.animatedSprite.tint = 0xff4444;
+    this.flash.restart();
 
     // Hurt animation + stun
-    this.playOneShot("hurt", 0.3, PlayerController.STUN_MS);
-    this.pc.cancel("stun");
-    this.pc.add(
-      Process.delay(PlayerController.STUN_MS, () => {
-        this.stunned = false;
-      }, ["stun"]),
-    );
+    this.anim.playOneShot("hurt", { duration: PlayerController.STUN_MS });
+    this.stun.restart();
 
-    // Invincibility (lasts longer than stun)
-    this.pc.add(
-      Process.delay(500, () => {
-        this.invincible = false;
-        // Re-check: still touching an enemy?
-        for (const enemy of this.overlappingEnemies) {
-          if (enemy.scene) {
-            this.tryDamageFrom(enemy);
-            break;
-          }
-        }
-      }),
-    );
+    // Invincibility (lasts longer than stun; cleanup re-checks overlap)
+    this.invincibility.restart();
 
     this.camera.shake(5, 200, { decay: 0.7 });
   }
 
   private tryDamageFrom(enemy: import("@yage/core").Entity): void {
-    if (this.invincible) return;
+    if (!this.invincibility.completed) return;
     const enemyX = enemy.get(Transform).position.x;
     const playerX = this.transform.position.x;
     const knockDir = playerX >= enemyX ? 1 : -1;
@@ -616,27 +532,15 @@ const ENEMY_BODY_CENTER_X = 8;
 /** Half the collider height — distance from entity center to feet. */
 const ENEMY_HALF_H = 16; // collider is 32px tall
 
-/** Per-animation anchors to keep the body center aligned across different frame sizes. */
-const ENEMY_ANCHORS: Record<EnemyAnim, { x: number; y: number }> = {
-  idle: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
-  walk: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
-  react: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
-  attack: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
-  hit: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
-  die: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },
-};
-
 class EnemyController extends Component {
   private readonly physicsWorld = this.service(PhysicsWorldKey);
   private readonly camera = this.service(CameraKey);
   private readonly audio = this.service(AudioManagerKey);
-  private readonly anim = this.sibling(AnimatedSpriteComponent);
+  private readonly anim = this.sibling(AnimationController) as AnimationController<EnemyAnim>;
+  private readonly sprite = this.sibling(AnimatedSpriteComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly pc = this.sibling(ProcessComponent);
-
-  private animations!: Record<EnemyAnim, Texture[]>;
-  private currentAnim = "";
 
   private hp = 3;
   private patrolDir = 1;
@@ -647,6 +551,10 @@ class EnemyController extends Component {
   private targetX = 0;
   private cooldownTimer = 0;
   private attackTimer = 0;
+
+  // Slots
+  private flashSlot!: ProcessSlot;
+  private shakeSlot!: ProcessSlot;
 
   private static readonly SPEED = 60;
   private static readonly CHARGE_SPEED = 350;
@@ -665,17 +573,25 @@ class EnemyController extends Component {
   }
 
   onAdd(): void {
-    // Build frame arrays from preloaded spritesheets
-    this.animations = {
-      idle: sliceSheet(EnemyIdleTex.path, 24, 32),
-      walk: sliceSheet(EnemyWalkTex.path, 22, 33),
-      react: sliceSheet(EnemyReactTex.path, 22, 32),
-      attack: sliceSheet(EnemyAttackTex.path, 43, 37),
-      hit: sliceSheet(EnemyHitTex.path, 30, 32),
-      die: sliceSheet(EnemyDieTex.path, 33, 32),
-    };
+    // Slots
+    this.flashSlot = this.pc.slot({
+      duration: 80,
+      cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
+    });
+    this.shakeSlot = this.pc.slot({
+      duration: 150,
+      update: () => {
+        const s = this.sprite.animatedSprite;
+        s.position.set(
+          (Math.random() - 0.5) * 4,
+          (Math.random() - 0.5) * 4,
+        );
+      },
+      cleanup: () => { this.sprite.animatedSprite.position.set(0, 0); },
+    });
 
-    this.playAnim("walk", 0.15, true);
+    // AnimationController auto-plays "idle"; switch to walk for patrol
+    this.anim.play("walk");
 
     // React to damage events on this entity
     this.listen(this.entity, Hurt, ({ dir }) => this.takeDamage(dir));
@@ -702,7 +618,7 @@ class EnemyController extends Component {
         if (wallHit) this.patrolDir *= -1;
 
         this.rb.setVelocityX(this.patrolDir * EnemyController.SPEED);
-        this.playAnim("walk", 0.15, true);
+        this.anim.play("walk");
         this.updateFacing(this.patrolDir);
 
         // Detect player
@@ -732,10 +648,10 @@ class EnemyController extends Component {
           break;
         }
 
-        const frame = this.anim.animatedSprite.currentFrame;
-        const inSlash =
-          frame >= EnemyController.SLASH_FRAME_START &&
-          frame <= EnemyController.SLASH_FRAME_END;
+        const inSlash = this.anim.inFrameRange(
+          EnemyController.SLASH_FRAME_START,
+          EnemyController.SLASH_FRAME_END,
+        );
 
         if (inSlash) {
           const dir = this.targetX > pos.x ? 1 : -1;
@@ -763,7 +679,7 @@ class EnemyController extends Component {
         this.cooldownTimer -= dt;
         if (this.cooldownTimer <= 0) {
           this.state = "patrol";
-          this.playAnim("walk", 0.15, true);
+          this.anim.play("walk");
         }
         break;
 
@@ -785,12 +701,13 @@ class EnemyController extends Component {
     const pos = this.transform.position;
     this.updateFacing(playerX > pos.x ? 1 : -1);
 
-    this.playAnim("react", 0.2, false);
+    this.anim.play("react");
     this.pc.cancel("state-transition");
-    this.pc.add(
+    this.pc.run(
       Process.delay(EnemyController.REACT_DURATION, () => {
         if (this.state === "react") this.enterAttack();
-      }, ["state-transition"]),
+      }),
+      { tags: ["state-transition"] },
     );
   }
 
@@ -802,32 +719,20 @@ class EnemyController extends Component {
 
     this.updateFacing(this.targetX > pos.x ? 1 : -1);
 
-    this.playAnim("attack", 0.3, false);
+    this.anim.play("attack");
   }
 
   private enterCooldown(): void {
     this.state = "cooldown";
     this.cooldownTimer = EnemyController.COOLDOWN_DURATION;
     this.rb.setVelocityX(0);
-    this.playAnim("idle", 0.15, true);
+    this.anim.play("idle");
   }
 
   private updateFacing(dir: number): void {
     const scale = this.transform.scale;
     const flipX = dir >= 0 ? Math.abs(scale.x) : -Math.abs(scale.x);
     this.transform.setScale(flipX, scale.y);
-  }
-
-  private playAnim(name: EnemyAnim, speed: number, loop: boolean): void {
-    if (this.currentAnim === name) return;
-    this.currentAnim = name;
-    const as = this.anim.animatedSprite;
-    as.textures = this.animations[name];
-    const anchor = ENEMY_ANCHORS[name];
-    as.anchor.set(anchor.x, anchor.y);
-    as.loop = loop;
-    as.animationSpeed = speed;
-    as.gotoAndPlay(0);
   }
 
   private takeDamage(bulletDir: number): void {
@@ -852,49 +757,22 @@ class EnemyController extends Component {
     this.state = "hit";
     this.pc.cancel("state-transition");
 
-    const sprite = this.anim.animatedSprite;
+    // Flash white (cleanup resets tint)
+    this.flashSlot.restart();
 
-    // Flash white
-    this.pc.cancel("flash");
-    sprite.tint = 0xffffff;
-    this.pc.add(
-      Process.delay(80, () => {
-        sprite.tint = 0xffffff;
-      }, ["flash"]),
-    );
-
-    // Shake
-    this.pc.cancel("shake");
-    sprite.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
-    this.pc.add(
-      new Process({
-        duration: 150,
-        update: () => {
-          sprite.position.set(
-            (Math.random() - 0.5) * 4,
-            (Math.random() - 0.5) * 4,
-          );
-        },
-        onComplete: () => {
-          sprite.position.set(0, 0);
-        },
-        tags: ["shake"],
-      }),
-    );
+    // Shake (cleanup resets position)
+    this.shakeSlot.restart();
 
     // Play hit animation and return to patrol when done
-    this.playAnim("hit", 0.25, false);
-    const hitDuration = (this.animations.hit.length * (1000 / 60)) / 0.25;
-    this.pc.cancel("hit-recovery");
-    this.pc.add(
-      Process.delay(Math.min(hitDuration, 400), () => {
+    const hitDuration = Math.min(this.anim.calcDuration("hit"), 400);
+    this.anim.playOneShot("hit", {
+      duration: hitDuration,
+      onComplete: () => {
         if (this.state === "hit") {
           this.state = "patrol";
-          this.currentAnim = "";
-          this.playAnim("walk", 0.15, true);
         }
-      }, ["hit-recovery"]),
-    );
+      },
+    });
 
     // Camera shake
     this.camera.shake(4, 150, { decay: 0.8 });
@@ -911,9 +789,9 @@ class EnemyController extends Component {
 
     this.pc.cancel(); // cancel all feedback processes
 
-    const sprite = this.anim.animatedSprite;
-    sprite.tint = 0xffffff;
-    sprite.position.set(0, 0);
+    const s = this.sprite.animatedSprite;
+    s.tint = 0xffffff;
+    s.position.set(0, 0);
 
     const pos = this.transform.position;
     if (this.entity.scene) {
@@ -922,9 +800,9 @@ class EnemyController extends Component {
     this.camera.shake(6, 250, { decay: 0.7 });
 
     // Play die animation, then destroy
-    this.playAnim("die", 0.2, false);
-    const dieDuration = (this.animations.die.length * (1000 / 60)) / 0.2;
-    this.pc.add(
+    this.anim.forcePlay("die");
+    const dieDuration = this.anim.calcDuration("die");
+    this.pc.run(
       Process.delay(dieDuration, () => {
         this.entity.destroy();
       }),
@@ -940,13 +818,20 @@ class EnemyController extends Component {
 const PlayerBP = defineBlueprint("player", (entity) => {
   entity.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
   const idleFrames = sliceSheet(PlayerIdleTex.path, FRAME_SIZE);
-  const playerAnim = new AnimatedSpriteComponent({
-    textures: idleFrames,
-    layer: "player",
-  });
-  playerAnim.animatedSprite.anchor.set(0.5, 0.5 - 3 / FRAME_SIZE);
-  entity.add(playerAnim);
-  playerAnim.play({ speed: 0.15, loop: true });
+  const spriteComp = entity.add(
+    new AnimatedSpriteComponent({ textures: idleFrames, layer: "player" }),
+  );
+  spriteComp.animatedSprite.anchor.set(0.5, 0.5 - 3 / FRAME_SIZE);
+  entity.add(
+    new AnimationController<PlayerAnim>({
+      idle: { frames: idleFrames, speed: 0.15 },
+      walk: { frames: sliceSheet(PlayerWalkTex.path, FRAME_SIZE), speed: 0.2 },
+      jump: { frames: sliceSheet(PlayerJumpTex.path, FRAME_SIZE), speed: 0.12, loop: false },
+      land: { frames: sliceSheet(PlayerLandTex.path, FRAME_SIZE), speed: 0.5, loop: false },
+      shoot: { frames: sliceSheet(PlayerShootTex.path, FRAME_SIZE), speed: 0.4, loop: false },
+      hurt: { frames: sliceSheet(PlayerHurtTex.path, FRAME_SIZE), speed: 0.3, loop: false },
+    }),
+  );
   entity.add(
     new RigidBodyComponent({
       type: "dynamic",
@@ -999,16 +884,45 @@ const EnemyBP = defineBlueprint<{
   entity.tags.add("enemy");
   entity.add(new Transform({ position: new Vec2(x, y) }));
   const idleFrames = sliceSheet(EnemyIdleTex.path, 24, 32);
-  const enemyAnim = new AnimatedSpriteComponent({
-    textures: idleFrames,
-    layer: "world",
-  });
-  enemyAnim.animatedSprite.anchor.set(
-    ENEMY_ANCHORS.idle.x,
-    ENEMY_ANCHORS.idle.y,
+  entity.add(new AnimatedSpriteComponent({ textures: idleFrames, layer: "world" }));
+  entity.add(
+    new AnimationController<EnemyAnim>({
+      idle: {
+        frames: idleFrames,
+        speed: 0.15,
+        anchor: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
+      },
+      walk: {
+        frames: sliceSheet(EnemyWalkTex.path, 22, 33),
+        speed: 0.15,
+        anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
+      },
+      react: {
+        frames: sliceSheet(EnemyReactTex.path, 22, 32),
+        speed: 0.2,
+        loop: false,
+        anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
+      },
+      attack: {
+        frames: sliceSheet(EnemyAttackTex.path, 43, 37),
+        speed: 0.3,
+        loop: false,
+        anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
+      },
+      hit: {
+        frames: sliceSheet(EnemyHitTex.path, 30, 32),
+        speed: 0.25,
+        loop: false,
+        anchor: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
+      },
+      die: {
+        frames: sliceSheet(EnemyDieTex.path, 33, 32),
+        speed: 0.2,
+        loop: false,
+        anchor: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },
+      },
+    }),
   );
-  entity.add(enemyAnim);
-  enemyAnim.play({ speed: 0.15, loop: true });
   entity.add(
     new RigidBodyComponent({
       type: "dynamic",
@@ -1056,7 +970,7 @@ const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
 
     // Self-destruct after 1200ms
     const pc = entity.add(new ProcessComponent());
-    pc.add(
+    pc.run(
       Process.delay(1200, () => {
         entity.destroy();
       }),

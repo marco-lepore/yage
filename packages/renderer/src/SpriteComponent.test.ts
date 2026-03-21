@@ -118,6 +118,27 @@ describe("SpriteComponent", () => {
     expect(layerContainer.children).toContain(comp.sprite);
   });
 
+  it("setTexture replaces the sprite texture via string", () => {
+    const comp = new SpriteComponent({ texture: {} as never });
+    comp.setTexture("new-texture");
+    // Sprite.from is called for the new texture
+    expect(mocks.MockSprite.from).toHaveBeenCalledWith("new-texture");
+  });
+
+  it("tint setter updates sprite tint", () => {
+    const comp = new SpriteComponent({ texture: {} as never });
+    comp.tint = 0x00ff00;
+    expect(comp.sprite.tint).toBe(0x00ff00);
+    expect(comp.tint).toBe(0x00ff00);
+  });
+
+  it("alpha setter updates sprite alpha", () => {
+    const comp = new SpriteComponent({ texture: {} as never });
+    comp.alpha = 0.3;
+    expect(comp.sprite.alpha).toBe(0.3);
+    expect(comp.alpha).toBe(0.3);
+  });
+
   it("onDestroy removes sprite from parent and destroys it", () => {
     const { scene } = createRendererTestContext();
     const entity = spawnEntityInScene(scene);

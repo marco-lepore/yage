@@ -639,9 +639,14 @@ export abstract class Scene {
   /** Spawn a new entity in this scene. */
   spawn(name?: string): Entity;
 
-  /** Spawn a new entity from a blueprint template. */
+  /** Spawn a new entity from a blueprint template (deprecated). */
   spawn<P>(blueprint: Blueprint<P>, params: P): Entity;
   spawn(blueprint: Blueprint<void>): Entity;
+
+  /** Spawn an entity subclass with setup params. */
+  spawn<E extends Entity, P>(Class: new () => E & { setup(params: P): void }, params: P): E;
+  /** Spawn an entity subclass without setup params. */
+  spawn<E extends Entity>(Class: new () => E): E;
 
   /** Destroy an entity. Deferred to endOfFrame. */
   destroyEntity(entity: Entity): void;
@@ -755,9 +760,9 @@ export class Sequence {
 }
 ```
 
-### 2.13 Blueprint
+### 2.13 Blueprint (deprecated)
 
-Reusable entity templates defined as build callbacks.
+Reusable entity templates defined as build callbacks. Prefer entity subclasses with `setup()` and traits for new code.
 
 ```typescript
 export interface Blueprint<P = void> {
@@ -784,7 +789,68 @@ const EnemyBlueprint = defineBlueprint<{ hp: number }>(
 );
 ```
 
-### 2.14 ErrorBoundary
+### 2.14 Trait System
+
+Traits declare discoverable, type-safe entity capabilities. The `@trait()` decorator enforces at compile time that the decorated Entity subclass implements all trait members. Traits are queryable at runtime via `hasTrait()`.
+
+```typescript
+/** Symbol key for storing trait set on class statics. */
+export const TRAITS_KEY: unique symbol;
+
+/** Phantom-typed token representing a trait. */
+export class TraitToken<T> {
+  readonly name: string;
+  readonly symbol: symbol;
+  declare readonly _type: T;
+}
+
+/** Create a typed trait token. */
+export function defineTrait<T>(name: string): TraitToken<T>;
+
+/** Class decorator that registers a trait on an Entity subclass.
+ *  The type constraint enforces that the class implements all trait members. */
+export function trait<Trait>(token: TraitToken<Trait>):
+  <T extends new (...args: any[]) => Entity & Trait>(target: T, context: ClassDecoratorContext) => T;
+
+// Parent traits are inherited by subclasses via prototype chain walk.
+```
+
+**Entity integration**:
+
+```typescript
+// Entity gains hasTrait() — a type guard
+class Entity {
+  hasTrait<T>(token: TraitToken<T>): this is this & T;
+  setup?(params: unknown): void;  // optional lifecycle, called by spawn after scene wiring
+}
+```
+
+**Usage**:
+
+```typescript
+const Interactable = defineTrait<{ interact(): void; priority: number }>(
+  "Interactable",
+);
+
+@trait(Interactable)
+class LightEntity extends Entity {
+  priority = 4;
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+  interact() { /* toggle light */ }
+}
+
+// Spawning — params typed from setup()
+const light = scene.spawn(LightEntity, { x: 100, y: 200 });
+
+// Runtime discovery
+if (entity.hasTrait(Interactable)) {
+  entity.interact(); // narrowed type
+}
+```
+
+### 2.15 ErrorBoundary
 
 Wraps system and component execution. On error, disables the offending component/system and logs the error. The game loop never crashes.
 
@@ -2091,58 +2157,79 @@ Each plugin that registers an asset loader also exports a factory function:
 | `sound(path)`    | `@yage/audio`    | `AssetHandle<Sound>`       |
 | `tiledMap(path)` | `@yage/tilemap`  | `AssetHandle<TilemapData>` |
 
-### 7.6 Blueprint System (`@yage/core`)
+### 7.6 Entity Subclasses & Traits (`@yage/core`)
 
-Blueprints are a lightweight alternative to Prefab for parametric entity factories. Where Prefab is a static declarative template, Blueprint accepts typed parameters and supports post-construction logic.
+Entities support two usage styles, and both can coexist in the same project:
+
+- **Data containers (ECS-style)**: Use entities as plain ID + component bags. Systems or other actors query and manipulate components directly. Best for bulk processing (physics bodies, particles, tiles).
+- **Game object API layer**: Use entity subclasses with methods that internally interact with components, exposing a clean public API. Add `@trait()` for shared behaviors that are discoverable at runtime. Best for gameplay objects with rich interactions (NPCs, items, doors).
+
+Entity subclasses with `setup()` are the primary way to define entity types. Traits add discoverable capabilities. Blueprints are deprecated but still supported.
+
+**Entity subclass with traits**:
 
 ```typescript
-/** Blueprint interface for parametric entity factories. */
-export interface Blueprint<P = void> {
-  readonly name: string;
-  build(entity: Entity, params: P): void;
+const Damageable = defineTrait<{ damage(amount: number): void }>(
+  "Damageable",
+);
+
+@trait(Damageable)
+class Enemy extends Entity {
+  setup({ hp, speed }: { hp: number; speed: number }) {
+    this.add(new Transform());
+    this.add(new RigidBodyComponent({ type: "dynamic" }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 16 } }));
+    this.add(new HealthComponent(hp));
+
+    const gfx = this.add(new GraphicsComponent());
+    gfx.draw((g) => g.circle(0, 0, 16).fill(0xff0000));
+  }
+
+  damage(amount: number) {
+    this.get(HealthComponent).hp -= amount;
+  }
 }
 
-/** Create a reusable blueprint. */
-export function defineBlueprint<P = void>(
-  name: string,
-  build: (entity: Entity, params: P) => void,
-): Blueprint<P>;
+// Usage in a scene
+const enemy = scene.spawn(Enemy, { hp: 50, speed: 100 });
+
+// Generic trait-based interaction
+for (const entity of scene.getEntities()) {
+  if (entity.hasTrait(Damageable)) {
+    entity.damage(10); // type-safe
+  }
+}
 ```
 
-**When to use**:
-
-- **Blueprint**: Parametric factories where shared parameters feed multiple components, post-construction methods (`.draw()`, `.onCollision()`) are needed, or runtime-computed closures reference entity instances.
-- **Prefab**: Truly static entity templates with fixed component configurations.
+**Entity subclass without traits** (for entities that don't need runtime discovery):
 
 ```typescript
-// Example: parametric enemy blueprint
+class Wall extends Entity {
+  setup({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new ColliderComponent({ shape: { type: "box", width: w, height: h } }));
+  }
+}
+
+const wall = scene.spawn(Wall, { x: 0, y: 0, w: 100, h: 10 });
+```
+
+**Why `setup()` instead of constructor**: `scene.spawn(Class, params)` creates the entity, wires it to the scene, emits `entity:created`, then calls `setup(params)`. This ensures `onAdd` hooks and service resolution work inside `setup()`.
+
+### 7.6.1 Blueprint System (deprecated)
+
+Blueprints still work but entity subclasses are preferred for new code.
+
+```typescript
 const EnemyBlueprint = defineBlueprint<{ hp: number; speed: number }>(
   "enemy",
   (entity, { hp, speed }) => {
     entity.add(new Transform());
-    entity.add(new RigidBodyComponent({ type: "dynamic" }));
-    entity.add(
-      new ColliderComponent({
-        shape: { type: "circle", radius: 16 },
-      }),
-    );
     entity.add(new HealthComponent(hp));
-
-    const gfx = entity.add(new GraphicsComponent());
-    gfx.draw((g) => g.circle(0, 0, 16).fill(0xff0000));
-
-    // Post-construction logic using closures
-    entity.get(ColliderComponent).onCollision((event) => {
-      if (event.started && event.other.tags.has("projectile")) {
-        entity.get(HealthComponent).damage(10);
-      }
-    });
   },
 );
 
-// Usage in a scene
-const enemy = scene.spawn("goblin");
-EnemyBlueprint.build(enemy, { hp: 50, speed: 100 });
+const enemy = scene.spawn(EnemyBlueprint, { hp: 50, speed: 100 });
 ```
 
 ### 7.7 Entity Events (`@yage/core`)
@@ -2816,7 +2903,7 @@ Key design decisions and their rationale.
 | 23  | **Massive physics boilerplate** -- 12+ lines for a physics sprite | 4 lines: `add(Transform)`, `add(RigidBodyComponent)`, `add(ColliderComponent)`, `add(SpriteComponent)`. No `pu()`, no raw Rapier types.            |
 | 24  | **Physics is mandatory even when unused**                         | Physics is in `@yage/physics`. If you don't install it, no WASM download, no physics world. Core has zero physics knowledge.                       |
 | 25  | **InputComponent requires `Map` instead of plain object**         | Action maps are plain objects: `{ jump: ['Space', 'KeyW'] }`.                                                                                      |
-| 26  | **Constructor-only initialization** -- no declarative composition | `defineBlueprint()` + `scene.spawn(blueprint, params)` for declarative, parametric entity templates. `scene.spawn().add()` chain for simple cases. |
+| 26  | **Constructor-only initialization** -- no declarative composition | Entity subclasses with `setup()` + `scene.spawn(Class, params)`. Traits for discoverable capabilities. Blueprints deprecated. |
 | 27  | **Verbose generics with no payoff**                               | No gratuitous generics. `Scene` is not generic. `Entity` is not generic. Components use concrete types.                                            |
 | 28  | **Inconsistent Scene state initialization**                       | `Scene` has no generic state parameter. Scene-specific state is stored as regular class properties.                                                |
 | 29  | **No example discovery or runner**                                | Examples have a shared dev server with URL routing (`/examples/bouncing-ball`, `/examples/platformer`, etc.). Index page lists all examples.       |
@@ -2828,7 +2915,7 @@ Key design decisions and their rationale.
 | --- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | 31  | **No collision layers/masks**         | `CollisionLayers` with named layer definitions and bitmask API. `ColliderComponent` accepts `layers` and `mask` config.   |
 | 32  | **No debug rendering**                | `@yage/debug` plugin renders physics shapes, entity labels, FPS, entity count, and system timing as a toggleable overlay. |
-| 33  | **No prefab or template system**      | `Blueprint` templates via `defineBlueprint()` and `scene.spawn(blueprint, params)`.                                       |
+| 33  | **No prefab or template system**      | Entity subclasses with `setup()` and `scene.spawn(Class, params)`. Traits for discoverable capabilities. Blueprints still supported but deprecated. |
 | 34  | **No UI layout system**               | `@yage/ui` plugin with flex-inspired layout, anchoring, text, buttons, and panels.                                        |
 | 35  | **No screen shake or camera effects** | `Camera.shake()`, `Camera.zoomTo()`, `Camera.follow()` with deadzone and smoothing.                                       |
 | 36  | **No entity lifecycle events**        | `EventBus` emits `entity:created`, `entity:destroyed`, `component:added`, `component:removed`.                            |

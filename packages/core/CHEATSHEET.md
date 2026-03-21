@@ -239,6 +239,11 @@ class DisplaySyncSystem extends System {
 
 ## Entities
 
+Entities support two usage styles, and you can mix both in the same project:
+
+- **Data containers (ECS-style)**: Use entities as plain ID + component bags. Systems or other actors query and manipulate components directly. Good for bulk processing (physics bodies, particles, tiles).
+- **Game object API layer**: Use entity subclasses with methods that internally interact with components, exposing a clean public API. Add `@trait()` for shared behaviors that are discoverable at runtime. Good for gameplay objects with rich interactions (NPCs, items, doors).
+
 ```typescript
 // Spawn from a scene
 const entity = scene.spawn("player");
@@ -371,6 +376,86 @@ enemies.toArray();  // snapshot as array (allocates)
 
 ## Processes, Tweens & Sequences
 
+### ProcessComponent (entity-level timing)
+
+Add a `ProcessComponent` to any entity that needs timers, tweens, or cooldowns. Ticked automatically by `ProcessSystem` each frame (game-time aware — respects pause and timeScale).
+
+```typescript
+import { ProcessComponent, Process, Tween } from "@yage/core";
+
+// Add to entity
+entity.add(new ProcessComponent());
+const pc = entity.get(ProcessComponent);
+
+// --- Slots: reusable, restartable process handles ---
+// Slots start in `completed` state. Call start() to activate.
+const shootCd = pc.slot({ duration: 300 });
+const flash = pc.slot({
+  duration: 100,
+  cleanup: () => { sprite.tint = 0xffffff; },  // runs on complete, cancel, OR restart
+});
+const shake = pc.slot({
+  duration: 150,
+  update: (dt, elapsed) => {
+    sprite.position.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+  },
+  cleanup: () => sprite.position.set(0, 0),
+});
+
+// Use slots
+if (shootCd.completed) { shootCd.start(); /* fire bullet */ }
+flash.restart();                           // cleanup + cancel + start
+shake.restart({ duration: 200 });          // override config for this run
+shootCd.completed;                         // true when not running
+shootCd.elapsed;                           // ms since start
+shootCd.ratio;                             // 0..1 (elapsed / duration)
+shootCd.pause();
+shootCd.resume();
+shootCd.cancel();                          // calls cleanup if running
+
+// --- One-off processes: fire-and-forget ---
+pc.run(Process.delay(500, () => entity.destroy()));
+pc.run(Tween.to(sprite, "alpha", 0, 300));
+pc.run(myProcess, { tags: ["vfx"] });      // tag for cancel-by-tag
+
+// Cancel
+pc.cancel("vfx");                          // cancel slots and one-offs with tag
+pc.cancel();                               // cancel everything
+```
+
+Slots are created in `onAdd()` (the sibling ProcessComponent must be resolved):
+
+```typescript
+class PlayerController extends Component {
+  private pc = this.sibling(ProcessComponent);
+  private shootCd!: ProcessSlot;
+
+  onAdd(): void {
+    this.shootCd = this.pc.slot({ duration: 300 });
+  }
+
+  shoot(): void {
+    if (!this.shootCd.completed) return;
+    this.shootCd.start();
+    // spawn bullet...
+  }
+}
+```
+
+### TimerEntity (scene-level timing)
+
+Pre-built entity that exposes the ProcessComponent API directly. Use for scene-level orchestration instead of `setTimeout`.
+
+```typescript
+import { TimerEntity, Process } from "@yage/core";
+
+// In a Scene:
+const timers = this.spawn(TimerEntity);
+timers.run(Process.delay(500, () => { controller.inputEnabled = true; }));
+timers.slot({ duration: 1000 });
+timers.cancel();
+```
+
 ### Process (low-level coroutine)
 
 ```typescript
@@ -430,12 +515,80 @@ const seq = new Sequence()
     Tween.to(obj, "x", 0, 500),
     Tween.to(obj, "alpha", 0, 500, easeOutQuad),
   )
+  .loop()                                       // loop indefinitely
   .start();                                     // returns a Process
+
+// Or repeat a fixed number of times:
+new Sequence().call(() => flash()).wait(100).repeat(3).start();
 ```
 
 ---
 
-## Blueprints
+## Entity Subclasses (recommended)
+
+The preferred way to define entity types. Use `setup()` instead of the constructor — it runs after the entity is wired to its scene, so components can access services.
+
+### With traits (discoverable capabilities)
+
+```typescript
+import { Entity, defineTrait, trait, Transform, Vec2 } from "@yage/core";
+
+// Define a trait (reusable across entity types)
+const Interactable = defineTrait<{ interact(): void; priority: number }>(
+  "Interactable",
+);
+
+// @trait() enforces that the class implements all trait members at compile time
+@trait(Interactable)
+class LightEntity extends Entity {
+  priority = 4;
+
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+  }
+
+  interact() {
+    // toggle light
+  }
+}
+
+// Spawn — params are typed from setup()
+const light = scene.spawn(LightEntity, { x: 100, y: 200 });
+
+// Runtime trait check (type guard)
+if (entity.hasTrait(Interactable)) {
+  entity.interact(); // correctly typed
+}
+```
+
+### Without traits (custom logic, not discoverable)
+
+```typescript
+class Wall extends Entity {
+  setup({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new ColliderComponent({ shape: { type: "box", width: w, height: h } }));
+  }
+}
+
+const wall = scene.spawn(Wall, { x: 0, y: 0, w: 100, h: 10 });
+```
+
+### Why `setup()` instead of constructor?
+
+When `scene.spawn(Class, params)` runs, it:
+1. Creates the entity (`new Class()`)
+2. Wires it to the scene (`_setScene`)
+3. Emits `entity:created`
+4. Calls `setup(params)` — scene is available, so `onAdd` hooks and service resolution work
+
+If you put component setup in the constructor, the entity isn't wired to a scene yet and service resolution will fail.
+
+---
+
+## Blueprints (deprecated)
+
+Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
 import { defineBlueprint, Transform } from "@yage/core";
@@ -628,13 +781,13 @@ describe("Movement integration", () => {
 });
 ```
 
-### Testing Processes and Tweens
+### Testing Processes, Slots, and Tweens
 
-Processes are updated manually via `_update(dt)` — no game loop needed:
+Processes are updated manually via `_update(dt)` — no game loop needed. ProcessSlot uses `_tick(dt)`:
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { Process, Tween, Sequence, easeLinear } from "@yage/core";
+import { Process, Tween, Sequence, ProcessSlot, easeLinear } from "@yage/core";
 
 describe("Tween", () => {
   it("tweens a value over duration", () => {
@@ -647,6 +800,27 @@ describe("Tween", () => {
     proc._update(500);  // done
     expect(obj.x).toBeCloseTo(100);
     expect(proc.completed).toBe(true);
+  });
+});
+
+describe("ProcessSlot", () => {
+  it("acts as a cooldown timer", () => {
+    const slot = new ProcessSlot({ duration: 300 });
+    expect(slot.completed).toBe(true);   // starts completed (ready)
+
+    slot.start();
+    expect(slot.completed).toBe(false);
+
+    slot._tick(300);
+    expect(slot.completed).toBe(true);   // cooldown done
+  });
+
+  it("calls cleanup on cancel and restart", () => {
+    const cleanup = vi.fn();
+    const slot = new ProcessSlot({ duration: 100, cleanup });
+    slot.start();
+    slot.restart();              // cleanup called, then restarted
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 });
 
@@ -702,6 +876,7 @@ describe("FooPlugin", () => {
 - Use `createTestEngine` + `advanceFrames` for integration tests involving the game loop
 - Call `engine.destroy()` at the end of every integration test to clean up
 - Process and Tween tests use `_update(dt)` for direct control — no game loop needed
+- ProcessSlot tests use `_tick(dt)` for direct control
 - Sequences use `_build()` in tests instead of `start()` for direct control
 - Entity IDs auto-reset between tests via the test utilities (they call `_resetEntityIdCounter`)
 - The ErrorBoundary catches all component/system errors — test that crashing components get `enabled = false`

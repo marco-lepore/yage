@@ -148,6 +148,45 @@ describe("Process", () => {
     expect(elapsed[elapsed.length - 1]).toBeCloseTo(58);
   });
 
+  it("_reset() restores process to initial state", () => {
+    const update = vi.fn();
+    const proc = new Process({ duration: 100, update });
+    proc._update(100); // completes
+    expect(proc.completed).toBe(true);
+
+    proc._reset();
+    expect(proc.completed).toBe(false);
+    expect(proc.paused).toBe(false);
+
+    // Can run again
+    update.mockClear();
+    proc._update(50);
+    expect(update).toHaveBeenCalled();
+    expect(proc.completed).toBe(false);
+    proc._update(50);
+    expect(proc.completed).toBe(true);
+  });
+
+  it("_reset() clears cancelled state", () => {
+    const update = vi.fn();
+    const proc = new Process({ update });
+    proc.cancel();
+    expect(proc.completed).toBe(true);
+
+    proc._reset();
+    proc._update(16);
+    expect(update).toHaveBeenCalled();
+  });
+
+  it("_reset() clears paused state", () => {
+    const update = vi.fn();
+    const proc = new Process({ update });
+    proc.pause();
+    proc._reset();
+    proc._update(16);
+    expect(update).toHaveBeenCalled();
+  });
+
   it("stores tags", () => {
     const proc = new Process({
       update: () => {},

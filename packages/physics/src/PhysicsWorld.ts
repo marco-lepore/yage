@@ -138,6 +138,9 @@ export class PhysicsWorld {
     if (config.ccd) {
       desc.setCcdEnabled(true);
     }
+    if (config.lockTranslationX || config.lockTranslationY) {
+      desc.enabledTranslations(!config.lockTranslationX, !config.lockTranslationY);
+    }
 
     const body = this.world.createRigidBody(desc);
     this.bodyMap.set(body.handle, entity);
@@ -262,6 +265,23 @@ export class PhysicsWorld {
       normal: new Vec2(result.normal.x, result.normal.y),
       distance: this.toPixels(result.timeOfImpact),
     };
+  }
+
+  /** Return all entities whose colliders currently overlap the given collider. */
+  queryOverlapping(colliderHandle: number): Entity[] {
+    const collider = this.getCollider(colliderHandle);
+    if (!collider) return [];
+    const result: Entity[] = [];
+    const seen = new Set<Entity>();
+    this.world.intersectionPairsWith(collider, (other) => {
+      const entity = this.colliderMap.get(other.handle);
+      if (entity && !seen.has(entity)) {
+        seen.add(entity);
+        result.push(entity);
+      }
+      return true; // continue iteration
+    });
+    return result;
   }
 
   /** Destroy the physics world and free resources. */

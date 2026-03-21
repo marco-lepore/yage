@@ -20,11 +20,11 @@ export class TilemapRenderSystem extends System {
       const tilemap = entity.get(TilemapComponent);
       if (!tilemap.enabled) continue;
 
-      tilemap.container.position.x = transform.position.x;
-      tilemap.container.position.y = transform.position.y;
-      tilemap.container.rotation = transform.rotation;
-      tilemap.container.scale.x = transform.scale.x;
-      tilemap.container.scale.y = transform.scale.y;
+      tilemap.container.position.x = transform.worldPosition.x;
+      tilemap.container.position.y = transform.worldPosition.y;
+      tilemap.container.rotation = transform.worldRotation;
+      tilemap.container.scale.x = transform.worldScale.x;
+      tilemap.container.scale.y = transform.worldScale.y;
     }
   }
 }
