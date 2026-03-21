@@ -283,8 +283,6 @@ class PlayerController extends Component {
   private flash!: ProcessSlot;
   private squash!: ProcessSlot;
 
-  private overlappingEnemies = new Set<import("@yage/core").Entity>();
-
   private static readonly SPEED = 220;
   private static readonly JUMP_VELOCITY = 505;
   private static readonly COYOTE_MS = 100;
@@ -303,11 +301,10 @@ class PlayerController extends Component {
       duration: 500,
       cleanup: () => {
         // Re-check: still touching an enemy?
-        for (const enemy of this.overlappingEnemies) {
-          if (enemy.scene) {
-            this.tryDamageFrom(enemy);
-            break;
-          }
+        const collider = this.entity.get(ColliderComponent);
+        const enemies = collider.getOverlapping({ tags: ["enemy"] });
+        if (enemies[0]) {
+          this.tryDamageFrom(enemies[0]);
         }
       },
     });
@@ -335,12 +332,8 @@ class PlayerController extends Component {
     // Handle contact damage from enemies
     const collider = this.entity.get(ColliderComponent);
     collider.onCollision((ev) => {
-      if (!ev.other.tags.has("enemy")) return;
-      if (ev.started) {
-        this.overlappingEnemies.add(ev.other);
+      if (ev.started && ev.other.tags.has("enemy")) {
         this.tryDamageFrom(ev.other);
-      } else {
-        this.overlappingEnemies.delete(ev.other);
       }
     });
   }
