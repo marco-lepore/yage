@@ -17,6 +17,11 @@ export { GraphicsComponent } from "./GraphicsComponent.js";
 export type { GraphicsComponentOptions } from "./GraphicsComponent.js";
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 export type { AnimatedSpriteComponentOptions } from "./AnimatedSpriteComponent.js";
+export { AnimationController } from "./AnimationController.js";
+export type { AnimationDef } from "./AnimationController.js";
+
+// Spritesheet utilities
+export { sliceSheet } from "./spritesheet.js";
 
 // Camera
 export { Camera } from "./Camera.js";
