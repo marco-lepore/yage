@@ -1,4 +1,4 @@
-import { Scene, Component, Transform, Vec2, ProcessComponent, Process } from "@yage/core";
+import { Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yage/core";
 import {
   GraphicsComponent,
   CameraKey,
@@ -138,16 +138,21 @@ class CameraScene extends Scene {
       );
       const amplitude = rng(3, 12);
       const freq = rng(0.001, 0.004);
+      const period = (2 * Math.PI) / freq;
       const origin = new Vec2(x, y);
       const transform = e.get(Transform);
       const pc = e.add(new ProcessComponent());
-      pc.run(new Process({
-        update: (_dt, elapsed) => {
-          transform.setPosition(
-            origin.x,
-            origin.y + Math.sin(elapsed * freq) * amplitude,
-          );
-        },
+      pc.run(createKeyframeTrack({
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: period / 4, data: -amplitude },
+          { time: period / 2, data: 0 },
+          { time: period * 3 / 4, data: amplitude },
+          { time: period, data: 0 },
+        ],
+        setter: (offsetY) => transform.setPosition(origin.x, origin.y + offsetY),
+        loop: true,
+        easing: easeInOutQuad,
       }));
     }
 
