@@ -85,6 +85,15 @@ export {
 
 export { Tween } from "./Tween.js";
 
+export { interpolate } from "./interpolate.js";
+export type { Interpolatable } from "./interpolate.js";
+
+export { createKeyframeTrack } from "./KeyframeTrack.js";
+export type { Keyframe, KeyframeTrackOptions } from "./KeyframeTrack.js";
+
+export { KeyframeAnimator } from "./KeyframeAnimator.js";
+export type { KeyframeAnimationDef } from "./KeyframeAnimator.js";
+
 export { Sequence } from "./Sequence.js";
 
 export { ProcessComponent } from "./ProcessComponent.js";
