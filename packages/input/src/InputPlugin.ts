@@ -34,6 +34,10 @@ export class InputPlugin implements Plugin {
       this.manager.setActionMap(this.config.actions);
     }
 
+    if (this.config.groups) {
+      this.manager.setGroups(this.config.groups);
+    }
+
     if (this.config.cameraKey) {
       const camera = context.tryResolve(this.config.cameraKey);
       if (camera) {
