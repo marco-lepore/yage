@@ -12,6 +12,7 @@ const RendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>("renderer");
 const CameraKey = new ServiceKey<{
   screenToWorld(sx: number, sy: number): { x: number; y: number };
 }>("camera");
+import { DebugRegistryKey } from "@yage/debug/api";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
 import { InputManager } from "./InputManager.js";
@@ -243,5 +244,134 @@ describe("InputPlugin", () => {
     const pos = manager.getPointerScreenPosition();
     expect(pos.x).toBe(33);
     expect(pos.y).toBe(44);
+  });
+
+  it("passes groups config to InputManager", () => {
+    context = createContext();
+    plugin = new InputPlugin({
+      actions: { jump: ["Space"], fire: ["MouseLeft"] },
+      groups: { movement: ["jump"], combat: ["fire"] },
+    });
+    plugin.install(context);
+
+    const manager = context.resolve(InputManagerKey);
+    expect(manager.getGroups()).toEqual(["movement", "combat"]);
+    expect(manager.getGroupActions("movement")).toEqual(["jump"]);
+  });
+
+  it("works without groups config", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+    plugin.install(context);
+
+    const manager = context.resolve(InputManagerKey);
+    expect(manager.getGroups()).toEqual([]);
+  });
+
+  it("handles pointercancel events", () => {
+    context = createContext();
+    plugin = new InputPlugin({
+      actions: { fire: ["MouseLeft"] },
+    });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    expect(manager.isPointerDown()).toBe(true);
+
+    window.dispatchEvent(new PointerEvent("pointercancel"));
+    expect(manager.isPointerDown()).toBe(false);
+  });
+
+  it("maps mouse middle and right buttons", () => {
+    context = createContext();
+    plugin = new InputPlugin({
+      actions: {
+        middleClick: ["MouseMiddle"],
+        rightClick: ["MouseRight"],
+      },
+    });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 1 }));
+    expect(manager.isPressed("middleClick")).toBe(true);
+    window.dispatchEvent(new PointerEvent("pointerup", { button: 1 }));
+
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 2 }));
+    expect(manager.isPressed("rightClick")).toBe(true);
+    window.dispatchEvent(new PointerEvent("pointerup", { button: 2 }));
+  });
+
+  it("calls preventDefault on keyup for configured keys", () => {
+    context = createContext();
+    plugin = new InputPlugin({
+      preventDefaultKeys: ["Space"],
+    });
+    plugin.install(context);
+
+    const event = new KeyboardEvent("keyup", {
+      code: "Space",
+      cancelable: true,
+    });
+    const spy = vi.spyOn(event, "preventDefault");
+    window.dispatchEvent(event);
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it("ignores cameraKey when camera is not registered", () => {
+    context = createContext();
+    // cameraKey provided but camera not registered in context
+    plugin = new InputPlugin({ cameraKey: CameraKey });
+
+    expect(() => plugin.install(context)).not.toThrow();
+
+    const manager = context.resolve(InputManagerKey);
+    // Pointer should still work (screen coords only)
+    manager._onPointerMove(10, 20);
+    const pos = manager.getPointerPosition();
+    expect(pos.x).toBe(10);
+    expect(pos.y).toBe(20);
+  });
+
+  it("ignores unmapped mouse buttons on pointerdown and pointerup", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    // Button 3 (back button) is not in MOUSE_BUTTON_MAP
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 3 }));
+    expect(manager.isPointerDown()).toBe(true);
+    // No crash, no phantom key mapped
+
+    window.dispatchEvent(new PointerEvent("pointerup", { button: 3 }));
+    expect(manager.isPointerDown()).toBe(false);
+  });
+
+  it("onStart registers debug contributor when debug registry is available", () => {
+    context = createContext();
+    const mockRegister = vi.fn();
+    context.register(DebugRegistryKey, {
+      register: mockRegister,
+      isEnabled: () => true,
+      isFlagEnabled: () => true,
+    });
+    plugin = new InputPlugin({ actions: { jump: ["Space"] } });
+    plugin.install(context);
+    plugin.onStart();
+
+    expect(mockRegister).toHaveBeenCalledTimes(1);
+    const firstCall = mockRegister.mock.calls[0];
+    expect(firstCall).toBeDefined();
+    expect(firstCall?.[0]).toHaveProperty("name", "input");
+  });
+
+  it("onStart does not crash when debug registry is not available", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+
+    expect(() => plugin.onStart()).not.toThrow();
   });
 });

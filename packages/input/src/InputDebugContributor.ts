@@ -40,5 +40,13 @@ export class InputDebugContributor implements DebugContributor {
 
     const label = pressed.length > 0 ? pressed.join(", ") : "(none)";
     api.addLine(`Input: ${label}`);
+
+    const groups = this.manager.getGroups();
+    if (groups.length > 0) {
+      const disabled = groups.filter((g) => !this.manager.isGroupEnabled(g));
+      if (disabled.length > 0) {
+        api.addLine(`Disabled groups: ${disabled.join(", ")}`);
+      }
+    }
   }
 }

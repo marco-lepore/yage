@@ -21,6 +21,8 @@ export interface InputConfig {
   target?: HTMLElement;
   /** Action map: action name -> array of physical key codes. */
   actions?: ActionMapDefinition;
+  /** Input groups: group name -> array of action names belonging to it. */
+  groups?: Record<string, string[]>;
   /** Key codes to call preventDefault() on (default: none). */
   preventDefaultKeys?: string[];
   /** Service key for the camera (enables pointer world-coordinate conversion). */
@@ -31,3 +33,22 @@ export interface InputConfig {
 
 /** Maps action names to arrays of physical key codes. */
 export type ActionMapDefinition = Record<string, string[]>;
+
+/** How to handle a conflict when rebinding a key already used by another action in the same group. */
+export type InputConflictPolicy = "replace" | "keep-both" | "reject";
+
+/** Options for {@link InputManager.rebind}. */
+export interface RebindOptions {
+  /** Index of the binding slot to replace. Appends if the slot does not exist. */
+  slot?: number;
+  /** How to resolve conflicts with other actions in the same group(s). Default: `"reject"`. */
+  conflict?: InputConflictPolicy;
+}
+
+/** Result of a {@link InputManager.rebind} call. */
+export interface RebindResult {
+  /** Whether the rebind succeeded. */
+  ok: boolean;
+  /** Present when `ok` is false due to a conflict with `conflict: "reject"`. */
+  conflict?: { action: string; key: string };
+}
