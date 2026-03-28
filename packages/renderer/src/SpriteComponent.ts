@@ -1,4 +1,4 @@
-import { Component } from "@yage/core";
+import { Component, serializable } from "@yage/core";
 import { Sprite } from "pixi.js";
 import type { Texture } from "pixi.js";
 import { RenderLayerManagerKey } from "./types.js";
@@ -19,15 +19,28 @@ export interface SpriteComponentOptions {
   alpha?: number;
 }
 
+/** Serialisable snapshot of a SpriteComponent. */
+export interface SpriteData {
+  textureKey: string | null;
+  layer: string;
+  tint?: number;
+  alpha?: number;
+  anchor?: { x: number; y: number };
+  visible?: boolean;
+}
+
 /** Component that displays a PixiJS Sprite. */
+@serializable
 export class SpriteComponent extends Component {
   readonly sprite: Sprite;
   readonly layerName: string;
+  private _textureKey: string | null;
 
   constructor(options: SpriteComponentOptions) {
     super();
     this.sprite = Sprite.from(options.texture as Texture);
     this.layerName = options.layer ?? "default";
+    this._textureKey = typeof options.texture === "string" ? options.texture : null;
 
     if (options.anchor) {
       this.sprite.anchor.set(options.anchor.x, options.anchor.y);
@@ -45,9 +58,42 @@ export class SpriteComponent extends Component {
 
   /** Replace the sprite's texture. Accepts a texture key string or Texture object. */
   setTexture(texture: Texture | string): void {
+    this._textureKey = typeof texture === "string" ? texture : null;
     this.sprite.texture = typeof texture === "string"
       ? Sprite.from(texture).texture
       : texture;
+  }
+
+  /** Serialise to a plain object for save/load. */
+  serialize(): SpriteData | null {
+    if (!this._textureKey) {
+      console.warn(
+        `SpriteComponent on "${this.entity?.name}": created with a Texture object, not a string key. ` +
+          `It will not be saved. Use a string texture key for save/load support.`,
+      );
+      return null;
+    }
+    return {
+      textureKey: this._textureKey,
+      layer: this.layerName,
+      tint: this.sprite.tint,
+      alpha: this.sprite.alpha,
+      anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
+      visible: this.sprite.visible,
+    };
+  }
+
+  /** Create a SpriteComponent from a serialised snapshot. */
+  static fromSnapshot(data: SpriteData): SpriteComponent {
+    const opts: SpriteComponentOptions = {
+      texture: data.textureKey ?? "",
+      layer: data.layer,
+    };
+    if (data.tint !== undefined) opts.tint = data.tint;
+    if (data.alpha !== undefined) opts.alpha = data.alpha;
+    if (data.anchor) opts.anchor = data.anchor;
+    if (data.visible !== undefined) opts.visible = data.visible;
+    return new SpriteComponent(opts);
   }
 
   /** Set the sprite's tint color. */

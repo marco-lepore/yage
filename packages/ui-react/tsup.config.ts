@@ -7,5 +7,6 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   keepNames: true,
+  target: "es2022",
   external: ["react", "react-reconciler"],
 });

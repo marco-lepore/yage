@@ -157,4 +157,10 @@ export abstract class Component {
 
   /** Called every fixed timestep by the built-in ComponentUpdateSystem. */
   fixedUpdate?(dt: number): void;
+
+  /** Return a JSON-serializable snapshot of this component's state. Used by the save system. */
+  serialize?(): unknown;
+
+  /** Called after onAdd() during save/load restoration. Apply state that depends on onAdd() having run. */
+  afterRestore?(data: unknown): void;
 }

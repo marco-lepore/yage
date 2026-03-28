@@ -17,8 +17,10 @@ export { CollisionLayers } from "./CollisionLayers.js";
 export { PhysicsWorld } from "./PhysicsWorld.js";
 
 export { RigidBodyComponent } from "./RigidBodyComponent.js";
+export type { RigidBodyData } from "./RigidBodyComponent.js";
 
 export { ColliderComponent } from "./ColliderComponent.js";
+export type { ColliderData } from "./ColliderComponent.js";
 
 export { PhysicsSystem } from "./PhysicsSystem.js";
 

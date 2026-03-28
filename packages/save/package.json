@@ -1,5 +1,5 @@
 {
-  "name": "yage",
+  "name": "@yage/save",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -27,15 +27,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*",
-    "@yage/renderer": "*",
-    "@yage/physics": "*",
-    "@yage/input": "*",
-    "@yage/audio": "*",
-    "@yage/particles": "*",
-    "@yage/tilemap": "*",
-    "@yage/ui": "*",
-    "@yage/debug": "*",
-    "@yage/save": "*"
+    "@yage/core": "*"
   }
 }

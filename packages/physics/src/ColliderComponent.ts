@@ -1,15 +1,21 @@
-import { Component, filterEntities } from "@yage/core";
+import { Component, filterEntities, serializable } from "@yage/core";
 import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { ColliderConfig, CollisionEvent, TriggerEvent } from "./types.js";
 
+/** Serialized snapshot of a ColliderComponent. */
+export interface ColliderData {
+  config: ColliderConfig;
+}
+
 /**
  * Wraps a Rapier collider. Attach after RigidBodyComponent.
  *
  * Component ordering: Transform → RigidBodyComponent → ColliderComponent.
  */
+@serializable
 export class ColliderComponent extends Component {
   /** Collider configuration (shape, sensor, etc.). */
   readonly config: ColliderConfig;
@@ -85,6 +91,16 @@ export class ColliderComponent extends Component {
     if (collider) {
       collider.setSensor(sensor);
     }
+  }
+
+  /** Serialize the component into a plain data object. */
+  serialize(): ColliderData {
+    return { config: this.config };
+  }
+
+  /** Create a ColliderComponent from a serialized snapshot. */
+  static fromSnapshot(data: ColliderData): ColliderComponent {
+    return new ColliderComponent(data.config);
   }
 
   /**

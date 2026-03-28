@@ -1,4 +1,4 @@
-import { Component } from "@yage/core";
+import { Component, serializable } from "@yage/core";
 import { Graphics } from "pixi.js";
 import { RenderLayerManagerKey } from "./types.js";
 
@@ -8,7 +8,13 @@ export interface GraphicsComponentOptions {
   layer?: string;
 }
 
+/** Serialisable snapshot of a GraphicsComponent. */
+export interface GraphicsData {
+  layer: string;
+}
+
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
+@serializable
 export class GraphicsComponent extends Component {
   readonly graphics: Graphics;
   readonly layerName: string;
@@ -23,6 +29,16 @@ export class GraphicsComponent extends Component {
   draw(fn: (g: Graphics) => void): this {
     fn(this.graphics);
     return this;
+  }
+
+  /** Serialise to a plain object for save/load. */
+  serialize(): GraphicsData {
+    return { layer: this.layerName };
+  }
+
+  /** Create a GraphicsComponent from a serialised snapshot. */
+  static fromSnapshot(data: GraphicsData): GraphicsComponent {
+    return new GraphicsComponent({ layer: data.layer });
   }
 
   onAdd(): void {

@@ -55,6 +55,11 @@ export class RenderLayerManager {
     return this.layers.get(name);
   }
 
+  /** Get an existing layer or create it if it doesn't exist. */
+  getOrCreate(name: string, order: number): RenderLayer {
+    return this.layers.get(name) ?? this.create(name, order);
+  }
+
   /** The default layer (order 0). */
   get defaultLayer(): RenderLayer {
     return this._defaultLayer;

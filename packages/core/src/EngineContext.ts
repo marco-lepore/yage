@@ -34,6 +34,11 @@ export class EngineContext {
     return this.services.get(key.id) as T | undefined;
   }
 
+  /** Remove a registered service. No-op if not registered. */
+  unregister<T>(key: ServiceKey<T>): void {
+    this.services.delete(key.id);
+  }
+
   /** Check if a service is registered. */
   has<T>(key: ServiceKey<T>): boolean {
     return this.services.has(key.id);

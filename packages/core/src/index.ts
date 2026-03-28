@@ -45,6 +45,13 @@ export { defineBlueprint } from "./Blueprint.js";
 export type { Blueprint } from "./Blueprint.js";
 
 export { TraitToken, defineTrait, trait } from "./Trait.js";
+export {
+  serializable,
+  SERIALIZABLE_KEY,
+  SerializableRegistry,
+  isSerializable,
+  getSerializableType,
+} from "./Serializable.js";
 
 export { filterEntities } from "./EntityFilter.js";
 export type { EntityFilter } from "./EntityFilter.js";
@@ -52,6 +59,7 @@ export type { EntityFilter } from "./EntityFilter.js";
 export { Component } from "./Component.js";
 
 export { Transform } from "./Transform.js";
+export type { TransformData } from "./Transform.js";
 
 export { Entity, _resetEntityIdCounter } from "./Entity.js";
 export type { EntityCallbacks } from "./Entity.js";
