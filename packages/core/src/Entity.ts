@@ -44,9 +44,9 @@ export class Entity {
   private _parent: Entity | null = null;
   private _children: Map<string, Entity> | null = null;
 
-  constructor(name: string = "Entity", tags?: Iterable<string>) {
+  constructor(name?: string, tags?: Iterable<string>) {
     this.id = nextEntityId++;
-    this.name = name;
+    this.name = name ?? new.target.name ?? "Entity";
     this.tags = new Set(tags);
   }
 

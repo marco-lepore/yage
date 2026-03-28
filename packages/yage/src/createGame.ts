@@ -12,6 +12,8 @@ import { PhysicsWorldKey } from "@yage/physics";
 import type { AudioManager } from "@yage/audio";
 import { AudioManagerKey } from "@yage/audio";
 import type { AssetManager } from "@yage/core";
+import type { SaveService } from "@yage/save";
+import { SaveServiceKey } from "@yage/save";
 
 // ---- Types ----
 
@@ -27,6 +29,8 @@ export interface SceneServices {
   physics?: PhysicsWorld;
   /** Audio manager (only if audio plugin registered). */
   audio?: AudioManager;
+  /** Save service (only if save plugin registered). */
+  saveService?: SaveService;
 }
 
 /** Callback for inline scene definition via `defineInlineScene()`. */
@@ -52,6 +56,7 @@ export interface CreateGameOptions {
   tilemap?: boolean;
   ui?: boolean;
   debug?: boolean | import("@yage/debug").DebugConfig;
+  save?: boolean | import("@yage/save").SavePluginOptions;
 
   // Escape hatches
   plugins?: Plugin[];
@@ -94,6 +99,8 @@ class InlineScene extends Scene {
     if (physics) services.physics = physics;
     const audio = this.context.tryResolve(AudioManagerKey);
     if (audio) services.audio = audio;
+    const saveService = this.context.tryResolve(SaveServiceKey);
+    if (saveService) services.saveService = saveService;
     this._setup(this, services);
   }
 }
@@ -173,6 +180,7 @@ export async function createGame(
     tilemap,
     ui,
     debug,
+    save,
     plugins: extraPlugins,
     engine: engineConfig,
     scene,
@@ -238,6 +246,14 @@ export async function createGame(
   if (ui) {
     const { UIPlugin } = await import("@yage/ui");
     engine.use(new UIPlugin());
+  }
+
+  // Save
+  if (save) {
+    const { SavePlugin } = await import("@yage/save");
+    engine.use(
+      new SavePlugin(typeof save === "object" ? save : undefined),
+    );
   }
 
   // Debug

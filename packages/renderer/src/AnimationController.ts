@@ -14,6 +14,12 @@ export interface AnimationDef {
   anchor?: { x: number; y: number };
 }
 
+/** Serialisable snapshot of an AnimationController. */
+export interface AnimationControllerData {
+  current: string;
+  speed: number;
+}
+
 /**
  * High-level animation controller that manages named animations on top of
  * a sibling {@link AnimatedSpriteComponent}.
@@ -116,11 +122,25 @@ export class AnimationController<
     return f >= start && f <= end;
   }
 
-  /** Auto-play the first defined animation. */
+  /**
+   * Serialise runtime state for save/load.
+   * Note: AnimationController has no static fromSnapshot() because animation
+   * defs contain Texture references which aren't serializable. Entities must
+   * reconstruct this component in their afterRestore() and can use this data
+   * to restore the current animation and speed.
+   */
+  serialize(): AnimationControllerData {
+    return { current: this._current as string, speed: this._speed };
+  }
+
+  /** Auto-play the first defined animation (respects prior restore). */
   onAdd(): void {
     const names = Object.keys(this._anims) as T[];
     if (names.length > 0) {
-      this._apply(names[0]!);
+      const target = (this._current && this._current in this._anims)
+        ? this._current as T
+        : names[0]!;
+      this._apply(target);
     }
   }
 

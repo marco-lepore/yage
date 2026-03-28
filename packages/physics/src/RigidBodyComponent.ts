@@ -1,14 +1,28 @@
-import { Component, Transform, Vec2 } from "@yage/core";
+import { Component, Transform, Vec2, serializable } from "@yage/core";
 import type { Vec2Like } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
+
+/** Serialized snapshot of a RigidBodyComponent. */
+export interface RigidBodyData {
+  type: BodyType;
+  syncRotation: boolean;
+  fixedRotation?: boolean;
+  linearDamping?: number;
+  angularDamping?: number;
+  gravityScale?: number;
+  ccd?: boolean;
+  velocity: { x: number; y: number };
+  angularVelocity: number;
+}
 
 /**
  * Wraps a Rapier rigid body. All public API values are in pixels.
  *
  * Component ordering: Transform must be added before RigidBodyComponent.
  */
+@serializable
 export class RigidBodyComponent extends Component {
   /** Body type (dynamic, static, kinematic). */
   readonly type: BodyType;
@@ -184,5 +198,43 @@ export class RigidBodyComponent extends Component {
     this._prevPosition = pos;
     this._currPosition = pos;
     this._teleported = true;
+  }
+
+  /** Serialize the component into a plain data object. */
+  serialize(): RigidBodyData {
+    const vel = this.getVelocity();
+    const data: RigidBodyData = {
+      type: this.type,
+      syncRotation: this.syncRotation,
+      velocity: { x: vel.x, y: vel.y },
+      angularVelocity: this.getAngularVelocity(),
+    };
+    if (this.config.fixedRotation !== undefined) data.fixedRotation = this.config.fixedRotation;
+    if (this.config.linearDamping !== undefined) data.linearDamping = this.config.linearDamping;
+    if (this.config.angularDamping !== undefined) data.angularDamping = this.config.angularDamping;
+    if (this.config.gravityScale !== undefined) data.gravityScale = this.config.gravityScale;
+    if (this.config.ccd !== undefined) data.ccd = this.config.ccd;
+    return data;
+  }
+
+  /** Create a RigidBodyComponent from a serialized snapshot. */
+  static fromSnapshot(data: RigidBodyData): RigidBodyComponent {
+    const config: RigidBodyConfig = {
+      type: data.type,
+      syncRotation: data.syncRotation,
+    };
+    if (data.fixedRotation !== undefined) config.fixedRotation = data.fixedRotation;
+    if (data.linearDamping !== undefined) config.linearDamping = data.linearDamping;
+    if (data.angularDamping !== undefined) config.angularDamping = data.angularDamping;
+    if (data.gravityScale !== undefined) config.gravityScale = data.gravityScale;
+    if (data.ccd !== undefined) config.ccd = data.ccd;
+    return new RigidBodyComponent(config);
+  }
+
+  /** Restore runtime state (velocities) after the Rapier body has been created. */
+  afterRestore(data: unknown): void {
+    const d = data as RigidBodyData;
+    this.setVelocity(d.velocity);
+    this.setAngularVelocity(d.angularVelocity);
   }
 }

@@ -17,6 +17,7 @@ export default defineConfig({
       input: {
         "inspector-scene": resolve(__dirname, "inspector-scene.html"),
         "physics-bounce": resolve(__dirname, "physics-bounce.html"),
+        "save-load": resolve(__dirname, "save-load.html"),
       },
     },
   },

@@ -68,6 +68,30 @@ describe("EngineContext", () => {
     expect(key.id).toBe("myService");
   });
 
+  it("unregister removes a registered service", () => {
+    const ctx = new EngineContext();
+    const key = new ServiceKey<string>("test");
+    ctx.register(key, "hello");
+    ctx.unregister(key);
+    expect(ctx.has(key)).toBe(false);
+    expect(ctx.tryResolve(key)).toBeUndefined();
+  });
+
+  it("unregister is a no-op for unregistered key", () => {
+    const ctx = new EngineContext();
+    const key = new ServiceKey<string>("missing");
+    expect(() => ctx.unregister(key)).not.toThrow();
+  });
+
+  it("can re-register after unregister", () => {
+    const ctx = new EngineContext();
+    const key = new ServiceKey<string>("test");
+    ctx.register(key, "first");
+    ctx.unregister(key);
+    ctx.register(key, "second");
+    expect(ctx.resolve(key)).toBe("second");
+  });
+
   it("well-known keys exist with correct ids", () => {
     expect(EngineKey.id).toBe("engine");
     expect(EventBusKey.id).toBe("eventBus");
