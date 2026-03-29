@@ -1,25 +1,48 @@
-import { Component } from "@yage/core";
+import { Component, serializable } from "@yage/core";
 import { AnimatedSprite } from "pixi.js";
 import type { Texture } from "pixi.js";
 import { RenderLayerManagerKey } from "./types.js";
+import { resolveFrames } from "./spritesheet.js";
+import type { FrameSource } from "./spritesheet.js";
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions {
-  /** Array of textures for the animation frames. */
-  textures: Texture[];
+  /** Serializable frame source (sprite strip or atlas). */
+  source?: FrameSource;
+  /** Raw texture array (not serializable, backward compat). */
+  textures?: Texture[];
   /** Render layer name. Default: "default". */
   layer?: string;
 }
 
+/** Serializable snapshot of an AnimatedSpriteComponent. */
+export interface AnimatedSpriteData {
+  source: FrameSource;
+  layer: string;
+}
+
 /** Component that displays a PixiJS AnimatedSprite. */
+@serializable
 export class AnimatedSpriteComponent extends Component {
   readonly animatedSprite: AnimatedSprite;
   readonly layerName: string;
+  private readonly _source: FrameSource | null;
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super();
-    this.animatedSprite = new AnimatedSprite(options.textures);
     this.layerName = options.layer ?? "default";
+
+    if (options.source) {
+      this._source = options.source;
+      this.animatedSprite = new AnimatedSprite(resolveFrames(options.source));
+    } else if (options.textures) {
+      this._source = null;
+      this.animatedSprite = new AnimatedSprite(options.textures);
+    } else {
+      throw new Error(
+        "AnimatedSpriteComponent requires either `source` or `textures`.",
+      );
+    }
   }
 
   /** Play the animation. */
@@ -50,13 +73,19 @@ export class AnimatedSpriteComponent extends Component {
     return this.animatedSprite.playing;
   }
 
-  /**
-   * Serialise to a plain object for save/load.
-   * Returns only the layer name — textures are not serializable.
-   * Entities must reconstruct this component in their afterRestore().
-   */
-  serialize(): { layer: string } {
-    return { layer: this.layerName };
+  serialize(): AnimatedSpriteData | null {
+    if (!this._source) {
+      console.warn(
+        `AnimatedSpriteComponent on "${this.entity?.name}": created with raw textures. ` +
+          `Use { source } for save/load support.`,
+      );
+      return null;
+    }
+    return { source: this._source, layer: this.layerName };
+  }
+
+  static fromSnapshot(data: AnimatedSpriteData): AnimatedSpriteComponent {
+    return new AnimatedSpriteComponent(data);
   }
 
   onAdd(): void {

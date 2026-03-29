@@ -67,10 +67,34 @@ const { mocks } = vi.hoisted(() => {
   return { mocks: { MockContainer, MockAnimatedSprite } };
 });
 
-vi.mock("pixi.js", () => ({
-  Container: mocks.MockContainer,
-  AnimatedSprite: mocks.MockAnimatedSprite,
-}));
+vi.mock("pixi.js", () => {
+  class MockTexture {
+    source = { scaleMode: "nearest" };
+    width: number;
+    height: number;
+    constructor(opts?: { source?: unknown; frame?: { width: number; height: number } }) {
+      this.width = opts?.frame?.width ?? 96;
+      this.height = opts?.frame?.height ?? 48;
+    }
+    static from(key: string): MockTexture {
+      const t = new MockTexture();
+      (t as unknown as Record<string, unknown>).label = key;
+      t.width = 96;
+      t.height = 48;
+      return t;
+    }
+  }
+  class MockRectangle {
+    constructor(public x: number, public y: number, public width: number, public height: number) {}
+  }
+  return {
+    Container: mocks.MockContainer,
+    AnimatedSprite: mocks.MockAnimatedSprite,
+    Texture: MockTexture,
+    Rectangle: MockRectangle,
+    Assets: { get: () => undefined },
+  };
+});
 
 import { Transform } from "@yage/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
@@ -161,5 +185,44 @@ describe("AnimatedSpriteComponent", () => {
     comp.onDestroy?.();
     expect(anim.parent).toBeNull();
     expect(anim.destroyed).toBe(true);
+  });
+
+  describe("serialization", () => {
+    it("construction with StripFrameSource resolves frames via sliceSheet", () => {
+      const comp = new AnimatedSpriteComponent({
+        source: { sheet: "player.png", frameWidth: 48 },
+      });
+      // sliceSheet(player.png, 48) → mock texture width=96 / 48 = 2 frames
+      expect(comp.animatedSprite.textures).toHaveLength(2);
+    });
+
+    it("serialize returns source + layer when constructed with source", () => {
+      const source = { sheet: "player.png", frameWidth: 48 };
+      const comp = new AnimatedSpriteComponent({ source, layer: "fg" });
+      expect(comp.serialize()).toEqual({ source, layer: "fg" });
+    });
+
+    it("serialize returns null with warning when constructed with raw textures", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const comp = new AnimatedSpriteComponent({ textures });
+      expect(comp.serialize()).toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
+      warnSpy.mockRestore();
+    });
+
+    it("fromSnapshot round-trips", () => {
+      const source = { sheet: "player.png", frameWidth: 48 };
+      const original = new AnimatedSpriteComponent({ source, layer: "bg" });
+      const data = original.serialize()!;
+      const restored = AnimatedSpriteComponent.fromSnapshot(data);
+      expect(restored.layerName).toBe("bg");
+      expect(restored.serialize()).toEqual(data);
+    });
+
+    it("throws when neither source nor textures provided", () => {
+      expect(() => new AnimatedSpriteComponent({} as never)).toThrow(
+        /requires either/,
+      );
+    });
   });
 });

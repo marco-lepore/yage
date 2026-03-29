@@ -1,16 +1,44 @@
-import { Component } from "@yage/core";
+import { Component, serializable } from "@yage/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import type { Texture } from "pixi.js";
+import { resolveFrames } from "./spritesheet.js";
+import type { FrameSource } from "./spritesheet.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
-  /** Array of frame textures. */
-  frames: Texture[];
+  /** Serializable frame source (sprite strip or atlas). */
+  source?: FrameSource;
+  /** Raw frame textures (not serializable). Resolved from source if omitted. */
+  frames?: Texture[];
   /** PixiJS animationSpeed value (e.g. 0.15). */
   speed: number;
   /** Whether the animation loops. Default: true. */
   loop?: boolean;
   /** Per-animation anchor override. */
+  anchor?: { x: number; y: number };
+}
+
+/** Serializable snapshot of an AnimationController. */
+export interface AnimationControllerData {
+  animations: Record<
+    string,
+    {
+      source: FrameSource;
+      speed: number;
+      loop?: boolean;
+      anchor?: { x: number; y: number };
+    }
+  >;
+  current: string;
+  speed: number;
+}
+
+// Internal: AnimationDef with frames guaranteed resolved.
+interface ResolvedAnimDef {
+  source?: FrameSource;
+  frames: Texture[];
+  speed: number;
+  loop?: boolean;
   anchor?: { x: number; y: number };
 }
 
@@ -21,11 +49,13 @@ export interface AnimationDef {
  * Provides one-shot locking, per-animation anchors, and type-safe animation
  * names via the generic parameter.
  */
+@serializable
 export class AnimationController<
   T extends string = string,
 > extends Component {
-  private readonly _anims: Record<T, AnimationDef>;
+  private readonly _anims: Record<T, ResolvedAnimDef>;
   private readonly _sprite = this.sibling(AnimatedSpriteComponent);
+  private readonly _serializable: boolean;
 
   private _current: T | "" = "";
   private _locked = false;
@@ -36,7 +66,36 @@ export class AnimationController<
 
   constructor(animations: Record<T, AnimationDef>) {
     super();
-    this._anims = animations;
+
+    let allHaveSource = true;
+    const resolved = {} as Record<T, ResolvedAnimDef>;
+
+    for (const name of Object.keys(animations) as T[]) {
+      const def = animations[name];
+      let frames: Texture[];
+
+      if (def.source && !def.frames) {
+        frames = resolveFrames(def.source);
+      } else if (def.frames) {
+        frames = def.frames;
+        allHaveSource = false; // raw frames used — not serializable even if source is also set
+      } else {
+        throw new Error(
+          `AnimationDef "${name}" requires either \`source\` or \`frames\`.`,
+        );
+      }
+
+      resolved[name] = {
+        frames,
+        speed: def.speed,
+        ...(def.source && { source: def.source }),
+        ...(def.loop != null && { loop: def.loop }),
+        ...(def.anchor && { anchor: def.anchor }),
+      };
+    }
+
+    this._anims = resolved;
+    this._serializable = allHaveSource;
   }
 
   /** Currently playing animation name, or "" if none. */
@@ -116,15 +175,41 @@ export class AnimationController<
     return f >= start && f <= end;
   }
 
-  /**
-   * Serialise runtime state for save/load.
-   * Returns the current animation name and speed — animation defs contain
-   * Texture references which are not serializable. Entities must reconstruct
-   * this component in their afterRestore() and can use this data to restore
-   * the current animation and speed.
-   */
-  serialize(): { current: string; speed: number } {
-    return { current: this._current, speed: this._speed };
+  serialize(): AnimationControllerData | null {
+    if (!this._serializable) {
+      console.warn(
+        `AnimationController on "${this.entity?.name}": some animation defs use raw frames. ` +
+          `Use { source } on all defs for save/load support.`,
+      );
+      return null;
+    }
+    const animations: AnimationControllerData["animations"] = {};
+    for (const [name, def] of Object.entries<ResolvedAnimDef>(this._anims)) {
+      if (!def.source) continue; // guarded by _serializable check above
+      animations[name] = {
+        source: def.source,
+        speed: def.speed,
+        ...(def.loop != null && { loop: def.loop }),
+        ...(def.anchor && { anchor: def.anchor }),
+      };
+    }
+    return { animations, current: this._current, speed: this._speed };
+  }
+
+  static fromSnapshot(data: AnimationControllerData): AnimationController {
+    const anims: Record<string, AnimationDef> = {};
+    for (const [name, def] of Object.entries(data.animations)) {
+      anims[name] = {
+        source: def.source,
+        speed: def.speed,
+        ...(def.loop != null && { loop: def.loop }),
+        ...(def.anchor && { anchor: def.anchor }),
+      };
+    }
+    const ctrl = new AnimationController(anims);
+    ctrl._current = data.current;
+    ctrl._speed = data.speed;
+    return ctrl;
   }
 
   /** Auto-play the first defined animation (respects prior restore). */

@@ -102,6 +102,7 @@ vi.mock("pixi.js", () => ({
   Particle: mocks.MockParticle,
   ParticleContainer: mocks.MockParticleContainer,
   Container: mocks.MockContainer,
+  Texture: { from: (key: string) => ({ label: key }) },
 }));
 
 import { Transform } from "@yage/core";
@@ -357,6 +358,58 @@ describe("ParticleEmitterComponent", () => {
       emitter.onDestroy?.();
       const container = emitter.container as unknown as InstanceType<typeof mocks.MockParticleContainer>;
       expect(container.destroyed).toBe(true);
+    });
+  });
+
+  describe("serialization", () => {
+    it("serialize returns null with warning when using raw texture", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const emitter = createEmitter();
+      expect(emitter.serialize()).toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
+      warnSpy.mockRestore();
+    });
+
+    it("serialize returns full config when using textureKey", () => {
+      const emitter = new ParticleEmitterComponent({
+        textureKey: "particle.png",
+        lifetime: [0.4, 0.8],
+        speed: [80, 160],
+        rate: 40,
+        tint: 0xff6600,
+      });
+      const data = emitter.serialize()!;
+      expect(data).not.toBeNull();
+      expect(data.textureKey).toBe("particle.png");
+      expect(data.lifetime).toEqual([0.4, 0.8]);
+      expect(data.speed).toEqual([80, 160]);
+      expect(data.rate).toBe(40);
+      expect(data.tint).toBe(0xff6600);
+    });
+
+    it("fromSnapshot round-trips config", () => {
+      const original = new ParticleEmitterComponent({
+        textureKey: "spark.png",
+        lifetime: 1,
+        speed: [50, 100],
+        angle: [-1, 1],
+        scale: { start: [0.5, 1.0], end: 0.1 },
+        alpha: { start: 1, end: 0 },
+        gravity: { x: 0, y: 300 },
+        tint: 0xffcc00,
+        damping: 0.2,
+        rate: 30,
+        maxParticles: 150,
+      });
+      const data = original.serialize()!;
+      const restored = ParticleEmitterComponent.fromSnapshot(data);
+      expect(restored.serialize()).toEqual(data);
+    });
+
+    it("throws when neither texture nor textureKey provided", () => {
+      expect(
+        () => new ParticleEmitterComponent({ lifetime: 1 } as never),
+      ).toThrow(/requires either/);
     });
   });
 });

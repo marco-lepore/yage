@@ -17,6 +17,7 @@ export type {
   ChannelConfig,
   AudioPlayOptions,
   SoundComponentOptions,
+  SoundData,
 } from "./types.js";
 
 // Asset factories

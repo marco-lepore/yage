@@ -1,12 +1,20 @@
 import type { Texture } from "pixi.js";
 import type { EmitterConfig } from "./types.js";
 
+function textureFields(
+  textureOrKey: Texture | string,
+): Pick<EmitterConfig, "texture" | "textureKey"> {
+  return typeof textureOrKey === "string"
+    ? { textureKey: textureOrKey }
+    : { texture: textureOrKey };
+}
+
 /** Preset emitter configurations. */
 export const ParticlePresets = {
   /** Upward fire effect with fading and shrinking. */
-  fire(texture: Texture): EmitterConfig {
+  fire(textureOrKey: Texture | string): EmitterConfig {
     return {
-      texture,
+      ...textureFields(textureOrKey),
       maxParticles: 200,
       rate: 40,
       lifetime: [0.4, 0.8],
@@ -20,9 +28,9 @@ export const ParticlePresets = {
   },
 
   /** Slow-rising smoke effect. */
-  smoke(texture: Texture): EmitterConfig {
+  smoke(textureOrKey: Texture | string): EmitterConfig {
     return {
-      texture,
+      ...textureFields(textureOrKey),
       maxParticles: 100,
       rate: 15,
       lifetime: [1.0, 2.0],
@@ -37,9 +45,9 @@ export const ParticlePresets = {
   },
 
   /** Fast directional sparks. */
-  sparks(texture: Texture): EmitterConfig {
+  sparks(textureOrKey: Texture | string): EmitterConfig {
     return {
-      texture,
+      ...textureFields(textureOrKey),
       maxParticles: 150,
       rate: 30,
       lifetime: [0.2, 0.5],
@@ -54,9 +62,9 @@ export const ParticlePresets = {
   },
 
   /** Downward rain drops. */
-  rain(texture: Texture): EmitterConfig {
+  rain(textureOrKey: Texture | string): EmitterConfig {
     return {
-      texture,
+      ...textureFields(textureOrKey),
       maxParticles: 300,
       rate: 80,
       lifetime: [0.5, 1.0],
