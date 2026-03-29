@@ -18,6 +18,7 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 | `@yage/ui` | Yoga flexbox-based UI components |
 | `@yage/ui-react` | React reconciler over the UI layer |
 | `@yage/debug` | Debug overlay, stats, world/HUD drawing |
+| `@yage/save` | Save/load system with slot-based snapshots |
 | `yage` | Meta-package: re-exports all + `createGame()` factory |
 
 ## Design Philosophy
@@ -50,6 +51,7 @@ Enforced by tooling — match these conventions exactly:
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
 - **`defineBlueprint()` for entity factories** — parametric and composable. Use `Prefab` only for truly static templates.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
+- **`@serializable` for save/load** — decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()` for auto-restore. Components with non-serializable state (Textures, Graphics) use `FrameSource` or `textureKey` string alternatives; when raw objects are used, `serialize()` returns `null` and the entity handles reconstruction in `afterRestore()`.
 
 ## Testing
 
