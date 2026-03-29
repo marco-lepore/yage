@@ -69,7 +69,7 @@ export class UIRoot extends Component {
       { value: this.context },
       createElement(
         SceneCtx.Provider,
-        { value: this.entity.scene! },
+        { value: this.scene },
         element,
       ),
     );

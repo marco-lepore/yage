@@ -1,5 +1,3 @@
-import type { Entity } from "@yage/core";
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type UntypedSlots = Record<string, any>;
 
@@ -10,25 +8,6 @@ export interface SaveStorage {
   delete(key: string): void;
   /** Return all keys, optionally filtered to those starting with `prefix`. */
   list(prefix?: string): string[];
-}
-
-/**
- * Passed to `afterRestore` hooks so user code can resolve entity references
- * that were captured as IDs at save time.
- *
- * ```ts
- * // In serialize():
- * serialize() { return { targetId: this.target.id }; }
- *
- * // In afterRestore():
- * afterRestore(data: { targetId: number }, resolve: SnapshotResolver) {
- *   this.target = resolve.entity(data.targetId)!;
- * }
- * ```
- */
-export interface SnapshotResolver {
-  /** Resolve a save-time entity ID to the restored entity instance. Returns null if not found. */
-  entity(savedId: number): Entity | null;
 }
 
 /** Complete snapshot of the game state. */

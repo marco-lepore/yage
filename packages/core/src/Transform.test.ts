@@ -101,6 +101,33 @@ describe("Transform", () => {
       expect(t.scale.y).toBe(1);
     });
   });
+
+  describe("serialize / fromSnapshot", () => {
+    it("round-trips position, rotation, scale", () => {
+      const t = new Transform({
+        position: { x: 42, y: 99 },
+        rotation: 1.5,
+        scale: { x: 2, y: 3 },
+      });
+      const data = t.serialize();
+      const restored = Transform.fromSnapshot(data);
+      expect(restored.position.x).toBe(42);
+      expect(restored.position.y).toBe(99);
+      expect(restored.rotation).toBe(1.5);
+      expect(restored.scale.x).toBe(2);
+      expect(restored.scale.y).toBe(3);
+    });
+
+    it("round-trips default values", () => {
+      const t = new Transform();
+      const restored = Transform.fromSnapshot(t.serialize());
+      expect(restored.position.x).toBe(0);
+      expect(restored.position.y).toBe(0);
+      expect(restored.rotation).toBe(0);
+      expect(restored.scale.x).toBe(1);
+      expect(restored.scale.y).toBe(1);
+    });
+  });
 });
 
 describe("Transform dirty-flag propagation", () => {

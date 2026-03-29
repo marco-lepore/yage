@@ -17,11 +17,19 @@ describe("Component", () => {
     expect(c.enabled).toBe(false);
   });
 
+  it("scene getter throws when entity has no scene", () => {
+    const c = new TestComponent();
+    c.entity = { scene: null } as never;
+    expect(() => c.scene).toThrow(
+      "Cannot access scene: entity is not attached to a scene.",
+    );
+  });
+
   it("context getter throws when entity has no scene", () => {
     const c = new TestComponent();
     c.entity = { scene: null } as never;
     expect(() => c.context).toThrow(
-      "Cannot access context: entity is not attached to a scene.",
+      "Cannot access scene: entity is not attached to a scene.",
     );
   });
 

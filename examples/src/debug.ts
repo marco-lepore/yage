@@ -6,7 +6,6 @@ import {
   ColliderComponent,
 } from "@yage/physics";
 import { InputPlugin, InputManagerKey } from "@yage/input";
-import type { InputManager } from "@yage/input";
 import { DebugPlugin } from "@yage/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
@@ -20,16 +19,12 @@ const WALL = 20;
 // ShapeSpawner — auto-spawns shapes, Space to burst, F for impulse
 // ---------------------------------------------------------------------------
 class ShapeSpawner extends Component {
-  private input!: InputManager;
+  private readonly input = this.service(InputManagerKey);
   private shapeCount = 0;
   private spawnTimer = 0;
 
-  onAdd(): void {
-    this.input = this.use(InputManagerKey);
-  }
-
   update(dt: number): void {
-    const scene = this.entity.scene!;
+    const scene = this.scene;
 
     // Auto-spawn a shape every 500ms (up to 50)
     this.spawnTimer += dt;
@@ -98,10 +93,10 @@ class ShapeSpawner extends Component {
 // ---------------------------------------------------------------------------
 class DebugDemoScene extends Scene {
   readonly name = "debug-demo";
+  private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
+    this.camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
 
     // Spawner entity
     const ctrl = this.spawn("spawner");

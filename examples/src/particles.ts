@@ -46,17 +46,19 @@ const PRESET_FACTORIES: Record<
 // ---------------------------------------------------------------------------
 class ParticleController extends Component {
   private readonly input = this.service(InputManagerKey);
-  scene!: ParticlesScene;
+  private readonly transform = this.sibling(Transform);
+  private readonly emitter = this.sibling(ParticleEmitterComponent);
+  private particlesScene!: ParticlesScene;
 
   onAdd(): void {
-    this.scene = this.entity.scene as ParticlesScene;
+    this.particlesScene = this.scene as ParticlesScene;
   }
 
   update(): void {
     const pos = this.input.getPointerPosition();
-    this.entity.get(Transform).setPosition(pos.x, pos.y);
+    this.transform.setPosition(pos.x, pos.y);
 
-    const emitter = this.entity.get(ParticleEmitterComponent);
+    const emitter = this.emitter;
 
     // Hold click → continuous emit
     if (this.input.isPointerDown()) {
@@ -73,7 +75,7 @@ class ParticleController extends Component {
     // 1-4 → switch preset
     for (const [action, preset] of Object.entries(PRESET_ACTIONS)) {
       if (this.input.isJustPressed(action)) {
-        this.scene.switchPreset(preset);
+        this.particlesScene.switchPreset(preset);
         break;
       }
     }
@@ -83,6 +85,13 @@ class ParticleController extends Component {
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
+const PRESET_COLORS: Record<PresetName, number> = {
+  fire: 0xff6600,
+  smoke: 0x888888,
+  sparks: 0xffcc00,
+  rain: 0xaaccff,
+};
+
 class ParticlesScene extends Scene {
   readonly name = "particles";
 
@@ -144,17 +153,11 @@ class ParticlesScene extends Scene {
 
   private spawnPresetBar(): void {
     const presets: PresetName[] = ["fire", "smoke", "sparks", "rain"];
-    const colors: Record<PresetName, number> = {
-      fire: 0xff6600,
-      smoke: 0x888888,
-      sparks: 0xffcc00,
-      rain: 0xaaccff,
-    };
     const startX = 400 - (presets.length - 1) * 30;
 
     for (let i = 0; i < presets.length; i++) {
       const name = presets[i]!;
-      const color = colors[name];
+      const color = PRESET_COLORS[name];
       const x = startX + i * 60;
       const entity = this.spawn(`preset-${name}`);
       entity.add(new Transform({ position: new Vec2(x, 570) }));
@@ -182,16 +185,10 @@ class ParticlesScene extends Scene {
   }
 
   private updatePresetBar(prev: PresetName, next: PresetName): void {
-    const colors: Record<PresetName, number> = {
-      fire: 0xff6600,
-      smoke: 0x888888,
-      sparks: 0xffcc00,
-      rain: 0xaaccff,
-    };
     const prevComp = this.presetIndicators.get(prev);
-    if (prevComp) this.drawPresetDot(prevComp, colors[prev], false);
+    if (prevComp) this.drawPresetDot(prevComp, PRESET_COLORS[prev], false);
     const nextComp = this.presetIndicators.get(next);
-    if (nextComp) this.drawPresetDot(nextComp, colors[next], true);
+    if (nextComp) this.drawPresetDot(nextComp, PRESET_COLORS[next], true);
   }
 }
 
@@ -200,10 +197,11 @@ class ParticlesScene extends Scene {
 // ---------------------------------------------------------------------------
 class CrosshairFollow extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
 
   update(): void {
     const pos = this.input.getPointerPosition();
-    this.entity.get(Transform).setPosition(pos.x, pos.y);
+    this.transform.setPosition(pos.x, pos.y);
   }
 }
 
@@ -221,8 +219,8 @@ await createGame({
       preset_rain: ["Digit4"],
     },
     preventDefaultKeys: ["Space"],
-    cameraKey: CameraKey as never,
-    rendererKey: RendererKey as never,
+    cameraKey: CameraKey,
+    rendererKey: RendererKey,
   },
   particles: true,
   debug: true,

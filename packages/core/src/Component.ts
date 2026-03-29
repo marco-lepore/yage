@@ -2,6 +2,7 @@ import type { EngineContext, ServiceKey } from "./EngineContext.js";
 import type { Entity } from "./Entity.js";
 import type { EventToken } from "./EventToken.js";
 import type { ComponentClass } from "./types.js";
+import type { SnapshotResolver } from "./Serializable.js";
 
 /**
  * Base class for all components.
@@ -24,17 +25,25 @@ export abstract class Component {
   private _cleanups?: Array<() => void>;
 
   /**
+   * Access the entity's scene. Throws if the entity is not in a scene.
+   * Prefer this over `this.entity.scene!` in component methods.
+   */
+  get scene(): import("./Scene.js").Scene {
+    const scene = this.entity.scene;
+    if (!scene) {
+      throw new Error(
+        "Cannot access scene: entity is not attached to a scene.",
+      );
+    }
+    return scene;
+  }
+
+  /**
    * Access the EngineContext from the entity's scene.
    * Throws if the entity is not in a scene.
    */
   get context(): EngineContext {
-    const scene = this.entity.scene;
-    if (!scene) {
-      throw new Error(
-        "Cannot access context: entity is not attached to a scene.",
-      );
-    }
-    return scene.context;
+    return this.scene.context;
   }
 
   /** Resolve a service by key, cached after first lookup. */
@@ -113,13 +122,7 @@ export abstract class Component {
     token: EventToken<T>,
     handler: (data: T, entity: Entity) => void,
   ): void {
-    const scene = this.entity.scene;
-    if (!scene) {
-      throw new Error(
-        "Cannot listenScene: entity is not attached to a scene.",
-      );
-    }
-    const unsub = scene.on(token, handler);
+    const unsub = this.scene.on(token, handler);
     this.addCleanup(unsub);
   }
 
@@ -162,5 +165,5 @@ export abstract class Component {
   serialize?(): unknown;
 
   /** Called after onAdd() during save/load restoration. Apply state that depends on onAdd() having run. */
-  afterRestore?(data: unknown): void;
+  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 }

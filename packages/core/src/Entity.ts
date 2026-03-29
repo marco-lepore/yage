@@ -1,6 +1,7 @@
 import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
+import type { SnapshotResolver } from "./Serializable.js";
 import { TRAITS_KEY, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 
@@ -262,6 +263,12 @@ export class Entity {
    * Override in subclasses — do NOT use the constructor for component setup.
    */
   setup?(params: unknown): void;
+
+  /** Return a JSON-serializable snapshot of this entity's custom state. Used by the save system. */
+  serialize?(): unknown;
+
+  /** Called after components are restored during save/load. Rebuild non-serializable state here. */
+  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 
   /** Check if this entity's class implements a given trait. Acts as a type guard. */
   hasTrait<T>(token: TraitToken<T>): this is this & T {

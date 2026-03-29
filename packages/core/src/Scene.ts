@@ -8,6 +8,7 @@ import type { EventToken } from "./EventToken.js";
 import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
 import type { ServiceKey } from "./EngineContext.js";
+import type { SnapshotResolver } from "./Serializable.js";
 import { filterEntities } from "./EntityFilter.js";
 import type { EntityFilter } from "./EntityFilter.js";
 import type { TraitToken } from "./Trait.js";
@@ -243,6 +244,12 @@ export abstract class Scene {
 
   /** Called when the scene above is popped, restoring this scene. */
   onResume?(): void;
+
+  /** Return a JSON-serializable snapshot of this scene's custom state. Used by the save system. */
+  serialize?(): unknown;
+
+  /** Called after entities are restored during save/load. Rebuild non-serializable state here. */
+  afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 
   // ---- Internal methods ----
 

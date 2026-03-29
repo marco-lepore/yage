@@ -131,6 +131,7 @@ class MovingPlatform extends Component {
   private period: number; // seconds for full cycle
   private elapsed = 0;
   private prevPos: Vec2;
+  private readonly transform = this.sibling(Transform);
 
   /** Platform velocity in px/s, readable by PlayerController. */
   velocity: Vec2 = Vec2.ZERO;
@@ -147,7 +148,7 @@ class MovingPlatform extends Component {
     this.elapsed += dt / 1000;
     const t = triangleWave(this.elapsed / this.period);
     const pos = this.startPos.lerp(this.endPos, t);
-    this.entity.get(Transform).setPosition(pos.x, pos.y);
+    this.transform.setPosition(pos.x, pos.y);
 
     const dtSec = dt / 1000;
     if (dtSec > 0) {
