@@ -19,7 +19,7 @@ import {
   serializable,
 } from "@yage/core";
 import type { EngineEvents } from "@yage/core";
-import type { SnapshotResolver } from "./types.js";
+import type { SnapshotResolver } from "@yage/core";
 import { MemoryStorage } from "./test-helpers.js";
 import { SaveService } from "./SaveService.js";
 import { SaveServiceKey } from "./keys.js";
@@ -227,6 +227,38 @@ describe("SaveService", () => {
       await expect(service.loadSnapshot("slot1")).rejects.toThrow(
         /version mismatch/,
       );
+    });
+
+    it("importSnapshot throws on version mismatch before writing to storage", async () => {
+      const { service, storage } = createTestContext();
+      const badSnapshot = {
+        version: 999,
+        timestamp: Date.now(),
+        scenes: [],
+      };
+
+      await expect(
+        service.importSnapshot("slot1", badSnapshot),
+      ).rejects.toThrow(/version mismatch/);
+
+      // Verify nothing was written to storage
+      expect(storage.load("yage:snapshot:slot1")).toBeNull();
+    });
+
+    it("concurrent loadSnapshot throws", async () => {
+      const { service, sceneManager } = createTestContext();
+      await sceneManager.push(new MockScene());
+      service.saveSnapshot("slot1");
+
+      // Start first load (don't await)
+      const first = service.loadSnapshot("slot1");
+
+      // Second load should throw while first is in progress
+      await expect(service.loadSnapshot("slot1")).rejects.toThrow(
+        /already in progress/,
+      );
+
+      await first;
     });
   });
 

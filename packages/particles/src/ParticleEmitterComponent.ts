@@ -93,11 +93,11 @@ export class ParticleEmitterComponent extends Component {
   onAdd(): void {
     const layers = this.use(RenderLayerManagerKey);
     const layer = layers.get(this.config.layer);
-    layer.container.addChild(this.container as never);
+    layer.container.addChild(this.container);
   }
 
   onDestroy(): void {
-    (this.container as unknown as { removeFromParent(): void }).removeFromParent();
+    (this.container).removeFromParent();
     this.container.destroy();
   }
 

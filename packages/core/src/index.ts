@@ -52,6 +52,7 @@ export {
   isSerializable,
   getSerializableType,
 } from "./Serializable.js";
+export type { SnapshotResolver } from "./Serializable.js";
 
 export { filterEntities } from "./EntityFilter.js";
 export type { EntityFilter } from "./EntityFilter.js";

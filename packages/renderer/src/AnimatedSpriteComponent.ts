@@ -11,11 +11,6 @@ export interface AnimatedSpriteComponentOptions {
   layer?: string;
 }
 
-/** Serialisable snapshot of an AnimatedSpriteComponent. */
-export interface AnimatedSpriteData {
-  layer: string;
-}
-
 /** Component that displays a PixiJS AnimatedSprite. */
 export class AnimatedSpriteComponent extends Component {
   readonly animatedSprite: AnimatedSprite;
@@ -57,10 +52,10 @@ export class AnimatedSpriteComponent extends Component {
 
   /**
    * Serialise to a plain object for save/load.
-   * Note: No static fromSnapshot() because textures aren't serializable.
+   * Returns only the layer name — textures are not serializable.
    * Entities must reconstruct this component in their afterRestore().
    */
-  serialize(): AnimatedSpriteData {
+  serialize(): { layer: string } {
     return { layer: this.layerName };
   }
 

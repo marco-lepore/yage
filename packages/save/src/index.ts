@@ -4,12 +4,12 @@ export { VERSION } from "@yage/core";
 export type {
   SaveStorage,
   UntypedSlots,
-  SnapshotResolver,
   GameSnapshot,
   SceneSnapshotEntry,
   EntitySnapshotEntry,
   ComponentSnapshot,
 } from "./types.js";
+export type { SnapshotResolver } from "@yage/core";
 
 // Storage
 export { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";

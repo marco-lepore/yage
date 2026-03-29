@@ -1,5 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- Constructor types require `any` for TS decorator compatibility */
 
+/**
+ * Passed to `afterRestore` hooks so user code can resolve entity references
+ * that were captured as IDs at save time.
+ */
+export interface SnapshotResolver {
+  /** Resolve a save-time entity ID to the restored entity instance. Returns null if not found. */
+  entity(savedId: number): import("./Entity.js").Entity | null;
+}
+
 /** Symbol stored on classes decorated with @serializable. Holds the type string. */
 export const SERIALIZABLE_KEY = Symbol("SERIALIZABLE");
 

@@ -113,9 +113,11 @@ const CameraCtrlBP = defineBlueprint("camera-ctrl", (entity) => {
 class TilemapScene extends Scene {
   readonly name = "tilemap";
   readonly preload = [DungeonMap];
+  private readonly layerMgr = this.service(RenderLayerManagerKey);
+  private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    const layerMgr = this.context.resolve(RenderLayerManagerKey);
+    const layerMgr = this.layerMgr;
     layerMgr.create("map", -10);
 
     // -- Tilemap entity --
@@ -133,7 +135,7 @@ class TilemapScene extends Scene {
     const startY = spawn?.y ?? mapH / 2;
 
     // -- Camera setup --
-    const camera = this.context.resolve(CameraKey);
+    const camera = this.camera;
     camera.position = new Vec2(startX, startY);
     camera.bounds = { minX: 0, minY: 0, maxX: mapW, maxY: mapH };
 

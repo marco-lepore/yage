@@ -14,12 +14,6 @@ export interface AnimationDef {
   anchor?: { x: number; y: number };
 }
 
-/** Serialisable snapshot of an AnimationController. */
-export interface AnimationControllerData {
-  current: string;
-  speed: number;
-}
-
 /**
  * High-level animation controller that manages named animations on top of
  * a sibling {@link AnimatedSpriteComponent}.
@@ -124,13 +118,13 @@ export class AnimationController<
 
   /**
    * Serialise runtime state for save/load.
-   * Note: AnimationController has no static fromSnapshot() because animation
-   * defs contain Texture references which aren't serializable. Entities must
-   * reconstruct this component in their afterRestore() and can use this data
-   * to restore the current animation and speed.
+   * Returns the current animation name and speed — animation defs contain
+   * Texture references which are not serializable. Entities must reconstruct
+   * this component in their afterRestore() and can use this data to restore
+   * the current animation and speed.
    */
-  serialize(): AnimationControllerData {
-    return { current: this._current as string, speed: this._speed };
+  serialize(): { current: string; speed: number } {
+    return { current: this._current, speed: this._speed };
   }
 
   /** Auto-play the first defined animation (respects prior restore). */

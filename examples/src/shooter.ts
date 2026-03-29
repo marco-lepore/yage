@@ -268,6 +268,7 @@ class PlayerController extends Component {
   private readonly sprite = this.sibling(AnimatedSpriteComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly collider = this.sibling(ColliderComponent);
   private readonly pc = this.sibling(ProcessComponent);
 
   private grounded = false;
@@ -301,8 +302,7 @@ class PlayerController extends Component {
       duration: 500,
       cleanup: () => {
         // Re-check: still touching an enemy?
-        const collider = this.entity.get(ColliderComponent);
-        const enemies = collider.getOverlapping({ tags: ["enemy"] });
+        const enemies = this.collider.getOverlapping({ tags: ["enemy"] });
         if (enemies[0]) {
           this.tryDamageFrom(enemies[0]);
         }
@@ -330,8 +330,7 @@ class PlayerController extends Component {
     };
 
     // Handle contact damage from enemies
-    const collider = this.entity.get(ColliderComponent);
-    collider.onCollision((ev) => {
+    this.collider.onCollision((ev) => {
       if (ev.started && ev.other.tags.has("enemy")) {
         this.tryDamageFrom(ev.other);
       }
@@ -511,8 +510,7 @@ class PlayerController extends Component {
   }
 
   private spawnBullet(): void {
-    const scene = this.entity.scene;
-    if (!scene) return;
+    const scene = this.scene;
     const pos = this.transform.position;
     const dir = this.facingRight ? 1 : -1;
     scene.spawn(BulletBP, { x: pos.x + dir * 18, y: pos.y - 6, dir });
@@ -540,6 +538,7 @@ class EnemyController extends Component {
   private readonly sprite = this.sibling(AnimatedSpriteComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly collider = this.sibling(ColliderComponent);
   private readonly pc = this.sibling(ProcessComponent);
 
   private hp = 3;
@@ -785,7 +784,7 @@ class EnemyController extends Component {
     // Stop blocking bullets and hurting the player
     this.entity.tags.delete("enemy");
     this.entity.tags.add("dead");
-    this.entity.get(ColliderComponent).setSensor(true);
+    this.collider.setSensor(true);
 
     this.pc.cancel(); // cancel all feedback processes
 

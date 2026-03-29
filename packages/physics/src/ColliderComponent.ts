@@ -23,6 +23,7 @@ export class ColliderComponent extends Component {
   /** @internal Rapier collider handle, set during onAdd. */
   _colliderHandle = -1;
 
+  private readonly rb = this.sibling(RigidBodyComponent);
   private physicsWorld!: PhysicsWorld;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
   private triggerHandlers: Array<(e: TriggerEvent) => void> = [];
@@ -34,11 +35,10 @@ export class ColliderComponent extends Component {
 
   onAdd(): void {
     this.physicsWorld = this.use(PhysicsWorldKey);
-    const rb = this.entity.get(RigidBodyComponent);
 
     this._colliderHandle = this.physicsWorld.createCollider(
       this.entity,
-      rb._bodyHandle,
+      this.rb._bodyHandle,
       this.config,
       this,
     );

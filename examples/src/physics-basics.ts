@@ -23,7 +23,7 @@ class InputController extends Component {
   private shapeCount = 0;
 
   update(): void {
-    const scene = this.entity.scene!;
+    const scene = this.scene;
 
     // Space — drop a random shape
     if (keys.has(" ")) {
@@ -108,10 +108,11 @@ class InputController extends Component {
 // ---------------------------------------------------------------------------
 class PhysicsBasicsScene extends Scene {
   readonly name = "physics-basics";
+  private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
     // Center camera on the arena
-    const camera = this.context.resolve(CameraKey);
+    const camera = this.camera;
     camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
 
     // Controller entity

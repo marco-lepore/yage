@@ -14,11 +14,12 @@ injectStyles();
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private speed = 0.25; // px per ms
+  private readonly transform = this.sibling(Transform);
   private readonly camera = this.service(CameraKey);
 
   onAdd(): void {
     // Smooth follow with a deadzone so camera doesn't jitter on tiny movements
-    this.camera.follow(this.entity.get(Transform), {
+    this.camera.follow(this.transform, {
       smoothing: 0.15,
       deadzone: { halfWidth: 40, halfHeight: 30 },
     });
@@ -26,7 +27,7 @@ class PlayerController extends Component {
   }
 
   update(dt: number): void {
-    const t = this.entity.get(Transform);
+    const t = this.transform;
     let dx = 0;
     let dy = 0;
     if (keys.has("w") || keys.has("arrowup")) dy -= 1;

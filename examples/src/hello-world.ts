@@ -9,13 +9,14 @@ injectStyles();
 // Spin — rotates an entity at a constant rate
 // ---------------------------------------------------------------------------
 class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
   private speed: number;
   constructor(speed = 0.002) {
     super();
     this.speed = speed;
   }
   update(dt: number): void {
-    this.entity.get(Transform).rotate(this.speed * dt);
+    this.transform.rotate(this.speed * dt);
   }
 }
 

@@ -288,8 +288,4 @@ describe("TilemapComponent", () => {
     expect(objects["wall"]).toBeDefined();
   });
 
-  it("mapData getter returns original TiledMapData", () => {
-    const comp = new TilemapComponent({ map: testMap });
-    expect(comp.mapData).toBe(testMap);
-  });
 });

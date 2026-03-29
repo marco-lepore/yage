@@ -45,6 +45,7 @@ export class RigidBodyComponent extends Component {
   _teleported = false;
 
   private readonly config: RigidBodyConfig;
+  private readonly transform = this.sibling(Transform);
   private physicsWorld!: PhysicsWorld;
 
   constructor(config: RigidBodyConfig) {
@@ -56,7 +57,6 @@ export class RigidBodyComponent extends Component {
 
   onAdd(): void {
     this.physicsWorld = this.use(PhysicsWorldKey);
-    const transform = this.entity.get(Transform);
 
     this._bodyHandle = this.physicsWorld.createBody(this.entity, this.config);
 
@@ -65,18 +65,18 @@ export class RigidBodyComponent extends Component {
     if (body) {
       body.setTranslation(
         {
-          x: this.physicsWorld.toMeters(transform.worldPosition.x),
-          y: this.physicsWorld.toMeters(transform.worldPosition.y),
+          x: this.physicsWorld.toMeters(this.transform.worldPosition.x),
+          y: this.physicsWorld.toMeters(this.transform.worldPosition.y),
         },
         true,
       );
-      body.setRotation(transform.worldRotation, true);
+      body.setRotation(this.transform.worldRotation, true);
     }
 
-    this._prevPosition = transform.worldPosition;
-    this._currPosition = transform.worldPosition;
-    this._prevRotation = transform.worldRotation;
-    this._currRotation = transform.worldRotation;
+    this._prevPosition = this.transform.worldPosition;
+    this._currPosition = this.transform.worldPosition;
+    this._prevRotation = this.transform.worldRotation;
+    this._currRotation = this.transform.worldRotation;
   }
 
   onDestroy(): void {

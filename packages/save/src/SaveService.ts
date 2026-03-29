@@ -1,4 +1,4 @@
-import type { Scene, Entity, Component } from "@yage/core";
+import type { Scene, Entity, Component, SnapshotResolver } from "@yage/core";
 import {
   SceneManagerKey,
   SerializableRegistry,
@@ -13,7 +13,6 @@ import type {
   SceneSnapshotEntry,
   EntitySnapshotEntry,
   ComponentSnapshot,
-  SnapshotResolver,
 } from "./types.js";
 
 /** Current snapshot format version. */
@@ -167,10 +166,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
         entities.push(this.serializeEntity(entity));
       }
 
-      const userData =
-        "serialize" in scene && typeof scene.serialize === "function"
-          ? (scene as Scene & { serialize(): unknown }).serialize()
-          : undefined;
+      const userData = scene.serialize?.();
 
       scenes.push({
         type,
@@ -289,33 +285,13 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
     // Phase 3: afterRestore hooks (components, then entities, then scene)
     for (const { entity, entry: entityEntry, restoredComponents } of entityEntries) {
       for (const { component, data } of restoredComponents) {
-        if (typeof component.afterRestore === "function") {
-          component.afterRestore(data);
-        }
+        component.afterRestore?.(data, resolver);
       }
 
-      if (
-        "afterRestore" in entity &&
-        typeof entity.afterRestore === "function"
-      ) {
-        (
-          entity as Entity & {
-            afterRestore(data: unknown, resolve: SnapshotResolver): void;
-          }
-        ).afterRestore(entityEntry.userData, resolver);
-      }
+      entity.afterRestore?.(entityEntry.userData, resolver);
     }
 
-    if (
-      "afterRestore" in scene &&
-      typeof scene.afterRestore === "function"
-    ) {
-      (
-        scene as Scene & {
-          afterRestore(data: unknown, resolve: SnapshotResolver): void;
-        }
-      ).afterRestore(entry.userData, resolver);
-    }
+    scene.afterRestore?.(entry.userData, resolver);
   }
 
   private serializeEntity(entity: Entity): EntitySnapshotEntry {
@@ -334,10 +310,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       }
     }
 
-    const userData =
-      "serialize" in entity && typeof entity.serialize === "function"
-        ? (entity as Entity & { serialize(): unknown }).serialize()
-        : undefined;
+    const userData = entity.serialize?.();
 
     const result: EntitySnapshotEntry = {
       id: entity.id,

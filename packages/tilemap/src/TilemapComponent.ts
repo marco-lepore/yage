@@ -135,10 +135,4 @@ export class TilemapComponent extends Component {
     return result;
   }
 
-  /**
-   * @deprecated Use `data` instead.
-   */
-  get mapData(): TiledMapData {
-    return this._tiledMap;
-  }
 }

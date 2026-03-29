@@ -46,17 +46,19 @@ const PRESET_FACTORIES: Record<
 // ---------------------------------------------------------------------------
 class ParticleController extends Component {
   private readonly input = this.service(InputManagerKey);
-  scene!: ParticlesScene;
+  private readonly transform = this.sibling(Transform);
+  private readonly emitter = this.sibling(ParticleEmitterComponent);
+  private particlesScene!: ParticlesScene;
 
   onAdd(): void {
-    this.scene = this.entity.scene as ParticlesScene;
+    this.particlesScene = this.scene as ParticlesScene;
   }
 
   update(): void {
     const pos = this.input.getPointerPosition();
-    this.entity.get(Transform).setPosition(pos.x, pos.y);
+    this.transform.setPosition(pos.x, pos.y);
 
-    const emitter = this.entity.get(ParticleEmitterComponent);
+    const emitter = this.emitter;
 
     // Hold click → continuous emit
     if (this.input.isPointerDown()) {
@@ -73,7 +75,7 @@ class ParticleController extends Component {
     // 1-4 → switch preset
     for (const [action, preset] of Object.entries(PRESET_ACTIONS)) {
       if (this.input.isJustPressed(action)) {
-        this.scene.switchPreset(preset);
+        this.particlesScene.switchPreset(preset);
         break;
       }
     }
@@ -200,10 +202,11 @@ class ParticlesScene extends Scene {
 // ---------------------------------------------------------------------------
 class CrosshairFollow extends Component {
   private readonly input = this.service(InputManagerKey);
+  private readonly transform = this.sibling(Transform);
 
   update(): void {
     const pos = this.input.getPointerPosition();
-    this.entity.get(Transform).setPosition(pos.x, pos.y);
+    this.transform.setPosition(pos.x, pos.y);
   }
 }
 
@@ -221,8 +224,8 @@ await createGame({
       preset_rain: ["Digit4"],
     },
     preventDefaultKeys: ["Space"],
-    cameraKey: CameraKey as never,
-    rendererKey: RendererKey as never,
+    cameraKey: CameraKey,
+    rendererKey: RendererKey,
   },
   particles: true,
   debug: true,
