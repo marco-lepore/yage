@@ -117,8 +117,7 @@ class TilemapScene extends Scene {
   private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    const layerMgr = this.layerMgr;
-    layerMgr.create("map", -10);
+    this.layerMgr.create("map", -10);
 
     // -- Tilemap entity --
     const mapData = this.assets.get(DungeonMap);
@@ -135,9 +134,8 @@ class TilemapScene extends Scene {
     const startY = spawn?.y ?? mapH / 2;
 
     // -- Camera setup --
-    const camera = this.camera;
-    camera.position = new Vec2(startX, startY);
-    camera.bounds = { minX: 0, minY: 0, maxX: mapW, maxY: mapH };
+    this.camera.position = new Vec2(startX, startY);
+    this.camera.bounds = { minX: 0, minY: 0, maxX: mapW, maxY: mapH };
 
     // -- Register wall collision shapes as a debug contributor --
     const shapes = tilemap.getCollisionShapes("walls");

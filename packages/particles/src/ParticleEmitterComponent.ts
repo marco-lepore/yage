@@ -97,7 +97,7 @@ export class ParticleEmitterComponent extends Component {
   }
 
   onDestroy(): void {
-    (this.container).removeFromParent();
+    this.container.removeFromParent();
     this.container.destroy();
   }
 
@@ -193,12 +193,12 @@ export class ParticleEmitterComponent extends Component {
     const rotationSpeed = resolveRange(cfg.rotationSpeed);
 
     // Scale
-    const { scaleStart, scaleEnd } = resolveLerpedProp(cfg.scale ?? 1);
+    const { start: scaleStart, end: scaleEnd } = resolveLerped(cfg.scale ?? 1);
     particle.scaleX = scaleStart;
     particle.scaleY = scaleStart;
 
     // Alpha
-    const { start: alphaStart, end: alphaEnd } = resolveLerpedPropRaw(cfg.alpha ?? 1);
+    const { start: alphaStart, end: alphaEnd } = resolveLerped(cfg.alpha ?? 1);
     particle.alpha = alphaStart;
 
     // Tint
@@ -224,15 +224,7 @@ export class ParticleEmitterComponent extends Component {
   }
 }
 
-function resolveLerpedProp(v: NumberRange | Lerped): { scaleStart: number; scaleEnd: number } {
-  if (isLerped(v)) {
-    return { scaleStart: resolveRange(v.start), scaleEnd: resolveRange(v.end) };
-  }
-  const val = resolveRange(v);
-  return { scaleStart: val, scaleEnd: val };
-}
-
-function resolveLerpedPropRaw(v: NumberRange | Lerped): { start: number; end: number } {
+function resolveLerped(v: NumberRange | Lerped): { start: number; end: number } {
   if (isLerped(v)) {
     return { start: resolveRange(v.start), end: resolveRange(v.end) };
   }

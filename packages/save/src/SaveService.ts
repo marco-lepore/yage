@@ -300,14 +300,12 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
 
     const components: ComponentSnapshot[] = [];
     for (const component of entity.getAll()) {
-      if (typeof component.serialize === "function") {
-        const data = component.serialize();
-        if (data !== null && data !== undefined) {
-          const compType =
-            getSerializableType(component) ?? component.constructor.name;
-          components.push({ type: compType, data });
-        }
-      }
+      if (typeof component.serialize !== "function") continue;
+      const data = component.serialize();
+      if (data == null) continue;
+      const compType =
+        getSerializableType(component) ?? component.constructor.name;
+      components.push({ type: compType, data });
     }
 
     const userData = entity.serialize?.();

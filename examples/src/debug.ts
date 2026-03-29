@@ -6,7 +6,6 @@ import {
   ColliderComponent,
 } from "@yage/physics";
 import { InputPlugin, InputManagerKey } from "@yage/input";
-import type { InputManager } from "@yage/input";
 import { DebugPlugin } from "@yage/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
@@ -97,8 +96,7 @@ class DebugDemoScene extends Scene {
   private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    const camera = this.camera;
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
+    this.camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
 
     // Spawner entity
     const ctrl = this.spawn("spawner");

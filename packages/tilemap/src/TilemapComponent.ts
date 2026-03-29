@@ -1,8 +1,7 @@
 import { Component, Transform } from "@yage/core";
 import { Container } from "pixi.js";
 import { RenderLayerManagerKey } from "@yage/renderer";
-import { createTilemapLayers } from "./tiled/parseTiledMap.js";
-import { toTilemapData } from "./tiled/parseTiledMap.js";
+import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
 import { extractCollisionShapes } from "./colliders.js";
 import type { TiledMapData } from "./tiled/types.js";
 import type {
@@ -134,5 +133,4 @@ export class TilemapComponent extends Component {
 
     return result;
   }
-
 }

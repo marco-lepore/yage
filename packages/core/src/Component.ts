@@ -122,13 +122,7 @@ export abstract class Component {
     token: EventToken<T>,
     handler: (data: T, entity: Entity) => void,
   ): void {
-    const scene = this.entity.scene;
-    if (!scene) {
-      throw new Error(
-        "Cannot listenScene: entity is not attached to a scene.",
-      );
-    }
-    const unsub = scene.on(token, handler);
+    const unsub = this.scene.on(token, handler);
     this.addCleanup(unsub);
   }
 

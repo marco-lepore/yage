@@ -143,7 +143,7 @@ describe("Component.listenScene", () => {
     entity._setScene(null, null);
 
     expect(() => entity.add(new BadComponent())).toThrow(
-      "Cannot listenScene: entity is not attached to a scene.",
+      "Cannot access scene: entity is not attached to a scene.",
     );
   });
 });

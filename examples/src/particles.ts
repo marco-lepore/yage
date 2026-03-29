@@ -85,6 +85,13 @@ class ParticleController extends Component {
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
+const PRESET_COLORS: Record<PresetName, number> = {
+  fire: 0xff6600,
+  smoke: 0x888888,
+  sparks: 0xffcc00,
+  rain: 0xaaccff,
+};
+
 class ParticlesScene extends Scene {
   readonly name = "particles";
 
@@ -146,17 +153,11 @@ class ParticlesScene extends Scene {
 
   private spawnPresetBar(): void {
     const presets: PresetName[] = ["fire", "smoke", "sparks", "rain"];
-    const colors: Record<PresetName, number> = {
-      fire: 0xff6600,
-      smoke: 0x888888,
-      sparks: 0xffcc00,
-      rain: 0xaaccff,
-    };
     const startX = 400 - (presets.length - 1) * 30;
 
     for (let i = 0; i < presets.length; i++) {
       const name = presets[i]!;
-      const color = colors[name];
+      const color = PRESET_COLORS[name];
       const x = startX + i * 60;
       const entity = this.spawn(`preset-${name}`);
       entity.add(new Transform({ position: new Vec2(x, 570) }));
@@ -184,16 +185,10 @@ class ParticlesScene extends Scene {
   }
 
   private updatePresetBar(prev: PresetName, next: PresetName): void {
-    const colors: Record<PresetName, number> = {
-      fire: 0xff6600,
-      smoke: 0x888888,
-      sparks: 0xffcc00,
-      rain: 0xaaccff,
-    };
     const prevComp = this.presetIndicators.get(prev);
-    if (prevComp) this.drawPresetDot(prevComp, colors[prev], false);
+    if (prevComp) this.drawPresetDot(prevComp, PRESET_COLORS[prev], false);
     const nextComp = this.presetIndicators.get(next);
-    if (nextComp) this.drawPresetDot(nextComp, colors[next], true);
+    if (nextComp) this.drawPresetDot(nextComp, PRESET_COLORS[next], true);
   }
 }
 

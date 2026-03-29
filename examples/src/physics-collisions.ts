@@ -212,9 +212,7 @@ class CollisionsScene extends Scene {
   private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    // Center camera on the arena
-    const camera = this.camera;
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
+    this.camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
 
     setScore(0);
 
