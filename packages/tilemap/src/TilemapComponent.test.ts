@@ -48,12 +48,14 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer } };
+  const mockAssetsGet = vi.fn();
+
+  return { mocks: { MockContainer, mockAssetsGet } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
-  Assets: { get: vi.fn() },
+  Assets: { get: mocks.mockAssetsGet },
   Texture: vi.fn(),
   Rectangle: vi.fn(),
 }));
@@ -288,4 +290,59 @@ describe("TilemapComponent", () => {
     expect(objects["wall"]).toBeDefined();
   });
 
+  describe("serialization", () => {
+    it("construction with mapKey resolves from Assets.get", () => {
+      mocks.mockAssetsGet.mockReturnValue(testMap);
+      const comp = new TilemapComponent({ mapKey: "dungeon.json" });
+      expect(comp.widthPx).toBe(160);
+      expect(comp.heightPx).toBe(128);
+      mocks.mockAssetsGet.mockReset();
+    });
+
+    it("throws when mapKey asset is not loaded", () => {
+      mocks.mockAssetsGet.mockReturnValue(undefined);
+      expect(() => new TilemapComponent({ mapKey: "missing.json" })).toThrow(
+        /not loaded/,
+      );
+      mocks.mockAssetsGet.mockReset();
+    });
+
+    it("throws when neither map nor mapKey provided", () => {
+      expect(() => new TilemapComponent({} as never)).toThrow(
+        /requires either/,
+      );
+    });
+
+    it("serialize returns null with warning when using raw map", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const comp = new TilemapComponent({ map: testMap });
+      expect(comp.serialize()).toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
+      warnSpy.mockRestore();
+    });
+
+    it("serialize returns mapKey + layer when using mapKey", () => {
+      mocks.mockAssetsGet.mockReturnValue(testMap);
+      const comp = new TilemapComponent({
+        mapKey: "dungeon.json",
+        layers: ["ground"],
+        layer: "bg",
+      });
+      expect(comp.serialize()).toEqual({
+        mapKey: "dungeon.json",
+        layers: ["ground"],
+        layer: "bg",
+      });
+      mocks.mockAssetsGet.mockReset();
+    });
+
+    it("fromSnapshot round-trips", () => {
+      mocks.mockAssetsGet.mockReturnValue(testMap);
+      const original = new TilemapComponent({ mapKey: "dungeon.json", layer: "bg" });
+      const data = original.serialize()!;
+      const restored = TilemapComponent.fromSnapshot(data);
+      expect(restored.serialize()).toEqual(data);
+      mocks.mockAssetsGet.mockReset();
+    });
+  });
 });

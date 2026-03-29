@@ -32,6 +32,7 @@ const COMPONENT_ORDER = [
   "AnimationController",
   "SoundComponent",
   "ParticleEmitterComponent",
+  "TilemapComponent",
 ];
 
 /** Orchestrates full game-state serialization and hydration. */
