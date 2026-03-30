@@ -625,6 +625,8 @@ new AnimatedSpriteComponent({ textures: myTextureArray });
 | `AnimationController` | Full when ALL defs use `source` | Same as above |
 | `SoundComponent` | Full | `alias` is already a string |
 | `ParticleEmitterComponent` | Full when using `textureKey` | `textureKey: "particle.png"` |
+| `TilemapComponent` | Full when using `mapKey` | `mapKey: "dungeon.json"` |
+| `UIPanel` / `UIRoot` | Not serializable | State belongs in owning component/entity |
 
 ### Make an Entity Serializable
 
@@ -674,6 +676,110 @@ save.saveSnapshot("slot1");          // save full game state
 await save.loadSnapshot("slot1");    // restore from snapshot
 save.saveData("settings", { volume: 0.8 }); // save user data
 const settings = save.loadData("settings"); // load user data
+```
+
+### Serializing Drawables (GraphicsComponent)
+
+`GraphicsComponent` only serializes its layer name — draw commands are procedural and can't be captured. The entity or a sibling component must redo the drawing in `afterRestore()`:
+
+```typescript
+@serializable
+class HealthBar extends Entity {
+  private health = 100;
+
+  setup() {
+    this.add(new Transform());
+    this.add(new GraphicsComponent({ layer: "hud" }));
+    this.drawBar();
+  }
+
+  serialize() {
+    return { health: this.health };
+  }
+
+  afterRestore(data: { health: number }) {
+    this.health = data.health;
+    this.drawBar(); // GraphicsComponent is auto-restored (layer), but empty — redraw
+  }
+
+  private drawBar() {
+    const gfx = this.get(GraphicsComponent).graphics;
+    gfx.clear();
+    gfx.rect(0, 0, this.health, 10).fill(0x00ff00);
+  }
+}
+```
+
+### Serializing UI State (vanilla `@yage/ui`)
+
+UI panels are view-layer — they don't hold game state. The component that owns the panel stores the state and builds/updates the UI from it. On restore, `fromSnapshot` sets the state before `onAdd` builds the panel:
+
+```typescript
+@serializable
+class InventoryUI extends Component {
+  private selectedTab = 0;
+  private tabButtons: UIButton[] = [];
+
+  onAdd() {
+    const panel = this.entity.add(new UIPanel({ width: 300, height: 400 }));
+    const tabs = ["Weapons", "Armor", "Items"];
+    for (let i = 0; i < tabs.length; i++) {
+      const btn = new UIButton({ text: tabs[i]!, onClick: () => this.switchTab(i) });
+      this.tabButtons.push(btn);
+      panel.addChild(btn);
+    }
+    this.updateView();
+  }
+
+  switchTab(index: number) {
+    this.selectedTab = index;
+    this.updateView(); // mutate existing elements, don't rebuild
+  }
+
+  private updateView() {
+    for (let i = 0; i < this.tabButtons.length; i++) {
+      this.tabButtons[i]!.tint = i === this.selectedTab ? 0xffd700 : 0x888888;
+    }
+  }
+
+  serialize() { return { selectedTab: this.selectedTab }; }
+
+  static fromSnapshot(data: { selectedTab: number }): InventoryUI {
+    const comp = new InventoryUI();
+    comp.selectedTab = data.selectedTab; // set before onAdd() builds the UI
+    return comp;
+  }
+}
+```
+
+### Serializing UI State (React `@yage/ui-react`)
+
+React components re-render from state — the entity bridges the store to the save system:
+
+```typescript
+const inventoryStore = createStore({ selectedTab: 0, scrollY: 0 });
+
+@serializable
+class InventoryEntity extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new UIRoot({ element: createElement(InventoryPanel) }));
+  }
+
+  serialize() {
+    return { ui: inventoryStore.get() };
+  }
+
+  afterRestore(data: { ui: { selectedTab: number; scrollY: number } }) {
+    inventoryStore.set(data.ui); // React re-renders via useStore()
+  }
+}
+
+// React component — pure view, reads from store
+function InventoryPanel() {
+  const { selectedTab } = useStore(inventoryStore);
+  return <Tabs selected={selectedTab} />;
+}
 ```
 
 ### Define a Blueprint (deprecated)
