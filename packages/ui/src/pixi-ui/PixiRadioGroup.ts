@@ -1,13 +1,14 @@
 import { CheckBox, RadioGroup } from "@pixi/ui";
 import type { PixiRadioGroupProps, PixiCheckboxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Build a @pixi/ui CheckBox from our PixiCheckboxProps shape. */
 function makeCheckBox(p: PixiCheckboxProps): CheckBox {
   return new CheckBox({
     style: {
-      checked: p.checkedView,
-      unchecked: p.uncheckedView,
+      checked: resolvePixiView(p.checkedView),
+      unchecked: resolvePixiView(p.uncheckedView),
       text: p.textStyle,
       textOffset: p.textOffset,
     },

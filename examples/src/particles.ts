@@ -4,6 +4,8 @@ import {
   RendererKey,
   CameraKey,
   GraphicsComponent,
+  type TextureInput,
+  type TextureResource,
 } from "@yage/renderer";
 import { InputManagerKey } from "@yage/input";
 import {
@@ -11,8 +13,6 @@ import {
   ParticlePresets,
 } from "@yage/particles";
 import type { EmitterConfig } from "@yage/particles";
-import { Graphics } from "pixi.js";
-import type { Texture } from "pixi.js";
 import { createGame } from "yage";
 import { injectStyles } from "./shared.js";
 
@@ -32,7 +32,7 @@ const PRESET_ACTIONS: Record<string, PresetName> = {
 
 const PRESET_FACTORIES: Record<
   PresetName,
-  (tex: Texture) => EmitterConfig
+  (tex: TextureInput) => EmitterConfig
 > = {
   fire: ParticlePresets.fire,
   smoke: ParticlePresets.smoke,
@@ -95,7 +95,7 @@ const PRESET_COLORS: Record<PresetName, number> = {
 class ParticlesScene extends Scene {
   readonly name = "particles";
 
-  private particleTex!: Texture;
+  private particleTex!: TextureResource;
   currentPreset: PresetName = "fire";
   private emitterEntity!: Entity;
   private presetIndicators = new Map<PresetName, GraphicsComponent>();
@@ -106,9 +106,9 @@ class ParticlesScene extends Scene {
 
     // Generate a small white circle texture for particles
     const renderer = this.context.resolve(RendererKey);
-    const gfx = new Graphics();
-    gfx.circle(0, 0, 8).fill({ color: 0xffffff });
-    this.particleTex = renderer.application.renderer.generateTexture(gfx);
+    this.particleTex = renderer.createTexture((g) => {
+      g.circle(0, 0, 8).fill({ color: 0xffffff });
+    });
 
     // Spawn emitter entity
     this.emitterEntity = this.spawnEmitter(this.currentPreset);

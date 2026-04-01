@@ -1,12 +1,13 @@
 import { Input } from "@pixi/ui";
 import type { PixiInputProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui Input. */
 export class PixiInput extends PixiUIBase<Input> {
   constructor(props: PixiInputProps) {
     const view = new Input({
-      bg: props.bg,
+      bg: resolvePixiView(props.bg),
       textStyle: props.textStyle,
       placeholder: props.placeholder,
       value: props.value,

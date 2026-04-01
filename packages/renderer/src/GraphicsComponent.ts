@@ -1,6 +1,7 @@
 import { Component, serializable } from "@yage/core";
 import { Graphics } from "pixi.js";
 import { RenderLayerManagerKey } from "./types.js";
+import type { GraphicsContext } from "./public-types.js";
 
 /** Options for creating a GraphicsComponent. */
 export interface GraphicsComponentOptions {
@@ -16,7 +17,7 @@ export interface GraphicsData {
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
 @serializable
 export class GraphicsComponent extends Component {
-  readonly graphics: Graphics;
+  readonly graphics: GraphicsContext;
   readonly layerName: string;
 
   constructor(options?: GraphicsComponentOptions) {
@@ -26,7 +27,7 @@ export class GraphicsComponent extends Component {
   }
 
   /** Execute a drawing function on the graphics object. Returns this for chaining. */
-  draw(fn: (g: Graphics) => void): this {
+  draw(fn: (g: GraphicsContext) => void): this {
     fn(this.graphics);
     return this;
   }

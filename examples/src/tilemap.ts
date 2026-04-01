@@ -3,9 +3,9 @@ import {
   RendererPlugin,
   CameraKey,
   RenderLayerManagerKey,
+  renderAsset,
 } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
-import { Assets } from "pixi.js";
 import { TilemapPlugin, TilemapComponent, tiledMap } from "@yage/tilemap";
 import { DebugPlugin } from "@yage/debug";
 import { DebugRegistryKey } from "@yage/debug/api";
@@ -18,6 +18,7 @@ injectStyles();
 // ---------------------------------------------------------------------------
 // Asset handles
 // ---------------------------------------------------------------------------
+const DungeonAtlas = renderAsset("/assets/dungeon/dungeon.json");
 const DungeonMap = tiledMap("/assets/dungeon/dungeon-map.json");
 
 // ---------------------------------------------------------------------------
@@ -171,9 +172,8 @@ async function main() {
 
   await engine.start();
 
-  // Load the spritesheet atlas first so tile textures are in PixiJS cache
-  // before the tiledMap loader resolves tile GIDs.
-  await Assets.load("/assets/dungeon/dungeon.json");
+  // Load the atlas first so tile textures are ready before the map resolves GIDs.
+  await engine.assets.loadAll([DungeonAtlas]);
 
   await engine.scenes.push(new TilemapScene());
 }

@@ -21,6 +21,7 @@ import {
   GraphicsComponent,
   RenderLayerManagerKey,
   CameraKey,
+  GraphicsContext,
 } from "@yage/renderer";
 import {
   RigidBodyComponent,
@@ -88,18 +89,18 @@ const LAYER_HAZARD = layers.define("hazard");
 // ---------------------------------------------------------------------------
 // Drawing helpers
 // ---------------------------------------------------------------------------
-function drawPlayer(g: import("pixi.js").Graphics) {
+function drawPlayer(g: GraphicsContext) {
   g.roundRect(-10, -16, 20, 32, 4).fill({ color: 0x22c55e });
   g.circle(-3, -10, 2).fill({ color: 0xffffff });
   g.circle(5, -10, 2).fill({ color: 0xffffff });
 }
 
-function drawCoin(g: import("pixi.js").Graphics) {
+function drawCoin(g: GraphicsContext) {
   g.circle(0, 0, 8).fill({ color: 0xffe66d });
   g.circle(0, 0, 8).stroke({ color: 0xeab308, width: 2 });
 }
 
-function drawHazard(g: import("pixi.js").Graphics) {
+function drawHazard(g: GraphicsContext) {
   g.poly([-10, 0, 0, -14, 10, 0]).fill({ color: 0xef4444 });
   g.poly([-10, 0, 0, -14, 10, 0]).stroke({ color: 0xb91c1c, width: 1 });
 }
@@ -170,7 +171,10 @@ class PlayerController extends Component {
     const pos = this.transform.position;
 
     const hit = this.physics.raycast(pos, Vec2.DOWN, 20, {
-      filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_SOLID),
+      filterGroups: CollisionLayers.interactionGroups(
+        LAYER_PLAYER,
+        LAYER_SOLID,
+      ),
     });
     if (hit) {
       this.grounded = true;
@@ -248,13 +252,21 @@ class PlayerEntity extends Entity {
   setup() {
     this.add(new Transform({ position: new Vec2(100, 300) }));
     this.add(new GraphicsComponent({ layer: "entities" }).draw(drawPlayer));
-    this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true, ccd: true }));
-    this.add(new ColliderComponent({
-      shape: { type: "box", width: 20, height: 32 },
-      friction: 0,
-      layers: LAYER_PLAYER,
-      mask: LAYER_SOLID | LAYER_COIN | LAYER_HAZARD,
-    }));
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+        ccd: true,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 20, height: 32 },
+        friction: 0,
+        layers: LAYER_PLAYER,
+        mask: LAYER_SOLID | LAYER_COIN | LAYER_HAZARD,
+      }),
+    );
     this.add(new PlayerController());
   }
 
@@ -288,12 +300,14 @@ class CoinEntity extends Entity {
     this.add(new Transform({ position: new Vec2(x, y) }));
     this.add(new GraphicsComponent({ layer: "entities" }).draw(drawCoin));
     this.add(new RigidBodyComponent({ type: "static" }));
-    this.add(new ColliderComponent({
-      shape: { type: "circle", radius: 8 },
-      sensor: true,
-      layers: LAYER_COIN,
-      mask: LAYER_PLAYER,
-    }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 8 },
+        sensor: true,
+        layers: LAYER_COIN,
+        mask: LAYER_PLAYER,
+      }),
+    );
     this.setupTrigger();
   }
 
@@ -344,12 +358,14 @@ class HazardEntity extends Entity {
     this.add(new Transform({ position: new Vec2(this.startX, this.y) }));
     this.add(new GraphicsComponent({ layer: "entities" }).draw(drawHazard));
     this.add(new RigidBodyComponent({ type: "kinematic" }));
-    this.add(new ColliderComponent({
-      shape: { type: "box", width: 20, height: 14 },
-      sensor: true,
-      layers: LAYER_HAZARD,
-      mask: LAYER_PLAYER,
-    }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 20, height: 14 },
+        sensor: true,
+        layers: LAYER_HAZARD,
+        mask: LAYER_PLAYER,
+      }),
+    );
     this.add(new MovingSpike(this.startX, this.endX, this.period));
     this.setupTrigger();
   }
@@ -367,10 +383,12 @@ class HazardEntity extends Entity {
 class PlayerIndicator extends Entity {
   setup() {
     this.add(new Transform({ position: new Vec2(0, -28) }));
-    this.add(new GraphicsComponent({ layer: "entities" }).draw((g) => {
-      // Small downward arrow above the player
-      g.poly([-5, -6, 0, 0, 5, -6]).fill({ color: 0x22c55e });
-    }));
+    this.add(
+      new GraphicsComponent({ layer: "entities" }).draw((g) => {
+        // Small downward arrow above the player
+        g.poly([-5, -6, 0, 0, 5, -6]).fill({ color: 0x22c55e });
+      }),
+    );
   }
 
   afterRestore() {
@@ -385,17 +403,21 @@ class WallEntity extends Entity {
   setup(params: { x: number; y: number; w: number; h: number }) {
     const { x, y, w, h } = params;
     this.add(new Transform({ position: new Vec2(x, y) }));
-    this.add(new GraphicsComponent({ layer: "entities" }).draw((g) => {
-      g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x334155 });
-      g.rect(-w / 2, -h / 2, w, 2).fill({ color: 0x475569 });
-    }));
+    this.add(
+      new GraphicsComponent({ layer: "entities" }).draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x334155 });
+        g.rect(-w / 2, -h / 2, w, 2).fill({ color: 0x475569 });
+      }),
+    );
     this.add(new RigidBodyComponent({ type: "static" }));
-    this.add(new ColliderComponent({
-      shape: { type: "box", width: w, height: h },
-      friction: 0,
-      layers: LAYER_SOLID,
-      mask: LAYER_PLAYER,
-    }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        friction: 0,
+        layers: LAYER_SOLID,
+        mask: LAYER_PLAYER,
+      }),
+    );
   }
 }
 
@@ -482,7 +504,9 @@ class SaveDemoScene extends Scene {
       new GraphicsComponent({ layer: "bg" }).draw((g) => {
         g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x0f172a });
         for (let x = 0; x <= WIDTH; x += 50) {
-          g.moveTo(x, 0).lineTo(x, HEIGHT).stroke({ color: 0x1e293b, width: 1 });
+          g.moveTo(x, 0)
+            .lineTo(x, HEIGHT)
+            .stroke({ color: 0x1e293b, width: 1 });
         }
         for (let y = 0; y <= HEIGHT; y += 50) {
           g.moveTo(0, y).lineTo(WIDTH, y).stroke({ color: 0x1e293b, width: 1 });

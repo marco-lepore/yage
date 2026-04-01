@@ -1,4 +1,4 @@
-import type { Texture } from "pixi.js";
+import type { TextureInput } from "@yage/renderer";
 
 /** A value or [min, max] range to randomize from. */
 export type NumberRange = number | [min: number, max: number];
@@ -12,7 +12,7 @@ export interface Lerped {
 /** Emitter configuration. */
 export interface EmitterConfig {
   /** The texture for all particles in this emitter. */
-  texture?: Texture;
+  texture?: TextureInput;
   /** Texture asset key (serializable alternative to `texture`). */
   textureKey?: string;
   /** Maximum number of live particles. Default: 100. */

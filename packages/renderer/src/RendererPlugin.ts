@@ -1,17 +1,18 @@
-import { GameLoopKey, AssetManagerKey } from "@yage/core";
+import { AssetManagerKey, GameLoopKey } from "@yage/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
-import { Application, Assets, Container } from "pixi.js";
-import type { Texture, Spritesheet } from "pixi.js";
+import { Application, Assets, Container, Graphics } from "pixi.js";
+import type { Spritesheet } from "pixi.js";
+import { Camera } from "./Camera.js";
+import { DisplaySystem } from "./DisplaySystem.js";
+import { RenderLayerManager } from "./RenderLayer.js";
+import type { GraphicsContext, TextureResource } from "./public-types.js";
 import {
-  RendererKey,
-  StageKey,
   CameraKey,
   RenderLayerManagerKey,
+  RendererKey,
+  StageKey,
 } from "./types.js";
 import type { RendererConfig } from "./types.js";
-import { Camera } from "./Camera.js";
-import { RenderLayerManager } from "./RenderLayer.js";
-import { DisplaySystem } from "./DisplaySystem.js";
 
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin {
@@ -36,7 +37,8 @@ export class RendererPlugin implements Plugin {
     // 1. Create & init PixiJS Application
     this.app = new Application();
     const resolution =
-      this.config.resolution ?? (typeof window !== "undefined" ? window.devicePixelRatio : 1);
+      this.config.resolution ??
+      (typeof window !== "undefined" ? window.devicePixelRatio : 1);
     await this.app.init({
       width: this.config.width,
       height: this.config.height,
@@ -90,12 +92,22 @@ export class RendererPlugin implements Plugin {
     // 9. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
-      load: (path: string) => Assets.load<Texture>(path),
-      unload: (path: string) => { Assets.unload(path); },
+      load: (path: string) => Assets.load<TextureResource>(path),
+      unload: (path: string) => {
+        Assets.unload(path);
+      },
+    });
+    am?.registerLoader("render-asset", {
+      load: (path: string) => Assets.load(path),
+      unload: (path: string) => {
+        Assets.unload(path);
+      },
     });
     am?.registerLoader("spritesheet", {
       load: (path: string) => Assets.load<Spritesheet>(path),
-      unload: (path: string) => { Assets.unload(path); },
+      unload: (path: string) => {
+        Assets.unload(path);
+      },
     });
   }
 
@@ -129,5 +141,16 @@ export class RendererPlugin implements Plugin {
   /** The layer manager. */
   get layers(): RenderLayerManager {
     return this.layerManager;
+  }
+
+  /** Create a texture by drawing into a temporary graphics context. */
+  createTexture(draw: (graphics: GraphicsContext) => void): TextureResource {
+    const graphics = new Graphics();
+    try {
+      draw(graphics);
+      return this.app.renderer.generateTexture(graphics);
+    } finally {
+      graphics.destroy();
+    }
   }
 }

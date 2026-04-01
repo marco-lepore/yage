@@ -35,6 +35,8 @@ export { setYoga, createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 
 // Asset helpers
 export { setAssetManager, resolveTexture } from "./asset-helpers.js";
+export { createNineSliceView } from "./views.js";
+export type { NineSliceViewOptions } from "./views.js";
 
 // Background renderer
 export { BackgroundRenderer } from "./background-renderer.js";

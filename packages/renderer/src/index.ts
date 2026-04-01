@@ -6,6 +6,19 @@ export {
   RenderLayerManagerKey,
 } from "./types.js";
 export type { RendererConfig } from "./types.js";
+export type {
+  ColorValue,
+  DisplayContainer,
+  DisplaySprite,
+  GraphicsContext,
+  PointLike,
+  RendererAsset,
+  TextStyle,
+  TextureHandle,
+  TextureInput,
+  TextureResource,
+  TextureSliceOptions,
+} from "./public-types.js";
 
 // Plugin
 export { RendererPlugin } from "./RendererPlugin.js";
@@ -52,4 +65,10 @@ export { DisplaySystem } from "./DisplaySystem.js";
 export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 
 // Asset factories
-export { texture, spritesheet } from "./assets.js";
+export {
+  renderAsset,
+  resolveTextureInput,
+  sliceTextureFrames,
+  spritesheet,
+  texture,
+} from "./assets.js";

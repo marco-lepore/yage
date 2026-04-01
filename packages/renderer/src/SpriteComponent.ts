@@ -1,12 +1,13 @@
-import { Component, serializable } from "@yage/core";
+import { AssetHandle, Component, serializable } from "@yage/core";
 import { Sprite } from "pixi.js";
-import type { Texture } from "pixi.js";
 import { RenderLayerManagerKey } from "./types.js";
+import { resolveTextureInput } from "./assets.js";
+import type { DisplaySprite, TextureInput } from "./public-types.js";
 
 /** Options for creating a SpriteComponent. */
 export interface SpriteComponentOptions {
   /** Texture or texture key string. */
-  texture: Texture | string;
+  texture: TextureInput;
   /** Anchor point (0-1). */
   anchor?: { x: number; y: number };
   /** Render layer name. Default: "default". */
@@ -32,15 +33,20 @@ export interface SpriteData {
 /** Component that displays a PixiJS Sprite. */
 @serializable
 export class SpriteComponent extends Component {
-  readonly sprite: Sprite;
+  readonly sprite: DisplaySprite;
   readonly layerName: string;
   private _textureKey: string | null;
 
   constructor(options: SpriteComponentOptions) {
     super();
-    this.sprite = Sprite.from(options.texture as Texture);
+    this.sprite = Sprite.from(resolveTextureInput(options.texture));
     this.layerName = options.layer ?? "default";
-    this._textureKey = typeof options.texture === "string" ? options.texture : null;
+    this._textureKey =
+      typeof options.texture === "string"
+        ? options.texture
+        : options.texture instanceof AssetHandle
+          ? options.texture.path
+          : null;
 
     if (options.anchor) {
       this.sprite.anchor.set(options.anchor.x, options.anchor.y);
@@ -56,20 +62,23 @@ export class SpriteComponent extends Component {
     }
   }
 
-  /** Replace the sprite's texture. Accepts a texture key string or Texture object. */
-  setTexture(texture: Texture | string): void {
-    this._textureKey = typeof texture === "string" ? texture : null;
-    this.sprite.texture = typeof texture === "string"
-      ? Sprite.from(texture).texture
-      : texture;
+  /** Replace the sprite's texture. */
+  setTexture(texture: TextureInput): void {
+    this._textureKey =
+      typeof texture === "string"
+        ? texture
+        : texture instanceof AssetHandle
+          ? texture.path
+          : null;
+    this.sprite.texture = resolveTextureInput(texture);
   }
 
   /** Serialise to a plain object for save/load. */
   serialize(): SpriteData | null {
     if (!this._textureKey) {
       console.warn(
-        `SpriteComponent on "${this.entity?.name}": created with a Texture object, not a string key. ` +
-          `It will not be saved. Use a string texture key for save/load support.`,
+        `SpriteComponent on "${this.entity?.name}": created with a Texture object. ` +
+          `Use a string path or texture handle for save/load support.`,
       );
       return null;
     }

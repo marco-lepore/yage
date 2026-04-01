@@ -1,6 +1,11 @@
 import type { PropsWithChildren } from "react";
-import type { ColorSource, Container, PointData, TextStyleOptions, Texture } from "pixi.js";
-import type { AssetHandle } from "@yage/core";
+import type {
+  ColorValue,
+  DisplayContainer,
+  PointLike,
+  TextStyle,
+  TextureHandle,
+} from "@yage/renderer";
 import {
   PanelNode,
   UIText as UITextNode,
@@ -53,7 +58,7 @@ export interface PanelProps extends LayoutProps {
 }
 
 export interface TextProps {
-  style?: Partial<TextStyleOptions>;
+  style?: Partial<TextStyle>;
   children?: string;
 }
 
@@ -64,19 +69,19 @@ export interface ButtonProps extends LayoutProps {
   bg?: BackgroundOptions;
   hoverBg?: BackgroundOptions;
   pressBg?: BackgroundOptions;
-  textStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
   disabled?: boolean;
   children?: string;
 }
 
 export interface ImageProps extends LayoutProps {
-  texture: AssetHandle<Texture>;
+  texture: TextureHandle;
   tint?: number;
   alpha?: number;
 }
 
 export interface NineSliceProps extends LayoutProps {
-  texture: AssetHandle<Texture>;
+  texture: TextureHandle;
   insets:
     | { left: number; top: number; right: number; bottom: number }
     | number;
@@ -98,7 +103,7 @@ export interface CheckboxProps extends LayoutProps {
   boxColor?: number;
   checkColor?: number;
   label?: string;
-  labelStyle?: Partial<TextStyleOptions>;
+  labelStyle?: Partial<TextStyle>;
   disabled?: boolean;
 }
 
@@ -161,8 +166,8 @@ export interface PixiFancyButtonReactProps extends LayoutProps {
   pressedView?: PixiViewType;
   disabledView?: PixiViewType;
   text?: string;
-  icon?: Container;
-  textStyle?: Partial<TextStyleOptions>;
+  icon?: DisplayContainer;
+  textStyle?: Partial<TextStyle>;
   padding?: number;
   nineSliceSprite?: [number, number, number, number];
   onClick?: () => void;
@@ -185,7 +190,7 @@ export interface PixiCheckboxReactProps extends LayoutProps {
   checkedView: PixiViewType;
   uncheckedView: PixiViewType;
   text?: string;
-  textStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
   textOffset?: { x?: number; y?: number };
 }
 
@@ -220,7 +225,7 @@ export interface PixiSliderReactProps extends LayoutProps {
   onChange?: (value: number) => void;
   onUpdate?: (value: number) => void;
   showValue?: boolean;
-  valueTextStyle?: Partial<TextStyleOptions>;
+  valueTextStyle?: Partial<TextStyle>;
   fillPaddings?: { top?: number; right?: number; bottom?: number; left?: number };
   nineSliceSprite?: [number, number, number, number];
 }
@@ -233,7 +238,7 @@ export function PixiSlider(props: PixiSliderReactProps): React.JSX.Element {
 
 export interface PixiInputReactProps extends LayoutProps {
   bg: PixiViewType;
-  textStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
   placeholder?: string;
   value?: string;
   maxLength?: number;
@@ -254,12 +259,12 @@ export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
 export interface PixiScrollBoxReactProps extends LayoutProps {
   scrollWidth?: number;
   scrollHeight?: number;
-  background?: ColorSource;
+  background?: ColorValue;
   radius?: number;
   type?: "vertical" | "horizontal" | "both";
   elementsMargin?: number;
   globalScroll?: boolean;
-  onScroll?: (position: number | PointData) => void;
+  onScroll?: (position: number | PointLike) => void;
 }
 
 /** @pixi/ui ScrollBox with Yoga layout. */
@@ -273,15 +278,15 @@ export interface PixiSelectReactProps extends LayoutProps {
   openBG: PixiViewType;
   items: string[];
   selected?: number;
-  textStyle?: Partial<TextStyleOptions>;
-  itemTextStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
+  itemTextStyle?: Partial<TextStyle>;
   itemWidth?: number;
   itemHeight?: number;
-  itemBG?: ColorSource;
-  itemHoverBG?: ColorSource;
+  itemBG?: ColorValue;
+  itemHoverBG?: ColorValue;
   visibleItems?: number;
   onSelect?: (index: number, text: string) => void;
-  scrollBoxOffset?: PointData;
+  scrollBoxOffset?: PointLike;
 }
 
 /** @pixi/ui Select dropdown with Yoga layout. */

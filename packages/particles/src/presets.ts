@@ -1,8 +1,8 @@
-import type { Texture } from "pixi.js";
+import type { TextureInput } from "@yage/renderer";
 import type { EmitterConfig } from "./types.js";
 
 function textureFields(
-  textureOrKey: Texture | string,
+  textureOrKey: TextureInput,
 ): Pick<EmitterConfig, "texture" | "textureKey"> {
   return typeof textureOrKey === "string"
     ? { textureKey: textureOrKey }
@@ -12,7 +12,7 @@ function textureFields(
 /** Preset emitter configurations. */
 export const ParticlePresets = {
   /** Upward fire effect with fading and shrinking. */
-  fire(textureOrKey: Texture | string): EmitterConfig {
+  fire(textureOrKey: TextureInput): EmitterConfig {
     return {
       ...textureFields(textureOrKey),
       maxParticles: 200,
@@ -28,7 +28,7 @@ export const ParticlePresets = {
   },
 
   /** Slow-rising smoke effect. */
-  smoke(textureOrKey: Texture | string): EmitterConfig {
+  smoke(textureOrKey: TextureInput): EmitterConfig {
     return {
       ...textureFields(textureOrKey),
       maxParticles: 100,
@@ -45,7 +45,7 @@ export const ParticlePresets = {
   },
 
   /** Fast directional sparks. */
-  sparks(textureOrKey: Texture | string): EmitterConfig {
+  sparks(textureOrKey: TextureInput): EmitterConfig {
     return {
       ...textureFields(textureOrKey),
       maxParticles: 150,
@@ -62,7 +62,7 @@ export const ParticlePresets = {
   },
 
   /** Downward rain drops. */
-  rain(textureOrKey: Texture | string): EmitterConfig {
+  rain(textureOrKey: TextureInput): EmitterConfig {
     return {
       ...textureFields(textureOrKey),
       maxParticles: 300,

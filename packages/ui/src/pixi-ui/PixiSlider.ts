@@ -1,14 +1,15 @@
 import { Slider } from "@pixi/ui";
 import type { PixiSliderProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui Slider. */
 export class PixiSlider extends PixiUIBase<Slider> {
   constructor(props: PixiSliderProps) {
     const view = new Slider({
-      bg: props.bg,
-      fill: props.fill,
-      slider: props.slider,
+      bg: resolvePixiView(props.bg),
+      fill: resolvePixiView(props.fill),
+      slider: resolvePixiView(props.slider),
       min: props.min ?? 0,
       max: props.max ?? 100,
       step: props.step,

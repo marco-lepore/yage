@@ -1,13 +1,14 @@
 import { Select } from "@pixi/ui";
 import type { PixiSelectProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui Select (dropdown). */
 export class PixiSelect extends PixiUIBase<Select> {
   constructor(props: PixiSelectProps) {
     const view = new Select({
-      closedBG: props.closedBG,
-      openBG: props.openBG,
+      closedBG: resolvePixiView(props.closedBG),
+      openBG: resolvePixiView(props.openBG),
       textStyle: props.textStyle,
       selected: props.selected,
       scrollBoxOffset: props.scrollBoxOffset,

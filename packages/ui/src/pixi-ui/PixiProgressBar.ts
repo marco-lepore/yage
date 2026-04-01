@@ -1,13 +1,14 @@
 import { ProgressBar } from "@pixi/ui";
 import type { PixiProgressBarProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui ProgressBar. */
 export class PixiProgressBar extends PixiUIBase<ProgressBar> {
   constructor(props: PixiProgressBarProps) {
     const view = new ProgressBar({
-      bg: props.bg,
-      fill: props.fill,
+      bg: resolvePixiView(props.bg),
+      fill: resolvePixiView(props.fill),
       progress: props.value ?? 0,
       fillPaddings: props.fillPaddings,
       nineSliceSprite: props.nineSliceSprite
