@@ -1,10 +1,10 @@
-import { Component } from "@yage/core";
-import { ParticleContainer } from "pixi.js";
+import { Component, serializable } from "@yage/core";
+import { ParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { RenderLayerManagerKey } from "@yage/renderer";
 import { ParticlePool } from "./ParticlePool.js";
 import { resolveRange, isLerped } from "./types.js";
-import type { EmitterConfig, NumberRange, Lerped } from "./types.js";
+import type { EmitterConfig, NumberRange, Lerped, ParticleEmitterData } from "./types.js";
 
 /** Internal tracking state for a single active particle. */
 interface ParticleState {
@@ -21,6 +21,7 @@ interface ParticleState {
 }
 
 /** Component that owns a PixiJS ParticleContainer and drives particle emission. */
+@serializable
 export class ParticleEmitterComponent extends Component {
   readonly container: ParticleContainer;
   /** @internal */ readonly _pool: ParticlePool;
@@ -30,11 +31,23 @@ export class ParticleEmitterComponent extends Component {
   private readonly config: Required<
     Pick<EmitterConfig, "maxParticles" | "rate" | "lifetime" | "speed" | "angle" | "rotation" | "rotationSpeed" | "tint" | "damping" | "layer">
   > & EmitterConfig;
+  private readonly _rawConfig: EmitterConfig;
+  private readonly _textureKey: string | null;
 
   private _isEmitting = false;
 
   constructor(config: EmitterConfig) {
     super();
+
+    this._rawConfig = config;
+    this._textureKey = config.textureKey ?? null;
+
+    if (!config.texture && !config.textureKey) {
+      throw new Error(
+        "ParticleEmitterComponent requires either `texture` or `textureKey`.",
+      );
+    }
+    const resolvedTexture = config.texture ?? Texture.from(config.textureKey!);
 
     this.config = {
       maxParticles: 100,
@@ -50,7 +63,7 @@ export class ParticleEmitterComponent extends Component {
     };
 
     this.container = new ParticleContainer({
-      texture: config.texture,
+      texture: resolvedTexture,
       dynamicProperties: {
         position: true,
         rotation: true,
@@ -59,7 +72,7 @@ export class ParticleEmitterComponent extends Component {
       },
     });
 
-    this._pool = new ParticlePool(config.texture, this.config.maxParticles);
+    this._pool = new ParticlePool(resolvedTexture, this.config.maxParticles);
   }
 
   /** Start continuous emission at `config.rate` particles/sec. */
@@ -88,6 +101,54 @@ export class ParticleEmitterComponent extends Component {
   /** Number of currently alive particles. */
   get activeCount(): number {
     return this._active.length;
+  }
+
+  serialize(): ParticleEmitterData | null {
+    if (!this._textureKey) {
+      console.warn(
+        `ParticleEmitterComponent on "${this.entity?.name}": created with a Texture object. ` +
+          `Use { textureKey } for save/load support.`,
+      );
+      return null;
+    }
+    const raw = this._rawConfig;
+    return {
+      textureKey: this._textureKey,
+      maxParticles: this.config.maxParticles,
+      rate: this.config.rate,
+      lifetime: raw.lifetime,
+      speed: raw.speed ?? 0,
+      angle: raw.angle ?? 0,
+      rotation: raw.rotation ?? 0,
+      rotationSpeed: raw.rotationSpeed ?? 0,
+      tint: this.config.tint,
+      damping: this.config.damping,
+      layer: this.config.layer,
+      ...(raw.scale != null && { scale: raw.scale }),
+      ...(raw.alpha != null && { alpha: raw.alpha }),
+      ...(raw.gravity && { gravity: raw.gravity }),
+      ...(raw.spawnOffset && { spawnOffset: raw.spawnOffset }),
+    };
+  }
+
+  static fromSnapshot(data: ParticleEmitterData): ParticleEmitterComponent {
+    return new ParticleEmitterComponent({
+      textureKey: data.textureKey,
+      maxParticles: data.maxParticles,
+      rate: data.rate,
+      lifetime: data.lifetime,
+      speed: data.speed,
+      angle: data.angle,
+      rotation: data.rotation,
+      rotationSpeed: data.rotationSpeed,
+      tint: data.tint,
+      damping: data.damping,
+      layer: data.layer,
+      ...(data.scale != null && { scale: data.scale }),
+      ...(data.alpha != null && { alpha: data.alpha }),
+      ...(data.gravity && { gravity: data.gravity }),
+      ...(data.spawnOffset && { spawnOffset: data.spawnOffset }),
+    });
   }
 
   onAdd(): void {

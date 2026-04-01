@@ -16,12 +16,28 @@ export type { SpriteComponentOptions, SpriteData } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";
 export type { GraphicsComponentOptions, GraphicsData } from "./GraphicsComponent.js";
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
-export type { AnimatedSpriteComponentOptions } from "./AnimatedSpriteComponent.js";
+export type {
+  AnimatedSpriteComponentOptions,
+  AnimatedSpriteData,
+} from "./AnimatedSpriteComponent.js";
 export { AnimationController } from "./AnimationController.js";
-export type { AnimationDef } from "./AnimationController.js";
+export type {
+  AnimationDef,
+  AnimationControllerData,
+} from "./AnimationController.js";
 
 // Spritesheet utilities
-export { sliceSheet } from "./spritesheet.js";
+export {
+  sliceSheet,
+  resolveFrames,
+  isStripSource,
+  isAtlasSource,
+} from "./spritesheet.js";
+export type {
+  FrameSource,
+  StripFrameSource,
+  AtlasFrameSource,
+} from "./spritesheet.js";
 
 // Camera
 export { Camera } from "./Camera.js";
@@ -36,4 +52,4 @@ export { DisplaySystem } from "./DisplaySystem.js";
 export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 
 // Asset factories
-export { texture } from "./assets.js";
+export { texture, spritesheet } from "./assets.js";

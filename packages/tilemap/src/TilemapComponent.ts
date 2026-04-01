@@ -1,5 +1,5 @@
-import { Component, Transform } from "@yage/core";
-import { Container } from "pixi.js";
+import { Component, Transform, serializable } from "@yage/core";
+import { Assets, Container } from "pixi.js";
 import { RenderLayerManagerKey } from "@yage/renderer";
 import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
 import { extractCollisionShapes } from "./colliders.js";
@@ -12,26 +12,52 @@ import type {
 
 /** Options for creating a TilemapComponent. */
 export interface TilemapComponentOptions {
-  /** Parsed Tiled map data (with resolved tilesets). */
-  map: TiledMapData;
+  /** Parsed Tiled map data (not serializable). */
+  map?: TiledMapData;
+  /** Asset path to the Tiled JSON (serializable, resolved via Assets.get). */
+  mapKey?: string;
   /** Which tile layers to render. Omit to render all. */
   layers?: string[];
   /** Render layer name. Default: "default". */
   layer?: string;
 }
 
+/** Serializable snapshot of a TilemapComponent. */
+export interface TilemapComponentData {
+  mapKey: string;
+  layers?: string[];
+  layer: string;
+}
+
 /** Component that renders a Tiled map using @pixi/tilemap. */
+@serializable
 export class TilemapComponent extends Component {
   readonly container: Container;
   readonly data: TilemapData;
   private readonly _tiledMap: TiledMapData;
+  private readonly _mapKey: string | null;
   private readonly layerNames: string[] | undefined;
   private readonly renderLayerName: string;
 
   constructor(options: TilemapComponentOptions) {
     super();
-    this._tiledMap = options.map;
-    this.data = toTilemapData(options.map);
+
+    if (!options.map && !options.mapKey) {
+      throw new Error(
+        "TilemapComponent requires either `map` or `mapKey`.",
+      );
+    }
+
+    this._mapKey = options.mapKey ?? null;
+    const tiledMap = options.map ?? Assets.get<TiledMapData>(options.mapKey!);
+    if (!tiledMap) {
+      throw new Error(
+        `TilemapComponent: map "${options.mapKey}" is not loaded. Add it to scene preload.`,
+      );
+    }
+
+    this._tiledMap = tiledMap;
+    this.data = toTilemapData(tiledMap);
     this.layerNames = options.layers;
     this.renderLayerName = options.layer ?? "default";
     this.container = new Container();
@@ -51,6 +77,29 @@ export class TilemapComponent extends Component {
   onDestroy(): void {
     this.container.removeFromParent();
     this.container.destroy({ children: true });
+  }
+
+  serialize(): TilemapComponentData | null {
+    if (!this._mapKey) {
+      console.warn(
+        `TilemapComponent on "${this.entity?.name}": created with a TiledMapData object. ` +
+          `Use { mapKey } for save/load support.`,
+      );
+      return null;
+    }
+    return {
+      mapKey: this._mapKey,
+      layer: this.renderLayerName,
+      ...(this.layerNames && { layers: this.layerNames }),
+    };
+  }
+
+  static fromSnapshot(data: TilemapComponentData): TilemapComponent {
+    return new TilemapComponent({
+      mapKey: data.mapKey,
+      layer: data.layer,
+      ...(data.layers && { layers: data.layers }),
+    });
   }
 
   /** Map width in pixels. */

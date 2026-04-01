@@ -12,7 +12,9 @@ export interface Lerped {
 /** Emitter configuration. */
 export interface EmitterConfig {
   /** The texture for all particles in this emitter. */
-  texture: Texture;
+  texture?: Texture;
+  /** Texture asset key (serializable alternative to `texture`). */
+  textureKey?: string;
   /** Maximum number of live particles. Default: 100. */
   maxParticles?: number;
   /** Particles per second for continuous emission. Default: 10. */
@@ -44,6 +46,25 @@ export interface EmitterConfig {
   };
   /** Render layer name. Default: "default". */
   layer?: string;
+}
+
+/** Serializable snapshot of a ParticleEmitterComponent. */
+export interface ParticleEmitterData {
+  textureKey: string;
+  maxParticles: number;
+  rate: number;
+  lifetime: NumberRange;
+  speed: NumberRange;
+  angle: NumberRange;
+  scale?: NumberRange | Lerped;
+  alpha?: NumberRange | Lerped;
+  rotation: NumberRange;
+  rotationSpeed: NumberRange;
+  tint: number;
+  damping: number;
+  gravity?: { x: number; y: number };
+  spawnOffset?: { x?: NumberRange; y?: NumberRange };
+  layer: string;
 }
 
 /** Resolve a NumberRange to a concrete value. */

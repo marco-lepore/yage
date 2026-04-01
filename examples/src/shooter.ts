@@ -16,7 +16,6 @@ import {
   CameraKey,
   RenderLayerManagerKey,
   texture,
-  sliceSheet,
 } from "@yage/renderer";
 import {
   RigidBodyComponent,
@@ -816,19 +815,19 @@ class EnemyController extends Component {
 // ---------------------------------------------------------------------------
 const PlayerBP = defineBlueprint("player", (entity) => {
   entity.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
-  const idleFrames = sliceSheet(PlayerIdleTex.path, FRAME_SIZE);
+  const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
   const spriteComp = entity.add(
-    new AnimatedSpriteComponent({ textures: idleFrames, layer: "player" }),
+    new AnimatedSpriteComponent({ source: idleSource, layer: "player" }),
   );
   spriteComp.animatedSprite.anchor.set(0.5, 0.5 - 3 / FRAME_SIZE);
   entity.add(
     new AnimationController<PlayerAnim>({
-      idle: { frames: idleFrames, speed: 0.15 },
-      walk: { frames: sliceSheet(PlayerWalkTex.path, FRAME_SIZE), speed: 0.2 },
-      jump: { frames: sliceSheet(PlayerJumpTex.path, FRAME_SIZE), speed: 0.12, loop: false },
-      land: { frames: sliceSheet(PlayerLandTex.path, FRAME_SIZE), speed: 0.5, loop: false },
-      shoot: { frames: sliceSheet(PlayerShootTex.path, FRAME_SIZE), speed: 0.4, loop: false },
-      hurt: { frames: sliceSheet(PlayerHurtTex.path, FRAME_SIZE), speed: 0.3, loop: false },
+      idle: { source: idleSource, speed: 0.15 },
+      walk: { source: { sheet: PlayerWalkTex.path, frameWidth: FRAME_SIZE }, speed: 0.2 },
+      jump: { source: { sheet: PlayerJumpTex.path, frameWidth: FRAME_SIZE }, speed: 0.12, loop: false },
+      land: { source: { sheet: PlayerLandTex.path, frameWidth: FRAME_SIZE }, speed: 0.5, loop: false },
+      shoot: { source: { sheet: PlayerShootTex.path, frameWidth: FRAME_SIZE }, speed: 0.4, loop: false },
+      hurt: { source: { sheet: PlayerHurtTex.path, frameWidth: FRAME_SIZE }, speed: 0.3, loop: false },
     }),
   );
   entity.add(
@@ -882,40 +881,40 @@ const EnemyBP = defineBlueprint<{
 }>("enemy", (entity, { x, y, patrolLeft, patrolRight }) => {
   entity.tags.add("enemy");
   entity.add(new Transform({ position: new Vec2(x, y) }));
-  const idleFrames = sliceSheet(EnemyIdleTex.path, 24, 32);
-  entity.add(new AnimatedSpriteComponent({ textures: idleFrames, layer: "world" }));
+  const idleSource = { sheet: EnemyIdleTex.path, frameWidth: 24, frameHeight: 32 };
+  entity.add(new AnimatedSpriteComponent({ source: idleSource, layer: "world" }));
   entity.add(
     new AnimationController<EnemyAnim>({
       idle: {
-        frames: idleFrames,
+        source: idleSource,
         speed: 0.15,
         anchor: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
       },
       walk: {
-        frames: sliceSheet(EnemyWalkTex.path, 22, 33),
+        source: { sheet: EnemyWalkTex.path, frameWidth: 22, frameHeight: 33 },
         speed: 0.15,
         anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
       },
       react: {
-        frames: sliceSheet(EnemyReactTex.path, 22, 32),
+        source: { sheet: EnemyReactTex.path, frameWidth: 22, frameHeight: 32 },
         speed: 0.2,
         loop: false,
         anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
       },
       attack: {
-        frames: sliceSheet(EnemyAttackTex.path, 43, 37),
+        source: { sheet: EnemyAttackTex.path, frameWidth: 43, frameHeight: 37 },
         speed: 0.3,
         loop: false,
         anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
       },
       hit: {
-        frames: sliceSheet(EnemyHitTex.path, 30, 32),
+        source: { sheet: EnemyHitTex.path, frameWidth: 30, frameHeight: 32 },
         speed: 0.25,
         loop: false,
         anchor: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
       },
       die: {
-        frames: sliceSheet(EnemyDieTex.path, 33, 32),
+        source: { sheet: EnemyDieTex.path, frameWidth: 33, frameHeight: 32 },
         speed: 0.2,
         loop: false,
         anchor: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },

@@ -1,4 +1,5 @@
-import { Texture, Rectangle } from "pixi.js";
+import { Texture, Rectangle, Assets } from "pixi.js";
+import type { Spritesheet } from "pixi.js";
 
 /**
  * Slice a single-row horizontal spritesheet into individual frame Textures.
@@ -35,4 +36,55 @@ export function sliceSheet(
     );
   }
   return frames;
+}
+
+// ---------------------------------------------------------------------------
+// FrameSource — serializable frame descriptors
+// ---------------------------------------------------------------------------
+
+/** A horizontal sprite strip: resolve by slicing a single-row texture. */
+export interface StripFrameSource {
+  sheet: string;
+  frameWidth: number;
+  frameHeight?: number;
+}
+
+/** A named animation within a JSON atlas spritesheet. */
+export interface AtlasFrameSource {
+  atlas: string;
+  animation: string;
+}
+
+/** Union type for serializable frame references. */
+export type FrameSource = StripFrameSource | AtlasFrameSource;
+
+export function isStripSource(s: FrameSource): s is StripFrameSource {
+  return "sheet" in s;
+}
+
+export function isAtlasSource(s: FrameSource): s is AtlasFrameSource {
+  return "atlas" in s;
+}
+
+/**
+ * Resolve a FrameSource to concrete Texture[].
+ * Assets must already be loaded (via scene preload) — this is synchronous.
+ */
+export function resolveFrames(source: FrameSource): Texture[] {
+  if (isStripSource(source)) {
+    return sliceSheet(source.sheet, source.frameWidth, source.frameHeight);
+  }
+  const spritesheet = Assets.get<Spritesheet>(source.atlas);
+  if (!spritesheet) {
+    throw new Error(
+      `resolveFrames: atlas "${source.atlas}" is not loaded. Add it to scene preload.`,
+    );
+  }
+  const textures = spritesheet.animations[source.animation];
+  if (!textures) {
+    throw new Error(
+      `resolveFrames: animation "${source.animation}" not found in atlas "${source.atlas}".`,
+    );
+  }
+  return textures;
 }

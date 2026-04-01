@@ -26,6 +26,13 @@ const COMPONENT_ORDER = [
   "Transform",
   "RigidBodyComponent",
   "ColliderComponent",
+  "SpriteComponent",
+  "GraphicsComponent",
+  "AnimatedSpriteComponent",
+  "AnimationController",
+  "SoundComponent",
+  "ParticleEmitterComponent",
+  "TilemapComponent",
 ];
 
 /** Orchestrates full game-state serialization and hydration. */

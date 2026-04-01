@@ -15,4 +15,9 @@ export { ParticlePresets } from "./presets.js";
 
 // Types
 export { resolveRange, isLerped } from "./types.js";
-export type { NumberRange, Lerped, EmitterConfig } from "./types.js";
+export type {
+  NumberRange,
+  Lerped,
+  EmitterConfig,
+  ParticleEmitterData,
+} from "./types.js";

@@ -83,10 +83,34 @@ const { mocks } = vi.hoisted(() => {
   return { mocks: { MockContainer, MockAnimatedSprite } };
 });
 
-vi.mock("pixi.js", () => ({
-  Container: mocks.MockContainer,
-  AnimatedSprite: mocks.MockAnimatedSprite,
-}));
+vi.mock("pixi.js", () => {
+  class MockTexture {
+    source = { scaleMode: "nearest" };
+    width: number;
+    height: number;
+    constructor(opts?: { source?: unknown; frame?: { width: number; height: number } }) {
+      this.width = opts?.frame?.width ?? 96;
+      this.height = opts?.frame?.height ?? 48;
+    }
+    static from(key: string): MockTexture {
+      const t = new MockTexture();
+      (t as unknown as Record<string, unknown>).label = key;
+      t.width = 96;
+      t.height = 48;
+      return t;
+    }
+  }
+  class MockRectangle {
+    constructor(public x: number, public y: number, public width: number, public height: number) {}
+  }
+  return {
+    Container: mocks.MockContainer,
+    AnimatedSprite: mocks.MockAnimatedSprite,
+    Texture: MockTexture,
+    Rectangle: MockRectangle,
+    Assets: { get: () => undefined },
+  };
+});
 
 import { Transform } from "@yage/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
@@ -321,5 +345,85 @@ describe("AnimationController", () => {
     ctrl.update!(16);
     expect(ctrl.locked).toBe(false);
     expect(ctrl.current).toBe("idle");
+  });
+
+  describe("serialization", () => {
+    it("serialize returns null when defs use raw frames", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { ctrl } = setup();
+      expect(ctrl.serialize()).toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
+      warnSpy.mockRestore();
+    });
+
+    it("serialize returns data when all defs use source", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      entity.add(new AnimatedSpriteComponent({ source: { sheet: "idle.png", frameWidth: 48 } }));
+      const ctrl = entity.add(
+        new AnimationController({
+          idle: { source: { sheet: "idle.png", frameWidth: 48 }, speed: 0.15 },
+          walk: { source: { sheet: "walk.png", frameWidth: 48 }, speed: 0.2, loop: true },
+        }),
+      );
+
+      const data = ctrl.serialize()!;
+      expect(data).not.toBeNull();
+      expect(data.current).toBe("idle");
+      expect(data.speed).toBe(1);
+      expect(data.animations["idle"]!.source).toEqual({ sheet: "idle.png", frameWidth: 48 });
+      expect(data.animations["walk"]!.source).toEqual({ sheet: "walk.png", frameWidth: 48 });
+      expect(data.animations["walk"]!.loop).toBe(true);
+    });
+
+    it("fromSnapshot round-trips current animation and speed", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      entity.add(new AnimatedSpriteComponent({ source: { sheet: "idle.png", frameWidth: 48 } }));
+      const ctrl = entity.add(
+        new AnimationController({
+          idle: { source: { sheet: "idle.png", frameWidth: 48 }, speed: 0.15 },
+          walk: { source: { sheet: "walk.png", frameWidth: 48 }, speed: 0.2 },
+        }),
+      );
+      ctrl.play("walk");
+      ctrl.speed = 1.5;
+
+      const data = ctrl.serialize()!;
+      expect(data.current).toBe("walk");
+      expect(data.speed).toBe(1.5);
+
+      // Restore in a new entity
+      const entity2 = spawnEntityInScene(scene);
+      entity2.add(new Transform());
+      entity2.add(new AnimatedSpriteComponent({ source: { sheet: "idle.png", frameWidth: 48 } }));
+      const restored = entity2.add(AnimationController.fromSnapshot(data));
+      expect(restored.current).toBe("walk");
+      expect(restored.speed).toBe(1.5);
+    });
+
+    it("mixed source/frames marks controller as not serializable", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      entity.add(new AnimatedSpriteComponent({ textures: makeFrames(2) as never[] }));
+      const ctrl = entity.add(
+        new AnimationController({
+          idle: { source: { sheet: "idle.png", frameWidth: 48 }, speed: 0.15 },
+          walk: { frames: makeFrames(4) as never[], speed: 0.2 },
+        }),
+      );
+      expect(ctrl.serialize()).toBeNull();
+      warnSpy.mockRestore();
+    });
+
+    it("throws when AnimationDef has neither source nor frames", () => {
+      expect(
+        () => new AnimationController({ idle: { speed: 0.15 } as never }),
+      ).toThrow(/requires either/);
+    });
   });
 });

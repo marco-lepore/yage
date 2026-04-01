@@ -1,8 +1,9 @@
-import { Component } from "@yage/core";
+import { Component, serializable } from "@yage/core";
 import type { SoundHandle } from "./SoundHandle.js";
-import { AudioManagerKey, type SoundComponentOptions } from "./types.js";
+import { AudioManagerKey, type SoundComponentOptions, type SoundData } from "./types.js";
 
 /** Entity-bound audio component that delegates playback to AudioManager. */
+@serializable
 export class SoundComponent extends Component {
   private readonly _alias: string;
   private readonly _channel: string;
@@ -42,16 +43,28 @@ export class SoundComponent extends Component {
   }
 
   stop(): void {
-    if (this._handle) {
-      if (this._handle.playing) {
-        this._handle.stop();
-      }
-      this._handle = null;
+    if (this._handle?.playing) {
+      this._handle.stop();
     }
+    this._handle = null;
   }
 
   get handle(): SoundHandle | null {
     return this._handle;
+  }
+
+  serialize(): SoundData {
+    return {
+      alias: this._alias,
+      channel: this._channel,
+      loop: this._loop,
+      volume: this._volume,
+      playOnAdd: this._playOnAdd,
+    };
+  }
+
+  static fromSnapshot(data: SoundData): SoundComponent {
+    return new SoundComponent(data);
   }
 
   onDestroy(): void {

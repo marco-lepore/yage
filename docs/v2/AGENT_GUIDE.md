@@ -68,7 +68,9 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yage/input (→ core)
   │
-  └── @yage/audio (→ core, @pixi/sound)
+  ├── @yage/audio (→ core, @pixi/sound)
+  │
+  └── @yage/save (→ core)
 
 yage (meta-package, re-exports all + createGame factory)
 ```
@@ -111,6 +113,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/ProcessSlot.ts`     | Reusable restartable process handle (cooldowns, effects) |
 | `src/ProcessComponent.ts`| Entity component for slots + one-off processes |
 | `src/TimerEntity.ts`     | Pre-built entity exposing ProcessComponent API |
+| `src/Serializable.ts`    | `@serializable` decorator, `SerializableRegistry`, `SnapshotResolver` |
 | `src/Trait.ts`           | Trait system (`defineTrait`, `@trait`)          |
 | `src/Blueprint.ts`       | Reusable entity templates (deprecated)        |
 | `src/ErrorBoundary.ts`   | System/component error wrapping               |
@@ -133,7 +136,10 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup      |
 | `src/SpriteComponent.ts`         | Sprite wrapper                     |
 | `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`     |
-| `src/AnimatedSpriteComponent.ts` | Animated sprite                    |
+| `src/AnimatedSpriteComponent.ts` | Animated sprite (FrameSource serializable) |
+| `src/AnimationController.ts`     | Named animations, one-shot locking |
+| `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames` |
+| `src/assets.ts`                  | `texture()`, `spritesheet()` factories |
 | `src/Camera.ts`                  | Follow, zoom, shake, bounds        |
 | `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync |
 | `src/RenderLayer.ts`             | Named draw-order layers            |
@@ -225,6 +231,16 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/StatsStore.ts`        | Rolling-window statistics (Float64Array ring buffers) |
 | `src/GraphicsPool.ts`      | Allocation-free PixiJS Graphics pool                  |
 | `src/TextPool.ts`          | Allocation-free PixiJS Text pool                      |
+
+### `@yage/save`
+
+| File                          | Purpose                                        |
+| ----------------------------- | ---------------------------------------------- |
+| `src/SavePlugin.ts`           | Plugin entry, registers `SaveServiceKey`       |
+| `src/SaveService.ts`          | Snapshot + user data save/load orchestration   |
+| `src/LocalStorageAdapter.ts`  | `SaveStorage` impl for browser localStorage   |
+| `src/types.ts`                | `SaveStorage`, snapshot types                  |
+| `src/keys.ts`                 | `SaveServiceKey`                               |
 
 ### `yage` (meta-package)
 
@@ -543,6 +559,229 @@ for (const entity of scene.getEntities()) {
 }
 ```
 
+### Make a Component Serializable
+
+Components that participate in save/load need three things: `@serializable`, `serialize()`, and `static fromSnapshot()`. The save system auto-discovers registered classes and restores them during load.
+
+**Full serialization** (all state is primitives/string keys):
+
+```typescript
+import { Component, serializable } from "@yage/core";
+
+interface MyData { value: number; label: string; }
+
+@serializable
+class MyComponent extends Component {
+  private _value: number;
+  private _label: string;
+
+  constructor(opts: { value: number; label: string }) {
+    super();
+    this._value = opts.value;
+    this._label = opts.label;
+  }
+
+  serialize(): MyData {
+    return { value: this._value, label: this._label };
+  }
+
+  static fromSnapshot(data: MyData): MyComponent {
+    return new MyComponent(data);
+  }
+}
+```
+
+**Partial serialization** (contains Textures or other non-serializable objects):
+
+Use string-based alternatives (`source: FrameSource`, `textureKey: string`) when available. When only raw objects are provided, `serialize()` returns `null` and the entity must reconstruct in `afterRestore()`.
+
+```typescript
+import { AnimatedSpriteComponent, AnimationController } from "@yage/renderer";
+
+// Serializable — uses FrameSource (string key + frame dimensions)
+new AnimatedSpriteComponent({
+  source: { sheet: "player_idle.png", frameWidth: 48 },
+  layer: "player",
+});
+new AnimationController<PlayerAnim>({
+  idle: { source: { sheet: "player_idle.png", frameWidth: 48 }, speed: 0.15 },
+  walk: { source: { sheet: "player_walk.png", frameWidth: 48 }, speed: 0.2 },
+});
+
+// NOT serializable — raw Texture[] (backward compat, entity handles afterRestore)
+new AnimatedSpriteComponent({ textures: myTextureArray });
+```
+
+**Serialization status by component:**
+
+| Component | Pattern | String key |
+|---|---|---|
+| `Transform` | Full | N/A (all primitives) |
+| `SpriteComponent` | Full when using string texture key | `texture: "sprite.png"` |
+| `GraphicsComponent` | Partial (layer only, draw in afterRestore) | N/A |
+| `RigidBodyComponent` | Full | N/A (all primitives) |
+| `ColliderComponent` | Full | N/A (all primitives) |
+| `AnimatedSpriteComponent` | Full when using `source` | `source: { sheet, frameWidth }` or `{ atlas, animation }` |
+| `AnimationController` | Full when ALL defs use `source` | Same as above |
+| `SoundComponent` | Full | `alias` is already a string |
+| `ParticleEmitterComponent` | Full when using `textureKey` | `textureKey: "particle.png"` |
+| `TilemapComponent` | Full when using `mapKey` | `mapKey: "dungeon.json"` |
+| `UIPanel` / `UIRoot` | Not serializable | State belongs in owning component/entity |
+
+### Make an Entity Serializable
+
+Entities need `@serializable` and optionally `serialize()` / `afterRestore()`:
+
+```typescript
+import { Entity, Transform, Vec2, serializable } from "@yage/core";
+import type { SnapshotResolver } from "@yage/core";
+import { SpriteComponent } from "@yage/renderer";
+
+@serializable
+class PlayerEntity extends Entity {
+  private health = 100;
+
+  setup({ x, y }: { x: number; y: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new SpriteComponent({ texture: "player.png", layer: "world" }));
+  }
+
+  // Save custom state (components with fromSnapshot() are saved automatically)
+  serialize() {
+    return { health: this.health };
+  }
+
+  // Restore non-serializable state after all components are restored
+  afterRestore(data: { health: number }, resolve: SnapshotResolver) {
+    this.health = data.health;
+    // resolve.entity(savedId) maps old IDs → restored entity instances
+  }
+}
+```
+
+### Use the Save System
+
+```typescript
+import { SavePlugin, SaveServiceKey } from "@yage/save";
+
+// Enable in createGame:
+const game = await createGame({ save: true, /* ... */ });
+
+// Or install manually:
+engine.use(new SavePlugin());
+
+// In game code:
+const save = this.service(SaveServiceKey);
+save.saveSnapshot("slot1");          // save full game state
+await save.loadSnapshot("slot1");    // restore from snapshot
+save.saveData("settings", { volume: 0.8 }); // save user data
+const settings = save.loadData("settings"); // load user data
+```
+
+### Serializing Drawables (GraphicsComponent)
+
+`GraphicsComponent` only serializes its layer name — draw commands are procedural and can't be captured. The entity or a sibling component must redo the drawing in `afterRestore()`:
+
+```typescript
+@serializable
+class HealthBar extends Entity {
+  private health = 100;
+
+  setup() {
+    this.add(new Transform());
+    this.add(new GraphicsComponent({ layer: "hud" }));
+    this.drawBar();
+  }
+
+  serialize() {
+    return { health: this.health };
+  }
+
+  afterRestore(data: { health: number }) {
+    this.health = data.health;
+    this.drawBar(); // GraphicsComponent is auto-restored (layer), but empty — redraw
+  }
+
+  private drawBar() {
+    const gfx = this.get(GraphicsComponent).graphics;
+    gfx.clear();
+    gfx.rect(0, 0, this.health, 10).fill(0x00ff00);
+  }
+}
+```
+
+### Serializing UI State (vanilla `@yage/ui`)
+
+UI panels are view-layer — they don't hold game state. The component that owns the panel stores the state and builds/updates the UI from it. On restore, `fromSnapshot` sets the state before `onAdd` builds the panel:
+
+```typescript
+@serializable
+class InventoryUI extends Component {
+  private selectedTab = 0;
+  private tabButtons: UIButton[] = [];
+
+  onAdd() {
+    const panel = this.entity.add(new UIPanel({ width: 300, height: 400 }));
+    const tabs = ["Weapons", "Armor", "Items"];
+    for (let i = 0; i < tabs.length; i++) {
+      const btn = new UIButton({ text: tabs[i]!, onClick: () => this.switchTab(i) });
+      this.tabButtons.push(btn);
+      panel.addChild(btn);
+    }
+    this.updateView();
+  }
+
+  switchTab(index: number) {
+    this.selectedTab = index;
+    this.updateView(); // mutate existing elements, don't rebuild
+  }
+
+  private updateView() {
+    for (let i = 0; i < this.tabButtons.length; i++) {
+      this.tabButtons[i]!.tint = i === this.selectedTab ? 0xffd700 : 0x888888;
+    }
+  }
+
+  serialize() { return { selectedTab: this.selectedTab }; }
+
+  static fromSnapshot(data: { selectedTab: number }): InventoryUI {
+    const comp = new InventoryUI();
+    comp.selectedTab = data.selectedTab; // set before onAdd() builds the UI
+    return comp;
+  }
+}
+```
+
+### Serializing UI State (React `@yage/ui-react`)
+
+React components re-render from state — the entity bridges the store to the save system:
+
+```typescript
+const inventoryStore = createStore({ selectedTab: 0, scrollY: 0 });
+
+@serializable
+class InventoryEntity extends Entity {
+  setup() {
+    this.add(new Transform());
+    this.add(new UIRoot({ element: createElement(InventoryPanel) }));
+  }
+
+  serialize() {
+    return { ui: inventoryStore.get() };
+  }
+
+  afterRestore(data: { ui: { selectedTab: number; scrollY: number } }) {
+    inventoryStore.set(data.ui); // React re-renders via useStore()
+  }
+}
+
+// React component — pure view, reads from store
+function InventoryPanel() {
+  const { selectedTab } = useStore(inventoryStore);
+  return <Tabs selected={selectedTab} />;
+}
+```
+
 ### Define a Blueprint (deprecated)
 
 Blueprints still work but entity subclasses are preferred for new code.
@@ -642,9 +881,10 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Pixels everywhere**            | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                   |
 | **co-located unit tests**        | `Foo.ts` test goes in `Foo.test.ts` in the same directory.                                                                                                                                          |
 | **E2E tests in `e2e/`**          | Integration tests at repo root, not inside packages.                                                                                                                                                |
-| **AssetHandle factories**        | Each plugin exports a factory (e.g., `texture()`, `sound()`, `tiledMap()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                                  |
+| **AssetHandle factories**        | Each plugin exports a factory (e.g., `texture()`, `spritesheet()`, `sound()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                               |
 | **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                               |
 | **Entity events for game logic** | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                            |
+| **`@serializable` for save/load** | Decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()`. Use string keys (`FrameSource`, `textureKey`) instead of raw PixiJS objects for full serialization. |
 
 ### Pitfalls to Avoid
 
@@ -661,6 +901,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing. |
 | **Using boolean flags for cooldown state**                    | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                    |
 | **Assuming render order = spawn order**                       | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                            |
+| **Passing raw `Texture` objects to serializable components** | `Texture` is a PixiJS runtime object — not JSON-serializable. `serialize()` returns `null` and the entity must handle reconstruction manually.                                                     | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` for particles, `texture: "path"` for sprites. |
 
 ### Type Safety Checklist
 
@@ -688,6 +929,8 @@ For the rationale behind key decisions, see [TDD.md](./TDD.md). Quick summary:
 | Internal coordinate conversion                          | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                           |
 | Error resilience (`ErrorBoundary`)                      | One bad component/system never crashes the loop; errors are logged and inspectable                                                             |
 | Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
+| `@serializable` decorator in core                      | Components/entities self-register at import time. `SaveService` reads the registry — no manual registration needed                              |
+| String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), string texture key (sprites) enable serialization without coupling to PixiJS objects        |
 
 ---
 

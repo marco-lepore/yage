@@ -1,7 +1,7 @@
 import { GameLoopKey, AssetManagerKey } from "@yage/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
 import { Application, Assets, Container } from "pixi.js";
-import type { Texture } from "pixi.js";
+import type { Texture, Spritesheet } from "pixi.js";
 import {
   RendererKey,
   StageKey,
@@ -87,10 +87,14 @@ export class RendererPlugin implements Plugin {
       return () => this.app.ticker.remove(fn);
     });
 
-    // 9. Register texture asset loader (if AssetManager is available)
+    // 9. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
       load: (path: string) => Assets.load<Texture>(path),
+      unload: (path: string) => { Assets.unload(path); },
+    });
+    am?.registerLoader("spritesheet", {
+      load: (path: string) => Assets.load<Spritesheet>(path),
       unload: (path: string) => { Assets.unload(path); },
     });
   }
