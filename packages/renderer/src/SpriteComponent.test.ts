@@ -14,7 +14,18 @@ const { mocks } = vi.hoisted(() => {
     label = "";
     destroyed = false;
     tint = 0xffffff;
-    anchor = { x: 0, y: 0, set: vi.fn(function (this: { x: number; y: number }, ax: number, ay: number) { this.x = ax; this.y = ay; }) };
+    anchor = {
+      x: 0,
+      y: 0,
+      set: vi.fn(function (
+        this: { x: number; y: number },
+        ax: number,
+        ay: number,
+      ) {
+        this.x = ax;
+        this.y = ay;
+      }),
+    };
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -54,21 +65,31 @@ const { mocks } = vi.hoisted(() => {
     });
   }
 
-  return { mocks: { MockContainer, MockSprite } };
+  // eslint-disable-next-line @typescript-eslint/no-extraneous-class
+  class MockTexture {
+    static from = vi.fn((input: unknown) => ({ input, kind: "texture" }));
+  }
+
+  return { mocks: { MockContainer, MockSprite, MockTexture } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Sprite: mocks.MockSprite,
+  Texture: mocks.MockTexture,
 }));
 
 import { Transform } from "@yage/core";
 import { SpriteComponent } from "./SpriteComponent.js";
-import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
+import {
+  createRendererTestContext,
+  spawnEntityInScene,
+} from "./test-helpers.js";
 
 describe("SpriteComponent", () => {
   beforeEach(() => {
     mocks.MockSprite.from.mockClear();
+    mocks.MockTexture.from.mockClear();
   });
 
   it("creates a sprite from texture", () => {
@@ -89,7 +110,10 @@ describe("SpriteComponent", () => {
   });
 
   it("sets anchor when provided", () => {
-    const comp = new SpriteComponent({ texture: {} as never, anchor: { x: 0.5, y: 0.5 } });
+    const comp = new SpriteComponent({
+      texture: {} as never,
+      anchor: { x: 0.5, y: 0.5 },
+    });
     expect(comp.sprite.anchor.set).toHaveBeenCalledWith(0.5, 0.5);
   });
 
@@ -114,15 +138,19 @@ describe("SpriteComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new SpriteComponent({ texture: {} as never }));
 
-    const layerContainer = layerManager.defaultLayer.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const layerContainer = layerManager.defaultLayer
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(layerContainer.children).toContain(comp.sprite);
   });
 
   it("setTexture replaces the sprite texture via string", () => {
     const comp = new SpriteComponent({ texture: {} as never });
     comp.setTexture("new-texture");
-    // Sprite.from is called for the new texture
-    expect(mocks.MockSprite.from).toHaveBeenCalledWith("new-texture");
+    expect(mocks.MockTexture.from).toHaveBeenCalledWith("new-texture");
+    expect(comp.sprite.texture).toEqual({
+      input: "new-texture",
+      kind: "texture",
+    });
   });
 
   it("tint setter updates sprite tint", () => {
@@ -145,7 +173,9 @@ describe("SpriteComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new SpriteComponent({ texture: {} as never }));
 
-    const sprite = comp.sprite as unknown as InstanceType<typeof mocks.MockContainer>;
+    const sprite = comp.sprite as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(sprite.parent).not.toBeNull();
 
     comp.onDestroy?.();
