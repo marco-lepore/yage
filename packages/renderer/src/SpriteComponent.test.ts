@@ -54,12 +54,17 @@ const { mocks } = vi.hoisted(() => {
     });
   }
 
-  return { mocks: { MockContainer, MockSprite } };
+  const MockTexture = {
+    from: vi.fn((input: unknown) => ({ _textureKey: input })),
+  };
+
+  return { mocks: { MockContainer, MockSprite, MockTexture } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Sprite: mocks.MockSprite,
+  Texture: mocks.MockTexture,
 }));
 
 import { Transform } from "@yage/core";
@@ -121,8 +126,10 @@ describe("SpriteComponent", () => {
   it("setTexture replaces the sprite texture via string", () => {
     const comp = new SpriteComponent({ texture: {} as never });
     comp.setTexture("new-texture");
-    // Sprite.from is called for the new texture
-    expect(mocks.MockSprite.from).toHaveBeenCalledWith("new-texture");
+    // Texture.from resolves the string to a texture resource
+    expect(mocks.MockTexture.from).toHaveBeenCalledWith("new-texture");
+    // The resolved texture is assigned to the sprite
+    expect(comp.sprite.texture).toEqual({ _textureKey: "new-texture" });
   });
 
   it("tint setter updates sprite tint", () => {
