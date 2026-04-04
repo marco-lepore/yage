@@ -1,10 +1,15 @@
-import { Component, serializable } from "@yage/core";
+import { AssetHandle, Component, serializable } from "@yage/core";
+import { RenderLayerManagerKey, resolveTextureInput } from "@yage/renderer";
 import { ParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
-import { RenderLayerManagerKey } from "@yage/renderer";
 import { ParticlePool } from "./ParticlePool.js";
-import { resolveRange, isLerped } from "./types.js";
-import type { EmitterConfig, NumberRange, Lerped, ParticleEmitterData } from "./types.js";
+import { isLerped, resolveRange } from "./types.js";
+import type {
+  EmitterConfig,
+  Lerped,
+  NumberRange,
+  ParticleEmitterData,
+} from "./types.js";
 
 /** Internal tracking state for a single active particle. */
 interface ParticleState {
@@ -29,8 +34,21 @@ export class ParticleEmitterComponent extends Component {
   /** @internal */ _accumulator = 0;
 
   private readonly config: Required<
-    Pick<EmitterConfig, "maxParticles" | "rate" | "lifetime" | "speed" | "angle" | "rotation" | "rotationSpeed" | "tint" | "damping" | "layer">
-  > & EmitterConfig;
+    Pick<
+      EmitterConfig,
+      | "maxParticles"
+      | "rate"
+      | "lifetime"
+      | "speed"
+      | "angle"
+      | "rotation"
+      | "rotationSpeed"
+      | "tint"
+      | "damping"
+      | "layer"
+    >
+  > &
+    EmitterConfig;
   private readonly _rawConfig: EmitterConfig;
   private readonly _textureKey: string | null;
 
@@ -40,14 +58,24 @@ export class ParticleEmitterComponent extends Component {
     super();
 
     this._rawConfig = config;
-    this._textureKey = config.textureKey ?? null;
+    this._textureKey =
+      config.textureKey ??
+      (typeof config.texture === "string"
+        ? config.texture
+        : config.texture instanceof AssetHandle
+          ? config.texture.path
+          : null);
 
-    if (!config.texture && !config.textureKey) {
+    if (!config.texture && !this._textureKey) {
       throw new Error(
         "ParticleEmitterComponent requires either `texture` or `textureKey`.",
       );
     }
-    const resolvedTexture = config.texture ?? Texture.from(config.textureKey!);
+
+    const particleTexture =
+      config.texture !== undefined
+        ? resolveTextureInput(config.texture)
+        : Texture.from(this._textureKey!);
 
     this.config = {
       maxParticles: 100,
@@ -63,7 +91,7 @@ export class ParticleEmitterComponent extends Component {
     };
 
     this.container = new ParticleContainer({
-      texture: resolvedTexture,
+      texture: particleTexture,
       dynamicProperties: {
         position: true,
         rotation: true,
@@ -72,7 +100,7 @@ export class ParticleEmitterComponent extends Component {
       },
     });
 
-    this._pool = new ParticlePool(resolvedTexture, this.config.maxParticles);
+    this._pool = new ParticlePool(particleTexture, this.config.maxParticles);
   }
 
   /** Start continuous emission at `config.rate` particles/sec. */
@@ -107,7 +135,7 @@ export class ParticleEmitterComponent extends Component {
     if (!this._textureKey) {
       console.warn(
         `ParticleEmitterComponent on "${this.entity?.name}": created with a Texture object. ` +
-          `Use { textureKey } for save/load support.`,
+          `Use a string path, texture handle, or { textureKey } for save/load support.`,
       );
       return null;
     }

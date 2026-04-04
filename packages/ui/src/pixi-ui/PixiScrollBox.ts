@@ -1,4 +1,5 @@
 import { ScrollBox } from "@pixi/ui";
+import type { DisplayContainer, PointLike } from "@yage/renderer";
 import type { PixiScrollBoxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 
@@ -21,7 +22,7 @@ export class PixiScrollBox extends PixiUIBase<ScrollBox> {
   }
 
   /** Expose addItem for imperative usage. */
-  addItem(...items: import("pixi.js").Container[]): void {
+  addItem(...items: DisplayContainer[]): void {
     this.view.addItem(...items);
   }
 
@@ -42,7 +43,7 @@ export class PixiScrollBox extends PixiUIBase<ScrollBox> {
 
   protected disconnectAll(): void {
     const cb = this.prevProps.onScroll as
-      | ((value: number | import("pixi.js").PointData) => void)
+      | ((value: number | PointLike) => void)
       | undefined;
     if (cb) this.view.onScroll.disconnect(cb);
   }

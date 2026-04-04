@@ -3,6 +3,7 @@ import {
   GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
+  type GraphicsContext,
 } from "@yage/renderer";
 import {
   RigidBodyComponent,
@@ -290,7 +291,7 @@ class PlayerController extends Component {
 }
 
 function drawPlayerGraphics(
-  g: import("pixi.js").Graphics,
+  g: GraphicsContext,
   airborne: boolean,
 ): void {
   const bodyColor = airborne ? 0x38bdf8 : 0x22c55e;

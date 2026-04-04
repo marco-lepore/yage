@@ -1,16 +1,17 @@
-import { Component, serializable } from "@yage/core";
+import { AssetHandle, Component, serializable } from "@yage/core";
 import { AnimatedSprite } from "pixi.js";
-import type { Texture } from "pixi.js";
-import { RenderLayerManagerKey } from "./types.js";
+import { resolveTextureInput } from "./assets.js";
+import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
+import { RenderLayerManagerKey } from "./types.js";
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions {
   /** Serializable frame source (sprite strip or atlas). */
   source?: FrameSource;
   /** Raw texture array (not serializable, backward compat). */
-  textures?: Texture[];
+  textures?: readonly TextureInput[];
   /** Render layer name. Default: "default". */
   layer?: string;
 }
@@ -37,7 +38,13 @@ export class AnimatedSpriteComponent extends Component {
       this.animatedSprite = new AnimatedSprite(resolveFrames(options.source));
     } else if (options.textures) {
       this._source = null;
-      this.animatedSprite = new AnimatedSprite(options.textures);
+      const textures: TextureResource[] = options.textures.some(
+        (texture) =>
+          typeof texture === "string" || texture instanceof AssetHandle,
+      )
+        ? options.textures.map(resolveTextureInput)
+        : (options.textures as TextureResource[]);
+      this.animatedSprite = new AnimatedSprite(textures);
     } else {
       throw new Error(
         "AnimatedSpriteComponent requires either `source` or `textures`.",

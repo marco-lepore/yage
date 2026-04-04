@@ -1,21 +1,27 @@
 import { ServiceKey } from "@yage/core";
-import type { AssetHandle } from "@yage/core";
 import type {
-  ColorSource,
-  Container,
-  Graphics,
-  PointData,
-  Sprite,
-  TextStyleOptions,
-  Texture,
-} from "pixi.js";
+  ColorValue,
+  DisplayContainer,
+  DisplaySprite,
+  GraphicsContext,
+  PointLike,
+  TextStyle,
+  TextureHandle,
+  TextureResource,
+} from "@yage/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 
 /** View type accepted by @pixi/ui components (texture path, Texture, Container, Sprite, or Graphics). */
-export type PixiViewType = string | Texture | Container | Sprite | Graphics;
+export type PixiViewType =
+  | string
+  | TextureHandle
+  | TextureResource
+  | DisplayContainer
+  | DisplaySprite
+  | GraphicsContext;
 
 /** Service key for the UI container (sibling to worldContainer under app.stage). */
-export const UIContainerKey = new ServiceKey<Container>("uiContainer");
+export const UIContainerKey = new ServiceKey<DisplayContainer>("uiContainer");
 
 /** Anchor position for root UI panels relative to virtual resolution. */
 export enum Anchor {
@@ -55,7 +61,7 @@ export interface ColorBackground {
 
 /** Texture-based background with stretch, nine-slice, or tile modes. */
 export interface TextureBackground {
-  texture: AssetHandle<Texture>;
+  texture: TextureHandle;
   mode?: "stretch" | "nine-slice" | "tile";
   nineSlice?:
     | { left: number; top: number; right: number; bottom: number }
@@ -117,7 +123,7 @@ export interface LayoutProps {
 
 /** Common interface for elements that participate in Yoga layout. */
 export interface UIElement {
-  readonly displayObject: Container;
+  readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   visible: boolean;
   applyLayout?(): void;
@@ -140,7 +146,7 @@ export interface UIContainerElement extends UIElement {
 /** Props for UIText (used by reconciler and props-driven constructor). */
 export interface UITextProps extends LayoutProps {
   children?: string;
-  style?: Partial<TextStyleOptions>;
+  style?: Partial<TextStyle>;
 }
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */
@@ -150,7 +156,7 @@ export interface UIButtonProps extends LayoutProps {
   background?: BackgroundOptions;
   hoverBackground?: BackgroundOptions;
   pressBackground?: BackgroundOptions;
-  textStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
   disabled?: boolean;
 }
 
@@ -178,14 +184,14 @@ export interface PanelProps extends LayoutProps {
 
 /** Props for UIImage. */
 export interface UIImageProps extends LayoutProps {
-  texture: AssetHandle<Texture>;
+  texture: TextureHandle;
   tint?: number;
   alpha?: number;
 }
 
 /** Props for UINineSlice. */
 export interface UINineSliceProps extends LayoutProps {
-  texture: AssetHandle<Texture>;
+  texture: TextureHandle;
   insets:
     | { left: number; top: number; right: number; bottom: number }
     | number;
@@ -209,7 +215,7 @@ export interface UICheckboxProps extends LayoutProps {
   boxColor?: number;
   checkColor?: number;
   label?: string;
-  labelStyle?: Partial<TextStyleOptions>;
+  labelStyle?: Partial<TextStyle>;
   disabled?: boolean;
 }
 
@@ -232,8 +238,8 @@ export interface PixiFancyButtonProps extends LayoutProps {
   pressedView?: PixiViewType;
   disabledView?: PixiViewType;
   text?: string;
-  icon?: Container;
-  textStyle?: Partial<TextStyleOptions>;
+  icon?: DisplayContainer;
+  textStyle?: Partial<TextStyle>;
   padding?: number;
   nineSliceSprite?: [number, number, number, number];
   onClick?: () => void;
@@ -251,7 +257,7 @@ export interface PixiCheckboxProps extends LayoutProps {
   checkedView: PixiViewType;
   uncheckedView: PixiViewType;
   text?: string;
-  textStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
   textOffset?: { x?: number; y?: number };
 }
 
@@ -276,7 +282,7 @@ export interface PixiSliderProps extends LayoutProps {
   onChange?: (value: number) => void;
   onUpdate?: (value: number) => void;
   showValue?: boolean;
-  valueTextStyle?: Partial<TextStyleOptions>;
+  valueTextStyle?: Partial<TextStyle>;
   fillPaddings?: { top?: number; right?: number; bottom?: number; left?: number };
   nineSliceSprite?: [number, number, number, number];
 }
@@ -284,7 +290,7 @@ export interface PixiSliderProps extends LayoutProps {
 /** Props for PixiInput. */
 export interface PixiInputProps extends LayoutProps {
   bg: PixiViewType;
-  textStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
   placeholder?: string;
   value?: string;
   maxLength?: number;
@@ -300,12 +306,12 @@ export interface PixiInputProps extends LayoutProps {
 export interface PixiScrollBoxProps extends LayoutProps {
   scrollWidth?: number;
   scrollHeight?: number;
-  background?: ColorSource;
+  background?: ColorValue;
   radius?: number;
   type?: "vertical" | "horizontal" | "both";
   elementsMargin?: number;
   globalScroll?: boolean;
-  onScroll?: (position: number | PointData) => void;
+  onScroll?: (position: number | PointLike) => void;
 }
 
 /** Props for PixiSelect. */
@@ -314,15 +320,15 @@ export interface PixiSelectProps extends LayoutProps {
   openBG: PixiViewType;
   items: string[];
   selected?: number;
-  textStyle?: Partial<TextStyleOptions>;
-  itemTextStyle?: Partial<TextStyleOptions>;
+  textStyle?: Partial<TextStyle>;
+  itemTextStyle?: Partial<TextStyle>;
   itemWidth?: number;
   itemHeight?: number;
-  itemBG?: ColorSource;
-  itemHoverBG?: ColorSource;
+  itemBG?: ColorValue;
+  itemHoverBG?: ColorValue;
   visibleItems?: number;
   onSelect?: (index: number, text: string) => void;
-  scrollBoxOffset?: PointData;
+  scrollBoxOffset?: PointLike;
 }
 
 /** Props for PixiRadioGroup. */

@@ -1,6 +1,7 @@
 import { FancyButton } from "@pixi/ui";
 import type { PixiFancyButtonProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui FancyButton. */
 export class PixiFancyButton extends PixiUIBase<FancyButton> {
@@ -11,7 +12,10 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
     } = props;
     // Cast needed: exactOptionalPropertyTypes makes `T | undefined` incompatible with optional props
     const view = new FancyButton({
-      defaultView, hoverView, pressedView, disabledView,
+      defaultView: resolvePixiView(defaultView),
+      hoverView: resolvePixiView(hoverView),
+      pressedView: resolvePixiView(pressedView),
+      disabledView: resolvePixiView(disabledView),
       text, icon, padding, scale, anchor, nineSliceSprite, animations, textOffset,
     } as unknown as ConstructorParameters<typeof FancyButton>[0]);
     super(view, props);

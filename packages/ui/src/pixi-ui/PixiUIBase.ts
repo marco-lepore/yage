@@ -1,4 +1,4 @@
-import type { Container } from "pixi.js";
+import type { DisplayContainer } from "@yage/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import type { LayoutProps, UIElement } from "../types.js";
@@ -10,12 +10,13 @@ import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
  * Handles: Yoga node + measure function, prevProps storage, bridgeSignal helper,
  * visible prop, applyLayout, and destroy cleanup.
  */
-export abstract class PixiUIBase<T extends Container> implements UIElement {
+export abstract class PixiUIBase<T extends DisplayContainer>
+implements UIElement {
   readonly yogaNode: YogaNode;
   protected readonly view: T;
   protected prevProps: Record<string, unknown> = {};
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.view;
   }
 

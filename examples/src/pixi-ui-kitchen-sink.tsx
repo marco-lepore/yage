@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
-import { NineSliceSprite, Texture } from "pixi.js";
 import { Engine, Scene, Vec2, Transform } from "@yage/core";
 import { RendererPlugin, CameraKey, GraphicsComponent } from "@yage/renderer";
-import { UIPlugin } from "@yage/ui";
+import { UIPlugin, createNineSliceView } from "@yage/ui";
 import {
   UIRoot,
   Panel,
@@ -18,7 +17,7 @@ import {
 } from "@yage/ui-react";
 import { injectStyles, getContainer } from "./shared";
 import {
-  textStyle, loadFonts, assets, allAssets, sprites as S,
+  textStyle, loadFonts, assets, allAssets,
   nineSlice, btnTextOffset, panelBg,
 } from "./ui-theme";
 
@@ -26,14 +25,18 @@ injectStyles();
 
 /** Create a NineSliceSprite at a specific size (for composite widgets like Select
  *  where we can't rely on applyLayout to resize). */
-function makeNineSlice(path: string, w: number, h: number, inset = 10): NineSliceSprite {
-  const s = new NineSliceSprite({
-    texture: Texture.from(path),
-    leftWidth: inset, topHeight: inset, rightWidth: inset, bottomHeight: inset,
+function makeNineSlice(
+  texture: (typeof assets)[keyof typeof assets],
+  w: number,
+  h: number,
+  inset = 10,
+) {
+  return createNineSliceView({
+    texture,
+    width: w,
+    height: h,
+    insets: inset,
   });
-  s.width = w;
-  s.height = h;
-  return s;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,8 +86,8 @@ function KitchenSink() {
 
   // NineSliceSprite views for Select trigger (composite widget, can't resize via applyLayout)
   const selectViews = useMemo(() => ({
-    closed: makeNineSlice(assets.selectClosed.path, 180, 36),
-    open: makeNineSlice(assets.selectOpen.path, 180, 36),
+    closed: makeNineSlice(assets.selectClosed, 180, 36),
+    open: makeNineSlice(assets.selectOpen, 180, 36),
   }), []);
 
   return (
@@ -103,9 +106,9 @@ function KitchenSink() {
       <Panel direction="row" gap={12} alignItems="flex-start">
         <Section title="Pixi FancyButton">
           <PixiFancyButton
-            defaultView={S.btnDefault}
-            hoverView={S.btnHover}
-            pressedView={S.btnPressed}
+            defaultView={assets.btnDefault}
+            hoverView={assets.btnHover}
+            pressedView={assets.btnPressed}
             nineSliceSprite={nineSlice.button}
             text={`Clicked: ${btnClicks}`}
             textStyle={textStyle("button")}
@@ -115,7 +118,7 @@ function KitchenSink() {
             height={40}
           />
           <PixiFancyButton
-            defaultView={S.btnDisabled}
+            defaultView={assets.btnDisabled}
             nineSliceSprite={nineSlice.button}
             text="Disabled"
             textStyle={textStyle("button", { fill: 0x999999 })}
@@ -128,8 +131,8 @@ function KitchenSink() {
 
         <Section title="Pixi Checkbox">
           <PixiCheckbox
-            checkedView={S.checkboxChecked}
-            uncheckedView={S.checkboxUnchecked}
+            checkedView={assets.checkboxChecked}
+            uncheckedView={assets.checkboxUnchecked}
             text="Enable sound"
             checked={checked}
             onChange={onCheck}
@@ -145,8 +148,8 @@ function KitchenSink() {
       <Panel direction="row" gap={12} alignItems="flex-start">
         <Section title="Pixi ProgressBar">
           <PixiProgressBar
-            bg={S.sliderTrack}
-            fill={S.sliderFillGreen}
+            bg={assets.sliderTrack}
+            fill={assets.sliderFillGreen}
             nineSliceSprite={nineSlice.track}
             value={progress}
             width={200}
@@ -154,9 +157,9 @@ function KitchenSink() {
           />
           <Panel direction="row" gap={6}>
             <PixiFancyButton
-              defaultView={S.btnDefault}
-              hoverView={S.btnHover}
-              pressedView={S.btnPressed}
+              defaultView={assets.btnDefault}
+              hoverView={assets.btnHover}
+              pressedView={assets.btnPressed}
               nineSliceSprite={nineSlice.button}
               text="- 10"
               textStyle={textStyle("buttonSmall")}
@@ -166,9 +169,9 @@ function KitchenSink() {
               height={28}
             />
             <PixiFancyButton
-              defaultView={S.btnDefault}
-              hoverView={S.btnHover}
-              pressedView={S.btnPressed}
+              defaultView={assets.btnDefault}
+              hoverView={assets.btnHover}
+              pressedView={assets.btnPressed}
               nineSliceSprite={nineSlice.button}
               text="+ 10"
               textStyle={textStyle("buttonSmall")}
@@ -183,9 +186,9 @@ function KitchenSink() {
 
         <Section title="Pixi Slider">
           <PixiSlider
-            bg={S.sliderTrack}
-            fill={S.sliderFillBlue}
-            slider={S.sliderHandle}
+            bg={assets.sliderTrack}
+            fill={assets.sliderFillBlue}
+            slider={assets.sliderHandle}
             nineSliceSprite={nineSlice.track}
             min={0}
             max={100}
@@ -202,7 +205,7 @@ function KitchenSink() {
       <Panel direction="row" gap={12} alignItems="flex-start">
         <Section title="Pixi Input">
           <PixiInput
-            bg={S.inputBg}
+            bg={assets.inputBg}
             nineSliceSprite={nineSlice.input}
             placeholder="Type here..."
             value={inputText}
@@ -243,9 +246,9 @@ function KitchenSink() {
       <Section title="Pixi RadioGroup" width={380}>
         <PixiRadioGroup
           items={[
-            { checkedView: S.radioChecked, uncheckedView: S.radioUnchecked, text: "Warrior", textStyle: textStyle("body") },
-            { checkedView: S.radioChecked, uncheckedView: S.radioUnchecked, text: "Mage", textStyle: textStyle("body") },
-            { checkedView: S.radioChecked, uncheckedView: S.radioUnchecked, text: "Rogue", textStyle: textStyle("body") },
+            { checkedView: assets.radioChecked, uncheckedView: assets.radioUnchecked, text: "Warrior", textStyle: textStyle("body") },
+            { checkedView: assets.radioChecked, uncheckedView: assets.radioUnchecked, text: "Mage", textStyle: textStyle("body") },
+            { checkedView: assets.radioChecked, uncheckedView: assets.radioUnchecked, text: "Rogue", textStyle: textStyle("body") },
           ]}
           type="horizontal"
           elementsMargin={12}

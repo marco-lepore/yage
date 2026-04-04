@@ -1,14 +1,15 @@
 import { CheckBox } from "@pixi/ui";
 import type { PixiCheckboxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
+import { resolvePixiView } from "./view-resolver.js";
 
 /** Yoga-aware wrapper around @pixi/ui CheckBox. */
 export class PixiCheckbox extends PixiUIBase<CheckBox> {
   constructor(props: PixiCheckboxProps) {
     const view = new CheckBox({
       style: {
-        checked: props.checkedView,
-        unchecked: props.uncheckedView,
+        checked: resolvePixiView(props.checkedView),
+        unchecked: resolvePixiView(props.uncheckedView),
         text: props.textStyle,
         textOffset: props.textOffset,
       },

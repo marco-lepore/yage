@@ -1,14 +1,14 @@
 import { Particle } from "pixi.js";
-import type { Texture } from "pixi.js";
+import type { TextureResource } from "@yage/renderer";
 
 /** Pre-allocated pool of PixiJS Particle instances. */
 export class ParticlePool {
   private readonly free: Particle[] = [];
-  private readonly texture: Texture;
+  private readonly texture: TextureResource;
   readonly capacity: number;
   private _activeCount = 0;
 
-  constructor(texture: Texture, capacity: number) {
+  constructor(texture: TextureResource, capacity: number) {
     this.texture = texture;
     this.capacity = capacity;
 
