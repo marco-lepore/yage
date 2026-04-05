@@ -43,6 +43,8 @@ export class RigidBodyComponent extends Component {
   _currRotation = 0;
   /** @internal If true, skip interpolation on next frame (teleport). */
   _teleported = false;
+  /** @internal True if this body was put to sleep by the pause system. */
+  _pauseSleeping = false;
 
   private readonly config: RigidBodyConfig;
   private readonly transform = this.sibling(Transform);

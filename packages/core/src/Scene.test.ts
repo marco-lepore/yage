@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Scene } from "./Scene.js";
 import { Component } from "./Component.js";
-import { EngineContext, QueryCacheKey, EventBusKey } from "./EngineContext.js";
+import {
+  EngineContext,
+  QueryCacheKey,
+  EventBusKey,
+  SceneManagerKey,
+} from "./EngineContext.js";
+import { SceneManager } from "./SceneManager.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -180,11 +186,36 @@ describe("Scene", () => {
     expect(scene.transparentBelow).toBe(false);
   });
 
-  it("tracks paused state", () => {
+  it("tracks manual paused state", () => {
     const scene = new TestScene();
     expect(scene.paused).toBe(false);
-    scene._setPaused(true);
+    scene.paused = true;
     expect(scene.paused).toBe(true);
+    expect(scene.isPaused).toBe(true);
+  });
+
+  it("isPaused includes stack-based pause", async () => {
+    const { ctx } = createContext();
+    const sm = new SceneManager();
+    ctx.register(SceneManagerKey, sm);
+    sm._setContext(ctx);
+
+    const scene = new TestScene();
+    await sm.push(scene);
+    expect(scene.isPaused).toBe(false);
+
+    // Push a scene with pauseBelow=true on top
+    const overlay = new TestScene();
+    await sm.push(overlay);
+    expect(scene.isPaused).toBe(true);
+    expect(scene.paused).toBe(false); // manual pause still false
+  });
+
+  it("timeScale defaults to 1", () => {
+    const scene = new TestScene();
+    expect(scene.timeScale).toBe(1);
+    scene.timeScale = 0.5;
+    expect(scene.timeScale).toBe(0.5);
   });
 
   it("context getter returns the engine context", () => {

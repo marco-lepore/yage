@@ -11,15 +11,10 @@ import { EngineContext, SceneManagerKey, ErrorBoundaryKey } from "./EngineContex
 import { Phase } from "./types.js";
 
 // Minimal SceneManager mock
-class MockSceneManager {
-  activeScene: MockScene | undefined;
-  get active() {
-    return this.activeScene;
-  }
-}
-
 class MockScene {
   private entities = new Set<Entity>();
+  timeScale = 1;
+  isPaused = false;
   spawn(name: string): Entity {
     const e = new Entity(name);
     e._setScene(this as never, null);
@@ -30,6 +25,16 @@ class MockScene {
     return this.entities;
   }
   _queueDestroy(): void {}
+}
+
+class MockSceneManager {
+  activeScene: MockScene | undefined;
+  get active() {
+    return this.activeScene;
+  }
+  get activeScenes() {
+    return this.activeScene ? [this.activeScene] : [];
+  }
 }
 
 class UpdatingComponent extends Component {
@@ -157,6 +162,85 @@ describe("ComponentUpdateSystem", () => {
     expect(comp.enabled).toBe(false);
     const disabled = boundary.getDisabled();
     expect(disabled.components).toHaveLength(1);
+  });
+
+  describe("timeScale", () => {
+    it("scales dt by scene.timeScale for update", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 0.5;
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      const comp = new UpdatingComponent();
+      entity.add(comp);
+      updateSys.update(16);
+      expect(comp.calls).toEqual([8]);
+    });
+
+    it("scales dt by scene.timeScale for fixedUpdate", () => {
+      const { fixedSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 2;
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      const comp = new FixedUpdatingComponent();
+      entity.add(comp);
+      fixedSys.update(8);
+      expect(comp.calls).toEqual([16]);
+    });
+
+    it("timeScale 0 passes dt=0 to components", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 0;
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      const comp = new UpdatingComponent();
+      entity.add(comp);
+      updateSys.update(16);
+      expect(comp.calls).toEqual([0]);
+    });
+  });
+
+  describe("multi-scene", () => {
+    it("iterates all active scenes", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene1 = new MockScene();
+      const scene2 = new MockScene();
+      // Override activeScenes to return both
+      Object.defineProperty(sceneManager, "activeScenes", {
+        get: () => [scene1, scene2],
+      });
+      const e1 = scene1.spawn("a");
+      const c1 = new UpdatingComponent();
+      e1.add(c1);
+      const e2 = scene2.spawn("b");
+      const c2 = new UpdatingComponent();
+      e2.add(c2);
+      updateSys.update(16);
+      expect(c1.calls).toEqual([16]);
+      expect(c2.calls).toEqual([16]);
+    });
+
+    it("applies different timeScales per scene", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene1 = new MockScene();
+      scene1.timeScale = 0.5;
+      const scene2 = new MockScene();
+      scene2.timeScale = 2;
+      Object.defineProperty(sceneManager, "activeScenes", {
+        get: () => [scene1, scene2],
+      });
+      const e1 = scene1.spawn("a");
+      const c1 = new UpdatingComponent();
+      e1.add(c1);
+      const e2 = scene2.spawn("b");
+      const c2 = new UpdatingComponent();
+      e2.add(c2);
+      updateSys.update(10);
+      expect(c1.calls).toEqual([5]);
+      expect(c2.calls).toEqual([20]);
+    });
   });
 
   describe("ComponentFixedUpdateSystem edge cases", () => {

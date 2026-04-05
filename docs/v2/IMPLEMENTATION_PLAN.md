@@ -440,7 +440,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ### Phase 8a -- Examples ✅ Complete
 
-13 examples covering all major features:
+15 examples covering all major features:
 
 1. `hello-world` — basic rendering with shapes and rotation
 2. `camera` — camera follow, shake, bounds
@@ -455,6 +455,8 @@ Phase 7: Debug Plugin                                  (all above)
 11. `pixi-ui-kitchen-sink` — @pixi/ui component showcase
 12. `debug` — debug HUD and profiling
 13. `shooter` — player shooting, enemy AI
+14. `scene-pause` — multi-scene stack with pause menu, HUD overlay, per-scene timeScale
+15. `ui-layers` — named z-ordered UI layers (hud/menu/dialog)
 
 Example index page with URL routing for easy access.
 
@@ -525,8 +527,40 @@ Planned Playwright test suite (not yet implemented):
 | 5 | Audio, Particles, Tilemap | 1 (audio), 2 (particles/tilemap) | ✅ Complete | Secondary plugins with asset handle factories |
 | 6 | UI | 2 | ✅ Complete | Yoga layout, @pixi/ui wrappers, React reconciler |
 | 7 | Debug | 4, 2 | ✅ Complete | Debug overlay, contributor system, stats store |
-| 8 | E2E Tests + Examples | 5, 6, 7 | 🟡 Partial | 13 examples complete, E2E tests not started |
+| 8 | E2E Tests + Examples | 5, 6, 7 | 🟡 Partial | 15 examples complete, E2E tests not started |
 | 9 | Polish | 8 | 🟡 Partial | Meta-package done, docs/publish not started |
+
+---
+
+## Cross-cutting features (v2 branch, in progress)
+
+These features span multiple phases and are being developed on the `v2` branch:
+
+### Multi-scene pause + timeScale ✅ Implemented
+
+- `scene.paused` (manual) + `scene.isPaused` (computed from stack via `pauseBelow`)
+- `scene.timeScale` — per-scene time multiplier applied by all systems
+- `sceneManager.activeScenes` — all non-paused scenes, iterated by systems
+- SceneManager uses snapshot-based `onPause`/`onResume` transition detection
+- All core systems (ComponentUpdateSystem, ProcessSystem, PhysicsSystem, PhysicsInterpolationSystem, ParticleSystem) iterate activeScenes with timeScale scaling
+
+### Unified layer management ✅ Implemented
+
+- `RendererPlugin.createScreenContainer(name, opts)` — creates screen-space containers as siblings of worldContainer under app.stage
+- `RenderLayerManager` gains `eventMode` option and `root` getter
+- UIPlugin and DebugPlugin migrated to use `createScreenContainer` — no direct `app.stage` access outside renderer
+- `UILayerManager` deleted — replaced by `RenderLayerManager` from renderer package
+- `UIPanel` accepts `layer?: string` option for targeting named UI layers
+
+### Per-scene physics worlds 🔴 Planned
+
+The current single shared Rapier world causes issues with multi-scene pause:
+- `body.sleep()` zeroes velocity → momentum loss on resume
+- Stale interpolation state → visual snap on resume
+- Shared sub-accumulator → discontinuity across pause transitions
+- Multiple active scenes can't have independent timeScales
+
+**Planned fix**: migrate to per-scene `PhysicsWorld` instances. Each scene gets its own Rapier world, created on enter and destroyed on exit. Eliminates all sleep/wake machinery, the shared accumulator, and the timeScale conflict warning.
 
 ---
 

@@ -30,6 +30,8 @@ export default defineConfig({
         "pixi-ui-kitchen-sink": resolve(__dirname, "pixi-ui-kitchen-sink.html"),
         tilemap: resolve(__dirname, "tilemap.html"),
         "input-remapping": resolve(__dirname, "input-remapping.html"),
+        "scene-pause": resolve(__dirname, "scene-pause.html"),
+        "ui-layers": resolve(__dirname, "ui-layers.html"),
       },
     },
   },

@@ -20,6 +20,7 @@ import {
   QueryCacheKey,
   EventBusKey,
   ErrorBoundaryKey,
+  SceneManagerKey,
 } from "./EngineContext.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 
@@ -61,6 +62,7 @@ function setup() {
   ctx.register(SystemSchedulerKey, scheduler);
 
   const scenes = new SceneManager();
+  ctx.register(SceneManagerKey, scenes);
   scenes._setContext(ctx);
   const loop = new GameLoop();
 
@@ -255,6 +257,7 @@ describe("Inspector", () => {
     ctx.register(QueryCacheKey, new QueryCache());
     ctx.register(EventBusKey, new EventBus<EngineEvents>());
     const scenes = new SceneManager();
+    ctx.register(SceneManagerKey, scenes);
     scenes._setContext(ctx);
     const engine = {
       context: ctx,
@@ -330,6 +333,7 @@ describe("Inspector", () => {
     ctx.register(QueryCacheKey, new QueryCache());
     ctx.register(EventBusKey, new EventBus<EngineEvents>());
     const scenes = new SceneManager();
+    ctx.register(SceneManagerKey, scenes);
     scenes._setContext(ctx);
     const engine = {
       context: ctx,

@@ -6,7 +6,7 @@ import { FlexDirection as YogaFlexDirection, Gutter, Edge, Overflow, Display } f
 import { Align, Justify } from "yoga-layout";
 import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
-import { UIContainerKey, resolvePadding } from "./types.js";
+import { UIContainerKey, UILayerManagerKey, resolvePadding } from "./types.js";
 import type {
   BackgroundOptions,
   UIElement,
@@ -297,12 +297,14 @@ export class UIPanel extends Component {
   /** @internal */ readonly _node: PanelNode;
   /** @internal */ readonly _anchor: Anchor | undefined;
   /** @internal */ readonly _offset: { x: number; y: number };
+  /** @internal */ readonly _layer: string | undefined;
 
   constructor(opts?: UIPanelOptions) {
     super();
     this._node = new PanelNode(opts ?? {});
     this._anchor = opts?.anchor;
     this._offset = opts?.offset ?? { x: 0, y: 0 };
+    this._layer = opts?.layer;
   }
 
   /** The PixiJS Container for this panel. */
@@ -335,8 +337,19 @@ export class UIPanel extends Component {
   }
 
   onAdd(): void {
-    const uiContainer = this.use(UIContainerKey);
-    uiContainer.addChild(this._node.container);
+    let targetContainer: Container;
+    try {
+      const layerManager = this.context.resolve(UILayerManagerKey);
+      if (this._layer) {
+        targetContainer = layerManager.get(this._layer).container;
+      } else {
+        targetContainer = layerManager.defaultLayer.container;
+      }
+    } catch {
+      // Fallback: no UILayerManager registered, use raw container
+      targetContainer = this.use(UIContainerKey);
+    }
+    targetContainer.addChild(this._node.container);
   }
 
   onDestroy(): void {

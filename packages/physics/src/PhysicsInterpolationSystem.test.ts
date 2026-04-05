@@ -46,6 +46,8 @@ const { mocks } = vi.hoisted(() => {
     isKinematic() { return this._bodyType === "kinematic"; }
     numColliders() { return this._colliders.length; }
     collider(i: number) { return this._colliders[i]; }
+    sleep() {}
+    wakeUp() {}
   }
 
   class MockColliderDesc {
@@ -109,6 +111,7 @@ vi.mock("@dimforge/rapier2d", () => ({
 import { Transform, Vec2, Phase } from "@yage/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
+import { PhysicsInterpolationAlphaKey } from "./types.js";
 import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
 
 describe("PhysicsInterpolationSystem", () => {
@@ -146,7 +149,7 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("at alpha=0.5, transform is midpoint", () => {
-    const { scene, context, gameLoop } = createPhysicsTestContext();
+    const { scene, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -159,21 +162,8 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
-    // Simulate partial tick: accumulate 5ms with 10ms fixed step → alpha = 0.5
-    const cbs = {
-      earlyUpdate: vi.fn(),
-      fixedUpdate: vi.fn(),
-      update: vi.fn(),
-      lateUpdate: vi.fn(),
-      render: vi.fn(),
-      endOfFrame: vi.fn(),
-    };
-    gameLoop.setCallbacks(cbs);
-    gameLoop.start();
-    // GameLoop defaults to ~16.67ms fixed step
-    // We need alpha = 0.5, so tick with half of fixedTimestep
-    const halfStep = gameLoop.fixedTimestep / 2;
-    gameLoop.tick(halfStep);
+    // Set alpha directly via the physics interpolation alpha ref
+    context.resolve(PhysicsInterpolationAlphaKey).value = 0.5;
 
     system.update(0);
 
@@ -183,13 +173,7 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("at alpha=1, transform equals curr position", () => {
-    const { scene, context, gameLoop } = createPhysicsTestContext();
-
-    // Use custom game loop with precise step so we can get alpha=1
-    // We need to tick exactly one fixedStep + remainder = fixedStep
-    // Actually alpha=accumulator/fixedStep. After exact step, alpha=0.
-    // For alpha≈1, tick just under 2*fixedStep.
-
+    const { scene, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -202,29 +186,8 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
-    // Manually set alpha-equivalent state by ticking appropriately
-    // GameLoop fixedTimestep = ~16.67ms
-    // Tick 16.67ms → 1 fixed step, accumulator ~0, alpha ~0
-    // Tick 16.66ms → no additional fixed step, accumulator ~16.66, alpha ~1
-    const cbs = {
-      earlyUpdate: vi.fn(),
-      fixedUpdate: vi.fn(),
-      update: vi.fn(),
-      lateUpdate: vi.fn(),
-      render: vi.fn(),
-      endOfFrame: vi.fn(),
-    };
-    gameLoop.setCallbacks(cbs);
-    gameLoop.start();
-
-    // Tick almost exactly 2 * fixedTimestep - epsilon
-    // This gives us 1 fixed step and accumulator near fixedTimestep
-    const almostTwoSteps = gameLoop.fixedTimestep * 2 - 0.01;
-    gameLoop.tick(almostTwoSteps);
-
-    // alpha should be very close to 1
-    const alpha = gameLoop.interpolationAlpha;
-    expect(alpha).toBeGreaterThan(0.99);
+    // Set alpha directly via the physics interpolation alpha ref
+    context.resolve(PhysicsInterpolationAlphaKey).value = 1;
 
     system.update(0);
 
@@ -292,8 +255,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.y).toBe(75);
   });
 
-  it("reads alpha from GameLoop.interpolationAlpha", () => {
-    const { scene, context, gameLoop } = createPhysicsTestContext();
+  it("reads alpha from PhysicsInterpolationAlphaKey", () => {
+    const { scene, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -304,11 +267,17 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevPosition = new Vec2(0, 0);
     rb._currPosition = new Vec2(100, 0);
 
-    // At start, alpha = 0
-    expect(gameLoop.interpolationAlpha).toBe(0);
+    // At start, alpha ref = 0
+    const alphaRef = context.resolve(PhysicsInterpolationAlphaKey);
+    expect(alphaRef.value).toBe(0);
 
     system.update(0);
     expect(transform.position.x).toBeCloseTo(0);
+
+    // Set alpha to 0.75 and re-run
+    alphaRef.value = 0.75;
+    system.update(0);
+    expect(transform.position.x).toBeCloseTo(75);
   });
 
   it("handles empty scene gracefully", () => {

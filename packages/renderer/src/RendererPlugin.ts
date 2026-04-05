@@ -1,7 +1,7 @@
 import { AssetManagerKey, GameLoopKey } from "@yage/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
 import { Application, Assets, Container, Graphics } from "pixi.js";
-import type { Spritesheet } from "pixi.js";
+import type { EventMode, Spritesheet } from "pixi.js";
 import { Camera } from "./Camera.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { RenderLayerManager } from "./RenderLayer.js";
@@ -26,6 +26,7 @@ export class RendererPlugin implements Plugin {
   private layerManager!: RenderLayerManager;
   private worldContainer!: Container;
   private tickerFn: (() => void) | null = null;
+  private screenManagers = new Map<string, RenderLayerManager>();
 
   constructor(config: RendererConfig) {
     this.config = config;
@@ -120,6 +121,7 @@ export class RendererPlugin implements Plugin {
       this.app.ticker.remove(this.tickerFn);
       this.tickerFn = null;
     }
+    this.screenManagers.clear();
     this.app.destroy();
   }
 
@@ -152,5 +154,36 @@ export class RendererPlugin implements Plugin {
     } finally {
       graphics.destroy();
     }
+  }
+
+  /**
+   * Create a screen-space container as a sibling of the world container.
+   * Not affected by the camera transform. Returns a RenderLayerManager
+   * for creating named layers within the container.
+   */
+  createScreenContainer(
+    name: string,
+    opts?: { eventMode?: EventMode },
+  ): RenderLayerManager {
+    if (this.screenManagers.has(name)) {
+      throw new Error(`Screen container "${name}" already exists.`);
+    }
+    const container = new Container();
+    container.label = name;
+    if (opts?.eventMode) container.eventMode = opts.eventMode;
+    this.app.stage.addChild(container);
+    const manager = new RenderLayerManager(container, opts?.eventMode);
+    this.screenManagers.set(name, manager);
+    return manager;
+  }
+
+  /** Destroy a screen-space container and all its children. */
+  destroyScreenContainer(name: string): void {
+    const manager = this.screenManagers.get(name);
+    if (!manager) return;
+    manager.root.removeFromParent();
+    manager.root.destroy({ children: true });
+    manager.destroy();
+    this.screenManagers.delete(name);
   }
 }

@@ -1,7 +1,7 @@
 import type { EngineContext, SystemScheduler, Plugin } from "@yage/core";
 import { DebugRegistryKey } from "@yage/debug/api";
 import { PhysicsWorld } from "./PhysicsWorld.js";
-import { PhysicsWorldKey } from "./types.js";
+import { PhysicsWorldKey, PhysicsInterpolationAlphaKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
@@ -30,6 +30,7 @@ export class PhysicsPlugin implements Plugin {
     this.context = context;
     this.physicsWorld = new PhysicsWorld(this.config);
     context.register(PhysicsWorldKey, this.physicsWorld);
+    context.register(PhysicsInterpolationAlphaKey, { value: 0 });
   }
 
   registerSystems(scheduler: SystemScheduler): void {

@@ -20,7 +20,7 @@ import {
 } from "@yage/core";
 import type { EngineEvents } from "@yage/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
-import { PhysicsWorldKey } from "./types.js";
+import { PhysicsWorldKey, PhysicsInterpolationAlphaKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
 
 // ---- Test Scene ----
@@ -69,6 +69,7 @@ export function createPhysicsTestContext(
 
   const physicsWorld = new PhysicsWorld(config);
   ctx.register(PhysicsWorldKey, physicsWorld);
+  ctx.register(PhysicsInterpolationAlphaKey, { value: 0 });
 
   sceneManager._setContext(ctx);
   const scene = new _TestScene("test-scene");

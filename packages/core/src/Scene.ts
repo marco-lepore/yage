@@ -16,6 +16,7 @@ import {
   QueryCacheKey,
   EventBusKey,
   AssetManagerKey,
+  SceneManagerKey,
 } from "./EngineContext.js";
 
 /**
@@ -35,10 +36,15 @@ export abstract class Scene {
   /** Asset handles to load before onEnter(). Override in subclasses. */
   readonly preload?: readonly AssetHandle<unknown>[];
 
+  /** Manual pause flag. Set by game code to pause this scene regardless of stack position. */
+  paused = false;
+
+  /** Time scale multiplier for this scene. 1.0 = normal, 0.5 = half speed. Default: 1. */
+  timeScale = 1;
+
   private entities = new Set<Entity>();
   private destroyQueue: Entity[] = [];
   private _context!: EngineContext;
-  private _paused = false;
   private entityCallbacks!: EntityCallbacks;
   private queryCache: QueryCache | undefined;
   private bus: EventBus<EngineEvents> | undefined;
@@ -52,9 +58,18 @@ export abstract class Scene {
     return this._context;
   }
 
-  /** Whether this scene is currently paused. */
-  get paused(): boolean {
-    return this._paused;
+  /** Whether this scene is effectively paused (manual pause or paused by stack). */
+  get isPaused(): boolean {
+    if (this.paused) return true;
+    const sm = this._context?.tryResolve(SceneManagerKey);
+    if (!sm) return false;
+    const stack = sm.all;
+    const idx = stack.indexOf(this);
+    if (idx === -1) return false;
+    for (let i = idx + 1; i < stack.length; i++) {
+      if (stack[i]!.pauseBelow) return true;
+    }
+    return false;
   }
 
   /** Convenience accessor for the AssetManager. */
@@ -279,14 +294,6 @@ export abstract class Scene {
         this.bus?.emit("component:removed", { entity, componentClass: cls });
       },
     };
-  }
-
-  /**
-   * Set paused state.
-   * @internal
-   */
-  _setPaused(paused: boolean): void {
-    this._paused = paused;
   }
 
   /**

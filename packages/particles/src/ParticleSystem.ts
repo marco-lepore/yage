@@ -18,10 +18,13 @@ export class ParticleSystem extends System {
   update(dt: number): void {
     const dtSec = dt / 1000;
     for (const entity of this.query) {
+      const scene = entity.scene;
+      if (scene?.isPaused) continue;
+      const sceneTimeScale = scene?.timeScale ?? 1;
       const emitter = entity.get(ParticleEmitterComponent);
       if (!emitter.enabled) continue;
       const pos = entity.get(Transform).position;
-      emitter._update(dtSec, pos.x, pos.y);
+      emitter._update(dtSec * sceneTimeScale, pos.x, pos.y);
     }
   }
 }

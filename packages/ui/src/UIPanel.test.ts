@@ -153,7 +153,7 @@ vi.mock("pixi.js", () => ({
 import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIPanel } from "./UIPanel.js";
-import { Anchor } from "./types.js";
+import { Anchor, UILayerManagerKey } from "./types.js";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
 
 beforeAll(() => {
@@ -238,22 +238,26 @@ describe("UIPanel", () => {
   });
 
   describe("onAdd / onDestroy", () => {
-    it("onAdd adds container to uiContainer", () => {
-      const { scene, uiContainer } = createUITestContext();
+    it("onAdd adds container to default layer", () => {
+      const { scene, context } = createUITestContext();
+      const layerManager = context.resolve(UILayerManagerKey);
+      const defaultLayer = layerManager.defaultLayer.container;
       const entity = spawnEntityInScene(scene);
       entity.add(new UIPanel());
 
-      expect(uiContainer.children.length).toBe(1);
+      expect(defaultLayer.children.length).toBe(1);
     });
 
     it("onDestroy removes container from parent", () => {
-      const { scene, uiContainer } = createUITestContext();
+      const { scene, context } = createUITestContext();
+      const layerManager = context.resolve(UILayerManagerKey);
+      const defaultLayer = layerManager.defaultLayer.container;
       const entity = spawnEntityInScene(scene);
       const panel = entity.add(new UIPanel());
 
-      expect(uiContainer.children.length).toBe(1);
+      expect(defaultLayer.children.length).toBe(1);
       panel.onDestroy!();
-      expect(uiContainer.children.length).toBe(0);
+      expect(defaultLayer.children.length).toBe(0);
     });
   });
 
