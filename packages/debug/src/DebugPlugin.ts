@@ -172,9 +172,8 @@ export class DebugPlugin implements Plugin {
     this.registry.register(new SystemTimingContributor(this.systemTimings));
 
     // Manual clock for deterministic stepping
-    const renderer = this.context.resolve(RendererKey);
     const gameLoop = this.context.resolve(GameLoopKey);
-    const app = renderer.application;
+    const app = this.renderer.application;
 
     this.clock = new DebugClock(
       gameLoop,

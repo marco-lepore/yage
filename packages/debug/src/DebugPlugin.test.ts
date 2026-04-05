@@ -99,13 +99,21 @@ import {
   SystemScheduler,
   SystemSchedulerKey,
 } from "@yage/core";
-import { CameraKey, RendererKey, StageKey } from "@yage/renderer";
+import { CameraKey, RendererKey, RenderLayerManagerKey } from "@yage/renderer";
 import { DebugPlugin } from "./DebugPlugin.js";
+
+function createMockLayerManager() {
+  return {
+    getOrCreate: () => ({
+      container: new mocks.MockContainer(),
+    }),
+    defaultLayer: { container: new mocks.MockContainer() },
+  };
+}
 
 function createContext() {
   const context = new EngineContext();
   const scheduler = new SystemScheduler();
-  const stage = new mocks.MockContainer();
   const appStage = new mocks.MockContainer();
   const app = {
     stage: appStage,
@@ -115,6 +123,8 @@ function createContext() {
   };
   const renderer = {
     application: app,
+    createScreenContainer: () => createMockLayerManager(),
+    destroyScreenContainer: vi.fn(),
   };
   const loop = {
     fixedTimestep: 20,
@@ -131,7 +141,7 @@ function createContext() {
   };
 
   context.register(SystemSchedulerKey, scheduler);
-  context.register(StageKey, stage as never);
+  context.register(RenderLayerManagerKey, createMockLayerManager() as never);
   context.register(RendererKey, renderer as never);
   context.register(
     CameraKey,
