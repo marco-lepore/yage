@@ -121,6 +121,8 @@ const { mocks } = vi.hoisted(() => {
     isKinematic() {
       return false;
     }
+    sleep() {}
+    wakeUp() {}
   }
 
   class MockColliderDesc {

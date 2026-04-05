@@ -8,6 +8,7 @@ import {
   QueryCacheKey,
   EventBusKey,
   AssetManagerKey,
+  SceneManagerKey,
 } from "./EngineContext.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
@@ -53,6 +54,7 @@ function setup() {
   });
 
   const manager = new SceneManager();
+  ctx.register(SceneManagerKey, manager);
   manager._setContext(ctx);
   return { manager, am, ctx };
 }
@@ -140,6 +142,7 @@ describe("Scene preload integration", () => {
     ctx.register(QueryCacheKey, new QueryCache());
     ctx.register(EventBusKey, new EventBus<EngineEvents>());
     const manager = new SceneManager();
+    ctx.register(SceneManagerKey, manager);
     manager._setContext(ctx);
 
     const scene = new PreloadScene();

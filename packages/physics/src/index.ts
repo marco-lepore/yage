@@ -1,9 +1,10 @@
 export { VERSION } from "@yage/core";
 
-export { PhysicsWorldKey } from "./types.js";
+export { PhysicsWorldKey, PhysicsInterpolationAlphaKey } from "./types.js";
 export type {
   BodyType,
   PhysicsConfig,
+  PhysicsAlphaRef,
   RigidBodyConfig,
   ColliderShape,
   ColliderConfig,

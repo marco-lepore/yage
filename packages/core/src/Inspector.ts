@@ -127,7 +127,7 @@ export class Inspector {
     return this.engine.scenes.all.map((scene) => ({
       name: scene.name,
       entityCount: scene.getEntities().size,
-      paused: scene.paused,
+      paused: scene.isPaused,
     }));
   }
 

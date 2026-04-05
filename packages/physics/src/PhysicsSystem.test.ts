@@ -63,6 +63,8 @@ const { mocks } = vi.hoisted(() => {
     isKinematic() { return this._bodyType === "kinematic"; }
     numColliders() { return this._colliders.length; }
     collider(i: number) { return this._colliders[i]; }
+    sleep() {}
+    wakeUp() {}
   }
 
   class MockColliderDesc {
@@ -323,6 +325,113 @@ describe("PhysicsSystem", () => {
 
       // Should not throw
       system.update(16.67);
+    });
+
+    it("sleeps bodies in paused scenes", () => {
+      const { scene, physicsWorld, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const sleepSpy = vi.spyOn(body, "sleep");
+
+      // Pause the scene
+      scene.paused = true;
+      system.update(16.67);
+
+      expect(sleepSpy).toHaveBeenCalled();
+      expect(rb._pauseSleeping).toBe(true);
+    });
+
+    it("wakes bodies when scene resumes", () => {
+      const { scene, physicsWorld, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const wakeUpSpy = vi.spyOn(body, "wakeUp");
+
+      // Pause then resume
+      scene.paused = true;
+      system.update(16.67);
+      scene.paused = false;
+      system.update(16.67);
+
+      expect(wakeUpSpy).toHaveBeenCalled();
+      expect(rb._pauseSleeping).toBe(false);
+    });
+
+    it("does not double-sleep already paused bodies", () => {
+      const { scene, physicsWorld, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+      const sleepSpy = vi.spyOn(body, "sleep");
+
+      scene.paused = true;
+      system.update(16.67);
+      system.update(16.67);
+
+      expect(sleepSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns early when all scenes are paused", () => {
+      const { scene, physicsWorld, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const world = (physicsWorld as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+      // First update to initialize
+      system.update(16.67);
+      world.stepSpy.mockClear();
+
+      // Pause everything
+      scene.paused = true;
+      system.update(16.67);
+
+      // Step should not be called when all paused
+      expect(world.stepSpy).not.toHaveBeenCalled();
+    });
+
+    it("caps accumulator to prevent unbounded growth at high timeScale", () => {
+      const { scene, physicsWorld, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const world = (physicsWorld as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+      scene.timeScale = 5;
+
+      // Run several frames — step count should be bounded, not growing
+      for (let i = 0; i < 10; i++) {
+        world.stepSpy.mockClear();
+        system.update(16.67);
+        // maxSteps = ceil(5) + 1 = 6, but accumulator is capped,
+        // so we should never see more than 6 steps per frame
+        expect(world.stepSpy.mock.calls.length).toBeLessThanOrEqual(6);
+      }
     });
 
     it("stores prev/curr correctly across multiple steps", () => {

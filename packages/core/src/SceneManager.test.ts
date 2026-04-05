@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { SceneManager } from "./SceneManager.js";
 import { Scene } from "./Scene.js";
-import { EngineContext, QueryCacheKey, EventBusKey } from "./EngineContext.js";
+import {
+  EngineContext,
+  QueryCacheKey,
+  EventBusKey,
+  SceneManagerKey,
+} from "./EngineContext.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
@@ -45,6 +50,7 @@ function setup() {
   ctx.register(QueryCacheKey, new QueryCache());
   ctx.register(EventBusKey, new EventBus<EngineEvents>());
   const manager = new SceneManager();
+  ctx.register(SceneManagerKey, manager);
   manager._setContext(ctx);
   return { manager, ctx };
 }
@@ -72,7 +78,7 @@ describe("SceneManager", () => {
       const pause = new GameScene("pause");
       manager.push(pause);
       expect(main.pauseCalled).toBe(true);
-      expect(main.paused).toBe(true);
+      expect(main.isPaused).toBe(true);
     });
 
     it("does not pause previous scene when pauseBelow is false", () => {
@@ -82,7 +88,7 @@ describe("SceneManager", () => {
       const overlay = new OverlayScene();
       manager.push(overlay);
       expect(main.pauseCalled).toBe(false);
-      expect(main.paused).toBe(false);
+      expect(main.isPaused).toBe(false);
     });
 
     it("builds correct stack", () => {
@@ -114,7 +120,7 @@ describe("SceneManager", () => {
       manager.push(pause);
       manager.pop();
       expect(main.resumeCalled).toBe(true);
-      expect(main.paused).toBe(false);
+      expect(main.isPaused).toBe(false);
       expect(manager.active).toBe(main);
     });
 
@@ -153,6 +159,32 @@ describe("SceneManager", () => {
       manager.replace(scene);
       expect(manager.active).toBe(scene);
       expect(scene.enterCalled).toBe(true);
+    });
+
+    it("fires onPause when replacing non-pausing scene with pausing scene", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const overlay = new OverlayScene(); // pauseBelow=false
+      const pauseMenu = new GameScene("pauseMenu"); // pauseBelow=true
+      manager.push(game);
+      manager.push(overlay);
+      expect(game.isPaused).toBe(false); // overlay doesn't pause below
+      manager.replace(pauseMenu); // replace overlay with pauseMenu
+      expect(game.isPaused).toBe(true);
+      expect(game.pauseCalled).toBe(true);
+    });
+
+    it("fires onResume when replacing pausing scene with non-pausing scene", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const pauseMenu = new GameScene("pauseMenu"); // pauseBelow=true
+      manager.push(game);
+      manager.push(pauseMenu);
+      expect(game.isPaused).toBe(true);
+      const overlay = new OverlayScene(); // pauseBelow=false
+      manager.replace(overlay); // replace pauseMenu with overlay
+      expect(game.isPaused).toBe(false);
+      expect(game.resumeCalled).toBe(true);
     });
   });
 
@@ -229,6 +261,101 @@ describe("SceneManager", () => {
       expect(scene.getEntities().size).toBe(1);
       manager._flushDestroyQueues();
       expect(scene.getEntities().size).toBe(0);
+    });
+  });
+
+  describe("activeScenes", () => {
+    it("returns all non-paused scenes", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      manager.push(game);
+      expect(manager.activeScenes).toEqual([game]);
+    });
+
+    it("excludes stack-paused scenes", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const pause = new GameScene("pause");
+      manager.push(game);
+      manager.push(pause);
+      // game is stack-paused (pause.pauseBelow = true)
+      expect(manager.activeScenes).toEqual([pause]);
+    });
+
+    it("includes scenes below a non-pausing overlay", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const overlay = new OverlayScene();
+      manager.push(game);
+      manager.push(overlay);
+      // overlay.pauseBelow = false, so game is still active
+      expect(manager.activeScenes).toEqual([game, overlay]);
+    });
+
+    it("excludes manually paused scenes", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      manager.push(game);
+      game.paused = true;
+      expect(manager.activeScenes).toEqual([]);
+    });
+  });
+
+  describe("cascade pause", () => {
+    it("pauses all scenes below a pauseBelow scene through overlays", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const hud = new OverlayScene(); // pauseBelow=false
+      const pauseMenu = new GameScene("pauseMenu"); // pauseBelow=true
+      manager.push(game);
+      manager.push(hud);
+      manager.push(pauseMenu);
+      // Both game and hud should be paused because pauseMenu.pauseBelow=true
+      expect(game.isPaused).toBe(true);
+      expect(hud.isPaused).toBe(true);
+      expect(pauseMenu.isPaused).toBe(false);
+      expect(manager.activeScenes).toEqual([pauseMenu]);
+    });
+
+    it("restores correct state after pop", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const pauseMenu = new GameScene("pause");
+      manager.push(game);
+      manager.push(pauseMenu);
+      expect(game.isPaused).toBe(true);
+      manager.pop();
+      expect(game.isPaused).toBe(false);
+      expect(game.resumeCalled).toBe(true);
+    });
+
+    it("keeps deeper scenes paused after popping top when middle scene has pauseBelow", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const pause1 = new GameScene("pause1");
+      const pause2 = new GameScene("pause2");
+      manager.push(game);
+      manager.push(pause1); // pauses game
+      manager.push(pause2); // pauses pause1 (and game stays paused)
+      expect(game.isPaused).toBe(true);
+      expect(pause1.isPaused).toBe(true);
+      manager.pop(); // pop pause2
+      // pause1 still has pauseBelow=true, so game stays paused
+      expect(game.isPaused).toBe(true);
+      expect(pause1.isPaused).toBe(false);
+    });
+
+    it("fires onPause on all affected scenes during push", () => {
+      const { manager } = setup();
+      const game = new GameScene("game");
+      const hud = new OverlayScene(); // pauseBelow=false
+      manager.push(game);
+      manager.push(hud);
+      expect(game.pauseCalled).toBe(false); // hud doesn't pause below
+      const pauseMenu = new GameScene("pauseMenu");
+      manager.push(pauseMenu);
+      // Both game and hud should have received onPause
+      expect(game.pauseCalled).toBe(true);
     });
   });
 });

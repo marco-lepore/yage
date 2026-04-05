@@ -7,6 +7,15 @@ import type { ColliderComponent } from "./ColliderComponent.js";
 /** Service key for the PhysicsWorld instance. */
 export const PhysicsWorldKey = new ServiceKey<PhysicsWorld>("physicsWorld");
 
+/** Shared ref for physics interpolation alpha, updated by PhysicsSystem. */
+export interface PhysicsAlphaRef {
+  value: number;
+}
+
+/** Service key for the physics interpolation alpha ref. */
+export const PhysicsInterpolationAlphaKey =
+  new ServiceKey<PhysicsAlphaRef>("physicsInterpolationAlpha");
+
 /** Body type for rigid bodies. */
 export type BodyType = "dynamic" | "static" | "kinematic";
 

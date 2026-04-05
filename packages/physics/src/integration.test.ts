@@ -58,6 +58,8 @@ const { mocks } = vi.hoisted(() => {
     isKinematic() { return this._bodyType === "kinematic"; }
     numColliders() { return this._colliders.length; }
     collider(i: number) { return this._colliders[i]; }
+    sleep() {}
+    wakeUp() {}
   }
 
   class MockColliderDesc {
@@ -152,6 +154,7 @@ import {
   PhysicsPlugin,
   PhysicsWorld,
   PhysicsWorldKey,
+  PhysicsInterpolationAlphaKey,
   RigidBodyComponent,
   ColliderComponent,
   PhysicsSystem,
@@ -311,7 +314,7 @@ describe("Integration Tests", () => {
   });
 
   it("interpolation blends positions between prev and curr", () => {
-    const { scene, context, gameLoop } = createPhysicsTestContext();
+    const { scene, context } = createPhysicsTestContext();
     const interpSystem = new PhysicsInterpolationSystem();
     interpSystem._setContext(context);
 
@@ -329,18 +332,8 @@ describe("Integration Tests", () => {
     expect(transform.position.x).toBeCloseTo(0);
     expect(transform.position.y).toBeCloseTo(0);
 
-    // Tick to get alpha = 0.5
-    const cbs = {
-      earlyUpdate: vi.fn(),
-      fixedUpdate: vi.fn(),
-      update: vi.fn(),
-      lateUpdate: vi.fn(),
-      render: vi.fn(),
-      endOfFrame: vi.fn(),
-    };
-    gameLoop.setCallbacks(cbs);
-    gameLoop.start();
-    gameLoop.tick(gameLoop.fixedTimestep / 2); // alpha ≈ 0.5
+    // Set alpha to 0.5 via the physics interpolation alpha ref
+    context.resolve(PhysicsInterpolationAlphaKey).value = 0.5;
 
     interpSystem.update(0);
     expect(transform.position.x).toBeCloseTo(50);

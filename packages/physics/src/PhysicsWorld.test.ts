@@ -127,6 +127,8 @@ const { mocks } = vi.hoisted(() => {
     collider(i: number) {
       return this._colliders[i];
     }
+    sleep() {}
+    wakeUp() {}
   }
 
   class MockColliderDesc {

@@ -6,16 +6,10 @@ import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { EngineContext, SceneManagerKey } from "./EngineContext.js";
 import { Phase } from "./types.js";
 
-// Minimal SceneManager mock (same pattern as ComponentUpdateSystem.test.ts)
-class MockSceneManager {
-  activeScene: MockScene | undefined;
-  get active() {
-    return this.activeScene;
-  }
-}
-
 class MockScene {
   private entities = new Set<Entity>();
+  timeScale = 1;
+  isPaused = false;
   spawn(name: string): Entity {
     const e = new Entity(name);
     e._setScene(this as never, null);
@@ -26,6 +20,17 @@ class MockScene {
     return this.entities;
   }
   _queueDestroy(): void {}
+}
+
+// Minimal SceneManager mock (same pattern as ComponentUpdateSystem.test.ts)
+class MockSceneManager {
+  activeScene: MockScene | undefined;
+  get active() {
+    return this.activeScene;
+  }
+  get activeScenes() {
+    return this.activeScene ? [this.activeScene] : [];
+  }
 }
 
 describe("ProcessSystem", () => {

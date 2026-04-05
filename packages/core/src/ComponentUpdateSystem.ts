@@ -8,7 +8,7 @@ import { SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
 /**
  * Built-in system that bridges the OOP and ECS worlds.
  *
- * Iterates all entities in the active scene and calls component
+ * Iterates all entities in non-paused scenes and calls component
  * `update(dt)` or `fixedUpdate(dt)` methods on enabled components.
  *
  * This system runs at two phases:
@@ -31,41 +31,43 @@ abstract class BaseComponentUpdateSystem extends System {
   }
 }
 
-/** Calls `fixedUpdate(dt)` on all enabled components in the active scene. */
+/** Calls `fixedUpdate(dt)` on all enabled components in non-paused scenes. */
 export class ComponentFixedUpdateSystem extends BaseComponentUpdateSystem {
   override readonly phase = Phase.FixedUpdate;
 
   update(dt: number): void {
-    const scene = this.sceneManager.active;
-    if (!scene) return;
-    for (const entity of scene.getEntities()) {
-      if (entity.isDestroyed) continue;
-      for (const component of entity.getAll()) {
-        if (!component.enabled || !component.fixedUpdate) continue;
-        const fixedUpdate = component.fixedUpdate;
-        this.errorBoundary.wrapComponent(component, () =>
-          fixedUpdate.call(component, dt),
-        );
+    for (const scene of this.sceneManager.activeScenes) {
+      const sceneDt = dt * scene.timeScale;
+      for (const entity of scene.getEntities()) {
+        if (entity.isDestroyed) continue;
+        for (const component of entity.getAll()) {
+          if (!component.enabled || !component.fixedUpdate) continue;
+          const fixedUpdate = component.fixedUpdate;
+          this.errorBoundary.wrapComponent(component, () =>
+            fixedUpdate.call(component, sceneDt),
+          );
+        }
       }
     }
   }
 }
 
-/** Calls `update(dt)` on all enabled components in the active scene. */
+/** Calls `update(dt)` on all enabled components in non-paused scenes. */
 export class ComponentUpdateSystem extends BaseComponentUpdateSystem {
   override readonly phase = Phase.Update;
 
   update(dt: number): void {
-    const scene = this.sceneManager.active;
-    if (!scene) return;
-    for (const entity of scene.getEntities()) {
-      if (entity.isDestroyed) continue;
-      for (const component of entity.getAll()) {
-        if (!component.enabled || !component.update) continue;
-        const update = component.update;
-        this.errorBoundary.wrapComponent(component, () =>
-          update.call(component, dt),
-        );
+    for (const scene of this.sceneManager.activeScenes) {
+      const sceneDt = dt * scene.timeScale;
+      for (const entity of scene.getEntities()) {
+        if (entity.isDestroyed) continue;
+        for (const component of entity.getAll()) {
+          if (!component.enabled || !component.update) continue;
+          const update = component.update;
+          this.errorBoundary.wrapComponent(component, () =>
+            update.call(component, sceneDt),
+          );
+        }
       }
     }
   }

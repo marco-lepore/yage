@@ -226,7 +226,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
         await sceneManager.push(scene);
 
         if (entry.paused) {
-          scene._setPaused(true);
+          scene.paused = true;
         }
       }
     } finally {
