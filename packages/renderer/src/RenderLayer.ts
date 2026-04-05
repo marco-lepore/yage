@@ -1,4 +1,5 @@
 import { Container } from "pixi.js";
+import type { EventMode } from "pixi.js";
 
 /** A named rendering layer with a draw order and PixiJS container. */
 export class RenderLayer {
@@ -16,12 +17,19 @@ export class RenderLayer {
 /** Manages named render layers attached to a stage container. */
 export class RenderLayerManager {
   private layers = new Map<string, RenderLayer>();
-  private readonly stageContainer: Container;
+  private readonly rootContainer: Container;
   private readonly _defaultLayer: RenderLayer;
+  private readonly _eventMode: EventMode | undefined;
 
-  constructor(stageContainer: Container) {
-    this.stageContainer = stageContainer;
+  constructor(rootContainer: Container, eventMode?: EventMode) {
+    this.rootContainer = rootContainer;
+    this._eventMode = eventMode;
     this._defaultLayer = this.create("default", 0);
+  }
+
+  /** The root container that holds all layers. */
+  get root(): Container {
+    return this.rootContainer;
   }
 
   /** Create a new named layer at the given draw order. Throws if name already exists. */
@@ -31,11 +39,12 @@ export class RenderLayerManager {
     }
     const container = new Container();
     container.label = name;
+    if (this._eventMode) container.eventMode = this._eventMode;
 
     const layer = new RenderLayer(name, order, container);
     this.layers.set(name, layer);
 
-    this.stageContainer.addChild(container);
+    this.rootContainer.addChild(container);
     this.sortLayers();
 
     return layer;
@@ -70,11 +79,16 @@ export class RenderLayerManager {
     return [...this.layers.values()].sort((a, b) => a.order - b.order);
   }
 
+  /** Clear internal state. Call after the root container has been destroyed. */
+  destroy(): void {
+    this.layers.clear();
+  }
+
   private sortLayers(): void {
     for (const layer of this.layers.values()) {
       layer.container.zIndex = layer.order;
     }
-    this.stageContainer.sortableChildren = true;
-    this.stageContainer.sortChildren();
+    this.rootContainer.sortableChildren = true;
+    this.rootContainer.sortChildren();
   }
 }

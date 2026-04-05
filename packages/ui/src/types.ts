@@ -23,6 +23,11 @@ export type PixiViewType =
 /** Service key for the UI container (sibling to worldContainer under app.stage). */
 export const UIContainerKey = new ServiceKey<DisplayContainer>("uiContainer");
 
+/** Service key for the UI layer manager (a RenderLayerManager for the screen-space UI container). */
+export const UILayerManagerKey = new ServiceKey<
+  import("@yage/renderer").RenderLayerManager
+>("uiLayerManager");
+
 /** Anchor position for root UI panels relative to virtual resolution. */
 export enum Anchor {
   TopLeft,
@@ -348,6 +353,8 @@ export interface PixiRadioGroupProps extends LayoutProps {
 export interface UIPanelOptions extends PanelProps {
   anchor?: Anchor;
   offset?: { x: number; y: number };
+  /** Target UI layer name. Defaults to "default". Layer must be pre-created via UILayerManager. */
+  layer?: string;
 }
 
 

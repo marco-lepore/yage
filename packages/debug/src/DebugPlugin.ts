@@ -4,8 +4,9 @@ import {
 } from "@yage/core";
 import type { EngineContext, Plugin, SystemScheduler, System } from "@yage/core";
 import { DebugRegistryKey } from "./types.js";
-import { Container } from "pixi.js";
-import { RendererKey, StageKey, CameraKey } from "@yage/renderer";
+import type { Container } from "pixi.js";
+import { RendererKey, RenderLayerManagerKey, CameraKey } from "@yage/renderer";
+import type { RendererPlugin } from "@yage/renderer";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import { StatsStore } from "./StatsStore.js";
 import { GraphicsPool } from "./GraphicsPool.js";
@@ -50,6 +51,7 @@ export class DebugPlugin implements Plugin {
   private originalUpdates = new Map<System, (dt: number) => void>();
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private context!: EngineContext;
+  private renderer!: RendererPlugin;
 
   constructor(config?: DebugConfig) {
     this.config = config ?? {};
@@ -58,21 +60,19 @@ export class DebugPlugin implements Plugin {
   install(context: EngineContext): void {
     this.context = context;
 
-    const renderer = context.resolve(RendererKey);
-    const stage = context.resolve(StageKey);
+    this.renderer = context.resolve(RendererKey);
     const camera = context.resolve(CameraKey);
 
-    // World-space debug container (child of world container, drawn on top)
-    this.worldContainer = new Container();
-    this.worldContainer.zIndex = 999999;
+    // World-space debug layer (child of world container, drawn on top)
+    const worldLayers = context.resolve(RenderLayerManagerKey);
+    const debugLayer = worldLayers.getOrCreate("debug", 999999);
+    this.worldContainer = debugLayer.container;
     this.worldContainer.eventMode = "none";
-    stage.addChild(this.worldContainer);
 
-    // Screen-space HUD container (child of app.stage, unaffected by camera)
-    this.hudContainer = new Container();
-    this.hudContainer.zIndex = 999999;
+    // Screen-space HUD container (sibling of world container, unaffected by camera)
+    const hudLayers = this.renderer.createScreenContainer("debug-hud");
+    this.hudContainer = hudLayers.defaultLayer.container;
     this.hudContainer.eventMode = "none";
-    renderer.application.stage.addChild(this.hudContainer);
 
     this.graphicsPool = new GraphicsPool(
       this.worldContainer,
@@ -175,7 +175,7 @@ export class DebugPlugin implements Plugin {
 
     this.graphicsPool.destroy();
     this.textPool.destroy();
-    this.worldContainer.destroy();
-    this.hudContainer.destroy();
+    // worldContainer is owned by the world RenderLayerManager — don't destroy it
+    this.renderer.destroyScreenContainer("debug-hud");
   }
 }

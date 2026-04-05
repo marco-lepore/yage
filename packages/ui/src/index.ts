@@ -1,5 +1,5 @@
 // Types & keys
-export { UIContainerKey, Anchor, isTextureBackground } from "./types.js";
+export { UIContainerKey, UILayerManagerKey, Anchor, isTextureBackground } from "./types.js";
 export type {
   FlexDirection,
   Padding,

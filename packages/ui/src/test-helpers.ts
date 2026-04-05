@@ -20,7 +20,7 @@ import type { EngineEvents } from "@yage/core";
 import { CameraKey, RenderLayerManagerKey, RendererKey, StageKey } from "@yage/renderer";
 import { Camera } from "@yage/renderer";
 import { RenderLayerManager } from "@yage/renderer";
-import { UIContainerKey } from "./types.js";
+import { UIContainerKey, UILayerManagerKey } from "./types.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -130,10 +130,12 @@ export function createUITestContext(): UITestContext {
   ctx.register(CameraKey, camera);
   ctx.register(RenderLayerManagerKey, layerManager);
 
-  // UI container
+  // UI layer manager + container
   const uiContainer = new MockContainer();
   uiContainer.label = "ui";
-  ctx.register(UIContainerKey, uiContainer as never);
+  const uiLayerManager = new RenderLayerManager(uiContainer as never);
+  ctx.register(UILayerManagerKey, uiLayerManager);
+  ctx.register(UIContainerKey, uiLayerManager.defaultLayer.container as never);
 
   const scene = new _TestScene("test-scene");
   scene._setContext(ctx);
