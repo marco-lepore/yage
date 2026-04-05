@@ -40,7 +40,7 @@ npm run dev
 npx playwright test
 
 # Run a specific E2E test
-npx playwright test e2e/bouncing-ball.spec.ts
+npx playwright test e2e/specs/physics-bounce.spec.ts
 
 # Run Playwright with headed browser (for debugging)
 npx playwright test --headed
@@ -282,16 +282,17 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 | ------------------------------------------ | -------------------------------------------------------------- |
 | Modified core logic (Entity, System, etc.) | `npx turbo test --filter=@yage/core`                           |
 | Modified a plugin                          | `npx turbo test --filter=@yage/<plugin>`                       |
-| Modified an example                        | `npx turbo build && npx playwright test e2e/<example>.spec.ts` |
+| Modified an example                        | `npx turbo build && npx playwright test e2e/specs/<example>.spec.ts` |
 | Before committing                          | `npx turbo lint && npx turbo test`                             |
 | Before PR                                  | Full sequence above                                            |
 
 ### Writing Tests
 
 - **Unit tests**: Co-locate with source files (`Foo.ts` → `Foo.test.ts`)
-- **E2E tests**: Place in `e2e/` directory at repo root
+- **E2E tests**: Place specs in `e2e/specs/` and fixture apps in `e2e/fixtures/`
 - **Use test utilities**: Import `createMockScene`, `createMockEntity`, `advanceFrames` from `@yage/core/test-utils`
 - **E2E assertions**: Use Inspector API (`window.__yage__.inspector`) for state assertions, not screenshots
+- **Deterministic browser timing**: Prefer `window.__yage__.clock.step()` / `stepFrames()` over `waitForTimeout()` when a fixture enables manual clock mode
 
 ---
 

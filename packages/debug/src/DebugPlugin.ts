@@ -1,12 +1,16 @@
-import {
-  SystemSchedulerKey,
-  InspectorKey,
+import { SystemSchedulerKey, InspectorKey, GameLoopKey } from "@yage/core";
+import type {
+  EngineContext,
+  Plugin,
+  SystemScheduler,
+  System,
 } from "@yage/core";
-import type { EngineContext, Plugin, SystemScheduler, System } from "@yage/core";
 import { DebugRegistryKey } from "./types.js";
-import type { Container } from "pixi.js";
 import { RendererKey, RenderLayerManagerKey, CameraKey } from "@yage/renderer";
 import type { RendererPlugin } from "@yage/renderer";
+import { Container } from "pixi.js";
+import { DebugClock } from "./DebugClock.js";
+import type { IDebugClock } from "./DebugClock.js";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import { StatsStore } from "./StatsStore.js";
 import { GraphicsPool } from "./GraphicsPool.js";
@@ -22,6 +26,10 @@ import { SystemTimingContributor } from "./contributors/SystemTimingContributor.
 export interface DebugConfig {
   /** Key code to toggle debug overlay. Default: "Backquote" */
   toggleKey?: string;
+  /** When true, stop the renderer ticker and advance simulation manually via `window.__yage__.clock`. */
+  manualClock?: boolean;
+  /** Key code to advance one fixed-timestep frame while manual clock mode is active. Default: "Period" */
+  stepKey?: string;
   /** Max pooled Graphics objects. Default: 256 */
   maxGraphics?: number;
   /** Max HUD text lines. Default: 32 */
@@ -52,6 +60,7 @@ export class DebugPlugin implements Plugin {
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private context!: EngineContext;
   private renderer!: RendererPlugin;
+  private clock: DebugClock | null = null;
 
   constructor(config?: DebugConfig) {
     this.config = config ?? {};
@@ -78,10 +87,7 @@ export class DebugPlugin implements Plugin {
       this.worldContainer,
       this.config.maxGraphics,
     );
-    this.textPool = new TextPool(
-      this.hudContainer,
-      this.config.maxHudLines,
-    );
+    this.textPool = new TextPool(this.hudContainer, this.config.maxHudLines);
 
     this.registry = new DebugRegistryImpl();
     this.registry.enabled = this.config.startEnabled ?? false;
@@ -128,12 +134,22 @@ export class DebugPlugin implements Plugin {
   }
 
   onStart(): void {
-    // Toggle key listener
+    // Toggle / step key listener
     const toggleKey = this.config.toggleKey ?? "Backquote";
+    const stepKey = this.config.stepKey ?? "Period";
     this.keyListener = (e: KeyboardEvent) => {
-      if (e.code === toggleKey) this.registry.toggle();
+      if (e.code === toggleKey) {
+        this.registry.toggle();
+        return;
+      }
+      if (e.code === stepKey && this.clock?.isManual) {
+        e.preventDefault();
+        this.clock.step();
+      }
     };
-    window.addEventListener("keydown", this.keyListener);
+    if (typeof window !== "undefined") {
+      window.addEventListener("keydown", this.keyListener);
+    }
 
     // Instrument system timings
     const scheduler = this.context.resolve(SystemSchedulerKey);
@@ -154,6 +170,24 @@ export class DebugPlugin implements Plugin {
     this.registry.register(new FpsContributor());
     this.registry.register(new EntityCountContributor(inspector));
     this.registry.register(new SystemTimingContributor(this.systemTimings));
+
+    // Manual clock for deterministic stepping
+    const renderer = this.context.resolve(RendererKey);
+    const gameLoop = this.context.resolve(GameLoopKey);
+    const app = renderer.application;
+
+    this.clock = new DebugClock(
+      gameLoop,
+      () => app.stop(),
+      () => app.start(),
+      () => app.render(),
+    );
+
+    if (this.config.manualClock) {
+      this.clock.setManual(true);
+    }
+
+    this.attachToGlobal(this.clock);
   }
 
   onDestroy(): void {
@@ -164,9 +198,14 @@ export class DebugPlugin implements Plugin {
     this.originalUpdates.clear();
 
     if (this.keyListener) {
-      window.removeEventListener("keydown", this.keyListener);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("keydown", this.keyListener);
+      }
       this.keyListener = null;
     }
+
+    this.detachFromGlobal();
+    this.clock = null;
 
     for (const contributor of this.registry.contributors.values()) {
       contributor.dispose?.();
@@ -177,5 +216,23 @@ export class DebugPlugin implements Plugin {
     this.textPool.destroy();
     // worldContainer is owned by the world RenderLayerManager — don't destroy it
     this.renderer.destroyScreenContainer("debug-hud");
+  }
+
+  private attachToGlobal(clock: IDebugClock): void {
+    const g = (globalThis as Record<string, unknown>)["__yage__"];
+    if (g && typeof g === "object") {
+      (g as Record<string, unknown>)["clock"] = clock;
+    }
+  }
+
+  private detachFromGlobal(): void {
+    const g = (globalThis as Record<string, unknown>)["__yage__"];
+    if (
+      g &&
+      typeof g === "object" &&
+      (g as Record<string, unknown>)["clock"] === this.clock
+    ) {
+      delete (g as Record<string, unknown>)["clock"];
+    }
   }
 }

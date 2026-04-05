@@ -38,6 +38,29 @@ export async function waitForInspector(page: Page): Promise<void> {
   await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
 }
 
+export async function waitForClock(page: Page): Promise<void> {
+  await page.waitForFunction(() => window.__yage__?.clock !== undefined);
+}
+
+export async function stepFrame(page: Page, dtMs?: number): Promise<void> {
+  await page.evaluate((dt) => {
+    window.__yage__!.clock!.step(dt);
+  }, dtMs);
+}
+
+export async function stepFrames(
+  page: Page,
+  count: number,
+  dtMs?: number,
+): Promise<void> {
+  await page.evaluate(
+    ({ frames, dt }) => {
+      window.__yage__!.clock!.stepFrames(frames, dt);
+    },
+    { frames: count, dt: dtMs },
+  );
+}
+
 export async function waitForSceneStackLength(
   page: Page,
   expectedLength: number,

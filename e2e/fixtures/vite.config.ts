@@ -15,9 +15,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
+        input: resolve(__dirname, "input.html"),
         "inspector-scene": resolve(__dirname, "inspector-scene.html"),
         "physics-bounce": resolve(__dirname, "physics-bounce.html"),
+        "scene-stack": resolve(__dirname, "scene-stack.html"),
         "save-load": resolve(__dirname, "save-load.html"),
+        "ui-button": resolve(__dirname, "ui-button.html"),
       },
     },
   },

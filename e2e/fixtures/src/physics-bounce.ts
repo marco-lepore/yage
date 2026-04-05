@@ -84,6 +84,6 @@ await createGame({
   height: HEIGHT,
   backgroundColor: 0x0a0a0a,
   physics: true,
-  debug: true,
+  debug: { manualClock: true },
   scene: new PhysicsBounceScene(),
 });
