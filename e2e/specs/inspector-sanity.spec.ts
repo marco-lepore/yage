@@ -4,12 +4,14 @@ import {
   getSceneStack,
   getSnapshot,
   gotoFixture,
-  waitForSceneStackLength,
+  stepFrames,
+  waitForClock,
 } from "./helpers";
 
 test.describe("Inspector scene sanity", () => {
   test("inspector sees initial scene and delayed push", async ({ page }) => {
     await gotoFixture(page, "/inspector-scene.html");
+    await waitForClock(page);
 
     const initialStack = await getSceneStack(page);
     expect(initialStack).toHaveLength(1);
@@ -22,7 +24,7 @@ test.describe("Inspector scene sanity", () => {
     expect(baseMarker).toBeDefined();
     expect(baseMarker?.components).toContain("Transform");
 
-    await waitForSceneStackLength(page, 2);
+    await stepFrames(page, 3);
 
     const stacked = await getSceneStack(page);
     expect(stacked).toHaveLength(2);

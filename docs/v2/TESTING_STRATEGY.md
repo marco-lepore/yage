@@ -778,7 +778,7 @@ describe('createStore', () => {
 
 ## 2. Integration Tests (Playwright)
 
-> **Status**: E2E tests are planned but not yet implemented. The patterns and examples below serve as the target specification.
+> **Status**: E2E tests are implemented and expanding. The examples below describe the current structure and preferred patterns.
 
 ### Configuration
 
@@ -787,19 +787,20 @@ describe('createStore', () => {
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './e2e',
-  timeout: 30000,
-  retries: 1,
+  testDir: './e2e/specs',
+  fullyParallel: true,
+  retries: process.env.CI ? 2 : 0,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://127.0.0.1:5200',
     trace: 'on-first-retry',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'npm run dev',
-    port: 5173,
+    command: 'npm run dev -- --host 127.0.0.1 --port 5200 --strictPort',
+    cwd: `${__dirname}/e2e`,
+    url: 'http://127.0.0.1:5200/inspector-scene.html',
     reuseExistingServer: !process.env.CI,
   },
 });
@@ -807,17 +808,36 @@ export default defineConfig({
 
 ### Test Convention
 
-E2E tests live in the top-level `e2e/` directory, **not** co-located with packages:
+E2E tests live under `e2e/specs/`. Dedicated browser fixtures live under `e2e/fixtures/`:
 
 ```
 e2e/
-  bouncing-ball.spec.ts
-  input.spec.ts
-  physics.spec.ts
-  scene-transitions.spec.ts
-  ui.spec.ts
-  inspector.spec.ts
+  fixtures/
+    physics-bounce.html
+    inspector-scene.html
+    save-load.html
+    scene-stack.html
+    input.html
+    ui-button.html
+  specs/
+    physics-bounce.spec.ts
+    inspector-sanity.spec.ts
+    save-load.spec.ts
+    scene-stack.spec.ts
+    input.spec.ts
+    ui-button.spec.ts
 ```
+
+### Deterministic Stepping
+
+Timing-sensitive fixtures should prefer the debug clock over `waitForTimeout()`:
+
+```typescript
+await page.waitForFunction(() => window.__yage__?.clock !== undefined);
+await page.evaluate(() => window.__yage__!.clock!.stepFrames(10));
+```
+
+Manual-clock mode is enabled per fixture via the debug plugin. This keeps physics, input edges, and delayed scene behavior frame-accurate in browser tests.
 
 ### Core Principle: State Assertions, Not Screenshots
 
@@ -859,7 +879,7 @@ test.describe('Bouncing Ball', () => {
       window.__yage__.inspector.getEntityPosition('ball')
     );
 
-    await page.waitForTimeout(1000);
+    await page.evaluate(() => window.__yage__!.clock!.stepFrames(60));
 
     const laterPos = await page.evaluate(() =>
       window.__yage__.inspector.getEntityPosition('ball')
@@ -869,8 +889,8 @@ test.describe('Bouncing Ball', () => {
   });
 
   test('ball bounces off floor', async ({ page }) => {
-    // Wait for ball to fall and bounce
-    await page.waitForTimeout(3000);
+    // Advance the simulation exactly
+    await page.evaluate(() => window.__yage__!.clock!.stepFrames(180));
 
     const pos = await page.evaluate(() =>
       window.__yage__.inspector.getEntityPosition('ball')
@@ -890,21 +910,16 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Physics Collisions', () => {
   test('collision events fire between entities', async ({ page }) => {
-    await page.goto('/examples/platformer');
+    await page.goto('/physics-bounce.html');
     await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
 
-    // Move player into a coin (collectible)
-    // Use keyboard to move right
-    await page.keyboard.down('KeyD');
-    await page.waitForTimeout(2000);
-    await page.keyboard.up('KeyD');
+    await page.evaluate(() => window.__yage__!.clock!.stepFrames(180));
 
-    // Check that the coin was collected (destroyed)
-    const coin = await page.evaluate(() =>
-      window.__yage__.inspector.getEntityByName('coin_1')
+    const bounceCounter = await page.evaluate(() =>
+      window.__yage__.inspector.getComponentData('ball', 'BounceCounter')
     );
 
-    expect(coin).toBeUndefined(); // Coin should be destroyed after collection
+    expect(bounceCounter.count).toBeGreaterThanOrEqual(1);
   });
 });
 ```
@@ -917,35 +932,21 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Input System', () => {
   test('keyboard actions are detected', async ({ page }) => {
-    await page.goto('/examples/input-demo');
+    await page.goto('/input.html');
     await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
 
     // Press jump key
     await page.keyboard.down('Space');
+    await page.evaluate(() => window.__yage__!.clock!.step());
 
     const jumpState = await page.evaluate(() =>
-      window.__yage__.inspector.getComponentData('input-display', 'InputState')
+      window.__yage__.inspector.getComponentData('input-display', 'InputProbe')
     );
 
-    expect(jumpState).toHaveProperty('jump', true);
+    expect(jumpState).toHaveProperty('jumpPressed', true);
+    expect(jumpState).toHaveProperty('jumpJustPressed', true);
 
     await page.keyboard.up('Space');
-  });
-
-  test('mouse position is tracked', async ({ page }) => {
-    await page.goto('/examples/input-demo');
-    await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
-
-    await page.mouse.move(200, 150);
-
-    const pointerPos = await page.evaluate(() => {
-      // InputManager is exposed via the inspector in debug mode
-      const snapshot = window.__yage__.inspector.getComponentData('input-display', 'InputState');
-      return snapshot?.pointerPosition;
-    });
-
-    expect(pointerPos.x).toBeCloseTo(200, -1);
-    expect(pointerPos.y).toBeCloseTo(150, -1);
   });
 });
 ```
@@ -958,7 +959,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Scene Stack', () => {
   test('pushing a scene pauses the one below', async ({ page }) => {
-    await page.goto('/examples/scene-stack');
+    await page.goto('/scene-stack.html');
     await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
 
     let stack = await page.evaluate(() =>
@@ -967,20 +968,18 @@ test.describe('Scene Stack', () => {
     expect(stack).toHaveLength(1);
     expect(stack[0].name).toBe('game');
 
-    // Press pause key to push pause scene
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(100);
+    await page.evaluate(async () => {
+      await window.__sceneStackTest__.pushOverlay();
+    });
 
     stack = await page.evaluate(() =>
       window.__yage__.inspector.getSceneStack()
     );
     expect(stack).toHaveLength(2);
-    expect(stack[1].name).toBe('pause');
+    expect(stack[1].name).toBe('overlay-scene');
     expect(stack[0].paused).toBe(true);
 
-    // Press escape again to pop
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(100);
+    await page.evaluate(() => window.__sceneStackTest__.popTop());
 
     stack = await page.evaluate(() =>
       window.__yage__.inspector.getSceneStack()
@@ -999,8 +998,9 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Inspector API', () => {
   test('snapshot returns correct engine state', async ({ page }) => {
-    await page.goto('/examples/bouncing-ball');
+    await page.goto('/inspector-scene.html');
     await page.waitForFunction(() => window.__yage__?.inspector !== undefined);
+    await page.evaluate(() => window.__yage__!.clock!.stepFrames(3));
 
     const snapshot = await page.evaluate(() =>
       window.__yage__.inspector.snapshot()
@@ -1009,7 +1009,7 @@ test.describe('Inspector API', () => {
     expect(snapshot.frameCount).toBeGreaterThan(0);
     expect(snapshot.entityCount).toBeGreaterThan(0);
     expect(snapshot.sceneStack).toHaveLength(1);
-    expect(snapshot.sceneStack[0].name).toBe('bounce');
+    expect(snapshot.sceneStack[0].name).toBe('base-scene');
   });
 
   test('structured logs are accessible', async ({ page }) => {

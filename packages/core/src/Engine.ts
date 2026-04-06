@@ -165,6 +165,15 @@ export class Engine {
     // Start the game loop
     this.loop.start();
 
+    // Expose debug API in browser before plugin onStart hooks run so plugins
+    // can safely augment the debug surface.
+    if (this.debug && typeof globalThis !== "undefined") {
+      (globalThis as Record<string, unknown>)["__yage__"] = {
+        inspector: this.inspector,
+        logger: this.logger,
+      };
+    }
+
     // Notify plugins
     for (const plugin of sorted) {
       plugin.onStart?.();
@@ -172,14 +181,6 @@ export class Engine {
 
     // Emit engine started event
     this.events.emit("engine:started", undefined);
-
-    // Expose debug API in browser
-    if (this.debug && typeof globalThis !== "undefined") {
-      (globalThis as Record<string, unknown>)["__yage__"] = {
-        inspector: this.inspector,
-        logger: this.logger,
-      };
-    }
   }
 
   /** Stop the engine. Destroys all scenes, plugins, and the game loop. */

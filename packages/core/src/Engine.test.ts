@@ -334,6 +334,27 @@ describe("Engine", () => {
       expect("__yage__" in globalThis).toBe(false);
       engine.destroy();
     });
+
+    it("exposes __yage__ before plugin onStart hooks run", async () => {
+      const onStart = vi.fn(() => {
+        const yageGlobal = (globalThis as Record<string, unknown>)["__yage__"] as
+          | Record<string, unknown>
+          | undefined;
+        expect(yageGlobal).toBeDefined();
+        yageGlobal!["clock"] = { ready: true };
+      });
+
+      const engine = new Engine({ debug: true });
+      engine.use({ name: "debug-hook", version: "1.0.0", onStart });
+      await engine.start();
+
+      expect(onStart).toHaveBeenCalledOnce();
+      const yageGlobal = (globalThis as Record<string, unknown>)["__yage__"] as
+        | Record<string, unknown>
+        | undefined;
+      expect(yageGlobal?.["clock"]).toEqual({ ready: true });
+      engine.destroy();
+    });
   });
 
   describe("inspector integration", () => {

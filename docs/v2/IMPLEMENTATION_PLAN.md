@@ -166,7 +166,7 @@ Phase 7: Debug Plugin                                  (all above)
     - Sequence with then/wait/call/parallel
     - Tests: duration, loop, cancel, promise resolution, easing accuracy, sequence ordering
 
-13. **ProcessSystem** *(follow-up — primitives exist but lack auto-driving)*
+13. **ProcessSystem** ✅ Complete
     - `ProcessComponent` for entity-scoped processes (auto-cancel on entity destroy)
     - Scene-level `ProcessRegistry` for global processes (screen fades, transitions)
     - `ProcessSystem` in `Phase.Update` at priority ~500 (before `ComponentUpdateSystem` at 1000) ticks both
@@ -380,7 +380,7 @@ Phase 7: Debug Plugin                                  (all above)
    - `UICheckbox` — toggle checkbox
    - @pixi/ui wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`
 
-3. **React UI Plugin** (`@yage/ui-react`) — *added beyond original scope*
+3. **React UI Plugin** (`@yage/ui-react`) — _added beyond original scope_
    - Custom React reconciler over Yoga + PixiJS
    - `UIRoot` component for hosting React trees in UI layer
    - Hooks: `useEngine()`, `useScene()`, `useQuery()`, `useStore()`, `useSceneSelector()`
@@ -460,15 +460,18 @@ Phase 7: Debug Plugin                                  (all above)
 
 Example index page with URL routing for easy access.
 
-### Phase 8b -- E2E Tests ❌ Not Started
+### Phase 8b -- E2E Tests 🟡 In Progress
 
-Planned Playwright test suite (not yet implemented):
-- Bouncing ball: verify ball falls and bounces
-- Input: verify keyboard actions trigger correctly
-- Physics: verify collision events fire
-- Scene transitions: verify push/pop/replace lifecycle
-- UI: verify button click triggers callback
-- Inspector: verify snapshot returns correct state
+Current Playwright suite coverage:
+
+- Physics bounce fixture: falling motion plus collision-derived bounce events
+- Inspector scene fixture: snapshot sanity plus delayed scene push/pause semantics
+- Save/load fixture: snapshot restore, hierarchy restoration, resolver behavior, and user-data slots
+- Input fixture: deterministic keyboard pressed / just-pressed / just-released state
+- Scene stack fixture: explicit `push` / `pop` / `replace` lifecycle
+- UI button fixture: click callback mutates inspector-readable state
+
+The suite uses a debug-only manual clock (`window.__yage__.clock`) for deterministic stepping in timing-sensitive fixtures, avoiding wall-clock sleeps where exact frame control matters.
 
 ### Gate Criteria
 
@@ -517,18 +520,18 @@ Planned Playwright test suite (not yet implemented):
 
 ## Summary Table
 
-| Phase | Name | Depends On | Status | Key Output |
-|---|---|---|---|---|
-| 0 | Project Setup | -- | ✅ Complete | Monorepo, build, CI |
-| 1 | Core Kernel | 0 | ✅ Complete | `@yage/core` with 31 test files |
-| 2 | Renderer | 1 | ✅ Complete | First visual output (PixiJS v8) |
-| 3 | Input | 2 | ✅ Complete | Keyboard, mouse, touch (gamepad planned) |
-| 4 | Physics | 2 | ✅ Complete | Rapier2D, raycasting, first playable example |
-| 5 | Audio, Particles, Tilemap | 1 (audio), 2 (particles/tilemap) | ✅ Complete | Secondary plugins with asset handle factories |
-| 6 | UI | 2 | ✅ Complete | Yoga layout, @pixi/ui wrappers, React reconciler |
-| 7 | Debug | 4, 2 | ✅ Complete | Debug overlay, contributor system, stats store |
-| 8 | E2E Tests + Examples | 5, 6, 7 | 🟡 Partial | 15 examples complete, E2E tests not started |
-| 9 | Polish | 8 | 🟡 Partial | Meta-package done, docs/publish not started |
+| Phase | Name                      | Depends On                       | Status      | Key Output                                                    |
+| ----- | ------------------------- | -------------------------------- | ----------- | ------------------------------------------------------------- |
+| 0     | Project Setup             | --                               | ✅ Complete | Monorepo, build, CI                                           |
+| 1     | Core Kernel               | 0                                | ✅ Complete | `@yage/core` with 31 test files                               |
+| 2     | Renderer                  | 1                                | ✅ Complete | First visual output (PixiJS v8)                               |
+| 3     | Input                     | 2                                | ✅ Complete | Keyboard, mouse, touch (gamepad planned)                      |
+| 4     | Physics                   | 2                                | ✅ Complete | Rapier2D, raycasting, first playable example                  |
+| 5     | Audio, Particles, Tilemap | 1 (audio), 2 (particles/tilemap) | ✅ Complete | Secondary plugins with asset handle factories                 |
+| 6     | UI                        | 2                                | ✅ Complete | Yoga layout, @pixi/ui wrappers, React reconciler              |
+| 7     | Debug                     | 4, 2                             | ✅ Complete | Debug overlay, contributor system, stats store                |
+| 8     | E2E Tests + Examples      | 5, 6, 7                          | 🟡 Partial  | 15 examples complete, Playwright suite in place and expanding |
+| 9     | Polish                    | 8                                | 🟡 Partial  | Meta-package done, docs/publish not started                   |
 
 ---
 
@@ -555,6 +558,7 @@ These features span multiple phases and are being developed on the `v2` branch:
 ### Per-scene physics worlds 🔴 Planned
 
 The current single shared Rapier world causes issues with multi-scene pause:
+
 - `body.sleep()` zeroes velocity → momentum loss on resume
 - Stale interpolation state → visual snap on resume
 - Shared sub-accumulator → discontinuity across pause transitions
