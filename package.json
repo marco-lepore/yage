@@ -15,7 +15,8 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "dev": "turbo run dev",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "build:site": "turbo run build && node scripts/assemble-site.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
