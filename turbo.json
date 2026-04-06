@@ -17,7 +17,7 @@
       "cache": false
     },
     "docs#build": {
-      "dependsOn": ["@yage/core#build", "@yage/renderer#build", "@yage/input#build", "@yage/debug#build"],
+      "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
     "docs#dev": {
