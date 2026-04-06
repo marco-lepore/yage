@@ -1,0 +1,34 @@
+---
+title: YAGE
+description: Yet Another Game Engine — A modular 2D game engine for TypeScript
+template: splash
+hero:
+  tagline: A modular 2D game engine for TypeScript. Hybrid OOP+ECS architecture, plugin-based, built on PixiJS v8.
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/marco-lepore/yage
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Features
+
+<CardGrid>
+  <Card title="Hybrid OOP + ECS" icon="puzzle">
+    Components own game logic with `update(dt)`. Systems handle engine internals. Best of both worlds.
+  </Card>
+  <Card title="Plugin Architecture" icon="setting">
+    Rendering, physics, input, audio, particles, tilemaps, UI — pick only what you need.
+  </Card>
+  <Card title="TypeScript First" icon="seti:typescript">
+    Strict TypeScript with typed DI, typed events, and zero `any`. Full autocomplete everywhere.
+  </Card>
+  <Card title="Battle-Tested Foundations" icon="rocket">
+    PixiJS v8 for rendering, Rapier2D for physics. Production-grade libraries under the hood.
+  </Card>
+</CardGrid>

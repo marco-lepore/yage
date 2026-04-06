@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "..",
+    "baseUrl": ".."
+  },
+  "include": [
+    "../packages/core/src",
+    "../packages/renderer/src",
+    "../packages/input/src"
+  ]
+}

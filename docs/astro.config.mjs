@@ -1,11 +1,25 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
 
 export default defineConfig({
   integrations: [
     starlight({
       title: "YAGE",
       description: "Yet Another Game Engine — A modular 2D game engine for TypeScript",
+      plugins: [
+        starlightTypeDoc({
+          entryPoints: [
+            "../packages/core",
+            "../packages/renderer",
+            "../packages/input",
+          ],
+          tsconfig: "./tsconfig.typedoc.json",
+          typeDoc: {
+            entryPointStrategy: "packages",
+          },
+        }),
+      ],
       social: [
         {
           icon: "github",
@@ -49,6 +63,7 @@ export default defineConfig({
             { label: "Testing", slug: "patterns/testing" },
           ],
         },
+        typeDocSidebarGroup,
       ],
     }),
   ],
