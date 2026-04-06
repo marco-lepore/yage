@@ -440,7 +440,7 @@ Phase 7: Debug Plugin                                  (all above)
 
 ### Phase 8a -- Examples ✅ Complete
 
-15 examples covering all major features:
+18 examples covering all major features:
 
 1. `hello-world` — basic rendering with shapes and rotation
 2. `camera` — camera follow, shake, bounds
@@ -457,6 +457,9 @@ Phase 7: Debug Plugin                                  (all above)
 13. `shooter` — player shooting, enemy AI
 14. `scene-pause` — multi-scene stack with pause menu, HUD overlay, per-scene timeScale
 15. `ui-layers` — named z-ordered UI layers (hud/menu/dialog)
+16. `save-load` — snapshot save/restore with slot management
+17. `ui-theme` — themed UI components
+18. `input-remapping` — runtime key rebinding with conflict resolution (React UI)
 
 Example index page with URL routing for easy access.
 
@@ -530,7 +533,7 @@ The suite uses a debug-only manual clock (`window.__yage__.clock`) for determini
 | 5     | Audio, Particles, Tilemap | 1 (audio), 2 (particles/tilemap) | ✅ Complete | Secondary plugins with asset handle factories                 |
 | 6     | UI                        | 2                                | ✅ Complete | Yoga layout, @pixi/ui wrappers, React reconciler              |
 | 7     | Debug                     | 4, 2                             | ✅ Complete | Debug overlay, contributor system, stats store                |
-| 8     | E2E Tests + Examples      | 5, 6, 7                          | 🟡 Partial  | 15 examples complete, Playwright suite in place and expanding |
+| 8     | E2E Tests + Examples      | 5, 6, 7                          | 🟡 Partial  | 18 examples complete, 6 Playwright test suites in place       |
 | 9     | Polish                    | 8                                | 🟡 Partial  | Meta-package done, docs/publish not started                   |
 
 ---

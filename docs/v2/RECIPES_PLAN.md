@@ -302,9 +302,9 @@ Initial recommendation:
 
 ## Implementation Milestones
 
-1. **M1**: Input remapping MVP (`@yage/input`) + profile import/export.
+1. **M1**: Input remapping MVP (`@yage/input`) + profile import/export. 🟡 Partial — `rebind()`, `getBindings()`, `resetBindings()` implemented with conflict policies. `loadProfile()`/`exportProfile()` not yet. Working `input-remapping` example exists.
 2. **M2**: Transition-safe scene operation queue (core) + `@yage/transitions` fade effect.
-3. **M3**: Save contributor registry (`@yage/save`) with `settings/profile/run` scopes.
+3. **M3**: Save contributor registry (`@yage/save`) with `settings/profile/run` scopes. Current `@yage/save` is snapshot-based (scene stack + entities), not contributor-scoped.
 4. **M4**: Publish first recipe wave (`characterController2D`, `cameraRig2D`, `interactionKit`, `objectPool`).
 5. **M5**: Add end-to-end examples showing simple usage and scaled/structured usage.
 
