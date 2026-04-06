@@ -1273,7 +1273,9 @@ export class RenderLayer {
 ```typescript
 import { Plugin, ServiceKey, Phase } from "@yage/core";
 
-export const PhysicsWorldKey = new ServiceKey<PhysicsWorld>("physicsWorld");
+export const PhysicsWorldManagerKey = new ServiceKey<PhysicsWorldManager>(
+  "physicsWorldManager",
+);
 
 export interface PhysicsConfig {
   /** Gravity in pixels/s^2. Default: { x: 0, y: 980 } */
@@ -1288,8 +1290,9 @@ export class PhysicsPlugin implements Plugin {
 
   constructor(config?: PhysicsConfig);
 
-  async install(context: EngineContext): Promise<void>;
+  install(context: EngineContext): void;
   registerSystems(scheduler: SystemScheduler): void;
+  onStart(): void;
   onDestroy(): void;
 }
 ```

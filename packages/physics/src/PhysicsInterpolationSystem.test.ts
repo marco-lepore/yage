@@ -111,8 +111,7 @@ vi.mock("@dimforge/rapier2d", () => ({
 import { Transform, Vec2, Phase } from "@yage/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
-import { PhysicsInterpolationAlphaKey } from "./types.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
 
 describe("PhysicsInterpolationSystem", () => {
   beforeEach(() => {
@@ -127,7 +126,7 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("at alpha=0, transform equals prev position", () => {
-    const { scene, context } = createPhysicsTestContext();
+    const { scene, manager, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -140,7 +139,8 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = Math.PI;
 
-    // alpha = 0 initially (no ticks)
+    // alpha = 0 initially
+    manager.getContext(scene)!.alphaRef.value = 0;
     system.update(0);
 
     expect(transform.position.x).toBeCloseTo(100);
@@ -149,7 +149,7 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("at alpha=0.5, transform is midpoint", () => {
-    const { scene, context } = createPhysicsTestContext();
+    const { scene, manager, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -162,8 +162,7 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
-    // Set alpha directly via the physics interpolation alpha ref
-    context.resolve(PhysicsInterpolationAlphaKey).value = 0.5;
+    manager.getContext(scene)!.alphaRef.value = 0.5;
 
     system.update(0);
 
@@ -173,7 +172,7 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("at alpha=1, transform equals curr position", () => {
-    const { scene, context } = createPhysicsTestContext();
+    const { scene, manager, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -186,8 +185,7 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevRotation = 0;
     rb._currRotation = 2;
 
-    // Set alpha directly via the physics interpolation alpha ref
-    context.resolve(PhysicsInterpolationAlphaKey).value = 1;
+    manager.getContext(scene)!.alphaRef.value = 1;
 
     system.update(0);
 
@@ -197,7 +195,7 @@ describe("PhysicsInterpolationSystem", () => {
   });
 
   it("interpolates rotation", () => {
-    const { scene, context } = createPhysicsTestContext();
+    const { scene, manager, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -210,7 +208,7 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevPosition = Vec2.ZERO;
     rb._currPosition = Vec2.ZERO;
 
-    // alpha = 0
+    manager.getContext(scene)!.alphaRef.value = 0;
     system.update(0);
 
     expect(transform.rotation).toBeCloseTo(0);
@@ -255,8 +253,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.y).toBe(75);
   });
 
-  it("reads alpha from PhysicsInterpolationAlphaKey", () => {
-    const { scene, context } = createPhysicsTestContext();
+  it("reads alpha from per-scene context", () => {
+    const { scene, manager, context } = createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -267,17 +265,47 @@ describe("PhysicsInterpolationSystem", () => {
     rb._prevPosition = new Vec2(0, 0);
     rb._currPosition = new Vec2(100, 0);
 
-    // At start, alpha ref = 0
-    const alphaRef = context.resolve(PhysicsInterpolationAlphaKey);
-    expect(alphaRef.value).toBe(0);
+    const ctx = manager.getContext(scene)!;
 
+    // At start, alpha = 0
+    expect(ctx.alphaRef.value).toBe(0);
     system.update(0);
     expect(transform.position.x).toBeCloseTo(0);
 
     // Set alpha to 0.75 and re-run
-    alphaRef.value = 0.75;
+    ctx.alphaRef.value = 0.75;
     system.update(0);
     expect(transform.position.x).toBeCloseTo(75);
+  });
+
+  it("uses per-scene alpha independently", () => {
+    const { scene, manager, sceneManager, context } = createPhysicsTestContext();
+    const system = new PhysicsInterpolationSystem();
+    system._setContext(context);
+
+    // Scene 1: alpha=0.5
+    const e1 = spawnEntityInScene(scene, "e1");
+    const t1 = e1.add(new Transform());
+    const rb1 = e1.add(new RigidBodyComponent({ type: "dynamic" }));
+    rb1._prevPosition = new Vec2(0, 0);
+    rb1._currPosition = new Vec2(100, 0);
+    manager.getContext(scene)!.alphaRef.value = 0.5;
+
+    // Scene 2: alpha=1.0
+    const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    manager.getOrCreateWorld(scene2);
+    const e2 = spawnEntityInScene(scene2, "e2");
+    const t2 = e2.add(new Transform());
+    const rb2 = e2.add(new RigidBodyComponent({ type: "dynamic" }));
+    rb2._prevPosition = new Vec2(0, 0);
+    rb2._currPosition = new Vec2(100, 0);
+    manager.getContext(scene2)!.alphaRef.value = 1.0;
+
+    system.update(0);
+
+    // Each scene uses its own alpha
+    expect(t1.position.x).toBeCloseTo(50);
+    expect(t2.position.x).toBeCloseTo(100);
   });
 
   it("handles empty scene gracefully", () => {

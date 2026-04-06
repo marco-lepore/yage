@@ -70,7 +70,8 @@ import {
   Phase,
 } from "@yage/core";
 import { PhysicsPlugin } from "./PhysicsPlugin.js";
-import { PhysicsWorldKey } from "./types.js";
+import { PhysicsWorldManagerKey } from "./types.js";
+import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
 describe("PhysicsPlugin", () => {
   beforeEach(() => {
@@ -84,33 +85,15 @@ describe("PhysicsPlugin", () => {
   });
 
   describe("install", () => {
-    it("registers PhysicsWorldKey in context", () => {
+    it("registers PhysicsWorldManagerKey in context", () => {
       const context = new EngineContext();
       const plugin = new PhysicsPlugin();
       plugin.install(context);
 
-      expect(context.has(PhysicsWorldKey)).toBe(true);
-    });
-
-    it("forwards config to PhysicsWorld", () => {
-      const context = new EngineContext();
-      const plugin = new PhysicsPlugin({
-        gravity: { x: 0, y: 500 },
-        pixelsPerMeter: 100,
-      });
-      plugin.install(context);
-
-      const world = context.resolve(PhysicsWorldKey);
-      expect(world.pixelsPerMeter).toBe(100);
-    });
-
-    it("uses default config when none provided", () => {
-      const context = new EngineContext();
-      const plugin = new PhysicsPlugin();
-      plugin.install(context);
-
-      const world = context.resolve(PhysicsWorldKey);
-      expect(world.pixelsPerMeter).toBe(50); // default
+      expect(context.has(PhysicsWorldManagerKey)).toBe(true);
+      expect(context.resolve(PhysicsWorldManagerKey)).toBeInstanceOf(
+        PhysicsWorldManager,
+      );
     });
   });
 
@@ -138,13 +121,13 @@ describe("PhysicsPlugin", () => {
   });
 
   describe("onDestroy", () => {
-    it("calls destroy on PhysicsWorld", () => {
+    it("calls destroy on PhysicsWorldManager", () => {
       const context = new EngineContext();
       const plugin = new PhysicsPlugin();
       plugin.install(context);
 
-      const world = context.resolve(PhysicsWorldKey);
-      const destroySpy = vi.spyOn(world, "destroy");
+      const manager = context.resolve(PhysicsWorldManagerKey);
+      const destroySpy = vi.spyOn(manager, "destroy");
 
       plugin.onDestroy();
 

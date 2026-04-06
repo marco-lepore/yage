@@ -1,10 +1,11 @@
 export { VERSION } from "@yage/core";
 
-export { PhysicsWorldKey, PhysicsInterpolationAlphaKey } from "./types.js";
+export { PhysicsWorldManagerKey } from "./types.js";
 export type {
   BodyType,
   PhysicsConfig,
   PhysicsAlphaRef,
+  ScenePhysicsContext,
   RigidBodyConfig,
   ColliderShape,
   ColliderConfig,
@@ -16,6 +17,8 @@ export type {
 export { CollisionLayers } from "./CollisionLayers.js";
 
 export { PhysicsWorld } from "./PhysicsWorld.js";
+
+export { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
 export { RigidBodyComponent } from "./RigidBodyComponent.js";
 export type { RigidBodyData } from "./RigidBodyComponent.js";

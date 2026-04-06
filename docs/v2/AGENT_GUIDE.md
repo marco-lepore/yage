@@ -810,7 +810,6 @@ Use a Scene subclass when you need full lifecycle hooks, asset preloading, or re
 import { Scene, Transform, Vec2 } from "@yage/core";
 import { CameraKey } from "@yage/renderer";
 import { InputManagerKey } from "@yage/input";
-import { PhysicsWorldKey } from "@yage/physics";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -818,7 +817,6 @@ class GameScene extends Scene {
   // Lazy proxies — safe to declare as fields, resolved on first use
   private camera = this.service(CameraKey);
   private input = this.service(InputManagerKey);
-  private physics = this.service(PhysicsWorldKey);
 
   onEnter() {
     const player = this.spawn(PlayerEntity, { x: 100, y: 200 });
@@ -833,6 +831,20 @@ class GameScene extends Scene {
 // Push onto engine
 engine.scenes.push(new GameScene());
 ```
+
+> **Physics world access:** Physics worlds are per-scene. Components that need
+> direct world access (raycasts, gravity) resolve once in `onAdd()`:
+> ```typescript
+> import { PhysicsWorldManagerKey } from "@yage/physics";
+> import type { PhysicsWorld } from "@yage/physics";
+>
+> class MyComponent extends Component {
+>   private world!: PhysicsWorld;
+>   onAdd() {
+>     this.world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+>   }
+> }
+> ```
 
 ### Use createGame() + defineInlineScene() for Quick Setup
 

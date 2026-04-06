@@ -27,8 +27,9 @@ import {
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
-  PhysicsWorldKey,
+  PhysicsWorldManagerKey,
 } from "@yage/physics";
+import type { PhysicsWorld } from "@yage/physics";
 import { serializable } from "@yage/core";
 import { SaveServiceKey } from "@yage/save";
 import type { SaveService } from "@yage/save";
@@ -160,11 +161,17 @@ class GameState {
 // PlayerController — custom component (not auto-serializable)
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
-  private readonly physics = this.service(PhysicsWorldKey);
+  private physics!: PhysicsWorld;
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly transform = this.sibling(Transform);
   private grounded = false;
   private coyoteTimer = 0;
+
+  onAdd(): void {
+    this.physics = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
+      this.scene,
+    );
+  }
 
   update(dt: number) {
     const vel = this.rb.getVelocity();

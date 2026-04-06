@@ -2,19 +2,25 @@ import { ServiceKey } from "@yage/core";
 import type { Entity, Vec2Like } from "@yage/core";
 import type { Vec2 } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
+import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
 
-/** Service key for the PhysicsWorld instance. */
-export const PhysicsWorldKey = new ServiceKey<PhysicsWorld>("physicsWorld");
-
-/** Shared ref for physics interpolation alpha, updated by PhysicsSystem. */
+/** Mutable ref holding the interpolation alpha for a single scene's physics. */
 export interface PhysicsAlphaRef {
   value: number;
 }
 
-/** Service key for the physics interpolation alpha ref. */
-export const PhysicsInterpolationAlphaKey =
-  new ServiceKey<PhysicsAlphaRef>("physicsInterpolationAlpha");
+/** Per-scene physics state: world instance, sub-accumulator, and interpolation alpha. */
+export interface ScenePhysicsContext {
+  world: PhysicsWorld;
+  accumulator: number;
+  alphaRef: PhysicsAlphaRef;
+}
+
+/** Service key for the PhysicsWorldManager (per-scene physics worlds). */
+export const PhysicsWorldManagerKey = new ServiceKey<PhysicsWorldManager>(
+  "physicsWorldManager",
+);
 
 /** Body type for rigid bodies. */
 export type BodyType = "dynamic" | "static" | "kinematic";
