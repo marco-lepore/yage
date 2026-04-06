@@ -16,6 +16,13 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    "docs#build": {
+      "outputs": ["dist/**"]
+    },
+    "docs#dev": {
+      "cache": false,
+      "persistent": true
+    },
     "dev": {
       "cache": false,
       "persistent": true

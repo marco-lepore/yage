@@ -1,0 +1,173 @@
+---
+title: "Entities & Components"
+description: "The building blocks of your game world"
+---
+
+## Entities
+
+An entity is a named container for components with O(1) type-based lookups.
+Create entities through a scene:
+
+```typescript
+const player = scene.spawn("player");
+const bullet = scene.spawn("bullet");
+```
+
+### Adding and Querying Components
+
+```typescript
+import { Transform, SpriteComponent } from "@yage/core";
+
+// Add components
+player.add(new Transform(100, 200));
+player.add(new SpriteComponent({ textureKey: "hero.png" }));
+
+// Get a component (throws if missing)
+const transform = player.get(Transform);
+
+// Get a component (returns undefined if missing)
+const sprite = player.tryGet(SpriteComponent);
+
+// Check existence
+if (player.has(SpriteComponent)) {
+  // ...
+}
+
+// Remove a component
+player.remove(SpriteComponent);
+```
+
+`entity.get(Type)` throws an error when the component is not found — use it
+when the component is required. `entity.tryGet(Type)` returns `undefined`
+instead, which is useful for optional lookups.
+
+### Tags
+
+Tags are lightweight labels with no data attached:
+
+```typescript
+player.tags.add("friendly");
+player.tags.add("controllable");
+
+if (player.tags.has("friendly")) {
+  // skip damage
+}
+```
+
+Tags are useful for fast filtering without creating empty marker components.
+
+### Deferred Destruction
+
+Destroying an entity does not happen immediately. Instead the entity is marked
+for removal and actually cleaned up during the **EndOfFrame** phase:
+
+```typescript
+scene.destroyEntity(bullet);
+
+// bullet still exists this frame — components can run final logic
+// actual removal happens at EndOfFrame
+```
+
+This prevents iterator invalidation and lets other systems react to the
+destruction during the same frame.
+
+## Components
+
+Components hold state and game logic. Extend the `Component` base class:
+
+```typescript
+import { Component } from "@yage/core";
+
+class Health extends Component {
+  current = 100;
+  max = 100;
+
+  update(dt: number) {
+    if (this.current <= 0) {
+      scene.destroyEntity(this.entity);
+    }
+  }
+}
+```
+
+### Lifecycle Hooks
+
+Components have several lifecycle hooks:
+
+```typescript
+class PlayerController extends Component {
+  onAdd() {
+    // Called when the component is added to an entity.
+    // The entity and scene are available here.
+  }
+
+  onRemove() {
+    // Called when the component is removed from the entity.
+  }
+
+  onDestroy() {
+    // Called when the owning entity is destroyed.
+    // Use for final cleanup (unsubscribe events, release resources).
+  }
+
+  update(dt: number) {
+    // Called every frame during the Update phase.
+    // dt is the variable delta time in seconds.
+  }
+
+  fixedUpdate(dt: number) {
+    // Called during the FixedUpdate phase at a deterministic timestep.
+    // Use for physics and gameplay that must be framerate-independent.
+  }
+}
+```
+
+### Cached Service Resolution
+
+Use `this.use(key)` inside a component to resolve a service from the DI
+container. The result is cached after the first call:
+
+```typescript
+import { InputManagerKey } from "@yage/input";
+
+class PlayerController extends Component {
+  update(dt: number) {
+    const input = this.use(InputManagerKey);
+
+    if (input.isPressed("jump")) {
+      this.sibling(RigidBody).applyImpulse({ x: 0, y: -500 });
+    }
+  }
+}
+```
+
+### Lazy Sibling References
+
+`this.sibling(Type)` returns a lazy reference to another component on the same
+entity. The lookup is deferred until first access and then cached:
+
+```typescript
+class Enemy extends Component {
+  update(dt: number) {
+    const transform = this.sibling(Transform);
+    const health = this.sibling(Health);
+
+    if (health.current < health.max * 0.5) {
+      // flee logic using transform.position
+    }
+  }
+}
+```
+
+### Error Boundary
+
+If `update()` or `fixedUpdate()` throws an exception, the engine does **not**
+crash. Instead:
+
+1. The error is logged.
+2. `component.enabled` is set to `false` — the component stops receiving
+   updates.
+3. The rest of the game continues running.
+
+This keeps a single broken component from taking down the entire game during
+development.

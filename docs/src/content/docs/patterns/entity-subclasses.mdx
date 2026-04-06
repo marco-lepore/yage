@@ -1,0 +1,158 @@
+---
+title: "Entity Subclasses"
+description: "Define entity types with setup() and traits"
+---
+
+Entity subclasses are the recommended way to define reusable entity types in
+YAGE. They give you a typed `setup()` method for initialization and work
+naturally with TypeScript's type system.
+
+## Basic Subclass
+
+```typescript
+import { Entity, Transform, Vec2 } from "@yage/core";
+import { SpriteComponent } from "@yage/renderer";
+
+interface PlayerParams {
+  position: Vec2;
+  texture: Texture;
+}
+
+class Player extends Entity<PlayerParams> {
+  setup(params: PlayerParams) {
+    this.add(new Transform(params.position));
+    this.add(new SpriteComponent({ texture: params.texture }));
+    this.add(new ProcessComponent());
+    this.add(new HealthComponent({ max: 100 }));
+  }
+}
+```
+
+Spawn it from a scene:
+
+```typescript
+const player = scene.spawn(Player, {
+  position: Vec2.create(100, 200),
+  texture: heroTexture,
+});
+```
+
+`scene.spawn()` infers the params type from the class, so you get full
+autocomplete and type checking.
+
+## Why setup() Instead of constructor
+
+The `constructor` runs before the entity is wired into the scene's ECS world.
+At that point the entity has no scene reference, no access to engine services,
+and components cannot query siblings.
+
+`setup()` is called **after** the entity is registered with the scene, so you
+can safely:
+
+- Resolve engine services (`this.scene.engine.resolve(...)`)
+- Query the scene for other entities
+- Emit events that other entities can receive
+- Add components that depend on the scene context
+
+```typescript
+class Enemy extends Entity<EnemyParams> {
+  setup(params: EnemyParams) {
+    // Safe — the entity is part of the scene here
+    const physics = this.scene.engine.resolve(PhysicsWorldKey);
+    this.add(new Transform(params.position));
+    this.add(new RigidBodyComponent({ type: "dynamic" }));
+    this.add(new ColliderComponent({ shape: { type: "circle", radius: 16 } }));
+  }
+}
+```
+
+## Traits
+
+Traits define capabilities that cut across the class hierarchy. They are a
+lightweight alternative to interfaces that work at runtime — you can check
+whether an entity has a trait without knowing its concrete class.
+
+### Defining a Trait
+
+```typescript
+import { defineTrait } from "@yage/core";
+
+const Interactable = defineTrait("Interactable");
+const Damageable = defineTrait("Damageable");
+```
+
+### Applying Traits
+
+Use the `@trait()` decorator on entity subclasses:
+
+```typescript
+import { trait } from "@yage/core";
+
+@trait(Interactable)
+class Chest extends Entity<ChestParams> {
+  setup(params: ChestParams) {
+    this.add(new Transform(params.position));
+    this.add(new SpriteComponent({ texture: chestTexture }));
+  }
+
+  interact() {
+    this.get(SpriteComponent).texture = openChestTexture;
+    spawnLoot(this.transform.position);
+  }
+}
+
+@trait(Interactable)
+@trait(Damageable)
+class NPC extends Entity<NPCParams> {
+  setup(params: NPCParams) {
+    this.add(new Transform(params.position));
+    this.add(new HealthComponent({ max: 50 }));
+  }
+
+  interact() {
+    openDialogue(this);
+  }
+}
+```
+
+### Querying by Trait
+
+Use `entity.hasTrait()` as a type guard to discover capabilities at runtime:
+
+```typescript
+// Find all interactable entities near the player
+const nearby = scene.queryArea(playerPos, interactRadius);
+
+for (const entity of nearby) {
+  if (entity.hasTrait(Interactable)) {
+    entity.interact(); // TypeScript knows this method exists
+  }
+}
+```
+
+This pattern is useful for interaction systems — a single "press E to interact"
+prompt can work with chests, NPCs, doors, and any future entity that gains the
+`Interactable` trait.
+
+## Blueprints (Deprecated Alternative)
+
+Blueprints (`defineBlueprint()`) are the older way to define entity factories.
+They still work and you may encounter them in existing code, but entity
+subclasses are preferred for new code because they offer better type safety
+and a more natural class-based API.
+
+```typescript
+// Legacy approach — still functional, but prefer entity subclasses
+import { defineBlueprint } from "@yage/core";
+
+const CoinBlueprint = defineBlueprint("Coin", (entity, params: CoinParams) => {
+  entity.add(new Transform(params.position));
+  entity.add(new SpriteComponent({ texture: coinTexture }));
+});
+
+const coin = scene.spawnBlueprint(CoinBlueprint, { position });
+```
+
+If you're starting a new project, use entity subclasses. If you're maintaining
+code that already uses blueprints, there is no urgency to migrate — both
+patterns coexist without conflict.

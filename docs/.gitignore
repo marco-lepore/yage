@@ -1,0 +1,6 @@
+dist/
+.astro/
+node_modules/
+public/llms/
+public/llms.txt
+public/llms-full.txt

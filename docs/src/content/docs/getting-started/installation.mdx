@@ -1,0 +1,76 @@
+---
+title: "Installation"
+description: "How to install YAGE in your project"
+---
+
+## Quick Start with the Meta-Package
+
+The easiest way to get started is the `yage` meta-package. It re-exports every
+YAGE module and provides the convenient `createGame()` helper so you can start
+building immediately.
+
+```bash
+npm install yage
+```
+
+That single install pulls in the renderer (PixiJS v8), physics (Rapier 2D),
+input, audio, particles, tilemap, UI, and more — everything wired together and
+ready to go.
+
+```typescript
+import { createGame } from "yage";
+import { Component, Transform } from "@yage/core";
+```
+
+> **Recommended for most projects.** Unless you have strict bundle-size
+> requirements, the meta-package is the simplest path.
+
+## Using Individual Packages
+
+Every YAGE module is published as its own npm package under the `@yage/*`
+scope. Install only what you need for smaller bundles and better tree-shaking:
+
+```bash
+npm install @yage/core @yage/renderer @yage/input
+```
+
+The full list of packages:
+
+| Package | Purpose |
+|---|---|
+| `@yage/core` | ECS, math, events, scheduling |
+| `@yage/renderer` | PixiJS v8 rendering pipeline |
+| `@yage/physics` | Rapier 2D physics integration |
+| `@yage/input` | Keyboard, mouse, and gamepad |
+| `@yage/audio` | Sound playback and mixing |
+| `@yage/particles` | Particle emitters and effects |
+| `@yage/tilemap` | Tile-based level support |
+| `@yage/ui` | In-game UI primitives |
+| `@yage/ui-react` | React bindings for game UI |
+| `@yage/debug` | Dev tools and inspectors |
+| `@yage/save` | Save / load state management |
+
+`@yage/core` sits at the base of the dependency graph — every other package
+depends on it, so it is always installed automatically.
+
+## Prerequisites
+
+- **Node.js** 18 or later
+- **npm** 9+ (or any compatible package manager — pnpm and yarn work fine)
+- A bundler that supports TypeScript and ESM (Vite is recommended)
+
+## Verifying the Install
+
+Create a minimal entry file and run your dev server to confirm everything is
+working:
+
+```typescript
+import { createGame } from "yage";
+
+await createGame({
+  backgroundColor: 0x1a1a2e,
+});
+```
+
+If a blank game window appears with the configured background colour, YAGE is
+installed correctly.

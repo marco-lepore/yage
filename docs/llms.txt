@@ -1,0 +1,20 @@
+# YAGE
+
+> A modular 2D game engine for TypeScript: hybrid OOP+ECS architecture, plugin-based, built on PixiJS v8 and Rapier2D.
+
+## Docs
+
+- [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
+- [Quick Start](llms/quick-start.md): Installation, createGame(), inline scenes, first project
+- [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
+
+## Packages
+
+- [core](llms/packages/core.md): ECS, DI, game loop, scenes, events (zero runtime deps)
+- [renderer](llms/packages/renderer.md): PixiJS v8 rendering, sprites, camera, layers
+- [input](llms/packages/input.md): Keyboard/mouse/gamepad input, action maps, rebinding
+
+## Optional
+
+- Testing: `createMockEntity`, `createTestEngine`, `advanceFrames` from `@yage/core/test-utils`
+- API index: see per-package `src/index.ts` barrel exports

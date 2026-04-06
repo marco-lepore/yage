@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/*",
     "examples",
-    "e2e"
+    "e2e",
+    "docs"
   ],
   "scripts": {
     "build": "turbo run build",
