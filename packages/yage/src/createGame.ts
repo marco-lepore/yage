@@ -7,8 +7,8 @@ import type { Camera } from "@yage/renderer";
 import { CameraKey } from "@yage/renderer";
 import type { InputManager } from "@yage/input";
 import { InputManagerKey } from "@yage/input";
-import type { PhysicsWorld } from "@yage/physics";
-import { PhysicsWorldKey } from "@yage/physics";
+import type { PhysicsWorldManager } from "@yage/physics";
+import { PhysicsWorldManagerKey } from "@yage/physics";
 import type { AudioManager } from "@yage/audio";
 import { AudioManagerKey } from "@yage/audio";
 import type { AssetManager } from "@yage/core";
@@ -25,8 +25,8 @@ export interface SceneServices {
   assets: AssetManager;
   /** Input manager (only if input plugin registered). */
   input?: InputManager;
-  /** Physics world (only if physics plugin registered). */
-  physics?: PhysicsWorld;
+  /** Physics world manager (only if physics plugin registered). */
+  physics?: PhysicsWorldManager;
   /** Audio manager (only if audio plugin registered). */
   audio?: AudioManager;
   /** Save service (only if save plugin registered). */
@@ -95,7 +95,7 @@ class InlineScene extends Scene {
     };
     const input = this.context.tryResolve(InputManagerKey);
     if (input) services.input = input;
-    const physics = this.context.tryResolve(PhysicsWorldKey);
+    const physics = this.context.tryResolve(PhysicsWorldManagerKey);
     if (physics) services.physics = physics;
     const audio = this.context.tryResolve(AudioManagerKey);
     if (audio) services.audio = audio;

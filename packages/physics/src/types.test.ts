@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { PhysicsWorldKey } from "./types.js";
+import { PhysicsWorldManagerKey } from "./types.js";
 
 describe("Service Keys", () => {
-  it("PhysicsWorldKey has id 'physicsWorld'", () => {
-    expect(PhysicsWorldKey.id).toBe("physicsWorld");
+  it("PhysicsWorldManagerKey has id 'physicsWorldManager'", () => {
+    expect(PhysicsWorldManagerKey.id).toBe("physicsWorldManager");
   });
 });

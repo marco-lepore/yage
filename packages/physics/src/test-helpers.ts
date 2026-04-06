@@ -20,16 +20,19 @@ import {
 } from "@yage/core";
 import type { EngineEvents } from "@yage/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
-import { PhysicsWorldKey, PhysicsInterpolationAlphaKey } from "./types.js";
+import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+import { PhysicsWorldManagerKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
 
 // ---- Test Scene ----
 
 class _TestScene extends Scene {
   readonly name: string;
-  constructor(name: string) {
+  override readonly pauseBelow: boolean;
+  constructor(name: string, pauseBelow = true) {
     super();
     this.name = name;
+    this.pauseBelow = pauseBelow;
   }
 }
 
@@ -42,6 +45,7 @@ export interface PhysicsTestContext {
   gameLoop: GameLoop;
   scheduler: SystemScheduler;
   sceneManager: SceneManager;
+  manager: PhysicsWorldManager;
   physicsWorld: PhysicsWorld;
 }
 
@@ -67,13 +71,16 @@ export function createPhysicsTestContext(
   ctx.register(SystemSchedulerKey, scheduler);
   ctx.register(SceneManagerKey, sceneManager);
 
-  const physicsWorld = new PhysicsWorld(config);
-  ctx.register(PhysicsWorldKey, physicsWorld);
-  ctx.register(PhysicsInterpolationAlphaKey, { value: 0 });
+  const manager = new PhysicsWorldManager(config);
+  ctx.register(PhysicsWorldManagerKey, manager);
 
   sceneManager._setContext(ctx);
   const scene = new _TestScene("test-scene");
   sceneManager.push(scene);
+
+  // Pre-create a world for the default test scene so tests that
+  // add entities to `scene` immediately get a PhysicsWorld.
+  const physicsWorld = manager.getOrCreateWorld(scene);
 
   return {
     context: ctx,
@@ -82,8 +89,20 @@ export function createPhysicsTestContext(
     gameLoop,
     scheduler,
     sceneManager,
+    manager,
     physicsWorld,
   };
+}
+
+/** Create an additional test scene and push it onto the scene manager. */
+export function createTestScene(
+  sceneManager: SceneManager,
+  name: string,
+  opts?: { pauseBelow?: boolean },
+): Scene {
+  const scene = new _TestScene(name, opts?.pauseBelow ?? true);
+  sceneManager.push(scene);
+  return scene;
 }
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {

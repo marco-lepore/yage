@@ -215,7 +215,7 @@ Keys registered by official plugins:
 | `StageKey` | `Container` (PixiJS) | `@yage/renderer` |
 | `CameraKey` | `Camera` | `@yage/renderer` |
 | `RenderLayerManagerKey` | `RenderLayerManager` | `@yage/renderer` |
-| `PhysicsWorldKey` | `PhysicsWorld` | `@yage/physics` |
+| `PhysicsWorldManagerKey` | `PhysicsWorldManager` | `@yage/physics` |
 | `InputManagerKey` | `InputManager` | `@yage/input` |
 | `AudioManagerKey` | `AudioManager` | `@yage/audio` |
 | `UIContainerKey` | `Container` (PixiJS) | `@yage/ui` |
@@ -232,8 +232,8 @@ class TilemapPlugin implements Plugin {
 
   install(context: EngineContext) {
     // Optional physics integration
-    const physics = context.tryResolve(PhysicsWorldKey);
-    if (physics) {
+    const physicsManager = context.tryResolve(PhysicsWorldManagerKey);
+    if (physicsManager) {
       // Register collision shapes from tilemap object layers
     }
   }

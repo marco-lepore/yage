@@ -21,8 +21,9 @@ import {
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
-  PhysicsWorldKey,
+  PhysicsWorldManagerKey,
 } from "@yage/physics";
+import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
 import { createGame } from "yage";
 import { injectStyles, keys } from "./shared.js";
@@ -261,7 +262,7 @@ type PlayerAnim = "idle" | "walk" | "jump" | "land" | "shoot" | "hurt";
 
 class PlayerController extends Component {
   private readonly camera = this.service(CameraKey);
-  private readonly physicsWorld = this.service(PhysicsWorldKey);
+  private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
   private readonly anim = this.sibling(AnimationController) as AnimationController<PlayerAnim>;
   private readonly sprite = this.sibling(AnimatedSpriteComponent);
@@ -295,6 +296,10 @@ class PlayerController extends Component {
   private static readonly KNOCKBACK_Y = -180;
 
   onAdd(): void {
+    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
+      this.scene,
+    );
+
     // Slots
     this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_MS });
     this.invincibility = this.pc.slot({
@@ -530,7 +535,7 @@ const ENEMY_BODY_CENTER_X = 8;
 const ENEMY_HALF_H = 16; // collider is 32px tall
 
 class EnemyController extends Component {
-  private readonly physicsWorld = this.service(PhysicsWorldKey);
+  private physicsWorld!: PhysicsWorld;
   private readonly camera = this.service(CameraKey);
   private readonly audio = this.service(AudioManagerKey);
   private readonly anim = this.sibling(AnimationController) as AnimationController<EnemyAnim>;
@@ -571,6 +576,10 @@ class EnemyController extends Component {
   }
 
   onAdd(): void {
+    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
+      this.scene,
+    );
+
     // Slots
     this.flashSlot = this.pc.slot({
       duration: 80,

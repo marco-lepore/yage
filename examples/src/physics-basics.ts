@@ -1,10 +1,11 @@
 import { Scene, Component, Transform, Vec2 } from "@yage/core";
 import { GraphicsComponent, CameraKey } from "@yage/renderer";
 import {
-  PhysicsWorldKey,
+  PhysicsWorldManagerKey,
   RigidBodyComponent,
   ColliderComponent,
 } from "@yage/physics";
+import type { PhysicsWorld } from "@yage/physics";
 import { createGame } from "yage";
 import { injectStyles, keys } from "./shared.js";
 
@@ -18,9 +19,13 @@ const WALL = 20;
 // InputController — handles spawning shapes, impulse, gravity flip
 // ---------------------------------------------------------------------------
 class InputController extends Component {
-  private readonly world = this.service(PhysicsWorldKey);
+  private world!: PhysicsWorld;
   private gravityDown = true;
   private shapeCount = 0;
+
+  onAdd(): void {
+    this.world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+  }
 
   update(): void {
     const scene = this.scene;

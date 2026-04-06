@@ -93,12 +93,13 @@ const { mocks } = vi.hoisted(() => {
     timestep = 0;
     _bodies = new Map<number, MockRigidBody>();
     _colliders = new Map<number, MockCollider>();
+    stepSpy = vi.fn();
 
     constructor(gravity: { x: number; y: number }) {
       this.gravity = { ...gravity };
     }
 
-    step() {}
+    step(eq: MockEventQueue) { this.stepSpy(eq); }
     createRigidBody(desc: MockRigidBodyDesc): MockRigidBody {
       const body = new MockRigidBody(desc._type);
       this._bodies.set(body.handle, body);
@@ -153,8 +154,8 @@ import {
 import {
   PhysicsPlugin,
   PhysicsWorld,
-  PhysicsWorldKey,
-  PhysicsInterpolationAlphaKey,
+  PhysicsWorldManager,
+  PhysicsWorldManagerKey,
   RigidBodyComponent,
   ColliderComponent,
   PhysicsSystem,
@@ -162,7 +163,7 @@ import {
   CollisionLayers,
 } from "./index.js";
 import type { CollisionEvent, TriggerEvent } from "./index.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
 
 describe("Integration Tests", () => {
   beforeEach(() => {
@@ -313,8 +314,8 @@ describe("Integration Tests", () => {
     expect(groups).toBe((1 << 16) | 6);
   });
 
-  it("interpolation blends positions between prev and curr", () => {
-    const { scene, context } = createPhysicsTestContext();
+  it("interpolation blends positions between prev and curr using per-scene alpha", () => {
+    const { scene, manager, context } = createPhysicsTestContext();
     const interpSystem = new PhysicsInterpolationSystem();
     interpSystem._setContext(context);
 
@@ -332,15 +333,15 @@ describe("Integration Tests", () => {
     expect(transform.position.x).toBeCloseTo(0);
     expect(transform.position.y).toBeCloseTo(0);
 
-    // Set alpha to 0.5 via the physics interpolation alpha ref
-    context.resolve(PhysicsInterpolationAlphaKey).value = 0.5;
+    // Set alpha to 0.5 via the scene's physics context
+    manager.getContext(scene)!.alphaRef.value = 0.5;
 
     interpSystem.update(0);
     expect(transform.position.x).toBeCloseTo(50);
     expect(transform.position.y).toBeCloseTo(100);
   });
 
-  it("full round-trip: plugin installs world and systems", () => {
+  it("full round-trip: plugin installs manager and systems", () => {
     const context = new EngineContext();
     const scheduler = new SystemScheduler();
     const logger = new Logger({ level: LogLevel.Debug });
@@ -350,9 +351,9 @@ describe("Integration Tests", () => {
     const plugin = new PhysicsPlugin({ gravity: { x: 0, y: 500 }, pixelsPerMeter: 100 });
     plugin.install(context);
 
-    expect(context.has(PhysicsWorldKey)).toBe(true);
-    const world = context.resolve(PhysicsWorldKey);
-    expect(world.pixelsPerMeter).toBe(100);
+    expect(context.has(PhysicsWorldManagerKey)).toBe(true);
+    const mgr = context.resolve(PhysicsWorldManagerKey);
+    expect(mgr).toBeInstanceOf(PhysicsWorldManager);
 
     plugin.registerSystems(scheduler);
 
@@ -422,11 +423,80 @@ describe("Integration Tests", () => {
     // Verify all expected exports exist
     expect(PhysicsPlugin).toBeDefined();
     expect(PhysicsWorld).toBeDefined();
-    expect(PhysicsWorldKey).toBeDefined();
+    expect(PhysicsWorldManager).toBeDefined();
+    expect(PhysicsWorldManagerKey).toBeDefined();
     expect(RigidBodyComponent).toBeDefined();
     expect(ColliderComponent).toBeDefined();
     expect(PhysicsSystem).toBeDefined();
     expect(PhysicsInterpolationSystem).toBeDefined();
     expect(CollisionLayers).toBeDefined();
+  });
+
+  it("two scenes with physics coexist without interference", () => {
+    const { scene, manager, sceneManager, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const system = new PhysicsSystem();
+    system._setContext(context);
+
+    // Scene 1: ball
+    const e1 = spawnEntityInScene(scene, "ball1");
+    e1.add(new Transform({ position: new Vec2(100, 100) }));
+    const rb1 = e1.add(new RigidBodyComponent({ type: "dynamic" }));
+
+    // Scene 2: ball (separate physics world)
+    const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const e2 = spawnEntityInScene(scene2, "ball2");
+    e2.add(new Transform({ position: new Vec2(200, 200) }));
+    const rb2 = e2.add(new RigidBodyComponent({ type: "dynamic" }));
+
+    // Each scene should have its own world
+    const world1 = manager.getContext(scene)!.world;
+    const world2 = manager.getContext(scene2)!.world;
+    expect(world1).not.toBe(world2);
+
+    // Move bodies in their respective worlds
+    const body1 = world1.getBody(rb1._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    body1._translation = { x: 3, y: 3 }; // 150px, 150px
+
+    const body2 = world2.getBody(rb2._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    body2._translation = { x: 5, y: 5 }; // 250px, 250px
+
+    system.update(16.67);
+
+    expect(e1.get(Transform).position.x).toBeCloseTo(150);
+    expect(e2.get(Transform).position.x).toBeCloseTo(250);
+  });
+
+  it("pausing one scene freezes its world but other keeps running", () => {
+    const { scene, manager, sceneManager, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    const system = new PhysicsSystem();
+    system._setContext(context);
+
+    const e1 = spawnEntityInScene(scene, "ball1");
+    e1.add(new Transform());
+    e1.add(new RigidBodyComponent({ type: "dynamic" }));
+
+    const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const e2 = spawnEntityInScene(scene2, "ball2");
+    e2.add(new Transform());
+    e2.add(new RigidBodyComponent({ type: "dynamic" }));
+
+    const mock1 = (manager.getContext(scene)!.world as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+    const mock2 = (manager.getContext(scene2)!.world as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+    // First tick — both step
+    system.update(16.67);
+    expect(mock1.stepSpy).toHaveBeenCalled();
+    expect(mock2.stepSpy).toHaveBeenCalled();
+
+    mock1.stepSpy.mockClear();
+    mock2.stepSpy.mockClear();
+
+    // Pause scene 1
+    scene.paused = true;
+    system.update(16.67);
+
+    // Scene 1 frozen, scene 2 still steps
+    expect(mock1.stepSpy).not.toHaveBeenCalled();
+    expect(mock2.stepSpy).toHaveBeenCalled();
   });
 });

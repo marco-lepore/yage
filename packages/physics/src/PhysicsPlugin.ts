@@ -1,7 +1,9 @@
-import type { EngineContext, SystemScheduler, Plugin } from "@yage/core";
+import type { EngineContext, SystemScheduler, Plugin, EngineEvents, Scene } from "@yage/core";
+import { EventBusKey } from "@yage/core";
+import type { EventBus } from "@yage/core";
 import { DebugRegistryKey } from "@yage/debug/api";
-import { PhysicsWorld } from "./PhysicsWorld.js";
-import { PhysicsWorldKey, PhysicsInterpolationAlphaKey } from "./types.js";
+import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+import { PhysicsWorldManagerKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { PhysicsInterpolationSystem } from "./PhysicsInterpolationSystem.js";
@@ -10,7 +12,8 @@ import { PhysicsDebugContributor } from "./PhysicsDebugContributor.js";
 /**
  * Physics plugin that installs Rapier2D physics into the YAGE engine.
  *
- * Registers the PhysicsWorld service and two systems:
+ * Creates a {@link PhysicsWorldManager} that manages per-scene Rapier worlds,
+ * and registers two systems:
  * - PhysicsSystem (FixedUpdate, priority 0)
  * - PhysicsInterpolationSystem (LateUpdate, priority 100)
  */
@@ -19,7 +22,7 @@ export class PhysicsPlugin implements Plugin {
   readonly version = "2.0.0";
 
   private readonly config: PhysicsConfig | undefined;
-  private physicsWorld!: PhysicsWorld;
+  private manager!: PhysicsWorldManager;
   private context!: EngineContext;
 
   constructor(config?: PhysicsConfig) {
@@ -28,9 +31,8 @@ export class PhysicsPlugin implements Plugin {
 
   install(context: EngineContext): void {
     this.context = context;
-    this.physicsWorld = new PhysicsWorld(this.config);
-    context.register(PhysicsWorldKey, this.physicsWorld);
-    context.register(PhysicsInterpolationAlphaKey, { value: 0 });
+    this.manager = new PhysicsWorldManager(this.config);
+    context.register(PhysicsWorldManagerKey, this.manager);
   }
 
   registerSystems(scheduler: SystemScheduler): void {
@@ -39,11 +41,29 @@ export class PhysicsPlugin implements Plugin {
   }
 
   onStart(): void {
+    // Debug contributor
     const registry = this.context.tryResolve(DebugRegistryKey);
-    registry?.register(new PhysicsDebugContributor(this.physicsWorld));
+    registry?.register(new PhysicsDebugContributor(this.manager));
+
+    // Destroy per-scene worlds when scenes exit
+    const bus = this.context.tryResolve(EventBusKey) as
+      | EventBus<EngineEvents>
+      | undefined;
+    if (bus) {
+      // SceneManager emits the actual Scene instance, but EngineEvents
+      // types the payload as SceneRef ({ name: string }) for decoupling.
+      // The cast is safe because the Map is keyed by object identity and
+      // SceneManager always passes the real Scene object.
+      bus.on("scene:popped", ({ scene }) => {
+        this.manager.destroyWorld(scene as Scene);
+      });
+      bus.on("scene:replaced", ({ oldScene }) => {
+        this.manager.destroyWorld(oldScene as Scene);
+      });
+    }
   }
 
   onDestroy(): void {
-    this.physicsWorld.destroy();
+    this.manager.destroy();
   }
 }

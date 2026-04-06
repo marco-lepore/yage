@@ -150,7 +150,7 @@ vi.mock("@dimforge/rapier2d", () => ({
 import { Transform, Vec2, Phase } from "@yage/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
-import { createPhysicsTestContext, spawnEntityInScene } from "./test-helpers.js";
+import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
 
 describe("PhysicsSystem", () => {
   beforeEach(() => {
@@ -327,68 +327,7 @@ describe("PhysicsSystem", () => {
       system.update(16.67);
     });
 
-    it("sleeps bodies in paused scenes", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
-      const system = new PhysicsSystem();
-      system._setContext(context);
-
-      const entity = spawnEntityInScene(scene, "test");
-      entity.add(new Transform());
-      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
-      const sleepSpy = vi.spyOn(body, "sleep");
-
-      // Pause the scene
-      scene.paused = true;
-      system.update(16.67);
-
-      expect(sleepSpy).toHaveBeenCalled();
-      expect(rb._pauseSleeping).toBe(true);
-    });
-
-    it("wakes bodies when scene resumes", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
-      const system = new PhysicsSystem();
-      system._setContext(context);
-
-      const entity = spawnEntityInScene(scene, "test");
-      entity.add(new Transform());
-      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
-      const wakeUpSpy = vi.spyOn(body, "wakeUp");
-
-      // Pause then resume
-      scene.paused = true;
-      system.update(16.67);
-      scene.paused = false;
-      system.update(16.67);
-
-      expect(wakeUpSpy).toHaveBeenCalled();
-      expect(rb._pauseSleeping).toBe(false);
-    });
-
-    it("does not double-sleep already paused bodies", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
-      const system = new PhysicsSystem();
-      system._setContext(context);
-
-      const entity = spawnEntityInScene(scene, "test");
-      entity.add(new Transform());
-      const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
-
-      const body = physicsWorld.getBody(rb._bodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
-      const sleepSpy = vi.spyOn(body, "sleep");
-
-      scene.paused = true;
-      system.update(16.67);
-      system.update(16.67);
-
-      expect(sleepSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it("returns early when all scenes are paused", () => {
+    it("does not step world when scene is paused", () => {
       const { scene, physicsWorld, context } = createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
@@ -403,12 +342,98 @@ describe("PhysicsSystem", () => {
       system.update(16.67);
       world.stepSpy.mockClear();
 
-      // Pause everything
+      // Pause the scene — activeScenes should be empty
       scene.paused = true;
       system.update(16.67);
 
-      // Step should not be called when all paused
       expect(world.stepSpy).not.toHaveBeenCalled();
+    });
+
+    it("resumes stepping when scene is unpaused", () => {
+      const { scene, physicsWorld, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const world = (physicsWorld as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+      // Pause
+      scene.paused = true;
+      system.update(16.67);
+      world.stepSpy.mockClear();
+
+      // Resume
+      scene.paused = false;
+      system.update(16.67);
+
+      expect(world.stepSpy).toHaveBeenCalled();
+    });
+
+    it("steps two scenes with different timeScales independently", () => {
+      const { scene, manager, sceneManager, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      // Scene 1: timeScale 1 (default)
+      const e1 = spawnEntityInScene(scene, "e1");
+      e1.add(new Transform());
+      e1.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      // Scene 2: timeScale 2
+      const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+      scene2.timeScale = 2;
+      const world2 = manager.getOrCreateWorld(scene2);
+      const e2 = spawnEntityInScene(scene2, "e2");
+      e2.add(new Transform());
+      e2.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const mockWorld1 = (manager.getContext(scene)!.world as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const mockWorld2 = (world2 as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+      system.update(16.67);
+
+      // Scene 1 at timeScale 1: accumulator = 16.67, one step
+      expect(mockWorld1.stepSpy).toHaveBeenCalledTimes(1);
+      // Scene 2 at timeScale 2: accumulator = 33.34, two steps
+      expect(mockWorld2.stepSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("per-scene accumulators are independent", () => {
+      const { scene, manager, sceneManager, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      const e1 = spawnEntityInScene(scene, "e1");
+      e1.add(new Transform());
+      e1.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      // Scene 2 with timeScale 0.5
+      const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+      scene2.timeScale = 0.5;
+      manager.getOrCreateWorld(scene2);
+      const e2 = spawnEntityInScene(scene2, "e2");
+      e2.add(new Transform());
+      e2.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      // First frame: scene1 accumulates 16.67 (steps once), scene2 accumulates 8.335 (no step)
+      system.update(16.67);
+
+      const ctx1 = manager.getContext(scene)!;
+      const ctx2 = manager.getContext(scene2)!;
+
+      expect(ctx1.accumulator).toBeCloseTo(0);
+      expect(ctx2.accumulator).toBeCloseTo(8.335);
+
+      // Second frame: scene2 now has 16.67, should step once
+      const mockWorld2 = (ctx2.world as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      mockWorld2.stepSpy.mockClear();
+
+      system.update(16.67);
+      expect(mockWorld2.stepSpy).toHaveBeenCalledTimes(1);
+      expect(ctx2.accumulator).toBeCloseTo(0);
     });
 
     it("caps accumulator to prevent unbounded growth at high timeScale", () => {
@@ -460,6 +485,18 @@ describe("PhysicsSystem", () => {
       expect(rb._prevPosition.x).toBeCloseTo(50); // was at (50,50)
       expect(rb._currPosition.x).toBeCloseTo(100);
       expect(rb._currPosition.y).toBeCloseTo(100);
+    });
+
+    it("skips scenes without a physics context", () => {
+      const { sceneManager, context } = createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      // Push a scene that has no physics entities (no world created)
+      createTestScene(sceneManager, "no-physics", { pauseBelow: false });
+
+      // Should not throw
+      system.update(16.67);
     });
   });
 });

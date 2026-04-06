@@ -9,8 +9,9 @@ import {
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
-  PhysicsWorldKey,
+  PhysicsWorldManagerKey,
 } from "@yage/physics";
+import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
 import { createGame } from "yage";
 import { injectStyles, keys } from "./shared.js";
@@ -167,7 +168,7 @@ class MovingPlatform extends Component {
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private readonly camera = this.service(CameraKey);
-  private readonly physicsWorld = this.service(PhysicsWorldKey);
+  private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
   private readonly graphics = this.sibling(GraphicsComponent);
   private readonly transform = this.sibling(Transform);
@@ -186,6 +187,10 @@ class PlayerController extends Component {
   private static readonly WALL_RAY_DIST = 16;
 
   onAdd(): void {
+    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
+      this.scene,
+    );
+
     // Camera follow
     this.camera.follow(this.transform, {
       smoothing: 0.12,

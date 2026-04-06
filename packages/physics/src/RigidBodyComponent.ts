@@ -1,7 +1,7 @@
 import { Component, Transform, Vec2, serializable } from "@yage/core";
 import type { Vec2Like } from "@yage/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
-import { PhysicsWorldKey } from "./types.js";
+import { PhysicsWorldManagerKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
 
 /** Serialized snapshot of a RigidBodyComponent. */
@@ -43,8 +43,6 @@ export class RigidBodyComponent extends Component {
   _currRotation = 0;
   /** @internal If true, skip interpolation on next frame (teleport). */
   _teleported = false;
-  /** @internal True if this body was put to sleep by the pause system. */
-  _pauseSleeping = false;
 
   private readonly config: RigidBodyConfig;
   private readonly transform = this.sibling(Transform);
@@ -58,7 +56,9 @@ export class RigidBodyComponent extends Component {
   }
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldKey);
+    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
+      this.scene,
+    );
 
     this._bodyHandle = this.physicsWorld.createBody(this.entity, this.config);
 
