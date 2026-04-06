@@ -17,6 +17,7 @@ export default defineConfig({
           tsconfig: "./tsconfig.typedoc.json",
           typeDoc: {
             entryPointStrategy: "packages",
+            exclude: ["**/*.test.ts", "**/*.test.tsx"],
           },
         }),
       ],
