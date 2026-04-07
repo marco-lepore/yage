@@ -1,0 +1,264 @@
+---
+title: "Common Game Patterns"
+description: "Spawning, destruction, parent-child entities, cooldowns, health, and scoring"
+---
+
+This page covers practical patterns that come up in most games built with YAGE.
+
+## Entity Spawning
+
+Spawn entities dynamically using `scene.spawn`:
+
+```typescript
+// Simple spawn
+const bullet = this.scene.spawn("bullet");
+bullet.add(new Transform({ position: firePos }));
+bullet.add(new SpriteComponent({ texture: bulletTex }));
+bullet.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+bullet.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
+bullet.get(RigidBodyComponent).setVelocity(direction.scale(800));
+```
+
+For reusable entity templates, use `defineBlueprint`:
+
+```typescript
+import { defineBlueprint } from "@yage/core";
+
+const CoinBP = defineBlueprint<{ x: number; y: number }>(
+  "coin",
+  (entity, { x, y }) => {
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(new GraphicsComponent().draw(drawCoin));
+    entity.add(new RigidBodyComponent({ type: "static" }));
+    entity.add(new ColliderComponent({
+      shape: { type: "circle", radius: 10 },
+      sensor: true,
+    }));
+  },
+);
+
+// Spawn from blueprint
+this.scene.spawn(CoinBP, { x: 200, y: 300 });
+```
+
+## Entity Destruction
+
+Destroy entities when they're no longer needed:
+
+```typescript
+entity.destroy();
+```
+
+Destruction is deferred to the end of the current frame — it's safe to call
+during `update()` or event handlers.
+
+Always check `isDestroyed` when iterating entities that might be destroyed
+mid-loop:
+
+```typescript
+for (const entity of scene.getEntities()) {
+  if (entity.isDestroyed) continue;
+  // process entity...
+}
+```
+
+Components are automatically cleaned up when their entity is destroyed.
+`SoundComponent` stops playback, `RigidBodyComponent` removes the physics body.
+
+## Parent-Child Entities
+
+Attach child entities for health bars, indicators, or attached effects:
+
+```typescript
+const player = scene.spawn("player");
+player.add(new Transform({ position: new Vec2(100, 100) }));
+player.add(new SpriteComponent({ texture: playerTex }));
+
+// Health bar follows the player
+const healthBar = scene.spawn("health-bar");
+healthBar.add(new Transform({ position: new Vec2(0, -30) })); // offset above
+healthBar.add(new GraphicsComponent().draw(drawHealthBar));
+
+player.addChild("healthBar", healthBar);
+```
+
+Child transforms are relative to the parent. When the parent moves, children
+follow. Destroying the parent destroys all children.
+
+## Cooldowns
+
+Use `ProcessSlot` for cooldowns and timed abilities:
+
+```typescript
+import { ProcessSlot, Process } from "@yage/core";
+
+class ShootAbility extends Component {
+  private readonly cooldown = this.add(new ProcessSlot("shoot-cooldown"));
+
+  update(): void {
+    if (this.input.isJustPressed("fire") && !this.cooldown.active) {
+      this.fireBullet();
+
+      // Start cooldown (0.3 seconds)
+      this.cooldown.run(new Process(0.3));
+    }
+  }
+}
+```
+
+The slot tracks whether the process is active, so you can gate actions on it.
+
+For repeating effects, restart the process:
+
+```typescript
+this.cooldown.run(new Process(0.5), {
+  onComplete: () => this.spawnWave(),
+});
+```
+
+## Health and Damage
+
+A simple health component:
+
+```typescript
+class HealthComponent extends Component {
+  hp: number;
+  readonly maxHp: number;
+
+  constructor(maxHp: number) {
+    super();
+    this.hp = maxHp;
+    this.maxHp = maxHp;
+  }
+
+  takeDamage(amount: number): void {
+    this.hp = Math.max(0, this.hp - amount);
+    if (this.hp <= 0) {
+      this.entity.emit(EntityDied);
+    }
+  }
+
+  heal(amount: number): void {
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+  }
+
+  get ratio(): number {
+    return this.hp / this.maxHp;
+  }
+}
+```
+
+Handle damage via collision events:
+
+```typescript
+collider.onCollision((ev) => {
+  if (ev.started) {
+    const health = this.entity.tryGet(HealthComponent);
+    const damage = ev.other.tryGet(DamageComponent);
+    if (health && damage) {
+      health.takeDamage(damage.amount);
+    }
+  }
+});
+```
+
+## Scoring
+
+Use events to decouple scoring from game objects:
+
+```typescript
+const CoinCollected = defineEvent("coin:collected");
+const EnemyDefeated = defineEvent<{ points: number }>("enemy:defeated");
+
+class GameScene extends Scene {
+  private score = 0;
+
+  onEnter(): void {
+    this.on(CoinCollected, () => {
+      this.score += 10;
+    });
+
+    this.on(EnemyDefeated, (data) => {
+      this.score += data.points;
+    });
+  }
+}
+```
+
+Coins and enemies emit events without knowing about the score — the scene
+orchestrates state changes.
+
+## Ground Detection with Raycasting
+
+For platformers, use a short downward raycast to detect ground:
+
+```typescript
+class PlayerController extends Component {
+  private readonly rb = this.sibling(RigidBodyComponent);
+  private readonly transform = this.sibling(Transform);
+  private world!: PhysicsWorld;
+  private grounded = false;
+  private coyoteTimer = 0;
+
+  onAdd(): void {
+    this.world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+  }
+
+  fixedUpdate(dt: number): void {
+    // Raycast downward from entity center
+    const hit = this.world.raycast(
+      this.transform.worldPosition,
+      { x: 0, y: 1 },          // down
+      PLAYER_HALF_HEIGHT + 2,   // just past the feet
+    );
+
+    if (hit) {
+      this.grounded = true;
+      this.coyoteTimer = COYOTE_TIME;
+    } else {
+      this.coyoteTimer -= dt;
+      this.grounded = this.coyoteTimer > 0;
+    }
+  }
+}
+```
+
+**Coyote time** gives the player a brief window to jump after walking off a
+ledge, making platforming feel more forgiving.
+
+## Entity Finding
+
+Find specific entities by name:
+
+```typescript
+const player = scene.findEntity("player");
+```
+
+Query entities by component:
+
+```typescript
+import { filterEntities } from "@yage/core";
+
+const enemies = filterEntities(scene.getEntities(), {
+  has: [EnemyTag, HealthComponent],
+});
+```
+
+Or use the `QueryCache` for efficient repeated queries from systems:
+
+```typescript
+class DamageSystem extends System {
+  private enemies!: QueryResult;
+
+  init(): void {
+    const cache = this.use(QueryCacheKey);
+    this.enemies = cache.query({ has: [HealthComponent, EnemyTag] });
+  }
+
+  update(): void {
+    for (const entity of this.enemies) {
+      // process each enemy with health...
+    }
+  }
+}
+```

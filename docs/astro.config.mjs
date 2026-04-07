@@ -11,17 +11,34 @@ export default defineConfig({
     starlight({
       title: "YAGE",
       description: "Yet Another Game Engine — A modular 2D game engine for TypeScript",
+      logo: {
+        src: "./public/logo.svg",
+        alt: "YAGE Logo",
+      },
+      favicon: "/logo.svg",
+      customCss: ["./src/styles/custom.css"],
       plugins: [
         starlightTypeDoc({
           entryPoints: [
             "../packages/core",
             "../packages/renderer",
             "../packages/input",
+            "../packages/physics",
+            "../packages/audio",
+            "../packages/particles",
+            "../packages/tilemap",
+            "../packages/ui",
+            "../packages/save",
+            "../packages/debug",
           ],
           tsconfig: "./tsconfig.typedoc.json",
           typeDoc: {
             entryPointStrategy: "packages",
             exclude: ["**/*.test.ts", "**/*.test.tsx"],
+            excludeExternals: true,
+            packageOptions: {
+              entryPoints: ["src/index.ts"],
+            },
           },
         }),
       ],
@@ -58,6 +75,14 @@ export default defineConfig({
             { label: "Rendering", slug: "guides/rendering" },
             { label: "Input", slug: "guides/input" },
             { label: "Processes & Tweens", slug: "guides/processes-and-tweens" },
+            { label: "Physics", slug: "guides/physics" },
+            { label: "Audio", slug: "guides/audio" },
+            { label: "Particles", slug: "guides/particles" },
+            { label: "Tilemaps", slug: "guides/tilemaps" },
+            { label: "UI", slug: "guides/ui" },
+            { label: "UI (React)", slug: "guides/ui-react" },
+            { label: "Save & Load", slug: "guides/save-and-load" },
+            { label: "Debug Tools", slug: "guides/debug" },
           ],
         },
         {
@@ -65,6 +90,9 @@ export default defineConfig({
           items: [
             { label: "Entity Subclasses", slug: "patterns/entity-subclasses" },
             { label: "Testing", slug: "patterns/testing" },
+            { label: "Scene Management", slug: "patterns/scene-management" },
+            { label: "State Management", slug: "patterns/state-management" },
+            { label: "Common Game Patterns", slug: "patterns/common-game-patterns" },
           ],
         },
         {

@@ -8,6 +8,17 @@
   "include": [
     "../packages/core/src",
     "../packages/renderer/src",
-    "../packages/input/src"
+    "../packages/input/src",
+    "../packages/physics/src",
+    "../packages/audio/src",
+    "../packages/particles/src",
+    "../packages/tilemap/src",
+    "../packages/ui/src",
+    "../packages/save/src",
+    "../packages/debug/src"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

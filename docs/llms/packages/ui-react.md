@@ -1,0 +1,66 @@
+# @yage/ui-react
+
+Depends on `@yage/ui`, `react`. React reconciler over the UI system.
+
+## UIRoot
+
+```ts
+import { UIRoot } from "@yage/ui-react";
+import { Anchor } from "@yage/ui";
+
+const root = new UIRoot({ anchor: Anchor.Center, offset: { x: 0, y: 0 } });
+entity.add(root);
+root.render(<MyComponent />);
+```
+
+## JSX Components
+
+```tsx
+import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yage/ui-react";
+
+<Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
+  <Text style={{ fontSize: 24, fill: 0xffffff }}>Hello</Text>
+  <Button width={150} height={40} bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
+  <ProgressBar width={200} height={16} value={75} fillBackground={{ color: 0x44cc44 }} />
+  <Checkbox label="Mute" checked={false} onChange={(v) => {}} />
+  <Image texture={iconTex} width={32} height={32} />
+</Panel>
+```
+
+PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`.
+
+## Hooks
+
+```ts
+import { useEngine, useScene, useStore, useQuery, useSceneSelector } from "@yage/ui-react";
+
+// Engine/scene context
+const engine = useEngine();
+const scene = useScene();
+
+// Reactive store
+const score = useStore(store, (s) => s.score);
+
+// ECS query (polled each frame)
+const count = useQuery([EnemyTag], (result) => result.size);
+
+// Scene selector (polled each frame)
+const entityCount = useSceneSelector((scene) => scene.getEntities().length);
+```
+
+## createStore
+
+```ts
+import { createStore } from "@yage/ui-react";
+
+const store = createStore({ score: 0, health: 100 });
+
+// ECS side: write
+store.set({ score: store.get().score + 10 });
+
+// React side: read (auto-rerenders)
+const score = useStore(store, (s) => s.score);
+
+// Manual subscribe
+const unsub = store.subscribe(() => console.log(store.get()));
+```

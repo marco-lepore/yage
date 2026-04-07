@@ -1,0 +1,252 @@
+---
+title: "UI"
+description: "Flexbox-based UI with panels, buttons, text, and anchoring"
+---
+
+The `@yage/ui` package provides screen-space UI powered by
+[Yoga](https://www.yogalayout.dev/) flexbox layout. Build menus, HUDs, and
+overlays with a fluent builder API.
+
+For a React-based alternative, see [UI (React)](/guides/ui-react).
+
+## UIPlugin Setup
+
+```typescript
+import { UIPlugin } from "@yage/ui";
+
+engine.use(new UIPlugin());
+```
+
+Or with `createGame`:
+
+```typescript
+await createGame({ ui: true });
+```
+
+The plugin depends on `@yage/renderer`.
+
+## UIPanel
+
+`UIPanel` is the root UI component. Add it to an entity to create a UI tree.
+
+```typescript
+import { UIPanel, Anchor } from "@yage/ui";
+
+const ui = this.spawn("hud");
+ui.add(new Transform());
+ui.add(new UIPanel({
+  anchor: Anchor.TopLeft,
+  direction: "column",
+  gap: 8,
+  padding: 16,
+  background: { color: 0x000000, alpha: 0.7, radius: 8 },
+}));
+```
+
+**Panel options:**
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `anchor` | `Anchor` | — | Screen-space position |
+| `offset` | `{ x, y }` | — | Pixel offset from anchor |
+| `direction` | `"row" \| "column"` | `"column"` | Flex direction |
+| `gap` | `number` | — | Space between children |
+| `padding` | `number \| Padding` | — | Inner padding |
+| `alignItems` | `string` | — | Cross-axis alignment |
+| `justifyContent` | `string` | — | Main-axis alignment |
+| `overflow` | `"visible" \| "hidden"` | `"visible"` | Overflow behavior |
+| `background` | `BackgroundOptions` | — | Color or texture background |
+| `layer` | `string` | — | Render layer name |
+| `visible` | `boolean` | `true` | Initial visibility |
+
+## Anchoring
+
+The `Anchor` enum positions panels relative to the screen:
+
+```typescript
+import { Anchor } from "@yage/ui";
+
+Anchor.TopLeft      Anchor.TopCenter      Anchor.TopRight
+Anchor.CenterLeft   Anchor.Center         Anchor.CenterRight
+Anchor.BottomLeft   Anchor.BottomCenter   Anchor.BottomRight
+```
+
+Add an offset to fine-tune position:
+
+```typescript
+new UIPanel({
+  anchor: Anchor.TopRight,
+  offset: { x: -16, y: 16 },
+})
+```
+
+## Text
+
+Add text to a panel with the builder API:
+
+```typescript
+const panel = entity.get(UIPanel);
+
+const label = panel.text("Score: 0", {
+  fontSize: 24,
+  fill: 0xffffff,
+  fontFamily: "monospace",
+});
+
+// Update text later
+label.setText("Score: 100");
+label.setStyle({ fill: 0x00ff00 });
+```
+
+## Buttons
+
+```typescript
+const btn = panel.button("Start Game", {
+  width: 200,
+  height: 50,
+  background: { color: 0x4444aa, radius: 6 },
+  hoverBackground: { color: 0x5555cc, radius: 6 },
+  pressBackground: { color: 0x333388, radius: 6 },
+  textStyle: { fontSize: 18, fill: 0xffffff },
+  onClick: () => {
+    engine.scenes.push(new GameScene());
+  },
+});
+
+// Disable/enable
+btn.setDisabled(true);
+
+// Change label
+btn.setText("Loading...");
+```
+
+Buttons support three background states: default, hover, and press.
+
+### Nine-Slice Buttons
+
+Use a texture background for scalable button artwork:
+
+```typescript
+panel.button("Play", {
+  width: 180,
+  height: 48,
+  background: {
+    texture: buttonTexture,
+    mode: "nine-slice",
+    nineSlice: { left: 12, top: 12, right: 12, bottom: 12 },
+  },
+  onClick: () => { /* ... */ },
+});
+```
+
+## Additional Elements
+
+`UIPanel` provides builder methods for `.text()`, `.button()`, and `.panel()`.
+For other elements, create them directly and add via `addElement`:
+
+```typescript
+import { UIImage, UIProgressBar, UICheckbox } from "@yage/ui";
+```
+
+### Images
+
+```typescript
+const img = new UIImage({
+  texture: iconTexture,
+  width: 32,
+  height: 32,
+  tint: 0xffffff,
+});
+panel._node.addElement(img);
+```
+
+### Progress Bars
+
+```typescript
+const bar = new UIProgressBar({
+  width: 200,
+  height: 20,
+  value: 0.75,              // 0–1
+  trackBackground: { color: 0x333333 },
+  fillBackground: { color: 0x44cc44 },
+});
+panel._node.addElement(bar);
+
+// Update value
+bar.update({ value: 0.5 });
+```
+
+### Checkboxes
+
+```typescript
+const cb = new UICheckbox({
+  label: "Fullscreen",
+  checked: false,
+  size: 24,
+  boxColor: 0x666666,
+  checkColor: 0x44cc44,
+  onChange: (checked) => {
+    console.log("fullscreen:", checked);
+  },
+});
+panel._node.addElement(cb);
+```
+
+:::note
+For complex UIs with many interactive elements, consider using
+[UI (React)](/guides/ui-react) which supports all elements as JSX components.
+:::
+
+## Nested Panels
+
+Build complex layouts with nested panels:
+
+```typescript
+const menu = entity.get(UIPanel);
+
+// Header row
+const header = menu.panel({ direction: "row", gap: 12, alignItems: "center" });
+header.text("Settings", { fontSize: 28, fill: 0xffffff });
+
+// Content column
+const content = menu.panel({ direction: "column", gap: 8, padding: 12 });
+content.text("Volume", { fontSize: 16, fill: 0xaaaaaa });
+
+// Button row
+const buttons = menu.panel({ direction: "row", gap: 12 });
+buttons.button("Save", { width: 100, height: 40, onClick: () => { /* ... */ } });
+buttons.button("Cancel", { width: 100, height: 40, onClick: () => { /* ... */ } });
+```
+
+## Visibility
+
+Toggle panel visibility at runtime:
+
+```typescript
+const panel = entity.get(UIPanel);
+panel.visible = false;  // hide
+panel.visible = true;   // show
+```
+
+Child elements also support visibility:
+
+```typescript
+label.visible = false;
+btn.visible = true;
+```
+
+## Background Options
+
+Backgrounds can be a solid color or a texture:
+
+```typescript
+// Solid color with rounded corners
+{ color: 0x222222, alpha: 0.9, radius: 8 }
+
+// Texture (nine-slice for scaling)
+{
+  texture: panelTexture,
+  mode: "nine-slice",
+  nineSlice: { left: 16, top: 16, right: 16, bottom: 16 },
+}
+```

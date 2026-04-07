@@ -166,6 +166,91 @@ const e = scene.spawn("test-entity");
 
 Co-locate tests: `Foo.ts` -> `Foo.test.ts` in the same directory.
 
+## Scene Management Patterns
+
+### Pause menu
+
+```ts
+class PauseScene extends Scene {
+  override readonly pauseBelow = true;        // freeze scene below
+  override readonly transparentBelow = true;  // keep rendering below
+
+  onEnter() {
+    // Push: engine.scenes.push(new PauseScene());
+    // Resume: engine.scenes.pop();
+  }
+}
+```
+
+### Time scale
+
+```ts
+scene.timeScale = 0.25;  // slow-mo
+scene.timeScale = 2;     // fast-forward
+```
+
+### Cross-scene access
+
+```ts
+const game = engine.scenes.all.find(s => s.name === "game") as GameScene;
+game.timeScale = 0.25;
+```
+
+## State Management Patterns
+
+### DI service for game state
+
+```ts
+const GameStateKey = new ServiceKey<GameState>("gameState");
+this.context.register(GameStateKey, { score: 0, health: 100 });
+// Access: this.use(GameStateKey).score
+```
+
+### Reactive store (for React UI)
+
+```ts
+const store = createStore({ score: 0 });
+store.set({ score: 10 });                    // ECS writes
+const score = useStore(store, s => s.score); // React reads
+```
+
+### Event-driven state
+
+```ts
+const CoinCollected = defineEvent("coin:collected");
+this.on(CoinCollected, () => { state.score += 10; });
+entity.emit(CoinCollected);  // from trigger handler
+```
+
+## Common Game Patterns
+
+### Blueprints for spawning
+
+```ts
+const CoinBP = defineBlueprint<{ x: number; y: number }>("coin", (entity, { x, y }) => {
+  entity.add(new Transform({ position: new Vec2(x, y) }));
+  entity.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, sensor: true }));
+});
+scene.spawn(CoinBP, { x: 200, y: 300 });
+```
+
+### Health/damage
+
+```ts
+class HealthComponent extends Component {
+  hp: number;
+  constructor(public readonly maxHp: number) { super(); this.hp = maxHp; }
+  takeDamage(n: number) { this.hp = Math.max(0, this.hp - n); if (this.hp <= 0) this.entity.emit(EntityDied); }
+}
+```
+
+### Ground detection (raycast)
+
+```ts
+const hit = world.raycast(position, { x: 0, y: 1 }, halfHeight + 2);
+const grounded = hit !== null; // add coyote timer for better feel
+```
+
 ## Common Gotchas
 
 **setup() vs constructor**: Entity constructors run before scene wiring. Always use `setup()` for adding components and resolving services.
