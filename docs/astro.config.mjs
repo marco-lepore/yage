@@ -1,8 +1,12 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
+import wasm from "vite-plugin-wasm";
 
 export default defineConfig({
+  vite: {
+    plugins: [wasm()],
+  },
   integrations: [
     starlight({
       title: "YAGE",
@@ -34,7 +38,6 @@ export default defineConfig({
           items: [
             { label: "Installation", slug: "getting-started/installation" },
             { label: "Your First Game", slug: "getting-started/your-first-game" },
-            { label: "Project Structure", slug: "getting-started/project-structure" },
           ],
         },
         {
@@ -62,6 +65,12 @@ export default defineConfig({
           items: [
             { label: "Entity Subclasses", slug: "patterns/entity-subclasses" },
             { label: "Testing", slug: "patterns/testing" },
+          ],
+        },
+        {
+          label: "Reference",
+          items: [
+            { label: "Packages", slug: "getting-started/project-structure" },
           ],
         },
         typeDocSidebarGroup,

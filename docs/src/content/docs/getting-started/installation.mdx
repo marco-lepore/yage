@@ -59,6 +59,29 @@ depends on it, so it is always installed automatically.
 - **npm** 9+ (or any compatible package manager — pnpm and yarn work fine)
 - A bundler that supports TypeScript and ESM (Vite is recommended)
 
+## Vite Setup
+
+YAGE's physics engine (Rapier 2D) uses WebAssembly. Vite requires the
+`vite-plugin-wasm` plugin to handle `.wasm` imports:
+
+```bash
+npm install -D vite-plugin-wasm
+```
+
+```typescript title="vite.config.ts"
+import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
+
+export default defineConfig({
+  plugins: [wasm()],
+});
+```
+
+:::note
+This is required even if you don't use `@yage/physics` directly — some
+internal dependencies may load wasm modules.
+:::
+
 ## Verifying the Install
 
 Create a minimal entry file and run your dev server to confirm everything is

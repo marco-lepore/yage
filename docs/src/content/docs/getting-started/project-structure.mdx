@@ -1,112 +1,46 @@
 ---
-title: "Project Structure"
-description: "Understanding the YAGE monorepo and package architecture"
+title: "Packages"
+description: "YAGE package overview and when to use individual packages"
 ---
 
-YAGE is organised as a Turborepo monorepo with npm workspaces. Every module
-lives in its own package so you can depend on exactly what you need.
+## Package Overview
 
-## Top-Level Layout
-
-```
-yage/
-├── packages/       # All publishable @yage/* packages + the `yage` meta-package
-├── examples/       # Runnable demo projects
-├── e2e/            # End-to-end tests
-├── docs/           # This documentation site (Starlight)
-├── turbo.json      # Turborepo pipeline configuration
-└── package.json    # Workspace root
-```
-
-| Directory | Purpose |
+| Package | Role |
 |---|---|
-| `packages/` | Source code for every YAGE module. Each sub-folder is an independent npm package built with **tsup**. |
-| `examples/` | Small, self-contained projects that showcase engine features. Good starting points for new games. |
-| `e2e/` | Playwright-based end-to-end tests that run example projects in a real browser. |
-| `docs/` | Astro Starlight documentation site (what you are reading now). |
+| `@yage/core` | ECS, math (`Vec2`, `Mat3`), events, scheduling, component base class |
+| `@yage/renderer` | PixiJS v8 rendering pipeline, sprites, graphics, cameras |
+| `@yage/physics` | Rapier 2D integration — rigid bodies, colliders, joints |
+| `@yage/input` | Keyboard, mouse, gamepad, and touch handling |
+| `@yage/audio` | Sound loading, playback, and channel mixing |
+| `@yage/particles` | Particle emitters and visual effects |
+| `@yage/tilemap` | Tile-based map loading and rendering |
+| `@yage/ui` | In-game UI layout and widgets |
+| `@yage/ui-react` | React bindings for building game UI with JSX |
+| `@yage/debug` | FPS counter, entity inspector, and dev overlays |
+| `@yage/save` | Serialise and restore game state |
 
-## Package Dependency Graph
-
-`@yage/core` is the foundation. Every other package depends on it.
-
-```
-                    @yage/core
-                   /    |     \
-                  /     |      \
-     @yage/renderer  @yage/physics  @yage/input  @yage/audio
-          |               |
-   @yage/particles   @yage/tilemap
-          |
-       @yage/ui
-          |
-     @yage/ui-react
-
-     @yage/debug   (depends on core + renderer)
-     @yage/save    (depends on core)
-```
-
-### Package Summaries
-
-| Package | Depends on | Role |
-|---|---|---|
-| `@yage/core` | — | ECS, math (`Vec2`, `Mat3`), events, scheduling, component base class |
-| `@yage/renderer` | core | PixiJS v8 rendering pipeline, sprites, graphics, cameras |
-| `@yage/physics` | core | Rapier 2D integration — rigid bodies, colliders, joints |
-| `@yage/input` | core | Keyboard, mouse, gamepad, and touch handling |
-| `@yage/audio` | core | Sound loading, playback, and channel mixing |
-| `@yage/particles` | core, renderer | Particle emitters and visual effects |
-| `@yage/tilemap` | core, renderer | Tile-based map loading and rendering |
-| `@yage/ui` | core, renderer | In-game UI layout and widgets |
-| `@yage/ui-react` | core, ui | React bindings for building game UI with JSX |
-| `@yage/debug` | core, renderer | FPS counter, entity inspector, and dev overlays |
-| `@yage/save` | core | Serialise and restore game state |
+`@yage/core` is the foundation — every other package depends on it.
 
 ## The `yage` Meta-Package
 
 The top-level `yage` package re-exports every `@yage/*` module and adds the
-`createGame()` convenience function. It is the recommended entry point for most
-projects:
+`createGame()` convenience function:
 
 ```typescript
-// Everything available through a single import
 import { createGame, defineInlineScene } from "yage";
 import { Component, Transform, Vec2 } from "@yage/core";
 ```
 
-Because `yage` depends on all sub-packages, installing it gives you the full
-engine in one step.
+Installing `yage` gives you the full engine in one step.
 
 ## When to Use Individual Packages
 
 Choose individual `@yage/*` imports when:
 
-- **Bundle size matters** — for example a game that has no physics can skip
-  `@yage/physics` (and Rapier's WASM binary) entirely.
-- **You are building a library** on top of YAGE and want to declare the
-  narrowest possible peer dependencies.
-- **Tree-shaking** — even though modern bundlers can tree-shake unused exports,
-  avoiding a dependency altogether is the most reliable way to keep it out of
-  the final build.
+- **Bundle size matters** — a game without physics can skip `@yage/physics`
+  (and Rapier's WASM binary) entirely.
+- **You are building a library** on top of YAGE and want the narrowest
+  possible peer dependencies.
 
-For prototyping, game jams, and most production games, the meta-package is the
-simpler choice.
-
-## Build Tooling
-
-| Tool | Purpose |
-|---|---|
-| **Turborepo** | Orchestrates builds, tests, and linting across all packages with caching. |
-| **tsup** | Bundles each package into ESM (and optionally CJS) from TypeScript source. |
-| **npm workspaces** | Links packages locally so changes are reflected immediately during development. |
-
-Run the full build from the repo root:
-
-```bash
-npx turbo run build
-```
-
-Or target a single package:
-
-```bash
-npx turbo run build --filter=@yage/renderer
-```
+For prototyping, game jams, and most production games, the meta-package is
+the simpler choice.
