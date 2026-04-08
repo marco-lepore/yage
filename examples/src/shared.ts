@@ -1,46 +1,10 @@
 /** Shared utilities for YAGE examples. */
 
-/** Inject common dark-theme styles + optional extra CSS. */
+/** Inject optional extra CSS for a specific example. Base styles are in shared.css. */
 export function injectStyles(extra?: string): void {
+  if (!extra) return;
   const style = document.createElement("style");
-  style.textContent = `
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #111;
-      color: #ccc;
-      font-family: system-ui, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 1rem;
-      gap: 0.75rem;
-    }
-    h1 { font-size: 1.2rem; color: #eee; }
-    #game-container { border: 1px solid #333; }
-    .back-link {
-      align-self: flex-start;
-      color: #888;
-      text-decoration: none;
-      font-size: 0.85rem;
-    }
-    .back-link:hover { color: #fff; }
-    .controls {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    .controls kbd {
-      background: #222;
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 2px 8px;
-      font-size: 0.85rem;
-      color: #fff;
-    }
-    .controls span { font-size: 0.85rem; }
-    ${extra ?? ""}
-  `;
+  style.textContent = extra;
   document.head.appendChild(style);
 }
 
