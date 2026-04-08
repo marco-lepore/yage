@@ -1,6 +1,13 @@
 {
   "name": "yage-monorepo",
   "private": true,
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marco-lepore/yage.git"
+  },
+  "homepage": "https://yage.dev",
   "packageManager": "npm@10.8.2",
   "workspaces": [
     "packages/*",

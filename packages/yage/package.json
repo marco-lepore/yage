@@ -1,6 +1,14 @@
 {
   "name": "yage",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marco-lepore/yage.git",
+    "directory": "packages/yage"
+  },
+  "homepage": "https://yage.dev",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
