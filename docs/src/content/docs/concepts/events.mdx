@@ -1,0 +1,147 @@
+---
+title: "Events"
+description: "Global and entity-scoped event system"
+---
+
+## EventBus
+
+The `EventBus` is a global publish/subscribe system. Every `bus.on()` call
+returns an unsubscribe function — call it to stop listening:
+
+```typescript
+import { EventBus } from "@yage/core";
+
+const bus = new EventBus();
+
+// Subscribe — returns an unsubscribe function
+const off = bus.on("player:hit", (data) => {
+  console.log("Ouch!", data.damage);
+});
+
+// Subscribe for a single occurrence
+bus.once("level:complete", (data) => {
+  console.log("Level cleared:", data.levelId);
+});
+
+// Emit an event
+bus.emit("player:hit", { damage: 25 });
+
+// Unsubscribe when done
+off();
+```
+
+## Built-in Engine Events
+
+The engine emits these events automatically through the global `EventBus`:
+
+| Event | Payload | When |
+|---|---|---|
+| `entity:created` | `{ entity }` | An entity is spawned |
+| `entity:destroyed` | `{ entity }` | An entity is destroyed (EndOfFrame) |
+| `component:added` | `{ entity, component }` | A component is added to an entity |
+| `component:removed` | `{ entity, component }` | A component is removed from an entity |
+| `scene:pushed` | `{ scene }` | A scene is pushed onto the stack |
+| `scene:popped` | `{ scene }` | A scene is popped from the stack |
+| `scene:replaced` | `{ previous, next }` | The top scene is replaced |
+| `engine:started` | `{}` | The engine loop has started |
+| `engine:stopped` | `{}` | The engine is being destroyed |
+
+Access the engine-wide bus through the DI container:
+
+```typescript
+import { EventBusKey } from "@yage/core";
+
+class ScoreTracker extends Component {
+  private off?: () => void;
+
+  onAdd() {
+    const bus = this.use(EventBusKey);
+    this.off = bus.on("entity:destroyed", ({ entity }) => {
+      if (entity.tags.has("enemy")) {
+        this.score += 100;
+      }
+    });
+  }
+
+  onDestroy() {
+    this.off?.();
+  }
+}
+```
+
+## Typed EventBus
+
+For custom events with full type safety, create a typed bus with an interface:
+
+```typescript
+interface GameEvents {
+  "player:hit": { damage: number; source: string };
+  "item:collected": { itemId: string; value: number };
+  "wave:started": { waveNumber: number };
+}
+
+const bus = new EventBus<GameEvents>();
+
+// Fully typed — data shape is inferred
+bus.on("player:hit", (data) => {
+  //                   ^? { damage: number; source: string }
+  console.log(data.damage);
+});
+
+// Type error if payload doesn't match
+bus.emit("item:collected", { itemId: "gem", value: 50 });
+```
+
+## EventToken and defineEvent
+
+For events that cross module boundaries, use `defineEvent` to create a
+reusable, type-safe event token:
+
+```typescript
+import { defineEvent } from "@yage/core";
+
+// Define once in a shared module
+export const PlayerHitEvent = defineEvent<{ damage: number }>("player:hit");
+export const WaveStartEvent = defineEvent<{ waveNumber: number }>("wave:started");
+
+// Use the token to subscribe and emit
+bus.on(PlayerHitEvent, (data) => {
+  console.log(data.damage);
+});
+
+bus.emit(PlayerHitEvent, { damage: 30 });
+```
+
+Event tokens carry the event name and payload type together, eliminating
+string-typing errors across your codebase.
+
+## Entity-Scoped Events
+
+Entities have their own lightweight event emitter for local communication
+between components on the same entity:
+
+```typescript
+import { defineEvent } from "@yage/core";
+
+const DamagedEvent = defineEvent<{ amount: number }>("damaged");
+
+class Health extends Component {
+  current = 100;
+
+  takeDamage(amount: number) {
+    this.current -= amount;
+    this.entity.emit(DamagedEvent, { amount });
+  }
+}
+
+class DamageFlash extends Component {
+  onAdd() {
+    this.entity.on(DamagedEvent, ({ amount }) => {
+      this.flash(amount > 50 ? "red" : "white");
+    });
+  }
+}
+```
+
+Entity events are automatically cleaned up when the entity is destroyed — no
+manual unsubscribe needed.

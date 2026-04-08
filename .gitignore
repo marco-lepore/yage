@@ -22,6 +22,10 @@ npm-debug.log*
 *.sln
 *.sw?
 
+# Environment
+.env
+.env.*
+
 # OS
 .DS_Store
 

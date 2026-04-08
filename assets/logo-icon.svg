@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <!-- Cube only, no text — for favicon/avatar use -->
+  <polygon points="120,30 210,75 120,120 30,75" fill="#6ee7b7"/>
+  <polygon points="30,75 120,120 120,210 30,165" fill="#064e3b"/>
+  <polygon points="120,120 210,75 210,165 120,210" fill="#059669"/>
+</svg>

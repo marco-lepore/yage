@@ -1,0 +1,183 @@
+---
+title: "Processes & Tweens"
+description: "Timers, tweens, sequences, and coroutine-like workflows"
+---
+
+YAGE's process system (from `@yage/core`) gives you timers, tweens, and
+sequenced workflows that run inside the game loop. Everything is tied to
+entities, so processes are automatically cleaned up when an entity is destroyed.
+
+## ProcessComponent
+
+Add a `ProcessComponent` to any entity to gain access to entity-level timing:
+
+```typescript
+import { ProcessComponent } from "@yage/core";
+
+entity.add(new ProcessComponent());
+const pc = entity.get(ProcessComponent);
+```
+
+## Slots
+
+A **slot** is a reusable, restartable process handle. It is ideal for
+cooldowns, timers, and anything that needs to be checked or restarted
+repeatedly.
+
+```typescript
+const cooldown = pc.slot({ duration: 300 });
+
+// In update():
+if (cooldown.completed) {
+  cooldown.start(); // begin the cooldown
+  fire();
+}
+```
+
+`restart()` combines cancel + start in one call, which is useful when you want
+to reset a timer that may still be running:
+
+```typescript
+cooldown.restart();
+```
+
+Slots can also run callbacks on completion:
+
+```typescript
+const invincibility = pc.slot({
+  duration: 2000,
+  onComplete: () => entity.get(HealthComponent).vulnerable = true,
+});
+```
+
+## One-Off Processes
+
+For fire-and-forget delays or single-use timers, use `pc.run()`:
+
+```typescript
+import { Process } from "@yage/core";
+
+pc.run(Process.delay(500, () => {
+  spawnExplosion(entity.transform.position);
+  entity.destroy();
+}));
+```
+
+## Tweens
+
+Tweens smoothly interpolate a value over time. They run as processes, so they
+respect pause state and entity lifetime.
+
+```typescript
+import { Tween, easeOutQuad } from "@yage/core";
+
+// Tween a single property
+pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad));
+
+// Tween a Vec2 (e.g., position)
+pc.run(Tween.vec2(entity.transform, "position", targetPos, 600, easeInOutQuad));
+
+// Custom tween with a per-frame callback
+pc.run(
+  Tween.custom(500, easeOutQuad, (t) => {
+    entity.transform.setScale(1 + t * 0.5, 1 + t * 0.5);
+  }),
+);
+```
+
+### Built-In Easings
+
+| Function | Curve |
+|---|---|
+| `easeLinear` | Constant speed |
+| `easeInQuad` | Accelerate |
+| `easeOutQuad` | Decelerate |
+| `easeInOutQuad` | Accelerate then decelerate |
+| `easeOutBounce` | Bounce at the end |
+
+Import any easing from `@yage/core`.
+
+## Sequences
+
+Chain multiple steps into a linear or branching workflow using the sequence
+builder:
+
+```typescript
+import { Sequence } from "@yage/core";
+
+pc.run(
+  Sequence.create()
+    .call(() => sprite.alpha = 1)
+    .wait(200)
+    .then(Tween.to(sprite, "alpha", 0, 400, easeOutQuad))
+    .call(() => entity.destroy())
+    .build(),
+);
+```
+
+### Parallel Steps
+
+Run multiple processes at the same time within a sequence:
+
+```typescript
+Sequence.create()
+  .parallel(
+    Tween.to(sprite, "alpha", 0, 300, easeOutQuad),
+    Tween.vec2(entity.transform, "position", offscreen, 300, easeInQuad),
+  )
+  .call(() => entity.destroy())
+  .build();
+```
+
+The sequence advances past a `.parallel()` step once **all** of its children
+complete.
+
+### Looping
+
+```typescript
+// Loop forever
+Sequence.create()
+  .then(Tween.to(sprite, "alpha", 0.5, 500, easeInOutQuad))
+  .then(Tween.to(sprite, "alpha", 1.0, 500, easeInOutQuad))
+  .loop()
+  .build();
+
+// Repeat a fixed number of times
+Sequence.create()
+  .call(() => flash())
+  .wait(100)
+  .repeat(5)
+  .build();
+```
+
+## TimerEntity
+
+For scene-level timing that doesn't belong to any game object, use
+`TimerEntity`. It comes with a `ProcessComponent` pre-attached so you don't
+need to create a custom entity:
+
+```typescript
+import { TimerEntity } from "@yage/core";
+
+const timer = scene.spawn(TimerEntity);
+const pc = timer.get(ProcessComponent);
+
+pc.run(Process.delay(3000, () => {
+  scene.switchTo(NextLevel);
+}));
+```
+
+## Cancelling by Tag
+
+Tag processes so you can cancel groups of them later:
+
+```typescript
+pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad), { tag: "vfx" });
+pc.run(Tween.to(sprite, "scale", 2, 300, easeOutQuad), { tag: "vfx" });
+
+// Cancel all processes tagged "vfx"
+pc.cancel("vfx");
+```
+
+This is useful for cleaning up visual effects when an entity changes state (for
+example, cancelling hit-flash tweens when the entity dies).

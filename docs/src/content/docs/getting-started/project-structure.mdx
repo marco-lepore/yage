@@ -1,0 +1,46 @@
+---
+title: "Packages"
+description: "YAGE package overview and when to use individual packages"
+---
+
+## Package Overview
+
+| Package | Role |
+|---|---|
+| `@yage/core` | ECS, math (`Vec2`, `Mat3`), events, scheduling, component base class |
+| `@yage/renderer` | PixiJS v8 rendering pipeline, sprites, graphics, cameras |
+| `@yage/physics` | Rapier 2D integration — rigid bodies, colliders, joints |
+| `@yage/input` | Keyboard, mouse, gamepad, and touch handling |
+| `@yage/audio` | Sound loading, playback, and channel mixing |
+| `@yage/particles` | Particle emitters and visual effects |
+| `@yage/tilemap` | Tile-based map loading and rendering |
+| `@yage/ui` | In-game UI layout and widgets |
+| `@yage/ui-react` | React bindings for building game UI with JSX |
+| `@yage/debug` | FPS counter, entity inspector, and dev overlays |
+| `@yage/save` | Serialise and restore game state |
+
+`@yage/core` is the foundation — every other package depends on it.
+
+## The `yage` Meta-Package
+
+The top-level `yage` package re-exports every `@yage/*` module and adds the
+`createGame()` convenience function:
+
+```typescript
+import { createGame, defineInlineScene } from "yage";
+import { Component, Transform, Vec2 } from "@yage/core";
+```
+
+Installing `yage` gives you the full engine in one step.
+
+## When to Use Individual Packages
+
+Choose individual `@yage/*` imports when:
+
+- **Bundle size matters** — a game without physics can skip `@yage/physics`
+  (and Rapier's WASM binary) entirely.
+- **You are building a library** on top of YAGE and want the narrowest
+  possible peer dependencies.
+
+For prototyping, game jams, and most production games, the meta-package is
+the simpler choice.

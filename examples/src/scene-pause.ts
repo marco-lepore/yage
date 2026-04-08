@@ -3,7 +3,8 @@ import { RendererPlugin, CameraKey, GraphicsComponent } from "@yage/renderer";
 import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yage/physics";
 import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
 import type { UIText } from "@yage/ui";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { injectStyles, getContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
 injectStyles();
@@ -100,20 +101,20 @@ class GameScene extends Scene {
 // GameController — timeScale keys + pause toggle + spawn
 // ---------------------------------------------------------------------------
 class GameController extends Component {
+  private readonly input = this.service(InputManagerKey);
+
   update(): void {
     const scene = this.scene as GameScene;
 
-    if (keys.has("1")) { keys.delete("1"); scene.timeScale = 0.25; }
-    if (keys.has("2")) { keys.delete("2"); scene.timeScale = 1; }
-    if (keys.has("3")) { keys.delete("3"); scene.timeScale = 2; }
+    if (this.input.isJustPressed("slowMo")) scene.timeScale = 0.25;
+    if (this.input.isJustPressed("normal")) scene.timeScale = 1;
+    if (this.input.isJustPressed("fast")) scene.timeScale = 2;
 
-    if (keys.has("escape")) {
-      keys.delete("escape");
+    if (this.input.isJustPressed("pause")) {
       engine.scenes.push(new PauseScene());
     }
 
-    if (keys.has(" ")) {
-      keys.delete(" ");
+    if (this.input.isJustPressed("spawn")) {
       scene.spawnBall();
     }
   }
@@ -197,9 +198,10 @@ class PauseScene extends Scene {
 }
 
 class PauseEscHandler extends Component {
+  private readonly input = this.service(InputManagerKey);
+
   update(): void {
-    if (keys.has("escape")) {
-      keys.delete("escape");
+    if (this.input.isJustPressed("pause")) {
       engine.scenes.pop();
     }
   }
@@ -220,6 +222,16 @@ async function main() {
     container: getContainer(),
   }));
   engine.use(new PhysicsPlugin());
+  engine.use(new InputPlugin({
+    actions: {
+      slowMo: ["Digit1"],
+      normal: ["Digit2"],
+      fast: ["Digit3"],
+      pause: ["Escape"],
+      spawn: ["Space"],
+    },
+    preventDefaultKeys: ["Space"],
+  }));
   engine.use(new UIPlugin());
 
   await loadFonts();

@@ -1,0 +1,99 @@
+---
+title: "Game Loop"
+description: "Frame phases and fixed timestep"
+---
+
+## The Six Phases
+
+Every frame, the engine runs systems in six ordered phases:
+
+```
+EarlyUpdate → FixedUpdate → Update → LateUpdate → Render → EndOfFrame
+```
+
+| Phase | Purpose |
+|---|---|
+| **EarlyUpdate** | Input polling, network message ingestion. Runs once per frame before anything else. |
+| **FixedUpdate** | Physics stepping and deterministic gameplay. May run 0--5 times per frame at a constant timestep. |
+| **Update** | General game logic. Component `update(dt)` calls happen here. Variable `dt`. |
+| **LateUpdate** | Camera follow, constraint solving, anything that must run after game logic. Variable `dt`. |
+| **Render** | Display sync — sprite transforms are flushed to the GPU, particles are drawn. |
+| **EndOfFrame** | Deferred entity destruction, component cleanup, event queue flush. |
+
+## Fixed Timestep Accumulator
+
+The `FixedUpdate` phase uses an accumulator to deliver a deterministic timestep
+regardless of frame rate:
+
+```typescript
+const engine = new Engine({
+  fixedTimestep: 1000 / 60, // ~16.67 ms per tick (default)
+  maxFixedStepsPerFrame: 5, // cap to prevent spiral of death
+});
+```
+
+Each frame the engine adds the real elapsed time to an internal accumulator.
+While the accumulator holds enough time for another tick, the engine runs one
+`FixedUpdate` pass and subtracts `fixedTimestep` from the accumulator:
+
+```
+accumulator += frameDeltaMs
+
+while (accumulator >= fixedTimestep && steps < maxFixedStepsPerFrame) {
+  runFixedUpdate(fixedTimestep)
+  accumulator -= fixedTimestep
+  steps++
+}
+```
+
+This means:
+
+- On a 60 Hz display, `FixedUpdate` typically runs **once** per frame.
+- On a 144 Hz display, it may run **zero** times in some frames and **once** in
+  others.
+- If a frame takes unusually long (e.g. tab was in background), the cap of
+  `maxFixedStepsPerFrame` prevents the engine from trying to "catch up" with
+  dozens of ticks at once (the spiral of death).
+
+## Variable Delta Time
+
+All phases except `FixedUpdate` receive the real elapsed time since the last
+frame as `dt` (in seconds). This value fluctuates with frame rate:
+
+```typescript
+class CameraFollow extends Component {
+  update(dt: number) {
+    // dt varies each frame — smooth but not deterministic
+    const target = this.sibling(Transform).position;
+    this.camera.lerp(target, 5 * dt);
+  }
+}
+```
+
+For gameplay that must be deterministic (physics, game state), use
+`fixedUpdate(dt)` instead where `dt` is always the constant `fixedTimestep`
+converted to seconds.
+
+## Where Things Happen
+
+A quick reference for where to put different kinds of logic:
+
+| What | Phase | Why |
+|---|---|---|
+| Input polling | **EarlyUpdate** | Read fresh input before any logic runs |
+| Physics step | **FixedUpdate** | Deterministic simulation at a constant rate |
+| Game logic | **Update** | Component `update(dt)` calls, AI, timers |
+| Camera follow | **LateUpdate** | Runs after all positions are finalized |
+| Sprite sync | **Render** | Push final transforms to the GPU |
+| Entity cleanup | **EndOfFrame** | Safe to remove entities after all systems have run |
+
+## Configuration Defaults
+
+| Option | Default | Description |
+|---|---|---|
+| `fixedTimestep` | `1000 / 60` (~16.67 ms) | Milliseconds per fixed-update tick |
+| `maxFixedStepsPerFrame` | `5` | Maximum fixed-update iterations per frame |
+
+These can be tuned at engine creation time. A lower `fixedTimestep` (e.g.
+`1000 / 120`) gives more precise physics at the cost of more CPU work. A
+higher value (e.g. `1000 / 30`) is cheaper but less accurate.

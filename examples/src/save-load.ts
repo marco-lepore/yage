@@ -33,8 +33,9 @@ import type { PhysicsWorld } from "@yage/physics";
 import { serializable } from "@yage/core";
 import { SaveServiceKey } from "@yage/save";
 import type { SaveService } from "@yage/save";
+import { InputManagerKey } from "@yage/input";
 import { createGame } from "yage";
-import { injectStyles, keys } from "./shared.js";
+import { injectStyles } from "./shared.js";
 
 // ---------------------------------------------------------------------------
 // Styles + HUD
@@ -161,6 +162,7 @@ class GameState {
 // PlayerController — custom component (not auto-serializable)
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
+  private readonly input = this.service(InputManagerKey);
   private physics!: PhysicsWorld;
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly transform = this.sibling(Transform);
@@ -191,16 +193,13 @@ class PlayerController extends Component {
       if (this.coyoteTimer <= 0) this.grounded = false;
     }
 
-    let dx = 0;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
+    const dx = this.input.getAxis("left", "right");
     this.rb.setVelocity({ x: dx * 200, y: vel.y });
 
-    if (keys.has(" ") && this.grounded) {
+    if (this.input.isJustPressed("jump") && this.grounded) {
       this.rb.setVelocityY(-420);
       this.grounded = false;
       this.coyoteTimer = 0;
-      keys.delete(" ");
     }
   }
 }
@@ -489,16 +488,31 @@ class SaveDemoScene extends Scene {
   }
 
   private setupListeners() {
-    // HUD update via anonymous entity
+    // HUD update + quicksave/load via anonymous entity
     const gs = this.gs;
     const hudEntity = this.spawn("hud");
     hudEntity.add(new Transform());
     hudEntity.add(
       new (class extends Component {
+        private readonly input = this.service(InputManagerKey);
+        private readonly saveService = this.service(SaveServiceKey);
+
         update() {
           hud.innerHTML =
             `Coins: ${gs.coins} | HP: ${gs.hp}<br>` +
             `Best: ${gs.bestScore} (persisted)`;
+
+          if (this.input.isJustPressed("quicksave")) {
+            this.saveService.saveSnapshot("quick");
+            showToast("Quicksaved!");
+          }
+          if (this.input.isJustPressed("quickload")) {
+            if (!this.saveService.hasSnapshot("quick")) {
+              showToast("No save found!");
+              return;
+            }
+            this.saveService.loadSnapshot("quick").then(() => showToast("Quickloaded!"));
+          }
         }
       })(),
     );
@@ -532,30 +546,21 @@ class SaveDemoScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-const { engine } = await createGame({
+await createGame({
   width: WIDTH,
   height: HEIGHT,
   backgroundColor: 0x0f172a,
   physics: { gravity: { x: 0, y: 800 } },
+  input: {
+    actions: {
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      jump: ["Space"],
+      quicksave: ["F5"],
+      quickload: ["F9"],
+    },
+    preventDefaultKeys: ["Space", "F5", "F9"],
+  },
   save: true,
   scene: new SaveDemoScene(),
-});
-
-const saveService = engine.context.resolve(SaveServiceKey);
-
-window.addEventListener("keydown", async (e) => {
-  if (e.key === "F5") {
-    e.preventDefault();
-    saveService.saveSnapshot("quick");
-    showToast("Quicksaved!");
-  }
-  if (e.key === "F9") {
-    e.preventDefault();
-    if (!saveService.hasSnapshot("quick")) {
-      showToast("No save found!");
-      return;
-    }
-    await saveService.loadSnapshot("quick");
-    showToast("Quickloaded!");
-  }
 });

@@ -1,0 +1,167 @@
+---
+title: "Debug Tools"
+description: "Debug overlays, physics visualization, and custom debug contributors"
+---
+
+The `@yage/debug` package provides a toggleable debug overlay with physics
+shape visualization, HUD text, performance stats, and a contributor system
+for custom debug views.
+
+## DebugPlugin Setup
+
+```typescript
+import { DebugPlugin } from "@yage/debug";
+
+engine.use(new DebugPlugin({
+  startEnabled: true,     // show debug overlay on launch
+  toggleKey: "Backquote", // key to toggle (default: backtick `)
+}));
+```
+
+Or with `createGame`:
+
+```typescript
+await createGame({ debug: true });
+```
+
+Press the toggle key (`` ` `` by default) to show/hide the debug overlay at
+runtime.
+
+## DebugPlugin Config
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `startEnabled` | `boolean` | `false` | Show overlay on launch |
+| `toggleKey` | `string` | `"Backquote"` | Key code to toggle overlay |
+| `manualClock` | `boolean` | `false` | Enable frame-step mode |
+| `stepKey` | `string` | `"Period"` | Key to advance one frame (manual clock) |
+| `maxGraphics` | `number` | `256` | Graphics object pool size |
+| `maxHudLines` | `number` | `32` | Max HUD text lines |
+| `flags` | `Record<string, boolean>` | — | Initial flag overrides |
+
+## Built-In Debug Views
+
+When the debug overlay is active, the plugin automatically shows:
+
+- **Physics colliders** — colored outlines around all collider shapes:
+  - Green: dynamic bodies
+  - Gray: static bodies
+  - Blue: kinematic bodies
+  - Yellow: sensor colliders
+- **FPS counter** — frames per second in the HUD
+- **Entity count** — total entities in the current scene
+- **System timing** — per-system execution time breakdown
+
+## Custom Debug Contributors
+
+Implement `DebugContributor` to add your own debug visualizations:
+
+```typescript
+import type { DebugContributor, WorldDebugApi, HudDebugApi } from "@yage/debug/api";
+
+class WallDebugContributor implements DebugContributor {
+  readonly name = "walls";
+  readonly flags = ["show-walls"] as const;
+
+  private readonly shapes: Array<{ x: number; y: number; w: number; h: number }>;
+
+  constructor(shapes: Array<{ x: number; y: number; w: number; h: number }>) {
+    this.shapes = shapes;
+  }
+
+  drawWorld(api: WorldDebugApi): void {
+    if (!api.isFlagEnabled("show-walls")) return;
+
+    for (const s of this.shapes) {
+      const g = api.acquireGraphics();
+      if (!g) break;
+      g.rect(s.x, s.y, s.w, s.h)
+        .stroke({ color: 0xff0000, width: 2 / api.cameraZoom });
+    }
+  }
+
+  drawHud(api: HudDebugApi): void {
+    api.addLine(`Walls: ${this.shapes.length}`);
+  }
+}
+```
+
+Register it in your scene:
+
+```typescript
+import { DebugRegistryKey } from "@yage/debug/api";
+
+onEnter(): void {
+  const registry = this.service(DebugRegistryKey);
+  registry.register(new WallDebugContributor(this.wallShapes));
+}
+```
+
+### WorldDebugApi
+
+| Method | Description |
+|---|---|
+| `acquireGraphics()` | Get a pooled `Graphics` object (returns `undefined` if pool exhausted) |
+| `cameraZoom` | Current camera zoom level (scale line widths by `1/cameraZoom`) |
+| `isFlagEnabled(flag)` | Check if a debug flag is active |
+
+### HudDebugApi
+
+| Method | Description |
+|---|---|
+| `addLine(text)` | Add a line to the HUD text overlay |
+| `isFlagEnabled(flag)` | Check if a debug flag is active |
+| `screenWidth` / `screenHeight` | Screen dimensions for custom positioning |
+
+## Debug Flags
+
+Contributors can declare flags for toggling specific views:
+
+```typescript
+class MyContributor implements DebugContributor {
+  readonly name = "my-debug";
+  readonly flags = ["show-paths", "show-hitboxes"] as const;
+
+  drawWorld(api: WorldDebugApi): void {
+    if (api.isFlagEnabled("show-paths")) {
+      // draw paths...
+    }
+    if (api.isFlagEnabled("show-hitboxes")) {
+      // draw hitboxes...
+    }
+  }
+}
+```
+
+Set flags programmatically:
+
+```typescript
+registry.setFlag("my-debug", "show-paths", true);
+```
+
+## StatsStore
+
+`StatsStore` provides rolling-window statistics for performance monitoring:
+
+```typescript
+import { StatsStore } from "@yage/debug";
+
+const stats = new StatsStore();
+
+// Push samples each frame
+stats.push("updateTime", performance.now() - start);
+
+// Read stats
+stats.average("updateTime");  // rolling average
+stats.latest("updateTime");   // most recent sample
+```
+
+## Frame-Step Mode
+
+Enable `manualClock` in the config to pause the game loop and step one frame
+at a time using the step key. This is useful for debugging physics, animations,
+or frame-specific logic.
+
+```typescript
+new DebugPlugin({ manualClock: true, stepKey: "Period" })
+```

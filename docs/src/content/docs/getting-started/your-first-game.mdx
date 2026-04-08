@@ -1,0 +1,156 @@
+---
+title: "Your First Game"
+description: "Create a spinning triangle in under 30 lines of code"
+---
+
+import GameEmbed from '../../../components/GameEmbed.astro';
+
+In this guide you will create a spinning green triangle from scratch. The
+finished example is under 30 lines of TypeScript.
+
+<GameEmbed demo="first-game" width={800} height={600} />
+
+## The Full Code
+
+```typescript
+import { Component, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent } from "@yage/renderer";
+import { createGame, defineInlineScene } from "yage";
+
+class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
+  private speed: number;
+  constructor(speed = 0.002) {
+    super();
+    this.speed = speed;
+  }
+  update(dt: number): void {
+    this.transform.rotate(this.speed * dt);
+  }
+}
+
+await createGame({
+  backgroundColor: 0x0a0a0a,
+  debug: true,
+  scene: defineInlineScene("hello-world", (scene, { camera }) => {
+    camera.position = new Vec2(400, 300);
+
+    const tri = scene.spawn("triangle");
+    tri.add(new Transform({ position: new Vec2(400, 300) }));
+    tri.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+      }),
+    );
+    tri.add(new Spin());
+  }),
+});
+```
+
+## Step-by-Step Walkthrough
+
+### 1. Imports
+
+```typescript
+import { Component, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent } from "@yage/renderer";
+import { createGame, defineInlineScene } from "yage";
+```
+
+- **`Component`** is the base class every custom behaviour extends.
+- **`Transform`** stores an entity's position, rotation, and scale.
+- **`Vec2`** is a 2D vector used throughout the engine.
+- **`GraphicsComponent`** draws shapes via the PixiJS v8 graphics API.
+- **`createGame`** boots the engine, creates the canvas, and starts the game
+  loop.
+- **`defineInlineScene`** lets you declare a scene with a setup function instead
+  of a separate file.
+
+### 2. A Custom Component — `Spin`
+
+```typescript
+class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
+  private speed: number;
+  constructor(speed = 0.002) {
+    super();
+    this.speed = speed;
+  }
+  update(dt: number): void {
+    this.transform.rotate(this.speed * dt);
+  }
+}
+```
+
+`Spin` grabs its sibling `Transform` component and rotates it every frame.
+The `update(dt)` method receives the delta time in milliseconds so the rotation
+speed stays consistent regardless of frame rate.
+
+### 3. Creating the Game
+
+```typescript
+await createGame({
+  backgroundColor: 0x0a0a0a,
+  debug: true,
+  scene: defineInlineScene("hello-world", (scene, { camera }) => {
+    // ...
+  }),
+});
+```
+
+`createGame()` accepts a configuration object:
+
+- **`backgroundColor`** — the canvas clear colour.
+- **`debug: true`** — enables the `@yage/debug` overlay (FPS counter, entity
+  inspector, etc.).
+- **`scene`** — the initial scene to load.
+
+### 4. Setting Up the Scene
+
+```typescript
+camera.position = new Vec2(400, 300);
+```
+
+The camera is centred at `(400, 300)` so the triangle appears in the middle of
+the default 800 x 600 viewport.
+
+### 5. Spawning an Entity
+
+```typescript
+const tri = scene.spawn("triangle");
+```
+
+`scene.spawn()` creates a new entity. The string argument is a human-readable
+name used by the debug tools.
+
+### 6. Adding Components
+
+```typescript
+tri.add(new Transform({ position: new Vec2(400, 300) }));
+tri.add(
+  new GraphicsComponent().draw((g) => {
+    g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+  }),
+);
+tri.add(new Spin());
+```
+
+Three components are attached to the entity:
+
+1. **`Transform`** — positions the triangle at the centre of the viewport.
+2. **`GraphicsComponent`** — draws a green triangle using three vertices
+   defined as a flat `[x, y, ...]` array.
+3. **`Spin`** — the custom behaviour that rotates the triangle every frame.
+
+## Running It
+
+Start your dev server (e.g. `npx vite`) and open the page in a browser. You
+should see a green triangle spinning smoothly on a dark background with the
+debug overlay in the corner.
+
+## Next Steps
+
+- Add keyboard input with `@yage/input` to control the triangle.
+- Swap the shape for a sprite using `SpriteComponent` from `@yage/renderer`.
+- Read [Project Structure](/getting-started/project-structure/) to understand
+  the full package layout.

@@ -1,0 +1,8 @@
+dist/
+.astro/
+node_modules/
+public/llms/
+public/llms.txt
+public/llms-full.txt
+# TypeDoc generated API reference (regenerated at build time)
+src/content/docs/api/

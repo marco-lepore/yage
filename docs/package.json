@@ -1,0 +1,32 @@
+{
+  "name": "@yage/docs",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "node scripts/copy-llms.mjs && astro build",
+    "preview": "astro preview",
+    "clean": "rm -rf dist .astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.2",
+    "astro": "^6.1.3",
+    "sharp": "^0.33.0",
+    "starlight-typedoc": "^0.21.5",
+    "typedoc": "^0.28.18",
+    "typedoc-plugin-markdown": "^4.11.0",
+    "vite-plugin-wasm": "^3.6.0"
+  },
+  "devDependencies": {
+    "@yage/core": "*",
+    "@yage/debug": "*",
+    "@yage/input": "*",
+    "@yage/renderer": "*",
+    "@yage/ui": "*",
+    "yage": "*"
+  }
+}

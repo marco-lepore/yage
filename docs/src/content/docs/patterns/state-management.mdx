@@ -1,0 +1,194 @@
+---
+title: "State Management"
+description: "Game state with DI services, reactive stores, and event-driven patterns"
+---
+
+YAGE provides several ways to manage game state depending on your needs:
+DI-registered services for shared state, reactive stores for UI binding, and
+events for decoupled communication.
+
+## Service Key Pattern
+
+The most common approach is a plain class registered as a DI service:
+
+```typescript
+import { ServiceKey } from "@yage/core";
+
+interface GameState {
+  score: number;
+  health: number;
+  level: number;
+}
+
+const GameStateKey = new ServiceKey<GameState>("gameState");
+```
+
+Register it in your scene:
+
+```typescript
+class GameScene extends Scene {
+  onEnter(): void {
+    const state: GameState = { score: 0, health: 100, level: 1 };
+    this.context.register(GameStateKey, state);
+  }
+}
+```
+
+Access it from any component or system in the scene:
+
+```typescript
+class ScoreDisplay extends Component {
+  private readonly state = this.use(GameStateKey);
+
+  update(): void {
+    this.state.score; // read
+  }
+}
+```
+
+This pattern is simple, type-safe, and works well with the save system — just
+add `serialize()`/`fromSnapshot()` methods if the state needs to persist.
+
+## Reactive Stores (for React UI)
+
+When bridging ECS state to React UI, use `createStore`:
+
+```typescript
+import { createStore } from "@yage/ui-react";
+
+const uiStore = createStore({
+  score: 0,
+  health: 100,
+  message: "",
+});
+```
+
+**Write from ECS** (systems, components, event handlers):
+
+```typescript
+// In a component or event handler
+uiStore.set({ score: uiStore.get().score + 10 });
+```
+
+**Read from React** (auto-rerenders on change):
+
+```tsx
+import { useStore } from "@yage/ui-react";
+
+function HUD() {
+  const score = useStore(uiStore, (s) => s.score);
+  return <Text>{`Score: ${score}`}</Text>;
+}
+```
+
+The store acts as a one-way bridge: ECS writes, React reads. This keeps
+game logic in the ECS layer and rendering in the UI layer.
+
+## Event-Driven State
+
+For decoupled state changes, use typed events:
+
+```typescript
+import { defineEvent } from "@yage/core";
+
+const CoinCollected = defineEvent("coin:collected");
+const PlayerDied = defineEvent("player:died");
+```
+
+**Emit from entities** (via entity events — bubble up to the scene):
+
+```typescript
+// In a coin's trigger handler
+collider.onTrigger((ev) => {
+  if (ev.entered) {
+    this.entity.emit(CoinCollected);
+    this.entity.destroy();
+  }
+});
+```
+
+**Listen at the scene level:**
+
+```typescript
+class GameScene extends Scene {
+  onEnter(): void {
+    this.on(CoinCollected, () => {
+      state.score += 10;
+      uiStore.set({ score: state.score });
+    });
+
+    this.on(PlayerDied, () => {
+      state.health = 100;
+      state.score = 0;
+      // Reset player position...
+    });
+  }
+}
+```
+
+This keeps entities decoupled — a coin doesn't need to know about the score
+system, it just emits an event.
+
+## Combining Patterns
+
+A typical game combines all three:
+
+```typescript
+// 1. Game state as a DI service
+const GameStateKey = new ServiceKey<GameState>("gameState");
+
+// 2. UI store for React binding
+const uiStore = createStore({ score: 0, health: 100 });
+
+// 3. Events for decoupled communication
+const CoinCollected = defineEvent("coin:collected");
+
+class GameScene extends Scene {
+  onEnter(): void {
+    const state: GameState = { score: 0, health: 100, level: 1 };
+    this.context.register(GameStateKey, state);
+
+    this.on(CoinCollected, () => {
+      state.score += 10;
+      uiStore.set({ score: state.score });
+    });
+  }
+}
+```
+
+- **ServiceKey** — source of truth, accessible from any component
+- **Store** — React-friendly projection of the state
+- **Events** — triggers that cause state transitions
+
+## Serialization
+
+If your state service needs to survive save/load, make it serializable:
+
+```typescript
+class GameStateService {
+  score = 0;
+  health = 100;
+  level = 1;
+
+  serialize() {
+    return { score: this.score, health: this.health, level: this.level };
+  }
+
+  hydrate(data: { score: number; health: number; level: number }) {
+    this.score = data.score;
+    this.health = data.health;
+    this.level = data.level;
+  }
+}
+```
+
+Call `hydrate()` in the scene's `afterRestore()` hook with the saved data.
+
+## Anti-Patterns
+
+- **Global mutable state** — avoid `window.score` or module-level `let score`.
+  This breaks scene isolation and makes testing difficult.
+- **Component-to-component direct references** — don't reach into another
+  entity's components to modify their state. Use events or shared services.
+- **Storing state in the UI layer** — keep game logic state in the ECS layer.
+  The UI should read state, not own it.

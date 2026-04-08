@@ -1,0 +1,182 @@
+---
+title: "Scene Management"
+description: "Pause menus, time scale, transitions, and scene stacking patterns"
+---
+
+YAGE uses a scene stack to manage game states. This page covers common patterns
+for pause menus, time control, transitions, and cross-scene communication.
+
+For the foundational API, see [Scenes](/concepts/scenes).
+
+## Scene Stack Recap
+
+The `SceneManager` maintains a stack of active scenes:
+
+```typescript
+engine.scenes.push(new GameScene());     // add on top
+engine.scenes.pop();                      // remove top scene
+engine.scenes.replace(new MenuScene());   // swap top scene
+```
+
+Only the topmost scene receives input and updates by default. Scenes below
+continue rendering unless occluded.
+
+## Pause Menu Pattern
+
+The most common pattern is a pause overlay that freezes the game scene below:
+
+```typescript
+class PauseScene extends Scene {
+  readonly name = "pause-menu";
+  override readonly pauseBelow = true;        // freeze scene below
+  override readonly transparentBelow = true;  // keep rendering scene below
+
+  onEnter(): void {
+    const entity = this.spawn("pause-ui");
+    const panel = entity.add(new UIPanel({
+      anchor: Anchor.Center,
+      direction: "column",
+      gap: 12,
+      padding: 32,
+      background: { color: 0x000000, alpha: 0.8, radius: 12 },
+    }));
+
+    panel.text("PAUSED", { fontSize: 28, fill: 0xffffff });
+
+    panel.button("Resume", {
+      width: 200, height: 40,
+      onClick: () => engine.scenes.pop(),
+    });
+  }
+}
+```
+
+Push the pause scene from the game scene:
+
+```typescript
+class GameController extends Component {
+  update(): void {
+    if (this.input.isJustPressed("pause")) {
+      engine.scenes.push(new PauseScene());
+    }
+  }
+}
+```
+
+**Key properties:**
+
+- `pauseBelow = true` — the game scene's `update()` and `fixedUpdate()` stop
+  running. Physics freezes. Entities stop moving.
+- `transparentBelow = true` — the game scene still renders behind the pause
+  menu, so the player sees the frozen game state.
+
+## Time Scale
+
+Each scene has a `timeScale` property that scales the delta time passed to
+`update()` and `fixedUpdate()`:
+
+```typescript
+scene.timeScale = 0.25;  // quarter speed (slow-mo)
+scene.timeScale = 1;     // normal speed
+scene.timeScale = 2;     // double speed
+```
+
+Use it for slow-motion effects, speed-up power-ups, or post-goal replays.
+
+Time scale affects the scene's physics, processes, and tweens — everything that
+reads `dt` from the game loop.
+
+```typescript
+// Toggle slow-mo
+if (keys.has("1")) scene.timeScale = 0.25;
+if (keys.has("2")) scene.timeScale = 1;
+if (keys.has("3")) scene.timeScale = 2;
+```
+
+## HUD Across Pause
+
+If your HUD lives in the game scene, it continues rendering while paused
+(rendering is not affected by `pauseBelow`). However, HUD updater components
+will stop receiving `update()` calls.
+
+To update HUD text when pausing, modify it directly from the pause scene:
+
+```typescript
+class PauseScene extends Scene {
+  onEnter(): void {
+    const game = engine.scenes.all.find(s => s.name === "game") as GameScene;
+    game.statusText.setText("PAUSED");
+  }
+
+  onExit(): void {
+    const game = engine.scenes.all.find(s => s.name === "game") as GameScene;
+    game.statusText.setText("Running");
+  }
+}
+```
+
+## Scene Transitions
+
+### Level Progression
+
+Use `replace` to swap the current scene for the next level:
+
+```typescript
+// Transition to next level (old scene is destroyed)
+engine.scenes.replace(new Level2Scene());
+```
+
+### Dialog / Overlay
+
+Use `push` for overlays that should dismiss back to the previous scene:
+
+```typescript
+// Show inventory overlay
+engine.scenes.push(new InventoryScene());
+
+// Dismiss it (returns to game)
+engine.scenes.pop();
+```
+
+### Full Navigation Reset
+
+Replace all scenes to return to the main menu:
+
+```typescript
+// Pop everything and push the menu
+while (engine.scenes.all.length > 0) {
+  engine.scenes.pop();
+}
+engine.scenes.push(new MainMenuScene());
+```
+
+## Cross-Scene Communication
+
+Access other scenes on the stack via `engine.scenes.all`:
+
+```typescript
+const gameScene = engine.scenes.all.find(
+  (s) => s.name === "game"
+) as GameScene | undefined;
+
+if (gameScene) {
+  gameScene.timeScale = 0.25;
+}
+```
+
+For loose coupling, use the engine-level `EventBus` instead of direct
+references:
+
+```typescript
+import { EventBusKey, defineEvent } from "@yage/core";
+
+const GamePaused = defineEvent("game:paused");
+
+// Emit from pause scene
+this.context.resolve(EventBusKey).emit(GamePaused);
+
+// Listen from game scene
+this.context.resolve(EventBusKey).on(GamePaused, () => {
+  this.statusText.setText("PAUSED");
+});
+```

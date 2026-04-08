@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";

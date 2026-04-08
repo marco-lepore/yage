@@ -7,11 +7,12 @@ import {
 } from "@yage/renderer";
 import type { Camera } from "@yage/renderer";
 import { TilemapPlugin, TilemapComponent, tiledMap } from "@yage/tilemap";
+import { InputPlugin, InputManagerKey } from "@yage/input";
 import { DebugPlugin } from "@yage/debug";
 import { DebugRegistryKey } from "@yage/debug/api";
 import type { DebugContributor, WorldDebugApi } from "@yage/debug/api";
 import type { RectColliderConfig } from "@yage/tilemap";
-import { injectStyles, keys, getContainer } from "./shared.js";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();
 
@@ -32,13 +33,14 @@ const PAN_SPEED = 0.35; // px per ms
 // CameraPan — WASD panning + scroll zoom
 // ---------------------------------------------------------------------------
 class CameraPan extends Component {
+  private readonly input = this.service(InputManagerKey);
   private camera!: Camera;
   private wheelHandler!: (e: WheelEvent) => void;
 
   onAdd(): void {
     this.camera = this.use(CameraKey);
 
-    // Listen for mouse wheel zoom
+    // Listen for mouse wheel zoom (not yet supported by InputPlugin)
     const container = getContainer();
     this.wheelHandler = (e: WheelEvent) => {
       e.preventDefault();
@@ -54,15 +56,10 @@ class CameraPan extends Component {
   }
 
   update(dt: number): void {
-    let dx = 0;
-    let dy = 0;
-    if (keys.has("w") || keys.has("arrowup")) dy -= 1;
-    if (keys.has("s") || keys.has("arrowdown")) dy += 1;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
+    const dir = this.input.getVector("left", "right", "up", "down");
 
-    if (dx !== 0 || dy !== 0) {
-      const move = new Vec2(dx, dy).normalize().scale(PAN_SPEED * dt);
+    if (dir.x !== 0 || dir.y !== 0) {
+      const move = dir.normalize().scale(PAN_SPEED * dt);
       this.camera.position = this.camera.position.add(move);
     }
   }
@@ -168,6 +165,14 @@ async function main() {
     }),
   );
   engine.use(new TilemapPlugin());
+  engine.use(new InputPlugin({
+    actions: {
+      up: ["KeyW", "ArrowUp"],
+      down: ["KeyS", "ArrowDown"],
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+    },
+  }));
   engine.use(new DebugPlugin({ startEnabled: true }));
 
   await engine.start();

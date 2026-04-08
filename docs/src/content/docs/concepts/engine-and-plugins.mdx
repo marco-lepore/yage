@@ -1,0 +1,138 @@
+---
+title: "Engine & Plugins"
+description: "The engine lifecycle and plugin system"
+---
+
+## Creating an Engine
+
+The `Engine` is the top-level object that owns the game loop, scene stack, and
+service container. Pass an options object to configure it:
+
+```typescript
+import { Engine } from "@yage/core";
+
+const engine = new Engine({
+  debug: true,
+  fixedTimestep: 1000 / 60, // ~16.67 ms (default)
+  maxFixedStepsPerFrame: 5,  // spiral-of-death protection
+});
+```
+
+| Option | Default | Purpose |
+|---|---|---|
+| `debug` | `false` | Enable verbose logging and dev tools |
+| `fixedTimestep` | `1000 / 60` | Milliseconds per fixed-update tick |
+| `maxFixedStepsPerFrame` | `5` | Cap on fixed-update iterations per frame |
+
+## Engine Lifecycle
+
+The three-step lifecycle is intentionally simple:
+
+```typescript
+// 1. Register plugins
+engine.use(new RendererPlugin({ width: 800, height: 600, container: "#game" }));
+engine.use(new PhysicsPlugin());
+engine.use(new InputPlugin());
+
+// 2. Start the loop
+await engine.start();
+
+// 3. Tear down when done
+engine.destroy();
+```
+
+`engine.use()` accepts plugins in any order — the engine resolves the correct
+initialization order automatically. `engine.start()` is async because some
+plugins need to load external resources (e.g. the Rapier WASM binary).
+
+## The Plugin Interface
+
+A plugin is a plain object that implements the `Plugin` interface:
+
+```typescript
+import { Plugin, EngineContext, SystemScheduler } from "@yage/core";
+
+const myPlugin: Plugin = {
+  name: "my-plugin",
+  version: "1.0.0",
+  dependencies: ["renderer"], // other plugin names this depends on
+
+  install(context: EngineContext) {
+    // Register services into the DI container
+    context.register(MyServiceKey, new MyService());
+  },
+
+  registerSystems(scheduler: SystemScheduler) {
+    // Add systems to the game loop
+    scheduler.add(new MySpriteSystem());
+  },
+
+  onStart() {
+    // Called after the loop has started and all plugins are wired
+  },
+
+  onDestroy() {
+    // Cleanup: dispose GPU resources, close connections, etc.
+  },
+};
+```
+
+Every field except `name` is optional. A minimal plugin can be just
+`{ name: "hello" }`.
+
+## Plugin Lifecycle Order
+
+When `engine.start()` is called the engine processes plugins in this sequence:
+
+1. **`install(context)`** — register services and configuration into the DI
+   container. Runs for every plugin before any systems are added.
+2. **`registerSystems(scheduler)`** — add systems to the scheduler. All
+   services from step 1 are available.
+3. **System wiring** — the scheduler sorts systems by phase and priority.
+4. **Loop starts** — `requestAnimationFrame` begins ticking.
+5. **`onStart()`** — called once the first frame is queued. Safe to spawn
+   entities, push scenes, and interact with the full engine.
+6. **Game runs** — the loop calls systems each frame.
+7. **`onDestroy()`** — called by `engine.destroy()` in reverse plugin order.
+
+## Plugin Configuration
+
+Built-in plugins accept configuration via their constructor:
+
+```typescript
+import { RendererPlugin } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+
+engine.use(
+  new RendererPlugin({
+    width: 1280,
+    height: 720,
+    backgroundColor: 0x1a1a2e,
+    container: document.getElementById("game")!,
+  }),
+);
+
+engine.use(
+  new PhysicsPlugin({
+    gravity: { x: 0, y: 980 },
+  }),
+);
+```
+
+## Dependency Resolution
+
+Plugins declare dependencies by name. The engine performs a topological sort
+before running the lifecycle so that a plugin's dependencies are always
+installed first:
+
+```typescript
+const uiPlugin: Plugin = {
+  name: "ui",
+  dependencies: ["renderer", "input"],
+  // ...
+};
+```
+
+If a dependency is missing the engine throws at startup with a clear message
+listing the unresolved names. Circular dependencies are also detected and
+reported.

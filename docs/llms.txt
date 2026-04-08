@@ -1,0 +1,28 @@
+# YAGE
+
+> A modular 2D game engine for TypeScript: hybrid OOP+ECS architecture, plugin-based, built on PixiJS v8 and Rapier2D.
+
+## Docs
+
+- [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
+- [Quick Start](llms/quick-start.md): Installation, createGame(), inline scenes, first project
+- [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
+
+## Packages
+
+- [core](llms/packages/core.md): ECS, DI, game loop, scenes, events (zero runtime deps)
+- [renderer](llms/packages/renderer.md): PixiJS v8 rendering, sprites, camera, layers
+- [input](llms/packages/input.md): Keyboard/mouse/gamepad input, action maps, rebinding
+- [physics](llms/packages/physics.md): Rapier2D physics, rigid bodies, colliders, raycasting
+- [audio](llms/packages/audio.md): Sound effects, music, channels, SoundComponent
+- [particles](llms/packages/particles.md): Particle emitters, presets, pooling
+- [tilemap](llms/packages/tilemap.md): Tiled map loading, collision extraction
+- [ui](llms/packages/ui.md): Yoga flexbox UI, panels, buttons, anchoring
+- [ui-react](llms/packages/ui-react.md): React reconciler, hooks, reactive stores
+- [save](llms/packages/save.md): Save/load, @serializable, snapshots
+- [debug](llms/packages/debug.md): Debug overlay, custom contributors, stats
+
+## Optional
+
+- Testing: `createMockEntity`, `createTestEngine`, `advanceFrames` from `@yage/core/test-utils`
+- API index: see per-package `src/index.ts` barrel exports

@@ -1,0 +1,195 @@
+---
+title: "Testing"
+description: "Unit and integration testing with YAGE test utilities"
+---
+
+YAGE ships test utilities in `@yage/core` that let you run game logic in
+isolation without a browser, a canvas, or any rendering infrastructure.
+
+## Test Utilities
+
+```typescript
+import {
+  createTestEngine,
+  createMockScene,
+  createMockEntity,
+  advanceFrames,
+} from "@yage/core/test-utils";
+```
+
+| Utility | Purpose |
+|---|---|
+| `createTestEngine()` | Headless engine with no renderer or audio |
+| `createMockScene()` | Lightweight scene with a working ECS world |
+| `createMockEntity()` | Bare entity wired into a mock scene |
+| `advanceFrames(engine, n)` | Tick the engine forward by `n` frames |
+
+## Unit Testing a Component
+
+Test a single component by attaching it to a mock entity and calling its
+lifecycle methods directly:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { createMockEntity } from "@yage/core/test-utils";
+import { HealthComponent } from "../HealthComponent";
+
+describe("HealthComponent", () => {
+  it("should clamp health to zero", () => {
+    const entity = createMockEntity();
+    const health = new HealthComponent({ max: 100 });
+    entity.add(health);
+
+    health.takeDamage(150);
+
+    expect(health.current).toBe(0);
+    expect(health.isDead).toBe(true);
+  });
+});
+```
+
+## Unit Testing a System
+
+Systems operate on a scene's entities. Use `createMockScene()` to build a
+minimal world with exactly the entities your system needs:
+
+```typescript
+import { createMockScene } from "@yage/core/test-utils";
+import { GravitySystem } from "../GravitySystem";
+import { VelocityComponent } from "../VelocityComponent";
+
+describe("GravitySystem", () => {
+  it("should apply gravity to entities with velocity", () => {
+    const scene = createMockScene();
+    const system = new GravitySystem({ gravity: 980 });
+    scene.addSystem(system);
+
+    const entity = scene.spawnEmpty();
+    const velocity = new VelocityComponent();
+    entity.add(velocity);
+
+    // Run one fixed update at 16ms
+    system.fixedUpdate(16);
+
+    expect(velocity.y).toBeCloseTo(980 * 0.016);
+  });
+});
+```
+
+## Integration Testing with a Full Engine
+
+For tests that need multiple systems working together, spin up a headless
+engine:
+
+```typescript
+import { createTestEngine, advanceFrames } from "@yage/core/test-utils";
+
+describe("Player movement integration", () => {
+  let engine: TestEngine;
+
+  beforeEach(() => {
+    engine = createTestEngine();
+  });
+
+  afterEach(() => {
+    engine.destroy();
+  });
+
+  it("should move the player after 10 frames", async () => {
+    const scene = engine.createScene(GameScene);
+    engine.start(scene);
+
+    const player = scene.findByType(Player)!;
+    const startX = player.transform.position.x;
+
+    advanceFrames(engine, 10);
+
+    expect(player.transform.position.x).not.toBe(startX);
+  });
+});
+```
+
+`advanceFrames` is synchronous — it calls the engine's update loop the
+specified number of times with a fixed 16ms delta. No `setTimeout` or
+`requestAnimationFrame` involved.
+
+## Testing Processes and Tweens
+
+Since processes run inside the game loop, you can test them by manually
+advancing time with `_update(dt)`:
+
+```typescript
+import { ProcessComponent, Process } from "@yage/core";
+import { createMockEntity } from "@yage/core/test-utils";
+
+describe("Process timing", () => {
+  it("should fire callback after delay", () => {
+    const entity = createMockEntity();
+    const pc = new ProcessComponent();
+    entity.add(pc);
+
+    let fired = false;
+    pc.run(Process.delay(100, () => { fired = true; }));
+
+    // Advance 50ms — not enough
+    pc._update(50);
+    expect(fired).toBe(false);
+
+    // Advance another 60ms — total 110ms, past the 100ms delay
+    pc._update(60);
+    expect(fired).toBe(true);
+  });
+});
+```
+
+Tweens work the same way. Advance time and assert on the interpolated values:
+
+```typescript
+import { Tween, easeLinear } from "@yage/core";
+
+it("should tween alpha to zero", () => {
+  const obj = { alpha: 1 };
+  const pc = new ProcessComponent();
+  createMockEntity().add(pc);
+
+  pc.run(Tween.to(obj, "alpha", 0, 200, easeLinear));
+
+  pc._update(100); // halfway
+  expect(obj.alpha).toBeCloseTo(0.5);
+
+  pc._update(100); // complete
+  expect(obj.alpha).toBeCloseTo(0);
+});
+```
+
+## Testing Tips
+
+### Always Destroy the Engine
+
+Call `engine.destroy()` in `afterEach` to clean up PixiJS resources, event
+listeners, and internal state. Leaking engines across tests causes flaky
+failures.
+
+### Entity ID Reset
+
+Mock scenes automatically reset the entity ID counter, so IDs are predictable
+within each test. If you're using `createTestEngine`, call `engine.destroy()`
+between tests to get the same reset behavior.
+
+### Error Boundary Testing
+
+Test that components handle error conditions gracefully:
+
+```typescript
+it("should not crash when destroying an already-destroyed entity", () => {
+  const entity = createMockEntity();
+  entity.destroy();
+
+  expect(() => entity.destroy()).not.toThrow();
+});
+```
+
+### Keep Tests Deterministic
+
+Avoid `Math.random()` in test code. If the system under test uses randomness,
+seed it or mock the random source so results are reproducible.

@@ -1,12 +1,25 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
 import { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";
+
+/** Minimal localStorage stub — no jsdom needed. */
+function createLocalStorageStub(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+    clear: () => store.clear(),
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() { return store.size; },
+  };
+}
 
 describe("LocalStorageSaveStorage", () => {
   let storage: LocalStorageSaveStorage;
 
   beforeEach(() => {
-    localStorage.clear();
+    const stub = createLocalStorageStub();
+    Object.defineProperty(globalThis, "localStorage", { value: stub, configurable: true });
     storage = new LocalStorageSaveStorage();
   });
 

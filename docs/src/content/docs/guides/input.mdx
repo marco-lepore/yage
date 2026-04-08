@@ -1,0 +1,140 @@
+---
+title: "Input"
+description: "Keyboard, mouse, gamepad, and action maps"
+---
+
+The `@yage/input` package provides a unified input layer that abstracts
+keyboard, mouse, and gamepad devices behind named **actions**. You define
+actions once and query them at runtime without worrying about which physical
+key was pressed.
+
+## InputPlugin Setup
+
+```typescript
+import { InputPlugin } from "@yage/input";
+
+engine.use(
+  new InputPlugin({
+    actions: [
+      { name: "jump", keys: ["Space", "KeyW"], group: "movement" },
+      { name: "left", keys: ["KeyA", "ArrowLeft"], group: "movement" },
+      { name: "right", keys: ["KeyD", "ArrowRight"], group: "movement" },
+      { name: "up", keys: ["KeyW", "ArrowUp"], group: "movement" },
+      { name: "down", keys: ["KeyS", "ArrowDown"], group: "movement" },
+      { name: "attack", keys: ["KeyJ", "Mouse0"], group: "combat" },
+      { name: "interact", keys: ["KeyE"], group: "gameplay" },
+    ],
+  }),
+);
+```
+
+Each action definition is an `ActionMapDefinition` with a `name`, an array of
+`keys` (using the standard `KeyboardEvent.code` values), and an optional
+`group` for batch enable/disable.
+
+## Querying Input
+
+Resolve the `InputManager` from the engine context and query actions by name:
+
+```typescript
+import { InputManagerKey } from "@yage/input";
+
+const input = engine.resolve(InputManagerKey);
+```
+
+### Press State
+
+```typescript
+input.isPressed("jump");       // true while the key is held
+input.isJustPressed("jump");   // true only on the frame the key went down
+input.isJustReleased("jump");  // true only on the frame the key was released
+```
+
+### Axes and Vectors
+
+For directional movement, turn two opposing actions into a single value:
+
+```typescript
+const h = input.getAxis("left", "right"); // -1, 0, or 1
+const v = input.getAxis("up", "down");
+
+// Or get both axes as a Vec2 in one call:
+const dir = input.getVector("left", "right", "up", "down");
+entity.transform.translate(dir.x * speed * dt, dir.y * speed * dt);
+```
+
+### Hold Duration
+
+Check how long an action has been continuously held:
+
+```typescript
+const ms = input.getHoldDuration("attack");
+
+// Convenience check — true if held for at least the given duration
+if (input.isHeldFor("attack", 500)) {
+  chargeAttack();
+}
+```
+
+## Pointer (Mouse / Touch)
+
+```typescript
+// World-space position (automatically accounts for camera offset and zoom)
+const pos = input.getPointerPosition();
+
+// Raw button state
+if (input.isPointerDown()) {
+  shootAt(pos);
+}
+```
+
+`getPointerPosition()` returns world coordinates by transforming through the
+active camera. If you need screen coordinates, use the camera's
+`worldToScreen()` method.
+
+## Rebinding Actions
+
+Allow players to remap controls at runtime:
+
+```typescript
+input.rebind("jump", "KeyK", {
+  onConflict: "swap", // swap bindings if the key is already used
+});
+```
+
+The `onConflict` option determines what happens when the new key is already
+bound to a different action:
+
+- `"swap"` — the other action takes the old key
+- `"unbind"` — the other action loses its binding
+- `"reject"` — the rebind is cancelled
+
+## Action Groups
+
+Disable entire groups of actions when they shouldn't be active — for example,
+disabling movement during a cutscene:
+
+```typescript
+input.disableGroup("movement");
+input.disableGroup("combat");
+
+// Re-enable when the cutscene ends
+input.enableGroup("movement");
+input.enableGroup("combat");
+```
+
+Disabled actions always return `false` / `0` when queried.
+
+## Display Names
+
+When building a key-bindings UI, use `getKeyDisplayName()` to convert internal
+key codes into human-readable labels:
+
+```typescript
+import { getKeyDisplayName } from "@yage/input";
+
+getKeyDisplayName("Space");      // "Space"
+getKeyDisplayName("KeyA");       // "A"
+getKeyDisplayName("ArrowLeft");  // "←"
+getKeyDisplayName("Mouse0");     // "LMB"
+```
