@@ -4,8 +4,9 @@ import {
   CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
+import { InputManagerKey } from "@yage/input";
 import { createGame } from "yage";
-import { injectStyles, keys } from "./shared.js";
+import { injectStyles } from "./shared.js";
 
 injectStyles();
 
@@ -14,6 +15,7 @@ injectStyles();
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private speed = 0.25; // px per ms
+  private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly camera = this.service(CameraKey);
 
@@ -28,15 +30,10 @@ class PlayerController extends Component {
 
   update(dt: number): void {
     const t = this.transform;
-    let dx = 0;
-    let dy = 0;
-    if (keys.has("w") || keys.has("arrowup")) dy -= 1;
-    if (keys.has("s") || keys.has("arrowdown")) dy += 1;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
+    const dir = this.input.getVector("left", "right", "up", "down");
 
-    if (dx !== 0 || dy !== 0) {
-      const move = new Vec2(dx, dy).normalize().scale(this.speed * dt);
+    if (dir.x !== 0 || dir.y !== 0) {
+      const move = dir.normalize().scale(this.speed * dt);
       t.translate(move.x, move.y);
     }
 
@@ -44,23 +41,19 @@ class PlayerController extends Component {
     t.rotate(0.002 * dt);
 
     // Shake on space
-    if (keys.has(" ")) {
+    if (this.input.isJustPressed("shake")) {
       this.camera.shake(6, 300, { decay: 0.8 });
-      keys.delete(" "); // one-shot
     }
 
     // Zoom with Q / E
-    if (keys.has("q")) {
+    if (this.input.isJustPressed("zoomIn")) {
       this.camera.zoomTo(Math.min(this.camera.zoom + 0.5, 3), 400);
-      keys.delete("q");
     }
-    if (keys.has("e")) {
+    if (this.input.isJustPressed("zoomOut")) {
       this.camera.zoomTo(Math.max(this.camera.zoom - 0.5, 0.5), 400);
-      keys.delete("e");
     }
-    if (keys.has("r")) {
+    if (this.input.isJustPressed("zoomReset")) {
       this.camera.zoomTo(1, 600);
-      keys.delete("r");
     }
   }
 }
@@ -183,5 +176,18 @@ class CameraScene extends Scene {
 await createGame({
   backgroundColor: 0x0a0a0a,
   debug: true,
+  input: {
+    actions: {
+      up: ["KeyW", "ArrowUp"],
+      down: ["KeyS", "ArrowDown"],
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      shake: ["Space"],
+      zoomIn: ["KeyQ"],
+      zoomOut: ["KeyE"],
+      zoomReset: ["KeyR"],
+    },
+    preventDefaultKeys: ["Space"],
+  },
   scene: new CameraScene(),
 });

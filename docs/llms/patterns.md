@@ -16,9 +16,13 @@ class PlayerController extends Component {
     this.camera = this.use(CameraKey);
   }
 
+  // For physics entities — always go through the rigid body
+  private rb = this.sibling(RigidBodyComponent);
+
   update(dt: number) {
     const dir = this.input.getVector("left", "right", "up", "down");
-    this.entity.get(Transform).translate(dir.scale(200 * dt / 1000));
+    this.rb.setVelocity(dir.scale(200));
+    // For non-physics entities, use: this.entity.get(Transform).translate(dir.scale(200 * dt / 1000));
   }
 }
 ```
@@ -82,7 +86,7 @@ for (const e of scene.findEntities({ trait: Damageable })) {
 
 ### Blueprints (deprecated)
 
-`defineBlueprint()` still works but entity subclasses with `setup()` are preferred.
+`defineBlueprint()` still works for simple parametric factories (coins, bullets, platforms) but entity subclasses with `setup()` are preferred for anything that needs methods, internal state, or traits.
 
 ## Process Patterns
 
@@ -94,7 +98,7 @@ class Weapon extends Component {
   private cooldown!: ProcessSlot;
 
   onAdd() {
-    this.cooldown = this.entity.get(ProcessComponent).slot({ duration: 500 });
+    this.cooldown = this.pc.slot({ duration: 500 });
   }
 
   fire() {
@@ -198,6 +202,8 @@ game.timeScale = 0.25;
 
 ## State Management Patterns
 
+Do not use module-level `let` variables for game state (e.g. `let score = 0`). Module-level state breaks save/load, prevents scene isolation, and cannot be reset on restart. Use `ServiceKey` + DI registration or `createStore()` instead.
+
 ### DI service for game state
 
 ```ts
@@ -266,3 +272,5 @@ const grounded = hit !== null; // add coyote timer for better feel
 **Component uniqueness**: One component per class per entity. `entity.add()` throws if the class already exists.
 
 **No pixi.js in core**: `@yage/core` has zero runtime dependencies. Never import pixi.js in core code.
+
+**Clean up DOM listeners**: Use `this.listen()` for entity/scene events (auto-cleanup on removal). If you must use raw DOM listeners (e.g. wheel events), store the handler and remove it in `onDestroy()`. Never add bare `window.addEventListener()` calls without corresponding removal.

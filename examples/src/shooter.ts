@@ -25,8 +25,9 @@ import {
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
+import { InputManagerKey } from "@yage/input";
 import { createGame } from "yage";
-import { injectStyles, keys } from "./shared.js";
+import { injectStyles } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -261,6 +262,7 @@ function spawnEnemyDeathParticles(
 type PlayerAnim = "idle" | "walk" | "jump" | "land" | "shoot" | "hurt";
 
 class PlayerController extends Component {
+  private readonly input = this.service(InputManagerKey);
   private readonly camera = this.service(CameraKey);
   private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
@@ -389,9 +391,7 @@ class PlayerController extends Component {
     this.wasGrounded = onGround;
 
     // -- Horizontal movement --
-    let dx = 0;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
+    let dx = this.input.getAxis("left", "right");
 
     // Track facing direction
     if (dx > 0) this.facingRight = true;
@@ -416,9 +416,8 @@ class PlayerController extends Component {
     this.rb.setVelocityX(dx * speed);
 
     // -- Jump buffering --
-    if (keys.has(" ")) {
+    if (this.input.isJustPressed("jump")) {
       this.jumpBufferTimer = PlayerController.JUMP_BUFFER_MS;
-      keys.delete(" ");
     } else {
       this.jumpBufferTimer -= dt;
     }
@@ -436,9 +435,7 @@ class PlayerController extends Component {
     }
 
     // -- Shooting --
-    if ((keys.has("j") || keys.has("k")) && this.shootCd.completed) {
-      keys.delete("j");
-      keys.delete("k");
+    if (this.input.isJustPressed("shoot") && this.shootCd.completed) {
       this.shootCd.start();
       this.spawnBullet();
       this.anim.playOneShot("shoot", { duration: PlayerController.SHOOT_COOLDOWN_MS });
@@ -1134,5 +1131,14 @@ await createGame({
   physics: { gravity: { x: 0, y: 980 } },
   audio: true,
   debug: true,
+  input: {
+    actions: {
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      jump: ["Space"],
+      shoot: ["KeyJ", "KeyK"],
+    },
+    preventDefaultKeys: ["Space"],
+  },
   scene: new ShooterScene(),
 });

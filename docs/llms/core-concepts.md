@@ -84,7 +84,13 @@ class MyComponent extends Component {
 }
 ```
 
-`this.use(key)` resolves a service from `EngineContext` (cached). `this.service(key)` returns a lazy proxy safe at field-declaration time. `this.sibling(Class)` returns a lazy proxy to a sibling component. `this.listen(entity, token, handler)` auto-unsubscribes on removal. `this.scene` and `this.context` are accessors.
+| Method | When to use | Resolves |
+|---|---|---|
+| `this.service(key)` | Field declarations (`private x = this.service(K)`) | Lazy proxy — first property access |
+| `this.use(key)` | Inside `onAdd()` or later | Immediately (cached) |
+| `this.sibling(Class)` | Field declarations (`private rb = this.sibling(RB)`) | Lazy proxy — first property access |
+
+`this.listen(entity, token, handler)` auto-unsubscribes on removal. `this.scene` and `this.context` are accessors.
 
 ## Entity Operations
 

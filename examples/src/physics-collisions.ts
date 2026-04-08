@@ -6,8 +6,9 @@ import {
   CollisionLayers,
 } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
+import { InputManagerKey } from "@yage/input";
 import { createGame } from "yage";
-import { injectStyles, keys } from "./shared.js";
+import { injectStyles } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -66,18 +67,13 @@ const HurtSfx = sound("assets/hurt.wav");
 // PlayerController — WASD dynamic movement via velocity
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
+  private readonly input = this.service(InputManagerKey);
   private readonly rb = this.sibling(RigidBodyComponent);
 
   update(): void {
-    let dx = 0;
-    let dy = 0;
-    if (keys.has("w") || keys.has("arrowup")) dy -= 1;
-    if (keys.has("s") || keys.has("arrowdown")) dy += 1;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
-
-    if (dx !== 0 || dy !== 0) {
-      this.rb.setVelocity(new Vec2(dx, dy).normalize().scale(PLAYER_SPEED));
+    const dir = this.input.getVector("left", "right", "up", "down");
+    if (dir.x !== 0 || dir.y !== 0) {
+      this.rb.setVelocity(dir.normalize().scale(PLAYER_SPEED));
     } else {
       this.rb.setVelocity(Vec2.ZERO);
     }
@@ -267,5 +263,13 @@ await createGame({
   physics: { gravity: { x: 0, y: 0 } },
   audio: true,
   debug: true,
+  input: {
+    actions: {
+      up: ["KeyW", "ArrowUp"],
+      down: ["KeyS", "ArrowDown"],
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+    },
+  },
   scene: new CollisionsScene(),
 });

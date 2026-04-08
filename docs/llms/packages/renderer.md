@@ -42,11 +42,8 @@ Procedural drawing via PixiJS Graphics API:
 ```ts
 import { GraphicsComponent } from "@yage/renderer";
 
-entity.add(new GraphicsComponent({
-  layer: "world",
-  draw: (g) => {
-    g.rect(0, 0, 50, 50).fill(0xff0000);
-  },
+entity.add(new GraphicsComponent({ layer: "world" }).draw((g) => {
+  g.rect(0, 0, 50, 50).fill(0xff0000);
 }));
 ```
 
@@ -81,7 +78,7 @@ entity.add(new AnimationController<"idle" | "walk" | "attack">({
 // In component:
 const anim = entity.get(AnimationController);
 anim.play("walk");
-anim.playOnce("attack"); // locks until complete, then reverts
+anim.playOneShot("attack"); // locks until complete, then reverts
 ```
 
 ## Camera

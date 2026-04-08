@@ -159,7 +159,7 @@ const screenPos = camera.worldToScreen(worldPos);
 Constrain the camera to a region so it never shows areas outside the level:
 
 ```typescript
-camera.bounds = { x: 0, y: 0, width: 4000, height: 2000 };
+camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 ```
 
 ## Render Layers

@@ -97,6 +97,10 @@ input.isGroupEnabled("gameplay");
 
 Ungrouped actions are always active. An action active in any enabled group remains active.
 
+## Important
+
+Always use `InputManagerKey` for all game input. Do not use raw DOM event listeners (`window.addEventListener("keydown", ...)`) or manual key-tracking sets. The InputPlugin handles action mapping, rebinding, group enable/disable, hold detection, and automatic cleanup. Raw listeners bypass all of this and leak when scenes change.
+
 ## Key Listening
 
 For rebinding UI -- intercept the next physical key:

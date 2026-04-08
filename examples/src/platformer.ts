@@ -13,8 +13,9 @@ import {
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
+import { InputManagerKey } from "@yage/input";
 import { createGame } from "yage";
-import { injectStyles, keys } from "./shared.js";
+import { injectStyles } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -167,6 +168,7 @@ class MovingPlatform extends Component {
 // PlayerController
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
+  private readonly input = this.service(InputManagerKey);
   private readonly camera = this.service(CameraKey);
   private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
@@ -242,9 +244,7 @@ class PlayerController extends Component {
     }
 
     // -- Horizontal movement --
-    let dx = 0;
-    if (keys.has("a") || keys.has("arrowleft")) dx -= 1;
-    if (keys.has("d") || keys.has("arrowright")) dx += 1;
+    let dx = this.input.getAxis("left", "right");
 
     // -- Wall detection: don't push into walls while airborne --
     if (dx !== 0 && !onGround) {
@@ -263,9 +263,8 @@ class PlayerController extends Component {
     );
 
     // -- Jump buffering --
-    if (keys.has(" ")) {
+    if (this.input.isJustPressed("jump")) {
       this.jumpBufferTimer = PlayerController.JUMP_BUFFER_MS;
-      keys.delete(" "); // consume to prevent held-jump
     } else {
       this.jumpBufferTimer -= dt;
     }
@@ -667,5 +666,13 @@ await createGame({
   physics: { gravity: { x: 0, y: 980 } },
   audio: true,
   debug: true,
+  input: {
+    actions: {
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      jump: ["Space"],
+    },
+    preventDefaultKeys: ["Space"],
+  },
   scene: new PlatformerScene(),
 });

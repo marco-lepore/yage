@@ -6,8 +6,9 @@ import {
   ColliderComponent,
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
+import { InputManagerKey } from "@yage/input";
 import { createGame } from "yage";
-import { injectStyles, keys } from "./shared.js";
+import { injectStyles } from "./shared.js";
 
 injectStyles();
 
@@ -19,6 +20,7 @@ const WALL = 20;
 // InputController — handles spawning shapes, impulse, gravity flip
 // ---------------------------------------------------------------------------
 class InputController extends Component {
+  private readonly input = this.service(InputManagerKey);
   private world!: PhysicsWorld;
   private gravityDown = true;
   private shapeCount = 0;
@@ -31,8 +33,7 @@ class InputController extends Component {
     const scene = this.scene;
 
     // Space — drop a random shape
-    if (keys.has(" ")) {
-      keys.delete(" ");
+    if (this.input.isJustPressed("spawn")) {
       this.shapeCount++;
       const isCircle = Math.random() > 0.5;
       const x = 100 + Math.random() * (WIDTH - 200);
@@ -88,8 +89,7 @@ class InputController extends Component {
     }
 
     // F — apply upward impulse to all dynamic bodies
-    if (keys.has("f")) {
-      keys.delete("f");
+    if (this.input.isJustPressed("impulse")) {
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed) continue;
         const rb = entity.tryGet(RigidBodyComponent);
@@ -100,8 +100,7 @@ class InputController extends Component {
     }
 
     // G — flip gravity
-    if (keys.has("g")) {
-      keys.delete("g");
+    if (this.input.isJustPressed("gravity")) {
       this.gravityDown = !this.gravityDown;
       this.world.setGravity(0, this.gravityDown ? 980 : -980);
     }
@@ -175,5 +174,13 @@ await createGame({
   backgroundColor: 0x0a0a0a,
   physics: true,
   debug: true,
+  input: {
+    actions: {
+      spawn: ["Space"],
+      impulse: ["KeyF"],
+      gravity: ["KeyG"],
+    },
+    preventDefaultKeys: ["Space"],
+  },
   scene: new PhysicsBasicsScene(),
 });

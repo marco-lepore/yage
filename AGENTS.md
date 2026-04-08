@@ -49,7 +49,7 @@ Enforced by tooling — match these conventions exactly:
 - **No pixi.js imports in `@yage/core`** — core has zero runtime dependencies.
 - **Export new public types from `index.ts`** — every package has a barrel export.
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
-- **`defineBlueprint()` for entity factories** — parametric and composable. Use `Prefab` only for truly static templates.
+- **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
 - **Entity events for game logic** — `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. `EventBus` for global engine events.
 - **`@serializable` for save/load** — decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()` for auto-restore. Components with non-serializable state (Textures, Graphics) use `FrameSource` or `textureKey` string alternatives; when raw objects are used, `serialize()` returns `null` and the entity handles reconstruction in `afterRestore()`.
 

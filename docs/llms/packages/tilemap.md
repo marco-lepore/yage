@@ -87,5 +87,5 @@ Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
 ## Camera Bounds
 
 ```ts
-camera.bounds = { x: 0, y: 0, width: tilemap.widthPx, height: tilemap.heightPx };
+camera.bounds = { minX: 0, minY: 0, maxX: tilemap.widthPx, maxY: tilemap.heightPx };
 ```
