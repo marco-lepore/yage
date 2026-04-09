@@ -1,20 +1,18 @@
-import { Scene, Component, Transform, Vec2 } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
 import type { Entity } from "@yage/core";
 import {
+  RendererPlugin,
   RendererKey,
   CameraKey,
   GraphicsComponent,
   type TextureInput,
   type TextureResource,
 } from "@yage/renderer";
-import { InputManagerKey } from "@yage/input";
-import {
-  ParticleEmitterComponent,
-  ParticlePresets,
-} from "@yage/particles";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yage/particles";
 import type { EmitterConfig } from "@yage/particles";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();
 
@@ -208,9 +206,16 @@ class CrosshairFollow extends Component {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  backgroundColor: 0x0a0a0a,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: 800,
+    height: 600,
+    backgroundColor: 0x0a0a0a,
+    container: getContainer(),
+  }));
+  engine.use(new InputPlugin({
     actions: {
       burst: ["Space"],
       preset_fire: ["Digit1"],
@@ -221,8 +226,12 @@ await createGame({
     preventDefaultKeys: ["Space"],
     cameraKey: CameraKey,
     rendererKey: RendererKey,
-  },
-  particles: true,
-  debug: true,
-  scene: new ParticlesScene(),
-});
+  }));
+  engine.use(new ParticlesPlugin());
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new ParticlesScene());
+}
+
+main().catch(console.error);

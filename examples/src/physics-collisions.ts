@@ -1,14 +1,15 @@
-import { Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
-import { GraphicsComponent, CameraKey } from "@yage/renderer";
+import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
 import {
+  PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
 } from "@yage/physics";
-import { AudioManagerKey, sound } from "@yage/audio";
-import { InputManagerKey } from "@yage/input";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -256,20 +257,29 @@ class CollisionsScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0a0a0a,
-  physics: { gravity: { x: 0, y: 0 } },
-  audio: true,
-  debug: true,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container: getContainer(),
+  }));
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
+  engine.use(new AudioPlugin());
+  engine.use(new InputPlugin({
     actions: {
       up: ["KeyW", "ArrowUp"],
       down: ["KeyS", "ArrowDown"],
       left: ["KeyA", "ArrowLeft"],
       right: ["KeyD", "ArrowRight"],
     },
-  },
-  scene: new CollisionsScene(),
-});
+  }));
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new CollisionsScene());
+}
+
+main().catch(console.error);

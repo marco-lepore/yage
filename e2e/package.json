@@ -15,6 +15,12 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "yage": "*"
+    "@yage/core": "*",
+    "@yage/debug": "*",
+    "@yage/input": "*",
+    "@yage/physics": "*",
+    "@yage/renderer": "*",
+    "@yage/save": "*",
+    "@yage/ui": "*"
   }
 }

@@ -71,8 +71,6 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   ├── @yage/audio (→ core, @pixi/sound)
   │
   └── @yage/save (→ core)
-
-yage (meta-package, re-exports all + createGame factory)
 ```
 
 ### Modification Order
@@ -241,13 +239,6 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/LocalStorageAdapter.ts`  | `SaveStorage` impl for browser localStorage   |
 | `src/types.ts`                | `SaveStorage`, snapshot types                  |
 | `src/keys.ts`                 | `SaveServiceKey`                               |
-
-### `yage` (meta-package)
-
-| File                | Purpose                                                                                                               |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`      | Re-exports all packages                                                                                               |
-| `src/createGame.ts` | `createGame()` factory, `defineInlineScene()`, `CreateGameOptions`, `GameHandle`, `SceneServices`, `InlineSceneSetup` |
 
 ### Project Root
 
@@ -665,10 +656,7 @@ class PlayerEntity extends Entity {
 ```typescript
 import { SavePlugin, SaveServiceKey } from "@yage/save";
 
-// Enable in createGame:
-const game = await createGame({ save: true, /* ... */ });
-
-// Or install manually:
+// Register the plugin:
 engine.use(new SavePlugin());
 
 // In game code:
@@ -846,24 +834,25 @@ engine.scenes.push(new GameScene());
 > }
 > ```
 
-### Use createGame() + defineInlineScene() for Quick Setup
+### Engine Setup
 
-`defineInlineScene` is a lightweight alternative — great for prototypes, examples, and simple scenes. Common services are pre-resolved and passed as the second argument.
+Create an `Engine`, register plugins with `engine.use()`, then start and push a scene:
 
 ```typescript
-import { createGame, defineInlineScene } from "yage";
+import { Engine } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+import { InputPlugin } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
 
-const game = await createGame({
-  width: 800,
-  height: 600,
-  physics: true,
-  input: { actions: { jump: ["Space"] } },
-  debug: true,
-  scene: defineInlineScene("game", (scene, { camera, input, physics }) => {
-    camera.follow(scene.spawn("player"));
-    // For custom/uncommon services, fall back to scene.context.resolve(key)
-  }),
-});
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
+engine.use(new DebugPlugin());
+
+await engine.start();
+engine.scenes.push(new GameScene());
 ```
 
 ### Modify Entity/Component Lifecycle

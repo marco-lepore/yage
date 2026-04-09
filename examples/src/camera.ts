@@ -1,12 +1,13 @@
-import { Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yage/core";
 import {
+  RendererPlugin,
   GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
 } from "@yage/renderer";
-import { InputManagerKey } from "@yage/input";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();
 
@@ -173,10 +174,16 @@ class CameraScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  backgroundColor: 0x0a0a0a,
-  debug: true,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: 800,
+    height: 600,
+    backgroundColor: 0x0a0a0a,
+    container: getContainer(),
+  }));
+  engine.use(new InputPlugin({
     actions: {
       up: ["KeyW", "ArrowUp"],
       down: ["KeyS", "ArrowDown"],
@@ -188,6 +195,11 @@ await createGame({
       zoomReset: ["KeyR"],
     },
     preventDefaultKeys: ["Space"],
-  },
-  scene: new CameraScene(),
-});
+  }));
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new CameraScene());
+}
+
+main().catch(console.error);

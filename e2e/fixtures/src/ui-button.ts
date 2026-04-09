@@ -1,4 +1,7 @@
-import { Anchor, Component, Scene, UIPanel, createGame } from "yage";
+import { Engine, Component, Scene } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
+import { DebugPlugin } from "@yage/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();
@@ -34,12 +37,9 @@ class UIButtonScene extends Scene {
   }
 }
 
-await createGame({
-  width: 320,
-  height: 180,
-  backgroundColor: 0x0a0a0a,
-  renderer: { resolution: 1 },
-  ui: true,
-  debug: { manualClock: true },
-  scene: new UIButtonScene(),
-});
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new UIPlugin());
+engine.use(new DebugPlugin({ manualClock: true }));
+await engine.start();
+await engine.scenes.push(new UIButtonScene());

@@ -170,7 +170,7 @@ Render layers control draw order. Entities on higher layers render on top.
 import { RenderLayers } from "@yage/renderer";
 
 const layers = new RenderLayers(["background", "tiles", "characters", "fx", "ui"]);
-engine.use(new RendererPlugin({ layers }));
+engine.use(new RendererPlugin({ width: 800, height: 600, layers }));
 ```
 
 Assign a layer via the `layer` property on `SpriteComponent` or

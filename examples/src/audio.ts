@@ -1,14 +1,10 @@
-import { Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yage/core";
-import { GraphicsComponent, CameraKey } from "@yage/renderer";
-import { InputManagerKey } from "@yage/input";
-import {
-  AudioManagerKey,
-  SoundComponent,
-  sound,
-} from "@yage/audio";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yage/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yage/audio";
 import type { SoundHandle } from "@yage/audio";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
   .controls kbd { min-width: 24px; text-align: center; }
@@ -336,11 +332,16 @@ class AudioScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0a0a0a,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container: getContainer(),
+  }));
+  engine.use(new InputPlugin({
     actions: {
       sfx1: ["Digit1"],
       sfx2: ["Digit2"],
@@ -354,8 +355,12 @@ await createGame({
       muteAll: ["Space"],
     },
     preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
-  },
-  audio: true,
-  debug: true,
-  scene: new AudioScene(),
-});
+  }));
+  engine.use(new AudioPlugin());
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new AudioScene());
+}
+
+main().catch(console.error);

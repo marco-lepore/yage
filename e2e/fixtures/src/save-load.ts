@@ -1,16 +1,16 @@
 import {
+  Engine,
   Scene,
   Entity,
   Component,
   Transform,
   Vec2,
   serializable,
-  CameraKey,
-  GraphicsComponent,
-  createGame,
-  SaveServiceKey,
-} from "yage";
-import type { SaveService, SnapshotResolver } from "yage";
+} from "@yage/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
+import { SavePlugin, SaveServiceKey } from "@yage/save";
+import type { SaveService, SnapshotResolver } from "@yage/save";
 import { injectStyles } from "./shared.js";
 
 injectStyles();
@@ -130,14 +130,12 @@ class TestScene extends Scene {
 
 // ---- Boot ----
 
-const { engine } = await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0a0a0a,
-  debug: true,
-  save: true,
-  scene: new TestScene(),
-});
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new DebugPlugin());
+engine.use(new SavePlugin());
+await engine.start();
+await engine.scenes.push(new TestScene());
 
 // Expose save service for e2e test control
 const saveService = engine.context.resolve(SaveServiceKey);

@@ -25,8 +25,8 @@
     "@yage/core": "*",
     "@yage/debug": "*",
     "@yage/input": "*",
+    "@yage/physics": "*",
     "@yage/renderer": "*",
-    "@yage/ui": "*",
-    "yage": "*"
+    "@yage/ui": "*"
   }
 }
