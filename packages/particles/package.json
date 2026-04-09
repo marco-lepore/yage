@@ -1,6 +1,7 @@
 {
   "name": "@yage/particles",
   "version": "0.1.0",
+  "description": "Particle emitters and visual effects for YAGE",
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
@@ -35,8 +36,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*",
-    "@yage/renderer": "*",
+    "@yage/core": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
     "pixi.js": "^8.5.0"
   }
 }

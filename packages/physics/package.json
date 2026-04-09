@@ -1,6 +1,7 @@
 {
   "name": "@yage/physics",
   "version": "0.1.0",
+  "description": "Rapier 2D physics integration — rigid bodies, colliders, and joints for YAGE",
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
@@ -45,8 +46,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*",
-    "@yage/debug": "*",
+    "@yage/core": "^0.1.0",
+    "@yage/debug": "^0.1.0",
     "@dimforge/rapier2d": "^0.19.0"
   }
 }

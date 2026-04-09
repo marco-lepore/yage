@@ -1,6 +1,7 @@
 {
   "name": "@yage/tilemap",
   "version": "0.1.0",
+  "description": "Tile-based map loading and rendering for YAGE",
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
@@ -35,12 +36,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*",
-    "@yage/renderer": "*",
+    "@yage/core": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
     "@pixi/tilemap": "^5.0.0",
     "pixi.js": "^8.5.0"
   },
   "devDependencies": {
-    "@yage/physics": "*"
+    "@yage/physics": "^0.1.0"
   }
 }

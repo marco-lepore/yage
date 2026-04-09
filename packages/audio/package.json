@@ -1,6 +1,7 @@
 {
   "name": "@yage/audio",
   "version": "0.1.0",
+  "description": "Sound loading, playback, and channel mixing for YAGE",
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
@@ -35,7 +36,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*",
+    "@yage/core": "^0.1.0",
     "@pixi/sound": "^6.0.0"
   }
 }

@@ -15,17 +15,17 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "@yage/audio": "*",
-    "@yage/core": "*",
-    "@yage/debug": "*",
-    "@yage/input": "*",
-    "@yage/particles": "*",
-    "@yage/physics": "*",
-    "@yage/renderer": "*",
-    "@yage/save": "*",
-    "@yage/tilemap": "*",
-    "@yage/ui": "*",
-    "@yage/ui-react": "*",
+    "@yage/audio": "^0.1.0",
+    "@yage/core": "^0.1.0",
+    "@yage/debug": "^0.1.0",
+    "@yage/input": "^0.1.0",
+    "@yage/particles": "^0.1.0",
+    "@yage/physics": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
+    "@yage/save": "^0.1.0",
+    "@yage/tilemap": "^0.1.0",
+    "@yage/ui": "^0.1.0",
+    "@yage/ui-react": "^0.1.0",
     "react": "^19.0.0"
   }
 }

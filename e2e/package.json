@@ -15,12 +15,12 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "@yage/core": "*",
-    "@yage/debug": "*",
-    "@yage/input": "*",
-    "@yage/physics": "*",
-    "@yage/renderer": "*",
-    "@yage/save": "*",
-    "@yage/ui": "*"
+    "@yage/core": "^0.1.0",
+    "@yage/debug": "^0.1.0",
+    "@yage/input": "^0.1.0",
+    "@yage/physics": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
+    "@yage/save": "^0.1.0",
+    "@yage/ui": "^0.1.0"
   }
 }

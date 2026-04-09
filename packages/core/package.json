@@ -1,6 +1,7 @@
 {
   "name": "@yage/core",
   "version": "0.1.0",
+  "description": "ECS, math, events, and scheduling — the foundation of the YAGE 2D game engine",
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
