@@ -13,6 +13,25 @@ engine.use(new PhysicsPlugin({
 }));
 ```
 
+## Bundler Setup
+
+`@yage/physics` depends on `@dimforge/rapier2d`, which ships a `.wasm` file. With Vite you need `vite-plugin-wasm` to load it, and `build.target: "esnext"` so top-level `await` (emitted by the WASM loader, and also used internally by `yoga-layout` if you use `@yage/ui`) is passed through natively instead of being transpiled:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
+
+export default defineConfig({
+  plugins: [wasm()],
+  build: {
+    target: "esnext",
+  },
+});
+```
+
+`vite-plugin-top-level-await` is NOT needed on Vite 5+ once `build.target: "esnext"` is set — the TLA transform is only useful for older browser targets. See `examples/vite.config.ts` for the canonical reference config.
+
 ## Component Ordering
 
 `Transform` → `RigidBodyComponent` → `ColliderComponent` (required order).

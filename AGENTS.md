@@ -6,20 +6,19 @@ Universal guidelines for AI coding agents working on the YAGE codebase.
 
 YAGE is a 2D game engine built as a Turborepo monorepo.
 
-| Package | Description |
-|---|---|
-| `@yage/core` | ECS, DI, game loop, scenes, events (zero runtime deps) |
-| `@yage/renderer` | PixiJS v8 rendering, sprites, camera |
-| `@yage/physics` | Rapier2D physics (pixel↔meter conversion is internal) |
-| `@yage/input` | Keyboard/mouse/gamepad input + action maps |
-| `@yage/audio` | Channel-based audio via @pixi/sound |
-| `@yage/particles` | Particle emitters with pooling and presets |
-| `@yage/tilemap` | Tiled map loading and rendering |
-| `@yage/ui` | Yoga flexbox-based UI components |
-| `@yage/ui-react` | React reconciler over the UI layer |
-| `@yage/debug` | Debug overlay, stats, world/HUD drawing |
-| `@yage/save` | Save/load system with slot-based snapshots |
-| `yage` | Meta-package: re-exports all + `createGame()` factory |
+| Package           | Description                                            |
+| ----------------- | ------------------------------------------------------ |
+| `@yage/core`      | ECS, DI, game loop, scenes, events (zero runtime deps) |
+| `@yage/renderer`  | PixiJS v8 rendering, sprites, camera                   |
+| `@yage/physics`   | Rapier2D physics (pixel↔meter conversion is internal)  |
+| `@yage/input`     | Keyboard/mouse/gamepad input + action maps             |
+| `@yage/audio`     | Channel-based audio via @pixi/sound                    |
+| `@yage/particles` | Particle emitters with pooling and presets             |
+| `@yage/tilemap`   | Tiled map loading and rendering                        |
+| `@yage/ui`        | Yoga flexbox-based UI components                       |
+| `@yage/ui-react`  | React reconciler over the UI layer                     |
+| `@yage/debug`     | Debug overlay, stats, world/HUD drawing                |
+| `@yage/save`      | Save/load system with slot-based snapshots             |
 
 ## Design Philosophy
 

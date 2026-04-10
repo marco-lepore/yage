@@ -89,6 +89,41 @@ save.hasData("bestScore");
 save.deleteData("bestScore");
 ```
 
+## Snapshot Schema
+
+`exportSnapshot()` returns a `GameSnapshot` — a plain object you can serialize to JSON, ship to a cloud backend, or inspect for custom migrations. You normally interact with it only through `save.importSnapshot()`, but understanding the shape is useful when writing migration logic or debugging stale save data:
+
+```ts
+interface GameSnapshot {
+  version: number;              // schema version — bump when formats change
+  timestamp: number;            // Date.now() at save time
+  scenes: SceneSnapshotEntry[];
+}
+
+interface SceneSnapshotEntry {
+  type: string;                 // class name from @serializable
+  paused: boolean;              // was the scene paused at save time
+  entities: EntitySnapshotEntry[];
+  userData?: unknown;           // result of scene.serialize()
+}
+
+interface EntitySnapshotEntry {
+  id: number;                   // save-time ID, used to rewire cross-entity refs
+  type: string;                 // class name from @serializable
+  components: ComponentSnapshot[];
+  userData?: unknown;           // result of entity.serialize()
+  parentId?: number;            // if this is a child of another entity
+  childName?: string;           // name under which parent registered this child
+}
+
+interface ComponentSnapshot {
+  type: string;                 // component class name
+  data: unknown;                // result of component.serialize()
+}
+```
+
+The `id` field on `EntitySnapshotEntry` is what `SnapshotResolver.entity(oldId)` consults inside `afterRestore()` hooks to resolve references that pointed at other entities before the save.
+
 ## SaveStorage Interface
 
 ```ts
@@ -101,3 +136,24 @@ interface SaveStorage {
 ```
 
 Default: `LocalStorageSaveStorage`.
+
+## Typed Slots
+
+`SaveService` is generic over a slot-key map, so persistent user data (not snapshots) can be typed. Pass your slot shape when resolving the service to get autocomplete and type-checked `saveData`/`loadData` calls:
+
+```ts
+import { SaveServiceKey, type SaveService } from "@yage/save";
+
+interface MySlots {
+  bestScore: { value: number };
+  playerName: string;
+  settings: { volume: number; muted: boolean };
+}
+
+const save = this.use(SaveServiceKey) as SaveService<MySlots>;
+
+save.saveData("bestScore", { value: 9999 });  // typed
+const name = save.loadData("playerName");     // string | null
+```
+
+Untyped usage falls back to `SaveService<UntypedSlots>` (`Record<string, any>`), which is what `this.use(SaveServiceKey)` gives you by default.

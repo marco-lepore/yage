@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Read `AGENTS.md` first for project conventions, architecture rules, and coding style.
+@AGENTS.md
 
 ## Claude Code Notes
 
