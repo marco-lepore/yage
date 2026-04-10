@@ -72,4 +72,4 @@ npx playwright test     # E2E tests (requires build first)
 
 ## Reference
 
-See `docs/v2/AGENT_GUIDE.md` for the full architecture guide — package dependency graph, key files, common modification patterns, lifecycle details, and pitfalls.
+See `docs/AGENT_GUIDE.md` for the full architecture guide — package dependency graph, key files, common modification patterns, lifecycle details, and pitfalls.

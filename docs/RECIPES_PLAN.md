@@ -284,6 +284,60 @@ export function procgenGrid<TileId>(
 ): TileId[][];
 ```
 
+### `dialoguePlayer(config)`
+
+**Problem solved**: node-graph dialogue playback (branching, typewriter reveal, per-message side effects) without hard-coding UI or flow logic into the game.
+
+**Design notes (from v1 reference implementation)**
+
+The v1 engine shipped a `DialoguePlayer` + `DialogueWindow` pair that's worth preserving as a recipe. Key ideas we want to keep:
+
+1. **Split state machine from rendering.** `DialoguePlayer` owns the current node/message cursor and calls `start/advance/stop` on an injected window. The window owns presentation only. This keeps branching logic testable without a renderer.
+2. **Graph data shape** — flat node map keyed by id, with an `initial` entry point:
+   ```ts
+   type DialogueNode<M = DialogueMessage> = {
+     id: string;
+     messages: M[];                        // shown in sequence within a node
+     next: string | DialogueChoice[] | null; // linear, branching, or terminal
+     final?: boolean;
+   };
+   type DialogueMessage = {
+     text: string;
+     onEnter?: () => void;                 // side effects (flags, quests, audio)
+     onExit?: () => void;
+   };
+   type Dialogue<M = DialogueMessage> = { data: Record<string, DialogueNode<M>>; initial: string };
+   ```
+3. **Lifecycle hooks on messages**, not just nodes. `onEnter`/`onExit` per message let writers trigger quest updates, sfx, or world state changes mid-node without splitting into extra nodes.
+4. **Typewriter reveal via tween** (char index 0 → length, linear). First `advance()` while tweening should snap to full text; second `advance()` moves to next message. This "skip then advance" interaction is expected by players and non-obvious to reimplement.
+5. **`onTextUpdate` listener** fires per revealed character with `{ complete, message }`. The v1 actor example used this to play a random "voice tone" sample per character — a cheap way to fake voice acting. Keep this hook.
+6. **Template-to-messages helper.** v1 had `templateToMessages(template: string)` that split on blank lines (`\n\n`) and trimmed whitespace, so writers could author dialogue as indented multiline strings in code. Small but high-value DX win.
+7. **Actor extension as a subclass, not a config flag.** v1's `DialogueWindowWithActors` added portrait + name + left/right layout as a separate class extending the base window. The base stayed minimal. For v2, consider composing via component/plugin rather than subclass, but preserve the "actors are an opt-in layer, not baked into core dialogue" boundary.
+
+**Known v1 pain points to fix in v2 recipe**
+
+- Window required a specific `NineSlicePlane` + `Sprite` cursor + exact padding tuple — customization meant subclassing. v2 recipe should take a simpler render callback or slot-based config.
+- Choice branching (`next: DialogueChoice[]`) was typed but not actually implemented in the v1 player's `advance()`. v2 recipe must handle choices end-to-end.
+- No save/load integration. The player should expose `{ currentNodeId, currentMessageIndex }` as serializable state so the `@yage/save` `run` scope can snapshot mid-dialogue.
+
+**Ideal signature (sketch)**
+
+```ts
+export interface DialoguePlayerConfig<M extends DialogueMessage = DialogueMessage> {
+  input: { advance: string; choose?: string };
+  render: DialogueRenderer<M>;          // slot-based renderer, not a fixed window class
+  onChoice?: (choices: DialogueChoice[]) => Promise<number>;
+}
+
+export function dialoguePlayer<M extends DialogueMessage>(
+  config: DialoguePlayerConfig<M>,
+): Component & {
+  play(dialogue: Dialogue<M>): void;
+  advance(): void;
+  stop(): void;
+};
+```
+
 ---
 
 ## Packaging and Convention

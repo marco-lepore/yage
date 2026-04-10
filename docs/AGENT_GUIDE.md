@@ -1,8 +1,8 @@
-# YAGE v2 -- AI Agent Development Guide
+# YAGE -- AI Agent Development Guide
 
 ## Overview
 
-This guide is for AI coding agents working on the YAGE v2 codebase. It covers quick-start commands, package structure, key files, testing workflow, common modification patterns, and pitfalls to avoid.
+This guide is for AI coding agents working on the YAGE codebase. It covers quick-start commands, package structure, key files, testing workflow, common modification patterns, and pitfalls to avoid.
 
 ---
 
@@ -429,7 +429,7 @@ export class MySystem extends System {
 
 ### Add a New Plugin
 
-Follow the step-by-step guide in [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md#8-creating-a-custom-plugin-step-by-step).
+Follow the step-by-step guide in [ARCHITECTURE.md](./ARCHITECTURE.md#8-creating-a-custom-plugin-step-by-step).
 
 Summary:
 
@@ -919,7 +919,7 @@ Before submitting code:
 
 ## 9. Architecture Decision Quick Reference
 
-For the rationale behind key decisions, see [TDD.md](./TDD.md). Quick summary:
+Quick summary of the key architectural decisions:
 
 | Decision                                                | Rationale                                                                                                                                      |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -938,9 +938,5 @@ For the rationale behind key decisions, see [TDD.md](./TDD.md). Quick summary:
 
 ## References
 
-- [TDD.md](./TDD.md) -- Complete architecture and API specifications
-- [PRD.md](./PRD.md) -- Product requirements and success criteria
-- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) -- Build phases and dependencies
-- [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing patterns and CI pipeline
-- [PLUGIN_ARCHITECTURE.md](./PLUGIN_ARCHITECTURE.md) -- Plugin system specification
+- [ARCHITECTURE.md](./ARCHITECTURE.md) -- Plugin system specification
 - [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Recipe roadmap for reusable gameplay modules

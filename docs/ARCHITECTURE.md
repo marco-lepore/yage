@@ -1,8 +1,8 @@
-# YAGE v2 -- Plugin Architecture
+# YAGE -- Plugin Architecture
 
 ## Overview
 
-YAGE v2's plugin system is the mechanism by which all engine features beyond the core kernel are delivered. Rendering, physics, input, audio -- everything is a plugin. This document specifies the plugin interface, lifecycle, dependency management, and how to create custom plugins.
+YAGE's plugin system is the mechanism by which all engine features beyond the core kernel are delivered. Rendering, physics, input, audio -- everything is a plugin. This document specifies the plugin interface, lifecycle, dependency management, and how to create custom plugins.
 
 ---
 
@@ -29,8 +29,9 @@ export interface Plugin {
    * Called during engine.start() to set up the plugin.
    * Register services, allocate resources, bind event listeners.
    * May be async (e.g., loading WASM for physics).
+   * Optional -- omit if the plugin has nothing to install.
    */
-  install(context: EngineContext): void | Promise<void>;
+  install?(context: EngineContext): void | Promise<void>;
 
   /**
    * Register systems into the game loop.
@@ -630,8 +631,5 @@ events.on('settings:changed', ({ key, value }) => {
 
 ## References
 
-- [TDD.md](./TDD.md) -- Full API specifications for all official plugins
-- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) -- When each plugin is built
-- [TESTING_STRATEGY.md](./TESTING_STRATEGY.md) -- Testing patterns for plugins
 - [AGENT_GUIDE.md](./AGENT_GUIDE.md) -- How to add/modify plugins as a coding agent
 - [RECIPES_PLAN.md](./RECIPES_PLAN.md) -- Boundary between base plugins and recipes
