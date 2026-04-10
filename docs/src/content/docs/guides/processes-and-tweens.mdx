@@ -181,3 +181,133 @@ pc.cancel("vfx");
 
 This is useful for cleaning up visual effects when an entity changes state (for
 example, cancelling hit-flash tweens when the entity dies).
+
+## Keyframe Animation
+
+`Tween` is great for point-to-point animations — "fade from 1 to 0", "slide
+from A to B". When you need multi-point animation — a bobbing motion that
+goes up, back down, and past the start, or a four-frame easing curve that
+isn't expressible as a single `easeInOut` — reach for `KeyframeAnimator`.
+
+`KeyframeAnimator` is a component that hosts multiple named keyframe tracks
+and runs any number of them concurrently. Each track is a list of `(time,
+value)` control points, and the animator interpolates between them on every
+frame, pushing the result to a setter function you supply.
+
+```typescript
+import {
+  KeyframeAnimator,
+  ProcessComponent,
+  Transform,
+  easeInOutQuad,
+} from "@yage/core";
+
+const entity = scene.spawn("lantern");
+entity.add(new Transform({ position: new Vec2(100, 200) }));
+entity.add(new ProcessComponent());
+
+const anim = entity.add(
+  new KeyframeAnimator({
+    bob: {
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 500, data: 10 },
+        { time: 1000, data: 0 },
+      ],
+      setter: (v) => (entity.get(Transform).y = 200 + (v as number)),
+      loop: true,
+      easing: easeInOutQuad,
+    },
+  }),
+);
+
+anim.play("bob");
+```
+
+This lantern rises 10 pixels, falls back, and loops forever — something
+neither a single `Tween` nor an easing function could express on its own.
+`KeyframeAnimator` requires `ProcessComponent` on the same entity because it
+runs as a process under the hood. Each keyframe's `time` is in milliseconds
+along the track.
+
+### Multiple Tracks
+
+You can declare several named animations and play them independently:
+
+```typescript
+const anim = entity.add(
+  new KeyframeAnimator<"bob" | "pulse">({
+    bob: {
+      keyframes: [
+        { time: 0, data: 0 },
+        { time: 500, data: 10 },
+        { time: 1000, data: 0 },
+      ],
+      setter: (v) => (entity.get(Transform).y = baseY + (v as number)),
+      loop: true,
+    },
+    pulse: {
+      keyframes: [
+        { time: 0, data: 1.0 },
+        { time: 400, data: 1.2 },
+        { time: 800, data: 1.0 },
+      ],
+      setter: (v) => entity.get(Transform).setScale(v as number, v as number),
+      loop: true,
+      speed: 1.5,
+    },
+  }),
+);
+
+anim.play("bob");
+anim.play("pulse");
+// ... later:
+anim.stop("pulse");
+```
+
+The generic parameter `KeyframeAnimator<"bob" | "pulse">` gives you
+autocomplete and compile-time checking on the track names — typos like
+`anim.play("bbo")` become type errors.
+
+Each `KeyframeAnimationDef` accepts the same options you'd expect:
+
+| Option | Purpose |
+|---|---|
+| `keyframes` | The array of `{ time, data, easing?, event? }` control points |
+| `setter` | Function called every frame with the interpolated value |
+| `loop` | Restart at time 0 when the track finishes (default `false`) |
+| `speed` | Multiplier on track time (default `1`) |
+| `duration` | Override the auto-computed track length |
+| `easing` | Default easing between keyframes (each keyframe can override) |
+| `onEnter` / `onExit` | Lifecycle callbacks when a track starts or stops |
+
+You can also fire discrete events from within a track using the `event`
+property on a keyframe — useful for syncing sound or VFX to animation beats.
+
+### Lower-Level Primitives
+
+Under the hood, `KeyframeAnimator` is built on two primitives you can use
+directly when you don't need the named-track machinery:
+
+```typescript
+import { createKeyframeTrack, interpolate } from "@yage/core";
+
+// A one-off keyframe track as a Process
+pc.run(
+  createKeyframeTrack({
+    keyframes: [
+      { time: 0, data: 0 },
+      { time: 600, data: 100 },
+    ],
+    setter: (v) => (entity.get(Transform).x = v as number),
+  }),
+);
+
+// Raw interpolation for bespoke driver code
+const blended = interpolate(0, 100, 0.5, easeOutQuad); // ≈ 75
+```
+
+`Interpolatable` — the type parameter for keyframe `data` and the
+`interpolate` primitive — resolves to `number | Vec2Like`. Both are supported
+out of the box; if you need to animate other types (colour, quaternion),
+compose multiple number tracks or write a custom setter.

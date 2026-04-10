@@ -115,6 +115,39 @@ renderer context.
 const camera = engine.resolve(CameraKey);
 ```
 
+### Coordinate Convention
+
+Camera position `(0, 0)` places the **world origin at the center of the
+viewport**, not the top-left. An entity drawn at world position `(0, 0)`
+appears in the middle of the screen; positive X goes right, positive Y goes
+down.
+
+This is the convention most camera-driven 2D games expect. A scrolling shooter
+or platformer naturally wants the camera to *follow* the player, and centring
+the follow target on screen is the intuitive default.
+
+If your game has a fixed, non-scrolling layout (a puzzle grid, an arcade-style
+single-screen game, a tile editor), you probably want world `(0, 0)` to align
+with the *top-left* of the screen instead — that way tile coordinates, UI
+anchors, and typical 2D art tools line up the way you'd expect. Offset the
+camera by half the viewport in `onEnter`:
+
+```typescript
+class GameScene extends Scene {
+  readonly name = "game";
+  private camera = this.service(CameraKey);
+
+  onEnter() {
+    // Top-left origin: world (0,0) → screen (0,0)
+    this.camera.position = new Vec2(400, 300); // viewport is 800×600
+  }
+}
+```
+
+The camera never changes; you're just choosing which world point sits under
+the viewport's top-left corner. Follow-a-target cameras work identically with
+either convention — they just move to frame the target.
+
 ### Following a Target
 
 ```typescript

@@ -70,6 +70,116 @@ tilemap.tileWidth;    // single tile width
 tilemap.tileHeight;   // single tile height
 ```
 
+## Serialization
+
+`TilemapComponent` is `@serializable`, but the live parsed map it wraps is
+not — the parsed `TiledMapData` carries PixiJS textures, which don't survive
+`JSON.stringify`. The constructor therefore accepts two alternative inputs:
+an in-memory `map` object for the fast-path case where you already have the
+parsed map, and a `mapKey` asset path that can be re-resolved from the
+`AssetManager` after a reload.
+
+```typescript
+interface TilemapComponentOptions {
+  /** Parsed Tiled map data (not serializable). */
+  map?: TiledMapData;
+  /** Asset path to the Tiled JSON (serializable, resolved via Assets.get). */
+  mapKey?: string;
+  /** Which tile layers to render. Omit to render all. */
+  layers?: string[];
+  /** Render layer name. Default: "default". */
+  layer?: string;
+}
+```
+
+For any game that uses the save/load system, **pass `mapKey` rather than
+`map`**. When a `TilemapComponent` constructed with an inline `map` gets
+serialized, `serialize()` emits a warning and the snapshot cannot round-trip
+through `afterRestore()`. The `mapKey` path lets the save system store just
+the asset reference and re-look-up the texture-backed map on restore:
+
+```typescript
+// Recommended: save/load friendly
+map.add(new TilemapComponent({
+  mapKey: MapData.path,     // resolved from AssetManager
+  layers: ["ground", "walls"],
+  layer: "map",
+}));
+
+// One-shot prototypes only — will NOT survive a save/load cycle
+map.add(new TilemapComponent({
+  map: parsedTiledJson,
+  layer: "map",
+}));
+```
+
+The snapshot shape itself (`TilemapComponentData`) is just
+`{ mapKey, layers?, layer }` — the serialized entity stores only the asset
+key and layer selection, and reconstructs the live map on load.
+
+## Map Data Structure
+
+Sometimes you need to reach past the renderer and read raw tile data — for
+building a pathfinding grid, counting tile types, or driving custom gameplay
+off tile positions. `TilemapComponent` exposes a format-agnostic snapshot of
+the parsed map on its `data` property:
+
+```typescript
+const tilemap = map.get(TilemapComponent);
+const data = tilemap.data; // TilemapData
+
+console.log(`${data.width} x ${data.height} tiles`);
+console.log(`${data.tileLayers.length} tile layers`);
+```
+
+The `TilemapData` shape is deliberately decoupled from the Tiled JSON
+format — you can build your own parser for a different editor and reuse the
+same downstream consumers.
+
+```typescript
+interface TilemapData {
+  width: number;           // tiles wide
+  height: number;          // tiles tall
+  tileWidth: number;       // pixel width of one tile
+  tileHeight: number;
+  tileLayers: TileLayerData[];
+  objectLayers: ObjectLayerData[];
+}
+
+interface TileLayerData {
+  name: string;
+  data: number[];          // flat, row-major tile GIDs (0 = empty)
+  width: number;
+  height: number;
+  visible: boolean;
+}
+
+interface ObjectLayerData {
+  name: string;
+  objects: MapObject[];
+  visible: boolean;
+}
+```
+
+`TileLayerData.data` is a single flat array in row-major order. To read the
+tile at tile-coordinate `(tx, ty)`, index with `data[ty * width + tx]`. A GID
+of `0` means "no tile at this position". That flat layout makes it cheap to
+iterate for pathfinding or damage maps:
+
+```typescript
+// Count all solid tiles in the "walls" layer
+const walls = data.tileLayers.find((l) => l.name === "walls")!;
+let solidCount = 0;
+for (const gid of walls.data) {
+  if (gid !== 0) solidCount++;
+}
+```
+
+`MapObject` (the element type in `objectLayers[i].objects`) carries `id`,
+`name`, optional `class`, position and size, rotation, an optional `point`
+flag, an optional `polygon`, and an optional `properties: MapObjectProperty[]`
+array of Tiled custom properties — covered in detail below.
+
 ## Tile Queries
 
 Look up tile data at a world position:

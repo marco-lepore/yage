@@ -13,6 +13,36 @@ engine.use(new SavePlugin({
 }));
 ```
 
+## Bundler Setup
+
+`@yage/save` relies on TypeScript's `@serializable` class decorator and looks up classes by `class.name` at restore time. On Vite 8+ this requires two extra flags in your `vite.config.ts`:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  oxc: {
+    decorator: {
+      legacy: true, // transform TypeScript decorator syntax
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        keepNames: true, // preserve class names through minification
+      },
+    },
+  },
+});
+```
+
+`oxc.decorator.legacy: true` — Vite 8's oxc transformer only implements TypeScript's stage-2 (legacy) decorator transform. Stage-3 decorators are passed through raw, and browsers can't parse `@serializable class Foo` natively. The `legacy` flag tells oxc to rewrite it as `Foo = _decorate([serializable], Foo)` at build time. The name "legacy" is historical — this is the decorator flavor used by ~every TS decorator-based framework (Angular, NestJS, TypeORM, MobX) and is not deprecated.
+
+`output.keepNames: true` — oxc's minifier mangles class and function names by default. `@serializable` reads `class.name` to compute the registry key, so without `keepNames` the type string stored in a snapshot (e.g. `"Player"`) won't match the mangled runtime name (e.g. `"t"`), and `afterRestore()` silently fails to reconstruct entities. Enabling `keepNames` preserves the original names across the oxc minifier.
+
+These flags are only required for user code that uses `@serializable` directly. `@yage/*` packages are pre-compiled by tsup/esbuild (which already handles decorators) and are unaffected by your Vite config.
+
 ## @serializable
 
 Mark classes for save/load. Works on Entity, Scene, and Component subclasses.

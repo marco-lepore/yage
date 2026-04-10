@@ -1,19 +1,29 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
 import wasm from "vite-plugin-wasm";
-import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
   root: __dirname,
-  plugins: [wasm(), topLevelAwait()],
+  plugins: [wasm()],
   server: {
     port: 5200,
   },
-  esbuild: {
-    keepNames: true,
+  oxc: {
+    // Transform TypeScript legacy (stage-2) decorators. See examples/vite.config.ts.
+    decorator: {
+      legacy: true,
+    },
   },
   build: {
     rollupOptions: {
+      // Preserve class/function names through the oxc minifier so that
+      // @yage/save's class-name-based snapshot restoration still works in
+      // production builds. Vite 8 switched from esbuild to oxc; the old
+      // `esbuild: { keepNames: true }` option is silently dropped by the
+      // oxc converter.
+      output: {
+        keepNames: true,
+      },
       input: {
         input: resolve(__dirname, "input.html"),
         "inspector-scene": resolve(__dirname, "inspector-scene.html"),

@@ -2,19 +2,32 @@ import { defineConfig } from "vite";
 import { resolve } from "path";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
-import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
   base: process.env.VITE_BASE || "/",
-  plugins: [react(), wasm(), topLevelAwait()],
+  plugins: [react(), wasm()],
   server: {
     port: 5199,
   },
-  esbuild: {
-    keepNames: true,
+  oxc: {
+    // Transform TypeScript's legacy (stage-2) decorators. oxc only supports
+    // the legacy transform — stage-3 decorators would be passed through to
+    // the browser, which can't parse them yet. @yage/save's @serializable
+    // decorator works under either transform, so legacy mode is the safe pick.
+    decorator: {
+      legacy: true,
+    },
   },
   build: {
     rollupOptions: {
+      // Preserve class/function names through the oxc minifier so that
+      // @yage/save's class-name-based snapshot restoration still works in
+      // production builds. Vite 8 switched from esbuild to oxc; the old
+      // `esbuild: { keepNames: true }` option is silently dropped by the
+      // oxc converter.
+      output: {
+        keepNames: true,
+      },
       input: {
         main: resolve(__dirname, "index.html"),
         debug: resolve(__dirname, "debug.html"),
@@ -32,6 +45,7 @@ export default defineConfig({
         tilemap: resolve(__dirname, "tilemap.html"),
         "input-remapping": resolve(__dirname, "input-remapping.html"),
         "scene-pause": resolve(__dirname, "scene-pause.html"),
+        "save-load": resolve(__dirname, "save-load.html"),
         "ui-layers": resolve(__dirname, "ui-layers.html"),
       },
     },
