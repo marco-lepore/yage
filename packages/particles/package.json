@@ -1,11 +1,22 @@
 {
   "name": "@yage/particles",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Particle emitters and visual effects for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "particles",
+    "particle-system",
+    "effects",
+    "vfx"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/particles"
   },
   "homepage": "https://yage.dev",
@@ -25,7 +36,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -35,13 +48,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "*",
-    "@yage/renderer": "*"
-  },
-  "peerDependencies": {
-    "pixi.js": "^8.0.0"
-  },
-  "devDependencies": {
-    "pixi.js": "^8.16.0"
+    "@yage/core": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
+    "pixi.js": "^8.5.0"
   }
 }

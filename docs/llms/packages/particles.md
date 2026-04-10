@@ -9,8 +9,6 @@ import { ParticlesPlugin } from "@yage/particles";
 engine.use(new ParticlesPlugin());
 ```
 
-Or `createGame({ particles: true })`.
-
 ## ParticleEmitterComponent
 
 ```ts

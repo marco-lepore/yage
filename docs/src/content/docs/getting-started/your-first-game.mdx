@@ -13,9 +13,9 @@ finished example is under 30 lines of TypeScript.
 ## The Full Code
 
 ```typescript
-import { Component, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { createGame, defineInlineScene } from "yage";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
 
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
@@ -29,13 +29,14 @@ class Spin extends Component {
   }
 }
 
-await createGame({
-  backgroundColor: 0x0a0a0a,
-  debug: true,
-  scene: defineInlineScene("hello-world", (scene, { camera }) => {
+class HelloWorldScene extends Scene {
+  readonly name = "hello-world";
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
     camera.position = new Vec2(400, 300);
 
-    const tri = scene.spawn("triangle");
+    const tri = this.spawn("triangle");
     tri.add(new Transform({ position: new Vec2(400, 300) }));
     tri.add(
       new GraphicsComponent().draw((g) => {
@@ -43,8 +44,18 @@ await createGame({
       }),
     );
     tri.add(new Spin());
-  }),
-});
+  }
+}
+
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({
+  width: 800,
+  height: 600,
+  backgroundColor: 0x0a0a0a,
+}));
+engine.use(new DebugPlugin());
+await engine.start();
+engine.scenes.push(new HelloWorldScene());
 ```
 
 ## Step-by-Step Walkthrough
@@ -52,19 +63,20 @@ await createGame({
 ### 1. Imports
 
 ```typescript
-import { Component, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { createGame, defineInlineScene } from "yage";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
 ```
 
 - **`Component`** is the base class every custom behaviour extends.
+- **`Engine`** is the entry point that orchestrates plugins and the game loop.
+- **`Scene`** is the base class for defining game scenes.
 - **`Transform`** stores an entity's position, rotation, and scale.
 - **`Vec2`** is a 2D vector used throughout the engine.
 - **`GraphicsComponent`** draws shapes via the PixiJS v8 graphics API.
-- **`createGame`** boots the engine, creates the canvas, and starts the game
-  loop.
-- **`defineInlineScene`** lets you declare a scene with a setup function instead
-  of a separate file.
+- **`RendererPlugin`** sets up the PixiJS v8 rendering pipeline.
+- **`CameraKey`** is the DI key used to resolve the camera service.
+- **`DebugPlugin`** enables the FPS counter, entity inspector, and dev overlays.
 
 ### 2. A Custom Component — `Spin`
 
@@ -86,33 +98,43 @@ class Spin extends Component {
 The `update(dt)` method receives the delta time in milliseconds so the rotation
 speed stays consistent regardless of frame rate.
 
-### 3. Creating the Game
+### 3. Setting Up the Engine
 
 ```typescript
-await createGame({
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({
+  width: 800,
+  height: 600,
   backgroundColor: 0x0a0a0a,
-  debug: true,
-  scene: defineInlineScene("hello-world", (scene, { camera }) => {
-    // ...
-  }),
-});
+}));
+engine.use(new DebugPlugin());
+await engine.start();
+engine.scenes.push(new HelloWorldScene());
 ```
 
-`createGame()` accepts a configuration object:
-
-- **`backgroundColor`** — the canvas clear colour.
-- **`debug: true`** — enables the `@yage/debug` overlay (FPS counter, entity
-  inspector, etc.).
-- **`scene`** — the initial scene to load.
+- **`new Engine({ debug: true })`** creates the engine with debug mode enabled.
+- **`engine.use()`** registers plugins — here the renderer and debug overlay.
+- **`engine.start()`** initialises all plugins and starts the game loop.
+- **`engine.scenes.push()`** pushes a scene onto the scene stack.
 
 ### 4. Setting Up the Scene
 
 ```typescript
-camera.position = new Vec2(400, 300);
+class HelloWorldScene extends Scene {
+  readonly name = "hello-world";
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
+    camera.position = new Vec2(400, 300);
+    // ...
+  }
+}
 ```
 
-The camera is centred at `(400, 300)` so the triangle appears in the middle of
-the default 800 x 600 viewport.
+`HelloWorldScene` extends `Scene` and implements `onEnter()`, which runs when
+the scene becomes active. `this.context.resolve(CameraKey)` retrieves the
+camera service via dependency injection. The camera is centred at `(400, 300)`
+so the triangle appears in the middle of the default 800 x 600 viewport.
 
 ### 5. Spawning an Entity
 

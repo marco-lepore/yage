@@ -10,32 +10,35 @@
  */
 
 import {
+  Engine,
   Scene,
   Entity,
   Component,
   Transform,
   Vec2,
   ServiceKey,
+  serializable,
 } from "@yage/core";
 import {
+  RendererPlugin,
   GraphicsComponent,
   RenderLayerManagerKey,
   CameraKey,
   GraphicsContext,
 } from "@yage/renderer";
 import {
+  PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldManagerKey,
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
-import { serializable } from "@yage/core";
-import { SaveServiceKey } from "@yage/save";
+import { SavePlugin, SaveServiceKey } from "@yage/save";
 import type { SaveService } from "@yage/save";
-import { InputManagerKey } from "@yage/input";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 // ---------------------------------------------------------------------------
 // Styles + HUD
@@ -546,12 +549,17 @@ class SaveDemoScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0f172a,
-  physics: { gravity: { x: 0, y: 800 } },
-  input: {
+async function main() {
+  const engine = new Engine();
+
+  engine.use(new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0f172a,
+    container: getContainer(),
+  }));
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 800 } }));
+  engine.use(new InputPlugin({
     actions: {
       left: ["KeyA", "ArrowLeft"],
       right: ["KeyD", "ArrowRight"],
@@ -560,7 +568,12 @@ await createGame({
       quickload: ["F9"],
     },
     preventDefaultKeys: ["Space", "F5", "F9"],
-  },
-  save: true,
-  scene: new SaveDemoScene(),
-});
+  }));
+  engine.use(new SavePlugin());
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new SaveDemoScene());
+}
+
+main().catch(console.error);

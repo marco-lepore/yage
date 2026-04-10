@@ -1,11 +1,11 @@
 import {
-  CameraKey,
-  GraphicsComponent,
+  Engine,
   Scene,
   Transform,
   Vec2,
-  createGame,
-} from "yage";
+} from "@yage/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();
@@ -58,14 +58,11 @@ class BaseScene extends Scene {
   }
 }
 
-const { engine } = await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0a0a0a,
-  renderer: { resolution: 1 },
-  debug: { manualClock: true },
-  scene: new BaseScene(),
-});
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, resolution: 1, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new DebugPlugin({ manualClock: true }));
+await engine.start();
+await engine.scenes.push(new BaseScene());
 
 (window as Window & {
   __sceneStackTest__?: {

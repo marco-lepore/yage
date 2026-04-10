@@ -1,7 +1,7 @@
-import { Component, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { createGame, defineInlineScene } from "yage";
-import { injectStyles } from "./shared.js";
+import { Engine, Component, Scene, Transform, Vec2 } from "@yage/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();
 
@@ -21,16 +21,17 @@ class Spin extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// Boot
+// Scene
 // ---------------------------------------------------------------------------
-await createGame({
-  backgroundColor: 0x0a0a0a,
-  debug: true,
-  scene: defineInlineScene("hello-world", (scene, { camera }) => {
+class HelloWorldScene extends Scene {
+  readonly name = "hello-world";
+
+  onEnter(): void {
+    const camera = this.context.resolve(CameraKey);
     camera.position = new Vec2(400, 300);
 
     // Blue circle
-    const circle = scene.spawn("circle");
+    const circle = this.spawn("circle");
     circle.add(new Transform({ position: new Vec2(250, 300) }));
     circle.add(
       new GraphicsComponent().draw((g) => {
@@ -40,7 +41,7 @@ await createGame({
     );
 
     // Orange rectangle
-    const rect = scene.spawn("rect");
+    const rect = this.spawn("rect");
     rect.add(new Transform({ position: new Vec2(550, 300) }));
     rect.add(
       new GraphicsComponent().draw((g) => {
@@ -50,7 +51,7 @@ await createGame({
     );
 
     // Green rotating triangle
-    const tri = scene.spawn("triangle");
+    const tri = this.spawn("triangle");
     tri.add(new Transform({ position: new Vec2(400, 200) }));
     tri.add(
       new GraphicsComponent().draw((g) => {
@@ -61,7 +62,7 @@ await createGame({
     tri.add(new Spin(0.002));
 
     // Small purple rotating diamond
-    const diamond = scene.spawn("diamond");
+    const diamond = this.spawn("diamond");
     diamond.add(new Transform({ position: new Vec2(400, 430) }));
     diamond.add(
       new GraphicsComponent().draw((g) => {
@@ -73,5 +74,25 @@ await createGame({
       }),
     );
     diamond.add(new Spin(-0.003));
-  }),
-});
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: 800,
+    height: 600,
+    backgroundColor: 0x0a0a0a,
+    container: getContainer(),
+  }));
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new HelloWorldScene());
+}
+
+main().catch(console.error);

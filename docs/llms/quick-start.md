@@ -3,82 +3,44 @@
 ## Installation
 
 ```bash
-# Meta-package (includes all plugins)
-npm install yage
+npm install @yage/core @yage/renderer
+```
 
-# Or individual packages
-npm install @yage/core @yage/renderer @yage/input
+Add more packages as needed:
+
+```bash
+npm install @yage/physics @yage/input @yage/debug
 ```
 
 ## Minimal Example
 
 ```ts
-import { createGame, defineInlineScene } from "yage";
-import { Transform, Vec2 } from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
+import { Engine } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
 
-const game = await createGame({
-  width: 800,
-  height: 600,
-  backgroundColor: 0x1a1a2e,
-  input: true,
-  scene: defineInlineScene("main", (scene, { camera }) => {
-    const player = scene.spawn("player");
-    player.add(new Transform({ position: new Vec2(400, 300) }));
-    player.add(new SpriteComponent({ texture: "hero.png" }));
-    camera.follow(player.get(Transform));
-  }),
-});
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }));
+await engine.start();
 ```
 
-## createGame Options
+## Engine Setup
 
 ```ts
-interface CreateGameOptions {
-  // Renderer (always registered)
-  width?: number;              // default: 800
-  height?: number;             // default: 600
-  virtualWidth?: number;       // virtual resolution width
-  virtualHeight?: number;      // virtual resolution height
-  backgroundColor?: number;    // default: 0x000000
-  container?: HTMLElement | string; // CSS selector or element
-  canvas?: HTMLCanvasElement;
+import { Engine } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+import { InputPlugin } from "@yage/input";
+import { PhysicsPlugin } from "@yage/physics";
 
-  // Plugins (true for defaults, or pass config object)
-  physics?: boolean | PhysicsConfig;
-  input?: boolean | InputConfig;
-  audio?: boolean | AudioConfig;
-  particles?: boolean;
-  tilemap?: boolean;
-  ui?: boolean;
-  debug?: boolean | DebugConfig;
-  save?: boolean | SavePluginOptions;
+const engine = new Engine({ debug: true, fixedTimestep: 1000 / 60 });
+engine.use(new RendererPlugin({ width: 800, height: 600, container: "#game" }));
+engine.use(new InputPlugin({ actions: { jump: ["Space", "KeyW"] } }));
+engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
 
-  // Escape hatches
-  plugins?: Plugin[];          // additional custom plugins
-  engine?: EngineConfig;       // engine-level config
-
-  // Initial scene
-  scene?: Scene | InlineSceneSetup;
-}
+await engine.start();
+engine.scenes.push(new GameScene());
 ```
 
-Returns `Promise<GameHandle>` with `engine`, `pushScene(scene)`, and `destroy()`.
-
-## defineInlineScene
-
-Quick prototyping without a class. Receives the scene and pre-resolved services:
-
-```ts
-defineInlineScene("level-1", (scene, { camera, input, physics, audio }) => {
-  // input, physics, audio are undefined if those plugins aren't registered
-  const wall = scene.spawn("wall");
-  wall.add(new Transform({ position: new Vec2(0, 500) }));
-  // ...
-});
-```
-
-## Scene Class (Production)
+## Scene Class
 
 For real games, subclass `Scene`:
 
@@ -105,24 +67,5 @@ class GameScene extends Scene {
 }
 
 // Push it:
-engine.scenes.push(new GameScene());
-```
-
-## Manual Engine Setup
-
-When you need full control:
-
-```ts
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
-import { InputPlugin } from "@yage/input";
-import { PhysicsPlugin } from "@yage/physics";
-
-const engine = new Engine({ debug: true, fixedTimestep: 1000 / 60 });
-engine.use(new RendererPlugin({ width: 800, height: 600, container: "#game" }));
-engine.use(new InputPlugin({ actions: { jump: ["Space", "KeyW"] } }));
-engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
-
-await engine.start();
 engine.scenes.push(new GameScene());
 ```

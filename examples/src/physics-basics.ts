@@ -1,14 +1,15 @@
-import { Scene, Component, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent, CameraKey } from "@yage/renderer";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
 import {
+  PhysicsPlugin,
   PhysicsWorldManagerKey,
   RigidBodyComponent,
   ColliderComponent,
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
-import { InputManagerKey } from "@yage/input";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();
 
@@ -168,19 +169,28 @@ function randomColor(): number {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0a0a0a,
-  physics: true,
-  debug: true,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container: getContainer(),
+  }));
+  engine.use(new PhysicsPlugin());
+  engine.use(new InputPlugin({
     actions: {
       spawn: ["Space"],
       impulse: ["KeyF"],
       gravity: ["KeyG"],
     },
     preventDefaultKeys: ["Space"],
-  },
-  scene: new PhysicsBasicsScene(),
-});
+  }));
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new PhysicsBasicsScene());
+}
+
+main().catch(console.error);

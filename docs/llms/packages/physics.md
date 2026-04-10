@@ -13,8 +13,6 @@ engine.use(new PhysicsPlugin({
 }));
 ```
 
-Or `createGame({ physics: true })` / `createGame({ physics: { gravity: { x: 0, y: 0 } } })`.
-
 ## Component Ordering
 
 `Transform` → `RigidBodyComponent` → `ColliderComponent` (required order).

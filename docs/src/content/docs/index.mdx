@@ -35,30 +35,38 @@ import GameEmbed from "../../components/GameEmbed.astro";
 <Tabs>
   <TabItem label="main.ts">
 ```typescript
-import { createGame, defineInlineScene } from "yage";
-import { Transform, Vec2 } from "@yage/core";
+import { Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { RendererPlugin, CameraKey } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+import { UIPlugin } from "@yage/ui";
 import { Ball } from "./Ball";
 import { Paddle } from "./Paddle";
 import { Wall, Goal, Scoreboard } from "./GameArea";
 
-await createGame({
-  width: 600, height: 400,
-  backgroundColor: 0x0a0a0a,
-  physics: { gravity: { x: 0, y: 0 } },
-  ui: true,
-  scene: defineInlineScene("pong", (scene, { camera }) => {
+class PongScene extends Scene {
+  readonly name = "pong";
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
     camera.position = new Vec2(300, 200);
 
-    scene.spawn(Scoreboard);
-    const ball = scene.spawn(Ball, { w: 600, h: 400 });
-    scene.spawn(Paddle, { x: 30, y: 200, ball, side: "left" });
-    scene.spawn(Paddle, { x: 570, y: 200, ball, side: "right" });
-    scene.spawn(Wall, { x: 300, y: -10, w: 600, h: 20 });      // top
-    scene.spawn(Wall, { x: 300, y: 410, w: 600, h: 20 });       // bottom
-    scene.spawn(Goal, { x: -20, y: 200, w: 20, h: 400, side: "left" });
-    scene.spawn(Goal, { x: 620, y: 200, w: 20, h: 400, side: "right" });
-  }),
-});
+    this.spawn(Scoreboard);
+    const ball = this.spawn(Ball, { w: 600, h: 400 });
+    this.spawn(Paddle, { x: 30, y: 200, ball, side: "left" });
+    this.spawn(Paddle, { x: 570, y: 200, ball, side: "right" });
+    this.spawn(Wall, { x: 300, y: -10, w: 600, h: 20 });      // top
+    this.spawn(Wall, { x: 300, y: 410, w: 600, h: 20 });       // bottom
+    this.spawn(Goal, { x: -20, y: 200, w: 20, h: 400, side: "left" });
+    this.spawn(Goal, { x: 620, y: 200, w: 20, h: 400, side: "right" });
+  }
+}
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 600, height: 400, backgroundColor: 0x0a0a0a }));
+engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
+engine.use(new UIPlugin());
+await engine.start();
+engine.scenes.push(new PongScene());
 ```
   </TabItem>
   <TabItem label="types.ts">

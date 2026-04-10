@@ -1,17 +1,22 @@
 import {
+  Engine,
   Entity,
   Component,
+  Scene,
   Transform,
   Vec2,
   ProcessComponent,
   ProcessSlot,
   defineEvent,
 } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
-import { UIPanel, Anchor } from "@yage/ui";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
+import {
+  PhysicsPlugin,
+  RigidBodyComponent,
+  ColliderComponent,
+} from "@yage/physics";
+import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
 import type { UIText } from "@yage/ui";
-import { createGame, defineInlineScene } from "yage";
 
 // -- Types & Events -----------------------------------------------------------
 
@@ -214,31 +219,57 @@ class Scoreboard extends Entity {
 
 // -- Boot ---------------------------------------------------------------------
 
+class PongScene extends Scene {
+  readonly name = "pong";
+  constructor(
+    private W: number,
+    private H: number,
+  ) {
+    super();
+  }
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
+    camera.position = new Vec2(this.W / 2, this.H / 2);
+
+    this.spawn(Scoreboard);
+    const ball = this.spawn(Ball, { w: this.W, h: this.H });
+    this.spawn(Paddle, { x: 30, y: this.H / 2, ball, side: "left" });
+    this.spawn(Paddle, { x: this.W - 30, y: this.H / 2, ball, side: "right" });
+    this.spawn(Wall, { x: this.W / 2, y: -10, w: this.W, h: 20 }); // top
+    this.spawn(Wall, { x: this.W / 2, y: this.H + 10, w: this.W, h: 20 }); // bottom
+    this.spawn(Goal, {
+      x: -20,
+      y: this.H / 2,
+      w: 20,
+      h: this.H,
+      side: "left",
+    });
+    this.spawn(Goal, {
+      x: this.W + 20,
+      y: this.H / 2,
+      w: 20,
+      h: this.H,
+      side: "right",
+    });
+  }
+}
+
 export default async function (
   container: HTMLElement,
   opts: { width: number; height: number },
 ) {
-  const W = opts.width;
-  const H = opts.height;
-
-  await createGame({
-    width: W,
-    height: H,
-    backgroundColor: 0x0a0a0a,
-    container,
-    physics: { gravity: { x: 0, y: 0 } },
-    ui: true,
-    scene: defineInlineScene("pong", (scene, { camera }) => {
-      camera.position = new Vec2(W / 2, H / 2);
-
-      scene.spawn(Scoreboard);
-      const ball = scene.spawn(Ball, { w: W, h: H });
-      scene.spawn(Paddle, { x: 30, y: H / 2, ball, side: "left" });
-      scene.spawn(Paddle, { x: W - 30, y: H / 2, ball, side: "right" });
-      scene.spawn(Wall, { x: W / 2, y: -10, w: W, h: 20 }); // top
-      scene.spawn(Wall, { x: W / 2, y: H + 10, w: W, h: 20 }); // bottom
-      scene.spawn(Goal, { x: -20, y: H / 2, w: 20, h: H, side: "left" });
-      scene.spawn(Goal, { x: W + 20, y: H / 2, w: 20, h: H, side: "right" });
+  const engine = new Engine();
+  engine.use(
+    new RendererPlugin({
+      width: opts.width,
+      height: opts.height,
+      backgroundColor: 0x0a0a0a,
+      container,
     }),
-  });
+  );
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
+  engine.use(new UIPlugin());
+  await engine.start();
+  engine.scenes.push(new PongScene(opts.width, opts.height));
 }

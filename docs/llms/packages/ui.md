@@ -9,8 +9,6 @@ import { UIPlugin } from "@yage/ui";
 engine.use(new UIPlugin());
 ```
 
-Or `createGame({ ui: true })`.
-
 ## UIPanel
 
 Root UI component. Add to entity with Transform.

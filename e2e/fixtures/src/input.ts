@@ -1,10 +1,12 @@
 import {
+  Engine,
   Component,
-  InputManagerKey,
   Scene,
   Transform,
-  createGame,
-} from "yage";
+} from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();
@@ -33,16 +35,13 @@ class InputScene extends Scene {
   }
 }
 
-await createGame({
-  width: 320,
-  height: 180,
-  backgroundColor: 0x0a0a0a,
-  renderer: { resolution: 1 },
-  input: {
-    actions: {
-      jump: ["Space"],
-    },
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new InputPlugin({
+  actions: {
+    jump: ["Space"],
   },
-  debug: { manualClock: true },
-  scene: new InputScene(),
-});
+}));
+engine.use(new DebugPlugin({ manualClock: true }));
+await engine.start();
+await engine.scenes.push(new InputScene());

@@ -1,21 +1,23 @@
-import { Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
 import {
+  RendererPlugin,
   GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
   type GraphicsContext,
 } from "@yage/renderer";
 import {
+  PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldManagerKey,
 } from "@yage/physics";
 import type { PhysicsWorld } from "@yage/physics";
-import { AudioManagerKey, sound } from "@yage/audio";
-import { InputManagerKey } from "@yage/input";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
+import { InputPlugin, InputManagerKey } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -659,20 +661,29 @@ class PlatformerScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0f172a,
-  physics: { gravity: { x: 0, y: 980 } },
-  audio: true,
-  debug: true,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0f172a,
+    container: getContainer(),
+  }));
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+  engine.use(new AudioPlugin());
+  engine.use(new InputPlugin({
     actions: {
       left: ["KeyA", "ArrowLeft"],
       right: ["KeyD", "ArrowRight"],
       jump: ["Space"],
     },
     preventDefaultKeys: ["Space"],
-  },
-  scene: new PlatformerScene(),
-});
+  }));
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new PlatformerScene());
+}
+
+main().catch(console.error);

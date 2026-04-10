@@ -94,28 +94,31 @@ const enemies = scene.findEntitiesByTag("enemy");
 const all = scene.getEntities();
 ```
 
-## Inline Scenes
+## Subclassing Scene
 
-For quick prototypes or simple screens you can skip the class and use
-`defineInlineScene`:
+Scenes are always classes. Override `onEnter` to spawn entities, resolve
+services, and wire up the scene:
 
 ```typescript
-import { defineInlineScene } from "@yage/core";
+import { Scene, Transform } from "@yage/core";
+import { SpriteComponent, CameraKey } from "@yage/renderer";
+import { InputManagerKey } from "@yage/input";
 
-const titleScene = defineInlineScene("title", (scene, services) => {
-  const logo = scene.spawn("logo");
-  logo.add(new Transform(640, 200));
-  logo.add(new SpriteComponent({ textureKey: "logo.png" }));
+class TitleScene extends Scene {
+  readonly name = "title";
 
-  const input = services.resolve(InputManagerKey);
-  input.onPressed("start", () => {
-    services.resolve(SceneManagerKey).replace(new GameplayScene());
-  });
-});
+  onEnter() {
+    const logo = this.spawn("logo");
+    logo.add(new Transform(640, 200));
+    logo.add(new SpriteComponent({ textureKey: "logo.png" }));
 
-engine.scenes.push(titleScene);
+    const input = this.context.resolve(InputManagerKey);
+    input.onPressed("start", () => {
+      this.context.resolve(SceneManagerKey).replace(new GameplayScene());
+    });
+  }
+}
+
+engine.scenes.push(new TitleScene());
 ```
 
-`defineInlineScene` creates a `Scene` instance whose `onEnter` runs the
-provided callback. It is ideal for screens that need minimal lifecycle
-management.

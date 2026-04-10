@@ -5,7 +5,7 @@
 ## Docs
 
 - [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
-- [Quick Start](llms/quick-start.md): Installation, createGame(), inline scenes, first project
+- [Quick Start](llms/quick-start.md): Installation, engine setup, scene class, first project
 - [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
 
 ## Packages

@@ -1,4 +1,5 @@
 import {
+  Engine,
   Scene,
   Component,
   Transform,
@@ -26,8 +27,12 @@ import {
 import type { PhysicsWorld } from "@yage/physics";
 import { AudioManagerKey, sound } from "@yage/audio";
 import { InputManagerKey } from "@yage/input";
-import { createGame } from "yage";
-import { injectStyles } from "./shared.js";
+import { RendererPlugin } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+import { AudioPlugin } from "@yage/audio";
+import { InputPlugin } from "@yage/input";
+import { DebugPlugin } from "@yage/debug";
+import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -1123,15 +1128,19 @@ class ShooterScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-await createGame({
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: 0x0f172a,
-  renderer: { pixi: { roundPixels: true } },
-  physics: { gravity: { x: 0, y: 980 } },
-  audio: true,
-  debug: true,
-  input: {
+async function main() {
+  const engine = new Engine({ debug: true });
+
+  engine.use(new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0f172a,
+    pixi: { roundPixels: true },
+    container: getContainer(),
+  }));
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+  engine.use(new AudioPlugin());
+  engine.use(new InputPlugin({
     actions: {
       left: ["KeyA", "ArrowLeft"],
       right: ["KeyD", "ArrowRight"],
@@ -1139,6 +1148,11 @@ await createGame({
       shoot: ["KeyJ", "KeyK"],
     },
     preventDefaultKeys: ["Space"],
-  },
-  scene: new ShooterScene(),
-});
+  }));
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new ShooterScene());
+}
+
+main().catch(console.error);
