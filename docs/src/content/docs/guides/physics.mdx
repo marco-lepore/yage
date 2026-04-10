@@ -18,16 +18,6 @@ engine.use(new PhysicsPlugin({
 }));
 ```
 
-Or with `createGame`:
-
-```typescript
-const game = await createGame({
-  physics: true,                // uses defaults
-  // or:
-  physics: { gravity: { x: 0, y: 0 } },
-});
-```
-
 ## Rigid Bodies
 
 `RigidBodyComponent` wraps a Rapier rigid body. Add it after `Transform`.

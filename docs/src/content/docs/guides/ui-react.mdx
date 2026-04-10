@@ -18,7 +18,9 @@ npm install @yage/ui @yage/ui-react react
 The `UIPlugin` must be registered before using React UI:
 
 ```typescript
-await createGame({ ui: true });
+import { UIPlugin } from "@yage/ui";
+
+engine.use(new UIPlugin());
 ```
 
 ## UIRoot

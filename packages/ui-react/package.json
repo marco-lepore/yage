@@ -2,11 +2,21 @@
   "name": "@yage/ui-react",
   "version": "0.1.0",
   "description": "React bindings for building game UI with JSX in YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "ui",
+    "react",
+    "jsx",
+    "react-reconciler"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/ui-react"
   },
   "homepage": "https://yage.dev",

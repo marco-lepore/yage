@@ -17,7 +17,7 @@
    - 7.6 [Blueprint System](#76-blueprint-system-yagecore)
    - 7.7 [Entity Events](#77-entity-events-yagecore)
    - 7.8 [React UI](#78-react-ui-plugin-yageui-react)
-   - 7.9 [Meta-Package](#79-meta-package-yage)
+   - ~~7.9 [Meta-Package](#79-meta-package-yage)~~ (dropped in release prep)
 8. [API Sketches](#8-api-sketches)
 9. [Design Decisions Table](#9-design-decisions-table)
 
@@ -193,18 +193,22 @@ yage/
 
 ### Dependency Graph
 
+> **UPDATED 2026-04:** The `yage` meta-package was dropped. pixi.js, rapier2d,
+> and @pixi/sound moved from peer dependencies to regular dependencies so users
+> only need to install individual `@yage/*` packages.
+
 ```
-yage (meta-package)
-├── @yage/core          (zero dependencies)
-├── @yage/renderer      → @yage/core, pixi.js
-├── @yage/physics       → @yage/core, @dimforge/rapier2d
-├── @yage/input         → @yage/core
-├── @yage/audio         → @yage/core, @pixi/sound
-├── @yage/particles     → @yage/core, @yage/renderer
-├── @yage/tilemap       → @yage/core, @yage/renderer, @yage/physics (optional peer)
-├── @yage/ui            → @yage/core, @yage/renderer
-├── @yage/ui-react      → @yage/core, @yage/renderer, @yage/ui, react, react-dom
-└── @yage/debug         → @yage/core, @yage/renderer, @yage/physics (optional peer)
+@yage/core          (zero dependencies)
+@yage/renderer      → @yage/core, pixi.js
+@yage/physics       → @yage/core, @yage/debug, @dimforge/rapier2d
+@yage/input         → @yage/core, @yage/debug
+@yage/audio         → @yage/core, @pixi/sound
+@yage/particles     → @yage/core, @yage/renderer, pixi.js
+@yage/tilemap       → @yage/core, @yage/renderer, pixi.js, @pixi/tilemap
+@yage/ui            → @yage/core, @yage/renderer, pixi.js, @pixi/ui, yoga-layout
+@yage/ui-react      → @yage/core, @yage/ui, pixi.js, react-reconciler (react as peer dep)
+@yage/debug         → @yage/core, @yage/renderer, pixi.js
+@yage/save          → @yage/core
 ```
 
 ### Build Tooling
@@ -2398,98 +2402,42 @@ class GameScene extends Scene {
 }
 ```
 
-### 7.9 Meta-Package (`yage`)
+### 7.9 ~~Meta-Package (`yage`)~~ — Dropped
 
-The `yage` package re-exports all official packages and provides an ergonomic factory API.
-
-```typescript
-export interface CreateGameOptions {
-  width?: number; // Default: 800
-  height?: number; // Default: 600
-  virtualWidth?: number; // Default: width
-  virtualHeight?: number; // Default: height
-  backgroundColor?: number;
-  container?: HTMLElement | string;
-  canvas?: HTMLCanvasElement;
-  renderer?: Partial<RendererConfig>;
-
-  physics?: boolean | PhysicsConfig;
-  input?: boolean | InputConfig;
-  audio?: boolean | AudioConfig;
-  particles?: boolean;
-  tilemap?: boolean;
-  ui?: boolean;
-  debug?: boolean | DebugConfig;
-
-  plugins?: Plugin[];
-  engine?: Omit<EngineConfig, "debug">;
-  scene?: Scene | InlineSceneSetup;
-}
-
-/** Pre-resolved services passed to inline scene callbacks. */
-export interface SceneServices {
-  camera: Camera; // always present (renderer always registered)
-  assets: AssetManager; // always present (core)
-  input?: InputManager; // only if input plugin registered
-  physics?: PhysicsWorld; // only if physics plugin registered
-  audio?: AudioManager; // only if audio plugin registered
-}
-
-/** Callback for inline scene definition via defineInlineScene(). */
-export type InlineSceneSetup = (scene: Scene, services: SceneServices) => void;
-
-export interface GameHandle {
-  /** The underlying engine instance. Use engine.context to resolve services inside scenes. */
-  engine: Engine;
-  /** Push a scene (or inline setup) onto the scene stack. */
-  pushScene(scene: Scene | InlineSceneSetup): Promise<void>;
-  /** Destroy the engine and clean up all resources. */
-  destroy(): void;
-}
-
-/** One-call game bootstrap. */
-export async function createGame(
-  options?: CreateGameOptions,
-): Promise<GameHandle>;
-
-/** Create an inline scene without subclassing. */
-export function defineInlineScene(name: string, setup: InlineSceneSetup): Scene;
-```
-
-#### Scene Approaches
-
-|                      | Class-based (`extends Scene`)                               | Inline (`defineInlineScene`)          |
-| -------------------- | ----------------------------------------------------------- | ------------------------------------- |
-| **Best for**         | Structured games, complex scenes                            | Quick prototypes, simple scenes       |
-| **Service access**   | `this.service(Key)` — lazy proxy, field-declarable          | Destructure from `services` arg       |
-| **Lifecycle hooks**  | Full: `onEnter`, `onExit`, `onPause`, `onResume`, `preload` | `onEnter` only (the callback)         |
-| **Asset preloading** | `preload` array on class                                    | Must call `assets.loadAll()` manually |
-| **Reusability**      | Importable class, testable in isolation                     | Tied to definition site               |
-
-**How it maps to manual setup**:
-
-```typescript
-// With createGame (convenience)
-const game = await createGame({
-  width: 800,
-  height: 600,
-  physics: { gravity: { x: 0, y: 980 } },
-  input: { actions: { jump: ["Space"] } },
-  debug: true,
-  scene: defineInlineScene("game", (scene, { camera, input }) => {
-    camera.follow(scene.spawn("player"));
-  }),
-});
-
-// Equivalent manual setup
-const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 800, height: 600 }));
-engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
-engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
-engine.use(new DebugPlugin());
-await engine.start();
-engine.scenes.push(new GameScene());
-```
+> **UPDATED 2026-04:** The `yage` meta-package was dropped during release prep.
+>
+> **Why**: The `export *` barrel created name collisions (e.g., `VERSION` was
+> exported by core, physics, audio, and save). The meta package killed
+> tree-shaking. Peer dependency propagation was awkward. And installing `yage`
+> forced users to take every plugin, even ones they didn't need.
+>
+> **What replaces it**: Users install individual `@yage/*` packages and set up
+> the engine manually:
+>
+> ```typescript
+> import { Engine, Scene } from "@yage/core";
+> import { RendererPlugin } from "@yage/renderer";
+> import { PhysicsPlugin } from "@yage/physics";
+> import { InputPlugin } from "@yage/input";
+> import { DebugPlugin } from "@yage/debug";
+>
+> class GameScene extends Scene {
+>   readonly name = "game";
+>   onEnter() { /* ... */ }
+> }
+>
+> const engine = new Engine({ debug: true });
+> engine.use(new RendererPlugin({ width: 800, height: 600 }));
+> engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+> engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
+> engine.use(new DebugPlugin());
+> await engine.start();
+> engine.scenes.push(new GameScene());
+> ```
+>
+> `createGame()`, `defineInlineScene()`, `GameHandle`, `SceneServices`, and
+> `CreateGameOptions` no longer exist. Inline scene setup is done by subclassing
+> `Scene` and overriding `onEnter()`.
 
 ---
 

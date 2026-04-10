@@ -2,11 +2,21 @@
   "name": "@yage/audio",
   "version": "0.1.0",
   "description": "Sound loading, playback, and channel mixing for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "audio",
+    "sound",
+    "music",
+    "sfx"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/audio"
   },
   "homepage": "https://yage.dev",
@@ -26,7 +36,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

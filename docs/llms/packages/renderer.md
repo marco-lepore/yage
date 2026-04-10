@@ -19,7 +19,7 @@ engine.use(new RendererPlugin({
 }));
 ```
 
-Always registered by `createGame()`. Registers `CameraKey`, `RenderLayerManagerKey`, `RendererKey`, `StageKey`.
+Registers `CameraKey`, `RenderLayerManagerKey`, `RendererKey`, `StageKey` in `EngineContext`.
 
 ## Components
 

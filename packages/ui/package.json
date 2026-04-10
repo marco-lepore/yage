@@ -2,11 +2,22 @@
   "name": "@yage/ui",
   "version": "0.1.0",
   "description": "In-game UI layout and widgets for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "ui",
+    "gui",
+    "layout",
+    "flexbox",
+    "yoga"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/ui"
   },
   "homepage": "https://yage.dev",

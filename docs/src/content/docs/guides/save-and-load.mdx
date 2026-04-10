@@ -16,12 +16,6 @@ engine.use(new SavePlugin({
 }));
 ```
 
-Or with `createGame`:
-
-```typescript
-await createGame({ save: true });
-```
-
 ## The `@serializable` Decorator
 
 Mark classes with `@serializable` so the save system can snapshot and restore

@@ -9,8 +9,6 @@ import { TilemapPlugin } from "@yage/tilemap";
 engine.use(new TilemapPlugin());
 ```
 
-Or `createGame({ tilemap: true })`.
-
 ## Loading Maps
 
 ```ts

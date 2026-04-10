@@ -15,8 +15,6 @@ engine.use(new AudioPlugin({
 }));
 ```
 
-Or `createGame({ audio: true })`.
-
 ## Asset Factory
 
 ```ts

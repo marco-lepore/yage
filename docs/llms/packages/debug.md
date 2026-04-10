@@ -18,8 +18,6 @@ engine.use(new DebugPlugin({
 }));
 ```
 
-Or `createGame({ debug: true })`.
-
 ## Built-In Debug Views
 
 - Physics collider outlines (green=dynamic, gray=static, blue=kinematic, yellow=sensor)

@@ -2,11 +2,21 @@
   "name": "@yage/save",
   "version": "0.1.0",
   "description": "Save and load game state for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "save",
+    "load",
+    "serialization",
+    "snapshot"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/save"
   },
   "homepage": "https://yage.dev",
@@ -26,7 +36,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",

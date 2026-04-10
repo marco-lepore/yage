@@ -13,8 +13,6 @@ engine.use(new SavePlugin({
 }));
 ```
 
-Or `createGame({ save: true })`.
-
 ## @serializable
 
 Mark classes for save/load. Works on Entity, Scene, and Component subclasses.

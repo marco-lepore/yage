@@ -65,7 +65,7 @@ Phase 7: Debug Plugin                                  (all above)
    - `packages/tilemap`
    - `packages/ui`
    - `packages/debug`
-   - `packages/yage` (meta-package)
+   - ~~`packages/yage` (meta-package)~~ — **Dropped in release prep.** Users import individual `@yage/*` packages.
 
 3. **Build configuration**
    - `tsup.config.ts` per package (ESM + CJS + .d.ts)
@@ -485,39 +485,44 @@ The suite uses a debug-only manual clock (`window.__yage__.clock`) for determini
 
 ---
 
-## Phase 9 -- Polish & Release 🟡 Partial
+## Phase 9 -- Polish & Release 🟡 In Progress
 
 **Depends on**: Phase 8
-**Goal**: Release-ready meta-package, documentation, and npm publish.
+**Goal**: Release-ready documentation and npm publish.
+
+> **UPDATED 2026-04:** The `yage` meta-package was dropped during release prep.
+> The meta-package approach created name collisions in the barrel re-exports,
+> killed tree-shaking, and made peer dependency management awkward. Users now
+> install individual `@yage/*` packages directly and wire up the engine
+> manually via `engine.use(new FooPlugin())`.
 
 ### Deliverables
 
-1. **Meta-package** (`yage`) ✅ Complete
-   - Re-exports all packages for convenience
-   - `createGame()` ergonomic factory with `GameHandle`
-   - `defineInlineScene()` for inline scene creation with pre-resolved `SceneServices`
-   - Single `npm install yage` gets everything
+1. ~~**Meta-package** (`yage`)~~ **Dropped**
+   - Users import from individual `@yage/*` packages.
+   - Engine setup is manual: `new Engine()` + `engine.use(...)` + `engine.scenes.push(...)`.
 
-2. **API documentation** ❌ Not started
+2. **API documentation** ✅ Complete
    - TypeDoc generated from TSDoc comments
-   - Hosted on project website or GitHub Pages
+   - Hosted on project website
 
-3. **README.md** ❌ Not started
-   - Quick-start guide
-   - Feature list with links to docs
-   - Example code
+3. **README.md** ✅ Complete (per-package)
+   - Every `@yage/*` package has a README with install + usage
+   - Quick-start guide in docs site
 
-4. **npm publish** ❌ Not started
-   - All packages published to npm under `@yage/*` scope
-   - Semantic versioning from 2.0.0
+4. **Changesets + npm publish** 🟡 In progress
+   - Changesets configured with fixed versioning (all packages share a version)
+   - GitHub Actions release workflow
+   - Starting version: `0.1.0`
+   - Peer dependencies (pixi.js, rapier2d, @pixi/sound) moved to regular dependencies
 
 ### Gate Criteria
 
-- [x] `npm install yage` works and exposes all public APIs
-- [ ] TypeDoc generates clean documentation for all packages
-- [ ] README quick-start example runs without modification
-- [ ] All CI checks pass on the release commit
-- [ ] Packages published to npm (or ready to publish)
+- [x] Individual `@yage/*` packages work when imported directly
+- [x] TypeDoc generates clean documentation for all packages
+- [x] Per-package READMEs with quick-start examples
+- [x] All CI checks pass on the release commit
+- [ ] Packages published to npm
 
 ---
 

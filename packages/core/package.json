@@ -1,12 +1,22 @@
 {
   "name": "@yage/core",
   "version": "0.1.0",
-  "description": "ECS, math, events, and scheduling — the foundation of the YAGE 2D game engine",
+  "description": "ECS, math, events, and scheduling for the YAGE 2D game engine",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "game",
+    "2d",
+    "typescript",
+    "ecs",
+    "entity-component-system",
+    "game-loop"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/core"
   },
   "homepage": "https://yage.dev",

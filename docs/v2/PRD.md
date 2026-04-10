@@ -70,7 +70,7 @@
 | **Blueprint** | Lightweight alternative to Prefab — `defineBlueprint(name, buildFn)` for parametric entity factories with post-construction logic |
 | **Entity Events** | `EventToken<T>` / `defineEvent()` for typed per-entity pub/sub via `entity.on()` / `entity.emit()`. Complements the global `EventBus` with entity-scoped events |
 | **React UI** | `@yage/ui-react` — custom React reconciler for game UI over Yoga + PixiJS. Hooks: `useEngine()`, `useScene()`, `useQuery()`, `useStore()`. Reactive `Store` via `createStore()` |
-| **createGame()** | Ergonomic top-level factory in `yage` meta-package — configures engine + plugins in one call, returns `GameHandle` |
+| ~~**createGame()**~~ | ~~Ergonomic top-level factory in `yage` meta-package~~ — **Dropped in release prep.** Users register plugins directly via `engine.use(new FooPlugin())` and push scenes via `engine.scenes.push(new MyScene())`. |
 | **Raycasting** | `PhysicsWorld.raycast(origin, direction, maxDistance)` → `RaycastHit | null` for line-of-sight, targeting, ground checks |
 
 ### P1 -- Fast-Follow (v2.1-v2.3)

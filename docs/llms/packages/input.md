@@ -22,8 +22,6 @@ engine.use(new InputPlugin({
 }));
 ```
 
-Or via `createGame({ input: true })` for defaults, or `createGame({ input: { actions: {...} } })`.
-
 Registers `InputManagerKey` in `EngineContext`.
 
 ## InputManager Queries

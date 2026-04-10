@@ -2,11 +2,22 @@
   "name": "@yage/renderer",
   "version": "0.1.0",
   "description": "PixiJS v8 rendering pipeline, sprites, graphics, and cameras for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "rendering",
+    "pixijs",
+    "pixi",
+    "sprite",
+    "graphics"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/renderer"
   },
   "homepage": "https://yage.dev",

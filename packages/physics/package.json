@@ -1,12 +1,24 @@
 {
   "name": "@yage/physics",
   "version": "0.1.0",
-  "description": "Rapier 2D physics integration — rigid bodies, colliders, and joints for YAGE",
+  "description": "Rapier 2D physics integration (rigid bodies, colliders, joints) for the YAGE 2D game engine",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "physics",
+    "rapier",
+    "rapier2d",
+    "rigid-body",
+    "collider",
+    "wasm"
+  ],
   "license": "MIT",
   "author": "Marco Lepore",
   "repository": {
     "type": "git",
-    "url": "https://github.com/marco-lepore/yage.git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
     "directory": "packages/physics"
   },
   "homepage": "https://yage.dev",
@@ -36,7 +48,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
