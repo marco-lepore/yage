@@ -181,6 +181,9 @@ const { mocks } = vi.hoisted(() => {
       this._activeEvents = e;
       return this;
     }
+    setActiveCollisionTypes() {
+      return this;
+    }
   }
 
   type DrainCallback = (h1: number, h2: number, started: boolean) => void;
@@ -304,6 +307,7 @@ vi.mock("@dimforge/rapier2d", () => ({
     EventQueue: mocks.MockEventQueue,
     Ray: mocks.MockRay,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
 

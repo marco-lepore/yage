@@ -185,8 +185,12 @@ export class PhysicsWorld {
       );
     }
 
-    // Enable collision events so we can dispatch them
+    // Enable collision events so we can dispatch them. ActiveCollisionTypes.ALL
+    // is required because Rapier's DEFAULT mask excludes KINEMATIC_KINEMATIC and
+    // KINEMATIC_FIXED, which would silently drop trigger events between two
+    // kinematic bodies.
     desc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    desc.setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.ALL);
 
     const collider = this.world.createCollider(desc, body);
     this.colliderMap.set(collider.handle, entity);

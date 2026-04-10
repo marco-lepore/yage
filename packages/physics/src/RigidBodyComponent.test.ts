@@ -159,6 +159,9 @@ const { mocks } = vi.hoisted(() => {
     setActiveEvents() {
       return this;
     }
+    setActiveCollisionTypes() {
+      return this;
+    }
   }
 
   class MockEventQueue {
@@ -233,6 +236,7 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1, CONTACT_FORCE_EVENTS: 2 },
+    ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
 

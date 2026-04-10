@@ -20,6 +20,7 @@ const { mocks } = vi.hoisted(() => {
   class MockCollider {
     handle: number;
     _sensor = false;
+    _activeCollisionTypes = 0;
     constructor() { this.handle = nextColliderHandle++; }
     isSensor() { return this._sensor; }
     setSensor(s: boolean) { this._sensor = s; }
@@ -64,6 +65,7 @@ const { mocks } = vi.hoisted(() => {
 
   class MockColliderDesc {
     _sensor = false;
+    _activeCollisionTypes = 0;
     static cuboid() { return new MockColliderDesc(); }
     static ball() { return new MockColliderDesc(); }
     static capsule() { return new MockColliderDesc(); }
@@ -75,6 +77,7 @@ const { mocks } = vi.hoisted(() => {
     setSensor(s: boolean) { this._sensor = s; return this; }
     setCollisionGroups() { return this; }
     setActiveEvents() { return this; }
+    setActiveCollisionTypes(t: number) { this._activeCollisionTypes = t; return this; }
   }
 
   type DrainCallback = (h1: number, h2: number, started: boolean) => void;
@@ -108,6 +111,7 @@ const { mocks } = vi.hoisted(() => {
     createCollider(desc: MockColliderDesc, parent: MockRigidBody): MockCollider {
       const collider = new MockCollider();
       if (desc._sensor) collider._sensor = true;
+      collider._activeCollisionTypes = desc._activeCollisionTypes;
       parent._colliders.push(collider);
       this._colliders.set(collider.handle, collider);
       return collider;
@@ -138,6 +142,7 @@ vi.mock("@dimforge/rapier2d", () => ({
     ColliderDesc: mocks.MockColliderDesc,
     EventQueue: mocks.MockEventQueue,
     ActiveEvents: { COLLISION_EVENTS: 1 },
+    ActiveCollisionTypes: { ALL: 60943 },
   },
 }));
 
@@ -248,6 +253,50 @@ describe("Integration Tests", () => {
 
     const eq = (physicsWorld as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
     eq._events.push([triggerCol._colliderHandle, playerCol._colliderHandle, true]);
+
+    system.update(16.67);
+
+    expect(triggers).toHaveLength(1);
+    const trig = triggers[0] as TriggerEvent;
+    expect(trig.other).toBe(player);
+    expect(trig.entered).toBe(true);
+  });
+
+  it("fires trigger events between two kinematic bodies when sensor is set", () => {
+    // Regression guard: Rapier's DEFAULT ActiveCollisionTypes mask excludes
+    // KINEMATIC_KINEMATIC pairs, so without setActiveCollisionTypes(ALL) these
+    // trigger events silently drop. See dimforge/rapier#594.
+    const { scene, physicsWorld, context } = createPhysicsTestContext();
+    const system = new PhysicsSystem();
+    system._setContext(context);
+
+    const player = spawnEntityInScene(scene, "player");
+    player.add(new Transform());
+    player.add(new RigidBodyComponent({ type: "kinematic" }));
+    const playerCol = player.add(new ColliderComponent({
+      shape: { type: "box", width: 16, height: 16 },
+    }));
+
+    const asteroid = spawnEntityInScene(scene, "asteroid");
+    asteroid.add(new Transform());
+    asteroid.add(new RigidBodyComponent({ type: "kinematic" }));
+    const asteroidCol = asteroid.add(new ColliderComponent({
+      shape: { type: "box", width: 32, height: 32 },
+      sensor: true,
+    }));
+
+    // All colliders must be created with ActiveCollisionTypes.ALL so the
+    // kinematic-kinematic pair generates events.
+    const playerBodyHandle = (player.get(RigidBodyComponent))._bodyHandle;
+    const playerMockBody = physicsWorld.getBody(playerBodyHandle) as unknown as InstanceType<typeof mocks.MockRigidBody>;
+    const playerMockCol = playerMockBody._colliders[0] as unknown as InstanceType<typeof mocks.MockCollider>;
+    expect(playerMockCol._activeCollisionTypes).toBe(60943); // ActiveCollisionTypes.ALL
+
+    const triggers: TriggerEvent[] = [];
+    asteroidCol.onTrigger((e) => triggers.push(e));
+
+    const eq = (physicsWorld as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+    eq._events.push([asteroidCol._colliderHandle, playerCol._colliderHandle, true]);
 
     system.update(16.67);
 
