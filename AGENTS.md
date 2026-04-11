@@ -6,20 +6,19 @@ Universal guidelines for AI coding agents working on the YAGE codebase.
 
 YAGE is a 2D game engine built as a Turborepo monorepo.
 
-| Package | Description |
-|---|---|
-| `@yage/core` | ECS, DI, game loop, scenes, events (zero runtime deps) |
-| `@yage/renderer` | PixiJS v8 rendering, sprites, camera |
-| `@yage/physics` | Rapier2D physics (pixel↔meter conversion is internal) |
-| `@yage/input` | Keyboard/mouse/gamepad input + action maps |
-| `@yage/audio` | Channel-based audio via @pixi/sound |
-| `@yage/particles` | Particle emitters with pooling and presets |
-| `@yage/tilemap` | Tiled map loading and rendering |
-| `@yage/ui` | Yoga flexbox-based UI components |
-| `@yage/ui-react` | React reconciler over the UI layer |
-| `@yage/debug` | Debug overlay, stats, world/HUD drawing |
-| `@yage/save` | Save/load system with slot-based snapshots |
-| `yage` | Meta-package: re-exports all + `createGame()` factory |
+| Package           | Description                                            |
+| ----------------- | ------------------------------------------------------ |
+| `@yage/core`      | ECS, DI, game loop, scenes, events (zero runtime deps) |
+| `@yage/renderer`  | PixiJS v8 rendering, sprites, camera                   |
+| `@yage/physics`   | Rapier2D physics (pixel↔meter conversion is internal)  |
+| `@yage/input`     | Keyboard/mouse/gamepad input + action maps             |
+| `@yage/audio`     | Channel-based audio via @pixi/sound                    |
+| `@yage/particles` | Particle emitters with pooling and presets             |
+| `@yage/tilemap`   | Tiled map loading and rendering                        |
+| `@yage/ui`        | Yoga flexbox-based UI components                       |
+| `@yage/ui-react`  | React reconciler over the UI layer                     |
+| `@yage/debug`     | Debug overlay, stats, world/HUD drawing                |
+| `@yage/save`      | Save/load system with slot-based snapshots             |
 
 ## Design Philosophy
 
@@ -59,6 +58,23 @@ Enforced by tooling — match these conventions exactly:
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
 - **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yage/core/test-utils`
 - **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots
+
+## Documentation
+
+YAGE maintains two parallel documentation surfaces. When you ship a new public API, add a config option, or discover a gotcha worth warning about, make a reasonable effort to cover it in both where it makes sense:
+
+- **LLM docs** — `docs/llms/` (source). Terse, signature-forward reference material optimised for context windows. **Never edit `docs/public/llms/` directly** — it's regenerated from `docs/llms/` by `docs/scripts/copy-llms.mjs` on every docs build and edits to the generated copy are silently overwritten.
+- **Human docs (yage.dev)** — `docs/src/content/docs/` Astro + Starlight `.mdx` files. More narrative; can embed images, diagrams, and inline playable examples.
+
+The two do NOT need 1:1 parity — human docs can be longer and more visual, LLM docs can skip prose that doesn't help an agent. But *something* should land in each surface when a feature becomes user-visible. A missing LLM entry makes agents write broken code against a feature that exists; a missing human entry makes humans fail to discover one.
+
+Rebuild both after changes:
+
+```bash
+npx turbo run build --filter=@yage/docs
+```
+
+This runs `copy-llms.mjs` (regenerates `public/llms/`) then builds the Astro site.
 
 ## Key Commands
 

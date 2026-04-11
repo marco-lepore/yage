@@ -247,7 +247,6 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `package.json`             | Workspace root, scripts           |
 | `turbo.json`               | Turborepo task pipeline           |
 | `tsconfig.base.json`       | Shared TypeScript config          |
-| `vitest.workspace.ts`      | Vitest workspace for all packages |
 | `playwright.config.ts`     | E2E test config                   |
 | `.github/workflows/ci.yml` | CI pipeline                       |
 

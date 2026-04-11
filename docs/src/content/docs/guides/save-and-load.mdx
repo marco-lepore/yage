@@ -209,6 +209,78 @@ const data = saveService.exportSnapshot("slot1");  // GameSnapshot | null
 await saveService.importSnapshot("slot1", data);
 ```
 
+### Snapshot Schema
+
+`exportSnapshot()` returns a `GameSnapshot` — a plain object with a stable,
+documented shape. You normally never look inside it; `importSnapshot()` does
+the restoration for you. But understanding the structure is useful when
+writing custom migrations, building a save-file preview UI, or debugging
+stale save data.
+
+```typescript
+interface GameSnapshot {
+  version: number;              // schema version — bump when formats change
+  timestamp: number;            // Date.now() at save time
+  scenes: SceneSnapshotEntry[]; // one entry per scene in the stack
+}
+
+interface SceneSnapshotEntry {
+  type: string;                 // class name from @serializable
+  paused: boolean;              // was the scene paused at save time
+  entities: EntitySnapshotEntry[];
+  userData?: unknown;           // result of scene.serialize()
+}
+
+interface EntitySnapshotEntry {
+  id: number;                   // save-time ID, used to rewire cross-entity refs
+  type: string;                 // class name from @serializable
+  components: ComponentSnapshot[];
+  userData?: unknown;           // result of entity.serialize()
+  parentId?: number;            // if this is a child of another entity
+  childName?: string;           // name under which parent registered this child
+}
+
+interface ComponentSnapshot {
+  type: string;                 // component class name
+  data: unknown;                // result of component.serialize()
+}
+```
+
+The `id` on `EntitySnapshotEntry` is what makes cross-entity references work.
+When you save an entity that holds a pointer to another entity (say, an AI
+that "targets" a player), the pointer is stored as the target's save-time
+`id`. On load, `afterRestore()` receives a `SnapshotResolver` whose
+`resolver.entity(oldId)` returns the freshly-restored instance, so you can
+rewire the pointer without having to care about ID collisions:
+
+```typescript
+@serializable
+class Enemy extends Entity {
+  targetId!: number;
+
+  serialize() {
+    return { targetId: this.target?.id };
+  }
+
+  afterRestore(data: { targetId: number }, resolver: SnapshotResolver) {
+    this.target = resolver.entity(data.targetId);
+  }
+}
+```
+
+One common read-only use of the schema is building a save-slot preview UI —
+read `exportSnapshot()`, count `scenes[0].entities`, inspect `timestamp`,
+and render a summary without having to actually restore the save:
+
+```typescript
+const preview = saveService.exportSnapshot("slot1");
+if (preview) {
+  const age = new Date(preview.timestamp).toLocaleString();
+  const count = preview.scenes[0]?.entities.length ?? 0;
+  renderSlot({ age, entityCount: count });
+}
+```
+
 ## Persistent User Data
 
 Store data that persists across saves — settings, unlocks, best scores:
@@ -227,6 +299,47 @@ saveService.deleteData("bestScore");
 
 User data is independent of game snapshots. It survives even if snapshots are
 deleted.
+
+## Typed Slots
+
+By default, `saveService.saveData("bestScore", ...)` accepts any string key
+and any value — the service is typed as `SaveService<UntypedSlots>`, which is
+effectively `Record<string, any>`. That's fine for prototyping, but it gives
+you no autocomplete on slot names and no compile-time check that you're
+storing the right shape under the right key.
+
+`SaveService` is generic over a slot-key map. Declare an interface describing
+the shape of every persistent slot your game uses, then cast the resolved
+service once:
+
+```typescript
+import { SaveServiceKey, type SaveService } from "@yage/save";
+
+interface MySlots {
+  bestScore: { value: number };
+  playerName: string;
+  settings: { volume: number; muted: boolean };
+}
+
+const save = this.use(SaveServiceKey) as SaveService<MySlots>;
+
+save.saveData("bestScore", { value: 9999 });    // ✓ typed
+save.saveData("playerName", "Ada");              // ✓ typed
+save.saveData("settings", { volume: 0.5, muted: false });
+
+const name = save.loadData("playerName");       // string | null
+// save.saveData("bstScore", ...)                // ✗ typo → compile error
+// save.saveData("bestScore", 9999)              // ✗ wrong shape → compile error
+```
+
+You get autocomplete on slot names and compile-time errors when you pass a
+value of the wrong shape, with no runtime cost — the cast is purely a type
+hint.
+
+This only types the persistent-user-data slots (`saveData`/`loadData`). The
+snapshot API (`saveSnapshot`/`loadSnapshot`) is keyed by slot name as a
+free-form string and serializes whatever scenes are currently on the stack,
+so it doesn't need to know your slot shape.
 
 ## Quicksave Pattern
 

@@ -106,6 +106,24 @@ const world = camera.screenToWorld(mouseX, mouseY);
 const screen = camera.worldToScreen(entity.x, entity.y);
 ```
 
+### Coordinate Convention
+
+Camera position `(0, 0)` places the **world origin at the center of the viewport**, not the top-left. Entities rendered at `(0, 0)` appear centered. This is the standard convention for camera-driven 2D games (scrolling shooters, platformers).
+
+For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner:
+
+```ts
+class GameScene extends Scene {
+  readonly name = "game";
+  private camera = this.service(CameraKey);
+
+  onEnter() {
+    // Top-left-origin: world (0,0) maps to screen (0,0)
+    this.camera.position = new Vec2(400, 300); // viewport is 800×600
+  }
+}
+```
+
 ## Render Layers
 
 Named draw-order layers managed by `RenderLayerManager`:

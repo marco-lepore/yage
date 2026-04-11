@@ -13,6 +13,22 @@ engine.use(new PhysicsPlugin({
 }));
 ```
 
+## Bundler Setup
+
+`@yage/physics` depends on `@dimforge/rapier2d`, which ships a `.wasm` file. With Vite, add `vite-plugin-wasm` to load it:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
+
+export default defineConfig({
+  plugins: [wasm()],
+});
+```
+
+That's all that's required for `@yage/physics`. See `examples/vite.config.ts` for the canonical reference config. If you also use `@yage/save`, check its Bundler Setup section for two additional oxc/minify options.
+
 ## Component Ordering
 
 `Transform` → `RigidBodyComponent` → `ColliderComponent` (required order).

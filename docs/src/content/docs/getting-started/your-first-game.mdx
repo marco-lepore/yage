@@ -133,8 +133,14 @@ class HelloWorldScene extends Scene {
 
 `HelloWorldScene` extends `Scene` and implements `onEnter()`, which runs when
 the scene becomes active. `this.context.resolve(CameraKey)` retrieves the
-camera service via dependency injection. The camera is centred at `(400, 300)`
-so the triangle appears in the middle of the default 800 x 600 viewport.
+camera service via dependency injection.
+
+Setting `camera.position = new Vec2(400, 300)` shifts the world origin to the
+top-left corner of the default 800 × 600 viewport. The triangle is then spawned
+at world position `(400, 300)` and lands in the middle of the screen. By
+default the camera is at `(0, 0)` which puts world origin at the *centre* of
+the viewport — see [Camera → Coordinate Convention](/guides/rendering/#coordinate-convention)
+in the Rendering guide for the full explanation.
 
 ### 5. Spawning an Entity
 

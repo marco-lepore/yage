@@ -193,3 +193,95 @@ it("should not crash when destroying an already-destroyed entity", () => {
 
 Avoid `Math.random()` in test code. If the system under test uses randomness,
 seed it or mock the random source so results are reproducible.
+
+## Runtime Inspection
+
+The utilities above give you deterministic, headless verification — you tick
+the engine by exact frame counts and assert against the resulting state. Some
+investigations don't fit that shape, though: poking at a running dev build
+from the browser console, verifying that a full scene wires up correctly in
+the renderer, or letting an AI coding agent confirm the shape of a scene it
+just generated. For those, reach for the **Inspector**.
+
+The Inspector is a read-only introspection API that auto-attaches to
+`window.__yage__` whenever the engine is constructed with `debug: true`. It
+sees the same ECS state your tests see, but against a live running game.
+
+```typescript
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
+await engine.start();
+```
+
+Once the engine is running, query it from the browser console (or from any
+code that has access to `window`):
+
+```typescript
+// Full engine state — frame count, scene stack, entity counts, errors
+window.__yage__.inspector.snapshot();
+
+// All entities in the active scene, as plain snapshot objects
+const all = window.__yage__.inspector.getEntities();
+
+// Client-side filter: every enemy in the scene
+const enemies = all.filter((e) => e.tags.includes("enemy"));
+
+// Look up a specific entity by name
+const player = window.__yage__.inspector.getEntityByName("player");
+
+// Inspect a single component's state
+const spriteState = window.__yage__.inspector.getComponentData(
+  "player",
+  "SpriteComponent",
+);
+```
+
+### API Reference
+
+| Method | Purpose |
+|---|---|
+| `snapshot()` | Full engine snapshot — frame, scene stack, entity/system counts, errors |
+| `getSceneStack()` | All scenes with their pause state and entity counts |
+| `getEntities()` | Every entity in the active scene — `id`, `name`, `tags`, `components`, `position` |
+| `getEntityByName(name)` | First entity whose name matches |
+| `getEntityPosition(name)` | Shortcut: `Transform` position for a named entity |
+| `hasComponent(entity, class)` | Boolean: does the named entity have this component class? |
+| `getComponentData(entity, class)` | Plain-object snapshot of a component's state |
+| `getSystems()` | Every registered system, with phase/priority/enabled flags |
+| `getErrors()` | Systems or components disabled by the error boundary |
+
+`getEntities()` returns plain `EntitySnapshot` objects carrying class-name
+strings in `components` (not class references), so filtering by component
+type is a client-side `.filter()` on `e.components.includes("Health")`. The
+same applies to `tags` — filter client-side rather than expecting a built-in
+`getEntitiesByTag`.
+
+### The Agent Feedback Loop
+
+The Inspector is especially useful when an AI coding agent is authoring
+gameplay against YAGE. The two approaches are complementary, not redundant:
+
+- **Headless tests** (`createTestEngine` + `advanceFrames`) give deterministic
+  correctness guarantees — ideal for unit-testing components or verifying
+  that ten frames of simulation produce a specific outcome.
+- **The Inspector** gives a live readout of a running game — ideal for
+  verifying that a brand-new scene actually wires up its entities, cameras,
+  and layers the way the agent intended, without having to read the canvas.
+
+A typical workflow is: generate the code → run it in the dev server with
+`debug: true` → use the Inspector to confirm the expected entities exist and
+have the expected components → only then write a targeted test against the
+specific behaviour you care about. This tight loop catches the
+"I misunderstood what `spawn()` needs" class of bugs in seconds instead of
+minutes.
+
+### Known Limitations
+
+- **Names are not unique keys.** If two entities share a name,
+  `getEntityByName` returns the first match it encounters. For robust lookups
+  either use unique names or iterate `getEntities()` and filter by `id`.
+- **Read-only.** The Inspector cannot mutate entity state, trigger events, or
+  advance frames. For those, use the test utilities above.
+- **`debug: true` only.** The Inspector is a development tool — production
+  builds should construct `Engine` without `debug: true` to avoid exposing
+  `window.__yage__`.

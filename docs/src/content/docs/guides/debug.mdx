@@ -159,3 +159,141 @@ or frame-specific logic.
 ```typescript
 new DebugPlugin({ manualClock: true, stepKey: "Period" })
 ```
+
+## Logging
+
+The `Logger` class is a category-tagged, ring-buffered logger built into the
+engine. Unlike the debug overlays above, it lives in **`@yage/core`**, not
+`@yage/debug` — you don't need the `DebugPlugin` installed to use it. Every
+`Engine` has a `Logger` attached at construction time, and the game loop
+auto-updates the logger's frame counter so every log entry records the frame
+it was emitted on.
+
+Access it as `engine.logger`, or through DI via `LoggerKey`:
+
+```typescript
+import { Logger, LogLevel, LoggerKey } from "@yage/core";
+
+// Direct access on the engine
+engine.logger.info("physics", "Shape spawned", { x: 100, y: 200 });
+
+// From inside a System or Component
+class SpawnSystem extends System {
+  private logger!: Logger;
+
+  init(context: EngineContext) {
+    this.logger = context.resolve(LoggerKey);
+  }
+
+  update(dt: number) {
+    if (wave.complete) {
+      this.logger.warn("gameplay", "Wave ended with no kills");
+    }
+  }
+}
+```
+
+### Log Methods
+
+All four methods take the same shape: `(category, message, data?)`. The
+`category` is a free-form string — use whatever taxonomy suits your game
+(`"physics"`, `"ai"`, `"input"`, `"gameplay"`). `data` is an arbitrary object
+that gets attached to the entry for later inspection.
+
+| Method | Level | Typical use |
+|---|---|---|
+| `logger.debug(cat, msg, data?)` | `Debug` | Chatter that only matters when actively diagnosing |
+| `logger.info(cat, msg, data?)` | `Info` | Normal lifecycle events (scene change, entity spawn) |
+| `logger.warn(cat, msg, data?)` | `Warn` | Recoverable problems (missing texture, late frame) |
+| `logger.error(cat, msg, data?)` | `Error` | Broken invariants — something a human should look at |
+
+### LoggerConfig
+
+Pass a `logger` option when constructing the engine to configure level,
+category filter, ring buffer size, or a custom output sink:
+
+```typescript
+import { Engine, LogLevel } from "@yage/core";
+
+const engine = new Engine({
+  logger: {
+    level: LogLevel.Info,              // drop anything below Info
+    categories: ["physics", "ai"],     // only accept these categories (empty = all)
+    bufferSize: 1000,                  // keep the last 1000 entries
+    output: (entry) => {               // optional: override console output
+      console.log(`[${entry.category}] ${entry.message}`, entry.data);
+    },
+  },
+});
+```
+
+`LogLevel` is an enum: `Debug` (0), `Info` (1), `Warn` (2), `Error` (3),
+`None` (4). Anything below the configured `level` is silently dropped at the
+log site — entries never enter the ring buffer, so there's no cost to leaving
+`debug` calls in shipping code with `level: LogLevel.Info`.
+
+### Inspecting the Ring Buffer
+
+The ring buffer is what makes the logger useful beyond `console.log`. Each
+entry is a `LogEntry` carrying `level`, `category`, `message`, optional
+`data`, a `timestamp`, and the `frame` number the game loop was on when the
+entry was emitted. You can pull recent entries at any time:
+
+```typescript
+// Grab the last N entries (default: everything in the buffer)
+const recent: LogEntry[] = engine.logger.getRecent(20);
+
+// Or pre-formatted as a string, handy for crash dumps
+const dump: string = engine.logger.formatRecentLogs(50);
+console.log(dump);
+```
+
+A common pattern is to catch an error, dump the recent logs, and ship the
+result to a crash reporter:
+
+```typescript
+window.addEventListener("error", (ev) => {
+  reportCrash({
+    error: ev.error,
+    recentLogs: engine.logger.formatRecentLogs(100),
+  });
+});
+```
+
+Because every entry carries a `frame` number, you can correlate log output
+with specific frames seen in the debug overlay or inspector — very useful for
+reproducing frame-specific bugs.
+
+### Custom Output Sinks
+
+The `output` option replaces the default `console.*` handler. Use it to ship
+logs somewhere else — an in-game debug panel, a remote telemetry service, or
+a file (in Electron/Tauri builds):
+
+```typescript
+const engine = new Engine({
+  logger: {
+    output: (entry) => {
+      // Forward warnings and errors to a remote logging backend
+      if (entry.level >= LogLevel.Warn) {
+        telemetry.send("game-log", {
+          level: LogLevel[entry.level],
+          category: entry.category,
+          message: entry.message,
+          data: entry.data,
+          frame: entry.frame,
+          timestamp: entry.timestamp,
+        });
+      }
+
+      // Also mirror to the console in dev
+      if (import.meta.env.DEV) {
+        console.log(`[${entry.category}]`, entry.message, entry.data);
+      }
+    },
+  },
+});
+```
+
+Custom sinks don't replace the ring buffer — entries are still stored
+in-memory and accessible via `getRecent()` regardless of what the sink does.
