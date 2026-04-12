@@ -1,0 +1,40 @@
+import { Engine } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+import { InputPlugin } from "@yage/input";
+import { AudioPlugin } from "@yage/audio";
+import { DebugPlugin } from "@yage/debug";
+import { GameScene } from "./scenes/GameScene.js";
+
+async function main(): Promise<void> {
+  const engine = new Engine({ debug: true });
+
+  engine.use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      backgroundColor: 0x0f172a,
+      container: document.getElementById("game")!,
+    }),
+  );
+  engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+  engine.use(
+    new InputPlugin({
+      actions: {
+        left: ["KeyA", "ArrowLeft"],
+        right: ["KeyD", "ArrowRight"],
+        jump: ["Space", "KeyW", "ArrowUp"],
+      },
+      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
+    }),
+  );
+  engine.use(new AudioPlugin());
+  engine.use(new DebugPlugin());
+
+  await engine.start();
+  engine.scenes.push(new GameScene());
+}
+
+main().catch((err) => {
+  console.error(err);
+});
