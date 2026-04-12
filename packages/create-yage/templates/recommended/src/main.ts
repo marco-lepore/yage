@@ -4,7 +4,7 @@ import { PhysicsPlugin } from "@yage/physics";
 import { InputPlugin } from "@yage/input";
 import { AudioPlugin } from "@yage/audio";
 import { DebugPlugin } from "@yage/debug";
-import { GameScene } from "./scenes/GameScene.js";
+import { GameScene } from "./scenes/GameScene";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });

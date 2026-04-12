@@ -9,15 +9,15 @@ import {
   playerIdleTex,
   playerWalkTex,
   playerJumpTex,
-} from "../../scenes/GameScene.js";
-import { PlayerController } from "./PlayerController.js";
+} from "../../scenes/GameScene";
+import { PlayerController } from "./PlayerController";
 import {
   LAYER_PLAYER,
   LAYER_PLATFORM,
   LAYER_COIN,
   LAYER_HAZARD,
-} from "../../layers.js";
-import { Hostile } from "../../traits.js";
+} from "../../layers";
+import { Hostile } from "../../traits";
 
 export type PlayerAnim = "idle" | "walk" | "jump";
 

@@ -1,6 +1,6 @@
 import { Entity, Transform, Vec2 } from "@yage/core";
 import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
-import { LAYER_PLATFORM, LAYER_PLAYER } from "../layers.js";
+import { LAYER_PLATFORM, LAYER_PLAYER } from "../layers";
 
 /** Invisible static boundary used to fence the player into the playable area. */
 export class Wall extends Entity {

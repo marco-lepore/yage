@@ -1,9 +1,9 @@
 import { Component, Entity, Transform, Vec2, trait } from "@yage/core";
 import { AnimatedSpriteComponent } from "@yage/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
-import { SLIME_FRAME_SIZE, slimeTex } from "../scenes/GameScene.js";
-import { LAYER_HAZARD, LAYER_PLAYER } from "../layers.js";
-import { Hostile } from "../traits.js";
+import { SLIME_FRAME_SIZE, slimeTex } from "../scenes/GameScene";
+import { LAYER_HAZARD, LAYER_PLAYER } from "../layers";
+import { Hostile } from "../traits";
 
 /** Ground enemy that chases the player horizontally. Shares `Hostile` trait with `Hazard`. */
 @trait(Hostile)

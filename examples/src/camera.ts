@@ -120,7 +120,7 @@ class CameraScene extends Scene {
     for (let i = 0; i < 30; i++) {
       const x = rng(100, 1900);
       const y = rng(100, 1900);
-      const color = colors[i % colors.length];
+      const color = colors[i % colors.length]!;
       const radius = rng(10, 30);
 
       const e = this.spawn(`landmark-${i}`);
@@ -157,7 +157,7 @@ class CameraScene extends Scene {
       const y = rng(200, 1800);
       const w = rng(40, 100);
       const h = rng(40, 100);
-      const color = colors[(i + 3) % colors.length];
+      const color = colors[(i + 3) % colors.length]!;
 
       const e = this.spawn(`building-${i}`);
       e.add(new Transform({ position: new Vec2(x, y) }));

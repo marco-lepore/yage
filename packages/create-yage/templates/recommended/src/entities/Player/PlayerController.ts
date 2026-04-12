@@ -8,9 +8,9 @@ import {
   RigidBodyComponent,
   type PhysicsWorld,
 } from "@yage/physics";
-import { jumpSfx } from "../../scenes/GameScene.js";
-import type { PlayerAnim } from "./index.js";
-import { LAYER_PLAYER, LAYER_PLATFORM } from "../../layers.js";
+import { jumpSfx } from "../../scenes/GameScene";
+import type { PlayerAnim } from "./index";
+import { LAYER_PLAYER, LAYER_PLATFORM } from "../../layers";
 
 const playerPlatformFilter = CollisionLayers.interactionGroups(
   LAYER_PLAYER,

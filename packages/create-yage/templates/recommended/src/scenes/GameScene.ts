@@ -7,13 +7,13 @@ import {
 } from "@yage/renderer";
 import { sound } from "@yage/audio";
 import { RigidBodyComponent } from "@yage/physics";
-import { Player } from "../entities/Player/index.js";
-import { Platform } from "../entities/Platform.js";
-import { Coin } from "../entities/Coin.js";
-import { Hazard } from "../entities/Hazard.js";
-import { Slime } from "../entities/Slime.js";
-import { Wall } from "../entities/Wall.js";
-import { Hostile } from "../traits.js";
+import { Player } from "../entities/Player/index";
+import { Platform } from "../entities/Platform";
+import { Coin } from "../entities/Coin";
+import { Hazard } from "../entities/Hazard";
+import { Slime } from "../entities/Slime";
+import { Wall } from "../entities/Wall";
+import { Hostile } from "../traits";
 
 // ---------------------------------------------------------------------------
 // Assets

@@ -1,9 +1,9 @@
 import { Entity, Transform, Vec2, trait } from "@yage/core";
 import { GraphicsComponent } from "@yage/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
-import { Oscillate } from "../components/Oscillate.js";
-import { LAYER_HAZARD, LAYER_PLAYER } from "../layers.js";
-import { Hostile } from "../traits.js";
+import { Oscillate } from "../components/Oscillate";
+import { LAYER_HAZARD, LAYER_PLAYER } from "../layers";
+import { Hostile } from "../traits";
 
 /** Sliding hazard. Marked `@trait(Hostile)` so the Player detects it on collision. */
 @trait(Hostile)

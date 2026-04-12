@@ -1,9 +1,9 @@
 import { Entity, Transform, Vec2 } from "@yage/core";
 import { AnimatedSpriteComponent } from "@yage/renderer";
 import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
-import { Oscillate } from "../components/Oscillate.js";
-import { COIN_FRAME_SIZE, coinTex } from "../scenes/GameScene.js";
-import { LAYER_COIN, LAYER_PLAYER } from "../layers.js";
+import { Oscillate } from "../components/Oscillate";
+import { COIN_FRAME_SIZE, coinTex } from "../scenes/GameScene";
+import { LAYER_COIN, LAYER_PLAYER } from "../layers";
 
 /** Collectible coin. Bobs in place and destroys itself on contact. */
 export class Coin extends Entity {

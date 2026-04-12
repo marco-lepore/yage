@@ -1,6 +1,6 @@
 import { Engine } from "@yage/core";
 import { RendererPlugin } from "@yage/renderer";
-import { MainScene } from "./scenes/MainScene.js";
+import { MainScene } from "./scenes/MainScene";
 
 async function main(): Promise<void> {
   const engine = new Engine({ debug: true });
