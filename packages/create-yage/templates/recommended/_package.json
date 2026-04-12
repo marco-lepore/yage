@@ -1,0 +1,24 @@
+{
+  "name": "my-yage-game",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@yage/audio": "^0.1.0",
+    "@yage/core": "^0.1.0",
+    "@yage/debug": "^0.1.0",
+    "@yage/input": "^0.1.0",
+    "@yage/physics": "^0.1.0",
+    "@yage/renderer": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0",
+    "vite-plugin-wasm": "^3.6.0"
+  }
+}

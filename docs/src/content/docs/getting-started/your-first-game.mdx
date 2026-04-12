@@ -1,0 +1,184 @@
+---
+title: "Your First Game"
+description: "Create a spinning triangle in under 30 lines of code"
+---
+
+import GameEmbed from '../../../components/GameEmbed.astro';
+
+In this guide you will create a spinning green triangle from scratch. The
+finished example is under 30 lines of TypeScript.
+
+<GameEmbed demo="first-game" width={800} height={600} />
+
+## The Full Code
+
+```typescript
+import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
+
+class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
+  private speed: number;
+  constructor(speed = 0.002) {
+    super();
+    this.speed = speed;
+  }
+  update(dt: number): void {
+    this.transform.rotate(this.speed * dt);
+  }
+}
+
+class HelloWorldScene extends Scene {
+  readonly name = "hello-world";
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
+    camera.position = new Vec2(400, 300);
+
+    const tri = this.spawn("triangle");
+    tri.add(new Transform({ position: new Vec2(400, 300) }));
+    tri.add(
+      new GraphicsComponent().draw((g) => {
+        g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+      }),
+    );
+    tri.add(new Spin());
+  }
+}
+
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({
+  width: 800,
+  height: 600,
+  backgroundColor: 0x0a0a0a,
+}));
+engine.use(new DebugPlugin());
+await engine.start();
+engine.scenes.push(new HelloWorldScene());
+```
+
+## Step-by-Step Walkthrough
+
+### 1. Imports
+
+```typescript
+import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
+import { DebugPlugin } from "@yage/debug";
+```
+
+- **`Component`** is the base class every custom behaviour extends.
+- **`Engine`** is the entry point that orchestrates plugins and the game loop.
+- **`Scene`** is the base class for defining game scenes.
+- **`Transform`** stores an entity's position, rotation, and scale.
+- **`Vec2`** is a 2D vector used throughout the engine.
+- **`GraphicsComponent`** draws shapes via the PixiJS v8 graphics API.
+- **`RendererPlugin`** sets up the PixiJS v8 rendering pipeline.
+- **`CameraKey`** is the DI key used to resolve the camera service.
+- **`DebugPlugin`** enables the FPS counter, entity inspector, and dev overlays.
+
+### 2. A Custom Component — `Spin`
+
+```typescript
+class Spin extends Component {
+  private readonly transform = this.sibling(Transform);
+  private speed: number;
+  constructor(speed = 0.002) {
+    super();
+    this.speed = speed;
+  }
+  update(dt: number): void {
+    this.transform.rotate(this.speed * dt);
+  }
+}
+```
+
+`Spin` grabs its sibling `Transform` component and rotates it every frame.
+The `update(dt)` method receives the delta time in milliseconds so the rotation
+speed stays consistent regardless of frame rate.
+
+### 3. Setting Up the Engine
+
+```typescript
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({
+  width: 800,
+  height: 600,
+  backgroundColor: 0x0a0a0a,
+}));
+engine.use(new DebugPlugin());
+await engine.start();
+engine.scenes.push(new HelloWorldScene());
+```
+
+- **`new Engine({ debug: true })`** creates the engine with debug mode enabled.
+- **`engine.use()`** registers plugins — here the renderer and debug overlay.
+- **`engine.start()`** initialises all plugins and starts the game loop.
+- **`engine.scenes.push()`** pushes a scene onto the scene stack.
+
+### 4. Setting Up the Scene
+
+```typescript
+class HelloWorldScene extends Scene {
+  readonly name = "hello-world";
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
+    camera.position = new Vec2(400, 300);
+    // ...
+  }
+}
+```
+
+`HelloWorldScene` extends `Scene` and implements `onEnter()`, which runs when
+the scene becomes active. `this.context.resolve(CameraKey)` retrieves the
+camera service via dependency injection.
+
+Setting `camera.position = new Vec2(400, 300)` shifts the world origin to the
+top-left corner of the default 800 × 600 viewport. The triangle is then spawned
+at world position `(400, 300)` and lands in the middle of the screen. By
+default the camera is at `(0, 0)` which puts world origin at the *centre* of
+the viewport — see [Camera → Coordinate Convention](/guides/rendering/#coordinate-convention)
+in the Rendering guide for the full explanation.
+
+### 5. Spawning an Entity
+
+```typescript
+const tri = scene.spawn("triangle");
+```
+
+`scene.spawn()` creates a new entity. The string argument is a human-readable
+name used by the debug tools.
+
+### 6. Adding Components
+
+```typescript
+tri.add(new Transform({ position: new Vec2(400, 300) }));
+tri.add(
+  new GraphicsComponent().draw((g) => {
+    g.poly([0, -45, 40, 35, -40, 35]).fill({ color: 0x22c55e });
+  }),
+);
+tri.add(new Spin());
+```
+
+Three components are attached to the entity:
+
+1. **`Transform`** — positions the triangle at the centre of the viewport.
+2. **`GraphicsComponent`** — draws a green triangle using three vertices
+   defined as a flat `[x, y, ...]` array.
+3. **`Spin`** — the custom behaviour that rotates the triangle every frame.
+
+## Running It
+
+Start your dev server (e.g. `npx vite`) and open the page in a browser. You
+should see a green triangle spinning smoothly on a dark background with the
+debug overlay in the corner.
+
+## Next Steps
+
+- Add keyboard input with `@yage/input` to control the triangle.
+- Swap the shape for a sprite using `SpriteComponent` from `@yage/renderer`.
+- Read [Project Structure](/getting-started/project-structure/) to understand
+  the full package layout.

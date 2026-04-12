@@ -1,0 +1,290 @@
+---
+title: "Tilemaps"
+description: "Loading Tiled maps, rendering tile layers, and extracting collision shapes"
+---
+
+The `@yage/tilemap` package loads and renders maps created with the
+[Tiled](https://www.mapeditor.org/) map editor. It supports tile layer rendering,
+object layer extraction, and physics collision shape generation.
+
+## TilemapPlugin Setup
+
+```typescript
+import { TilemapPlugin } from "@yage/tilemap";
+
+engine.use(new TilemapPlugin());
+```
+
+The plugin depends on `@yage/renderer`.
+
+## Loading a Tiled Map
+
+Use the `tiledMap()` asset factory and pair it with a spritesheet texture:
+
+```typescript
+import { tiledMap } from "@yage/tilemap";
+import { renderAsset } from "@yage/renderer";
+
+const MapData = tiledMap("assets/level.json");
+const Tileset = renderAsset("assets/tileset.png");
+```
+
+Add both to your scene's `preload` array. The tileset texture must load before
+the map so tile rendering can resolve texture frames:
+
+```typescript
+class LevelScene extends Scene {
+  readonly preload = [Tileset, MapData];
+}
+```
+
+## TilemapComponent
+
+Add a `TilemapComponent` to an entity to render the map:
+
+```typescript
+import { TilemapComponent } from "@yage/tilemap";
+import { RenderLayerManagerKey } from "@yage/renderer";
+
+onEnter(): void {
+  const layerMgr = this.service(RenderLayerManagerKey);
+  layerMgr.create("map", -10); // render behind game entities
+
+  const map = this.spawn("map");
+  map.add(new Transform());
+  map.add(new TilemapComponent({
+    mapKey: MapData.path,     // serializable asset reference
+    layers: ["ground", "walls"], // which tile layers to render (omit for all)
+    layer: "map",             // render layer name
+  }));
+}
+```
+
+Query map dimensions from the component:
+
+```typescript
+const tilemap = map.get(TilemapComponent);
+tilemap.widthPx;      // total width in pixels
+tilemap.heightPx;     // total height in pixels
+tilemap.tileWidth;    // single tile width
+tilemap.tileHeight;   // single tile height
+```
+
+## Serialization
+
+`TilemapComponent` is `@serializable`, but the live parsed map it wraps is
+not — the parsed `TiledMapData` carries PixiJS textures, which don't survive
+`JSON.stringify`. The constructor therefore accepts two alternative inputs:
+an in-memory `map` object for the fast-path case where you already have the
+parsed map, and a `mapKey` asset path that can be re-resolved from the
+`AssetManager` after a reload.
+
+```typescript
+interface TilemapComponentOptions {
+  /** Parsed Tiled map data (not serializable). */
+  map?: TiledMapData;
+  /** Asset path to the Tiled JSON (serializable, resolved via Assets.get). */
+  mapKey?: string;
+  /** Which tile layers to render. Omit to render all. */
+  layers?: string[];
+  /** Render layer name. Default: "default". */
+  layer?: string;
+}
+```
+
+For any game that uses the save/load system, **pass `mapKey` rather than
+`map`**. When a `TilemapComponent` constructed with an inline `map` gets
+serialized, `serialize()` emits a warning and the snapshot cannot round-trip
+through `afterRestore()`. The `mapKey` path lets the save system store just
+the asset reference and re-look-up the texture-backed map on restore:
+
+```typescript
+// Recommended: save/load friendly
+map.add(new TilemapComponent({
+  mapKey: MapData.path,     // resolved from AssetManager
+  layers: ["ground", "walls"],
+  layer: "map",
+}));
+
+// One-shot prototypes only — will NOT survive a save/load cycle
+map.add(new TilemapComponent({
+  map: parsedTiledJson,
+  layer: "map",
+}));
+```
+
+The snapshot shape itself (`TilemapComponentData`) is just
+`{ mapKey, layers?, layer }` — the serialized entity stores only the asset
+key and layer selection, and reconstructs the live map on load.
+
+## Map Data Structure
+
+Sometimes you need to reach past the renderer and read raw tile data — for
+building a pathfinding grid, counting tile types, or driving custom gameplay
+off tile positions. `TilemapComponent` exposes a format-agnostic snapshot of
+the parsed map on its `data` property:
+
+```typescript
+const tilemap = map.get(TilemapComponent);
+const data = tilemap.data; // TilemapData
+
+console.log(`${data.width} x ${data.height} tiles`);
+console.log(`${data.tileLayers.length} tile layers`);
+```
+
+The `TilemapData` shape is deliberately decoupled from the Tiled JSON
+format — you can build your own parser for a different editor and reuse the
+same downstream consumers.
+
+```typescript
+interface TilemapData {
+  width: number;           // tiles wide
+  height: number;          // tiles tall
+  tileWidth: number;       // pixel width of one tile
+  tileHeight: number;
+  tileLayers: TileLayerData[];
+  objectLayers: ObjectLayerData[];
+}
+
+interface TileLayerData {
+  name: string;
+  data: number[];          // flat, row-major tile GIDs (0 = empty)
+  width: number;
+  height: number;
+  visible: boolean;
+}
+
+interface ObjectLayerData {
+  name: string;
+  objects: MapObject[];
+  visible: boolean;
+}
+```
+
+`TileLayerData.data` is a single flat array in row-major order. To read the
+tile at tile-coordinate `(tx, ty)`, index with `data[ty * width + tx]`. A GID
+of `0` means "no tile at this position". That flat layout makes it cheap to
+iterate for pathfinding or damage maps:
+
+```typescript
+// Count all solid tiles in the "walls" layer
+const walls = data.tileLayers.find((l) => l.name === "walls")!;
+let solidCount = 0;
+for (const gid of walls.data) {
+  if (gid !== 0) solidCount++;
+}
+```
+
+`MapObject` (the element type in `objectLayers[i].objects`) carries `id`,
+`name`, optional `class`, position and size, rotation, an optional `point`
+flag, an optional `polygon`, and an optional `properties: MapObjectProperty[]`
+array of Tiled custom properties — covered in detail below.
+
+## Tile Queries
+
+Look up tile data at a world position:
+
+```typescript
+const gid = tilemap.getTileAt(worldX, worldY, "ground");
+// Returns the tile GID or null if empty
+```
+
+## Object Layers
+
+Tiled object layers contain spawn points, triggers, and other game data.
+Extract objects grouped by their class or name:
+
+```typescript
+const objects = tilemap.getObjects("spawns");
+// Returns: Record<string, MapObject[]>
+// e.g. { "player": [{ x, y, ... }], "enemy": [{ x, y, width, height, ... }] }
+
+for (const obj of objects["enemy"] ?? []) {
+  this.spawn(EnemyBP, { x: obj.x, y: obj.y });
+}
+```
+
+Each `MapObject` has:
+
+```typescript
+interface MapObject {
+  id: number;
+  name: string;
+  class?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  visible: boolean;
+  point?: boolean;
+  polygon?: { x: number; y: number }[];
+  properties?: MapObjectProperty[];
+}
+```
+
+## Custom Properties
+
+Read custom Tiled properties from objects:
+
+```typescript
+import { getProperty, getPropertyArray } from "@yage/tilemap";
+
+const speed = getProperty<number>(obj, "speed");           // single value
+const waypoints = getPropertyArray<number>(obj, "point");   // indexed: point[0], point[1], ...
+```
+
+Resolve object references (Tiled's "object" property type):
+
+```typescript
+import { resolveObjectRef, resolveObjectRefArray } from "@yage/tilemap";
+
+const allObjects = tilemap.getObjects("navigation");
+const target = resolveObjectRef(obj, "target", allObjects["waypoint"] ?? []);
+const path = resolveObjectRefArray(obj, "path", allObjects["waypoint"] ?? []);
+```
+
+## Collision Extraction
+
+Extract collision shapes from a Tiled object layer and create physics colliders:
+
+```typescript
+const shapes = tilemap.getCollisionShapes("walls");
+// Returns: TilemapColliderConfig[] — rects and polygons
+
+for (const shape of shapes) {
+  const wall = this.spawn("wall");
+
+  if (shape.type === "rect") {
+    const cx = shape.x + shape.width / 2;
+    const cy = shape.y + shape.height / 2;
+    wall.add(new Transform({ position: new Vec2(cx, cy) }));
+    wall.add(new RigidBodyComponent({ type: "static" }));
+    wall.add(new ColliderComponent({
+      shape: { type: "box", width: shape.width, height: shape.height },
+    }));
+  }
+}
+```
+
+For convenience, you can also use the standalone extraction functions:
+
+```typescript
+import { extractCollisionShapes, toPhysicsColliders } from "@yage/tilemap";
+```
+
+## Camera Bounds
+
+Use the tilemap dimensions to constrain the camera:
+
+```typescript
+const camera = this.service(CameraKey);
+camera.bounds = {
+  x: 0,
+  y: 0,
+  width: tilemap.widthPx,
+  height: tilemap.heightPx,
+};
+```
+
+This prevents the camera from scrolling past the map edges.

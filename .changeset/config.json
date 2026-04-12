@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "marco-lepore/yage" }
+  ],
+  "commit": false,
+  "fixed": [
+    [
+      "@yage/core",
+      "@yage/renderer",
+      "@yage/physics",
+      "@yage/input",
+      "@yage/audio",
+      "@yage/particles",
+      "@yage/tilemap",
+      "@yage/ui",
+      "@yage/ui-react",
+      "@yage/debug",
+      "@yage/save"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}

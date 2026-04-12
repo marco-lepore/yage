@@ -1,0 +1,148 @@
+---
+title: "Systems"
+description: "Engine-level cross-cutting concerns"
+---
+
+## Systems vs Components
+
+In YAGE the split is clear:
+
+- **Components** hold state and game logic — player controllers, health bars,
+  enemy AI. Most gameplay code lives here.
+- **Systems** are for engine-level cross-cutting concerns — physics stepping,
+  rendering, audio mixing. They are typically authored by plugin developers, not
+  game developers.
+
+The built-in `ComponentUpdateSystem` bridges the two: it iterates every active
+component each frame and calls `update(dt)` / `fixedUpdate(dt)`.
+
+## Defining a System
+
+Extend the `System` base class:
+
+```typescript
+import { System, Phase, EngineContext } from "@yage/core";
+
+class ParticleSystem extends System {
+  readonly phase = Phase.Update;
+  readonly priority = 500;
+
+  private particles!: ParticleManager;
+
+  onRegister(context: EngineContext) {
+    this.particles = context.resolve(ParticleManagerKey);
+  }
+
+  update(dt: number) {
+    this.particles.step(dt);
+  }
+
+  onUnregister() {
+    this.particles.dispose();
+  }
+}
+```
+
+### System Lifecycle
+
+| Hook | When |
+|---|---|
+| `onRegister(context)` | Called once when the system is added to the scheduler. Use it to resolve services. |
+| `update(dt)` | Called every frame during the system's assigned phase. |
+| `onUnregister()` | Called when the system is removed or the engine is destroyed. |
+
+## Phases
+
+Every system declares a **phase** that determines when it runs in the frame:
+
+```typescript
+import { Phase } from "@yage/core";
+```
+
+| Phase | Order | Typical use |
+|---|---|---|
+| `Phase.EarlyUpdate` | 1 | Input polling, network message processing |
+| `Phase.FixedUpdate` | 2 | Physics stepping, deterministic gameplay |
+| `Phase.Update` | 3 | General game logic, component updates |
+| `Phase.LateUpdate` | 4 | Camera follow, constraint solving |
+| `Phase.Render` | 5 | Display sync, sprite rendering |
+| `Phase.EndOfFrame` | 6 | Entity cleanup, deferred destruction |
+
+## Priority
+
+Within a phase, systems are sorted by **priority** — lower numbers run first:
+
+```typescript
+class PhysicsSystem extends System {
+  readonly phase = Phase.FixedUpdate;
+  readonly priority = 100; // runs before ComponentUpdateSystem (1000)
+}
+```
+
+The built-in `ComponentUpdateSystem` uses priority `1000`, so any system with a
+lower number in the same phase will execute before component `update()` /
+`fixedUpdate()` calls.
+
+## QueryCache
+
+Systems that need to iterate entities matching a specific component signature
+use the `QueryCache`:
+
+```typescript
+import {
+  System,
+  Phase,
+  EngineContext,
+  QueryCacheKey,
+  QueryResult,
+  Transform,
+} from "@yage/core";
+import { SpriteComponent } from "@yage/renderer";
+
+class SpriteRenderSystem extends System {
+  readonly phase = Phase.Render;
+  readonly priority = 0;
+
+  private query!: QueryResult;
+
+  onRegister(context: EngineContext) {
+    const cache = context.resolve(QueryCacheKey);
+    this.query = cache.register([Transform, SpriteComponent]);
+  }
+
+  update(dt: number) {
+    for (const entity of this.query) {
+      const transform = entity.get(Transform);
+      const sprite = entity.get(SpriteComponent);
+      // sync sprite position to transform
+      sprite.x = transform.position.x;
+      sprite.y = transform.position.y;
+    }
+  }
+}
+```
+
+### Working with Query Results
+
+A `QueryResult` is a live result set — it updates automatically as entities
+gain or lose components:
+
+```typescript
+// Iterate all matching entities
+for (const entity of result) {
+  // ...
+}
+
+// Get the count
+console.log(result.size);
+
+// Get the first match (or undefined)
+const first = result.first;
+
+// Snapshot to an array (creates a copy)
+const all = result.toArray();
+```
+
+Queries are shared: if two systems register the same component set, they
+receive the same `QueryResult` instance. This keeps memory usage low and
+updates O(1).

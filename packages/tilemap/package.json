@@ -1,0 +1,59 @@
+{
+  "name": "@yage/tilemap",
+  "version": "0.1.0",
+  "description": "Tile-based map loading and rendering for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "tilemap",
+    "tiled",
+    "tiles",
+    "map"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/tilemap"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@yage/core": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
+    "@pixi/tilemap": "^5.0.0",
+    "pixi.js": "^8.5.0"
+  },
+  "devDependencies": {
+    "@yage/physics": "^0.1.0"
+  }
+}

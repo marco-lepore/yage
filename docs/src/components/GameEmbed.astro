@@ -1,0 +1,77 @@
+---
+interface Props {
+  /** Name of the demo module under src/demos/ (without extension). */
+  demo: string;
+  /** Canvas width in pixels. */
+  width?: number;
+  /** Canvas height in pixels. */
+  height?: number;
+}
+
+const { demo, width = 800, height = 600 } = Astro.props;
+const id = `game-embed-${demo}`;
+---
+
+<div
+  class="game-embed"
+  id={id}
+  data-demo={demo}
+  data-width={width}
+  data-height={height}
+  style={`max-width: ${width}px; aspect-ratio: ${width} / ${height};`}
+>
+  <div class="game-embed__loading">Loading&hellip;</div>
+</div>
+
+<style>
+  .game-embed {
+    position: relative;
+    width: 100%;
+    border: 1px solid var(--sl-color-gray-5, #333);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #111;
+  }
+
+  .game-embed :global(canvas) {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .game-embed__loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: inherit;
+    color: var(--sl-color-gray-3, #888);
+    font-size: 0.85rem;
+  }
+</style>
+
+<script>
+  const containers = document.querySelectorAll<HTMLDivElement>(".game-embed[data-demo]");
+
+  for (const container of containers) {
+    const demo = container.dataset.demo!;
+    const width = Number(container.dataset.width) || 800;
+    const height = Number(container.dataset.height) || 600;
+
+    // Dynamically import the demo module
+    import(`../demos/${demo}.ts`)
+      .then((mod) => {
+        const loading = container.querySelector<HTMLDivElement>(".game-embed__loading");
+        if (loading) loading.remove();
+        return mod.default(container, { width, height });
+      })
+      .catch((err) => {
+        console.error(`Failed to load demo "${demo}":`, err);
+        const loading = container.querySelector<HTMLDivElement>(".game-embed__loading");
+        if (loading) loading.textContent = "Failed to load demo";
+      });
+  }
+</script>

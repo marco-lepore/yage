@@ -1,0 +1,249 @@
+---
+title: "Rendering"
+description: "Sprites, graphics, camera, and animation"
+---
+
+YAGE uses PixiJS v8 under the hood for all rendering. The `@yage/renderer`
+package provides components and systems that keep PixiJS in sync with the ECS
+world automatically — you work with components and the display system handles
+the rest.
+
+## RendererPlugin Setup
+
+Register the renderer when creating your engine:
+
+```typescript
+import { RendererPlugin } from "@yage/renderer";
+
+engine.use(
+  new RendererPlugin({
+    width: 1280,
+    height: 720,
+    backgroundColor: 0x1a1a2e,
+    container: document.getElementById("game")!,
+  }),
+);
+```
+
+The plugin creates the PixiJS application, sets up the render loop, and
+registers all rendering systems.
+
+## Sprites
+
+`SpriteComponent` displays a texture on an entity. It automatically syncs with
+the entity's `Transform`.
+
+```typescript
+import { SpriteComponent } from "@yage/renderer";
+
+entity.add(
+  new SpriteComponent({
+    texture: playerTexture,
+    anchor: { x: 0.5, y: 0.5 },
+    layer: "characters",
+    tint: 0xffffff,
+    alpha: 1,
+  }),
+);
+```
+
+All properties are optional except `texture`. The `layer` property controls
+z-ordering (see [Render Layers](#render-layers) below).
+
+## Graphics
+
+`GraphicsComponent` gives you access to PixiJS drawing commands for procedural
+shapes.
+
+```typescript
+import { GraphicsComponent } from "@yage/renderer";
+
+entity.add(
+  new GraphicsComponent().draw((g) => {
+    g.circle(0, 0, 50).fill({ color: 0x38bdf8 });
+  }),
+);
+```
+
+Call `.draw()` again at any time to redraw. The callback receives a PixiJS
+`Graphics` object, so all standard drawing methods are available — `rect`,
+`roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
+
+## Animated Sprites
+
+For frame-based sprite animations, use `AnimatedSpriteComponent` together with
+an `AnimationController`.
+
+```typescript
+import {
+  AnimatedSpriteComponent,
+  AnimationController,
+} from "@yage/renderer";
+
+entity.add(
+  new AnimatedSpriteComponent({
+    spritesheet: heroSheet,
+    defaultAnimation: "idle",
+  }),
+);
+
+entity.add(
+  new AnimationController({
+    animations: {
+      idle: { frames: [0, 1, 2, 3], speed: 0.1 },
+      run: { frames: [4, 5, 6, 7, 8, 9], speed: 0.15 },
+      jump: { frames: [10, 11, 12], speed: 0.12, loop: false },
+    },
+  }),
+);
+```
+
+Switch animations at runtime:
+
+```typescript
+const anim = entity.get(AnimationController);
+anim.play("run");
+anim.play("jump", { onComplete: () => anim.play("idle") });
+```
+
+## Camera
+
+The camera controls the viewport into your game world. Access it through the
+renderer context.
+
+```typescript
+const camera = engine.resolve(CameraKey);
+```
+
+### Coordinate Convention
+
+Camera position `(0, 0)` places the **world origin at the center of the
+viewport**, not the top-left. An entity drawn at world position `(0, 0)`
+appears in the middle of the screen; positive X goes right, positive Y goes
+down.
+
+This is the convention most camera-driven 2D games expect. A scrolling shooter
+or platformer naturally wants the camera to *follow* the player, and centring
+the follow target on screen is the intuitive default.
+
+If your game has a fixed, non-scrolling layout (a puzzle grid, an arcade-style
+single-screen game, a tile editor), you probably want world `(0, 0)` to align
+with the *top-left* of the screen instead — that way tile coordinates, UI
+anchors, and typical 2D art tools line up the way you'd expect. Offset the
+camera by half the viewport in `onEnter`:
+
+```typescript
+class GameScene extends Scene {
+  readonly name = "game";
+  private camera = this.service(CameraKey);
+
+  onEnter() {
+    // Top-left origin: world (0,0) → screen (0,0)
+    this.camera.position = new Vec2(400, 300); // viewport is 800×600
+  }
+}
+```
+
+The camera never changes; you're just choosing which world point sits under
+the viewport's top-left corner. Follow-a-target cameras work identically with
+either convention — they just move to frame the target.
+
+### Following a Target
+
+```typescript
+camera.follow(player, {
+  smoothing: 0.1,
+  offset: { x: 0, y: -50 },
+  deadzone: { width: 100, height: 60 },
+});
+```
+
+`smoothing` controls how quickly the camera catches up (0 = instant, 1 = never
+moves). The `deadzone` defines a rectangle in the center of the screen where
+the target can move without the camera responding.
+
+### Zoom and Rotation
+
+```typescript
+camera.zoomTo(2.0, 500, easeOutQuad); // zoom to 2x over 500ms
+camera.rotation = Math.PI / 12; // tilt the camera
+```
+
+### Screen Shake
+
+```typescript
+camera.shake(8, 400, { decay: true });
+```
+
+`intensity` is the maximum pixel displacement per frame. When `decay` is true,
+the shake fades out over the duration.
+
+### Coordinate Conversion
+
+Convert between screen (pixel) space and world space:
+
+```typescript
+const worldPos = camera.screenToWorld(screenPos);
+const screenPos = camera.worldToScreen(worldPos);
+```
+
+### Bounds
+
+Constrain the camera to a region so it never shows areas outside the level:
+
+```typescript
+camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
+```
+
+## Render Layers
+
+Render layers control draw order. Entities on higher layers render on top.
+
+```typescript
+import { RenderLayers } from "@yage/renderer";
+
+const layers = new RenderLayers(["background", "tiles", "characters", "fx", "ui"]);
+engine.use(new RendererPlugin({ width: 800, height: 600, layers }));
+```
+
+Assign a layer via the `layer` property on `SpriteComponent` or
+`GraphicsComponent`. Entities within the same layer are sorted by their
+y-position by default.
+
+## Asset Factories
+
+YAGE provides helper functions to load and define render assets:
+
+```typescript
+import { texture, spritesheet, renderAsset } from "@yage/renderer";
+
+// Load a single texture
+const bg = texture("assets/background.png");
+
+// Load a spritesheet with atlas data
+const heroSheet = spritesheet("assets/hero.png", "assets/hero.json");
+
+// Generic render asset (auto-detects type)
+const asset = renderAsset("assets/tileset.png");
+```
+
+These return handles that are resolved during scene loading, so textures are
+available by the time `setup()` runs.
+
+## Display System
+
+The built-in display system automatically synchronizes each entity's `Transform`
+component with the underlying PixiJS display object. When you update position,
+rotation, or scale on a `Transform`, the corresponding Pixi sprite or graphic
+moves to match — no manual syncing required.
+
+```typescript
+// Moving the transform moves the sprite on screen
+entity.transform.setPosition(200, 300);
+entity.transform.rotate(0.5);
+entity.transform.setScale(2, 2);
+```
+
+This one-way sync (ECS to Pixi) runs once per frame after all component updates
+have completed, keeping rendering deterministic and free of mid-frame visual
+glitches.

@@ -1,0 +1,151 @@
+---
+title: "Installation"
+description: "How to install YAGE in your project"
+---
+
+## Option 1: `create-yage` (recommended)
+
+The quickest way to start a new YAGE game:
+
+```bash
+npm create yage@latest my-game
+cd my-game
+npm run dev
+```
+
+The scaffolder asks you to pick a template:
+
+- **Recommended** — a playable platformer seed with physics, input, animations,
+  sound effects, enemies, and collectibles. Great for learning the engine.
+- **Minimal** — just `@yage/core` + `@yage/renderer` and an empty scene. Start
+  from scratch and add packages as you go (`src/main.ts` has commented-out
+  examples showing how to wire each plugin).
+
+Both templates include a Vite config, TypeScript setup, and an `AGENTS.md`
+for AI-assisted development.
+
+## Option 2: Manual install
+
+If you already have a project or prefer to set things up yourself, install
+packages individually:
+
+```bash
+npm install @yage/core @yage/renderer
+```
+
+Add more as needed:
+
+```bash
+npm install @yage/physics @yage/input @yage/audio @yage/debug
+```
+
+The full list of packages:
+
+| Package | Purpose |
+|---|---|
+| `@yage/core` | ECS, math, events, scheduling |
+| `@yage/renderer` | PixiJS v8 rendering pipeline |
+| `@yage/physics` | Rapier 2D physics integration |
+| `@yage/input` | Keyboard, mouse, and gamepad |
+| `@yage/audio` | Sound playback and mixing |
+| `@yage/particles` | Particle emitters and effects |
+| `@yage/tilemap` | Tile-based level support |
+| `@yage/ui` | In-game UI primitives |
+| `@yage/ui-react` | React bindings for game UI |
+| `@yage/debug` | Dev tools and inspectors |
+| `@yage/save` | Save / load state management |
+
+`@yage/core` sits at the base of the dependency graph — every other package
+depends on it, so it is always installed automatically.
+
+## Prerequisites
+
+- **Node.js** 18 or later
+- **npm** 9+ (or any compatible package manager — pnpm and yarn work fine)
+- A bundler that supports TypeScript and ESM (Vite is recommended)
+
+## Vite Setup
+
+> If you used `create-yage`, this is already configured. This section is for
+> manual installs.
+
+YAGE targets **Vite 8 or later**. If you use `@yage/physics`, its Rapier 2D
+engine requires WebAssembly, so Vite needs the `vite-plugin-wasm` plugin to
+handle `.wasm` imports:
+
+```bash
+npm install -D vite vite-plugin-wasm
+```
+
+```typescript title="vite.config.ts"
+import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
+
+export default defineConfig({
+  plugins: [wasm()],
+  oxc: {
+    decorator: {
+      legacy: true,
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        keepNames: true,
+      },
+    },
+  },
+});
+```
+
+The `oxc` and `keepNames` options are only needed if you use `@yage/save`.
+If your project does not persist game state, you can omit them and use the
+shorter config:
+
+```typescript
+import { defineConfig } from "vite";
+import wasm from "vite-plugin-wasm";
+
+export default defineConfig({
+  plugins: [wasm()],
+});
+```
+
+### Why `oxc.decorator.legacy: true`
+
+Vite 8 replaced esbuild with **oxc** as its TypeScript transformer. oxc
+only supports TypeScript's **legacy** (stage-2) decorator transform — it
+does not transform stage-3 decorators, and instead passes them through to
+the browser, which does not yet parse native decorator syntax. If you use
+`@yage/save`'s `@serializable` decorator in your project, you will hit a
+`SyntaxError: Invalid character: '@'` in the browser without this setting.
+Enabling `legacy: true` tells oxc to rewrite `@serializable class Foo` into
+the classic `Foo = _decorate([serializable], Foo)` runtime pattern, which
+runs in every browser.
+
+### Why `output.keepNames: true`
+
+`@serializable` looks up classes by `class.name` when restoring a snapshot,
+and Vite 8 ships with the oxc **minifier**, which mangles class and
+function names by default. Without `keepNames`, a minified production build
+will silently fail to round-trip save data through the
+`SerializableRegistry` — scenes will load as empty because the saved type
+strings no longer match any registered class. Set `keepNames: true` to
+preserve the original names across minification.
+
+## Verifying the Install
+
+Create a minimal entry file and run your dev server to confirm everything is
+working:
+
+```typescript
+import { Engine } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }));
+await engine.start();
+```
+
+If a blank game window appears with the configured background colour, YAGE is
+installed correctly.

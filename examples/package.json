@@ -1,0 +1,30 @@
+{
+  "name": "@yage/examples",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.0",
+    "vite-plugin-wasm": "^3.6.0"
+  },
+  "dependencies": {
+    "@yage/audio": "^0.1.0",
+    "@yage/core": "^0.1.0",
+    "@yage/debug": "^0.1.0",
+    "@yage/input": "^0.1.0",
+    "@yage/particles": "^0.1.0",
+    "@yage/physics": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
+    "@yage/save": "^0.1.0",
+    "@yage/tilemap": "^0.1.0",
+    "@yage/ui": "^0.1.0",
+    "@yage/ui-react": "^0.1.0",
+    "react": "^19.0.0"
+  }
+}

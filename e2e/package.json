@@ -1,0 +1,25 @@
+{
+  "name": "@yage/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config fixtures/vite.config.ts",
+    "build": "vite build --config fixtures/vite.config.ts",
+    "preview": "vite preview --config fixtures/vite.config.ts",
+    "e2e": "playwright test -c ../playwright.config.ts"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0",
+    "vite-plugin-wasm": "^3.6.0"
+  },
+  "dependencies": {
+    "@yage/core": "^0.1.0",
+    "@yage/debug": "^0.1.0",
+    "@yage/input": "^0.1.0",
+    "@yage/physics": "^0.1.0",
+    "@yage/renderer": "^0.1.0",
+    "@yage/save": "^0.1.0",
+    "@yage/ui": "^0.1.0"
+  }
+}

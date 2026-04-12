@@ -1,0 +1,151 @@
+---
+title: "Dependency Injection"
+description: "Typed service container with ServiceKey"
+---
+
+## EngineContext
+
+`EngineContext` is the typed dependency injection container at the heart of
+YAGE. Plugins register services during `install()`, and the rest of the engine
+resolves them by key.
+
+```typescript
+import { EngineContext, ServiceKey } from "@yage/core";
+```
+
+## ServiceKey
+
+Every service is identified by a `ServiceKey<T>`. The type parameter ensures
+that `resolve()` returns the correct type without casts:
+
+```typescript
+import { ServiceKey } from "@yage/core";
+
+// Define a key with a descriptive label
+const AudioMixerKey = ServiceKey<AudioMixer>("AudioMixer");
+```
+
+Never use plain strings for service resolution — always define a `ServiceKey`.
+
+## Registering and Resolving
+
+```typescript
+// In a plugin's install():
+function install(context: EngineContext) {
+  const mixer = new AudioMixer();
+  context.register(AudioMixerKey, mixer);
+}
+
+// Resolve (throws if not registered)
+const mixer = context.resolve(AudioMixerKey);
+
+// Try resolve (returns undefined if not registered)
+const mixer = context.tryResolve(AudioMixerKey);
+
+// Check existence
+if (context.has(AudioMixerKey)) {
+  // ...
+}
+```
+
+`context.resolve()` throws a clear error listing the missing key name.
+Prefer it when the service is required. Use `context.tryResolve()` for optional
+services.
+
+## Well-Known Keys
+
+YAGE's core and official plugins register these services:
+
+| Key | Type | Package |
+|---|---|---|
+| `EngineKey` | `Engine` | `@yage/core` |
+| `EventBusKey` | `EventBus` | `@yage/core` |
+| `SceneManagerKey` | `SceneManager` | `@yage/core` |
+| `LoggerKey` | `Logger` | `@yage/core` |
+| `QueryCacheKey` | `QueryCache` | `@yage/core` |
+| `ErrorBoundaryKey` | `ErrorBoundary` | `@yage/core` |
+| `GameLoopKey` | `GameLoop` | `@yage/core` |
+| `InspectorKey` | `Inspector` | `@yage/core` |
+| `SystemSchedulerKey` | `SystemScheduler` | `@yage/core` |
+| `ProcessSystemKey` | `ProcessSystem` | `@yage/core` |
+| `AssetManagerKey` | `AssetManager` | `@yage/core` |
+
+## Accessing Services from Components
+
+Inside a component, use `this.use(key)`. The result is cached after the first
+call so repeated access is free:
+
+```typescript
+import { Component } from "@yage/core";
+import { InputManagerKey } from "@yage/input";
+import { PhysicsWorldKey } from "@yage/physics";
+
+class PlayerController extends Component {
+  update(dt: number) {
+    const input = this.use(InputManagerKey);
+    const physics = this.use(PhysicsWorldKey);
+
+    if (input.isPressed("jump")) {
+      const body = this.sibling(RigidBody);
+      physics.applyImpulse(body, { x: 0, y: -600 });
+    }
+  }
+}
+```
+
+## Accessing Services from Systems
+
+Systems receive the `EngineContext` in `onRegister`. Store references there or
+call `this.use(key)` during `update`:
+
+```typescript
+import { System, Phase, EngineContext } from "@yage/core";
+
+class DebugOverlaySystem extends System {
+  readonly phase = Phase.Render;
+  readonly priority = 9999;
+
+  private logger!: Logger;
+
+  onRegister(context: EngineContext) {
+    this.logger = context.resolve(LoggerKey);
+  }
+
+  update(dt: number) {
+    const stats = this.use(GameLoopKey).stats;
+    this.logger.debug(`FPS: ${stats.fps}`);
+  }
+}
+```
+
+## Custom Services
+
+Register your own services for shared game state:
+
+```typescript
+import { ServiceKey, Plugin, EngineContext } from "@yage/core";
+
+interface Inventory {
+  items: string[];
+  add(item: string): void;
+  has(item: string): boolean;
+}
+
+export const InventoryKey = ServiceKey<Inventory>("Inventory");
+
+export function inventoryPlugin(): Plugin {
+  return {
+    name: "inventory",
+    install(context: EngineContext) {
+      context.register(InventoryKey, {
+        items: [],
+        add(item) { this.items.push(item); },
+        has(item) { return this.items.includes(item); },
+      });
+    },
+  };
+}
+```
+
+Any component or system can then `this.use(InventoryKey)` to access the shared
+inventory.

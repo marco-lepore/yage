@@ -1,0 +1,124 @@
+---
+title: "Scenes"
+description: "Scene stack management and lifecycle"
+---
+
+## What is a Scene?
+
+A scene is a self-contained slice of your game — a title screen, a gameplay
+level, a pause menu. Scenes own entities and receive lifecycle callbacks as they
+are pushed onto or popped from the scene stack.
+
+## Defining a Scene
+
+Extend the `Scene` base class:
+
+```typescript
+import { Scene } from "@yage/core";
+
+class GameplayScene extends Scene {
+  readonly name = "gameplay";
+  readonly pauseBelow = true;      // pause scenes underneath
+  readonly transparentBelow = false; // hide scenes underneath
+
+  onEnter() {
+    const player = this.spawn("player");
+    player.add(new Transform(400, 300));
+    player.add(new PlayerController());
+  }
+
+  onExit() {
+    // cleanup when this scene is removed from the stack
+  }
+
+  onPause() {
+    // another scene was pushed on top
+  }
+
+  onResume() {
+    // the scene on top was popped, this scene is active again
+  }
+}
+```
+
+### Scene Properties
+
+| Property | Default | Purpose |
+|---|---|---|
+| `name` | — | Unique identifier for the scene |
+| `pauseBelow` | `false` | When `true`, scenes below this one stop updating |
+| `transparentBelow` | `false` | When `true`, scenes below this one still render |
+
+A pause menu typically sets both `pauseBelow: true` and
+`transparentBelow: true` — the game world is visible but frozen underneath.
+
+## Scene Stack Management
+
+The engine exposes a stack-based scene manager:
+
+```typescript
+// Push a new scene onto the stack
+engine.scenes.push(new GameplayScene());
+
+// Pop the top scene
+engine.scenes.pop();
+
+// Replace the top scene (pop + push in one call)
+engine.scenes.replace(new GameOverScene());
+
+// Get the currently active (top) scene
+const current = engine.scenes.active;
+```
+
+### Lifecycle Flow
+
+```
+push(A)      → A.onEnter()
+push(B)      → A.onPause()  → B.onEnter()
+pop()        → B.onExit()   → A.onResume()
+replace(C)   → B.onExit()   → C.onEnter()
+```
+
+## Querying Entities
+
+Scenes provide helpers to find entities:
+
+```typescript
+// Find an entity by name (returns first match or undefined)
+const player = scene.findEntity("player");
+
+// Find all entities with a given tag
+const enemies = scene.findEntitiesByTag("enemy");
+
+// Get all entities in the scene
+const all = scene.getEntities();
+```
+
+## Subclassing Scene
+
+Scenes are always classes. Override `onEnter` to spawn entities, resolve
+services, and wire up the scene:
+
+```typescript
+import { Scene, Transform } from "@yage/core";
+import { SpriteComponent, CameraKey } from "@yage/renderer";
+import { InputManagerKey } from "@yage/input";
+
+class TitleScene extends Scene {
+  readonly name = "title";
+
+  onEnter() {
+    const logo = this.spawn("logo");
+    logo.add(new Transform(640, 200));
+    logo.add(new SpriteComponent({ textureKey: "logo.png" }));
+
+    const input = this.context.resolve(InputManagerKey);
+    input.onPressed("start", () => {
+      this.context.resolve(SceneManagerKey).replace(new GameplayScene());
+    });
+  }
+}
+
+engine.scenes.push(new TitleScene());
+```
+

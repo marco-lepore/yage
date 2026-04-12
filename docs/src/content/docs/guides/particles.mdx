@@ -1,0 +1,129 @@
+---
+title: "Particles"
+description: "Particle emitters, presets, and burst effects"
+---
+
+The `@yage/particles` package provides a lightweight particle system with
+pooled rendering, configurable emitters, and built-in presets for common effects.
+
+## ParticlesPlugin Setup
+
+```typescript
+import { ParticlesPlugin } from "@yage/particles";
+
+engine.use(new ParticlesPlugin());
+```
+
+The plugin depends on `@yage/renderer`.
+
+## Creating an Emitter
+
+Add a `ParticleEmitterComponent` to an entity. Particles spawn at the entity's
+`Transform` position.
+
+```typescript
+import { ParticleEmitterComponent } from "@yage/particles";
+import { texture } from "@yage/renderer";
+
+const Particle = texture("assets/particle.png");
+
+const emitter = new ParticleEmitterComponent({
+  texture: Particle,
+  maxParticles: 200,
+  rate: 20,                 // particles per second
+  lifetime: [0.5, 1.5],    // seconds (random range)
+  speed: [50, 150],         // px/s
+  angle: [-Math.PI, Math.PI],  // emission direction (radians)
+  scale: { start: 1, end: 0 },
+  alpha: { start: 1, end: 0 },
+  tint: 0xff6600,
+  gravity: { x: 0, y: 200 },
+  layer: "effects",
+});
+
+entity.add(emitter);
+emitter.emit();  // start continuous emission
+```
+
+## Emitter Config
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `texture` | `TextureInput` | — | Particle texture |
+| `textureKey` | `string` | — | Asset key (serializable alternative to `texture`) |
+| `maxParticles` | `number` | `100` | Maximum live particles |
+| `rate` | `number` | `10` | Emission rate (particles/sec) |
+| `lifetime` | `NumberRange` | — | Particle lifetime in seconds (required) |
+| `speed` | `NumberRange` | `0` | Initial speed (px/s) |
+| `angle` | `NumberRange` | `0` | Emission angle (radians) |
+| `scale` | `NumberRange \| Lerped` | `1` | Size, or start→end interpolation |
+| `alpha` | `NumberRange \| Lerped` | `1` | Opacity, or start→end interpolation |
+| `rotation` | `NumberRange` | `0` | Initial rotation (radians) |
+| `rotationSpeed` | `NumberRange` | `0` | Rotation speed (rad/s) |
+| `tint` | `number` | `0xffffff` | Color tint |
+| `gravity` | `{ x, y }` | — | Per-particle gravity (px/s²) |
+| `damping` | `number` | `0` | Velocity damping (0–1) |
+| `spawnOffset` | `{ x?, y? }` | — | Random offset from emitter position |
+| `layer` | `string` | `"default"` | Render layer name |
+
+**NumberRange** can be a single number or a `[min, max]` tuple for random values.
+
+**Lerped** interpolates from start to end over the particle's lifetime:
+
+```typescript
+scale: { start: [0.8, 1.2], end: 0 }   // shrink to nothing
+alpha: { start: 1, end: [0, 0.3] }     // fade out with variation
+```
+
+## Runtime Control
+
+```typescript
+emitter.emit();              // start continuous emission
+emitter.stop();              // stop emitting (existing particles continue)
+emitter.burst(50);           // spawn 50 particles immediately
+emitter.burst(10, 400, 300); // burst at specific world position
+
+emitter.isEmitting;          // boolean
+emitter.activeCount;         // number of live particles
+```
+
+## Presets
+
+`ParticlePresets` provides ready-made configs for common effects. Each preset
+takes a texture and returns a complete `EmitterConfig`:
+
+```typescript
+import { ParticlePresets } from "@yage/particles";
+
+// Fire — upward, warm colors, shrinking
+entity.add(new ParticleEmitterComponent(ParticlePresets.fire(Particle)));
+
+// Smoke — slow, expanding, fading
+entity.add(new ParticleEmitterComponent(ParticlePresets.smoke(Particle)));
+
+// Sparks — fast, short-lived, gravity-affected
+entity.add(new ParticleEmitterComponent(ParticlePresets.sparks(Particle)));
+
+// Rain — downward, uniform, long-lived
+entity.add(new ParticleEmitterComponent(ParticlePresets.rain(Particle)));
+```
+
+You can spread a preset and override specific properties:
+
+```typescript
+entity.add(new ParticleEmitterComponent({
+  ...ParticlePresets.fire(Particle),
+  rate: 50,
+  tint: 0x00ccff,  // blue fire
+}));
+```
+
+## Tips
+
+- Position the emitter entity where you want particles to spawn — particles
+  inherit the entity's world position at the moment they're created.
+- Destroying the emitter entity stops emission and cleans up all particles.
+- Keep `maxParticles` reasonable. Hundreds are fine; thousands may impact
+  performance on lower-end devices.
+- Use render layers to control whether particles appear above or below game
+  entities.

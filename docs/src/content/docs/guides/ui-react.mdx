@@ -1,0 +1,210 @@
+---
+title: "UI (React)"
+description: "Declarative UI with React components, hooks, and reactive stores"
+---
+
+The `@yage/ui-react` package provides a React reconciler over the UI system,
+letting you write game UI with JSX. It includes hooks for accessing engine
+services and reactive stores for bridging ECS state into React.
+
+## Prerequisites
+
+Install both `@yage/ui` and `@yage/ui-react`, plus React:
+
+```bash
+npm install @yage/ui @yage/ui-react react
+```
+
+The `UIPlugin` must be registered before using React UI:
+
+```typescript
+import { UIPlugin } from "@yage/ui";
+
+engine.use(new UIPlugin());
+```
+
+## UIRoot
+
+`UIRoot` is a component that hosts a React tree on an entity:
+
+```typescript
+import { UIRoot } from "@yage/ui-react";
+import { Anchor } from "@yage/ui";
+
+const ui = scene.spawn("ui");
+ui.add(new Transform());
+
+const root = new UIRoot({ anchor: Anchor.Center });
+ui.add(root);
+root.render(<MyMenu />);
+```
+
+The React tree renders into the screen-space UI layer, positioned by the
+`anchor` and optional `offset`.
+
+## JSX Components
+
+React components mirror the imperative `@yage/ui` API:
+
+```tsx
+import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yage/ui-react";
+
+function HUD() {
+  const [score, setScore] = useState(0);
+
+  return (
+    <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
+      <Text style={{ fontSize: 24, fill: 0xffffff }}>Score: {score}</Text>
+
+      <Button
+        width={150}
+        height={40}
+        bg={{ color: 0x4444aa }}
+        hoverBg={{ color: 0x5555cc }}
+        textStyle={{ fontSize: 16, fill: 0xffffff }}
+        onClick={() => setScore(s => s + 1)}
+      >
+        Add Point
+      </Button>
+
+      <ProgressBar
+        width={200}
+        height={16}
+        value={score / 10}
+        fillBackground={{ color: 0x44cc44 }}
+        trackBackground={{ color: 0x333333 }}
+      />
+
+      <Checkbox
+        label="Mute"
+        checked={false}
+        onChange={(v) => console.log("mute:", v)}
+      />
+    </Panel>
+  );
+}
+```
+
+### Available Components
+
+| Component | Description |
+|---|---|
+| `<Panel>` | Flexbox container with `direction`, `gap`, `padding`, `bg` |
+| `<Text>` | Text label with `style` |
+| `<Button>` | Clickable button with `onClick`, `bg`, `hoverBg`, `pressBg` |
+| `<Image>` | Texture display with `texture`, `tint`, `alpha` |
+| `<NineSlice>` | Nine-slice scalable texture |
+| `<ProgressBar>` | Progress bar (`value` 0–1) |
+| `<Checkbox>` | Checkbox with `checked`, `onChange`, `label` |
+
+### PixiUI Components
+
+Wrappers for advanced [@pixi/ui](https://github.com/pixijs/ui) widgets:
+
+```tsx
+import {
+  PixiFancyButton,
+  PixiSlider,
+  PixiInput,
+  PixiSelect,
+  PixiRadioGroup,
+  PixiScrollBox,
+} from "@yage/ui-react";
+```
+
+## Hooks
+
+### useEngine / useScene
+
+Access the engine context or current scene from any React component:
+
+```tsx
+import { useEngine, useScene } from "@yage/ui-react";
+
+function PauseButton() {
+  const engine = useEngine();
+
+  return (
+    <Button onClick={() => engine.scenes.push(new PauseScene())} width={100} height={40}>
+      Pause
+    </Button>
+  );
+}
+```
+
+### useStore
+
+Bridge ECS state into React with reactive stores:
+
+```tsx
+import { createStore } from "@yage/ui-react";
+import { useStore } from "@yage/ui-react";
+
+// Create a store (typically at scene level)
+const gameStore = createStore({ score: 0, health: 100 });
+
+// Write from ECS (systems, components, event handlers)
+gameStore.set({ score: gameStore.get().score + 10 });
+
+// Read from React (auto-rerenders on change)
+function ScoreDisplay() {
+  const score = useStore(gameStore, (s) => s.score);
+  return <Text style={{ fontSize: 32 }}>{`Score: ${score}`}</Text>;
+}
+```
+
+The optional selector and equality function prevent unnecessary re-renders:
+
+```tsx
+// Only re-render when score changes
+const score = useStore(store, (s) => s.score);
+
+// Custom equality check
+const pos = useStore(store, (s) => s.position, (a, b) => a.x === b.x && a.y === b.y);
+```
+
+### useQuery
+
+Query ECS entities directly from React:
+
+```tsx
+import { useQuery } from "@yage/ui-react";
+
+function EnemyCount() {
+  const count = useQuery(
+    [EnemyTag],
+    (result) => result.size,
+  );
+  return <Text>Enemies: {count}</Text>;
+}
+```
+
+The query re-evaluates each frame and only triggers a re-render when the
+selector result changes.
+
+### useSceneSelector
+
+Read arbitrary scene state:
+
+```tsx
+import { useSceneSelector } from "@yage/ui-react";
+
+function EntityCounter() {
+  const count = useSceneSelector((scene) => scene.getEntities().length);
+  return <Text>Entities: {count}</Text>;
+}
+```
+
+## When to Use React vs Imperative
+
+| | Imperative (`@yage/ui`) | React (`@yage/ui-react`) |
+|---|---|---|
+| **Best for** | Simple HUDs, static menus | Complex interactive menus, forms |
+| **State** | Manual `.setText()` calls | Declarative with `useState` / `useStore` |
+| **Layout** | Builder API | JSX composition |
+| **Bundle size** | Smaller (no React) | Adds React dependency |
+| **Learning curve** | Lower if no React experience | Lower if familiar with React |
+
+Use the imperative API for simple, mostly-static UI (score counters, health
+bars). Use React when your UI has complex state, conditional rendering, or
+many interactive elements.

@@ -1,0 +1,248 @@
+---
+title: Yet Another Game Engine
+description: A modular 2D game engine for TypeScript
+template: splash
+hero:
+  tagline: A modular 2D game engine for TypeScript. Batteries included.
+  image:
+    file: ../../../public/logo.svg
+    alt: YAGE
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: Examples
+      link: https://examples.yage.dev
+      icon: rocket
+    - text: View on GitHub
+      link: https://github.com/marco-lepore/yage
+      icon: external
+---
+
+import { Card, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
+import GameEmbed from "../../components/GameEmbed.astro";
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 2rem;">
+  <GameEmbed demo="hello-world" width={600} height={400} />
+  <p style="color: var(--sl-color-gray-3); font-size: 0.85rem; margin: 0;">
+    Self-playing Pong. This is an embedded game not a gif.
+  </p>
+</div>
+
+### All it takes
+
+<Tabs>
+  <TabItem label="main.ts">
+```typescript
+import { Engine, Scene, Transform, Vec2 } from "@yage/core";
+import { RendererPlugin, CameraKey } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+import { UIPlugin } from "@yage/ui";
+import { Ball } from "./Ball";
+import { Paddle } from "./Paddle";
+import { Wall, Goal, Scoreboard } from "./GameArea";
+
+class PongScene extends Scene {
+  readonly name = "pong";
+
+  onEnter() {
+    const camera = this.context.resolve(CameraKey);
+    camera.position = new Vec2(300, 200);
+
+    this.spawn(Scoreboard);
+    const ball = this.spawn(Ball, { w: 600, h: 400 });
+    this.spawn(Paddle, { x: 30, y: 200, ball, side: "left" });
+    this.spawn(Paddle, { x: 570, y: 200, ball, side: "right" });
+    this.spawn(Wall, { x: 300, y: -10, w: 600, h: 20 });      // top
+    this.spawn(Wall, { x: 300, y: 410, w: 600, h: 20 });       // bottom
+    this.spawn(Goal, { x: -20, y: 200, w: 20, h: 400, side: "left" });
+    this.spawn(Goal, { x: 620, y: 200, w: 20, h: 400, side: "right" });
+  }
+}
+
+const engine = new Engine();
+engine.use(new RendererPlugin({ width: 600, height: 400, backgroundColor: 0x0a0a0a }));
+engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
+engine.use(new UIPlugin());
+await engine.start();
+engine.scenes.push(new PongScene());
+```
+  </TabItem>
+  <TabItem label="types.ts">
+```typescript
+import { defineEvent } from "@yage/core";
+
+export type Side = "left" | "right";
+
+// Typed event — any entity can emit it, any listener can subscribe
+export const GoalEvent = defineEvent<{ side: Side }>("goal");
+```
+  </TabItem>
+  <TabItem label="Ball.ts">
+```typescript
+import { Entity, Transform, Vec2 } from "@yage/core";
+import { GraphicsComponent } from "@yage/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import { GoalEvent, type Side } from "./types";
+
+// Entities are game objects. setup() receives typed params from scene.spawn().
+export class Ball extends Entity {
+  private w!: number;
+  private h!: number;
+  private rb!: RigidBodyComponent;
+
+  setup({ w, h }: { w: number; h: number }) {
+    this.w = w; this.h = h;
+    this.add(new Transform({ position: new Vec2(w / 2, h / 2) }));
+    this.add(new GraphicsComponent().draw((g) => g.circle(0, 0, 8).fill(0xffffff)));
+    // Dynamic body — moved by physics forces
+    this.rb = new RigidBodyComponent({ type: "dynamic", fixedRotation: true });
+    this.add(this.rb);
+    this.add(new ColliderComponent({
+      shape: { type: "circle", radius: 8 },
+      restitution: 1, // fully elastic bounce
+      friction: 0,
+    }));
+
+    // Listen for goals to reset position
+    this.scene.on(GoalEvent, ({ side }) => this.launch(side === "right" ? "left" : "right"));
+    this.launch(Math.random() > 0.5 ? "left" : "right");
+  }
+
+  private launch(toward: Side) {
+    this.rb.setPosition(this.w / 2, this.h / 2);
+    this.rb.setVelocity({ x: (toward === "right" ? 1 : -1) * 250, y: (Math.random() - 0.5) * 200 });
+  }
+}
+```
+  </TabItem>
+  <TabItem label="Paddle.ts">
+```typescript
+import { Entity, Component, Transform, Vec2, ProcessComponent, ProcessSlot } from "@yage/core";
+import { GraphicsComponent } from "@yage/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import type { Side } from "./types";
+
+// Components hold game logic. sibling() grabs other components on the same entity.
+class PaddleAI extends Component {
+  private rb = this.sibling(RigidBodyComponent);
+  private transform = this.sibling(Transform);
+  private proc = this.sibling(ProcessComponent);
+  private slot!: ProcessSlot;
+
+  constructor(private ball: Entity, private side: Side) { super(); }
+
+  // onAdd runs once when the component is attached to an entity
+  onAdd() {
+    // ProcessSlot is a timer — fires onComplete every 350ms
+    this.slot = this.proc.slot({
+      duration: 350,
+      onComplete: () => { this.react(); this.slot.restart(); },
+    });
+    this.slot.start();
+  }
+
+  private react() {
+    const ballVel = this.ball.get(RigidBodyComponent).getVelocity();
+    // Only move if ball is heading toward us
+    const approaching = this.side === "left" ? ballVel.x < 0 : ballVel.x > 0;
+    if (!approaching) return;
+    const diff = this.ball.get(Transform).position.y - this.transform.position.y;
+    this.rb.applyImpulse(new Vec2(0, Math.sign(diff) * 100));
+  }
+}
+
+export class Paddle extends Entity {
+  setup({ x, y, ball, side }: { x: number; y: number; ball: Entity; side: Side }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new GraphicsComponent().draw((g) => g.roundRect(-6, -36, 12, 72, 4).fill(0xffffff)));
+    // Dynamic but locked horizontally — physics handles vertical movement
+    this.add(new RigidBodyComponent({
+      type: "dynamic", fixedRotation: true, lockTranslationX: true, linearDamping: 2,
+    }));
+    this.add(new ColliderComponent({
+      shape: { type: "box", width: 12, height: 72 }, restitution: 1, friction: 0,
+    }));
+    this.add(new ProcessComponent());
+    this.add(new PaddleAI(ball, side));
+  }
+}
+```
+  </TabItem>
+  <TabItem label="GameArea.ts">
+```typescript
+import { Entity, Transform, Vec2 } from "@yage/core";
+import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import { UIPanel, Anchor } from "@yage/ui";
+import type { UIText } from "@yage/ui";
+import { GoalEvent, type Side } from "./types";
+
+// Static bodies — immovable, used for boundaries
+export class Wall extends Entity {
+  setup({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(new ColliderComponent({
+      shape: { type: "box", width: w, height: h }, restitution: 1, friction: 0,
+    }));
+  }
+}
+
+// Sensor — detects overlaps without blocking movement
+export class Goal extends Entity {
+  setup({ x, y, w, h, side }: { x: number; y: number; w: number; h: number; side: Side }) {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new RigidBodyComponent({ type: "static" }));
+    const collider = new ColliderComponent({
+      shape: { type: "box", width: w, height: h }, sensor: true,
+    });
+    this.add(collider);
+    // When the ball enters this zone, emit a goal event
+    collider.onTrigger((ev) => {
+      if (ev.entered) this.emit(GoalEvent, { side });
+    });
+  }
+}
+
+// Screen-space UI — anchored to viewport, not affected by camera
+export class Scoreboard extends Entity {
+  private leftText!: UIText;
+  private rightText!: UIText;
+  private score = { left: 0, right: 0 };
+
+  setup() {
+    const style = { fontSize: 48, fill: 0xffffff, fontFamily: "monospace" };
+    const panel = this.add(
+      new UIPanel({ anchor: Anchor.TopCenter, offset: { x: 0, y: 16 }, direction: "row", gap: 60 }),
+    );
+    this.leftText = panel.text("0", style);
+    this.rightText = panel.text("0", style);
+
+    this.scene.on(GoalEvent, ({ side }) => {
+      this.score[side]++;
+      this.leftText.setText(String(this.score.left));
+      this.rightText.setText(String(this.score.right));
+    });
+  }
+}
+```
+  </TabItem>
+</Tabs>
+
+## Features
+
+<CardGrid>
+  <Card title="Component-Based" icon="puzzle">
+    Build game objects by composing reusable components — movement, physics, animation, and more.
+  </Card>
+  <Card title="Plugin Architecture" icon="setting">
+    Rendering, physics, input, audio, particles, tilemaps, UI — pick only what you need.
+  </Card>
+  <Card title="TypeScript First" icon="seti:typescript">
+    Strict TypeScript with typed DI, typed events, and zero `any`. Full autocomplete everywhere.
+  </Card>
+  <Card title="Battle-Tested Foundations" icon="rocket">
+    PixiJS v8 for rendering, Rapier2D for physics. Production-grade libraries under the hood.
+  </Card>
+</CardGrid>

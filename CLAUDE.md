@@ -1,0 +1,10 @@
+# CLAUDE.md
+
+@AGENTS.md
+
+## Claude Code Notes
+
+- Prefer dedicated tools (`Read`, `Edit`, `Grep`, `Glob`) over Bash for file operations.
+- Run `npx turbo run typecheck` after code changes to catch type errors early.
+- Don't commit unless explicitly asked.
+- For deep architecture questions, read `docs/AGENT_GUIDE.md`.

@@ -1,0 +1,289 @@
+---
+title: "Physics"
+description: "Rigid bodies, colliders, collision layers, and raycasting with Rapier2D"
+---
+
+YAGE uses [Rapier2D](https://rapier.rs/) under the hood for physics simulation.
+The `@yage/physics` package wraps Rapier with a pixel-based API — you never need
+to think about meters. All positions, velocities, and forces are in pixels.
+
+## PhysicsPlugin Setup
+
+```typescript
+import { PhysicsPlugin } from "@yage/physics";
+
+engine.use(new PhysicsPlugin({
+  gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980)
+  pixelsPerMeter: 50,           // conversion factor, default: 50
+}));
+```
+
+## Rigid Bodies
+
+`RigidBodyComponent` wraps a Rapier rigid body. Add it after `Transform`.
+
+```typescript
+import { RigidBodyComponent } from "@yage/physics";
+
+entity.add(new RigidBodyComponent({
+  type: "dynamic",          // "dynamic" | "static" | "kinematic"
+  fixedRotation: true,      // prevent rotation
+  gravityScale: 0,          // ignore gravity (0 = zero-g, 1 = normal)
+  linearDamping: 5,         // velocity drag
+  angularDamping: 1,        // rotation drag
+  ccd: true,                // continuous collision detection for fast objects
+  lockTranslationX: false,  // lock horizontal movement
+  syncRotation: true,       // sync physics rotation back to Transform
+}));
+```
+
+**Body types:**
+
+- **`dynamic`** — affected by forces, gravity, and collisions. Use for players,
+  projectiles, and physics objects.
+- **`static`** — never moves. Use for walls, floors, and platforms.
+- **`kinematic`** — moved programmatically, not by forces. Use for moving
+  platforms, elevators, and doors. **Move kinematic bodies by setting the
+  `Transform` position** (e.g. `transform.setPosition(x, y)`), not by
+  calling `rb.setPosition` — the physics system automatically syncs
+  Transform → Rapier each frame before stepping. `rb.setPosition` is a
+  teleport intended for dynamic bodies (e.g. respawning a player).
+
+## Colliders
+
+`ColliderComponent` defines the collision shape. Add it after `RigidBodyComponent`.
+
+The required component order is: `Transform` → `RigidBodyComponent` → `ColliderComponent`.
+
+```typescript
+import { ColliderComponent } from "@yage/physics";
+
+// Box
+entity.add(new ColliderComponent({
+  shape: { type: "box", width: 64, height: 32 },
+  restitution: 0.5,   // bounciness (0–1)
+  friction: 0.3,
+  density: 1,          // affects mass for dynamic bodies
+}));
+
+// Circle
+entity.add(new ColliderComponent({
+  shape: { type: "circle", radius: 16 },
+}));
+
+// Capsule
+entity.add(new ColliderComponent({
+  shape: { type: "capsule", halfHeight: 20, radius: 10 },
+}));
+
+// Convex polygon
+entity.add(new ColliderComponent({
+  shape: {
+    type: "polygon",
+    vertices: [{ x: 0, y: -20 }, { x: 20, y: 20 }, { x: -20, y: 20 }],
+  },
+}));
+```
+
+All dimensions are in pixels.
+
+## Collision Layers
+
+`CollisionLayers` lets you control which objects can collide using named layer
+bitmasks.
+
+```typescript
+import { CollisionLayers } from "@yage/physics";
+
+const layers = new CollisionLayers();
+const LAYER_PLAYER = layers.define("player");
+const LAYER_WALL   = layers.define("wall");
+const LAYER_COIN   = layers.define("coin");
+
+// Player collides with walls and coins
+entity.add(new ColliderComponent({
+  shape: { type: "circle", radius: 16 },
+  layers: LAYER_PLAYER,
+  mask: LAYER_WALL | LAYER_COIN,
+}));
+
+// Coin only collides with player
+coinEntity.add(new ColliderComponent({
+  shape: { type: "circle", radius: 10 },
+  sensor: true,
+  layers: LAYER_COIN,
+  mask: LAYER_PLAYER,
+}));
+```
+
+An object on layer A with mask B will only interact with objects on layer B that
+also have A in their mask.
+
+## Sensors and Trigger Events
+
+A **sensor** collider detects overlaps without producing a physical response.
+Use sensors for trigger zones, collectibles, and hit detection.
+
+```typescript
+const collider = new ColliderComponent({
+  shape: { type: "circle", radius: 10 },
+  sensor: true,
+});
+entity.add(collider);
+
+collider.onTrigger((event) => {
+  if (event.entered) {
+    console.log("entered by", event.other.name);
+  } else {
+    console.log("exited by", event.other.name);
+  }
+  // event.otherCollider — the other entity's ColliderComponent
+});
+```
+
+For non-sensor colliders, use `onCollision` instead:
+
+```typescript
+collider.onCollision((event) => {
+  if (event.started) {
+    console.log("hit", event.other.name);
+    console.log("contact normal:", event.contactNormal);
+    console.log("contact point:", event.contactPoint);
+  }
+});
+```
+
+Both handlers return an unsubscribe function.
+
+## Querying Overlapping Entities
+
+You can query which entities currently overlap a sensor collider:
+
+```typescript
+const overlapping = collider.getOverlapping();
+const enemies = collider.getOverlapping({ has: [EnemyTag] });
+const components = collider.getOverlappingComponents(HealthComponent);
+```
+
+## Velocity and Forces
+
+Prefer `setVelocity` for direct control. Use `applyImpulse` or `applyForce`
+for physics-driven movement.
+
+```typescript
+const rb = entity.get(RigidBodyComponent);
+
+// Direct velocity control (px/s) — best for player movement
+rb.setVelocity(new Vec2(200, 0));
+rb.setVelocityX(200);     // set X, keep Y
+rb.setVelocityY(-300);    // set Y, keep X
+
+// Read velocity
+const vel = rb.getVelocity(); // Vec2 in px/s
+
+// Impulse (instant momentum change)
+rb.applyImpulse(new Vec2(0, -4000));
+
+// Force (continuous, applied per frame)
+rb.applyForce(new Vec2(100, 0));
+
+// Rotation
+rb.setAngularVelocity(Math.PI);
+rb.applyTorque(50);
+```
+
+:::note
+`applyImpulse` values are affected by mass and the pixels-per-meter conversion.
+For predictable movement, prefer `setVelocity`.
+:::
+
+## Teleporting
+
+Use `setPosition` to teleport a body without interpolation artifacts:
+
+```typescript
+rb.setPosition(400, 300); // pixels
+```
+
+## Raycasting
+
+Cast a ray to find the first entity hit:
+
+```typescript
+const world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+
+const hit = world.raycast(
+  origin,                  // Vec2Like — start position in pixels
+  { x: 0, y: 1 },         // direction (normalized)
+  100,                     // max distance in pixels
+  { filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL) },
+);
+
+if (hit) {
+  console.log(hit.entity);    // Entity that was hit
+  console.log(hit.point);     // Vec2 — hit position in pixels
+  console.log(hit.normal);    // Vec2 — surface normal
+  console.log(hit.distance);  // number — distance in pixels
+}
+```
+
+A common use case is ground detection for platformers:
+
+```typescript
+const grounded = world.raycast(
+  this.transform.worldPosition,
+  { x: 0, y: 1 },
+  playerHeight / 2 + 2,
+) !== null;
+```
+
+## Gravity Control
+
+Change gravity at runtime via the `PhysicsWorld`:
+
+```typescript
+const worldMgr = this.use(PhysicsWorldManagerKey);
+const world = worldMgr.getOrCreateWorld(this.scene);
+
+world.setGravity(0, -980);  // flip gravity upward
+world.setGravity(0, 0);     // zero gravity
+```
+
+Per-body gravity scaling is set via `gravityScale` in `RigidBodyConfig`.
+
+## Runtime Body Configuration
+
+Lock or unlock axes at runtime:
+
+```typescript
+rb.setEnabledTranslations(true, false);  // lock Y axis
+rb.lockRotations(true);                   // lock rotation
+```
+
+## Continuous Collision Detection
+
+Enable CCD on fast-moving bodies to prevent tunneling through thin colliders:
+
+```typescript
+entity.add(new RigidBodyComponent({
+  type: "dynamic",
+  ccd: true,
+}));
+```
+
+CCD adds a small performance cost — only enable it for bullets, fast projectiles,
+or small objects that move at high speed.
+
+## PhysicsWorld Access
+
+Access the physics world from any component:
+
+```typescript
+import { PhysicsWorldManagerKey } from "@yage/physics";
+
+const worldMgr = this.use(PhysicsWorldManagerKey);
+const world = worldMgr.getOrCreateWorld(this.scene);
+```
+
+Each scene gets its own physics world. The `PhysicsWorldManager` creates and
+manages worlds per-scene automatically.
