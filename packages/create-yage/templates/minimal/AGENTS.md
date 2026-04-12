@@ -11,10 +11,10 @@ This is a [YAGE](https://yage.dev) 2D game engine project (TypeScript + Vite).
 
 ## What's in the starter
 
-A minimal starter — just `@yage/core` + `@yage/renderer`, one empty scene
+A minimal starter — just `@yagejs/core` + `@yagejs/renderer`, one empty scene
 with a placeholder rectangle. `src/main.ts` has commented-out blocks showing
-how to wire up `@yage/physics`, `@yage/input`, `@yage/audio`, and
-`@yage/debug`; uncomment whichever you need and run the install command
+how to wire up `@yagejs/physics`, `@yagejs/input`, `@yagejs/audio`, and
+`@yagejs/debug`; uncomment whichever you need and run the install command
 listed above each block.
 
 ## Project layout
@@ -51,7 +51,7 @@ keep `main.ts` short.
 - Spawn entities with `scene.spawn(EntityClass, params)` — YAGE calls `setup(params)` automatically
 - Resolve services with `this.service(Key)` or `this.use(Key)` inside components
 
-## If you add `@yage/save` later
+## If you add `@yagejs/save` later
 
 The Vite config already has `oxc.decorator.legacy: true` so `@serializable`
 decorators on your own classes will work immediately. You'll also want to

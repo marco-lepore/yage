@@ -21,7 +21,7 @@ export type { Store } from "./store.js";
 // Hooks
 export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hooks.js";
 
-// Re-export useful types from @yage/ui for convenience
-export { Anchor } from "@yage/ui";
-export type { PixiViewType, FancyButtonAnimations } from "@yage/ui";
+// Re-export useful types from @yagejs/ui for convenience
+export { Anchor } from "@yagejs/ui";
+export type { PixiViewType, FancyButtonAnimations } from "@yagejs/ui";
 

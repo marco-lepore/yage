@@ -5,9 +5,9 @@ import {
   Component,
   Transform,
   Vec2,
-} from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();

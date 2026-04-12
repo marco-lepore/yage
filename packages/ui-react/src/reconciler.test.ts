@@ -111,7 +111,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
-import { setYoga, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yage/ui";
+import { setYoga, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
 

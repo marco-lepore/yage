@@ -80,7 +80,7 @@ vi.mock("pixi.js", () => ({
   Graphics: mocks.MockGraphics,
 }));
 
-import { Transform } from "@yage/core";
+import { Transform } from "@yagejs/core";
 import { GraphicsComponent } from "./GraphicsComponent.js";
 import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
 

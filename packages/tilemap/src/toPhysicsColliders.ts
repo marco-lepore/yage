@@ -1,4 +1,4 @@
-import type { ColliderConfig as PhysicsColliderConfig } from "@yage/physics";
+import type { ColliderConfig as PhysicsColliderConfig } from "@yagejs/physics";
 import type { TilemapColliderConfig } from "./types.js";
 
 /**

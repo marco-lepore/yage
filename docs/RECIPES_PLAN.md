@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document tracks reusable "recipes" we want to provide for real-world games, plus the implementation approach for adjacent infrastructure work (`@yage/input` remapping, scene transitions, save/load).
+This document tracks reusable "recipes" we want to provide for real-world games, plus the implementation approach for adjacent infrastructure work (`@yagejs/input` remapping, scene transitions, save/load).
 
 The goal is to keep the high-level API short for simple games while preserving a structured path for larger codebases.
 
@@ -22,14 +22,14 @@ The goal is to keep the high-level API short for simple games while preserving a
 | Layer | Put features here when... | Examples |
 |---|---|---|
 | **Core engine** | Requires lifecycle guarantees, scheduler/scene semantics, or global events that all plugins depend on | Transition-safe scene operation queue, scene lifecycle events |
-| **Base plugin (`@yage/*`)** | Cross-project infrastructure with stable contracts and external integration points | Input remapping/profile support, transition effects renderer, save/load service |
+| **Base plugin (`@yagejs/*`)** | Cross-project infrastructure with stable contracts and external integration points | Input remapping/profile support, transition effects renderer, save/load service |
 | **Recipe** | Reusable game logic/patterns that compose existing APIs without new engine primitives | Character controller, checkpoints, interaction system, spawn director |
 
 ---
 
 ## Planned Base-Plugin Work
 
-### 1. Input Remapping (`@yage/input`)
+### 1. Input Remapping (`@yagejs/input`)
 
 **Problem solved**: user-rebindable controls, per-profile bindings, conflict-aware remapping.
 
@@ -68,7 +68,7 @@ export interface InputManager {
 - Add deterministic conflict handling policy.
 - Keep `InputManager` API valid for current simple usage (`setActionMap` stays supported).
 
-### 2. Scene Transitions (`@yage/transitions` + small core hooks)
+### 2. Scene Transitions (`@yagejs/transitions` + small core hooks)
 
 **Problem solved**: visual transitions (fade/wipe/etc.) with safe scene stack operations and no race conditions.
 
@@ -95,9 +95,9 @@ export interface TransitionService {
 
 - Add a queue/lock in scene operation flow (core) so transitions serialize scene ops.
 - Emit explicit transition lifecycle events for plugin/UI hooks.
-- Keep visuals in `@yage/transitions`; core only provides ordering guarantees.
+- Keep visuals in `@yagejs/transitions`; core only provides ordering guarantees.
 
-### 3. Save/Load (`@yage/save`)
+### 3. Save/Load (`@yagejs/save`)
 
 **Problem solved**: persistent player/profile data and run/scene snapshots, without forcing one monolithic save model.
 
@@ -318,7 +318,7 @@ The v1 engine shipped a `DialoguePlayer` + `DialogueWindow` pair that's worth pr
 
 - Window required a specific `NineSlicePlane` + `Sprite` cursor + exact padding tuple — customization meant subclassing. v2 recipe should take a simpler render callback or slot-based config.
 - Choice branching (`next: DialogueChoice[]`) was typed but not actually implemented in the v1 player's `advance()`. v2 recipe must handle choices end-to-end.
-- No save/load integration. The player should expose `{ currentNodeId, currentMessageIndex }` as serializable state so the `@yage/save` `run` scope can snapshot mid-dialogue.
+- No save/load integration. The player should expose `{ currentNodeId, currentMessageIndex }` as serializable state so the `@yagejs/save` `run` scope can snapshot mid-dialogue.
 
 **Ideal signature (sketch)**
 
@@ -356,9 +356,9 @@ Initial recommendation:
 
 ## Implementation Milestones
 
-1. **M1**: Input remapping MVP (`@yage/input`) + profile import/export. 🟡 Partial — `rebind()`, `getBindings()`, `resetBindings()` implemented with conflict policies. `loadProfile()`/`exportProfile()` not yet. Working `input-remapping` example exists.
-2. **M2**: Transition-safe scene operation queue (core) + `@yage/transitions` fade effect.
-3. **M3**: Save contributor registry (`@yage/save`) with `settings/profile/run` scopes. Current `@yage/save` is snapshot-based (scene stack + entities), not contributor-scoped.
+1. **M1**: Input remapping MVP (`@yagejs/input`) + profile import/export. 🟡 Partial — `rebind()`, `getBindings()`, `resetBindings()` implemented with conflict policies. `loadProfile()`/`exportProfile()` not yet. Working `input-remapping` example exists.
+2. **M2**: Transition-safe scene operation queue (core) + `@yagejs/transitions` fade effect.
+3. **M3**: Save contributor registry (`@yagejs/save`) with `settings/profile/run` scopes. Current `@yagejs/save` is snapshot-based (scene stack + entities), not contributor-scoped.
 4. **M4**: Publish first recipe wave (`characterController2D`, `cameraRig2D`, `interactionKit`, `objectPool`).
 5. **M5**: Add end-to-end examples showing simple usage and scaled/structured usage.
 

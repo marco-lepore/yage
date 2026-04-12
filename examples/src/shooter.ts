@@ -8,8 +8,8 @@ import {
   Process,
   defineEvent,
   defineBlueprint,
-} from "@yage/core";
-import type { ProcessSlot } from "@yage/core";
+} from "@yagejs/core";
+import type { ProcessSlot } from "@yagejs/core";
 import {
   GraphicsComponent,
   AnimatedSpriteComponent,
@@ -17,21 +17,21 @@ import {
   CameraKey,
   RenderLayerManagerKey,
   texture,
-} from "@yage/renderer";
+} from "@yagejs/renderer";
 import {
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldManagerKey,
-} from "@yage/physics";
-import type { PhysicsWorld } from "@yage/physics";
-import { AudioManagerKey, sound } from "@yage/audio";
-import { InputManagerKey } from "@yage/input";
-import { RendererPlugin } from "@yage/renderer";
-import { PhysicsPlugin } from "@yage/physics";
-import { AudioPlugin } from "@yage/audio";
-import { InputPlugin } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/physics";
+import type { PhysicsWorld } from "@yagejs/physics";
+import { AudioManagerKey, sound } from "@yagejs/audio";
+import { InputManagerKey } from "@yagejs/input";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { AudioPlugin } from "@yagejs/audio";
+import { InputPlugin } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
@@ -131,7 +131,7 @@ const LAYER_ENEMY = layers.define("enemy");
 // State
 let killCount = 0;
 let won = false;
-let playerEntity: import("@yage/core").Entity | null = null;
+let playerEntity: import("@yagejs/core").Entity | null = null;
 
 function setKills(n: number): void {
   killCount = n;
@@ -507,7 +507,7 @@ class PlayerController extends Component {
     this.camera.shake(5, 200, { decay: 0.7 });
   }
 
-  private tryDamageFrom(enemy: import("@yage/core").Entity): void {
+  private tryDamageFrom(enemy: import("@yagejs/core").Entity): void {
     if (!this.invincibility.completed) return;
     const enemyX = enemy.get(Transform).position.x;
     const playerX = this.transform.position.x;

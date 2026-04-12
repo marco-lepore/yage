@@ -1,12 +1,12 @@
-# @yage/ui-react
+# @yagejs/ui-react
 
-Depends on `@yage/ui`, `react`. React reconciler over the UI system.
+Depends on `@yagejs/ui`, `react`. React reconciler over the UI system.
 
 ## UIRoot
 
 ```ts
-import { UIRoot } from "@yage/ui-react";
-import { Anchor } from "@yage/ui";
+import { UIRoot } from "@yagejs/ui-react";
+import { Anchor } from "@yagejs/ui";
 
 const root = new UIRoot({ anchor: Anchor.Center, offset: { x: 0, y: 0 } });
 entity.add(root);
@@ -16,7 +16,7 @@ root.render(<MyComponent />);
 ## JSX Components
 
 ```tsx
-import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yage/ui-react";
+import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
 
 <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
   <Text style={{ fontSize: 24, fill: 0xffffff }}>Hello</Text>
@@ -32,7 +32,7 @@ PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlid
 ## Hooks
 
 ```ts
-import { useEngine, useScene, useStore, useQuery, useSceneSelector } from "@yage/ui-react";
+import { useEngine, useScene, useStore, useQuery, useSceneSelector } from "@yagejs/ui-react";
 
 // Engine/scene context
 const engine = useEngine();
@@ -51,7 +51,7 @@ const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 ## createStore
 
 ```ts
-import { createStore } from "@yage/ui-react";
+import { createStore } from "@yagejs/ui-react";
 
 const store = createStore({ score: 0, health: 100 });
 

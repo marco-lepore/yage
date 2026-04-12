@@ -86,7 +86,7 @@ vi.mock("pixi.js", () => ({
   AnimatedSprite: mocks.MockAnimatedSprite,
 }));
 
-import { Transform, Vec2 } from "@yage/core";
+import { Transform, Vec2 } from "@yagejs/core";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { SpriteComponent } from "./SpriteComponent.js";
 import { GraphicsComponent } from "./GraphicsComponent.js";

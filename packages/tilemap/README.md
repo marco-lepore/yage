@@ -1,11 +1,11 @@
-# @yage/tilemap
+# @yagejs/tilemap
 
 Tile-based map loading and rendering for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/tilemap
+npm install @yagejs/tilemap
 ```
 
 Supports [Tiled](https://www.mapeditor.org/) map format out of the box. Bundles `@pixi/tilemap` for efficient rendering.
@@ -13,8 +13,8 @@ Supports [Tiled](https://www.mapeditor.org/) map format out of the box. Bundles 
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { TilemapPlugin, TilemapComponent, tiledMap } from "@yage/tilemap";
+import { Engine } from "@yagejs/core";
+import { TilemapPlugin, TilemapComponent, tiledMap } from "@yagejs/tilemap";
 
 const engine = new Engine();
 engine.use(new TilemapPlugin());
@@ -31,7 +31,7 @@ entity.add(new TilemapComponent({ map }));
 
 - **TilemapPlugin / TilemapComponent** - tile-based map rendering
 - **Tiled loader** - JSON format support with tilesets, object layers, properties
-- **Collision extraction** - convert map shapes to `@yage/physics` colliders (optional)
+- **Collision extraction** - convert map shapes to `@yagejs/physics` colliders (optional)
 - **Custom properties** - typed access to Tiled object properties
 
 ## Docs

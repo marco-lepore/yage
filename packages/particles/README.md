@@ -1,18 +1,18 @@
-# @yage/particles
+# @yagejs/particles
 
 Particle emitters and visual effects for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/particles
+npm install @yagejs/particles
 ```
 
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yage/particles";
+import { Engine } from "@yagejs/core";
+import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 
 const engine = new Engine();
 engine.use(new ParticlesPlugin());

@@ -1,18 +1,18 @@
-# @yage/particles
+# @yagejs/particles
 
-Depends on `@yage/core`, `@yage/renderer`. Pooled particle emitters.
+Depends on `@yagejs/core`, `@yagejs/renderer`. Pooled particle emitters.
 
 ## Setup
 
 ```ts
-import { ParticlesPlugin } from "@yage/particles";
+import { ParticlesPlugin } from "@yagejs/particles";
 engine.use(new ParticlesPlugin());
 ```
 
 ## ParticleEmitterComponent
 
 ```ts
-import { ParticleEmitterComponent } from "@yage/particles";
+import { ParticleEmitterComponent } from "@yagejs/particles";
 
 entity.add(new ParticleEmitterComponent({
   texture: particleTex,        // TextureInput
@@ -49,7 +49,7 @@ emitter.activeCount;         // number
 ## ParticlePresets
 
 ```ts
-import { ParticlePresets } from "@yage/particles";
+import { ParticlePresets } from "@yagejs/particles";
 
 ParticlePresets.fire(texture);    // warm, upward, shrinking
 ParticlePresets.smoke(texture);   // slow, expanding, fading

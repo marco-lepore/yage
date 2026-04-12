@@ -1,5 +1,5 @@
-import { AssetManagerKey, GameLoopKey } from "@yage/core";
-import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
+import { AssetManagerKey, GameLoopKey } from "@yagejs/core";
+import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { Application, Assets, Container, Graphics } from "pixi.js";
 import type { EventMode, Spritesheet } from "pixi.js";
 import { Camera } from "./Camera.js";

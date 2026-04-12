@@ -1,12 +1,12 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
   CameraKey,
   RenderLayerManagerKey,
-} from "@yage/renderer";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/renderer";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();

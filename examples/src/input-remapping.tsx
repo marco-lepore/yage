@@ -5,20 +5,20 @@ import {
   Scene,
   Transform,
   Vec2,
-} from "@yage/core";
+} from "@yagejs/core";
 import {
   RendererPlugin,
   CameraKey,
   GraphicsComponent,
-} from "@yage/renderer";
+} from "@yagejs/renderer";
 import {
   InputPlugin,
   InputManager,
   InputManagerKey,
   getKeyDisplayName,
-} from "@yage/input";
-import type { RebindResult } from "@yage/input";
-import { UIPlugin } from "@yage/ui";
+} from "@yagejs/input";
+import type { RebindResult } from "@yagejs/input";
+import { UIPlugin } from "@yagejs/ui";
 import {
   UIRoot,
   Panel,
@@ -28,8 +28,8 @@ import {
   useEngine,
   useStore,
   createStore,
-} from "@yage/ui-react";
-import type { Store } from "@yage/ui-react";
+} from "@yagejs/ui-react";
+import type { Store } from "@yagejs/ui-react";
 import { injectStyles, getContainer } from "./shared";
 
 injectStyles();

@@ -10,8 +10,8 @@ naturally with TypeScript's type system.
 ## Basic Subclass
 
 ```typescript
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 
 interface PlayerParams {
   position: Vec2;
@@ -75,7 +75,7 @@ whether an entity has a trait without knowing its concrete class.
 ### Defining a Trait
 
 ```typescript
-import { defineTrait } from "@yage/core";
+import { defineTrait } from "@yagejs/core";
 
 const Interactable = defineTrait("Interactable");
 const Damageable = defineTrait("Damageable");
@@ -86,7 +86,7 @@ const Damageable = defineTrait("Damageable");
 Use the `@trait()` decorator on entity subclasses:
 
 ```typescript
-import { trait } from "@yage/core";
+import { trait } from "@yagejs/core";
 
 @trait(Interactable)
 class Chest extends Entity<ChestParams> {
@@ -143,7 +143,7 @@ and a more natural class-based API.
 
 ```typescript
 // Legacy approach — still functional, but prefer entity subclasses
-import { defineBlueprint } from "@yage/core";
+import { defineBlueprint } from "@yagejs/core";
 
 const CoinBlueprint = defineBlueprint("Coin", (entity, params: CoinParams) => {
   entity.add(new Transform(params.position));

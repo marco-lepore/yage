@@ -3,14 +3,14 @@ title: "Debug Tools"
 description: "Debug overlays, physics visualization, and custom debug contributors"
 ---
 
-The `@yage/debug` package provides a toggleable debug overlay with physics
+The `@yagejs/debug` package provides a toggleable debug overlay with physics
 shape visualization, HUD text, performance stats, and a contributor system
 for custom debug views.
 
 ## DebugPlugin Setup
 
 ```typescript
-import { DebugPlugin } from "@yage/debug";
+import { DebugPlugin } from "@yagejs/debug";
 
 engine.use(new DebugPlugin({
   startEnabled: true,     // show debug overlay on launch
@@ -51,7 +51,7 @@ When the debug overlay is active, the plugin automatically shows:
 Implement `DebugContributor` to add your own debug visualizations:
 
 ```typescript
-import type { DebugContributor, WorldDebugApi, HudDebugApi } from "@yage/debug/api";
+import type { DebugContributor, WorldDebugApi, HudDebugApi } from "@yagejs/debug/api";
 
 class WallDebugContributor implements DebugContributor {
   readonly name = "walls";
@@ -83,7 +83,7 @@ class WallDebugContributor implements DebugContributor {
 Register it in your scene:
 
 ```typescript
-import { DebugRegistryKey } from "@yage/debug/api";
+import { DebugRegistryKey } from "@yagejs/debug/api";
 
 onEnter(): void {
   const registry = this.service(DebugRegistryKey);
@@ -138,7 +138,7 @@ registry.setFlag("my-debug", "show-paths", true);
 `StatsStore` provides rolling-window statistics for performance monitoring:
 
 ```typescript
-import { StatsStore } from "@yage/debug";
+import { StatsStore } from "@yagejs/debug";
 
 const stats = new StatsStore();
 
@@ -163,8 +163,8 @@ new DebugPlugin({ manualClock: true, stepKey: "Period" })
 ## Logging
 
 The `Logger` class is a category-tagged, ring-buffered logger built into the
-engine. Unlike the debug overlays above, it lives in **`@yage/core`**, not
-`@yage/debug` — you don't need the `DebugPlugin` installed to use it. Every
+engine. Unlike the debug overlays above, it lives in **`@yagejs/core`**, not
+`@yagejs/debug` — you don't need the `DebugPlugin` installed to use it. Every
 `Engine` has a `Logger` attached at construction time, and the game loop
 auto-updates the logger's frame counter so every log entry records the frame
 it was emitted on.
@@ -172,7 +172,7 @@ it was emitted on.
 Access it as `engine.logger`, or through DI via `LoggerKey`:
 
 ```typescript
-import { Logger, LogLevel, LoggerKey } from "@yage/core";
+import { Logger, LogLevel, LoggerKey } from "@yagejs/core";
 
 // Direct access on the engine
 engine.logger.info("physics", "Shape spawned", { x: 100, y: 200 });
@@ -213,7 +213,7 @@ Pass a `logger` option when constructing the engine to configure level,
 category filter, ring buffer size, or a custom output sink:
 
 ```typescript
-import { Engine, LogLevel } from "@yage/core";
+import { Engine, LogLevel } from "@yagejs/core";
 
 const engine = new Engine({
   logger: {

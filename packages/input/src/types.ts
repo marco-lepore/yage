@@ -1,4 +1,4 @@
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 
 /** Service key for the InputManager. */
 export const InputManagerKey = new ServiceKey<

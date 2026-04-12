@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from "react";
-import { Engine, Scene, Vec2, Transform } from "@yage/core";
-import { RendererPlugin, CameraKey, GraphicsComponent } from "@yage/renderer";
-import { UIPlugin, createNineSliceView } from "@yage/ui";
+import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
+import { RendererPlugin, CameraKey, GraphicsComponent } from "@yagejs/renderer";
+import { UIPlugin, createNineSliceView } from "@yagejs/ui";
 import {
   UIRoot,
   Panel,
@@ -14,7 +14,7 @@ import {
   PixiInput,
   PixiSelect,
   PixiRadioGroup,
-} from "@yage/ui-react";
+} from "@yagejs/ui-react";
 import { injectStyles, getContainer } from "./shared";
 import {
   textStyle, loadFonts, assets, allAssets,

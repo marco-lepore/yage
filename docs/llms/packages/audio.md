@@ -1,11 +1,11 @@
-# @yage/audio
+# @yagejs/audio
 
-Depends on `@yage/core`, `@pixi/sound`. Channel-based audio playback.
+Depends on `@yagejs/core`, `@pixi/sound`. Channel-based audio playback.
 
 ## Setup
 
 ```ts
-import { AudioPlugin } from "@yage/audio";
+import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(new AudioPlugin({
   channels: {
@@ -18,7 +18,7 @@ engine.use(new AudioPlugin({
 ## Asset Factory
 
 ```ts
-import { sound } from "@yage/audio";
+import { sound } from "@yagejs/audio";
 
 const CoinSfx = sound("assets/coin.wav");
 // Add to scene preload: readonly preload = [CoinSfx];
@@ -27,7 +27,7 @@ const CoinSfx = sound("assets/coin.wav");
 ## AudioManager
 
 ```ts
-import { AudioManagerKey } from "@yage/audio";
+import { AudioManagerKey } from "@yagejs/audio";
 
 const audio = this.use(AudioManagerKey);
 
@@ -69,7 +69,7 @@ audio.resumeChannel("music");
 Entity-bound audio. Auto-stops on entity destroy.
 
 ```ts
-import { SoundComponent } from "@yage/audio";
+import { SoundComponent } from "@yagejs/audio";
 
 entity.add(new SoundComponent({
   alias: CoinSfx.path,

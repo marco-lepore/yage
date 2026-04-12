@@ -2,7 +2,7 @@
  * Shared UI theme — fonts, text presets, asset handles, and nine-slice configs.
  * Used across all UI examples like a design-system token file.
  */
-import { texture } from "@yage/renderer";
+import { texture } from "@yagejs/renderer";
 
 // ---------------------------------------------------------------------------
 // Fonts

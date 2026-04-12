@@ -15,11 +15,11 @@ import {
   Scene,
   Entity,
   _resetEntityIdCounter,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
-import { CameraKey, RenderLayerManagerKey, RendererKey, StageKey } from "@yage/renderer";
-import { Camera } from "@yage/renderer";
-import { RenderLayerManager } from "@yage/renderer";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
+import { CameraKey, RenderLayerManagerKey, RendererKey, StageKey } from "@yagejs/renderer";
+import { Camera } from "@yagejs/renderer";
+import { RenderLayerManager } from "@yagejs/renderer";
 import { UIContainerKey, UILayerManagerKey } from "./types.js";
 
 // ---- Minimal mock container for test context ----

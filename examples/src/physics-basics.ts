@@ -1,14 +1,14 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   PhysicsWorldManagerKey,
   RigidBodyComponent,
   ColliderComponent,
-} from "@yage/physics";
-import type { PhysicsWorld } from "@yage/physics";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/physics";
+import type { PhysicsWorld } from "@yagejs/physics";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();

@@ -3,7 +3,7 @@ title: "Testing"
 description: "Unit and integration testing with YAGE test utilities"
 ---
 
-YAGE ships test utilities in `@yage/core` that let you run game logic in
+YAGE ships test utilities in `@yagejs/core` that let you run game logic in
 isolation without a browser, a canvas, or any rendering infrastructure.
 
 ## Test Utilities
@@ -14,7 +14,7 @@ import {
   createMockScene,
   createMockEntity,
   advanceFrames,
-} from "@yage/core/test-utils";
+} from "@yagejs/core/test-utils";
 ```
 
 | Utility | Purpose |
@@ -31,7 +31,7 @@ lifecycle methods directly:
 
 ```typescript
 import { describe, it, expect } from "vitest";
-import { createMockEntity } from "@yage/core/test-utils";
+import { createMockEntity } from "@yagejs/core/test-utils";
 import { HealthComponent } from "../HealthComponent";
 
 describe("HealthComponent", () => {
@@ -54,7 +54,7 @@ Systems operate on a scene's entities. Use `createMockScene()` to build a
 minimal world with exactly the entities your system needs:
 
 ```typescript
-import { createMockScene } from "@yage/core/test-utils";
+import { createMockScene } from "@yagejs/core/test-utils";
 import { GravitySystem } from "../GravitySystem";
 import { VelocityComponent } from "../VelocityComponent";
 
@@ -82,7 +82,7 @@ For tests that need multiple systems working together, spin up a headless
 engine:
 
 ```typescript
-import { createTestEngine, advanceFrames } from "@yage/core/test-utils";
+import { createTestEngine, advanceFrames } from "@yagejs/core/test-utils";
 
 describe("Player movement integration", () => {
   let engine: TestEngine;
@@ -119,8 +119,8 @@ Since processes run inside the game loop, you can test them by manually
 advancing time with `_update(dt)`:
 
 ```typescript
-import { ProcessComponent, Process } from "@yage/core";
-import { createMockEntity } from "@yage/core/test-utils";
+import { ProcessComponent, Process } from "@yagejs/core";
+import { createMockEntity } from "@yagejs/core/test-utils";
 
 describe("Process timing", () => {
   it("should fire callback after delay", () => {
@@ -145,7 +145,7 @@ describe("Process timing", () => {
 Tweens work the same way. Advance time and assert on the interpolated values:
 
 ```typescript
-import { Tween, easeLinear } from "@yage/core";
+import { Tween, easeLinear } from "@yagejs/core";
 
 it("should tween alpha to zero", () => {
   const obj = { alpha: 1 };

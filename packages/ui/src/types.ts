@@ -1,4 +1,4 @@
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 import type {
   ColorValue,
   DisplayContainer,
@@ -8,7 +8,7 @@ import type {
   TextStyle,
   TextureHandle,
   TextureResource,
-} from "@yage/renderer";
+} from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 
 /** View type accepted by @pixi/ui components (texture path, Texture, Container, Sprite, or Graphics). */
@@ -25,7 +25,7 @@ export const UIContainerKey = new ServiceKey<DisplayContainer>("uiContainer");
 
 /** Service key for the UI layer manager (a RenderLayerManager for the screen-space UI container). */
 export const UILayerManagerKey = new ServiceKey<
-  import("@yage/renderer").RenderLayerManager
+  import("@yagejs/renderer").RenderLayerManager
 >("uiLayerManager");
 
 /** Anchor position for root UI panels relative to virtual resolution. */

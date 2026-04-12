@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InputDebugContributor } from "./InputDebugContributor.js";
 import { InputManager } from "./InputManager.js";
-import type { WorldDebugApi, HudDebugApi, DebugGraphics } from "@yage/debug/api";
+import type { WorldDebugApi, HudDebugApi, DebugGraphics } from "@yagejs/debug/api";
 
 function createMockManager(): InputManager {
   const manager = new InputManager();

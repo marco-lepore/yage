@@ -1,6 +1,6 @@
-import { Component, Transform, serializable } from "@yage/core";
+import { Component, Transform, serializable } from "@yagejs/core";
 import { Assets, Container } from "pixi.js";
-import { RenderLayerManagerKey } from "@yage/renderer";
+import { RenderLayerManagerKey } from "@yagejs/renderer";
 import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
 import { extractCollisionShapes } from "./colliders.js";
 import type { TiledMapData } from "./tiled/types.js";

@@ -1,11 +1,11 @@
-# @yage/debug
+# @yagejs/debug
 
-Depends on `@yage/core`, `@yage/renderer`. Debug overlay and performance tools.
+Depends on `@yagejs/core`, `@yagejs/renderer`. Debug overlay and performance tools.
 
 ## Setup
 
 ```ts
-import { DebugPlugin } from "@yage/debug";
+import { DebugPlugin } from "@yagejs/debug";
 
 engine.use(new DebugPlugin({
   startEnabled: true,       // show on launch (default false)
@@ -64,7 +64,7 @@ registry.setFlag("contributor", "flag", true);    // toggle specific flags
 ## StatsStore
 
 ```ts
-import { StatsStore } from "@yage/debug";
+import { StatsStore } from "@yagejs/debug";
 
 const stats = new StatsStore();
 stats.push("updateTime", value);     // add sample

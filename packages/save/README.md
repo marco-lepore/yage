@@ -1,18 +1,18 @@
-# @yage/save
+# @yagejs/save
 
 Save and load game state for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/save
+npm install @yagejs/save
 ```
 
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { SavePlugin, SaveServiceKey } from "@yage/save";
+import { Engine } from "@yagejs/core";
+import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 
 const engine = new Engine();
 engine.use(new SavePlugin());
@@ -21,7 +21,7 @@ engine.use(new SavePlugin());
 Mark components as serializable and save the world:
 
 ```ts
-import { serializable } from "@yage/core";
+import { serializable } from "@yagejs/core";
 
 @serializable("player-stats")
 class PlayerStats extends Component {

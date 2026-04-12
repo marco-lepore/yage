@@ -1,4 +1,4 @@
-import { AssetHandle } from "@yage/core";
+import { AssetHandle } from "@yagejs/core";
 import type { Sound } from "@pixi/sound";
 
 /** Create a typed asset handle for a sound effect. */

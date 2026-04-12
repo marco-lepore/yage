@@ -1,13 +1,13 @@
-import { Component, Transform, Vec2 } from "@yage/core";
-import { AnimationController } from "@yage/renderer";
-import { AudioManagerKey } from "@yage/audio";
-import { InputManagerKey } from "@yage/input";
+import { Component, Transform, Vec2 } from "@yagejs/core";
+import { AnimationController } from "@yagejs/renderer";
+import { AudioManagerKey } from "@yagejs/audio";
+import { InputManagerKey } from "@yagejs/input";
 import {
   CollisionLayers,
   PhysicsWorldManagerKey,
   RigidBodyComponent,
   type PhysicsWorld,
-} from "@yage/physics";
+} from "@yagejs/physics";
 import { jumpSfx } from "../../scenes/GameScene";
 import type { PlayerAnim } from "./index";
 import { LAYER_PLAYER, LAYER_PLATFORM } from "../../layers";

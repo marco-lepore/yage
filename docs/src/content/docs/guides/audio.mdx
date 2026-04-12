@@ -4,13 +4,13 @@ description: "Sound effects, music, and channel-based audio mixing"
 ---
 
 YAGE wraps [@pixi/sound](https://github.com/pixijs/sound) for audio playback.
-The `@yage/audio` package provides channel-based mixing, a `SoundComponent` for
+The `@yagejs/audio` package provides channel-based mixing, a `SoundComponent` for
 entity-bound audio, and a `sound()` asset factory for preloading.
 
 ## AudioPlugin Setup
 
 ```typescript
-import { AudioPlugin } from "@yage/audio";
+import { AudioPlugin } from "@yagejs/audio";
 
 engine.use(new AudioPlugin({
   channels: {
@@ -25,7 +25,7 @@ engine.use(new AudioPlugin({
 Use the `sound()` factory to create preloadable asset handles:
 
 ```typescript
-import { sound } from "@yage/audio";
+import { sound } from "@yagejs/audio";
 
 const CoinSfx  = sound("assets/coin.wav");
 const BgMusic   = sound("assets/music.mp3");
@@ -44,7 +44,7 @@ class GameScene extends Scene {
 Resolve the `AudioManager` from the DI container and call `play`:
 
 ```typescript
-import { AudioManagerKey } from "@yage/audio";
+import { AudioManagerKey } from "@yagejs/audio";
 
 const audio = this.use(AudioManagerKey);
 
@@ -133,7 +133,7 @@ audio.stopAll();
 when the entity is destroyed.
 
 ```typescript
-import { SoundComponent } from "@yage/audio";
+import { SoundComponent } from "@yagejs/audio";
 
 entity.add(new SoundComponent({
   alias: BgMusic.path,

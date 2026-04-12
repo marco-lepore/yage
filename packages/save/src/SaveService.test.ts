@@ -17,9 +17,9 @@ import {
   LogLevel,
   SceneManager,
   serializable,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
-import type { SnapshotResolver } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
+import type { SnapshotResolver } from "@yagejs/core";
 import { MemoryStorage } from "./test-helpers.js";
 import { SaveService } from "./SaveService.js";
 import { SaveServiceKey } from "./keys.js";

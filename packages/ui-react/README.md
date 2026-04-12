@@ -1,11 +1,11 @@
-# @yage/ui-react
+# @yagejs/ui-react
 
 React bindings for building game UI with JSX in the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/ui-react react react-dom
+npm install @yagejs/ui-react react react-dom
 ```
 
 React is a **peer dependency** - bring your own (^18 or ^19).
@@ -13,9 +13,9 @@ React is a **peer dependency** - bring your own (^18 or ^19).
 ## Usage
 
 ```tsx
-import { Engine } from "@yage/core";
-import { UIPlugin } from "@yage/ui";
-import { createUIRoot, Panel, Text, Button } from "@yage/ui-react";
+import { Engine } from "@yagejs/core";
+import { UIPlugin } from "@yagejs/ui";
+import { createUIRoot, Panel, Text, Button } from "@yagejs/ui-react";
 
 const engine = new Engine();
 engine.use(new UIPlugin());
@@ -33,7 +33,7 @@ function HUD({ score }: { score: number }) {
 
 ## What's in the box
 
-- **Custom React reconciler** - renders React trees to `@yage/ui` widgets
+- **Custom React reconciler** - renders React trees to `@yagejs/ui` widgets
 - **JSX components** - `Panel`, `Text`, `Button`, `Image`, `ProgressBar`, and more
 - **Hooks-friendly** - use `useState`, `useEffect`, custom hooks for UI state
 

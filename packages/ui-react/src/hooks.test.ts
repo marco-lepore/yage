@@ -15,7 +15,7 @@ import {
   notifyFrame,
 } from "./hooks.js";
 import { createStore } from "./store.js";
-import { EngineContext, QueryCacheKey, QueryCache } from "@yage/core";
+import { EngineContext, QueryCacheKey, QueryCache } from "@yagejs/core";
 
 beforeAll(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

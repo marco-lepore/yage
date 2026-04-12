@@ -1,5 +1,5 @@
 import type { DebugContributor, HudDebugApi } from "../types.js";
-import type { Inspector } from "@yage/core";
+import type { Inspector } from "@yagejs/core";
 
 export class EntityCountContributor implements DebugContributor {
   readonly name = "entities";

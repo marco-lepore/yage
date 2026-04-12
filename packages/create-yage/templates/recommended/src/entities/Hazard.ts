@@ -1,6 +1,6 @@
-import { Entity, Transform, Vec2, trait } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
+import { Entity, Transform, Vec2, trait } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { Oscillate } from "../components/Oscillate";
 import { LAYER_HAZARD, LAYER_PLAYER } from "../layers";
 import { Hostile } from "../traits";

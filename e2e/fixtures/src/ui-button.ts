@@ -1,7 +1,7 @@
-import { Engine, Component, Scene } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
-import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
-import { DebugPlugin } from "@yage/debug";
+import { Engine, Component, Scene } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();

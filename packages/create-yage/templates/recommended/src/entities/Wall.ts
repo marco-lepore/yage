@@ -1,5 +1,5 @@
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { LAYER_PLATFORM, LAYER_PLAYER } from "../layers";
 
 /** Invisible static boundary used to fence the player into the playable area. */

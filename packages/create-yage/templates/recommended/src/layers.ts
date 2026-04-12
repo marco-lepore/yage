@@ -1,4 +1,4 @@
-import { CollisionLayers } from "@yage/physics";
+import { CollisionLayers } from "@yagejs/physics";
 
 const layers = new CollisionLayers();
 export const LAYER_PLAYER = layers.define("player");

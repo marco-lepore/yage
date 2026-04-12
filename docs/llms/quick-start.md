@@ -13,20 +13,20 @@ Pick `recommended` for a playable platformer seed (physics, input, animations, e
 ## Manual Installation
 
 ```bash
-npm install @yage/core @yage/renderer
+npm install @yagejs/core @yagejs/renderer
 ```
 
 Add more packages as needed:
 
 ```bash
-npm install @yage/physics @yage/input @yage/audio @yage/debug
+npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
 ```
 
 ## Minimal Example
 
 ```ts
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
 engine.use(new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }));
@@ -36,10 +36,10 @@ await engine.start();
 ## Engine Setup
 
 ```ts
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
-import { InputPlugin } from "@yage/input";
-import { PhysicsPlugin } from "@yage/physics";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+import { PhysicsPlugin } from "@yagejs/physics";
 
 const engine = new Engine({ debug: true, fixedTimestep: 1000 / 60 });
 engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
@@ -55,10 +55,10 @@ engine.scenes.push(new GameScene());
 For real games, subclass `Scene`:
 
 ```ts
-import { Scene, Transform, Vec2 } from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
-import { CameraKey } from "@yage/renderer";
-import { texture } from "@yage/renderer";
+import { Scene, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+import { CameraKey } from "@yagejs/renderer";
+import { texture } from "@yagejs/renderer";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -109,10 +109,10 @@ const enemies = window.__yage__.inspector
 
 ### Unit tests (deterministic frame stepping)
 
-`@yage/core` ships headless test utilities. `createTestEngine()` spins up a fully-wired engine with no renderer/physics/input plugins by default — add whatever you need with `engine.use(...)`. `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
+`@yagejs/core` ships headless test utilities. `createTestEngine()` spins up a fully-wired engine with no renderer/physics/input plugins by default — add whatever you need with `engine.use(...)`. `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:
 
 ```ts
-import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yage/core";
+import { createTestEngine, advanceFrames, Transform, Vec2 } from "@yagejs/core";
 
 const engine = await createTestEngine();
 const scene = new GameScene();

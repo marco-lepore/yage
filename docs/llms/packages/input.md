@@ -1,11 +1,11 @@
-# @yage/input
+# @yagejs/input
 
-Depends on `@yage/core`. Keyboard, mouse, and pointer input with action maps.
+Depends on `@yagejs/core`. Keyboard, mouse, and pointer input with action maps.
 
 ## Setup
 
 ```ts
-import { InputPlugin } from "@yage/input";
+import { InputPlugin } from "@yagejs/input";
 
 engine.use(new InputPlugin({
   actions: {
@@ -27,7 +27,7 @@ Registers `InputManagerKey` in `EngineContext`.
 ## InputManager Queries
 
 ```ts
-import { InputManagerKey } from "@yage/input";
+import { InputManagerKey } from "@yagejs/input";
 
 const input = context.resolve(InputManagerKey);
 

@@ -149,7 +149,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Transform, Vec2, Phase } from "@yage/core";
+import { Transform, Vec2, Phase } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";

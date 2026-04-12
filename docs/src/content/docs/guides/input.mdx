@@ -3,7 +3,7 @@ title: "Input"
 description: "Keyboard, mouse, gamepad, and action maps"
 ---
 
-The `@yage/input` package provides a unified input layer that abstracts
+The `@yagejs/input` package provides a unified input layer that abstracts
 keyboard, mouse, and gamepad devices behind named **actions**. You define
 actions once and query them at runtime without worrying about which physical
 key was pressed.
@@ -11,7 +11,7 @@ key was pressed.
 ## InputPlugin Setup
 
 ```typescript
-import { InputPlugin } from "@yage/input";
+import { InputPlugin } from "@yagejs/input";
 
 engine.use(
   new InputPlugin({
@@ -37,7 +37,7 @@ Each action definition is an `ActionMapDefinition` with a `name`, an array of
 Resolve the `InputManager` from the engine context and query actions by name:
 
 ```typescript
-import { InputManagerKey } from "@yage/input";
+import { InputManagerKey } from "@yagejs/input";
 
 const input = engine.resolve(InputManagerKey);
 ```
@@ -131,7 +131,7 @@ When building a key-bindings UI, use `getKeyDisplayName()` to convert internal
 key codes into human-readable labels:
 
 ```typescript
-import { getKeyDisplayName } from "@yage/input";
+import { getKeyDisplayName } from "@yagejs/input";
 
 getKeyDisplayName("Space");      // "Space"
 getKeyDisplayName("KeyA");       // "A"

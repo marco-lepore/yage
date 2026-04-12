@@ -1,4 +1,4 @@
-import { AssetHandle, Component, serializable } from "@yage/core";
+import { AssetHandle, Component, serializable } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";

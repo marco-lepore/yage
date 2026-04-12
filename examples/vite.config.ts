@@ -12,7 +12,7 @@ export default defineConfig({
   oxc: {
     // Transform TypeScript's legacy (stage-2) decorators. oxc only supports
     // the legacy transform — stage-3 decorators would be passed through to
-    // the browser, which can't parse them yet. @yage/save's @serializable
+    // the browser, which can't parse them yet. @yagejs/save's @serializable
     // decorator works under either transform, so legacy mode is the safe pick.
     decorator: {
       legacy: true,
@@ -21,7 +21,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       // Preserve class/function names through the oxc minifier so that
-      // @yage/save's class-name-based snapshot restoration still works in
+      // @yagejs/save's class-name-based snapshot restoration still works in
       // production builds. Vite 8 switched from esbuild to oxc; the old
       // `esbuild: { keepNames: true }` option is silently dropped by the
       // oxc converter.

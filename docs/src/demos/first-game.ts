@@ -1,6 +1,6 @@
-import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
-import { DebugPlugin } from "@yage/debug";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
 
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);

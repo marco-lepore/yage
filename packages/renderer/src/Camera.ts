@@ -1,5 +1,5 @@
-import { Vec2 } from "@yage/core";
-import type { EasingFunction, Vec2Like } from "@yage/core";
+import { Vec2 } from "@yagejs/core";
+import type { EasingFunction, Vec2Like } from "@yagejs/core";
 
 /** Bounding rectangle for camera clamping. */
 export interface CameraBounds {

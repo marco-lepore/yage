@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { AssetHandle } from "@yage/core";
+import { AssetHandle } from "@yagejs/core";
 import type { Texture } from "pixi.js";
 
 const { mocks } = vi.hoisted(() => {
@@ -103,7 +103,7 @@ import Yoga, { Direction } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { setAssetManager } from "./asset-helpers.js";
 import { UIImage } from "./UIImage.js";
-import { AssetManager } from "@yage/core";
+import { AssetManager } from "@yagejs/core";
 
 const mockTexture = new mocks.MockTexture(100, 50);
 

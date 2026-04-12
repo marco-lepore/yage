@@ -1,4 +1,4 @@
-import { System, Phase } from "@yage/core";
+import { System, Phase } from "@yagejs/core";
 import type { Container } from "pixi.js";
 import type { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import type { GraphicsPool } from "./GraphicsPool.js";

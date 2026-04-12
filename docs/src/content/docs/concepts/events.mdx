@@ -9,7 +9,7 @@ The `EventBus` is a global publish/subscribe system. Every `bus.on()` call
 returns an unsubscribe function — call it to stop listening:
 
 ```typescript
-import { EventBus } from "@yage/core";
+import { EventBus } from "@yagejs/core";
 
 const bus = new EventBus();
 
@@ -49,7 +49,7 @@ The engine emits these events automatically through the global `EventBus`:
 Access the engine-wide bus through the DI container:
 
 ```typescript
-import { EventBusKey } from "@yage/core";
+import { EventBusKey } from "@yagejs/core";
 
 class ScoreTracker extends Component {
   private off?: () => void;
@@ -98,7 +98,7 @@ For events that cross module boundaries, use `defineEvent` to create a
 reusable, type-safe event token:
 
 ```typescript
-import { defineEvent } from "@yage/core";
+import { defineEvent } from "@yagejs/core";
 
 // Define once in a shared module
 export const PlayerHitEvent = defineEvent<{ damage: number }>("player:hit");
@@ -121,7 +121,7 @@ Entities have their own lightweight event emitter for local communication
 between components on the same entity:
 
 ```typescript
-import { defineEvent } from "@yage/core";
+import { defineEvent } from "@yagejs/core";
 
 const DamagedEvent = defineEvent<{ amount: number }>("damaged");
 

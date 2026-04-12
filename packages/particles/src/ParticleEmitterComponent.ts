@@ -1,5 +1,5 @@
-import { AssetHandle, Component, serializable } from "@yage/core";
-import { RenderLayerManagerKey, resolveTextureInput } from "@yage/renderer";
+import { AssetHandle, Component, serializable } from "@yagejs/core";
+import { RenderLayerManagerKey, resolveTextureInput } from "@yagejs/renderer";
 import { ParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";

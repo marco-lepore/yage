@@ -8,7 +8,7 @@ YAGE's plugin system is the mechanism by which all engine features beyond the co
 
 ## 1. Plugin Interface
 
-Every plugin implements the `Plugin` interface from `@yage/core`:
+Every plugin implements the `Plugin` interface from `@yagejs/core`:
 
 ```typescript
 export interface Plugin {
@@ -164,7 +164,7 @@ Plugins register services using typed `ServiceKey<T>` objects. This provides:
 ### Registration Flow
 
 ```typescript
-// @yage/renderer exports:
+// @yagejs/renderer exports:
 export const RendererKey = new ServiceKey<RendererPlugin>('renderer');
 export const StageKey = new ServiceKey<Container>('stage');
 export const CameraKey = new ServiceKey<Camera>('camera');
@@ -192,7 +192,7 @@ class PlayerFollowSystem extends System {
 
 ### Well-Known Service Keys
 
-These keys are registered by `@yage/core` itself (not by plugins):
+These keys are registered by `@yagejs/core` itself (not by plugins):
 
 | Key | Type | Registered by |
 |---|---|---|
@@ -212,19 +212,19 @@ Keys registered by official plugins:
 
 | Key | Type | Registered by |
 |---|---|---|
-| `RendererKey` | `Renderer` | `@yage/renderer` |
-| `StageKey` | `Container` (PixiJS) | `@yage/renderer` |
-| `CameraKey` | `Camera` | `@yage/renderer` |
-| `RenderLayerManagerKey` | `RenderLayerManager` | `@yage/renderer` |
-| `PhysicsWorldManagerKey` | `PhysicsWorldManager` | `@yage/physics` |
-| `InputManagerKey` | `InputManager` | `@yage/input` |
-| `AudioManagerKey` | `AudioManager` | `@yage/audio` |
-| `UIContainerKey` | `Container` (PixiJS) | `@yage/ui` |
-| `DebugRegistryKey` | `DebugRegistry` | `@yage/debug` |
+| `RendererKey` | `Renderer` | `@yagejs/renderer` |
+| `StageKey` | `Container` (PixiJS) | `@yagejs/renderer` |
+| `CameraKey` | `Camera` | `@yagejs/renderer` |
+| `RenderLayerManagerKey` | `RenderLayerManager` | `@yagejs/renderer` |
+| `PhysicsWorldManagerKey` | `PhysicsWorldManager` | `@yagejs/physics` |
+| `InputManagerKey` | `InputManager` | `@yagejs/input` |
+| `AudioManagerKey` | `AudioManager` | `@yagejs/audio` |
+| `UIContainerKey` | `Container` (PixiJS) | `@yagejs/ui` |
+| `DebugRegistryKey` | `DebugRegistry` | `@yagejs/debug` |
 
 ### Optional Dependencies
 
-Some plugins have optional integrations. For example, `@yage/tilemap` can extract collision shapes for `@yage/physics`, but physics is not required:
+Some plugins have optional integrations. For example, `@yagejs/tilemap` can extract collision shapes for `@yagejs/physics`, but physics is not required:
 
 ```typescript
 class TilemapPlugin implements Plugin {
@@ -280,27 +280,27 @@ Within each phase, systems run in priority order (lower first). Systems from dif
 
 ```
 EarlyUpdate:
-  InputSystem (priority -100, from @yage/input)
+  InputSystem (priority -100, from @yagejs/input)
 
 FixedUpdate:
-  PhysicsSystem (priority 0, from @yage/physics)
+  PhysicsSystem (priority 0, from @yagejs/physics)
   UserGameplaySystem (priority 10, user code)
 
 Update:
-  ParticleSystem (priority 0, from @yage/particles)
+  ParticleSystem (priority 0, from @yagejs/particles)
 
 LateUpdate:
   CameraFollowSystem (priority 0, user code)
-  PhysicsInterpolationSystem (priority 100, from @yage/physics)
-  UILayoutSystem (priority 200, from @yage/ui)
+  PhysicsInterpolationSystem (priority 100, from @yagejs/physics)
+  UILayoutSystem (priority 200, from @yagejs/ui)
 
 Render:
-  DisplaySystem (priority 0, from @yage/renderer)
-  DebugOverlaySystem (priority 1000, from @yage/debug)
+  DisplaySystem (priority 0, from @yagejs/renderer)
+  DebugOverlaySystem (priority 1000, from @yagejs/debug)
 
 EndOfFrame:
-  InputClearSystem (priority 0, from @yage/input)
-  EntityCleanupSystem (priority 100, from @yage/core)
+  InputClearSystem (priority 0, from @yagejs/input)
+  EntityCleanupSystem (priority 100, from @yagejs/core)
 ```
 
 ---
@@ -310,12 +310,12 @@ EndOfFrame:
 Components don't need to be "registered" with the engine. They're just classes that extend `Component`. Any plugin can export component classes, and users import and use them directly:
 
 ```typescript
-// @yage/physics exports:
+// @yagejs/physics exports:
 export class RigidBodyComponent extends Component { ... }
 export class ColliderComponent extends Component { ... }
 
 // User code imports and uses:
-import { RigidBodyComponent, ColliderComponent } from '@yage/physics';
+import { RigidBodyComponent, ColliderComponent } from '@yagejs/physics';
 
 const entity = scene.spawn('ball');
 entity.add(new RigidBodyComponent({ type: 'dynamic' }));
@@ -398,7 +398,7 @@ class DebugPlugin implements Plugin {
 
 ```typescript
 // packages/score/src/types.ts
-import { ServiceKey } from '@yage/core';
+import { ServiceKey } from '@yagejs/core';
 
 export const ScoreManagerKey = new ServiceKey<ScoreManager>('scoreManager');
 
@@ -412,7 +412,7 @@ export interface ScoreEvents {
 
 ```typescript
 // packages/score/src/ScoreManager.ts
-import { EventBus } from '@yage/core';
+import { EventBus } from '@yagejs/core';
 
 export class ScoreManager {
   private _score: number = 0;
@@ -459,7 +459,7 @@ export class ScoreManager {
 
 ```typescript
 // packages/score/src/ScorePlugin.ts
-import { Plugin, EngineContext, EventBusKey } from '@yage/core';
+import { Plugin, EngineContext, EventBusKey } from '@yagejs/core';
 import { ScoreManager } from './ScoreManager';
 import { ScoreManagerKey } from './types';
 
@@ -470,7 +470,7 @@ export interface ScoreConfig {
 export class ScorePlugin implements Plugin {
   readonly name = 'score';
   readonly version = '1.0.0';
-  // No dependencies -- works with just @yage/core
+  // No dependencies -- works with just @yagejs/core
 
   private config: ScoreConfig;
   private manager?: ScoreManager;
@@ -504,8 +504,8 @@ export type { ScoreConfig, ScoreEvents } from './types';
 #### Step 5: Use It
 
 ```typescript
-import { Engine, Scene } from '@yage/core';
-import { ScorePlugin, ScoreManagerKey } from '@yage/score';
+import { Engine, Scene } from '@yagejs/core';
+import { ScorePlugin, ScoreManagerKey } from '@yagejs/score';
 
 const engine = new Engine();
 engine.use(new ScorePlugin({ milestones: [100, 500, 1000, 5000] }));
@@ -527,7 +527,7 @@ If the plugin needs per-frame logic, add a system:
 
 ```typescript
 // ScoreDisplaySystem.ts
-import { System, Phase, EngineContext } from '@yage/core';
+import { System, Phase, EngineContext } from '@yagejs/core';
 import { ScoreManagerKey } from './types';
 
 export class ScoreDisplaySystem extends System {

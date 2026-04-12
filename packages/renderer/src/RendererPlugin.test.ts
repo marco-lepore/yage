@@ -88,8 +88,8 @@ import {
   ErrorBoundaryKey,
   Logger,
   LogLevel,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
 import { RendererKey, StageKey, CameraKey, RenderLayerManagerKey } from "./types.js";
 import type { RendererConfig } from "./types.js";

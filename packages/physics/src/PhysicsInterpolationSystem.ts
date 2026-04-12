@@ -2,7 +2,7 @@ import {
   System,
   Phase,
   Transform,
-} from "@yage/core";
+} from "@yagejs/core";
 import { PhysicsWorldManagerKey } from "./types.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";

@@ -3,13 +3,13 @@ title: "Save & Load"
 description: "Snapshots, serialization, and persistent game state"
 ---
 
-The `@yage/save` package provides automatic save/load with component-level
+The `@yagejs/save` package provides automatic save/load with component-level
 serialization, entity and scene restoration hooks, and slot-based storage.
 
 ## SavePlugin Setup
 
 ```typescript
-import { SavePlugin } from "@yage/save";
+import { SavePlugin } from "@yagejs/save";
 
 engine.use(new SavePlugin({
   namespace: "my-game",     // storage key prefix (default: "yage")
@@ -22,7 +22,7 @@ Mark classes with `@serializable` so the save system can snapshot and restore
 them. This works on entities, scenes, and components.
 
 ```typescript
-import { serializable } from "@yage/core";
+import { serializable } from "@yagejs/core";
 
 @serializable
 class Player extends Entity {
@@ -179,7 +179,7 @@ The pattern is:
 Access the save service via DI:
 
 ```typescript
-import { SaveServiceKey } from "@yage/save";
+import { SaveServiceKey } from "@yagejs/save";
 
 const saveService = this.use(SaveServiceKey);
 ```
@@ -313,7 +313,7 @@ the shape of every persistent slot your game uses, then cast the resolved
 service once:
 
 ```typescript
-import { SaveServiceKey, type SaveService } from "@yage/save";
+import { SaveServiceKey, type SaveService } from "@yagejs/save";
 
 interface MySlots {
   bestScore: { value: number };

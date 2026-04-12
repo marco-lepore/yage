@@ -1,4 +1,4 @@
-import type { TextureInput } from "@yage/renderer";
+import type { TextureInput } from "@yagejs/renderer";
 import type { EmitterConfig } from "./types.js";
 
 function textureFields(

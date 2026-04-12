@@ -1,4 +1,4 @@
-import type { Scene } from "@yage/core";
+import type { Scene } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import type { PhysicsConfig, ScenePhysicsContext } from "./types.js";
 

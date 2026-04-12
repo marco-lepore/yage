@@ -105,7 +105,7 @@ vi.mock("pixi.js", () => ({
   Texture: { from: (key: string) => ({ label: key }) },
 }));
 
-import { Transform } from "@yage/core";
+import { Transform } from "@yagejs/core";
 import { createParticlesTestContext, spawnEntityInScene } from "./test-helpers.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
 

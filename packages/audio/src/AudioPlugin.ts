@@ -1,5 +1,5 @@
-import { AssetManagerKey } from "@yage/core";
-import type { EngineContext, Plugin } from "@yage/core";
+import { AssetManagerKey } from "@yagejs/core";
+import type { EngineContext, Plugin } from "@yagejs/core";
 import { sound } from "@pixi/sound";
 import type { Sound as PixiSound } from "@pixi/sound";
 import { AudioManager } from "./AudioManager.js";

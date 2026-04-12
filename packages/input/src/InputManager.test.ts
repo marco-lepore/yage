@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { Vec2 } from "@yage/core";
+import { Vec2 } from "@yagejs/core";
 import { InputManager } from "./InputManager.js";
 
 describe("InputManager", () => {

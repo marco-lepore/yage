@@ -3,27 +3,27 @@ title: "Tilemaps"
 description: "Loading Tiled maps, rendering tile layers, and extracting collision shapes"
 ---
 
-The `@yage/tilemap` package loads and renders maps created with the
+The `@yagejs/tilemap` package loads and renders maps created with the
 [Tiled](https://www.mapeditor.org/) map editor. It supports tile layer rendering,
 object layer extraction, and physics collision shape generation.
 
 ## TilemapPlugin Setup
 
 ```typescript
-import { TilemapPlugin } from "@yage/tilemap";
+import { TilemapPlugin } from "@yagejs/tilemap";
 
 engine.use(new TilemapPlugin());
 ```
 
-The plugin depends on `@yage/renderer`.
+The plugin depends on `@yagejs/renderer`.
 
 ## Loading a Tiled Map
 
 Use the `tiledMap()` asset factory and pair it with a spritesheet texture:
 
 ```typescript
-import { tiledMap } from "@yage/tilemap";
-import { renderAsset } from "@yage/renderer";
+import { tiledMap } from "@yagejs/tilemap";
+import { renderAsset } from "@yagejs/renderer";
 
 const MapData = tiledMap("assets/level.json");
 const Tileset = renderAsset("assets/tileset.png");
@@ -43,8 +43,8 @@ class LevelScene extends Scene {
 Add a `TilemapComponent` to an entity to render the map:
 
 ```typescript
-import { TilemapComponent } from "@yage/tilemap";
-import { RenderLayerManagerKey } from "@yage/renderer";
+import { TilemapComponent } from "@yagejs/tilemap";
+import { RenderLayerManagerKey } from "@yagejs/renderer";
 
 onEnter(): void {
   const layerMgr = this.service(RenderLayerManagerKey);
@@ -228,7 +228,7 @@ interface MapObject {
 Read custom Tiled properties from objects:
 
 ```typescript
-import { getProperty, getPropertyArray } from "@yage/tilemap";
+import { getProperty, getPropertyArray } from "@yagejs/tilemap";
 
 const speed = getProperty<number>(obj, "speed");           // single value
 const waypoints = getPropertyArray<number>(obj, "point");   // indexed: point[0], point[1], ...
@@ -237,7 +237,7 @@ const waypoints = getPropertyArray<number>(obj, "point");   // indexed: point[0]
 Resolve object references (Tiled's "object" property type):
 
 ```typescript
-import { resolveObjectRef, resolveObjectRefArray } from "@yage/tilemap";
+import { resolveObjectRef, resolveObjectRefArray } from "@yagejs/tilemap";
 
 const allObjects = tilemap.getObjects("navigation");
 const target = resolveObjectRef(obj, "target", allObjects["waypoint"] ?? []);
@@ -270,7 +270,7 @@ for (const shape of shapes) {
 For convenience, you can also use the standalone extraction functions:
 
 ```typescript
-import { extractCollisionShapes, toPhysicsColliders } from "@yage/tilemap";
+import { extractCollisionShapes, toPhysicsColliders } from "@yagejs/tilemap";
 ```
 
 ## Camera Bounds

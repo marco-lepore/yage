@@ -1,4 +1,4 @@
-export { VERSION } from "@yage/core";
+export { VERSION } from "@yagejs/core";
 
 // Plugin
 export { AudioPlugin } from "./AudioPlugin.js";

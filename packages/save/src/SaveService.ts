@@ -1,11 +1,11 @@
-import type { Scene, Entity, Component, SnapshotResolver } from "@yage/core";
+import type { Scene, Entity, Component, SnapshotResolver } from "@yagejs/core";
 import {
   SceneManagerKey,
   SerializableRegistry,
   isSerializable,
   getSerializableType,
-} from "@yage/core";
-import type { EngineContext } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineContext } from "@yagejs/core";
 import type {
   SaveStorage,
   UntypedSlots,

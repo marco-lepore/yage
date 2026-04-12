@@ -1,4 +1,4 @@
-export { VERSION } from "@yage/core";
+export { VERSION } from "@yagejs/core";
 
 export { PhysicsWorldManagerKey } from "./types.js";
 export type {

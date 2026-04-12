@@ -3,7 +3,7 @@ title: "UI"
 description: "Flexbox-based UI with panels, buttons, text, and anchoring"
 ---
 
-The `@yage/ui` package provides screen-space UI powered by
+The `@yagejs/ui` package provides screen-space UI powered by
 [Yoga](https://www.yogalayout.dev/) flexbox layout. Build menus, HUDs, and
 overlays with a fluent builder API.
 
@@ -12,19 +12,19 @@ For a React-based alternative, see [UI (React)](/guides/ui-react).
 ## UIPlugin Setup
 
 ```typescript
-import { UIPlugin } from "@yage/ui";
+import { UIPlugin } from "@yagejs/ui";
 
 engine.use(new UIPlugin());
 ```
 
-The plugin depends on `@yage/renderer`.
+The plugin depends on `@yagejs/renderer`.
 
 ## UIPanel
 
 `UIPanel` is the root UI component. Add it to an entity to create a UI tree.
 
 ```typescript
-import { UIPanel, Anchor } from "@yage/ui";
+import { UIPanel, Anchor } from "@yagejs/ui";
 
 const ui = this.spawn("hud");
 ui.add(new Transform());
@@ -58,7 +58,7 @@ ui.add(new UIPanel({
 The `Anchor` enum positions panels relative to the screen:
 
 ```typescript
-import { Anchor } from "@yage/ui";
+import { Anchor } from "@yagejs/ui";
 
 Anchor.TopLeft      Anchor.TopCenter      Anchor.TopRight
 Anchor.CenterLeft   Anchor.Center         Anchor.CenterRight
@@ -139,7 +139,7 @@ panel.button("Play", {
 For other elements, create them directly and add via `addElement`:
 
 ```typescript
-import { UIImage, UIProgressBar, UICheckbox } from "@yage/ui";
+import { UIImage, UIProgressBar, UICheckbox } from "@yagejs/ui";
 ```
 
 ### Images

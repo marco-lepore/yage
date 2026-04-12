@@ -1,11 +1,11 @@
-# @yage/renderer
+# @yagejs/renderer
 
-Depends on `@yage/core`, `pixi.js`. PixiJS v8 rendering behind the YAGE plugin interface.
+Depends on `@yagejs/core`, `pixi.js`. PixiJS v8 rendering behind the YAGE plugin interface.
 
 ## Setup
 
 ```ts
-import { RendererPlugin } from "@yage/renderer";
+import { RendererPlugin } from "@yagejs/renderer";
 
 engine.use(new RendererPlugin({
   width: 800,
@@ -26,7 +26,7 @@ Registers `CameraKey`, `RenderLayerManagerKey`, `RendererKey`, `StageKey` in `En
 ### SpriteComponent
 
 ```ts
-import { SpriteComponent } from "@yage/renderer";
+import { SpriteComponent } from "@yagejs/renderer";
 
 entity.add(new SpriteComponent({
   texture: "hero.png",   // string key (serializable) or Texture object
@@ -40,7 +40,7 @@ entity.add(new SpriteComponent({
 Procedural drawing via PixiJS Graphics API:
 
 ```ts
-import { GraphicsComponent } from "@yage/renderer";
+import { GraphicsComponent } from "@yagejs/renderer";
 
 entity.add(new GraphicsComponent({ layer: "world" }).draw((g) => {
   g.rect(0, 0, 50, 50).fill(0xff0000);
@@ -52,7 +52,7 @@ Not fully serializable -- only layer is saved. Redo drawing in `afterRestore()`.
 ### AnimatedSpriteComponent
 
 ```ts
-import { AnimatedSpriteComponent } from "@yage/renderer";
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
 
 entity.add(new AnimatedSpriteComponent({
   source: { sheet: "player_idle.png", frameWidth: 48 }, // serializable
@@ -67,7 +67,7 @@ entity.add(new AnimatedSpriteComponent({
 Named animation state machine with one-shot locking:
 
 ```ts
-import { AnimationController } from "@yage/renderer";
+import { AnimationController } from "@yagejs/renderer";
 
 entity.add(new AnimationController<"idle" | "walk" | "attack">({
   idle: { source: { sheet: "player_idle.png", frameWidth: 48 }, speed: 0.15 },
@@ -86,7 +86,7 @@ anim.playOneShot("attack"); // locks until complete, then reverts
 Resolved via `CameraKey`. Pure math, no PixiJS dependency.
 
 ```ts
-import { CameraKey } from "@yage/renderer";
+import { CameraKey } from "@yagejs/renderer";
 
 const camera = context.resolve(CameraKey);
 
@@ -129,7 +129,7 @@ class GameScene extends Scene {
 Named draw-order layers managed by `RenderLayerManager`:
 
 ```ts
-import { RenderLayerManagerKey } from "@yage/renderer";
+import { RenderLayerManagerKey } from "@yagejs/renderer";
 
 const layers = context.resolve(RenderLayerManagerKey);
 // Components specify layer by name: { layer: "background" }
@@ -143,7 +143,7 @@ Runs in `Phase.Render`. Syncs entity `Transform` to PixiJS display object positi
 ## Asset Factories
 
 ```ts
-import { texture, spritesheet, renderAsset } from "@yage/renderer";
+import { texture, spritesheet, renderAsset } from "@yagejs/renderer";
 
 // Returns AssetHandle<Texture> for preloading
 const heroTex = texture("hero.png");

@@ -1,12 +1,12 @@
-import { Scene, Transform, Vec2, defineEvent } from "@yage/core";
+import { Scene, Transform, Vec2, defineEvent } from "@yagejs/core";
 import {
   CameraKey,
   GraphicsComponent,
   RenderLayerManagerKey,
   texture,
-} from "@yage/renderer";
-import { sound } from "@yage/audio";
-import { RigidBodyComponent } from "@yage/physics";
+} from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+import { RigidBodyComponent } from "@yagejs/physics";
 import { Player } from "../entities/Player/index";
 import { Platform } from "../entities/Platform";
 import { Coin } from "../entities/Coin";

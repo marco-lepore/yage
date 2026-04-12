@@ -1,4 +1,4 @@
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 import type { Camera } from "./Camera.js";
 import type { RenderLayerManager } from "./RenderLayer.js";
 

@@ -1,9 +1,9 @@
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
-import { PhysicsPlugin } from "@yage/physics";
-import { InputPlugin } from "@yage/input";
-import { AudioPlugin } from "@yage/audio";
-import { DebugPlugin } from "@yage/debug";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { InputPlugin } from "@yagejs/input";
+import { AudioPlugin } from "@yagejs/audio";
+import { DebugPlugin } from "@yagejs/debug";
 import { GameScene } from "./scenes/GameScene";
 
 async function main(): Promise<void> {

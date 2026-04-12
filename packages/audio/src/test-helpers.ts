@@ -15,8 +15,8 @@ import {
   Scene,
   Entity,
   _resetEntityIdCounter,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
 import { AudioManagerKey } from "./types.js";
 import type { AudioManager } from "./AudioManager.js";
 

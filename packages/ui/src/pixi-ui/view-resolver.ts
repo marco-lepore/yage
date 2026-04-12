@@ -1,5 +1,5 @@
-import { AssetHandle } from "@yage/core";
-import { resolveTextureInput } from "@yage/renderer";
+import { AssetHandle } from "@yagejs/core";
+import { resolveTextureInput } from "@yagejs/renderer";
 import type { PixiViewType } from "../types.js";
 
 export function resolvePixiView(

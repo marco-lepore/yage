@@ -1,4 +1,4 @@
-import { Component } from "@yage/core";
+import { Component } from "@yagejs/core";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { Container } from "pixi.js";
@@ -6,7 +6,7 @@ import {
   Anchor,
   UIContainerKey,
   resolveAnchor,
-} from "@yage/ui";
+} from "@yagejs/ui";
 import {
   createRoot,
   addOnCommit,
@@ -15,7 +15,7 @@ import {
 } from "./reconciler.js";
 import type { ReconcilerRoot } from "./reconciler.js";
 import { EngineCtx, SceneCtx, notifyFrame } from "./hooks.js";
-import { RendererKey } from "@yage/renderer";
+import { RendererKey } from "@yagejs/renderer";
 
 /** Options for UIRoot. */
 export interface UIRootOptions {

@@ -1,5 +1,5 @@
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
 import { MainScene } from "./scenes/MainScene";
 
 async function main(): Promise<void> {
@@ -20,17 +20,17 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------
   //
   // Physics (requires vite-plugin-wasm in vite.config.ts):
-  //   npm install @yage/physics vite-plugin-wasm
+  //   npm install @yagejs/physics vite-plugin-wasm
   //
-  // import { PhysicsPlugin } from "@yage/physics";
+  // import { PhysicsPlugin } from "@yagejs/physics";
   // engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
   //
   // ---------------------------------------------------------------------
   //
   // Input (keyboard/mouse/gamepad action maps):
-  //   npm install @yage/input
+  //   npm install @yagejs/input
   //
-  // import { InputPlugin } from "@yage/input";
+  // import { InputPlugin } from "@yagejs/input";
   // engine.use(new InputPlugin({
   //   actions: {
   //     left: ["KeyA", "ArrowLeft"],
@@ -43,17 +43,17 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------
   //
   // Audio:
-  //   npm install @yage/audio
+  //   npm install @yagejs/audio
   //
-  // import { AudioPlugin } from "@yage/audio";
+  // import { AudioPlugin } from "@yagejs/audio";
   // engine.use(new AudioPlugin());
   //
   // ---------------------------------------------------------------------
   //
   // Debug overlay + runtime inspector (window.__yage__):
-  //   npm install @yage/debug
+  //   npm install @yagejs/debug
   //
-  // import { DebugPlugin } from "@yage/debug";
+  // import { DebugPlugin } from "@yagejs/debug";
   // engine.use(new DebugPlugin());
   //
   // ---------------------------------------------------------------------

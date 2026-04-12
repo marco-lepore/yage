@@ -3,7 +3,7 @@ title: "Processes & Tweens"
 description: "Timers, tweens, sequences, and coroutine-like workflows"
 ---
 
-YAGE's process system (from `@yage/core`) gives you timers, tweens, and
+YAGE's process system (from `@yagejs/core`) gives you timers, tweens, and
 sequenced workflows that run inside the game loop. Everything is tied to
 entities, so processes are automatically cleaned up when an entity is destroyed.
 
@@ -12,7 +12,7 @@ entities, so processes are automatically cleaned up when an entity is destroyed.
 Add a `ProcessComponent` to any entity to gain access to entity-level timing:
 
 ```typescript
-import { ProcessComponent } from "@yage/core";
+import { ProcessComponent } from "@yagejs/core";
 
 entity.add(new ProcessComponent());
 const pc = entity.get(ProcessComponent);
@@ -55,7 +55,7 @@ const invincibility = pc.slot({
 For fire-and-forget delays or single-use timers, use `pc.run()`:
 
 ```typescript
-import { Process } from "@yage/core";
+import { Process } from "@yagejs/core";
 
 pc.run(Process.delay(500, () => {
   spawnExplosion(entity.transform.position);
@@ -69,7 +69,7 @@ Tweens smoothly interpolate a value over time. They run as processes, so they
 respect pause state and entity lifetime.
 
 ```typescript
-import { Tween, easeOutQuad } from "@yage/core";
+import { Tween, easeOutQuad } from "@yagejs/core";
 
 // Tween a single property
 pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad));
@@ -95,7 +95,7 @@ pc.run(
 | `easeInOutQuad` | Accelerate then decelerate |
 | `easeOutBounce` | Bounce at the end |
 
-Import any easing from `@yage/core`.
+Import any easing from `@yagejs/core`.
 
 ## Sequences
 
@@ -103,7 +103,7 @@ Chain multiple steps into a linear or branching workflow using the sequence
 builder:
 
 ```typescript
-import { Sequence } from "@yage/core";
+import { Sequence } from "@yagejs/core";
 
 pc.run(
   Sequence.create()
@@ -157,7 +157,7 @@ For scene-level timing that doesn't belong to any game object, use
 need to create a custom entity:
 
 ```typescript
-import { TimerEntity } from "@yage/core";
+import { TimerEntity } from "@yagejs/core";
 
 const timer = scene.spawn(TimerEntity);
 const pc = timer.get(ProcessComponent);
@@ -200,7 +200,7 @@ import {
   ProcessComponent,
   Transform,
   easeInOutQuad,
-} from "@yage/core";
+} from "@yagejs/core";
 
 const entity = scene.spawn("lantern");
 entity.add(new Transform({ position: new Vec2(100, 200) }));
@@ -290,7 +290,7 @@ Under the hood, `KeyframeAnimator` is built on two primitives you can use
 directly when you don't need the named-track machinery:
 
 ```typescript
-import { createKeyframeTrack, interpolate } from "@yage/core";
+import { createKeyframeTrack, interpolate } from "@yagejs/core";
 
 // A one-off keyframe track as a Process
 pc.run(

@@ -1,13 +1,13 @@
-import { Scene, Transform, Vec2 } from "@yage/core";
-import { CameraKey, GraphicsComponent } from "@yage/renderer";
+import { Scene, Transform, Vec2 } from "@yagejs/core";
+import { CameraKey, GraphicsComponent } from "@yagejs/renderer";
 
 /**
  * Empty starter scene. Edit this file to start building your game.
  *
  * Some things to try:
  *   - Draw a sprite: `new SpriteComponent(texture("/assets/hero.png"))`
- *   - Add physics:   `npm install @yage/physics` + `new PhysicsPlugin(...)`
- *   - Handle input:  `npm install @yage/input` + `new InputPlugin(...)`
+ *   - Add physics:   `npm install @yagejs/physics` + `new PhysicsPlugin(...)`
+ *   - Handle input:  `npm install @yagejs/input` + `new InputPlugin(...)`
  */
 export class MainScene extends Scene {
   readonly name = "main";

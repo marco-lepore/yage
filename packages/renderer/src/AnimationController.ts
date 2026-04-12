@@ -1,4 +1,4 @@
-import { Component, serializable } from "@yage/core";
+import { Component, serializable } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import type { Texture } from "pixi.js";
 import { resolveFrames } from "./spritesheet.js";

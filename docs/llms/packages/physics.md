@@ -1,11 +1,11 @@
-# @yage/physics
+# @yagejs/physics
 
-Depends on `@yage/core`. Rapier2D physics with pixel-based API. All values in pixels.
+Depends on `@yagejs/core`. Rapier2D physics with pixel-based API. All values in pixels.
 
 ## Setup
 
 ```ts
-import { PhysicsPlugin } from "@yage/physics";
+import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(new PhysicsPlugin({
   gravity: { x: 0, y: 980 },   // px/s², default (0, 980)
@@ -15,7 +15,7 @@ engine.use(new PhysicsPlugin({
 
 ## Bundler Setup
 
-`@yage/physics` depends on `@dimforge/rapier2d`, which ships a `.wasm` file. With Vite, add `vite-plugin-wasm` to load it:
+`@yagejs/physics` depends on `@dimforge/rapier2d`, which ships a `.wasm` file. With Vite, add `vite-plugin-wasm` to load it:
 
 ```ts
 // vite.config.ts
@@ -27,7 +27,7 @@ export default defineConfig({
 });
 ```
 
-That's all that's required for `@yage/physics`. See `examples/vite.config.ts` for the canonical reference config. If you also use `@yage/save`, check its Bundler Setup section for two additional oxc/minify options.
+That's all that's required for `@yagejs/physics`. See `examples/vite.config.ts` for the canonical reference config. If you also use `@yagejs/save`, check its Bundler Setup section for two additional oxc/minify options.
 
 ## Component Ordering
 
@@ -36,7 +36,7 @@ That's all that's required for `@yage/physics`. See `examples/vite.config.ts` fo
 ## RigidBodyComponent
 
 ```ts
-import { RigidBodyComponent } from "@yage/physics";
+import { RigidBodyComponent } from "@yagejs/physics";
 
 entity.add(new RigidBodyComponent({
   type: "dynamic",          // "dynamic" | "static" | "kinematic"
@@ -65,7 +65,7 @@ Methods:
 ## ColliderComponent
 
 ```ts
-import { ColliderComponent } from "@yage/physics";
+import { ColliderComponent } from "@yagejs/physics";
 
 entity.add(new ColliderComponent({
   shape: { type: "box", width: 64, height: 32 },
@@ -99,7 +99,7 @@ collider.getOverlappingComponents(Health);    // Component[]
 ## CollisionLayers
 
 ```ts
-import { CollisionLayers } from "@yage/physics";
+import { CollisionLayers } from "@yagejs/physics";
 
 const layers = new CollisionLayers();
 const PLAYER = layers.define("player");   // bitmask value
@@ -111,7 +111,7 @@ const WALL = layers.define("wall");
 ## PhysicsWorld
 
 ```ts
-import { PhysicsWorldManagerKey } from "@yage/physics";
+import { PhysicsWorldManagerKey } from "@yagejs/physics";
 
 const world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
 

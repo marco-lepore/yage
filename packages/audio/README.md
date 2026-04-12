@@ -1,11 +1,11 @@
-# @yage/audio
+# @yagejs/audio
 
 Sound loading, playback, and channel mixing for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/audio
+npm install @yagejs/audio
 ```
 
 Bundles [@pixi/sound](https://pixijs.io/sound/) - no separate install required.
@@ -13,8 +13,8 @@ Bundles [@pixi/sound](https://pixijs.io/sound/) - no separate install required.
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { AudioPlugin, sound } from "@yage/audio";
+import { Engine } from "@yagejs/core";
+import { AudioPlugin, sound } from "@yagejs/audio";
 
 const engine = new Engine();
 engine.use(new AudioPlugin({

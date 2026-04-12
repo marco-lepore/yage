@@ -155,7 +155,7 @@ import {
   Logger,
   LogLevel,
   Phase,
-} from "@yage/core";
+} from "@yagejs/core";
 import {
   PhysicsPlugin,
   PhysicsWorld,

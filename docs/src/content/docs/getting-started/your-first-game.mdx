@@ -13,9 +13,9 @@ finished example is under 30 lines of TypeScript.
 ## The Full Code
 
 ```typescript
-import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
-import { DebugPlugin } from "@yage/debug";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
 
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
@@ -63,9 +63,9 @@ engine.scenes.push(new HelloWorldScene());
 ### 1. Imports
 
 ```typescript
-import { Component, Engine, Scene, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
-import { DebugPlugin } from "@yage/debug";
+import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
 ```
 
 - **`Component`** is the base class every custom behaviour extends.
@@ -178,7 +178,7 @@ debug overlay in the corner.
 
 ## Next Steps
 
-- Add keyboard input with `@yage/input` to control the triangle.
-- Swap the shape for a sprite using `SpriteComponent` from `@yage/renderer`.
+- Add keyboard input with `@yagejs/input` to control the triangle.
+- Swap the shape for a sprite using `SpriteComponent` from `@yagejs/renderer`.
 - Read [Project Structure](/getting-started/project-structure/) to understand
   the full package layout.

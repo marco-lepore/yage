@@ -1,5 +1,5 @@
-import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
-import { DebugRegistryKey } from "@yage/debug/api";
+import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
+import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputManager } from "./InputManager.js";
 import { InputManagerKey, type InputConfig } from "./types.js";
 import { InputPollSystem } from "./InputPollSystem.js";

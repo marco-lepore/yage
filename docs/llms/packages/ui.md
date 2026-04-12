@@ -1,11 +1,11 @@
-# @yage/ui
+# @yagejs/ui
 
-Depends on `@yage/core`, `@yage/renderer`. Yoga flexbox-based screen-space UI.
+Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based screen-space UI.
 
 ## Setup
 
 ```ts
-import { UIPlugin } from "@yage/ui";
+import { UIPlugin } from "@yagejs/ui";
 engine.use(new UIPlugin());
 ```
 
@@ -14,7 +14,7 @@ engine.use(new UIPlugin());
 Root UI component. Add to entity with Transform.
 
 ```ts
-import { UIPanel, Anchor } from "@yage/ui";
+import { UIPanel, Anchor } from "@yagejs/ui";
 
 entity.add(new UIPanel({
   anchor: Anchor.TopLeft,     // screen-space position
@@ -60,7 +60,7 @@ const row = panel.panel({ direction: "row", gap: 12 });
 row.text("HP");
 
 // Other elements (UIImage, UIProgressBar, UICheckbox) — instantiate directly:
-import { UIProgressBar } from "@yage/ui";
+import { UIProgressBar } from "@yagejs/ui";
 const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value 0–1
 row.addElement(bar);
 ```

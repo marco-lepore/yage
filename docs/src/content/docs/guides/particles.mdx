@@ -3,18 +3,18 @@ title: "Particles"
 description: "Particle emitters, presets, and burst effects"
 ---
 
-The `@yage/particles` package provides a lightweight particle system with
+The `@yagejs/particles` package provides a lightweight particle system with
 pooled rendering, configurable emitters, and built-in presets for common effects.
 
 ## ParticlesPlugin Setup
 
 ```typescript
-import { ParticlesPlugin } from "@yage/particles";
+import { ParticlesPlugin } from "@yagejs/particles";
 
 engine.use(new ParticlesPlugin());
 ```
 
-The plugin depends on `@yage/renderer`.
+The plugin depends on `@yagejs/renderer`.
 
 ## Creating an Emitter
 
@@ -22,8 +22,8 @@ Add a `ParticleEmitterComponent` to an entity. Particles spawn at the entity's
 `Transform` position.
 
 ```typescript
-import { ParticleEmitterComponent } from "@yage/particles";
-import { texture } from "@yage/renderer";
+import { ParticleEmitterComponent } from "@yagejs/particles";
+import { texture } from "@yagejs/renderer";
 
 const Particle = texture("assets/particle.png");
 
@@ -93,7 +93,7 @@ emitter.activeCount;         // number of live particles
 takes a texture and returns a complete `EmitterConfig`:
 
 ```typescript
-import { ParticlePresets } from "@yage/particles";
+import { ParticlePresets } from "@yagejs/particles";
 
 // Fire — upward, warm colors, shrinking
 entity.add(new ParticleEmitterComponent(ParticlePresets.fire(Particle)));

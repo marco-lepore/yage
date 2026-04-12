@@ -3,7 +3,7 @@ title: "Rendering"
 description: "Sprites, graphics, camera, and animation"
 ---
 
-YAGE uses PixiJS v8 under the hood for all rendering. The `@yage/renderer`
+YAGE uses PixiJS v8 under the hood for all rendering. The `@yagejs/renderer`
 package provides components and systems that keep PixiJS in sync with the ECS
 world automatically — you work with components and the display system handles
 the rest.
@@ -13,7 +13,7 @@ the rest.
 Register the renderer when creating your engine:
 
 ```typescript
-import { RendererPlugin } from "@yage/renderer";
+import { RendererPlugin } from "@yagejs/renderer";
 
 engine.use(
   new RendererPlugin({
@@ -34,7 +34,7 @@ registers all rendering systems.
 the entity's `Transform`.
 
 ```typescript
-import { SpriteComponent } from "@yage/renderer";
+import { SpriteComponent } from "@yagejs/renderer";
 
 entity.add(
   new SpriteComponent({
@@ -56,7 +56,7 @@ z-ordering (see [Render Layers](#render-layers) below).
 shapes.
 
 ```typescript
-import { GraphicsComponent } from "@yage/renderer";
+import { GraphicsComponent } from "@yagejs/renderer";
 
 entity.add(
   new GraphicsComponent().draw((g) => {
@@ -78,7 +78,7 @@ an `AnimationController`.
 import {
   AnimatedSpriteComponent,
   AnimationController,
-} from "@yage/renderer";
+} from "@yagejs/renderer";
 
 entity.add(
   new AnimatedSpriteComponent({
@@ -200,7 +200,7 @@ camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 Render layers control draw order. Entities on higher layers render on top.
 
 ```typescript
-import { RenderLayers } from "@yage/renderer";
+import { RenderLayers } from "@yagejs/renderer";
 
 const layers = new RenderLayers(["background", "tiles", "characters", "fx", "ui"]);
 engine.use(new RendererPlugin({ width: 800, height: 600, layers }));
@@ -215,7 +215,7 @@ y-position by default.
 YAGE provides helper functions to load and define render assets:
 
 ```typescript
-import { texture, spritesheet, renderAsset } from "@yage/renderer";
+import { texture, spritesheet, renderAsset } from "@yagejs/renderer";
 
 // Load a single texture
 const bg = texture("assets/background.png");

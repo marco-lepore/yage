@@ -35,10 +35,10 @@ import GameEmbed from "../../components/GameEmbed.astro";
 <Tabs>
   <TabItem label="main.ts">
 ```typescript
-import { Engine, Scene, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, CameraKey } from "@yage/renderer";
-import { PhysicsPlugin } from "@yage/physics";
-import { UIPlugin } from "@yage/ui";
+import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { UIPlugin } from "@yagejs/ui";
 import { Ball } from "./Ball";
 import { Paddle } from "./Paddle";
 import { Wall, Goal, Scoreboard } from "./GameArea";
@@ -71,7 +71,7 @@ engine.scenes.push(new PongScene());
   </TabItem>
   <TabItem label="types.ts">
 ```typescript
-import { defineEvent } from "@yage/core";
+import { defineEvent } from "@yagejs/core";
 
 export type Side = "left" | "right";
 
@@ -81,9 +81,9 @@ export const GoalEvent = defineEvent<{ side: Side }>("goal");
   </TabItem>
   <TabItem label="Ball.ts">
 ```typescript
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { GoalEvent, type Side } from "./types";
 
 // Entities are game objects. setup() receives typed params from scene.spawn().
@@ -119,9 +119,9 @@ export class Ball extends Entity {
   </TabItem>
   <TabItem label="Paddle.ts">
 ```typescript
-import { Entity, Component, Transform, Vec2, ProcessComponent, ProcessSlot } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import { Entity, Component, Transform, Vec2, ProcessComponent, ProcessSlot } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import type { Side } from "./types";
 
 // Components hold game logic. sibling() grabs other components on the same entity.
@@ -172,10 +172,10 @@ export class Paddle extends Entity {
   </TabItem>
   <TabItem label="GameArea.ts">
 ```typescript
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
-import { UIPanel, Anchor } from "@yage/ui";
-import type { UIText } from "@yage/ui";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import { UIPanel, Anchor } from "@yagejs/ui";
+import type { UIText } from "@yagejs/ui";
 import { GoalEvent, type Side } from "./types";
 
 // Static bodies — immovable, used for boundaries

@@ -1,5 +1,5 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
-import type { Entity } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import type { Entity } from "@yagejs/core";
 import {
   RendererPlugin,
   RendererKey,
@@ -7,11 +7,11 @@ import {
   GraphicsComponent,
   type TextureInput,
   type TextureResource,
-} from "@yage/renderer";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yage/particles";
-import type { EmitterConfig } from "@yage/particles";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/renderer";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
+import type { EmitterConfig } from "@yagejs/particles";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();

@@ -1,7 +1,7 @@
 /**
  * Save / Load example (v2 — auto-serialization)
  *
- * Demonstrates the @yage/save package:
+ * Demonstrates the @yagejs/save package:
  * - Components auto-serialize (Transform, RigidBody, Collider, Graphics)
  * - Entity afterRestore() only handles non-serializable gaps (draw calls, custom components)
  * - Scene afterRestore() handles scene-level state (GameState, event listeners)
@@ -18,26 +18,26 @@ import {
   Vec2,
   ServiceKey,
   serializable,
-} from "@yage/core";
+} from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
   RenderLayerManagerKey,
   CameraKey,
   GraphicsContext,
-} from "@yage/renderer";
+} from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
   PhysicsWorldManagerKey,
-} from "@yage/physics";
-import type { PhysicsWorld } from "@yage/physics";
-import { SavePlugin, SaveServiceKey } from "@yage/save";
-import type { SaveService } from "@yage/save";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/physics";
+import type { PhysicsWorld } from "@yagejs/physics";
+import { SavePlugin, SaveServiceKey } from "@yagejs/save";
+import type { SaveService } from "@yagejs/save";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 // ---------------------------------------------------------------------------

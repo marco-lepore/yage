@@ -1,4 +1,4 @@
-# @yage/core
+# @yagejs/core
 
 Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, processes.
 
@@ -59,7 +59,7 @@ Keyframe-based property animation on top of `ProcessComponent`. Runs multiple na
 | `Interpolatable` | `number \| Vec2Like` — registered interpolation types |
 
 ```ts
-import { KeyframeAnimator, ProcessComponent, Transform } from "@yage/core";
+import { KeyframeAnimator, ProcessComponent, Transform } from "@yagejs/core";
 
 entity.add(new ProcessComponent());
 const anim = entity.add(new KeyframeAnimator({
@@ -137,7 +137,7 @@ Category-tagged logger with a ring buffer. Installed on `Engine` and available v
 | `LoggerKey` | DI key for resolving a `Logger` from `EngineContext` |
 
 ```ts
-import { LogLevel } from "@yage/core";
+import { LogLevel } from "@yagejs/core";
 
 const engine = new Engine({ debug: true });
 

@@ -3,8 +3,8 @@ import {
   Phase,
   Transform,
   QueryCacheKey,
-} from "@yage/core";
-import type { EngineContext, QueryResult } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineContext, QueryResult } from "@yagejs/core";
 import type { Container } from "pixi.js";
 import { CameraKey, StageKey } from "./types.js";
 import type { Camera } from "./Camera.js";

@@ -4,15 +4,15 @@ import {
   ServiceKey,
   Vec2,
   SystemScheduler,
-} from "@yage/core";
+} from "@yagejs/core";
 
 // Local mock keys matching the string IDs used by the renderer package.
-// Tests shouldn't depend on @yage/renderer.
+// Tests shouldn't depend on @yagejs/renderer.
 const RendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>("renderer");
 const CameraKey = new ServiceKey<{
   screenToWorld(sx: number, sy: number): { x: number; y: number };
 }>("camera");
-import { DebugRegistryKey } from "@yage/debug/api";
+import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
 import { InputManager } from "./InputManager.js";

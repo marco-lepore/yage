@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Syncs @yage/* dependency versions in create-yage's template _package.json
- * files to match the version of @yage/core in the monorepo. Intended to run
+ * Syncs @yagejs/* dependency versions in create-yage's template _package.json
+ * files to match the version of @yagejs/core in the monorepo. Intended to run
  * as a pre-publish step so a scaffolded project pins the exact versions of
  * the release we're publishing.
  *
@@ -43,7 +43,7 @@ for (const template of templates) {
     const deps = pkg[section];
     if (!deps) continue;
     for (const name of Object.keys(deps)) {
-      if (name.startsWith("@yage/") && deps[name] !== versionSpec) {
+      if (name.startsWith("@yagejs/") && deps[name] !== versionSpec) {
         deps[name] = versionSpec;
         touched = true;
       }

@@ -1,11 +1,11 @@
-# @yage/core
+# @yagejs/core
 
 ECS, math, events, and scheduling - the foundation of the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/core
+npm install @yagejs/core
 ```
 
 ## What's in the box
@@ -23,7 +23,7 @@ npm install @yage/core
 ## Usage
 
 ```ts
-import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yage/core";
+import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
 
 class Player extends Entity {
   setup() {
@@ -44,7 +44,7 @@ await engine.start();
 engine.scenes.push(new GameScene());
 ```
 
-`@yage/core` has zero runtime dependencies. On its own it's a pure ECS - add `@yage/renderer` to draw things, `@yage/physics` for collisions, `@yage/input` for controls, etc.
+`@yagejs/core` has zero runtime dependencies. On its own it's a pure ECS - add `@yagejs/renderer` to draw things, `@yagejs/physics` for collisions, `@yagejs/input` for controls, etc.
 
 ## Docs
 

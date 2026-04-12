@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EngineContext } from "@yage/core";
+import { EngineContext } from "@yagejs/core";
 import { InputClearSystem } from "./InputClearSystem.js";
 import { InputManager } from "./InputManager.js";
 import { InputManagerKey } from "./types.js";

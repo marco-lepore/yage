@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { Vec2 } from "@yage/core";
+import { Vec2 } from "@yagejs/core";
 import { Camera } from "./Camera.js";
 import type { CameraBounds } from "./Camera.js";
 

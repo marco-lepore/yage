@@ -1,4 +1,4 @@
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 
 /**
  * Minimal subset of PixiJS Graphics used by debug drawing.

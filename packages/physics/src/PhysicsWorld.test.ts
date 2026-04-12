@@ -311,7 +311,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Vec2, Entity } from "@yage/core";
+import { Vec2, Entity } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
 import type { CollisionEvent, TriggerEvent } from "./types.js";

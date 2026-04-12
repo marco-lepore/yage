@@ -15,8 +15,8 @@ import {
   Scene,
   Entity,
   _resetEntityIdCounter,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
 import { CameraKey, RenderLayerManagerKey, StageKey } from "./types.js";
 import { Camera } from "./Camera.js";
 import { RenderLayerManager } from "./RenderLayer.js";

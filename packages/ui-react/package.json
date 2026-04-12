@@ -1,5 +1,5 @@
 {
-  "name": "@yage/ui-react",
+  "name": "@yagejs/ui-react",
   "version": "0.1.0",
   "description": "React bindings for building game UI with JSX in YAGE",
   "keywords": [
@@ -48,8 +48,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "^0.1.0",
-    "@yage/ui": "^0.1.0",
+    "@yagejs/core": "^0.1.0",
+    "@yagejs/ui": "^0.1.0",
     "pixi.js": "^8.5.0",
     "react-reconciler": "^0.31.0"
   },

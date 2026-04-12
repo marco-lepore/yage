@@ -59,7 +59,7 @@ import {
   Transform,
   type EngineContext,
   type QueryResult,
-} from "@yage/core";
+} from "@yagejs/core";
 
 class DisplaySyncSystem extends System {
   readonly phase = Phase.Render;  // which frame phase to run in
@@ -106,7 +106,7 @@ class DisplaySyncSystem extends System {
 Register a query once, get a live result set that updates automatically as components are added/removed.
 
 ```ts
-import { QueryCacheKey, Transform } from "@yage/core";
+import { QueryCacheKey, Transform } from "@yagejs/core";
 
 // In a System's onRegister:
 const cache = this.use(QueryCacheKey);
@@ -227,7 +227,7 @@ pc.run(Process.delay(1000, () => entity.destroy()));
 
 ## Testing Patterns
 
-All test utilities are exported from `@yage/core`. Tests run in Vitest (Node.js, no browser needed). Co-locate tests next to source: `Foo.ts` → `Foo.test.ts` in the same directory.
+All test utilities are exported from `@yagejs/core`. Tests run in Vitest (Node.js, no browser needed). Co-locate tests next to source: `Foo.ts` → `Foo.test.ts` in the same directory.
 
 ```ts
 import {
@@ -235,7 +235,7 @@ import {
   createMockScene,    // lightweight Scene + EngineContext
   createMockEntity,   // entity in a mock scene with full context
   advanceFrames,      // tick the game loop N times
-} from "@yage/core";
+} from "@yagejs/core";
 ```
 
 ### Unit testing a component
@@ -244,7 +244,7 @@ Use `createMockEntity` for isolated component tests — no Engine overhead, but 
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { createMockEntity, Transform, Vec2, Component } from "@yage/core";
+import { createMockEntity, Transform, Vec2, Component } from "@yagejs/core";
 
 class Gravity extends Component {
   fixedUpdate(dt: number) {
@@ -286,7 +286,7 @@ Use `createMockScene` to wire up a system without a full Engine:
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { createMockScene, SceneManagerKey, Phase, System } from "@yage/core";
+import { createMockScene, SceneManagerKey, Phase, System } from "@yagejs/core";
 
 class CountSystem extends System {
   readonly phase = Phase.Update;
@@ -329,7 +329,7 @@ import {
   Component,
   Transform,
   Vec2,
-} from "@yage/core";
+} from "@yagejs/core";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -365,7 +365,7 @@ Processes are updated manually via `_update(dt)` — no game loop needed. `Proce
 
 ```ts
 import { describe, it, expect, vi } from "vitest";
-import { Tween, Sequence, ProcessSlot, easeLinear } from "@yage/core";
+import { Tween, Sequence, ProcessSlot, easeLinear } from "@yagejs/core";
 
 describe("Tween", () => {
   it("tweens a value over duration", () => {
@@ -421,7 +421,7 @@ describe("Sequence", () => {
 
 ```ts
 import { describe, it, expect } from "vitest";
-import { Engine, ServiceKey, type Plugin } from "@yage/core";
+import { Engine, ServiceKey, type Plugin } from "@yagejs/core";
 
 class FooService { value = 42; }
 const FooKey = new ServiceKey<FooService>("foo");
@@ -556,6 +556,6 @@ const grounded = hit !== null; // add coyote timer for better feel
 
 **Component uniqueness**: One component per class per entity. `entity.add()` throws if the class already exists.
 
-**No pixi.js in core**: `@yage/core` has zero runtime dependencies. Never import pixi.js in core code.
+**No pixi.js in core**: `@yagejs/core` has zero runtime dependencies. Never import pixi.js in core code.
 
 **Clean up DOM listeners**: Use `this.listen()` for entity/scene events (auto-cleanup on removal). If you must use raw DOM listeners (e.g. wheel events), store the handler and remove it in `onDestroy()`. Never add bare `window.addEventListener()` calls without corresponding removal.
