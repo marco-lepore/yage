@@ -129,11 +129,11 @@ interface PendingConflict {
   slot: number;
 }
 
-interface ConflictState {
+type ConflictState = {
   conflict: PendingConflict | null;
   /** Incremented when a conflict is resolved via "Replace", so the panel re-reads bindings. */
   resolveVersion: number;
-}
+};
 
 const conflictStore: Store<ConflictState> = createStore<ConflictState>({
   conflict: null,
@@ -162,7 +162,7 @@ function BindingRow({
 
   return (
     <Panel direction="row" gap={8} alignItems="center">
-      <Text style={{ fontSize: 13, fill: 0xbbbbbb, width: 50 }}>{label}</Text>
+      <Text style={{ fontSize: 13, fill: 0xbbbbbb, wordWrapWidth: 50 }}>{label}</Text>
       <Button
         width={120}
         height={26}
@@ -457,7 +457,6 @@ class InputRemappingScene extends Scene {
     }
 
     // Label each player
-    const labelStyle = { fontSize: 11, fill: 0x888888 };
     for (const [, meta] of Object.entries(GROUP_META)) {
       const startX = meta.color === 0x3b82f6 ? 200 : 350;
       const label = this.spawn("label");

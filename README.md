@@ -15,6 +15,37 @@ yage is a personal, opinionated 2D game engine that composes [PixiJS](https://pi
 
 It's designed with AI-assisted development in mind — featuring deterministic tests, an inspector, and structured feedback loops that make it easy to build games with LLMs.
 
+## Quick Start
+
+The fastest way to start a new game:
+
+```bash
+npm create yage@latest my-game
+cd my-game
+npm run dev
+```
+
+This scaffolds a playable platformer with physics, input, animations, and
+sound effects — a solid starting point to build on. Choose the `minimal`
+template if you'd rather start from an empty scene.
+
+### Manual setup
+
+Install packages individually if you prefer to wire things up yourself:
+
+```bash
+npm install @yage/core @yage/renderer
+```
+
+Add more as you need them:
+
+```bash
+npm install @yage/physics @yage/input @yage/audio @yage/debug
+```
+
+See the [installation guide](https://yage.dev/getting-started/installation)
+for Vite configuration and bundler setup.
+
 ## Packages
 
 | Package           | Description                                      |
@@ -30,16 +61,6 @@ It's designed with AI-assisted development in mind — featuring deterministic t
 | `@yage/ui-react`  | React-based UI                                   |
 | `@yage/save`      | Save/load system                                 |
 | `@yage/debug`     | Debug overlay and inspector                      |
-
-## Getting Started
-
-```bash
-npm install yage
-```
-
-> Packages are not published to npm yet. For now, clone the repo and build locally.
-
-See the [documentation](https://yage.dev) for guides, API reference, and examples.
 
 ## Development
 

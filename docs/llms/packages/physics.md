@@ -56,7 +56,7 @@ Methods:
 - `getVelocity(): Vec2` — read velocity (px/s)
 - `applyImpulse(v: Vec2Like)` — instant momentum change
 - `applyForce(v: Vec2Like)` — continuous force
-- `setPosition(x, y)` — teleport (skips interpolation)
+- `setPosition(x, y)` — teleport a dynamic body (skips interpolation). For kinematic bodies, use `transform.setPosition()` instead — the physics system syncs Transform → Rapier automatically each frame.
 - `setAngularVelocity(v)` / `getAngularVelocity()` — radians/s
 - `applyTorque(t)` — rotational force
 - `setEnabledTranslations(enableX, enableY)` — lock axes at runtime

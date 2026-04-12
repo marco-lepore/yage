@@ -88,6 +88,7 @@ export default defineConfig({
         {
           label: "Patterns",
           items: [
+            { label: "Project Layout", slug: "patterns/project-layout" },
             { label: "Entity Subclasses", slug: "patterns/entity-subclasses" },
             { label: "Testing", slug: "patterns/testing" },
             { label: "Scene Management", slug: "patterns/scene-management" },
