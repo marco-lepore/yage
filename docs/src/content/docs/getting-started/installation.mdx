@@ -3,13 +3,40 @@ title: "Installation"
 description: "How to install YAGE in your project"
 ---
 
-## Install
+## Option 1: `create-yage` (recommended)
 
-Every YAGE module is published as its own npm package under the `@yage/*`
-scope. Install only what you need:
+The quickest way to start a new YAGE game:
+
+```bash
+npm create yage@latest my-game
+cd my-game
+npm run dev
+```
+
+The scaffolder asks you to pick a template:
+
+- **Recommended** — a playable platformer seed with physics, input, animations,
+  sound effects, enemies, and collectibles. Great for learning the engine.
+- **Minimal** — just `@yage/core` + `@yage/renderer` and an empty scene. Start
+  from scratch and add packages as you go (`src/main.ts` has commented-out
+  examples showing how to wire each plugin).
+
+Both templates include a Vite config, TypeScript setup, and an `AGENTS.md`
+for AI-assisted development.
+
+## Option 2: Manual install
+
+If you already have a project or prefer to set things up yourself, install
+packages individually:
 
 ```bash
 npm install @yage/core @yage/renderer
+```
+
+Add more as needed:
+
+```bash
+npm install @yage/physics @yage/input @yage/audio @yage/debug
 ```
 
 The full list of packages:
@@ -38,6 +65,9 @@ depends on it, so it is always installed automatically.
 - A bundler that supports TypeScript and ESM (Vite is recommended)
 
 ## Vite Setup
+
+> If you used `create-yage`, this is already configured. This section is for
+> manual installs.
 
 YAGE targets **Vite 8 or later**. If you use `@yage/physics`, its Rapier 2D
 engine requires WebAssembly, so Vite needs the `vite-plugin-wasm` plugin to

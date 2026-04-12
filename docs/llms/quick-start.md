@@ -1,6 +1,16 @@
 # YAGE Quick Start
 
-## Installation
+## Scaffolding a New Game (recommended)
+
+```bash
+npm create yage@latest my-game
+cd my-game
+npm run dev
+```
+
+Pick `recommended` for a playable platformer seed (physics, input, animations, enemies, collectibles) or `minimal` for an empty scene with just core + renderer.
+
+## Manual Installation
 
 ```bash
 npm install @yage/core @yage/renderer
@@ -9,7 +19,7 @@ npm install @yage/core @yage/renderer
 Add more packages as needed:
 
 ```bash
-npm install @yage/physics @yage/input @yage/debug
+npm install @yage/physics @yage/input @yage/audio @yage/debug
 ```
 
 ## Minimal Example
