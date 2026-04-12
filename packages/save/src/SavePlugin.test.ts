@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { EngineContext } from "@yage/core";
+import { EngineContext } from "@yagejs/core";
 import { SavePlugin } from "./SavePlugin.js";
 import { SaveServiceKey } from "./keys.js";
 import { MemoryStorage } from "./test-helpers.js";

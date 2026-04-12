@@ -34,13 +34,13 @@ template if you'd rather start from an empty scene.
 Install packages individually if you prefer to wire things up yourself:
 
 ```bash
-npm install @yage/core @yage/renderer
+npm install @yagejs/core @yagejs/renderer
 ```
 
 Add more as you need them:
 
 ```bash
-npm install @yage/physics @yage/input @yage/audio @yage/debug
+npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
 ```
 
 See the [installation guide](https://yage.dev/getting-started/installation)
@@ -50,17 +50,17 @@ for Vite configuration and bundler setup.
 
 | Package           | Description                                      |
 | ----------------- | ------------------------------------------------ |
-| `@yage/core`      | ECS, scenes, game loop, animation, serialization |
-| `@yage/renderer`  | PixiJS rendering integration                     |
-| `@yage/physics`   | Rapier2D physics integration                     |
-| `@yage/input`     | Keyboard and pointer input                       |
-| `@yage/audio`     | Audio playback                                   |
-| `@yage/particles` | Particle effects                                 |
-| `@yage/tilemap`   | Tilemap support                                  |
-| `@yage/ui`        | UI components                                    |
-| `@yage/ui-react`  | React-based UI                                   |
-| `@yage/save`      | Save/load system                                 |
-| `@yage/debug`     | Debug overlay and inspector                      |
+| `@yagejs/core`      | ECS, scenes, game loop, animation, serialization |
+| `@yagejs/renderer`  | PixiJS rendering integration                     |
+| `@yagejs/physics`   | Rapier2D physics integration                     |
+| `@yagejs/input`     | Keyboard and pointer input                       |
+| `@yagejs/audio`     | Audio playback                                   |
+| `@yagejs/particles` | Particle effects                                 |
+| `@yagejs/tilemap`   | Tilemap support                                  |
+| `@yagejs/ui`        | UI components                                    |
+| `@yagejs/ui-react`  | React-based UI                                   |
+| `@yagejs/save`      | Save/load system                                 |
+| `@yagejs/debug`     | Debug overlay and inspector                      |
 
 ## Development
 

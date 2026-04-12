@@ -1,4 +1,4 @@
-import type { TextureInput } from "@yage/renderer";
+import type { TextureInput } from "@yagejs/renderer";
 
 /** A value or [min, max] range to randomize from. */
 export type NumberRange = number | [min: number, max: number];

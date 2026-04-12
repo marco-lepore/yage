@@ -1,5 +1,5 @@
 {
-  "name": "@yage/audio",
+  "name": "@yagejs/audio",
   "version": "0.1.0",
   "description": "Sound loading, playback, and channel mixing for YAGE",
   "keywords": [
@@ -48,7 +48,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "^0.1.0",
+    "@yagejs/core": "^0.1.0",
     "@pixi/sound": "^6.0.0"
   }
 }

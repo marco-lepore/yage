@@ -8,15 +8,15 @@ import {
   ProcessComponent,
   ProcessSlot,
   defineEvent,
-} from "@yage/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yage/renderer";
+} from "@yagejs/core";
+import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
-} from "@yage/physics";
-import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
-import type { UIText } from "@yage/ui";
+} from "@yagejs/physics";
+import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import type { UIText } from "@yagejs/ui";
 
 // -- Types & Events -----------------------------------------------------------
 

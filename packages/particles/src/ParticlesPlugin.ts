@@ -1,4 +1,4 @@
-import type { Plugin, SystemScheduler } from "@yage/core";
+import type { Plugin, SystemScheduler } from "@yagejs/core";
 import { ParticleSystem } from "./ParticleSystem.js";
 
 /** Plugin that registers the particle system. Depends on the renderer plugin. */

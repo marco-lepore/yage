@@ -1,17 +1,17 @@
-import { Engine, Scene, Component, Transform, Vec2, defineBlueprint } from "@yage/core";
+import { Engine, Scene, Component, Transform, Vec2, defineBlueprint } from "@yagejs/core";
 import {
   RendererPlugin,
   CameraKey,
   RenderLayerManagerKey,
   renderAsset,
-} from "@yage/renderer";
-import type { Camera } from "@yage/renderer";
-import { TilemapPlugin, TilemapComponent, tiledMap } from "@yage/tilemap";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
-import { DebugRegistryKey } from "@yage/debug/api";
-import type { DebugContributor, WorldDebugApi } from "@yage/debug/api";
-import type { RectColliderConfig } from "@yage/tilemap";
+} from "@yagejs/renderer";
+import type { Camera } from "@yagejs/renderer";
+import { TilemapPlugin, TilemapComponent, tiledMap } from "@yagejs/tilemap";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
+import { DebugRegistryKey } from "@yagejs/debug/api";
+import type { DebugContributor, WorldDebugApi } from "@yagejs/debug/api";
+import type { RectColliderConfig } from "@yagejs/tilemap";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();
@@ -90,7 +90,7 @@ class WallDebugContributor implements DebugContributor {
 // ---------------------------------------------------------------------------
 // Blueprints
 // ---------------------------------------------------------------------------
-import type { TiledMapData } from "@yage/tilemap";
+import type { TiledMapData } from "@yagejs/tilemap";
 
 const DungeonMapBP = defineBlueprint<{ map: TiledMapData }>(
   "dungeon-map",

@@ -1,9 +1,9 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yage/audio";
-import type { SoundHandle } from "@yage/audio";
-import { DebugPlugin } from "@yage/debug";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
+import type { SoundHandle } from "@yagejs/audio";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`

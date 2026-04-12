@@ -8,17 +8,17 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 
 | Package           | Description                                            |
 | ----------------- | ------------------------------------------------------ |
-| `@yage/core`      | ECS, DI, game loop, scenes, events (zero runtime deps) |
-| `@yage/renderer`  | PixiJS v8 rendering, sprites, camera                   |
-| `@yage/physics`   | Rapier2D physics (pixel↔meter conversion is internal)  |
-| `@yage/input`     | Keyboard/mouse/gamepad input + action maps             |
-| `@yage/audio`     | Channel-based audio via @pixi/sound                    |
-| `@yage/particles` | Particle emitters with pooling and presets             |
-| `@yage/tilemap`   | Tiled map loading and rendering                        |
-| `@yage/ui`        | Yoga flexbox-based UI components                       |
-| `@yage/ui-react`  | React reconciler over the UI layer                     |
-| `@yage/debug`     | Debug overlay, stats, world/HUD drawing                |
-| `@yage/save`      | Save/load system with slot-based snapshots             |
+| `@yagejs/core`      | ECS, DI, game loop, scenes, events (zero runtime deps) |
+| `@yagejs/renderer`  | PixiJS v8 rendering, sprites, camera                   |
+| `@yagejs/physics`   | Rapier2D physics (pixel↔meter conversion is internal)  |
+| `@yagejs/input`     | Keyboard/mouse/gamepad input + action maps             |
+| `@yagejs/audio`     | Channel-based audio via @pixi/sound                    |
+| `@yagejs/particles` | Particle emitters with pooling and presets             |
+| `@yagejs/tilemap`   | Tiled map loading and rendering                        |
+| `@yagejs/ui`        | Yoga flexbox-based UI components                       |
+| `@yagejs/ui-react`  | React reconciler over the UI layer                     |
+| `@yagejs/debug`     | Debug overlay, stats, world/HUD drawing                |
+| `@yagejs/save`      | Save/load system with slot-based snapshots             |
 
 ## Design Philosophy
 
@@ -45,7 +45,7 @@ Enforced by tooling — match these conventions exactly:
 - **`ServiceKey<T>` for DI** — never use string keys. Type-safe resolution via `EngineContext`.
 - **Pixels everywhere** — all user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.
 - **Immutable `Vec2`, mutable `Transform`** — `Vec2` operations return new instances. `Transform` has mutating methods (`setPosition`, `translate`, etc.).
-- **No pixi.js imports in `@yage/core`** — core has zero runtime dependencies.
+- **No pixi.js imports in `@yagejs/core`** — core has zero runtime dependencies.
 - **Export new public types from `index.ts`** — every package has a barrel export.
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.
@@ -56,7 +56,7 @@ Enforced by tooling — match these conventions exactly:
 
 - **Unit tests**: co-located (`Foo.ts` → `Foo.test.ts` in the same directory)
 - **E2E tests**: `e2e/` directory at repo root (Playwright)
-- **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yage/core/test-utils`
+- **Test utilities**: `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
 - **E2E assertions**: use the Inspector API (`window.__yage__.inspector`), not screenshots
 
 ## Documentation
@@ -71,7 +71,7 @@ The two do NOT need 1:1 parity — human docs can be longer and more visual, LLM
 Rebuild both after changes:
 
 ```bash
-npx turbo run build --filter=@yage/docs
+npx turbo run build --filter=@yagejs/docs
 ```
 
 This runs `copy-llms.mjs` (regenerates `public/llms/`) then builds the Astro site.

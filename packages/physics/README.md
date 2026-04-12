@@ -1,11 +1,11 @@
-# @yage/physics
+# @yagejs/physics
 
 Rapier 2D physics integration - rigid bodies, colliders, and joints for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/physics
+npm install @yagejs/physics
 ```
 
 Bundles [Rapier 2D](https://rapier.rs/) - no separate install required. Rapier uses WebAssembly; if you use Vite, install `vite-plugin-wasm`.
@@ -13,8 +13,8 @@ Bundles [Rapier 2D](https://rapier.rs/) - no separate install required. Rapier u
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import { Engine } from "@yagejs/core";
+import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const engine = new Engine();
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));

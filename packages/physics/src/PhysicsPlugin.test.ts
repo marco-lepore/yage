@@ -70,7 +70,7 @@ import {
   Logger,
   LogLevel,
   Phase,
-} from "@yage/core";
+} from "@yagejs/core";
 import { PhysicsPlugin } from "./PhysicsPlugin.js";
 import { PhysicsWorldManagerKey } from "./types.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";

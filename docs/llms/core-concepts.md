@@ -37,8 +37,8 @@ Fixed timestep default: `1000/60` ms. Max steps per frame: 5 (prevents spiral of
 ## Engine Setup
 
 ```ts
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));

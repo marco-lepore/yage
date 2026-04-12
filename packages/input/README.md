@@ -1,18 +1,18 @@
-# @yage/input
+# @yagejs/input
 
 Keyboard, mouse, gamepad, and touch handling for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/input
+npm install @yagejs/input
 ```
 
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { InputPlugin, InputManagerKey } from "@yage/input";
+import { Engine } from "@yagejs/core";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
 
 const engine = new Engine();
 engine.use(new InputPlugin({

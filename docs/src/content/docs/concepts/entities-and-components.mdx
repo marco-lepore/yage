@@ -16,7 +16,7 @@ const bullet = scene.spawn("bullet");
 ### Adding and Querying Components
 
 ```typescript
-import { Transform, SpriteComponent } from "@yage/core";
+import { Transform, SpriteComponent } from "@yagejs/core";
 
 // Add components
 player.add(new Transform(100, 200));
@@ -76,7 +76,7 @@ destruction during the same frame.
 Components hold state and game logic. Extend the `Component` base class:
 
 ```typescript
-import { Component } from "@yage/core";
+import { Component } from "@yagejs/core";
 
 class Health extends Component {
   current = 100;
@@ -128,7 +128,7 @@ Use `this.use(key)` inside a component to resolve a service from the DI
 container. The result is cached after the first call:
 
 ```typescript
-import { InputManagerKey } from "@yage/input";
+import { InputManagerKey } from "@yagejs/input";
 
 class PlayerController extends Component {
   update(dt: number) {

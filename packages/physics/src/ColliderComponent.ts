@@ -1,5 +1,5 @@
-import { Component, filterEntities, serializable } from "@yage/core";
-import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yage/core";
+import { Component, filterEntities, serializable } from "@yagejs/core";
+import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsWorldManagerKey } from "./types.js";

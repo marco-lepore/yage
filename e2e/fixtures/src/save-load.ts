@@ -6,11 +6,11 @@ import {
   Transform,
   Vec2,
   serializable,
-} from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { DebugPlugin } from "@yage/debug";
-import { SavePlugin, SaveServiceKey } from "@yage/save";
-import type { SaveService, SnapshotResolver } from "@yage/save";
+} from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
+import { SavePlugin, SaveServiceKey } from "@yagejs/save";
+import type { SaveService, SnapshotResolver } from "@yagejs/save";
 import { injectStyles } from "./shared.js";
 
 injectStyles();

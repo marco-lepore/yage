@@ -1,5 +1,5 @@
 {
-  "name": "@yage/ui",
+  "name": "@yagejs/ui",
   "version": "0.1.0",
   "description": "In-game UI layout and widgets for YAGE",
   "keywords": [
@@ -50,8 +50,8 @@
   },
   "dependencies": {
     "@pixi/ui": "^2.3.2",
-    "@yage/core": "^0.1.0",
-    "@yage/renderer": "^0.1.0",
+    "@yagejs/core": "^0.1.0",
+    "@yagejs/renderer": "^0.1.0",
     "pixi.js": "^8.5.0",
     "yoga-layout": "^3.2.1"
   }

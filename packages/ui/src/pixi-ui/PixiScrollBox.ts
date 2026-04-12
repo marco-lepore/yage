@@ -1,5 +1,5 @@
 import { ScrollBox } from "@pixi/ui";
-import type { DisplayContainer, PointLike } from "@yage/renderer";
+import type { DisplayContainer, PointLike } from "@yagejs/renderer";
 import type { PixiScrollBoxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 

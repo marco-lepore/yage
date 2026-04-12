@@ -1,6 +1,6 @@
-import type { Inspector, Logger } from "@yage/core";
+import type { Inspector, Logger } from "@yagejs/core";
 
-/** Mirrors IDebugClock from @yage/debug (kept inline to avoid ambient import issues). */
+/** Mirrors IDebugClock from @yagejs/debug (kept inline to avoid ambient import issues). */
 interface IDebugClock {
   readonly isManual: boolean;
   startAuto(): void;

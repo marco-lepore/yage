@@ -5,7 +5,7 @@ import type {
   PointLike,
   TextStyle,
   TextureHandle,
-} from "@yage/renderer";
+} from "@yagejs/renderer";
 import {
   PanelNode,
   UIText as UITextNode,
@@ -22,13 +22,13 @@ import {
   PixiScrollBox as PixiScrollBoxNode,
   PixiSelect as PixiSelectNode,
   PixiRadioGroup as PixiRadioGroupNode,
-} from "@yage/ui";
+} from "@yagejs/ui";
 import type {
   BackgroundOptions,
   FancyButtonAnimations,
   LayoutProps,
   PixiViewType,
-} from "@yage/ui";
+} from "@yagejs/ui";
 
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements

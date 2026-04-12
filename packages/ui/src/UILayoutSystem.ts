@@ -1,6 +1,6 @@
-import { System, Phase, QueryCacheKey } from "@yage/core";
-import type { EngineContext, QueryResult } from "@yage/core";
-import { RendererKey } from "@yage/renderer";
+import { System, Phase, QueryCacheKey } from "@yagejs/core";
+import type { EngineContext, QueryResult } from "@yagejs/core";
+import { RendererKey } from "@yagejs/renderer";
 import { Direction } from "yoga-layout";
 import { Anchor } from "./types.js";
 import { UIPanel } from "./UIPanel.js";

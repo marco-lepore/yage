@@ -1,5 +1,5 @@
-import { System, Phase, Transform, QueryCacheKey } from "@yage/core";
-import type { EngineContext, QueryResult } from "@yage/core";
+import { System, Phase, Transform, QueryCacheKey } from "@yagejs/core";
+import type { EngineContext, QueryResult } from "@yagejs/core";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
 
 /** System that drives all ParticleEmitterComponents each frame. */

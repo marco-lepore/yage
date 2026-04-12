@@ -1,4 +1,4 @@
-import type { AssetHandle } from "@yage/core";
+import type { AssetHandle } from "@yagejs/core";
 
 /** A loaded texture resource managed by the renderer. */
 export type TextureResource = import("pixi.js").Texture;

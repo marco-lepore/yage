@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Engine, Scene, Vec2, Transform } from "@yage/core";
-import { RendererPlugin, CameraKey, GraphicsComponent, texture } from "@yage/renderer";
-import { UIPlugin } from "@yage/ui";
+import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
+import { RendererPlugin, CameraKey, GraphicsComponent, texture } from "@yagejs/renderer";
+import { UIPlugin } from "@yagejs/ui";
 import {
   UIRoot,
   Panel,
@@ -11,7 +11,7 @@ import {
   PixiProgressBar,
   Checkbox,
   Anchor,
-} from "@yage/ui-react";
+} from "@yagejs/ui-react";
 import { injectStyles, getContainer } from "./shared";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtnReact, panelBg,

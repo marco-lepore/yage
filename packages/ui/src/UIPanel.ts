@@ -1,4 +1,4 @@
-import { Component } from "@yage/core";
+import { Component } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";

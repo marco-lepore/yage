@@ -1,6 +1,6 @@
-import { ServiceKey } from "@yage/core";
-import type { Entity, Vec2Like } from "@yage/core";
-import type { Vec2 } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
+import type { Entity, Vec2Like } from "@yagejs/core";
+import type { Vec2 } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import type { ColliderComponent } from "./ColliderComponent.js";

@@ -1,5 +1,5 @@
-import { Component, Transform, Vec2, serializable } from "@yage/core";
-import type { Vec2Like } from "@yage/core";
+import { Component, Transform, Vec2, serializable } from "@yagejs/core";
+import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldManagerKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";

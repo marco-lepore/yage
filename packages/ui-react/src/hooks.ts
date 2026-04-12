@@ -1,7 +1,7 @@
 import { createContext, useContext, useCallback, useRef, useMemo } from "react";
 import { useSyncExternalStore } from "react";
-import type { EngineContext, Scene, ComponentClass, QueryResult } from "@yage/core";
-import { QueryCacheKey } from "@yage/core";
+import type { EngineContext, Scene, ComponentClass, QueryResult } from "@yagejs/core";
+import { QueryCacheKey } from "@yagejs/core";
 import type { Store } from "./store.js";
 import { shallowEqual } from "./shallowEqual.js";
 

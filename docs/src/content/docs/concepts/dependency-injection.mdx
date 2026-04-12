@@ -10,7 +10,7 @@ YAGE. Plugins register services during `install()`, and the rest of the engine
 resolves them by key.
 
 ```typescript
-import { EngineContext, ServiceKey } from "@yage/core";
+import { EngineContext, ServiceKey } from "@yagejs/core";
 ```
 
 ## ServiceKey
@@ -19,7 +19,7 @@ Every service is identified by a `ServiceKey<T>`. The type parameter ensures
 that `resolve()` returns the correct type without casts:
 
 ```typescript
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 
 // Define a key with a descriptive label
 const AudioMixerKey = ServiceKey<AudioMixer>("AudioMixer");
@@ -58,17 +58,17 @@ YAGE's core and official plugins register these services:
 
 | Key | Type | Package |
 |---|---|---|
-| `EngineKey` | `Engine` | `@yage/core` |
-| `EventBusKey` | `EventBus` | `@yage/core` |
-| `SceneManagerKey` | `SceneManager` | `@yage/core` |
-| `LoggerKey` | `Logger` | `@yage/core` |
-| `QueryCacheKey` | `QueryCache` | `@yage/core` |
-| `ErrorBoundaryKey` | `ErrorBoundary` | `@yage/core` |
-| `GameLoopKey` | `GameLoop` | `@yage/core` |
-| `InspectorKey` | `Inspector` | `@yage/core` |
-| `SystemSchedulerKey` | `SystemScheduler` | `@yage/core` |
-| `ProcessSystemKey` | `ProcessSystem` | `@yage/core` |
-| `AssetManagerKey` | `AssetManager` | `@yage/core` |
+| `EngineKey` | `Engine` | `@yagejs/core` |
+| `EventBusKey` | `EventBus` | `@yagejs/core` |
+| `SceneManagerKey` | `SceneManager` | `@yagejs/core` |
+| `LoggerKey` | `Logger` | `@yagejs/core` |
+| `QueryCacheKey` | `QueryCache` | `@yagejs/core` |
+| `ErrorBoundaryKey` | `ErrorBoundary` | `@yagejs/core` |
+| `GameLoopKey` | `GameLoop` | `@yagejs/core` |
+| `InspectorKey` | `Inspector` | `@yagejs/core` |
+| `SystemSchedulerKey` | `SystemScheduler` | `@yagejs/core` |
+| `ProcessSystemKey` | `ProcessSystem` | `@yagejs/core` |
+| `AssetManagerKey` | `AssetManager` | `@yagejs/core` |
 
 ## Accessing Services from Components
 
@@ -76,9 +76,9 @@ Inside a component, use `this.use(key)`. The result is cached after the first
 call so repeated access is free:
 
 ```typescript
-import { Component } from "@yage/core";
-import { InputManagerKey } from "@yage/input";
-import { PhysicsWorldKey } from "@yage/physics";
+import { Component } from "@yagejs/core";
+import { InputManagerKey } from "@yagejs/input";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
 class PlayerController extends Component {
   update(dt: number) {
@@ -99,7 +99,7 @@ Systems receive the `EngineContext` in `onRegister`. Store references there or
 call `this.use(key)` during `update`:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yage/core";
+import { System, Phase, EngineContext } from "@yagejs/core";
 
 class DebugOverlaySystem extends System {
   readonly phase = Phase.Render;
@@ -123,7 +123,7 @@ class DebugOverlaySystem extends System {
 Register your own services for shared game state:
 
 ```typescript
-import { ServiceKey, Plugin, EngineContext } from "@yage/core";
+import { ServiceKey, Plugin, EngineContext } from "@yagejs/core";
 
 interface Inventory {
   items: string[];

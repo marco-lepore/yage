@@ -1,6 +1,6 @@
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { GraphicsComponent } from "@yage/renderer";
-import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { LAYER_PLATFORM, LAYER_PLAYER } from "../layers";
 
 /** Static platform with a visible surface and top-edge highlight. */

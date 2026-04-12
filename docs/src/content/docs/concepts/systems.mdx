@@ -21,7 +21,7 @@ component each frame and calls `update(dt)` / `fixedUpdate(dt)`.
 Extend the `System` base class:
 
 ```typescript
-import { System, Phase, EngineContext } from "@yage/core";
+import { System, Phase, EngineContext } from "@yagejs/core";
 
 class ParticleSystem extends System {
   readonly phase = Phase.Update;
@@ -56,7 +56,7 @@ class ParticleSystem extends System {
 Every system declares a **phase** that determines when it runs in the frame:
 
 ```typescript
-import { Phase } from "@yage/core";
+import { Phase } from "@yagejs/core";
 ```
 
 | Phase | Order | Typical use |
@@ -96,8 +96,8 @@ import {
   QueryCacheKey,
   QueryResult,
   Transform,
-} from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
+} from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 
 class SpriteRenderSystem extends System {
   readonly phase = Phase.Render;

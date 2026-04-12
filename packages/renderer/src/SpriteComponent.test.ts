@@ -79,7 +79,7 @@ vi.mock("pixi.js", () => ({
   Texture: mocks.MockTexture,
 }));
 
-import { Transform } from "@yage/core";
+import { Transform } from "@yagejs/core";
 import { SpriteComponent } from "./SpriteComponent.js";
 import {
   createRendererTestContext,

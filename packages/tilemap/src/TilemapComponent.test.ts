@@ -114,10 +114,10 @@ import {
   Transform,
   Vec2,
   _resetEntityIdCounter,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
-import { CameraKey, RenderLayerManagerKey, StageKey } from "@yage/renderer";
-import { Camera, RenderLayerManager } from "@yage/renderer";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
+import { CameraKey, RenderLayerManagerKey, StageKey } from "@yagejs/renderer";
+import { Camera, RenderLayerManager } from "@yagejs/renderer";
 import { TilemapComponent } from "./TilemapComponent.js";
 import type { TiledMapData } from "./tiled/types.js";
 

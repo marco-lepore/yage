@@ -12,7 +12,7 @@ events for decoupled communication.
 The most common approach is a plain class registered as a DI service:
 
 ```typescript
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 
 interface GameState {
   score: number;
@@ -54,7 +54,7 @@ add `serialize()`/`fromSnapshot()` methods if the state needs to persist.
 When bridging ECS state to React UI, use `createStore`:
 
 ```typescript
-import { createStore } from "@yage/ui-react";
+import { createStore } from "@yagejs/ui-react";
 
 const uiStore = createStore({
   score: 0,
@@ -73,7 +73,7 @@ uiStore.set({ score: uiStore.get().score + 10 });
 **Read from React** (auto-rerenders on change):
 
 ```tsx
-import { useStore } from "@yage/ui-react";
+import { useStore } from "@yagejs/ui-react";
 
 function HUD() {
   const score = useStore(uiStore, (s) => s.score);
@@ -89,7 +89,7 @@ game logic in the ECS layer and rendering in the UI layer.
 For decoupled state changes, use typed events:
 
 ```typescript
-import { defineEvent } from "@yage/core";
+import { defineEvent } from "@yagejs/core";
 
 const CoinCollected = defineEvent("coin:collected");
 const PlayerDied = defineEvent("player:died");

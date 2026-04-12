@@ -22,7 +22,7 @@ bullet.get(RigidBodyComponent).setVelocity(direction.scale(800));
 For reusable entity templates, use `defineBlueprint`:
 
 ```typescript
-import { defineBlueprint } from "@yage/core";
+import { defineBlueprint } from "@yagejs/core";
 
 const CoinBP = defineBlueprint<{ x: number; y: number }>(
   "coin",
@@ -90,7 +90,7 @@ follow. Destroying the parent destroys all children.
 Use `ProcessSlot` for cooldowns and timed abilities:
 
 ```typescript
-import { ProcessSlot, Process } from "@yage/core";
+import { ProcessSlot, Process } from "@yagejs/core";
 
 class ShootAbility extends Component {
   private readonly cooldown = this.add(new ProcessSlot("shoot-cooldown"));
@@ -237,7 +237,7 @@ const player = scene.findEntity("player");
 Query entities by component:
 
 ```typescript
-import { filterEntities } from "@yage/core";
+import { filterEntities } from "@yagejs/core";
 
 const enemies = filterEntities(scene.getEntities(), {
   has: [EnemyTag, HealthComponent],

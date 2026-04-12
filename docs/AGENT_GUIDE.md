@@ -19,7 +19,7 @@ npx turbo build
 npx turbo test
 
 # Run unit tests for a specific package
-npx turbo test --filter=@yage/core
+npx turbo test --filter=@yagejs/core
 
 # Run unit tests with coverage
 npx turbo test -- --coverage
@@ -53,36 +53,36 @@ npx playwright test --headed
 When modifying packages, changes flow downstream. Build and test in dependency order.
 
 ```
-@yage/core (zero deps)
+@yagejs/core (zero deps)
   ↓
-  ├── @yage/renderer (→ core, pixi.js)
+  ├── @yagejs/renderer (→ core, pixi.js)
   │     ↓
-  │     ├── @yage/particles (→ core, renderer)
-  │     ├── @yage/tilemap (→ core, renderer; optional: physics)
-  │     ├── @yage/ui (→ core, renderer)
+  │     ├── @yagejs/particles (→ core, renderer)
+  │     ├── @yagejs/tilemap (→ core, renderer; optional: physics)
+  │     ├── @yagejs/ui (→ core, renderer)
   │     │     ↓
-  │     │     └── @yage/ui-react (→ core, renderer, ui, react, react-dom)
-  │     └── @yage/debug (→ core, renderer; optional: physics)
+  │     │     └── @yagejs/ui-react (→ core, renderer, ui, react, react-dom)
+  │     └── @yagejs/debug (→ core, renderer; optional: physics)
   │
-  ├── @yage/physics (→ core, @dimforge/rapier2d)
+  ├── @yagejs/physics (→ core, @dimforge/rapier2d)
   │
-  ├── @yage/input (→ core)
+  ├── @yagejs/input (→ core)
   │
-  ├── @yage/audio (→ core, @pixi/sound)
+  ├── @yagejs/audio (→ core, @pixi/sound)
   │
-  └── @yage/save (→ core)
+  └── @yagejs/save (→ core)
 ```
 
 ### Modification Order
 
-If you change `@yage/core`:
+If you change `@yagejs/core`:
 
-1. Build core: `npx turbo build --filter=@yage/core`
-2. Run core tests: `npx turbo test --filter=@yage/core`
+1. Build core: `npx turbo build --filter=@yagejs/core`
+2. Run core tests: `npx turbo test --filter=@yagejs/core`
 3. Build and test downstream packages that might be affected
 4. Run E2E tests if the change affects runtime behavior
 
-If you change a leaf package (e.g., `@yage/particles`):
+If you change a leaf package (e.g., `@yagejs/particles`):
 
 1. Build and test just that package
 2. Run relevant E2E tests
@@ -91,7 +91,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 
 ## 3. Key Files Per Package
 
-### `@yage/core`
+### `@yagejs/core`
 
 | File                     | Purpose                                       |
 | ------------------------ | --------------------------------------------- |
@@ -127,7 +127,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `tsup.config.ts`         | Build config (ESM + CJS + .d.ts)              |
 | `vitest.config.ts`       | Test config (100% coverage threshold)         |
 
-### `@yage/renderer`
+### `@yagejs/renderer`
 
 | File                             | Purpose                            |
 | -------------------------------- | ---------------------------------- |
@@ -142,7 +142,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync |
 | `src/RenderLayer.ts`             | Named draw-order layers            |
 
-### `@yage/physics`
+### `@yagejs/physics`
 
 | File                                | Purpose                               |
 | ----------------------------------- | ------------------------------------- |
@@ -154,7 +154,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/PhysicsInterpolationSystem.ts` | LateUpdate: smooth rendering          |
 | `src/CollisionLayers.ts`            | Named layer bitmask management        |
 
-### `@yage/input`
+### `@yagejs/input`
 
 | File                  | Purpose                                |
 | --------------------- | -------------------------------------- |
@@ -163,7 +163,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/InputSystem.ts`  | EarlyUpdate: poll + update state       |
 | `src/ActionMap.ts`    | Action map resolution                  |
 
-### `@yage/audio`
+### `@yagejs/audio`
 
 | File                    | Purpose                        |
 | ----------------------- | ------------------------------ |
@@ -171,7 +171,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/AudioManager.ts`   | Channel-based playback control |
 | `src/SoundComponent.ts` | Entity-bound audio             |
 
-### `@yage/particles`
+### `@yagejs/particles`
 
 | File                              | Purpose                                     |
 | --------------------------------- | ------------------------------------------- |
@@ -181,7 +181,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/ParticlePool.ts`             | Allocation-free particle recycling          |
 | `src/ParticlePresets.ts`          | Built-in presets: fire, smoke, sparks, rain |
 
-### `@yage/tilemap`
+### `@yagejs/tilemap`
 
 | File                         | Purpose                                                                                |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
@@ -193,7 +193,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/tiled/parseTiledMap.ts` | `extractObjects()`                                                                     |
 | `src/properties.ts`          | `getProperty()`, `getPropertyArray()`, `resolveObjectRef()`, `resolveObjectRefArray()` |
 
-### `@yage/ui`
+### `@yagejs/ui`
 
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |
@@ -208,7 +208,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/BackgroundRenderer.ts` | Color/texture backgrounds for panels                  |
 | `src/pixi-ui/`              | @pixi/ui wrappers (PixiFancyButton, PixiSlider, etc.) |
 
-### `@yage/ui-react`
+### `@yagejs/ui-react`
 
 | File                | Purpose                                                                       |
 | ------------------- | ----------------------------------------------------------------------------- |
@@ -218,7 +218,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/reconciler.ts` | Custom React reconciler over Yoga + PixiJS                                    |
 | `src/components/`   | JSX wrappers: Panel, Text, Button, Image, etc.                                |
 
-### `@yage/debug`
+### `@yagejs/debug`
 
 | File                       | Purpose                                               |
 | -------------------------- | ----------------------------------------------------- |
@@ -230,7 +230,7 @@ If you change a leaf package (e.g., `@yage/particles`):
 | `src/GraphicsPool.ts`      | Allocation-free PixiJS Graphics pool                  |
 | `src/TextPool.ts`          | Allocation-free PixiJS Text pool                      |
 
-### `@yage/save`
+### `@yagejs/save`
 
 | File                          | Purpose                                        |
 | ----------------------------- | ---------------------------------------------- |
@@ -270,8 +270,8 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 | Change                                     | Run                                                            |
 | ------------------------------------------ | -------------------------------------------------------------- |
-| Modified core logic (Entity, System, etc.) | `npx turbo test --filter=@yage/core`                           |
-| Modified a plugin                          | `npx turbo test --filter=@yage/<plugin>`                       |
+| Modified core logic (Entity, System, etc.) | `npx turbo test --filter=@yagejs/core`                           |
+| Modified a plugin                          | `npx turbo test --filter=@yagejs/<plugin>`                       |
 | Modified an example                        | `npx turbo build && npx playwright test e2e/specs/<example>.spec.ts` |
 | Before committing                          | `npx turbo lint && npx turbo test`                             |
 | Before PR                                  | Full sequence above                                            |
@@ -280,7 +280,7 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 - **Unit tests**: Co-locate with source files (`Foo.ts` → `Foo.test.ts`)
 - **E2E tests**: Place specs in `e2e/specs/` and fixture apps in `e2e/fixtures/`
-- **Use test utilities**: Import `createMockScene`, `createMockEntity`, `advanceFrames` from `@yage/core/test-utils`
+- **Use test utilities**: Import `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
 - **E2E assertions**: Use Inspector API (`window.__yage__.inspector`) for state assertions, not screenshots
 - **Deterministic browser timing**: Prefer `window.__yage__.clock.step()` / `stepFrames()` over `waitForTimeout()` when a fixture enables manual clock mode
 
@@ -369,7 +369,7 @@ const physics = logs.filter((e) => e.category === "physics");
 1. Create `packages/<plugin>/src/MyComponent.ts`:
 
 ```typescript
-import { Component } from "@yage/core";
+import { Component } from "@yagejs/core";
 
 export class MyComponent extends Component {
   myData: number;
@@ -397,10 +397,10 @@ export class MyComponent extends Component {
 1. Create `packages/<plugin>/src/MySystem.ts`:
 
 ```typescript
-import { System, Phase, EngineContext, QueryResult } from "@yage/core";
-import { QueryCacheKey } from "@yage/core";
+import { System, Phase, EngineContext, QueryResult } from "@yagejs/core";
+import { QueryCacheKey } from "@yagejs/core";
 import { MyComponent } from "./MyComponent";
-import { Transform } from "@yage/core";
+import { Transform } from "@yagejs/core";
 
 export class MySystem extends System {
   readonly phase = Phase.Update;
@@ -446,8 +446,8 @@ Summary:
 2. Create `main.ts` entry point:
 
 ```typescript
-import { Engine, Scene, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
+import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
 // ... other imports
 
 const engine = new Engine({ debug: true });
@@ -474,7 +474,7 @@ engine.scenes.push(new MyScene());
 1. In your plugin package, create a factory function:
 
 ```typescript
-import { AssetHandle } from "@yage/core";
+import { AssetHandle } from "@yagejs/core";
 
 export function myAsset(path: string): AssetHandle<MyAssetType> {
   return new AssetHandle<MyAssetType>("myType", path);
@@ -505,8 +505,8 @@ Entities support two usage styles (mixable in the same project):
 Use `setup()` instead of the constructor — it runs after the entity is wired to the scene, so `onAdd` hooks and service resolution work.
 
 ```typescript
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 
 class MyEntity extends Entity {
   setup({ x, y }: { x: number; y: number }) {
@@ -523,7 +523,7 @@ class MyEntity extends Entity {
 Traits declare capabilities that are enforced at compile time (via the `@trait()` decorator) and queryable at runtime via `hasTrait()`.
 
 ```typescript
-import { Entity, defineTrait, trait } from "@yage/core";
+import { Entity, defineTrait, trait } from "@yagejs/core";
 
 const Interactable = defineTrait<{ interact(): void; priority: number }>(
   "Interactable",
@@ -557,7 +557,7 @@ Components that participate in save/load need three things: `@serializable`, `se
 **Full serialization** (all state is primitives/string keys):
 
 ```typescript
-import { Component, serializable } from "@yage/core";
+import { Component, serializable } from "@yagejs/core";
 
 interface MyData { value: number; label: string; }
 
@@ -587,7 +587,7 @@ class MyComponent extends Component {
 Use string-based alternatives (`source: FrameSource`, `textureKey: string`) when available. When only raw objects are provided, `serialize()` returns `null` and the entity must reconstruct in `afterRestore()`.
 
 ```typescript
-import { AnimatedSpriteComponent, AnimationController } from "@yage/renderer";
+import { AnimatedSpriteComponent, AnimationController } from "@yagejs/renderer";
 
 // Serializable — uses FrameSource (string key + frame dimensions)
 new AnimatedSpriteComponent({
@@ -624,9 +624,9 @@ new AnimatedSpriteComponent({ textures: myTextureArray });
 Entities need `@serializable` and optionally `serialize()` / `afterRestore()`:
 
 ```typescript
-import { Entity, Transform, Vec2, serializable } from "@yage/core";
-import type { SnapshotResolver } from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
+import { Entity, Transform, Vec2, serializable } from "@yagejs/core";
+import type { SnapshotResolver } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 
 @serializable
 class PlayerEntity extends Entity {
@@ -653,7 +653,7 @@ class PlayerEntity extends Entity {
 ### Use the Save System
 
 ```typescript
-import { SavePlugin, SaveServiceKey } from "@yage/save";
+import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 
 // Register the plugin:
 engine.use(new SavePlugin());
@@ -698,7 +698,7 @@ class HealthBar extends Entity {
 }
 ```
 
-### Serializing UI State (vanilla `@yage/ui`)
+### Serializing UI State (vanilla `@yagejs/ui`)
 
 UI panels are view-layer — they don't hold game state. The component that owns the panel stores the state and builds/updates the UI from it. On restore, `fromSnapshot` sets the state before `onAdd` builds the panel:
 
@@ -740,7 +740,7 @@ class InventoryUI extends Component {
 }
 ```
 
-### Serializing UI State (React `@yage/ui-react`)
+### Serializing UI State (React `@yagejs/ui-react`)
 
 React components re-render from state — the entity bridges the store to the save system:
 
@@ -775,8 +775,8 @@ function InventoryPanel() {
 Blueprints still work but entity subclasses are preferred for new code.
 
 ```typescript
-import { defineBlueprint, Transform } from "@yage/core";
-import { SpriteComponent } from "@yage/renderer";
+import { defineBlueprint, Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
 
 export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
   "my-entity",
@@ -794,9 +794,9 @@ export const MyBlueprint = defineBlueprint<{ x: number; y: number }>(
 Use a Scene subclass when you need full lifecycle hooks, asset preloading, or reusable/testable scenes. Services are accessed via `this.service(Key)` which returns a lazy proxy safe to assign as a field.
 
 ```typescript
-import { Scene, Transform, Vec2 } from "@yage/core";
-import { CameraKey } from "@yage/renderer";
-import { InputManagerKey } from "@yage/input";
+import { Scene, Transform, Vec2 } from "@yagejs/core";
+import { CameraKey } from "@yagejs/renderer";
+import { InputManagerKey } from "@yagejs/input";
 
 class GameScene extends Scene {
   readonly name = "game";
@@ -822,8 +822,8 @@ engine.scenes.push(new GameScene());
 > **Physics world access:** Physics worlds are per-scene. Components that need
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
 > ```typescript
-> import { PhysicsWorldManagerKey } from "@yage/physics";
-> import type { PhysicsWorld } from "@yage/physics";
+> import { PhysicsWorldManagerKey } from "@yagejs/physics";
+> import type { PhysicsWorld } from "@yagejs/physics";
 >
 > class MyComponent extends Component {
 >   private world!: PhysicsWorld;
@@ -838,11 +838,11 @@ engine.scenes.push(new GameScene());
 Create an `Engine`, register plugins with `engine.use()`, then start and push a scene:
 
 ```typescript
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
-import { PhysicsPlugin } from "@yage/physics";
-import { InputPlugin } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
+import { InputPlugin } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
@@ -892,7 +892,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | Pitfall                                                       | Why                                                                                                                                                                                               | Instead                                                                                                           |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **Putting engine-level cross-cutting concerns in Components** | Physics stepping, render sync, and collision dispatch need efficient cross-entity queries and strict phase ordering. Putting these in Components means duplicate work and no centralized control. | Use Systems for engine-level concerns (physics, rendering, audio). Components are for game logic.                 |
-| **Importing PixiJS types into `@yage/core`**                  | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee.                                                                                                                | Keep PixiJS types inside `@yage/renderer`. Use abstract interfaces in core if needed.                             |
+| **Importing PixiJS types into `@yagejs/core`**                  | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee.                                                                                                                | Keep PixiJS types inside `@yagejs/renderer`. Use abstract interfaces in core if needed.                             |
 | **Using `context.resolve()` in a constructor**                | Context may not be fully populated during plugin installation.                                                                                                                                    | Use `onRegister()` for systems or `onEnter()` for scenes to resolve services.                                     |
 | **Mutating Vec2**                                             | Vec2 is immutable by design. Mutations would break assumptions in caching and comparison.                                                                                                         | Use `vec.add()`, `vec.scale()`, etc. which return new instances.                                                  |
 | **Running async code in system `update()`**                   | The game loop is synchronous. Async operations skip frames and cause non-determinism.                                                                                                             | Start async work outside the loop, use events to communicate completion, or use Process for frame-aligned delays. |

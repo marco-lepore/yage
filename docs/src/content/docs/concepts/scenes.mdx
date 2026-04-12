@@ -14,7 +14,7 @@ are pushed onto or popped from the scene stack.
 Extend the `Scene` base class:
 
 ```typescript
-import { Scene } from "@yage/core";
+import { Scene } from "@yagejs/core";
 
 class GameplayScene extends Scene {
   readonly name = "gameplay";
@@ -100,9 +100,9 @@ Scenes are always classes. Override `onEnter` to spawn entities, resolve
 services, and wire up the scene:
 
 ```typescript
-import { Scene, Transform } from "@yage/core";
-import { SpriteComponent, CameraKey } from "@yage/renderer";
-import { InputManagerKey } from "@yage/input";
+import { Scene, Transform } from "@yagejs/core";
+import { SpriteComponent, CameraKey } from "@yagejs/renderer";
+import { InputManagerKey } from "@yagejs/input";
 
 class TitleScene extends Scene {
   readonly name = "title";

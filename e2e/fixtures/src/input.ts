@@ -3,10 +3,10 @@ import {
   Component,
   Scene,
   Transform,
-} from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();

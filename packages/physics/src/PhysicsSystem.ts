@@ -4,8 +4,8 @@ import {
   Transform,
   Vec2,
   SceneManagerKey,
-} from "@yage/core";
-import type { Scene, SceneManager } from "@yage/core";
+} from "@yagejs/core";
+import type { Scene, SceneManager } from "@yagejs/core";
 import { PhysicsWorldManagerKey } from "./types.js";
 import type { ScenePhysicsContext } from "./types.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";

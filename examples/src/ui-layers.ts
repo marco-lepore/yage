@@ -1,7 +1,7 @@
-import { Engine, Scene, Transform, Vec2, Component } from "@yage/core";
-import { RendererPlugin, CameraKey, GraphicsComponent } from "@yage/renderer";
-import type { RenderLayerManager } from "@yage/renderer";
-import { UIPlugin, UIPanel, UILayerManagerKey, Anchor } from "@yage/ui";
+import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
+import { RendererPlugin, CameraKey, GraphicsComponent } from "@yagejs/renderer";
+import type { RenderLayerManager } from "@yagejs/renderer";
+import { UIPlugin, UIPanel, UILayerManagerKey, Anchor } from "@yagejs/ui";
 import { injectStyles, getContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 

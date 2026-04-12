@@ -1,7 +1,7 @@
-import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
-import { AssetManagerKey } from "@yage/core";
-import { RendererKey } from "@yage/renderer";
-import type { RendererPlugin } from "@yage/renderer";
+import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
+import { AssetManagerKey } from "@yagejs/core";
+import { RendererKey } from "@yagejs/renderer";
+import type { RendererPlugin } from "@yagejs/renderer";
 import { UIContainerKey, UILayerManagerKey } from "./types.js";
 import { UILayoutSystem } from "./UILayoutSystem.js";
 import { setYoga } from "./yoga-helpers.js";

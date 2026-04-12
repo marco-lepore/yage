@@ -1,4 +1,4 @@
-import { System, Phase } from "@yage/core";
+import { System, Phase } from "@yagejs/core";
 import { InputManagerKey } from "./types.js";
 
 /**

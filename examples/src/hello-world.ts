@@ -1,6 +1,6 @@
-import { Engine, Component, Scene, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { DebugPlugin } from "@yage/debug";
+import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles();

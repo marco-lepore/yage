@@ -1,4 +1,4 @@
-import type { EngineContext, Plugin } from "@yage/core";
+import type { EngineContext, Plugin } from "@yagejs/core";
 import type { SaveStorage } from "./types.js";
 import { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";
 import { SaveService } from "./SaveService.js";

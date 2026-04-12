@@ -1,4 +1,4 @@
-import type { DisplayContainer } from "@yage/renderer";
+import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import type { LayoutProps, UIElement } from "../types.js";

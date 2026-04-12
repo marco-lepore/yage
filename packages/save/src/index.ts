@@ -1,4 +1,4 @@
-export { VERSION } from "@yage/core";
+export { VERSION } from "@yagejs/core";
 
 // Types
 export type {
@@ -9,7 +9,7 @@ export type {
   EntitySnapshotEntry,
   ComponentSnapshot,
 } from "./types.js";
-export type { SnapshotResolver } from "@yage/core";
+export type { SnapshotResolver } from "@yagejs/core";
 
 // Storage
 export { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";

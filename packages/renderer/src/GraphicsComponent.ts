@@ -1,4 +1,4 @@
-import { Component, serializable } from "@yage/core";
+import { Component, serializable } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import { RenderLayerManagerKey } from "./types.js";
 import type { GraphicsContext } from "./public-types.js";

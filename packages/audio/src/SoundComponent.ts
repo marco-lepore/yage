@@ -1,4 +1,4 @@
-import { Component, serializable } from "@yage/core";
+import { Component, serializable } from "@yagejs/core";
 import type { SoundHandle } from "./SoundHandle.js";
 import { AudioManagerKey, type SoundComponentOptions, type SoundData } from "./types.js";
 

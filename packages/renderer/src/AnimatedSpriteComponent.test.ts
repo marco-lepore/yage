@@ -96,7 +96,7 @@ vi.mock("pixi.js", () => {
   };
 });
 
-import { Transform } from "@yage/core";
+import { Transform } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
 

@@ -1,4 +1,4 @@
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 import type { SaveService } from "./SaveService.js";
 
 /** Service key for the SaveService. */

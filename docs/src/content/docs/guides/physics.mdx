@@ -4,13 +4,13 @@ description: "Rigid bodies, colliders, collision layers, and raycasting with Rap
 ---
 
 YAGE uses [Rapier2D](https://rapier.rs/) under the hood for physics simulation.
-The `@yage/physics` package wraps Rapier with a pixel-based API — you never need
+The `@yagejs/physics` package wraps Rapier with a pixel-based API — you never need
 to think about meters. All positions, velocities, and forces are in pixels.
 
 ## PhysicsPlugin Setup
 
 ```typescript
-import { PhysicsPlugin } from "@yage/physics";
+import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(new PhysicsPlugin({
   gravity: { x: 0, y: 980 },   // pixels/s², default: (0, 980)
@@ -23,7 +23,7 @@ engine.use(new PhysicsPlugin({
 `RigidBodyComponent` wraps a Rapier rigid body. Add it after `Transform`.
 
 ```typescript
-import { RigidBodyComponent } from "@yage/physics";
+import { RigidBodyComponent } from "@yagejs/physics";
 
 entity.add(new RigidBodyComponent({
   type: "dynamic",          // "dynamic" | "static" | "kinematic"
@@ -56,7 +56,7 @@ entity.add(new RigidBodyComponent({
 The required component order is: `Transform` → `RigidBodyComponent` → `ColliderComponent`.
 
 ```typescript
-import { ColliderComponent } from "@yage/physics";
+import { ColliderComponent } from "@yagejs/physics";
 
 // Box
 entity.add(new ColliderComponent({
@@ -93,7 +93,7 @@ All dimensions are in pixels.
 bitmasks.
 
 ```typescript
-import { CollisionLayers } from "@yage/physics";
+import { CollisionLayers } from "@yagejs/physics";
 
 const layers = new CollisionLayers();
 const LAYER_PLAYER = layers.define("player");
@@ -279,7 +279,7 @@ or small objects that move at high speed.
 Access the physics world from any component:
 
 ```typescript
-import { PhysicsWorldManagerKey } from "@yage/physics";
+import { PhysicsWorldManagerKey } from "@yagejs/physics";
 
 const worldMgr = this.use(PhysicsWorldManagerKey);
 const world = worldMgr.getOrCreateWorld(this.scene);

@@ -20,7 +20,7 @@ Open http://localhost:5173 to see an empty scene. Start editing
 
 ## What's in here
 
-Just the bare minimum: `@yage/core` for the engine and `@yage/renderer` for
-drawing. Add more packages (`@yage/physics`, `@yage/input`, `@yage/audio`, etc.)
+Just the bare minimum: `@yagejs/core` for the engine and `@yagejs/renderer` for
+drawing. Add more packages (`@yagejs/physics`, `@yagejs/input`, `@yagejs/audio`, etc.)
 as you need them. See `AGENTS.md` for the install commands and links to the
 full YAGE documentation.

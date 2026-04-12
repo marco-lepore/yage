@@ -1,11 +1,11 @@
-# @yage/renderer
+# @yagejs/renderer
 
 PixiJS v8 rendering pipeline, sprites, graphics, and cameras for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/renderer
+npm install @yagejs/renderer
 ```
 
 Bundles PixiJS v8 - no separate install required.
@@ -13,8 +13,8 @@ Bundles PixiJS v8 - no separate install required.
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { RendererPlugin, SpriteComponent, GraphicsComponent } from "@yage/renderer";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin, SpriteComponent, GraphicsComponent } from "@yagejs/renderer";
 
 const engine = new Engine();
 engine.use(new RendererPlugin({

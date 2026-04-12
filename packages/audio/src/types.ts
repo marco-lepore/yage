@@ -1,4 +1,4 @@
-import { ServiceKey } from "@yage/core";
+import { ServiceKey } from "@yagejs/core";
 import type { AudioManager } from "./AudioManager.js";
 
 export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");

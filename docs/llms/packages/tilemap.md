@@ -1,19 +1,19 @@
-# @yage/tilemap
+# @yagejs/tilemap
 
-Depends on `@yage/core`, `@yage/renderer`. Tiled map loader and renderer.
+Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Setup
 
 ```ts
-import { TilemapPlugin } from "@yage/tilemap";
+import { TilemapPlugin } from "@yagejs/tilemap";
 engine.use(new TilemapPlugin());
 ```
 
 ## Loading Maps
 
 ```ts
-import { tiledMap } from "@yage/tilemap";
-import { renderAsset } from "@yage/renderer";
+import { tiledMap } from "@yagejs/tilemap";
+import { renderAsset } from "@yagejs/renderer";
 
 const MapData = tiledMap("assets/level.json");
 const Tileset = renderAsset("assets/tileset.png");
@@ -26,7 +26,7 @@ class Level extends Scene {
 ## TilemapComponent
 
 ```ts
-import { TilemapComponent } from "@yage/tilemap";
+import { TilemapComponent } from "@yagejs/tilemap";
 
 entity.add(new TilemapComponent({
   mapKey: MapData.path,          // serializable asset ref
@@ -111,7 +111,7 @@ const objects = tilemap.getObjects("spawns");
 ## Property Utilities
 
 ```ts
-import { getProperty, getPropertyArray, resolveObjectRef } from "@yage/tilemap";
+import { getProperty, getPropertyArray, resolveObjectRef } from "@yagejs/tilemap";
 
 getProperty<number>(obj, "speed");          // single custom property
 getPropertyArray<number>(obj, "point");     // indexed: point[0], point[1]
@@ -123,7 +123,7 @@ resolveObjectRef(obj, "target", allObjs);   // resolve Tiled object reference
 Tiled's object-reference properties store numeric IDs, not the target objects themselves. `resolveObjectRef` and `resolveObjectRefArray` turn those IDs into `MapObject` instances by searching a caller-supplied array:
 
 ```ts
-import { resolveObjectRef, resolveObjectRefArray } from "@yage/tilemap";
+import { resolveObjectRef, resolveObjectRefArray } from "@yagejs/tilemap";
 
 const allObjects = Object.values(tilemap.getObjects("interactables")).flat();
 
@@ -162,11 +162,11 @@ Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
 
 ## Physics Integration
 
-`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yage/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when wiring extracted walls to a static physics body:
+`toPhysicsColliders(shapes)` converts the tilemap collision shapes (top-left origin, as stored in Tiled) into `@yagejs/physics` `ColliderConfig` shape-plus-offset pairs (center origin, as Rapier expects). Use it when wiring extracted walls to a static physics body:
 
 ```ts
-import { toPhysicsColliders } from "@yage/tilemap";
-import { RigidBodyComponent, ColliderComponent } from "@yage/physics";
+import { toPhysicsColliders } from "@yagejs/tilemap";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
 const walls = scene.spawn("walls");
 walls.add(new Transform());

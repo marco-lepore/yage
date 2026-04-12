@@ -1,5 +1,5 @@
 {
-  "name": "@yage/docs",
+  "name": "@yagejs/docs",
   "type": "module",
   "version": "0.0.0",
   "private": true,
@@ -22,11 +22,11 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "devDependencies": {
-    "@yage/core": "^0.1.0",
-    "@yage/debug": "^0.1.0",
-    "@yage/input": "^0.1.0",
-    "@yage/physics": "^0.1.0",
-    "@yage/renderer": "^0.1.0",
-    "@yage/ui": "^0.1.0"
+    "@yagejs/core": "^0.1.0",
+    "@yagejs/debug": "^0.1.0",
+    "@yagejs/input": "^0.1.0",
+    "@yagejs/physics": "^0.1.0",
+    "@yagejs/renderer": "^0.1.0",
+    "@yagejs/ui": "^0.1.0"
   }
 }

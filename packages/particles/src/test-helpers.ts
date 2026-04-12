@@ -15,9 +15,9 @@ import {
   Scene,
   Entity,
   _resetEntityIdCounter,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
-import { CameraKey, RenderLayerManagerKey, StageKey, Camera, RenderLayerManager } from "@yage/renderer";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
+import { CameraKey, RenderLayerManagerKey, StageKey, Camera, RenderLayerManager } from "@yagejs/renderer";
 
 // Minimal mock container matching the renderer test-helpers pattern.
 export class MockContainer {

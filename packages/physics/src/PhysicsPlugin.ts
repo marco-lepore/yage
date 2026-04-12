@@ -1,7 +1,7 @@
-import type { EngineContext, SystemScheduler, Plugin, EngineEvents, Scene } from "@yage/core";
-import { EventBusKey } from "@yage/core";
-import type { EventBus } from "@yage/core";
-import { DebugRegistryKey } from "@yage/debug/api";
+import type { EngineContext, SystemScheduler, Plugin, EngineEvents, Scene } from "@yagejs/core";
+import { EventBusKey } from "@yagejs/core";
+import type { EventBus } from "@yagejs/core";
+import { DebugRegistryKey } from "@yagejs/debug/api";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldManagerKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";

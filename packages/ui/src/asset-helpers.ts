@@ -1,5 +1,5 @@
-import type { AssetHandle } from "@yage/core";
-import type { AssetManager } from "@yage/core";
+import type { AssetHandle } from "@yagejs/core";
+import type { AssetManager } from "@yagejs/core";
 
 // ---------------------------------------------------------------------------
 // Module-level AssetManager access (set by UIPlugin.install)

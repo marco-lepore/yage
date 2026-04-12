@@ -2,7 +2,7 @@ import { Sprite } from "pixi.js";
 import type { Container, Texture } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
-import type { AssetHandle } from "@yage/core";
+import type { AssetHandle } from "@yagejs/core";
 import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";

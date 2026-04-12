@@ -13,7 +13,7 @@ vi.mock("@pixi/sound", () => ({
   sound: mockSound,
 }));
 
-import { EngineContext } from "@yage/core";
+import { EngineContext } from "@yagejs/core";
 import { AudioPlugin } from "./AudioPlugin.js";
 import { AudioManagerKey } from "./types.js";
 import { AudioManager } from "./AudioManager.js";

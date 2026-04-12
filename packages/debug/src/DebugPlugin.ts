@@ -1,13 +1,13 @@
-import { SystemSchedulerKey, InspectorKey, GameLoopKey } from "@yage/core";
+import { SystemSchedulerKey, InspectorKey, GameLoopKey } from "@yagejs/core";
 import type {
   EngineContext,
   Plugin,
   SystemScheduler,
   System,
-} from "@yage/core";
+} from "@yagejs/core";
 import { DebugRegistryKey } from "./types.js";
-import { RendererKey, RenderLayerManagerKey, CameraKey } from "@yage/renderer";
-import type { RendererPlugin } from "@yage/renderer";
+import { RendererKey, RenderLayerManagerKey, CameraKey } from "@yagejs/renderer";
+import type { RendererPlugin } from "@yagejs/renderer";
 import { Container } from "pixi.js";
 import { DebugClock } from "./DebugClock.js";
 import type { IDebugClock } from "./DebugClock.js";

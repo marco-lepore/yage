@@ -1,4 +1,4 @@
-import { AssetHandle } from "@yage/core";
+import { AssetHandle } from "@yagejs/core";
 import { Rectangle, Texture } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type {

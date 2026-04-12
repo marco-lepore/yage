@@ -1,5 +1,5 @@
 import { Particle } from "pixi.js";
-import type { TextureResource } from "@yage/renderer";
+import type { TextureResource } from "@yagejs/renderer";
 
 /** Pre-allocated pool of PixiJS Particle instances. */
 export class ParticlePool {

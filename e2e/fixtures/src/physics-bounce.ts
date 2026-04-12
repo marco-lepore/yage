@@ -4,10 +4,10 @@ import {
   Scene,
   Transform,
   Vec2,
-} from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
-import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yage/physics";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles } from "./shared.js";
 
 injectStyles();

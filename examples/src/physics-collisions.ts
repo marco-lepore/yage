@@ -1,14 +1,14 @@
-import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yage/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yage/renderer";
+import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yagejs/core";
+import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
-} from "@yage/physics";
-import { AudioPlugin, AudioManagerKey, sound } from "@yage/audio";
-import { InputPlugin, InputManagerKey } from "@yage/input";
-import { DebugPlugin } from "@yage/debug";
+} from "@yagejs/physics";
+import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`

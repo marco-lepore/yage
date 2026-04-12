@@ -17,8 +17,8 @@ import {
   Scene,
   Entity,
   _resetEntityIdCounter,
-} from "@yage/core";
-import type { EngineEvents } from "@yage/core";
+} from "@yagejs/core";
+import type { EngineEvents } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 import { PhysicsWorldManagerKey } from "./types.js";

@@ -1,11 +1,11 @@
-# @yage/save
+# @yagejs/save
 
-Depends on `@yage/core`. Save/load with auto-serialization.
+Depends on `@yagejs/core`. Save/load with auto-serialization.
 
 ## Setup
 
 ```ts
-import { SavePlugin } from "@yage/save";
+import { SavePlugin } from "@yagejs/save";
 
 engine.use(new SavePlugin({
   namespace: "my-game",     // localStorage key prefix (default "yage")
@@ -15,7 +15,7 @@ engine.use(new SavePlugin({
 
 ## Bundler Setup
 
-`@yage/save` relies on TypeScript's `@serializable` class decorator and looks up classes by `class.name` at restore time. On Vite 8+ this requires two extra flags in your `vite.config.ts`:
+`@yagejs/save` relies on TypeScript's `@serializable` class decorator and looks up classes by `class.name` at restore time. On Vite 8+ this requires two extra flags in your `vite.config.ts`:
 
 ```ts
 // vite.config.ts
@@ -41,14 +41,14 @@ export default defineConfig({
 
 `output.keepNames: true` — oxc's minifier mangles class and function names by default. `@serializable` reads `class.name` to compute the registry key, so without `keepNames` the type string stored in a snapshot (e.g. `"Player"`) won't match the mangled runtime name (e.g. `"t"`), and `afterRestore()` silently fails to reconstruct entities. Enabling `keepNames` preserves the original names across the oxc minifier.
 
-These flags are only required for user code that uses `@serializable` directly. `@yage/*` packages are pre-compiled by tsup/esbuild (which already handles decorators) and are unaffected by your Vite config.
+These flags are only required for user code that uses `@serializable` directly. `@yagejs/*` packages are pre-compiled by tsup/esbuild (which already handles decorators) and are unaffected by your Vite config.
 
 ## @serializable
 
 Mark classes for save/load. Works on Entity, Scene, and Component subclasses.
 
 ```ts
-import { serializable } from "@yage/core";
+import { serializable } from "@yagejs/core";
 
 @serializable
 class Player extends Entity { }
@@ -98,7 +98,7 @@ Pattern: extract shared setup into a method called by both `onEnter()` and `afte
 ## SaveService
 
 ```ts
-import { SaveServiceKey } from "@yage/save";
+import { SaveServiceKey } from "@yagejs/save";
 
 const save = this.use(SaveServiceKey);
 
@@ -172,7 +172,7 @@ Default: `LocalStorageSaveStorage`.
 `SaveService` is generic over a slot-key map, so persistent user data (not snapshots) can be typed. Pass your slot shape when resolving the service to get autocomplete and type-checked `saveData`/`loadData` calls:
 
 ```ts
-import { SaveServiceKey, type SaveService } from "@yage/save";
+import { SaveServiceKey, type SaveService } from "@yagejs/save";
 
 interface MySlots {
   bestScore: { value: number };

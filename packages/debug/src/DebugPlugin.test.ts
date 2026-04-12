@@ -98,8 +98,8 @@ import {
   InspectorKey,
   SystemScheduler,
   SystemSchedulerKey,
-} from "@yage/core";
-import { CameraKey, RendererKey, RenderLayerManagerKey } from "@yage/renderer";
+} from "@yagejs/core";
+import { CameraKey, RendererKey, RenderLayerManagerKey } from "@yagejs/renderer";
 import { DebugPlugin } from "./DebugPlugin.js";
 
 function createMockLayerManager() {

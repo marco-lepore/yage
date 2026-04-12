@@ -1,5 +1,5 @@
 {
-  "name": "@yage/renderer",
+  "name": "@yagejs/renderer",
   "version": "0.1.0",
   "description": "PixiJS v8 rendering pipeline, sprites, graphics, and cameras for YAGE",
   "keywords": [
@@ -59,7 +59,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yage/core": "^0.1.0",
+    "@yagejs/core": "^0.1.0",
     "pixi.js": "^8.5.0"
   }
 }

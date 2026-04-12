@@ -1,5 +1,5 @@
-import { AssetManagerKey } from "@yage/core";
-import type { EngineContext, Plugin, SystemScheduler } from "@yage/core";
+import { AssetManagerKey } from "@yagejs/core";
+import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { extensions, Assets } from "pixi.js";
 import { tiledMapAssetExtension } from "./tiled/tiledMapLoader.js";
 import { TilemapRenderSystem } from "./TilemapRenderSystem.js";

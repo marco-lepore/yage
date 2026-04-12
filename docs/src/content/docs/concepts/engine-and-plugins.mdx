@@ -9,7 +9,7 @@ The `Engine` is the top-level object that owns the game loop, scene stack, and
 service container. Pass an options object to configure it:
 
 ```typescript
-import { Engine } from "@yage/core";
+import { Engine } from "@yagejs/core";
 
 const engine = new Engine({
   debug: true,
@@ -50,7 +50,7 @@ plugins need to load external resources (e.g. the Rapier WASM binary).
 A plugin is a plain object that implements the `Plugin` interface:
 
 ```typescript
-import { Plugin, EngineContext, SystemScheduler } from "@yage/core";
+import { Plugin, EngineContext, SystemScheduler } from "@yagejs/core";
 
 const myPlugin: Plugin = {
   name: "my-plugin",
@@ -100,8 +100,8 @@ When `engine.start()` is called the engine processes plugins in this sequence:
 Built-in plugins accept configuration via their constructor:
 
 ```typescript
-import { RendererPlugin } from "@yage/renderer";
-import { PhysicsPlugin } from "@yage/physics";
+import { RendererPlugin } from "@yagejs/renderer";
+import { PhysicsPlugin } from "@yagejs/physics";
 
 engine.use(
   new RendererPlugin({

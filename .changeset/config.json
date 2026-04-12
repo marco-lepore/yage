@@ -7,17 +7,17 @@
   "commit": false,
   "fixed": [
     [
-      "@yage/core",
-      "@yage/renderer",
-      "@yage/physics",
-      "@yage/input",
-      "@yage/audio",
-      "@yage/particles",
-      "@yage/tilemap",
-      "@yage/ui",
-      "@yage/ui-react",
-      "@yage/debug",
-      "@yage/save"
+      "@yagejs/core",
+      "@yagejs/renderer",
+      "@yagejs/physics",
+      "@yagejs/input",
+      "@yagejs/audio",
+      "@yagejs/particles",
+      "@yagejs/tilemap",
+      "@yagejs/ui",
+      "@yagejs/ui-react",
+      "@yagejs/debug",
+      "@yagejs/save"
     ]
   ],
   "linked": [],

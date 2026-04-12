@@ -1,7 +1,7 @@
-import { Entity, Transform, Vec2 } from "@yage/core";
-import { AnimatedSpriteComponent, AnimationController } from "@yage/renderer";
-import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
-import { AudioManagerKey } from "@yage/audio";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { AnimatedSpriteComponent, AnimationController } from "@yagejs/renderer";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+import { AudioManagerKey } from "@yagejs/audio";
 import {
   PLAYER_FRAME_SIZE,
   PlayerHit,

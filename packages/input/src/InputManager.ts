@@ -1,4 +1,4 @@
-import { Vec2 } from "@yage/core";
+import { Vec2 } from "@yagejs/core";
 import type {
   ActionMapDefinition,
   CameraLike,

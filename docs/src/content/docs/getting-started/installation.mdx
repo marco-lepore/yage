@@ -17,7 +17,7 @@ The scaffolder asks you to pick a template:
 
 - **Recommended** — a playable platformer seed with physics, input, animations,
   sound effects, enemies, and collectibles. Great for learning the engine.
-- **Minimal** — just `@yage/core` + `@yage/renderer` and an empty scene. Start
+- **Minimal** — just `@yagejs/core` + `@yagejs/renderer` and an empty scene. Start
   from scratch and add packages as you go (`src/main.ts` has commented-out
   examples showing how to wire each plugin).
 
@@ -30,32 +30,32 @@ If you already have a project or prefer to set things up yourself, install
 packages individually:
 
 ```bash
-npm install @yage/core @yage/renderer
+npm install @yagejs/core @yagejs/renderer
 ```
 
 Add more as needed:
 
 ```bash
-npm install @yage/physics @yage/input @yage/audio @yage/debug
+npm install @yagejs/physics @yagejs/input @yagejs/audio @yagejs/debug
 ```
 
 The full list of packages:
 
 | Package | Purpose |
 |---|---|
-| `@yage/core` | ECS, math, events, scheduling |
-| `@yage/renderer` | PixiJS v8 rendering pipeline |
-| `@yage/physics` | Rapier 2D physics integration |
-| `@yage/input` | Keyboard, mouse, and gamepad |
-| `@yage/audio` | Sound playback and mixing |
-| `@yage/particles` | Particle emitters and effects |
-| `@yage/tilemap` | Tile-based level support |
-| `@yage/ui` | In-game UI primitives |
-| `@yage/ui-react` | React bindings for game UI |
-| `@yage/debug` | Dev tools and inspectors |
-| `@yage/save` | Save / load state management |
+| `@yagejs/core` | ECS, math, events, scheduling |
+| `@yagejs/renderer` | PixiJS v8 rendering pipeline |
+| `@yagejs/physics` | Rapier 2D physics integration |
+| `@yagejs/input` | Keyboard, mouse, and gamepad |
+| `@yagejs/audio` | Sound playback and mixing |
+| `@yagejs/particles` | Particle emitters and effects |
+| `@yagejs/tilemap` | Tile-based level support |
+| `@yagejs/ui` | In-game UI primitives |
+| `@yagejs/ui-react` | React bindings for game UI |
+| `@yagejs/debug` | Dev tools and inspectors |
+| `@yagejs/save` | Save / load state management |
 
-`@yage/core` sits at the base of the dependency graph — every other package
+`@yagejs/core` sits at the base of the dependency graph — every other package
 depends on it, so it is always installed automatically.
 
 ## Prerequisites
@@ -69,7 +69,7 @@ depends on it, so it is always installed automatically.
 > If you used `create-yage`, this is already configured. This section is for
 > manual installs.
 
-YAGE targets **Vite 8 or later**. If you use `@yage/physics`, its Rapier 2D
+YAGE targets **Vite 8 or later**. If you use `@yagejs/physics`, its Rapier 2D
 engine requires WebAssembly, so Vite needs the `vite-plugin-wasm` plugin to
 handle `.wasm` imports:
 
@@ -98,7 +98,7 @@ export default defineConfig({
 });
 ```
 
-The `oxc` and `keepNames` options are only needed if you use `@yage/save`.
+The `oxc` and `keepNames` options are only needed if you use `@yagejs/save`.
 If your project does not persist game state, you can omit them and use the
 shorter config:
 
@@ -117,7 +117,7 @@ Vite 8 replaced esbuild with **oxc** as its TypeScript transformer. oxc
 only supports TypeScript's **legacy** (stage-2) decorator transform — it
 does not transform stage-3 decorators, and instead passes them through to
 the browser, which does not yet parse native decorator syntax. If you use
-`@yage/save`'s `@serializable` decorator in your project, you will hit a
+`@yagejs/save`'s `@serializable` decorator in your project, you will hit a
 `SyntaxError: Invalid character: '@'` in the browser without this setting.
 Enabling `legacy: true` tells oxc to rewrite `@serializable class Foo` into
 the classic `Foo = _decorate([serializable], Foo)` runtime pattern, which
@@ -139,8 +139,8 @@ Create a minimal entry file and run your dev server to confirm everything is
 working:
 
 ```typescript
-import { Engine } from "@yage/core";
-import { RendererPlugin } from "@yage/renderer";
+import { Engine } from "@yagejs/core";
+import { RendererPlugin } from "@yagejs/renderer";
 
 const engine = new Engine();
 engine.use(new RendererPlugin({ width: 800, height: 600, backgroundColor: 0x1a1a2e }));

@@ -1,4 +1,4 @@
-import type { DebugContributor, WorldDebugApi } from "@yage/debug/api";
+import type { DebugContributor, WorldDebugApi } from "@yagejs/debug/api";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
 /** Rapier ShapeType enum values. */

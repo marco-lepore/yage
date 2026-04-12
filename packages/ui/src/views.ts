@@ -1,6 +1,6 @@
 import { NineSliceSprite } from "pixi.js";
-import { resolveTextureInput } from "@yage/renderer";
-import type { DisplayContainer, TextureInput } from "@yage/renderer";
+import { resolveTextureInput } from "@yagejs/renderer";
+import type { DisplayContainer, TextureInput } from "@yagejs/renderer";
 
 export interface NineSliceViewOptions {
   texture: TextureInput;

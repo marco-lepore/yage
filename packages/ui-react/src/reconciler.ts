@@ -1,6 +1,6 @@
 import ReactReconciler from "react-reconciler";
 import type { Container } from "pixi.js";
-import type { UIElement, UIContainerElement } from "@yage/ui";
+import type { UIElement, UIContainerElement } from "@yagejs/ui";
 
 // ---------------------------------------------------------------------------
 // Root instance tracking

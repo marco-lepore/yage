@@ -1,4 +1,4 @@
-import { Component, Transform } from "@yage/core";
+import { Component, Transform } from "@yagejs/core";
 
 /**
  * Oscillates a kinematic entity along one axis on a sine wave. Captures the

@@ -1,5 +1,5 @@
-import { Engine, Scene, Vec2 } from "@yage/core";
-import { RendererPlugin, CameraKey, GraphicsComponent, texture } from "@yage/renderer";
+import { Engine, Scene, Vec2 } from "@yagejs/core";
+import { RendererPlugin, CameraKey, GraphicsComponent, texture } from "@yagejs/renderer";
 import {
   UIPlugin,
   UIPanel,
@@ -7,8 +7,8 @@ import {
   UIProgressBar,
   UICheckbox,
   Anchor,
-} from "@yage/ui";
-import { Transform } from "@yage/core";
+} from "@yagejs/ui";
+import { Transform } from "@yagejs/core";
 import { injectStyles, getContainer } from "./shared.js";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtn, panelBg,

@@ -1,11 +1,11 @@
-# @yage/ui
+# @yagejs/ui
 
 In-game UI layout and widgets for the [YAGE](https://yage.dev) 2D game engine.
 
 ## Install
 
 ```bash
-npm install @yage/ui
+npm install @yagejs/ui
 ```
 
 Built on [Yoga](https://yogalayout.dev/) for Flexbox layout and [@pixi/ui](https://pixijs.io/ui/) for widgets.
@@ -13,8 +13,8 @@ Built on [Yoga](https://yogalayout.dev/) for Flexbox layout and [@pixi/ui](https
 ## Usage
 
 ```ts
-import { Engine } from "@yage/core";
-import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
+import { Engine } from "@yagejs/core";
+import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 
 const engine = new Engine();
 engine.use(new UIPlugin());

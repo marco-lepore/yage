@@ -66,7 +66,7 @@ vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
 }));
 
-import { Transform, Vec2, Phase } from "@yage/core";
+import { Transform, Vec2, Phase } from "@yagejs/core";
 import { createParticlesTestContext, spawnEntityInScene } from "./test-helpers.js";
 import { ParticleSystem } from "./ParticleSystem.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";

@@ -1,6 +1,6 @@
-import { Component, Entity, Transform, Vec2, trait } from "@yage/core";
-import { AnimatedSpriteComponent } from "@yage/renderer";
-import { ColliderComponent, RigidBodyComponent } from "@yage/physics";
+import { Component, Entity, Transform, Vec2, trait } from "@yagejs/core";
+import { AnimatedSpriteComponent } from "@yagejs/renderer";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { SLIME_FRAME_SIZE, slimeTex } from "../scenes/GameScene";
 import { LAYER_HAZARD, LAYER_PLAYER } from "../layers";
 import { Hostile } from "../traits";

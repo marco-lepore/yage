@@ -2,7 +2,7 @@ import type {
   DebugContributor,
   WorldDebugApi,
   HudDebugApi,
-} from "@yage/debug/api";
+} from "@yagejs/debug/api";
 import type { InputManager } from "./InputManager.js";
 
 const CROSSHAIR_SIZE = 10;

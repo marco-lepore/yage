@@ -1,9 +1,9 @@
-import { Engine, Scene, Component, Transform, Vec2 } from "@yage/core";
-import { RendererPlugin, CameraKey, GraphicsComponent } from "@yage/renderer";
-import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yage/physics";
-import { UIPlugin, UIPanel, Anchor } from "@yage/ui";
-import type { UIText } from "@yage/ui";
-import { InputPlugin, InputManagerKey } from "@yage/input";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { RendererPlugin, CameraKey, GraphicsComponent } from "@yagejs/renderer";
+import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
+import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import type { UIText } from "@yagejs/ui";
+import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { injectStyles, getContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 

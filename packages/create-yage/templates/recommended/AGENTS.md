@@ -48,14 +48,14 @@ See https://yage.dev/patterns/project-layout for the full convention writeup.
 
 ## Installed packages
 
-- `@yage/core` — ECS, math, events, scenes, the game loop
-- `@yage/renderer` — PixiJS-based rendering, sprites, camera
-- `@yage/physics` — Rapier2D physics with pixel↔meter conversion
-- `@yage/input` — keyboard, mouse, gamepad, action maps
-- `@yage/audio` — sound effects and music
-- `@yage/debug` — debug overlay and runtime inspector (enabled via `debug: true` in `main.ts`)
+- `@yagejs/core` — ECS, math, events, scenes, the game loop
+- `@yagejs/renderer` — PixiJS-based rendering, sprites, camera
+- `@yagejs/physics` — Rapier2D physics with pixel↔meter conversion
+- `@yagejs/input` — keyboard, mouse, gamepad, action maps
+- `@yagejs/audio` — sound effects and music
+- `@yagejs/debug` — debug overlay and runtime inspector (enabled via `debug: true` in `main.ts`)
 
-Add more as you need them: `@yage/particles`, `@yage/tilemap`, `@yage/ui`, `@yage/ui-react`, `@yage/save`.
+Add more as you need them: `@yagejs/particles`, `@yagejs/tilemap`, `@yagejs/ui`, `@yagejs/ui-react`, `@yagejs/save`.
 
 ## Key conventions
 
@@ -78,7 +78,7 @@ sound effect (`jump.wav`), both Kenney.nl CC0. See `public/assets/CREDITS.md`.
 Replace them with your own assets — just keep the paths in sync with
 whatever your scene preload declares.
 
-## If you add `@yage/save` later
+## If you add `@yagejs/save` later
 
 The Vite config already has `oxc.decorator.legacy: true` so `@serializable`
 decorators on your own classes will work immediately. You'll also want to
