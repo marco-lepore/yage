@@ -43,7 +43,11 @@ entity.add(new RigidBodyComponent({
   projectiles, and physics objects.
 - **`static`** — never moves. Use for walls, floors, and platforms.
 - **`kinematic`** — moved programmatically, not by forces. Use for moving
-  platforms, elevators, and doors.
+  platforms, elevators, and doors. **Move kinematic bodies by setting the
+  `Transform` position** (e.g. `transform.setPosition(x, y)`), not by
+  calling `rb.setPosition` — the physics system automatically syncs
+  Transform → Rapier each frame before stepping. `rb.setPosition` is a
+  teleport intended for dynamic bodies (e.g. respawning a player).
 
 ## Colliders
 

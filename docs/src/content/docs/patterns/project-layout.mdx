@@ -1,0 +1,191 @@
+---
+title: "Project Layout"
+description: "How to organise a YAGE game — scenes, entities, components, and when to extract"
+---
+
+This page documents the recommended directory layout for a YAGE game. It's
+the layout the `create-yage` starter templates embody and the layout that's
+worked well on real projects. Not a hard rule — adapt as your game grows —
+but starting here will save you refactors later.
+
+## The layout
+
+```
+src/
+├── main.ts                 # entry: create Engine, register plugins, push initial scene
+├── scenes/
+│   └── <SceneName>.ts      # one file per scene
+├── entities/
+│   ├── <SimpleEntity>.ts   # single-file class for entities that fit in ~50 lines
+│   └── <ComplexEntity>/    # folder for entities that need supporting files
+│       ├── index.ts        # the Entity subclass
+│       ├── <Entity>Controller.ts
+│       └── <other entity-specific components>.ts
+├── components/             # ONLY for components reused across multiple entities
+│   └── <SharedComponent>.ts
+└── traits/                 # optional, advanced
+    └── <TraitToken>.ts
+
+public/
+└── assets/                 # images, audio, data files — served at site root
+```
+
+## Rules
+
+### 1. One scene per file
+
+Scene classes should be **orchestrators**: preload assets, set up the camera,
+spawn entities, wire up event listeners. Geometry, movement logic, and
+collision callbacks belong on the entities themselves.
+
+Rule of thumb: if a scene grows past ~150 lines, that's a signal you're
+inlining entity logic. Extract entity classes until the scene is just a list
+of spawns and a few listeners.
+
+```typescript
+// Good — the scene is a spawn list
+class GameScene extends Scene {
+  readonly name = "game";
+  readonly preload = [playerTexture, jumpSfx];
+
+  onEnter() {
+    this.spawn(Player, { x: 120, y: 400 });
+    this.spawn(Platform, { x: 800, y: 560, width: 1600, height: 60 });
+    this.spawn(Coin, { x: 380, y: 410 });
+    this.spawn(Hazard, { x: 620, y: 340, amplitude: 60, period: 2.2 });
+
+    this.on(PlayerHit, () => respawnPlayer(this));
+  }
+}
+```
+
+### 2. Simple entity → single file; complex entity → folder
+
+A **simple entity** is one Entity subclass that fits comfortably in one file:
+`entities/<Name>.ts`.
+
+```
+entities/
+├── Platform.ts             # 20 lines — just Transform + Graphics + physics
+├── Wall.ts                 # 15 lines — no graphics, just a collider
+└── Coin.ts                 # 35 lines — single trigger callback
+```
+
+A **complex entity** is one that needs supporting files next to it (a
+dedicated controller, multiple components, an asset module). Promote to a
+folder named after the entity, with an `index.ts` exporting the class:
+
+```
+entities/
+├── Player/
+│   ├── index.ts            # the Player Entity subclass
+│   ├── PlayerController.ts # reads input, drives the rigid body
+│   └── PlayerInventory.ts  # another player-specific component
+└── Enemy/
+    ├── index.ts
+    ├── EnemyAI.ts
+    └── EnemyAnimations.ts
+```
+
+**Start simple — promote to a folder only when you actually need the second
+file.** Don't pre-create folders for entities that fit in one file.
+
+### 3. Entity-specific components live next to the entity
+
+`src/components/` is reserved for components that are used by **multiple
+entities**. A `PlayerController` that only the `Player` uses belongs in
+`entities/Player/`, not `components/`.
+
+If a second entity starts using the same component, move it to `components/`
+at that point. That's exactly the threshold the starter's `Oscillate`
+component crosses — it's used by both `Coin` (vertical bob) and `Hazard`
+(horizontal slide), so it lives in `components/Oscillate.ts`:
+
+```typescript
+// components/Oscillate.ts — shared between Coin and Hazard
+export class Oscillate extends Component {
+  // ... sine-wave motion along an axis ...
+}
+
+// entities/Coin.ts
+this.add(new Oscillate({ axis: "y", amplitude: 4, period: 1.2 }));
+
+// entities/Hazard.ts
+this.add(new Oscillate({ axis: "x", amplitude: 60, period: 2.2 }));
+```
+
+If the starter had only `Coin` using `Oscillate`, the component would live at
+`entities/Coin/Oscillate.ts` instead (and `Coin.ts` would be promoted to a
+folder).
+
+### 4. `main.ts` stays short
+
+Engine creation, plugin registration, scene push. No game logic. If `main.ts`
+grows, the overflow belongs in a scene or a plugin.
+
+```typescript
+// main.ts — entire file
+import { Engine } from "@yage/core";
+import { RendererPlugin } from "@yage/renderer";
+import { PhysicsPlugin } from "@yage/physics";
+import { InputPlugin } from "@yage/input";
+import { GameScene } from "./scenes/GameScene.js";
+
+const engine = new Engine({ debug: true });
+engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
+engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
+engine.use(new InputPlugin({ actions: { jump: ["Space"] } }));
+await engine.start();
+engine.scenes.push(new GameScene());
+```
+
+### 5. Traits are optional and advanced
+
+Traits (`defineTrait` / `trait()`) are capability markers that let you query
+across entity types without depending on specific classes — "all Damageable
+things", "all Interactable things". They pay off once you have several
+entity types sharing the same capability. For simple games, skip `traits/`
+entirely; you don't need it until you do.
+
+### 6. Assets live in `public/assets/`
+
+Vite serves everything in `public/` from the site root. A handle declared as
+`texture("/assets/player.png")` resolves to `public/assets/player.png` at
+runtime.
+
+Declare handles with `texture()` / `sound()` at module scope in the scene
+that uses them, and list them in `Scene.preload` — YAGE guarantees they're
+loaded before `onEnter` runs.
+
+```typescript
+// scenes/GameScene.ts
+export const playerTexture = texture("/assets/player.png");
+export const jumpSfx = sound("/assets/jump.wav");
+
+export class GameScene extends Scene {
+  readonly preload = [playerTexture, jumpSfx];
+  // ...
+}
+```
+
+Exporting the handles means entity files in `entities/` can import them for
+use in their own `setup()` methods — no string duplication.
+
+## When to refactor
+
+These rules describe a starting point, not a prescription. Promote when you
+feel friction:
+
+| Signal | Refactor |
+|---|---|
+| Scene file > 150 lines with inline spawn helpers | Extract entity classes |
+| Entity file > 100 lines with a dedicated controller component | Promote to `entities/<Name>/` folder |
+| Same component code appearing in two entity files | Move to `src/components/` |
+| `main.ts` contains game logic | Move it into a scene or plugin |
+| Two scenes need the same asset path constants | Export them from a shared module |
+
+## See also
+
+- [Entity Subclasses](/patterns/entity-subclasses) — the `setup()` pattern in depth
+- [Scene Management](/patterns/scene-management) — scene stack, pausing, transitions
+- [Your First Game](/getting-started/your-first-game) — guided walkthrough

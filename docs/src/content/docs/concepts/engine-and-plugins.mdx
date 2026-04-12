@@ -30,7 +30,7 @@ The three-step lifecycle is intentionally simple:
 
 ```typescript
 // 1. Register plugins
-engine.use(new RendererPlugin({ width: 800, height: 600, container: "#game" }));
+engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
 engine.use(new PhysicsPlugin());
 engine.use(new InputPlugin());
 
