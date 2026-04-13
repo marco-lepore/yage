@@ -23,7 +23,7 @@
   "homepage": "https://yage.dev",
   "type": "module",
   "bin": {
-    "create-yage": "./dist/index.js"
+    "create-yage": "dist/index.js"
   },
   "files": [
     "dist",
