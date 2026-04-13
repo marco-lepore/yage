@@ -7,10 +7,12 @@ export default defineConfig({
   vite: {
     plugins: [wasm()],
   },
+  site: "https://yage.dev",
   integrations: [
     starlight({
       title: "YAGE",
-      description: "Yet Another Game Engine — A modular 2D game engine for TypeScript",
+      description:
+        "Yet Another Game Engine — A modular 2D game engine for TypeScript",
       logo: {
         src: "./public/logo.svg",
         alt: "YAGE Logo",
@@ -54,18 +56,27 @@ export default defineConfig({
           label: "Getting Started",
           items: [
             { label: "Installation", slug: "getting-started/installation" },
-            { label: "Your First Game", slug: "getting-started/your-first-game" },
+            {
+              label: "Your First Game",
+              slug: "getting-started/your-first-game",
+            },
           ],
         },
         {
           label: "Concepts",
           items: [
             { label: "Engine & Plugins", slug: "concepts/engine-and-plugins" },
-            { label: "Entities & Components", slug: "concepts/entities-and-components" },
+            {
+              label: "Entities & Components",
+              slug: "concepts/entities-and-components",
+            },
             { label: "Systems", slug: "concepts/systems" },
             { label: "Scenes", slug: "concepts/scenes" },
             { label: "Events", slug: "concepts/events" },
-            { label: "Dependency Injection", slug: "concepts/dependency-injection" },
+            {
+              label: "Dependency Injection",
+              slug: "concepts/dependency-injection",
+            },
             { label: "Game Loop", slug: "concepts/game-loop" },
           ],
         },
@@ -74,7 +85,10 @@ export default defineConfig({
           items: [
             { label: "Rendering", slug: "guides/rendering" },
             { label: "Input", slug: "guides/input" },
-            { label: "Processes & Tweens", slug: "guides/processes-and-tweens" },
+            {
+              label: "Processes & Tweens",
+              slug: "guides/processes-and-tweens",
+            },
             { label: "Physics", slug: "guides/physics" },
             { label: "Audio", slug: "guides/audio" },
             { label: "Particles", slug: "guides/particles" },
@@ -93,7 +107,10 @@ export default defineConfig({
             { label: "Testing", slug: "patterns/testing" },
             { label: "Scene Management", slug: "patterns/scene-management" },
             { label: "State Management", slug: "patterns/state-management" },
-            { label: "Common Game Patterns", slug: "patterns/common-game-patterns" },
+            {
+              label: "Common Game Patterns",
+              slug: "patterns/common-game-patterns",
+            },
           ],
         },
         {
