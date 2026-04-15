@@ -41,3 +41,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Deploy docs
+        if: steps.changesets.outputs.published == 'true'
+        run: git push origin HEAD:docs-release --force
