@@ -88,10 +88,13 @@ import {
   ErrorBoundaryKey,
   Logger,
   LogLevel,
+  SceneHookRegistry,
+  SceneHookRegistryKey,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
-import { RendererKey, StageKey, CameraKey, RenderLayerManagerKey } from "./types.js";
+import { RendererKey, StageKey, CameraKey, WorldRootKey } from "./types.js";
+import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
 
 function createInstallContext(): {
@@ -112,6 +115,7 @@ function createInstallContext(): {
   context.register(QueryCacheKey, queryCache);
   context.register(EventBusKey, bus);
   context.register(ErrorBoundaryKey, boundary);
+  context.register(SceneHookRegistryKey, new SceneHookRegistry());
   scheduler.setErrorBoundary(boundary);
 
   return { context, gameLoop, scheduler };
@@ -130,7 +134,7 @@ describe("RendererPlugin", () => {
   it("has correct name and version", () => {
     const plugin = new RendererPlugin(defaultConfig);
     expect(plugin.name).toBe("renderer");
-    expect(plugin.version).toBe("2.0.0");
+    expect(plugin.version).toBe("3.0.0");
   });
 
   describe("install", () => {
@@ -141,8 +145,9 @@ describe("RendererPlugin", () => {
 
       expect(context.has(RendererKey)).toBe(true);
       expect(context.has(StageKey)).toBe(true);
+      expect(context.has(WorldRootKey)).toBe(true);
       expect(context.has(CameraKey)).toBe(true);
-      expect(context.has(RenderLayerManagerKey)).toBe(true);
+      expect(context.has(SceneRenderTreeProviderKey)).toBe(true);
     });
 
     it("registers self as RendererKey", async () => {
@@ -319,14 +324,13 @@ describe("RendererPlugin", () => {
     });
   });
 
-  describe("layers", () => {
-    it("exposes layer manager", async () => {
+  describe("scene render trees", () => {
+    it("exposes the per-scene render tree provider", async () => {
       const { context } = createInstallContext();
       const plugin = new RendererPlugin(defaultConfig);
       await plugin.install(context);
 
-      expect(plugin.layers).toBeDefined();
-      expect(plugin.layers.defaultLayer).toBeDefined();
+      expect(plugin.sceneRenderTrees).toBeDefined();
     });
   });
 });

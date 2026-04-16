@@ -191,7 +191,7 @@ async function main() {
 
   await loadFonts();
   await engine.start();
-  engine.scenes.push(new UILayersScene());
+  await engine.scenes.push(new UILayersScene());
 }
 
 main().catch(console.error);

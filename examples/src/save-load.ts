@@ -22,16 +22,16 @@ import {
 import {
   RendererPlugin,
   GraphicsComponent,
-  RenderLayerManagerKey,
   CameraKey,
   GraphicsContext,
+  type LayerDef,
 } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
-  PhysicsWorldManagerKey,
+  PhysicsWorldKey,
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { SavePlugin, SaveServiceKey } from "@yagejs/save";
@@ -173,9 +173,7 @@ class PlayerController extends Component {
   private coyoteTimer = 0;
 
   onAdd(): void {
-    this.physics = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
-      this.scene,
-    );
+    this.physics = this.use(PhysicsWorldKey);
   }
 
   update(dt: number) {
@@ -447,6 +445,10 @@ const COIN_POSITIONS = [
 @serializable
 class SaveDemoScene extends Scene {
   readonly name = "save-demo";
+  readonly layers: readonly LayerDef[] = [
+    { name: "bg", order: -10 },
+    { name: "entities", order: 0 },
+  ];
   private gs!: GameState;
 
   // ---- Fresh path ----
@@ -481,10 +483,6 @@ class SaveDemoScene extends Scene {
 
     const camera = this.context.resolve(CameraKey);
     camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
-    const layerMgr = this.context.resolve(RenderLayerManagerKey);
-    layerMgr.getOrCreate("bg", -10);
-    layerMgr.getOrCreate("entities", 0);
 
     this.setupListeners();
     this.buildStaticGeometry();
@@ -573,7 +571,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new SaveDemoScene());
+  await engine.scenes.push(new SaveDemoScene());
 }
 
 main().catch(console.error);

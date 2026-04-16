@@ -360,7 +360,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new AudioScene());
+  await engine.scenes.push(new AudioScene());
 }
 
 main().catch(console.error);

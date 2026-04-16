@@ -38,6 +38,7 @@ Enforced by tooling — match these conventions exactly:
 - **Prettier**: double quotes, semicolons, 2-space indent, trailing commas
 - **ESLint**: `typescript-eslint` strict config
 - No `any` in public API signatures
+- **Prefer `import type { Foo } from "./foo.js"` over inline `import("./foo.js").Foo`.** Inline `import()` type syntax is noisy and hard to read; use top-of-file `import type` statements. Only reach for inline `import()` when breaking an otherwise unavoidable circular type dependency — and add a comment explaining why.
 
 ## Architecture Rules
 

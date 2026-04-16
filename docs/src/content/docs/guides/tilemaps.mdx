@@ -44,12 +44,15 @@ Add a `TilemapComponent` to an entity to render the map:
 
 ```typescript
 import { TilemapComponent } from "@yagejs/tilemap";
-import { RenderLayerManagerKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
+
+// Declare the scene's layers — the renderer plugin materializes them
+// automatically when the scene is pushed.
+readonly layers: readonly LayerDef[] = [
+  { name: "map", order: -10 },
+];
 
 onEnter(): void {
-  const layerMgr = this.service(RenderLayerManagerKey);
-  layerMgr.create("map", -10); // render behind game entities
-
   const map = this.spawn("map");
   map.add(new Transform());
   map.add(new TilemapComponent({

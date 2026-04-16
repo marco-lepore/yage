@@ -222,7 +222,7 @@ async function main() {
 
   await loadFonts();
   await engine.start();
-  engine.scenes.push(new UIExampleScene());
+  await engine.scenes.push(new UIExampleScene());
 }
 
 main().catch(console.error);

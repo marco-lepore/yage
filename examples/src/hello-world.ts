@@ -92,7 +92,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new HelloWorldScene());
+  await engine.scenes.push(new HelloWorldScene());
 }
 
 main().catch(console.error);

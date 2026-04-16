@@ -2,7 +2,7 @@ import { Component, filterEntities, serializable } from "@yagejs/core";
 import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
-import { PhysicsWorldManagerKey } from "./types.js";
+import { PhysicsWorldKey } from "./types.js";
 import type { ColliderConfig, CollisionEvent, TriggerEvent } from "./types.js";
 
 /** Serialized snapshot of a ColliderComponent. */
@@ -34,9 +34,7 @@ export class ColliderComponent extends Component {
   }
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
-      this.scene,
-    );
+    this.physicsWorld = this.use(PhysicsWorldKey);
 
     this._colliderHandle = this.physicsWorld.createCollider(
       this.entity,

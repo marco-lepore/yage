@@ -4,8 +4,9 @@ import { createElement } from "react";
 import { Container } from "pixi.js";
 import {
   Anchor,
-  UIContainerKey,
   resolveAnchor,
+  UI_DEFAULT_LAYER,
+  UI_DEFAULT_LAYER_ORDER,
 } from "@yagejs/ui";
 import {
   createRoot,
@@ -15,7 +16,7 @@ import {
 } from "./reconciler.js";
 import type { ReconcilerRoot } from "./reconciler.js";
 import { EngineCtx, SceneCtx, notifyFrame } from "./hooks.js";
-import { RendererKey } from "@yagejs/renderer";
+import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 
 /** Options for UIRoot. */
 export interface UIRootOptions {
@@ -47,8 +48,13 @@ export class UIRoot extends Component {
   }
 
   onAdd(): void {
-    const uiContainer = this.use(UIContainerKey);
-    uiContainer.addChild(this._container);
+    const layer = this.use(SceneRenderTreeKey).ensureLayer({
+      name: UI_DEFAULT_LAYER,
+      order: UI_DEFAULT_LAYER_ORDER,
+      space: "screen",
+      eventMode: "static",
+    });
+    layer.container.addChild(this._container);
 
     this.root = createRoot(this._container);
 

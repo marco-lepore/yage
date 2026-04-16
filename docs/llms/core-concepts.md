@@ -212,7 +212,11 @@ const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 
 Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`.
 
-Plugin keys: `CameraKey`, `RenderLayerManagerKey`, `InputManagerKey`, `PhysicsWorldKey`, `AudioManagerKey`, `SaveServiceKey`.
+Plugin keys: `CameraKey`, `SceneRenderTreeKey` (scene-scoped), `SceneRenderTreeProviderKey`, `InputManagerKey`, `PhysicsWorldKey` (scene-scoped), `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
+
+Keys declared with `{ scope: "scene" }` are registered by a plugin's
+`beforeEnter` scene hook (see `engine.registerSceneHooks(...)`) and resolved
+by `Component.use()` before falling through to engine scope.
 
 ## Processes
 

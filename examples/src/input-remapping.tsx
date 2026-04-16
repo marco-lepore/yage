@@ -518,7 +518,7 @@ async function main() {
   engine.use(new UIPlugin());
 
   await engine.start();
-  engine.scenes.push(new InputRemappingScene());
+  await engine.scenes.push(new InputRemappingScene());
 }
 
 main().catch(console.error);

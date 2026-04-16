@@ -279,7 +279,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new CollisionsScene());
+  await engine.scenes.push(new CollisionsScene());
 }
 
 main().catch(console.error);

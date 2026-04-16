@@ -49,7 +49,7 @@ beforeEach(() => {
 
 describe("Engine", () => {
   describe("construction", () => {
-    it("creates all core services", () => {
+    it("creates all core services", async () => {
       const engine = new Engine();
       expect(engine.context).toBeDefined();
       expect(engine.events).toBeDefined();
@@ -59,7 +59,7 @@ describe("Engine", () => {
       expect(engine.inspector).toBeDefined();
     });
 
-    it("registers well-known services in context", () => {
+    it("registers well-known services in context", async () => {
       const engine = new Engine();
       expect(engine.context.resolve(EngineKey)).toBe(engine);
       expect(engine.context.resolve(EventBusKey)).toBe(engine.events);
@@ -73,13 +73,13 @@ describe("Engine", () => {
   });
 
   describe("plugins", () => {
-    it("use() is chainable", () => {
+    it("use() is chainable", async () => {
       const engine = new Engine();
       const plugin: Plugin = { name: "test", version: "1.0.0" };
       expect(engine.use(plugin)).toBe(engine);
     });
 
-    it("throws on duplicate plugin name", () => {
+    it("throws on duplicate plugin name", async () => {
       const engine = new Engine();
       const a: Plugin = { name: "test", version: "1.0.0" };
       const b: Plugin = { name: "test", version: "2.0.0" };
@@ -228,7 +228,7 @@ describe("Engine", () => {
       const engine = new Engine();
       await engine.start();
       const scene = new TestScene();
-      engine.scenes.push(scene);
+      await engine.scenes.push(scene);
       const entity = scene.spawn("player");
       const comp = new UpdatingComponent();
       entity.add(comp);
@@ -242,7 +242,7 @@ describe("Engine", () => {
       const engine = new Engine({ fixedTimestep: 16 });
       await engine.start();
       const scene = new TestScene();
-      engine.scenes.push(scene);
+      await engine.scenes.push(scene);
       const entity = scene.spawn("player");
       const comp = new FixedUpdatingComponent();
       entity.add(comp);
@@ -256,7 +256,7 @@ describe("Engine", () => {
       const engine = new Engine();
       await engine.start();
       const scene = new TestScene();
-      engine.scenes.push(scene);
+      await engine.scenes.push(scene);
       const entity = scene.spawn("buggy");
       const comp = new CrashingComponent();
       entity.add(comp);
@@ -272,7 +272,7 @@ describe("Engine", () => {
       const engine = new Engine();
       await engine.start();
       const scene = new TestScene();
-      engine.scenes.push(scene);
+      await engine.scenes.push(scene);
       const entity = scene.spawn("doomed");
       scene.destroyEntity(entity);
 
@@ -362,7 +362,7 @@ describe("Engine", () => {
       const engine = new Engine();
       await engine.start();
       const scene = new TestScene();
-      engine.scenes.push(scene);
+      await engine.scenes.push(scene);
       scene.spawn("a");
       scene.spawn("b");
 

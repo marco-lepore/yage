@@ -2,7 +2,7 @@ import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
-  PhysicsWorldManagerKey,
+  PhysicsWorldKey,
   RigidBodyComponent,
   ColliderComponent,
 } from "@yagejs/physics";
@@ -27,7 +27,7 @@ class InputController extends Component {
   private shapeCount = 0;
 
   onAdd(): void {
-    this.world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+    this.world = this.use(PhysicsWorldKey);
   }
 
   update(): void {
@@ -190,7 +190,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new PhysicsBasicsScene());
+  await engine.scenes.push(new PhysicsBasicsScene());
 }
 
 main().catch(console.error);

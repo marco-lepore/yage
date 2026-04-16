@@ -108,7 +108,9 @@ describe("Component", () => {
       }
 
       const c = new UseComponent();
-      c.entity = { scene: { context: ctx } } as never;
+      c.entity = {
+        scene: { context: ctx, _resolveScoped: () => undefined },
+      } as never;
       return { c, logger };
     }
 

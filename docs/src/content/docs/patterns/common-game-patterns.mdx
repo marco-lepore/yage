@@ -201,7 +201,7 @@ class PlayerController extends Component {
   private coyoteTimer = 0;
 
   onAdd(): void {
-    this.world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+    this.world = this.use(PhysicsWorldKey);
   }
 
   fixedUpdate(dt: number): void {

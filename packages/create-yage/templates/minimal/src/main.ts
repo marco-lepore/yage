@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------------
 
   await engine.start();
-  engine.scenes.push(new MainScene());
+  await engine.scenes.push(new MainScene());
 }
 
 main().catch((err) => {

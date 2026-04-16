@@ -1,9 +1,29 @@
+/** The resolution scope for a service. */
+export type ServiceScope = "engine" | "scene";
+
+/** Options passed to `new ServiceKey(id, options)`. */
+export interface ServiceKeyOptions {
+  /**
+   * Declared scope. `"scene"` keys are expected to be registered per-scene
+   * via a `beforeEnter` hook; `Component.use` will check scene scope first
+   * and warn if it falls back to engine scope.
+   * Default: `"engine"`.
+   */
+  scope?: ServiceScope;
+}
+
 /** A typed key for service registration and resolution. */
 export class ServiceKey<T> {
+  /** Declared scope (engine or scene). Defaults to `"engine"`. */
+  readonly scope: ServiceScope;
+
   constructor(
     /** Unique string identifier for this service. */
     public readonly id: string,
-  ) {}
+    options?: ServiceKeyOptions,
+  ) {
+    this.scope = options?.scope ?? "engine";
+  }
 
   /** Phantom field to preserve the generic type. */
   declare readonly _type: T;

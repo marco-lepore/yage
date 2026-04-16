@@ -246,7 +246,7 @@ async function main() {
 
   await loadFonts();
   await engine.start();
-  engine.scenes.push(new UIReactScene());
+  await engine.scenes.push(new UIReactScene());
 }
 
 main().catch(console.error);

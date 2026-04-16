@@ -2,8 +2,8 @@ import { Engine, Scene, Component, Transform, Vec2, defineBlueprint } from "@yag
 import {
   RendererPlugin,
   CameraKey,
-  RenderLayerManagerKey,
   renderAsset,
+  type LayerDef,
 } from "@yagejs/renderer";
 import type { Camera } from "@yagejs/renderer";
 import { TilemapPlugin, TilemapComponent, tiledMap } from "@yagejs/tilemap";
@@ -111,12 +111,10 @@ const CameraCtrlBP = defineBlueprint("camera-ctrl", (entity) => {
 class TilemapScene extends Scene {
   readonly name = "tilemap";
   readonly preload = [DungeonMap];
-  private readonly layerMgr = this.service(RenderLayerManagerKey);
+  readonly layers: readonly LayerDef[] = [{ name: "map", order: -10 }];
   private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    this.layerMgr.create("map", -10);
-
     // -- Tilemap entity --
     const mapData = this.assets.get(DungeonMap);
     const mapEntity = this.spawn(DungeonMapBP, { map: mapData });

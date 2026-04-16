@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new GameScene());
+  await engine.scenes.push(new GameScene());
 }
 
 main().catch((err) => {

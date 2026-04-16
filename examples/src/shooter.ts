@@ -15,14 +15,14 @@ import {
   AnimatedSpriteComponent,
   AnimationController,
   CameraKey,
-  RenderLayerManagerKey,
   texture,
+  type LayerDef,
 } from "@yagejs/renderer";
 import {
   RigidBodyComponent,
   ColliderComponent,
   CollisionLayers,
-  PhysicsWorldManagerKey,
+  PhysicsWorldKey,
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { AudioManagerKey, sound } from "@yagejs/audio";
@@ -303,9 +303,7 @@ class PlayerController extends Component {
   private static readonly KNOCKBACK_Y = -180;
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
-      this.scene,
-    );
+    this.physicsWorld = this.use(PhysicsWorldKey);
 
     // Slots
     this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_MS });
@@ -578,9 +576,7 @@ class EnemyController extends Component {
   }
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
-      this.scene,
-    );
+    this.physicsWorld = this.use(PhysicsWorldKey);
 
     // Slots
     this.flashSlot = this.pc.slot({
@@ -1033,15 +1029,16 @@ class ShooterScene extends Scene {
     EnemyDieTex,
   ];
 
-  private readonly layerMgr = this.service(RenderLayerManagerKey);
+  readonly layers: readonly LayerDef[] = [
+    { name: "bg", order: -10 },
+    { name: "world", order: 0 },
+    { name: "bullets", order: 5 },
+    { name: "player", order: 10 },
+  ];
+
   private readonly audio = this.service(AudioManagerKey);
 
   onEnter(): void {
-    this.layerMgr.create("bg", -10);
-    this.layerMgr.create("world", 0);
-    this.layerMgr.create("bullets", 5);
-    this.layerMgr.create("player", 10);
-
     setKills(0);
     won = false;
     winMsg.style.display = "none";
@@ -1152,7 +1149,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new ShooterScene());
+  await engine.scenes.push(new ShooterScene());
 }
 
 main().catch(console.error);

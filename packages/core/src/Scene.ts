@@ -52,6 +52,7 @@ export abstract class Scene {
     string,
     Set<(data: never, entity: Entity) => void>
   >;
+  private _scopedServices?: Map<string, unknown>;
 
   /** Access the EngineContext. */
   get context(): EngineContext {
@@ -267,6 +268,34 @@ export abstract class Scene {
   afterRestore?(data: unknown, resolve: SnapshotResolver): void;
 
   // ---- Internal methods ----
+
+  /**
+   * Register a scene-scoped service. Called from a plugin's `beforeEnter`
+   * hook to make per-scene state (render tree, physics world) resolvable via
+   * `Component.use(key)`.
+   * @internal
+   */
+  _registerScoped<T>(key: ServiceKey<T>, value: T): void {
+    this._scopedServices ??= new Map();
+    this._scopedServices.set(key.id, value);
+  }
+
+  /**
+   * Resolve a scene-scoped service, or `undefined` if none was registered.
+   * @internal
+   */
+  _resolveScoped<T>(key: ServiceKey<T>): T | undefined {
+    return this._scopedServices?.get(key.id) as T | undefined;
+  }
+
+  /**
+   * Clear all scene-scoped services. Called by the SceneManager after
+   * `afterExit` hooks run, so plugin cleanup code still sees scoped state.
+   * @internal
+   */
+  _clearScopedServices(): void {
+    this._scopedServices?.clear();
+  }
 
   /**
    * Set the engine context. Called by SceneManager when the scene is pushed.

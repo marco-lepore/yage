@@ -1,4 +1,3 @@
-import { ServiceKey } from "@yagejs/core";
 import type {
   ColorValue,
   DisplayContainer,
@@ -20,13 +19,13 @@ export type PixiViewType =
   | DisplaySprite
   | GraphicsContext;
 
-/** Service key for the UI container (sibling to worldContainer under app.stage). */
-export const UIContainerKey = new ServiceKey<DisplayContainer>("uiContainer");
-
-/** Service key for the UI layer manager (a RenderLayerManager for the screen-space UI container). */
-export const UILayerManagerKey = new ServiceKey<
-  import("@yagejs/renderer").RenderLayerManager
->("uiLayerManager");
+/**
+ * Default UI layer name, auto-provisioned on the active scene's render tree
+ * when a UIPanel is added without a layer of its own.
+ */
+export const UI_DEFAULT_LAYER = "ui";
+/** Default draw order for the auto-provisioned UI layer. */
+export const UI_DEFAULT_LAYER_ORDER = 1000;
 
 /** Anchor position for root UI panels relative to virtual resolution. */
 export enum Anchor {

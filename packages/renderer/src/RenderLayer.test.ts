@@ -42,39 +42,52 @@ vi.mock("pixi.js", () => ({
 import { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 
 describe("RenderLayer", () => {
-  it("stores name, order, and container", () => {
+  it("stores name, order, space, and container", () => {
     const container = { name: "test" } as never;
-    const layer = new RenderLayer("bg", 5, container);
+    const layer = new RenderLayer("bg", 5, "world", container);
     expect(layer.name).toBe("bg");
     expect(layer.order).toBe(5);
+    expect(layer.space).toBe("world");
     expect(layer.container).toBe(container);
   });
 });
 
 describe("RenderLayerManager", () => {
-  let stage: InstanceType<typeof MockContainer>;
+  let worldRoot: InstanceType<typeof MockContainer>;
+  let screenRoot: InstanceType<typeof MockContainer>;
   let manager: RenderLayerManager;
 
   beforeEach(() => {
-    stage = new MockContainer();
-    manager = new RenderLayerManager(stage as never);
+    worldRoot = new MockContainer();
+    screenRoot = new MockContainer();
+    manager = new RenderLayerManager(worldRoot as never, screenRoot as never);
   });
 
-  it("creates a default layer at order 0", () => {
+  it("creates a default world-space layer at order 0", () => {
     const def = manager.defaultLayer;
     expect(def.name).toBe("default");
     expect(def.order).toBe(0);
+    expect(def.space).toBe("world");
   });
 
-  it("default layer container is added to stage", () => {
-    expect(stage.children).toHaveLength(1);
-    expect(stage.children[0]).toBe(manager.defaultLayer.container);
+  it("default layer container is added to worldRoot", () => {
+    expect(worldRoot.children).toHaveLength(1);
+    expect(worldRoot.children[0]).toBe(manager.defaultLayer.container);
   });
 
-  it("creates named layers", () => {
+  it("creates named world-space layers", () => {
     const ui = manager.create("ui", 100);
     expect(ui.name).toBe("ui");
     expect(ui.order).toBe(100);
+    expect(ui.space).toBe("world");
+    expect(worldRoot.children).toContain(ui.container);
+  });
+
+  it("creates screen-space layers under screenRoot", () => {
+    const hud = manager.create("hud", 100, "screen");
+    expect(hud.space).toBe("screen");
+    expect(screenRoot.children).toContain(hud.container);
+    expect(worldRoot.children).not.toContain(hud.container);
   });
 
   it("get() returns existing layer", () => {
@@ -111,13 +124,19 @@ describe("RenderLayerManager", () => {
     expect(all[2]).toBe(fg);
   });
 
-  it("containers are added to stage as children", () => {
-    manager.create("a", 1);
-    manager.create("b", 2);
-    expect(stage.children).toHaveLength(3);
+  it("createFromDef materializes a declarative LayerDef", () => {
+    const layer = manager.createFromDef({
+      name: "hud",
+      order: 100,
+      space: "screen",
+      sortableChildren: true,
+    });
+    expect(layer.name).toBe("hud");
+    expect(layer.space).toBe("screen");
+    expect(layer.container.sortableChildren).toBe(true);
   });
 
-  it("layers are sorted by zIndex on stage", () => {
+  it("world layers are sorted by zIndex on worldRoot", () => {
     manager.create("fg", 10);
     manager.create("bg", -5);
     const bgLayer = manager.get("bg");

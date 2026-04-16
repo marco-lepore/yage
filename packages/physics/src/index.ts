@@ -1,6 +1,6 @@
 export { VERSION } from "@yagejs/core";
 
-export { PhysicsWorldManagerKey } from "./types.js";
+export { PhysicsWorldManagerKey, PhysicsWorldKey } from "./types.js";
 export type {
   BodyType,
   PhysicsConfig,

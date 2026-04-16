@@ -4,7 +4,7 @@ import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
-import { RenderLayerManagerKey } from "./types.js";
+import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions {
@@ -96,8 +96,7 @@ export class AnimatedSpriteComponent extends Component {
   }
 
   onAdd(): void {
-    const layers = this.use(RenderLayerManagerKey);
-    const layer = layers.get(this.layerName);
+    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.animatedSprite);
   }
 

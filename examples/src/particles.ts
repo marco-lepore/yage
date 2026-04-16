@@ -231,7 +231,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new ParticlesScene());
+  await engine.scenes.push(new ParticlesScene());
 }
 
 main().catch(console.error);

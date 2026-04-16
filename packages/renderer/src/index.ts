@@ -1,9 +1,13 @@
+// Side-effect import activates `declare module "@yagejs/core"` augmentation
+// that types Scene's `readonly layers` field.
+import "./scene-augmentation.js";
+
 // Service keys & config
 export {
   RendererKey,
   StageKey,
   CameraKey,
-  RenderLayerManagerKey,
+  WorldRootKey,
 } from "./types.js";
 export type { RendererConfig } from "./types.js";
 export type {
@@ -63,6 +67,19 @@ export type {
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";
 export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
+export type { CreateLayerOptions } from "./RenderLayer.js";
+
+// Per-scene render tree
+export type { LayerDef } from "./LayerDef.js";
+export type {
+  SceneRenderTree,
+  SceneRenderTreeProvider,
+} from "./SceneRenderTree.js";
+export {
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+} from "./SceneRenderTree.js";
+export { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 
 // Asset factories
 export {

@@ -155,6 +155,8 @@ import {
   Logger,
   LogLevel,
   Phase,
+  SceneHookRegistry,
+  SceneHookRegistryKey,
 } from "@yagejs/core";
 import {
   PhysicsPlugin,
@@ -176,8 +178,8 @@ describe("Integration Tests", () => {
     mocks.resetHandles();
   });
 
-  it("spawn entity with physics components → tick → Transform updated", () => {
-    const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+  it("spawn entity with physics components → tick → Transform updated", async () => {
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -198,8 +200,8 @@ describe("Integration Tests", () => {
     expect(transform.rotation).toBeCloseTo(0.5);
   });
 
-  it("two colliding entities → collision handler called", () => {
-    const { scene, physicsWorld, context } = createPhysicsTestContext();
+  it("two colliding entities → collision handler called", async () => {
+    const { scene, physicsWorld, context } = await createPhysicsTestContext();
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -228,8 +230,8 @@ describe("Integration Tests", () => {
     expect(ev.started).toBe(true);
   });
 
-  it("sensor trigger event dispatched correctly", () => {
-    const { scene, physicsWorld, context } = createPhysicsTestContext();
+  it("sensor trigger event dispatched correctly", async () => {
+    const { scene, physicsWorld, context } = await createPhysicsTestContext();
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -262,11 +264,11 @@ describe("Integration Tests", () => {
     expect(trig.entered).toBe(true);
   });
 
-  it("fires trigger events between two kinematic bodies when sensor is set", () => {
+  it("fires trigger events between two kinematic bodies when sensor is set", async () => {
     // Regression guard: Rapier's DEFAULT ActiveCollisionTypes mask excludes
     // KINEMATIC_KINEMATIC pairs, so without setActiveCollisionTypes(ALL) these
     // trigger events silently drop. See dimforge/rapier#594.
-    const { scene, physicsWorld, context } = createPhysicsTestContext();
+    const { scene, physicsWorld, context } = await createPhysicsTestContext();
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -306,8 +308,8 @@ describe("Integration Tests", () => {
     expect(trig.entered).toBe(true);
   });
 
-  it("kinematic body driven by Transform", () => {
-    const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+  it("kinematic body driven by Transform", async () => {
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -328,8 +330,8 @@ describe("Integration Tests", () => {
     expect(body._translation.y).toBeCloseTo(6); // 300/50
   });
 
-  it("entity destroy removes body from physics world", () => {
-    const { scene, physicsWorld } = createPhysicsTestContext();
+  it("entity destroy removes body from physics world", async () => {
+    const { scene, physicsWorld } = await createPhysicsTestContext();
     const entity = spawnEntityInScene(scene, "test");
     entity.add(new Transform());
     const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -344,7 +346,7 @@ describe("Integration Tests", () => {
     expect(physicsWorld.bodyMap.has(bodyHandle)).toBe(false);
   });
 
-  it("collision layers applied correctly", () => {
+  it("collision layers applied correctly", async () => {
     const layers = new CollisionLayers();
     const playerLayer = layers.define("player");
     const enemyLayer = layers.define("enemy");
@@ -363,8 +365,8 @@ describe("Integration Tests", () => {
     expect(groups).toBe((1 << 16) | 6);
   });
 
-  it("interpolation blends positions between prev and curr using per-scene alpha", () => {
-    const { scene, manager, context } = createPhysicsTestContext();
+  it("interpolation blends positions between prev and curr using per-scene alpha", async () => {
+    const { scene, manager, context } = await createPhysicsTestContext();
     const interpSystem = new PhysicsInterpolationSystem();
     interpSystem._setContext(context);
 
@@ -390,8 +392,9 @@ describe("Integration Tests", () => {
     expect(transform.position.y).toBeCloseTo(100);
   });
 
-  it("full round-trip: plugin installs manager and systems", () => {
+  it("full round-trip: plugin installs manager and systems", async () => {
     const context = new EngineContext();
+    context.register(SceneHookRegistryKey, new SceneHookRegistry());
     const scheduler = new SystemScheduler();
     const logger = new Logger({ level: LogLevel.Debug });
     const boundary = new ErrorBoundary(logger);
@@ -415,8 +418,8 @@ describe("Integration Tests", () => {
     plugin.onDestroy();
   });
 
-  it("multiple entities with different body types coexist", () => {
-    const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+  it("multiple entities with different body types coexist", async () => {
+    const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -468,7 +471,7 @@ describe("Integration Tests", () => {
     expect(platBody._translation.y).toBeCloseTo(6.2); // 310/50
   });
 
-  it("exports all public APIs from index", () => {
+  it("exports all public APIs from index", async () => {
     // Verify all expected exports exist
     expect(PhysicsPlugin).toBeDefined();
     expect(PhysicsWorld).toBeDefined();
@@ -481,8 +484,8 @@ describe("Integration Tests", () => {
     expect(CollisionLayers).toBeDefined();
   });
 
-  it("two scenes with physics coexist without interference", () => {
-    const { scene, manager, sceneManager, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+  it("two scenes with physics coexist without interference", async () => {
+    const { scene, manager, sceneManager, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -492,7 +495,7 @@ describe("Integration Tests", () => {
     const rb1 = e1.add(new RigidBodyComponent({ type: "dynamic" }));
 
     // Scene 2: ball (separate physics world)
-    const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
     const e2 = spawnEntityInScene(scene2, "ball2");
     e2.add(new Transform({ position: new Vec2(200, 200) }));
     const rb2 = e2.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -515,8 +518,8 @@ describe("Integration Tests", () => {
     expect(e2.get(Transform).position.x).toBeCloseTo(250);
   });
 
-  it("pausing one scene freezes its world but other keeps running", () => {
-    const { scene, manager, sceneManager, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+  it("pausing one scene freezes its world but other keeps running", async () => {
+    const { scene, manager, sceneManager, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
     const system = new PhysicsSystem();
     system._setContext(context);
 
@@ -524,7 +527,7 @@ describe("Integration Tests", () => {
     e1.add(new Transform());
     e1.add(new RigidBodyComponent({ type: "dynamic" }));
 
-    const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
     const e2 = spawnEntityInScene(scene2, "ball2");
     e2.add(new Transform());
     e2.add(new RigidBodyComponent({ type: "dynamic" }));

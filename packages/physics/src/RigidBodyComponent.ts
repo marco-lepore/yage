@@ -1,7 +1,7 @@
 import { Component, Transform, Vec2, serializable } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
-import { PhysicsWorldManagerKey } from "./types.js";
+import { PhysicsWorldKey } from "./types.js";
 import type { BodyType, RigidBodyConfig } from "./types.js";
 
 /** Serialized snapshot of a RigidBodyComponent. */
@@ -56,9 +56,7 @@ export class RigidBodyComponent extends Component {
   }
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
-      this.scene,
-    );
+    this.physicsWorld = this.use(PhysicsWorldKey);
 
     this._bodyHandle = this.physicsWorld.createBody(this.entity, this.config);
 

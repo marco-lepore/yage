@@ -4,9 +4,14 @@ import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { FlexDirection as YogaFlexDirection, Gutter, Edge, Overflow, Display } from "yoga-layout";
 import { Align, Justify } from "yoga-layout";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
-import { UIContainerKey, UILayerManagerKey, resolvePadding } from "./types.js";
+import {
+  UI_DEFAULT_LAYER,
+  UI_DEFAULT_LAYER_ORDER,
+  resolvePadding,
+} from "./types.js";
 import type {
   BackgroundOptions,
   UIElement,
@@ -337,19 +342,25 @@ export class UIPanel extends Component {
   }
 
   onAdd(): void {
-    let targetContainer: Container;
-    try {
-      const layerManager = this.context.resolve(UILayerManagerKey);
+    const tree = this.use(SceneRenderTreeKey);
+    const layerName = this._layer ?? UI_DEFAULT_LAYER;
+    let layer = tree.tryGet(layerName);
+    if (!layer) {
       if (this._layer) {
-        targetContainer = layerManager.get(this._layer).container;
-      } else {
-        targetContainer = layerManager.defaultLayer.container;
+        throw new Error(
+          `UIPanel: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
+        );
       }
-    } catch {
-      // Fallback: no UILayerManager registered, use raw container
-      targetContainer = this.use(UIContainerKey);
+      // Auto-provision a screen-space "ui" layer the first time a UIPanel
+      // is added to a scene that hasn't declared one explicitly.
+      layer = tree.ensureLayer({
+        name: UI_DEFAULT_LAYER,
+        order: UI_DEFAULT_LAYER_ORDER,
+        space: "screen",
+        eventMode: "static",
+      });
     }
-    targetContainer.addChild(this._node.container);
+    layer.container.addChild(this._node.container);
   }
 
   onDestroy(): void {

@@ -73,10 +73,10 @@ function setup() {
 }
 
 describe("Inspector", () => {
-  it("snapshot returns engine state", () => {
+  it("snapshot returns engine state", async () => {
     const { inspector, scenes, scheduler } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     scene.spawn("player");
     scheduler.add(new TestSystem());
 
@@ -87,10 +87,10 @@ describe("Inspector", () => {
     expect(snap.systemCount).toBe(1);
   });
 
-  it("getEntityByName finds entity", () => {
+  it("getEntityByName finds entity", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("player");
     e.tags.add("hero");
     e.add(new Transform({ position: new Vec2(10, 20) }));
@@ -103,21 +103,21 @@ describe("Inspector", () => {
     expect(snap?.components).toContain("Transform");
   });
 
-  it("getEntityByName returns undefined for missing", () => {
+  it("getEntityByName returns undefined for missing", async () => {
     const { inspector, scenes } = setup();
-    scenes.push(new TestScene("game"));
+    await scenes.push(new TestScene("game"));
     expect(inspector.getEntityByName("nope")).toBeUndefined();
   });
 
-  it("getEntityByName returns undefined with no active scene", () => {
+  it("getEntityByName returns undefined with no active scene", async () => {
     const { inspector } = setup();
     expect(inspector.getEntityByName("anything")).toBeUndefined();
   });
 
-  it("getEntityPosition returns position", () => {
+  it("getEntityPosition returns position", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("ball");
     e.add(new Transform({ position: new Vec2(100, 200) }));
 
@@ -125,24 +125,24 @@ describe("Inspector", () => {
     expect(pos).toEqual({ x: 100, y: 200 });
   });
 
-  it("getEntityPosition returns undefined for entity without transform", () => {
+  it("getEntityPosition returns undefined for entity without transform", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("noTransform");
     e.add(new Health(50)); // Has a component, but not Transform
     expect(inspector.getEntityPosition("noTransform")).toBeUndefined();
   });
 
-  it("getEntityPosition returns undefined when no scene", () => {
+  it("getEntityPosition returns undefined when no scene", async () => {
     const { inspector } = setup();
     expect(inspector.getEntityPosition("anything")).toBeUndefined();
   });
 
-  it("hasComponent checks by class name", () => {
+  it("hasComponent checks by class name", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("player");
     e.add(new Health(50));
 
@@ -151,15 +151,15 @@ describe("Inspector", () => {
     expect(inspector.hasComponent("nobody", "Health")).toBe(false);
   });
 
-  it("hasComponent returns false when no scene", () => {
+  it("hasComponent returns false when no scene", async () => {
     const { inspector } = setup();
     expect(inspector.hasComponent("any", "any")).toBe(false);
   });
 
-  it("getComponentData returns serialized data", () => {
+  it("getComponentData returns serialized data", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("player");
     e.add(new Health(75));
 
@@ -172,33 +172,33 @@ describe("Inspector", () => {
     expect(data["enabled"]).toBe(true);
   });
 
-  it("getComponentData returns undefined for missing component class", () => {
+  it("getComponentData returns undefined for missing component class", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("player");
     e.add(new Health(100)); // Has Health but not Transform
     expect(inspector.getComponentData("player", "Transform")).toBeUndefined();
     expect(inspector.getComponentData("nobody", "Health")).toBeUndefined();
   });
 
-  it("getComponentData returns undefined for entity with no components", () => {
+  it("getComponentData returns undefined for entity with no components", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     scene.spawn("empty");
     expect(inspector.getComponentData("empty", "Health")).toBeUndefined();
   });
 
-  it("getComponentData returns undefined when no scene", () => {
+  it("getComponentData returns undefined when no scene", async () => {
     const { inspector } = setup();
     expect(inspector.getComponentData("any", "any")).toBeUndefined();
   });
 
-  it("getEntities returns all entity snapshots", () => {
+  it("getEntities returns all entity snapshots", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     scene.spawn("a");
     scene.spawn("b");
     const entities = inspector.getEntities();
@@ -207,10 +207,10 @@ describe("Inspector", () => {
     expect(entities.map((e) => e.name)).toContain("b");
   });
 
-  it("getEntities skips destroyed entities", () => {
+  it("getEntities skips destroyed entities", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     scene.spawn("alive");
     const doomed = scene.spawn("doomed");
     doomed.destroy();
@@ -219,18 +219,18 @@ describe("Inspector", () => {
     expect(entities[0]?.name).toBe("alive");
   });
 
-  it("getEntities returns empty when no scene", () => {
+  it("getEntities returns empty when no scene", async () => {
     const { inspector } = setup();
     expect(inspector.getEntities()).toEqual([]);
   });
 
-  it("getSceneStack returns stack info", () => {
+  it("getSceneStack returns stack info", async () => {
     const { inspector, scenes } = setup();
     const game = new TestScene("game");
     const hud = new TestScene("hud");
-    scenes.push(game);
+    await scenes.push(game);
     game.spawn("player");
-    scenes.push(hud);
+    await scenes.push(hud);
 
     const stack = inspector.getSceneStack();
     expect(stack).toHaveLength(2);
@@ -240,7 +240,7 @@ describe("Inspector", () => {
     expect(stack[1]?.name).toBe("hud");
   });
 
-  it("getSystems returns system info", () => {
+  it("getSystems returns system info", async () => {
     const { inspector, scheduler } = setup();
     const sys = new TestSystem();
     scheduler.add(sys);
@@ -251,7 +251,7 @@ describe("Inspector", () => {
     expect(systems[0]?.enabled).toBe(true);
   });
 
-  it("getSystems returns empty when no scheduler", () => {
+  it("getSystems returns empty when no scheduler", async () => {
     _resetEntityIdCounter();
     const ctx = new EngineContext();
     ctx.register(QueryCacheKey, new QueryCache());
@@ -269,7 +269,7 @@ describe("Inspector", () => {
     expect(inspector.getSystems()).toEqual([]);
   });
 
-  it("getErrors returns disabled items", () => {
+  it("getErrors returns disabled items", async () => {
     const { inspector, boundary } = setup();
     const sys = new TestSystem();
     boundary.wrapSystem(sys, () => {
@@ -289,7 +289,7 @@ describe("Inspector", () => {
     expect(errors.disabledComponents[0]?.error).toBe("comp-fail");
   });
 
-  it("getErrors uses 'unknown' for component without entity", () => {
+  it("getErrors uses 'unknown' for component without entity", async () => {
     const { inspector, boundary } = setup();
     const comp = new Health();
     // Don't set comp.entity — it should fall back to "unknown"
@@ -301,10 +301,10 @@ describe("Inspector", () => {
     expect(errors.disabledComponents[0]?.entity).toBe("unknown");
   });
 
-  it("getComponentData filters out function own-properties", () => {
+  it("getComponentData filters out function own-properties", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     const e = scene.spawn("player");
     const comp = new Health(50);
     // Add a function as an own property to exercise the typeof !== "function" branch
@@ -320,14 +320,14 @@ describe("Inspector", () => {
     expect(data["customMethod"]).toBeUndefined();
   });
 
-  it("getEntityPosition returns undefined for missing entity", () => {
+  it("getEntityPosition returns undefined for missing entity", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
-    scenes.push(scene);
+    await scenes.push(scene);
     expect(inspector.getEntityPosition("nonexistent")).toBeUndefined();
   });
 
-  it("getErrors returns empty when no boundary", () => {
+  it("getErrors returns empty when no boundary", async () => {
     _resetEntityIdCounter();
     const ctx = new EngineContext();
     ctx.register(QueryCacheKey, new QueryCache());

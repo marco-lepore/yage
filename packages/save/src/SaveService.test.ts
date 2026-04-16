@@ -168,7 +168,7 @@ function createTestContext() {
 
 describe("SaveService", () => {
   describe("snapshot operations", () => {
-    it("hasSnapshot returns false for empty slot", () => {
+    it("hasSnapshot returns false for empty slot", async () => {
       const { service } = createTestContext();
       expect(service.hasSnapshot("slot1")).toBe(false);
     });
@@ -486,7 +486,7 @@ describe("SaveService", () => {
   });
 
   describe("user data", () => {
-    it("saveData/loadData round-trips structured data", () => {
+    it("saveData/loadData round-trips structured data", async () => {
       const { service } = createTestContext();
       const profile = { bestScore: 42, unlocks: ["dash", "double-jump"] };
 
@@ -494,34 +494,34 @@ describe("SaveService", () => {
       expect(service.loadData("profile")).toEqual(profile);
     });
 
-    it("loadData returns null for missing slot", () => {
+    it("loadData returns null for missing slot", async () => {
       const { service } = createTestContext();
       expect(service.loadData("missing")).toBeNull();
     });
 
-    it("hasData returns true for data slot", () => {
+    it("hasData returns true for data slot", async () => {
       const { service } = createTestContext();
       service.saveData("profile", { x: 1 });
       expect(service.hasData("profile")).toBe(true);
     });
 
-    it("hasData returns false for snapshot-only slot", () => {
+    it("hasData returns false for snapshot-only slot", async () => {
       const { service, sceneManager } = createTestContext();
-      sceneManager.push(new MockScene());
+      await sceneManager.push(new MockScene());
       service.saveSnapshot("quick");
       expect(service.hasData("quick")).toBe(false);
     });
 
-    it("deleteData removes data slot", () => {
+    it("deleteData removes data slot", async () => {
       const { service } = createTestContext();
       service.saveData("profile", { x: 1 });
       service.deleteData("profile");
       expect(service.hasData("profile")).toBe(false);
     });
 
-    it("hasSnapshot and hasData are independent", () => {
+    it("hasSnapshot and hasData are independent", async () => {
       const { service, sceneManager } = createTestContext();
-      sceneManager.push(new MockScene());
+      await sceneManager.push(new MockScene());
 
       service.saveSnapshot("slot");
       service.saveData("slot", { x: 1 });
@@ -548,7 +548,7 @@ describe("SaveService", () => {
       expect(exported!.scenes).toHaveLength(1);
     });
 
-    it("exportSnapshot returns null for missing slot", () => {
+    it("exportSnapshot returns null for missing slot", async () => {
       const { service } = createTestContext();
       expect(service.exportSnapshot("missing")).toBeNull();
     });
@@ -572,7 +572,7 @@ describe("SaveService", () => {
       expect(restoredScene.restored).toBe(true);
     });
 
-    it("exportData/importData round-trips", () => {
+    it("exportData/importData round-trips", async () => {
       const { service } = createTestContext();
       const data = { score: 99 };
 

@@ -17,7 +17,16 @@ import {
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
-import { CameraKey, RenderLayerManagerKey, StageKey, Camera, RenderLayerManager } from "@yagejs/renderer";
+import {
+  Camera,
+  CameraKey,
+  RenderLayerManager,
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+  StageKey,
+  WorldRootKey,
+} from "@yagejs/renderer";
+import type { SceneRenderTree } from "@yagejs/renderer";
 
 // Minimal mock container matching the renderer test-helpers pattern.
 export class MockContainer {
@@ -99,18 +108,46 @@ export function createParticlesTestContext(): ParticlesTestContext {
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
-  const stage = new MockContainer();
+  const worldRoot = new MockContainer();
+  const screenRoot = new MockContainer();
   const camera = new Camera(800, 600);
-  const layerManager = new RenderLayerManager(stage as never);
+  const layerManager = new RenderLayerManager(
+    worldRoot as never,
+    screenRoot as never,
+  );
+  const tree: SceneRenderTree = {
+    get: (name) => layerManager.get(name),
+    tryGet: (name) => layerManager.tryGet(name),
+    getAll: () => layerManager.getAll(),
+    get defaultLayer() {
+      return layerManager.defaultLayer;
+    },
+    ensureLayer: (def) =>
+      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def),
+  };
 
-  ctx.register(StageKey, stage as never);
+  ctx.register(StageKey, worldRoot as never);
+  ctx.register(WorldRootKey, worldRoot as never);
   ctx.register(CameraKey, camera);
-  ctx.register(RenderLayerManagerKey, layerManager);
+  ctx.register(SceneRenderTreeProviderKey, {
+    createForScene: () => tree,
+    destroyForScene: () => undefined,
+  });
 
   const scene = new _TestScene("test-scene");
   scene._setContext(ctx);
+  scene._registerScoped(SceneRenderTreeKey, tree);
 
-  return { context: ctx, scene, queryCache, gameLoop, scheduler, stage, camera, layerManager };
+  return {
+    context: ctx,
+    scene,
+    queryCache,
+    gameLoop,
+    scheduler,
+    stage: worldRoot,
+    camera,
+    layerManager,
+  };
 }
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {

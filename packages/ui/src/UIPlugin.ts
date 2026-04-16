@@ -1,19 +1,19 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { AssetManagerKey } from "@yagejs/core";
-import { RendererKey } from "@yagejs/renderer";
-import type { RendererPlugin } from "@yagejs/renderer";
-import { UIContainerKey, UILayerManagerKey } from "./types.js";
 import { UILayoutSystem } from "./UILayoutSystem.js";
 import { setYoga } from "./yoga-helpers.js";
 import { setAssetManager } from "./asset-helpers.js";
 
-/** UIPlugin creates a screen-space UI container and registers the layout system. */
+/**
+ * UIPlugin loads Yoga, wires the AssetManager for UI-specific texture
+ * assets, and registers the layout system. UI entities attach to the
+ * active scene's render tree via `this.use(SceneRenderTreeKey)` — no
+ * dedicated global screen container is created.
+ */
 export class UIPlugin implements Plugin {
   readonly name = "ui";
-  readonly version = "2.0.0";
+  readonly version = "3.0.0";
   readonly dependencies = ["renderer"];
-
-  private renderer: RendererPlugin | null = null;
 
   async install(context: EngineContext): Promise<void> {
     // Load Yoga lazily — only when UIPlugin is actually used
@@ -23,22 +23,9 @@ export class UIPlugin implements Plugin {
     // Wire up AssetManager for texture-based UI elements
     const am = context.tryResolve(AssetManagerKey);
     if (am) setAssetManager(am);
-
-    this.renderer = context.resolve(RendererKey);
-    const uiLayers = this.renderer.createScreenContainer("ui", {
-      eventMode: "static",
-    });
-
-    context.register(UILayerManagerKey, uiLayers);
-    context.register(UIContainerKey, uiLayers.defaultLayer.container);
   }
 
   registerSystems(scheduler: SystemScheduler): void {
     scheduler.add(new UILayoutSystem());
-  }
-
-  onDestroy(): void {
-    this.renderer?.destroyScreenContainer("ui");
-    this.renderer = null;
   }
 }
