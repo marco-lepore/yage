@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Component } from "./Component.js";
-import { EngineContext, LoggerKey } from "./EngineContext.js";
+import { EngineContext, LoggerKey, ServiceKey } from "./EngineContext.js";
 import { Logger } from "./Logger.js";
 
 class TestComponent extends Component {}
@@ -125,6 +125,82 @@ describe("Component", () => {
       const second = c.getLogger();
       expect(first).toBe(logger);
       expect(second).toBe(logger);
+    });
+
+    it("resolves scene-scoped value before engine scope", () => {
+      const ctx = new EngineContext();
+      const key = new ServiceKey<string>("svc", { scope: "scene" });
+      ctx.register(key, "engine-value");
+
+      class ScopedComponent extends Component {
+        getValue() {
+          return this.use(key);
+        }
+      }
+
+      const c = new ScopedComponent();
+      c.entity = {
+        scene: {
+          context: ctx,
+          _resolveScoped: (k: ServiceKey<unknown>) =>
+            k.id === "svc" ? "scene-value" : undefined,
+        },
+      } as never;
+
+      expect(c.getValue()).toBe("scene-value");
+    });
+
+    it("falls back to engine scope when scene has no scoped value", () => {
+      const ctx = new EngineContext();
+      const key = new ServiceKey<string>("svc");
+      ctx.register(key, "engine-value");
+
+      class FallbackComponent extends Component {
+        getValue() {
+          return this.use(key);
+        }
+      }
+
+      const c = new FallbackComponent();
+      c.entity = {
+        scene: {
+          context: ctx,
+          _resolveScoped: () => undefined,
+        },
+      } as never;
+
+      expect(c.getValue()).toBe("engine-value");
+    });
+
+    it("warns when a scene-scoped key falls back to engine scope", () => {
+      const ctx = new EngineContext();
+      const logger = new Logger();
+      ctx.register(LoggerKey, logger);
+      const key = new ServiceKey<string>("missing-scoped", { scope: "scene" });
+      ctx.register(key, "fallback");
+
+      const warnSpy = vi.spyOn(logger, "warn");
+
+      class WarnComponent extends Component {
+        getValue() {
+          return this.use(key);
+        }
+      }
+
+      const c = new WarnComponent();
+      c.entity = {
+        scene: {
+          context: ctx,
+          _resolveScoped: () => undefined,
+        },
+      } as never;
+
+      c.getValue();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "core",
+        expect.stringContaining("missing-scoped"),
+        expect.objectContaining({ component: "WarnComponent" }),
+      );
     });
   });
 });

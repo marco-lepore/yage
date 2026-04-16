@@ -92,6 +92,23 @@ describe("EngineContext", () => {
     expect(ctx.resolve(key)).toBe("second");
   });
 
+  describe("ServiceKey.scope", () => {
+    it("defaults to 'engine' when no options provided", () => {
+      const key = new ServiceKey<string>("test");
+      expect(key.scope).toBe("engine");
+    });
+
+    it("accepts explicit scope option", () => {
+      const scoped = new ServiceKey<string>("scoped", { scope: "scene" });
+      expect(scoped.scope).toBe("scene");
+    });
+
+    it("accepts explicit engine scope", () => {
+      const eng = new ServiceKey<string>("eng", { scope: "engine" });
+      expect(eng.scope).toBe("engine");
+    });
+  });
+
   it("well-known keys exist with correct ids", () => {
     expect(EngineKey.id).toBe("engine");
     expect(EventBusKey.id).toBe("eventBus");

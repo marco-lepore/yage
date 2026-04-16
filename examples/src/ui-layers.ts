@@ -1,7 +1,7 @@
 import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
-import { RendererPlugin, CameraKey, GraphicsComponent } from "@yagejs/renderer";
-import type { RenderLayerManager } from "@yagejs/renderer";
-import { UIPlugin, UIPanel, UILayerManagerKey, Anchor } from "@yagejs/ui";
+import { RendererPlugin, CameraKey, GraphicsComponent, SceneRenderTreeKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
+import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import { injectStyles, getContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
@@ -27,6 +27,11 @@ class Spinner extends Component {
 class UILayersScene extends Scene {
   readonly name = "ui-layers";
   readonly preload = [...allAssets];
+  readonly layers: readonly LayerDef[] = [
+    { name: "hud", order: 1010, space: "screen", eventMode: "static" },
+    { name: "menu", order: 1020, space: "screen", eventMode: "static" },
+    { name: "dialog", order: 1030, space: "screen", eventMode: "static" },
+  ];
 
   onEnter(): void {
     const camera = this.context.resolve(CameraKey);
@@ -46,12 +51,6 @@ class UILayersScene extends Scene {
       );
       e.add(new Spinner());
     }
-
-    // Create named UI layers with different z-orders
-    const layers = this.context.resolve(UILayerManagerKey) as RenderLayerManager;
-    layers.create("hud", 10);
-    layers.create("menu", 20);
-    layers.create("dialog", 30);
 
     // ---- HUD layer (always visible) ----
     let menuVisible = false;

@@ -57,6 +57,19 @@ function setup() {
   return { manager, ctx };
 }
 
+function setupWithHooks() {
+  _resetEntityIdCounter();
+  const ctx = new EngineContext();
+  ctx.register(QueryCacheKey, new QueryCache());
+  ctx.register(EventBusKey, new EventBus<EngineEvents>());
+  const hooks = new SceneHookRegistry();
+  ctx.register(SceneHookRegistryKey, hooks);
+  const manager = new SceneManager();
+  ctx.register(SceneManagerKey, manager);
+  manager._setContext(ctx);
+  return { manager, ctx, hooks };
+}
+
 describe("SceneManager", () => {
   it("starts with no active scene", async () => {
     const { manager } = setup();
@@ -362,18 +375,6 @@ describe("SceneManager", () => {
   });
 
   describe("scene hooks", () => {
-    function setupWithHooks() {
-      _resetEntityIdCounter();
-      const ctx = new EngineContext();
-      ctx.register(QueryCacheKey, new QueryCache());
-      ctx.register(EventBusKey, new EventBus<EngineEvents>());
-      const hooks = new SceneHookRegistry();
-      ctx.register(SceneHookRegistryKey, hooks);
-      const manager = new SceneManager();
-      ctx.register(SceneManagerKey, manager);
-      manager._setContext(ctx);
-      return { manager, ctx, hooks };
-    }
 
     it("runs beforeEnter and afterExit hooks around push / pop", async () => {
       const { manager, hooks } = setupWithHooks();
@@ -461,6 +462,131 @@ describe("SceneManager", () => {
       manager._unmountDetached(detached);
       expect(detached.exitCalled).toBe(true);
       expect(afterCount).toBe(1);
+    });
+  });
+
+  describe("scene hooks (extended)", () => {
+
+    it("runs hooks on replace (afterExit for old, beforeEnter for new)", async () => {
+      const { manager, hooks } = setupWithHooks();
+      const events: string[] = [];
+      hooks.register({
+        beforeEnter: (s) => {
+          events.push(`before:${s.name}`);
+        },
+        afterExit: (s) => {
+          events.push(`after:${s.name}`);
+        },
+      });
+      const first = new GameScene("first");
+      await manager.push(first);
+      const second = new GameScene("second");
+      await manager.replace(second);
+      expect(events).toEqual([
+        "before:first",
+        "after:first",
+        "before:second",
+      ]);
+    });
+
+    it("runs afterExit hooks on clear for every scene", async () => {
+      const { manager, hooks } = setupWithHooks();
+      const exited: string[] = [];
+      hooks.register({
+        afterExit: (s) => {
+          exited.push(s.name);
+        },
+      });
+      await manager.push(new GameScene("a"));
+      await manager.push(new GameScene("b"));
+      await manager.push(new GameScene("c"));
+      manager.clear();
+      // Cleared top-to-bottom
+      expect(exited).toEqual(["c", "b", "a"]);
+    });
+  });
+
+  describe("reentrant guard", () => {
+    it("throws when push is called during an in-progress push", async () => {
+      const { manager, hooks } = setupWithHooks();
+      hooks.register({
+        beforeEnter: async () => {
+          // Attempt reentrant push inside a hook
+          await expect(
+            manager.push(new GameScene("reentrant")),
+          ).rejects.toThrow("called during an in-progress transition");
+        },
+      });
+      await manager.push(new GameScene("main"));
+    });
+
+    it("throws when pop is called during an in-progress push", async () => {
+      const { manager, hooks } = setupWithHooks();
+      await manager.push(new GameScene("base"));
+      hooks.register({
+        beforeEnter: () => {
+          expect(() => manager.pop()).toThrow(
+            "called during an in-progress transition",
+          );
+        },
+      });
+      await manager.push(new GameScene("trigger"));
+    });
+  });
+
+  describe("pause/resume ordering", () => {
+    it("fires onPause after onEnter during push", async () => {
+      const { manager } = setupWithHooks();
+      const events: string[] = [];
+      class TrackedScene extends Scene {
+        readonly name: string;
+        constructor(name: string) {
+          super();
+          this.name = name;
+        }
+        onEnter() {
+          events.push(`enter:${this.name}`);
+        }
+        onPause() {
+          events.push(`pause:${this.name}`);
+        }
+      }
+      const game = new TrackedScene("game");
+      await manager.push(game);
+      const menu = new TrackedScene("menu");
+      await manager.push(menu);
+      // game.onPause should fire AFTER menu.onEnter
+      expect(events).toEqual(["enter:game", "enter:menu", "pause:game"]);
+    });
+
+    it("fires onResume after old scene exits during replace", async () => {
+      const { manager } = setupWithHooks();
+      const events: string[] = [];
+      class TrackedScene extends Scene {
+        readonly name: string;
+        override readonly pauseBelow: boolean;
+        constructor(name: string, pauseBelow = true) {
+          super();
+          this.name = name;
+          this.pauseBelow = pauseBelow;
+        }
+        onEnter() {
+          events.push(`enter:${this.name}`);
+        }
+        onResume() {
+          events.push(`resume:${this.name}`);
+        }
+      }
+      const game = new TrackedScene("game");
+      await manager.push(game);
+      const pause = new TrackedScene("pause", true);
+      await manager.push(pause);
+      events.length = 0; // reset
+
+      const overlay = new TrackedScene("overlay", false);
+      await manager.replace(overlay);
+      // game.onResume should fire AFTER overlay.onEnter
+      expect(events).toEqual(["enter:overlay", "resume:game"]);
     });
   });
 });
