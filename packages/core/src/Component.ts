@@ -69,7 +69,11 @@ export abstract class Component {
 
     const value = this.context.resolve(key);
     if (key.scope === "scene") {
+      // Don't cache: a later scoped registration should take precedence,
+      // and the warning should keep firing until the plugin wiring is
+      // fixed — caching would silence it after one hit.
       this._warnScopedFallback(key);
+      return value;
     }
     this._serviceCache.set(key.id, value);
     return value;

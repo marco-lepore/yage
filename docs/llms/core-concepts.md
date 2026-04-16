@@ -43,7 +43,7 @@ import { RendererPlugin } from "@yagejs/renderer";
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
 await engine.start();
-engine.scenes.push(new MyScene());
+await engine.scenes.push(new MyScene());
 // later:
 engine.destroy();
 ```
@@ -158,11 +158,14 @@ if (entity.hasTrait(Interactable)) {
 Stack-based via `SceneManager`:
 
 ```ts
-engine.scenes.push(new GameScene());   // enters scene
-engine.scenes.pop();                    // exits top scene
-engine.scenes.replace(new MenuScene()); // swap top
-engine.scenes.clear();                  // exit all
+await engine.scenes.push(new GameScene());   // enters scene
+engine.scenes.pop();                         // exits top scene
+await engine.scenes.replace(new MenuScene());// swap top
+engine.scenes.clear();                       // exit all
 ```
+
+`push` and `replace` are async — they await `beforeEnter` hooks and
+`scene.preload` before `onEnter` fires. `pop` and `clear` are sync.
 
 Scene hooks: `onEnter`, `onExit`, `onPause` (scene pushed on top), `onResume` (scene above popped).
 

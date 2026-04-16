@@ -1,11 +1,9 @@
 /**
- * E2E fixture for scene-scoped DI.
- *
- * Verifies:
- * 1. PhysicsWorldKey resolves in a component via this.use()
- * 2. SceneRenderTreeKey resolves and layers are accessible
- * 3. Debug overlay renders on top (off-stack scene via _mountDetached)
- * 4. Multi-scene isolation: pushing a second scene gets its own scoped services
+ * E2E fixture for scene-scoped DI. Drives the assertions in
+ * `e2e/specs/scene-di.spec.ts`:
+ * 1. PhysicsWorldKey resolves in a component via `this.use()`.
+ * 2. SceneRenderTreeKey resolves and declared layers are accessible.
+ * 3. The scene is on the stack with the expected name and entities.
  */
 import {
   Engine,
@@ -68,8 +66,9 @@ class RenderTreeProbe extends Component {
   hasCustomLayer = false;
 
   onAdd(): void {
-    const tree: SceneRenderTree = this.use(SceneRenderTreeKey);
-    this.hasTree = tree !== undefined && tree !== null;
+    const tree: SceneRenderTree | undefined = this.use(SceneRenderTreeKey);
+    if (!tree) return;
+    this.hasTree = true;
     this.layerCount = tree.getAll().length;
     this.hasCustomLayer = tree.tryGet("world") !== undefined;
   }

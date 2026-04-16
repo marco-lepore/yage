@@ -1,4 +1,5 @@
-import { Scene } from "@yagejs/core";
+import { LoggerKey, Scene } from "@yagejs/core";
+import type { Logger } from "@yagejs/core";
 import type { LayerDef } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { Container } from "pixi.js";
@@ -29,7 +30,18 @@ export class DebugScene extends Scene {
 
   onEnter(): void {
     const tree = this._resolveScoped(SceneRenderTreeKey);
-    if (!tree) return;
+    if (!tree) {
+      // Shouldn't happen — DebugPlugin declares `renderer` as a dependency
+      // so the renderer's `beforeEnter` hook should have materialized a
+      // tree before this runs. Surface it rather than silently skipping
+      // the overlay wiring.
+      const logger = this.context.tryResolve(LoggerKey) as Logger | undefined;
+      const msg =
+        "DebugScene.onEnter: SceneRenderTreeKey missing — debug overlay will not render. Is RendererPlugin registered?";
+      if (logger) logger.warn("debug", msg);
+      else console.warn(`[yage] ${msg}`);
+      return;
+    }
     const worldContainer = tree.get("debug-world").container;
     const hudContainer = tree.get("debug-hud").container;
     worldContainer.eventMode = "none";

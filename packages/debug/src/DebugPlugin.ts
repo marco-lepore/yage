@@ -3,7 +3,6 @@ import {
   GameLoopKey,
   InspectorKey,
   SceneManagerKey,
-  SystemSchedulerKey,
 } from "@yagejs/core";
 import type {
   EngineContext,
@@ -137,9 +136,9 @@ export class DebugPlugin implements Plugin {
       window.addEventListener("keydown", this.keyListener);
     }
 
-    // Instrument system timings
-    const scheduler = this.context.resolve(SystemSchedulerKey);
-    for (const system of scheduler.getAllSystems()) {
+    // Instrument system timings — reuse the scheduler captured in
+    // `registerSystems`, which ran before `onStart`.
+    for (const system of this.scheduler.getAllSystems()) {
       if (system instanceof DebugRenderSystem) continue;
       const name = system.constructor.name;
       const original = system.update.bind(system);

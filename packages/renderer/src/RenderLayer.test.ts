@@ -136,7 +136,7 @@ describe("RenderLayerManager", () => {
     expect(layer.container.sortableChildren).toBe(true);
   });
 
-  it("world layers are sorted by zIndex on worldRoot", () => {
+  it("world layers propagate order to container zIndex", () => {
     manager.create("fg", 10);
     manager.create("bg", -5);
     const bgLayer = manager.get("bg");

@@ -495,7 +495,7 @@ describe("PhysicsSystem", () => {
       system._setContext(context);
 
       // Push a scene that has no physics entities (no world created)
-      createTestScene(sceneManager, "no-physics", { pauseBelow: false });
+      await createTestScene(sceneManager, "no-physics", { pauseBelow: false });
 
       // Should not throw
       system.update(16.67);

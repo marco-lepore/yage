@@ -822,7 +822,7 @@ engine.scenes.push(new GameScene());
 > **Physics world access:** Physics worlds are per-scene. Components that need
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
 > ```typescript
-> import { PhysicsWorldManagerKey } from "@yagejs/physics";
+> import { PhysicsWorldKey } from "@yagejs/physics";
 > import type { PhysicsWorld } from "@yagejs/physics";
 >
 > class MyComponent extends Component {

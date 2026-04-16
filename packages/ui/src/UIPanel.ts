@@ -346,13 +346,15 @@ export class UIPanel extends Component {
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
     let layer = tree.tryGet(layerName);
     if (!layer) {
-      if (this._layer) {
+      if (this._layer && this._layer !== UI_DEFAULT_LAYER) {
         throw new Error(
           `UIPanel: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
         );
       }
       // Auto-provision a screen-space "ui" layer the first time a UIPanel
-      // is added to a scene that hasn't declared one explicitly.
+      // is added to a scene that hasn't declared one explicitly. Also runs
+      // when `{ layer: "ui" }` is passed explicitly — the default name
+      // always resolves, even on scenes that omit it.
       layer = tree.ensureLayer({
         name: UI_DEFAULT_LAYER,
         order: UI_DEFAULT_LAYER_ORDER,

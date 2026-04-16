@@ -172,6 +172,39 @@ describe("Component", () => {
       expect(c.getValue()).toBe("engine-value");
     });
 
+    it("does not cache the engine fallback for a scene-scoped key", () => {
+      const ctx = new EngineContext();
+      const key = new ServiceKey<string>("late-scoped", { scope: "scene" });
+      ctx.register(key, "engine-value");
+
+      const state: { scoped: string | undefined } = { scoped: undefined };
+
+      class LateComponent extends Component {
+        getValue() {
+          return this.use(key);
+        }
+      }
+
+      const c = new LateComponent();
+      c.entity = {
+        scene: {
+          context: ctx,
+          _resolveScoped: (k: ServiceKey<unknown>) =>
+            k.id === "late-scoped" ? state.scoped : undefined,
+        },
+      } as never;
+
+      // First call: no scoped value, falls back to engine.
+      expect(c.getValue()).toBe("engine-value");
+
+      // Now a plugin belatedly registers the scoped value.
+      state.scoped = "scoped-value";
+
+      // Subsequent call should pick up the scoped registration rather than
+      // the cached fallback.
+      expect(c.getValue()).toBe("scoped-value");
+    });
+
     it("warns when a scene-scoped key falls back to engine scope", () => {
       const ctx = new EngineContext();
       const logger = new Logger();

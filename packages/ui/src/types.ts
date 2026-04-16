@@ -352,7 +352,13 @@ export interface PixiRadioGroupProps extends LayoutProps {
 export interface UIPanelOptions extends PanelProps {
   anchor?: Anchor;
   offset?: { x: number; y: number };
-  /** Target UI layer name. Defaults to "default". Layer must be pre-created via UILayerManager. */
+  /**
+   * Target UI layer name on the scene's render tree. Defaults to
+   * `UI_DEFAULT_LAYER` (`"ui"`), which is auto-provisioned as a
+   * screen-space layer via `SceneRenderTreeKey.ensureLayer(...)` on first
+   * use. Any other explicit name must be declared on the scene's
+   * `readonly layers` or the panel throws on add.
+   */
   layer?: string;
 }
 

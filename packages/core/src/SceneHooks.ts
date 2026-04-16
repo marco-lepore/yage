@@ -1,5 +1,6 @@
 import type { Scene } from "./Scene.js";
-import { ServiceKey } from "./EngineContext.js";
+import { ServiceKey, LoggerKey } from "./EngineContext.js";
+import type { Logger } from "./Logger.js";
 
 /**
  * Plugin hooks invoked by the SceneManager at scene lifecycle points.
@@ -46,7 +47,25 @@ export class SceneHookRegistry {
 
   runAfterExit(scene: Scene): void {
     for (const h of this.hooks) {
-      h.afterExit?.(scene);
+      try {
+        h.afterExit?.(scene);
+      } catch (err) {
+        // Swallow so one failing plugin doesn't block teardown of the rest.
+        const logger = scene.context.tryResolve(LoggerKey) as
+          | Logger
+          | undefined;
+        if (logger) {
+          logger.error("core", "Scene afterExit hook threw", {
+            scene: scene.name,
+            error: err,
+          });
+        } else {
+          console.error(
+            `[yage] Scene afterExit hook threw for scene "${scene.name}":`,
+            err,
+          );
+        }
+      }
     }
   }
 }

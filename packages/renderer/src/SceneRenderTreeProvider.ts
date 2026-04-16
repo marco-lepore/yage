@@ -73,6 +73,10 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
 
     const manager = new RenderLayerManager(worldContainer, screenContainer);
 
+    // Known limitation: the manager already auto-created a world-space
+    // "default" layer in its constructor, so a user-declared LayerDef for
+    // "default" is silently dropped by `tryGet` below. Pick a different
+    // name if you need custom space/order/eventMode for your main layer.
     for (const def of scene.layers ?? []) {
       if (manager.tryGet(def.name)) continue;
       manager.createFromDef(def);
