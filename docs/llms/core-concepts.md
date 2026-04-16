@@ -212,11 +212,30 @@ const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 
 Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`.
 
-Plugin keys: `CameraKey`, `SceneRenderTreeKey` (scene-scoped), `SceneRenderTreeProviderKey`, `InputManagerKey`, `PhysicsWorldKey` (scene-scoped), `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
+Plugin keys: `CameraKey`, `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 
-Keys declared with `{ scope: "scene" }` are registered by a plugin's
-`beforeEnter` scene hook (see `engine.registerSceneHooks(...)`) and resolved
-by `Component.use()` before falling through to engine scope.
+Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`) are per-scene —
+`this.use(key)` resolves the correct scene's instance automatically.
+
+### Scene render layers
+
+Scenes declare layers via `readonly layers`. The renderer materializes them
+when the scene is pushed. Components specify `{ layer: "world" }` to attach
+to a specific layer.
+
+```ts
+import type { LayerDef } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly layers: readonly LayerDef[] = [
+    { name: "bg", order: -10 },
+    { name: "world", order: 0 },
+    { name: "hud", order: 100, space: "screen" },
+  ];
+}
+```
+
+Note: `push`/`replace` are async — `await` them to ensure `onEnter` has fired.
 
 ## Processes
 

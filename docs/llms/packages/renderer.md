@@ -144,11 +144,11 @@ class GameScene extends Scene {
 ```
 
 ```ts
-import { SceneRenderTreeKey, toRenderLayer } from "@yagejs/renderer";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 
 // Inside a Component:
 const tree = this.use(SceneRenderTreeKey);
-const layer = toRenderLayer(tree.get("world"));
+const layer = tree.get("world");
 layer.container.addChild(myDisplayObject);
 ```
 
