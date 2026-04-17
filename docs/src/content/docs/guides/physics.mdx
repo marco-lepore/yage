@@ -210,7 +210,7 @@ rb.setPosition(400, 300); // pixels
 Cast a ray to find the first entity hit:
 
 ```typescript
-const world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+const world = this.use(PhysicsWorldKey);
 
 const hit = world.raycast(
   origin,                  // Vec2Like — start position in pixels
@@ -242,8 +242,7 @@ const grounded = world.raycast(
 Change gravity at runtime via the `PhysicsWorld`:
 
 ```typescript
-const worldMgr = this.use(PhysicsWorldManagerKey);
-const world = worldMgr.getOrCreateWorld(this.scene);
+const world = this.use(PhysicsWorldKey);
 
 world.setGravity(0, -980);  // flip gravity upward
 world.setGravity(0, 0);     // zero gravity
@@ -276,14 +275,16 @@ or small objects that move at high speed.
 
 ## PhysicsWorld Access
 
-Access the physics world from any component:
+Access the active scene's physics world from any component via the
+scene-scoped `PhysicsWorldKey`:
 
 ```typescript
-import { PhysicsWorldManagerKey } from "@yagejs/physics";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
-const worldMgr = this.use(PhysicsWorldManagerKey);
-const world = worldMgr.getOrCreateWorld(this.scene);
+const world = this.use(PhysicsWorldKey);
 ```
 
-Each scene gets its own physics world. The `PhysicsWorldManager` creates and
-manages worlds per-scene automatically.
+Each scene gets its own `PhysicsWorld`. The physics plugin creates the world
+in a `beforeEnter` hook and destroys it in `afterExit`. For cross-scene
+enumeration (save system, debug inspector) use the engine-scope
+`PhysicsWorldManagerKey` instead.

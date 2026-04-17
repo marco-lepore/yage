@@ -157,8 +157,8 @@ describe("ColliderComponent", () => {
   });
 
   describe("onAdd", () => {
-    it("creates a collider with the correct body handle", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("creates a collider with the correct body handle", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -172,8 +172,8 @@ describe("ColliderComponent", () => {
       expect(physicsWorld.colliderMap.get(col._colliderHandle)).toBe(entity);
     });
 
-    it("throws if no RigidBodyComponent exists", () => {
-      const { scene } = createPhysicsTestContext();
+    it("throws if no RigidBodyComponent exists", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
 
@@ -188,8 +188,8 @@ describe("ColliderComponent", () => {
   });
 
   describe("onCollision / _dispatchCollision", () => {
-    it("calls collision handlers when dispatched", () => {
-      const { scene } = createPhysicsTestContext();
+    it("calls collision handlers when dispatched", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -223,8 +223,8 @@ describe("ColliderComponent", () => {
       expect(ev.started).toBe(true);
     });
 
-    it("supports multiple handlers", () => {
-      const { scene } = createPhysicsTestContext();
+    it("supports multiple handlers", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -249,8 +249,8 @@ describe("ColliderComponent", () => {
       expect(handler2).toHaveBeenCalledOnce();
     });
 
-    it("unsubscribe removes handler", () => {
-      const { scene } = createPhysicsTestContext();
+    it("unsubscribe removes handler", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -282,8 +282,8 @@ describe("ColliderComponent", () => {
   });
 
   describe("onTrigger / _dispatchTrigger", () => {
-    it("calls trigger handlers when dispatched", () => {
-      const { scene } = createPhysicsTestContext();
+    it("calls trigger handlers when dispatched", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -308,8 +308,8 @@ describe("ColliderComponent", () => {
       expect(ev.entered).toBe(true);
     });
 
-    it("unsubscribe removes trigger handler", () => {
-      const { scene } = createPhysicsTestContext();
+    it("unsubscribe removes trigger handler", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -342,8 +342,8 @@ describe("ColliderComponent", () => {
   });
 
   describe("onDestroy", () => {
-    it("clears all handlers", () => {
-      const { scene } = createPhysicsTestContext();
+    it("clears all handlers", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -379,8 +379,8 @@ describe("ColliderComponent", () => {
   });
 
   describe("setSensor", () => {
-    it("delegates to Rapier collider", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("delegates to Rapier collider", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -398,10 +398,10 @@ describe("ColliderComponent", () => {
   });
 
   describe("subclass pattern", () => {
-    it("allows subclasses on the same entity (one component per class)", () => {
+    it("allows subclasses on the same entity (one component per class)", async () => {
       class GroundSensor extends ColliderComponent {}
 
-      const { scene } = createPhysicsTestContext();
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       entity.add(new RigidBodyComponent({ type: "dynamic" }));

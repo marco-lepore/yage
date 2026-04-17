@@ -214,13 +214,19 @@ Keys registered by official plugins:
 |---|---|---|
 | `RendererKey` | `Renderer` | `@yagejs/renderer` |
 | `StageKey` | `Container` (PixiJS) | `@yagejs/renderer` |
+| `WorldRootKey` | `Container` (PixiJS) | `@yagejs/renderer` |
 | `CameraKey` | `Camera` | `@yagejs/renderer` |
-| `RenderLayerManagerKey` | `RenderLayerManager` | `@yagejs/renderer` |
+| `SceneRenderTreeProviderKey` | `SceneRenderTreeProvider` | `@yagejs/renderer` |
+| `SceneRenderTreeKey` | `SceneRenderTree` (scene-scoped) | `@yagejs/renderer` |
 | `PhysicsWorldManagerKey` | `PhysicsWorldManager` | `@yagejs/physics` |
+| `PhysicsWorldKey` | `PhysicsWorld` (scene-scoped) | `@yagejs/physics` |
 | `InputManagerKey` | `InputManager` | `@yagejs/input` |
 | `AudioManagerKey` | `AudioManager` | `@yagejs/audio` |
-| `UIContainerKey` | `Container` (PixiJS) | `@yagejs/ui` |
 | `DebugRegistryKey` | `DebugRegistry` | `@yagejs/debug` |
+
+Keys marked **(scene-scoped)** are per-scene — `Component.use()` resolves the
+correct scene's instance automatically. Internally, plugins register them via
+scene lifecycle hooks (`packages/core/src/SceneHooks.ts`).
 
 ### Optional Dependencies
 

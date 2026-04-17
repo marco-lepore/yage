@@ -111,7 +111,10 @@ class GameController extends Component {
     if (this.input.isJustPressed("fast")) scene.timeScale = 2;
 
     if (this.input.isJustPressed("pause")) {
-      engine.scenes.push(new PauseScene());
+      // Fire-and-forget: the SceneManager's reentrancy guard will reject
+      // if pause is hammered during an in-progress transition — ignore
+      // those so a stray press doesn't crash the game.
+      engine.scenes.push(new PauseScene()).catch(() => {});
     }
 
     if (this.input.isJustPressed("spawn")) {

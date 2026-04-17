@@ -8,6 +8,10 @@ import {
 import type { Scene, SceneManager } from "@yagejs/core";
 import { PhysicsWorldManagerKey } from "./types.js";
 import type { ScenePhysicsContext } from "./types.js";
+// Systems keep `PhysicsWorldManagerKey` (engine scope) because each scene's
+// `ScenePhysicsContext` carries the sub-accumulator + interpolation alpha,
+// not just the world; the scene-scoped `PhysicsWorldKey` only resolves the
+// `PhysicsWorld`. Components use the scoped key for ergonomic access.
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";

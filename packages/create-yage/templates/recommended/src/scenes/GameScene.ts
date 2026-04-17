@@ -2,8 +2,8 @@ import { Scene, Transform, Vec2, defineEvent } from "@yagejs/core";
 import {
   CameraKey,
   GraphicsComponent,
-  RenderLayerManagerKey,
   texture,
+  type LayerDef,
 } from "@yagejs/renderer";
 import { sound } from "@yagejs/audio";
 import { RigidBodyComponent } from "@yagejs/physics";
@@ -58,13 +58,13 @@ export class GameScene extends Scene {
     jumpSfx,
     hurtSfx,
   ];
+  readonly layers: readonly LayerDef[] = [
+    { name: "background", order: -10 },
+    { name: "world", order: 0 },
+    { name: "player", order: 10 },
+  ];
 
   onEnter(): void {
-    const layers = this.context.resolve(RenderLayerManagerKey);
-    layers.getOrCreate("background", -10);
-    layers.getOrCreate("world", 0);
-    layers.getOrCreate("player", 10);
-
     this.drawBackground();
     this.buildLevel();
 

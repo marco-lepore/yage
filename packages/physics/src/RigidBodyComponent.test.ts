@@ -251,8 +251,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("onAdd", () => {
-    it("creates a body and syncs Transform position", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("creates a body and syncs Transform position", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform({ position: new Vec2(100, 200) }));
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -263,8 +263,8 @@ describe("RigidBodyComponent", () => {
       expect(rb._currPosition.y).toBe(200);
     });
 
-    it("sets initial rotation from Transform", () => {
-      const { scene } = createPhysicsTestContext();
+    it("sets initial rotation from Transform", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform({ rotation: Math.PI / 4 }));
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -273,8 +273,8 @@ describe("RigidBodyComponent", () => {
       expect(rb._prevRotation).toBe(Math.PI / 4);
     });
 
-    it("creates static bodies", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("creates static bodies", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "static" }));
@@ -283,8 +283,8 @@ describe("RigidBodyComponent", () => {
       expect(physicsWorld.bodyMap.has(rb._bodyHandle)).toBe(true);
     });
 
-    it("creates kinematic bodies", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("creates kinematic bodies", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "kinematic" }));
@@ -295,8 +295,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("onDestroy", () => {
-    it("removes body from PhysicsWorld", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("removes body from PhysicsWorld", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -312,8 +312,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("applyForce", () => {
-    it("converts force from pixels to meters and delegates to Rapier", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("converts force from pixels to meters and delegates to Rapier", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -329,8 +329,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("applyImpulse", () => {
-    it("converts impulse from pixels to meters and delegates to Rapier", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("converts impulse from pixels to meters and delegates to Rapier", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -346,8 +346,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("setVelocity", () => {
-    it("converts velocity from pixels to meters", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("converts velocity from pixels to meters", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -363,8 +363,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("getVelocity", () => {
-    it("converts velocity from meters back to pixels", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("converts velocity from meters back to pixels", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -379,8 +379,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("applyTorque", () => {
-    it("delegates to Rapier", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("delegates to Rapier", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -393,8 +393,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("setAngularVelocity / getAngularVelocity", () => {
-    it("sets angular velocity", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("sets angular velocity", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -405,8 +405,8 @@ describe("RigidBodyComponent", () => {
       expect(body.setAngvelSpy).toHaveBeenCalledWith(2.5, true);
     });
 
-    it("gets angular velocity", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext();
+    it("gets angular velocity", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -419,8 +419,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("setPosition", () => {
-    it("teleports body and sets _teleported flag", () => {
-      const { scene } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("teleports body and sets _teleported flag", async () => {
+      const { scene } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -436,8 +436,8 @@ describe("RigidBodyComponent", () => {
       expect(rb._currPosition.y).toBe(300);
     });
 
-    it("converts position to meters for Rapier", () => {
-      const { scene, physicsWorld } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("converts position to meters for Rapier", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -453,8 +453,8 @@ describe("RigidBodyComponent", () => {
   });
 
   describe("interpolation state", () => {
-    it("initializes prev and curr to Transform position", () => {
-      const { scene } = createPhysicsTestContext();
+    it("initializes prev and curr to Transform position", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform({ position: new Vec2(50, 75) }));
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));
@@ -463,8 +463,8 @@ describe("RigidBodyComponent", () => {
       expect(rb._currPosition.equals(new Vec2(50, 75))).toBe(true);
     });
 
-    it("_teleported starts as false", () => {
-      const { scene } = createPhysicsTestContext();
+    it("_teleported starts as false", async () => {
+      const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
       const rb = entity.add(new RigidBodyComponent({ type: "dynamic" }));

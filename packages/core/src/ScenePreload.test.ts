@@ -62,10 +62,10 @@ function setup() {
 describe("Scene preload integration", () => {
   beforeEach(() => _resetEntityIdCounter());
 
-  it("scenes without preload still enter synchronously", () => {
+  it("scenes without preload enter after awaiting push", async () => {
     const { manager } = setup();
     const scene = new PlainScene();
-    manager.push(scene);
+    await manager.push(scene);
     expect(scene.entered).toBe(true);
   });
 
@@ -109,7 +109,7 @@ describe("Scene preload integration", () => {
   it("replace() preloads before entering", async () => {
     const { manager } = setup();
     const first = new PlainScene();
-    manager.push(first);
+    await manager.push(first);
 
     const second = new PreloadScene();
     const promise = manager.replace(second);
@@ -135,7 +135,7 @@ describe("Scene preload integration", () => {
     expect(handler).toHaveBeenCalledWith({ scene });
   });
 
-  it("skips preloading when asset manager is not registered", () => {
+  it("skips preloading when asset manager is not registered", async () => {
     // Setup without asset manager
     _resetEntityIdCounter();
     const ctx = new EngineContext();
@@ -146,8 +146,8 @@ describe("Scene preload integration", () => {
     manager._setContext(ctx);
 
     const scene = new PreloadScene();
-    manager.push(scene);
-    // Without asset manager, push is synchronous and skips preload
+    await manager.push(scene);
+    // Without asset manager, preload is skipped; onEnter still fires.
     expect(scene.entered).toBe(true);
   });
 });

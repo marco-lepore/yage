@@ -19,7 +19,7 @@ engine.use(new RendererPlugin({
 }));
 ```
 
-Registers `CameraKey`, `RenderLayerManagerKey`, `RendererKey`, `StageKey` in `EngineContext`.
+Registers `CameraKey`, `RendererKey`, `StageKey`, `WorldRootKey`, and `SceneRenderTreeProviderKey` in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
 
 ## Components
 
@@ -126,15 +126,36 @@ class GameScene extends Scene {
 
 ## Render Layers
 
-Named draw-order layers managed by `RenderLayerManager`:
+Layers are declared per scene and materialized by the renderer's
+`beforeEnter` hook into a `SceneRenderTree` registered on scene scope.
 
 ```ts
-import { RenderLayerManagerKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
+import { Scene } from "@yagejs/core";
 
-const layers = context.resolve(RenderLayerManagerKey);
-// Components specify layer by name: { layer: "background" }
-// DisplaySystem syncs Transform -> PixiJS display objects each Render phase
+class GameScene extends Scene {
+  readonly name = "game";
+  readonly layers: readonly LayerDef[] = [
+    { name: "background", order: -10 },
+    { name: "world", order: 0 },
+    { name: "hud", order: 100, space: "screen" },
+  ];
+}
 ```
+
+```ts
+import { SceneRenderTreeKey } from "@yagejs/renderer";
+
+// Inside a Component:
+const tree = this.use(SceneRenderTreeKey);
+const layer = tree.get("world");
+layer.container.addChild(myDisplayObject);
+```
+
+`SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and handle
+this internally. DisplaySystem syncs `Transform` to PixiJS display objects
+each Render phase and applies camera + virtual-resolution scaling to the
+world root.
 
 ## DisplaySystem
 

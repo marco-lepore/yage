@@ -121,14 +121,14 @@ describe("PhysicsInterpolationSystem", () => {
     mocks.resetHandles();
   });
 
-  it("has phase LateUpdate and priority 100", () => {
+  it("has phase LateUpdate and priority 100", async () => {
     const system = new PhysicsInterpolationSystem();
     expect(system.phase).toBe(Phase.LateUpdate);
     expect(system.priority).toBe(100);
   });
 
-  it("at alpha=0, transform equals prev position", () => {
-    const { scene, manager, context } = createPhysicsTestContext();
+  it("at alpha=0, transform equals prev position", async () => {
+    const { scene, manager, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -150,8 +150,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(0);
   });
 
-  it("at alpha=0.5, transform is midpoint", () => {
-    const { scene, manager, context } = createPhysicsTestContext();
+  it("at alpha=0.5, transform is midpoint", async () => {
+    const { scene, manager, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -173,8 +173,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(1);
   });
 
-  it("at alpha=1, transform equals curr position", () => {
-    const { scene, manager, context } = createPhysicsTestContext();
+  it("at alpha=1, transform equals curr position", async () => {
+    const { scene, manager, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -196,8 +196,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(2, 0);
   });
 
-  it("interpolates rotation", () => {
-    const { scene, manager, context } = createPhysicsTestContext();
+  it("interpolates rotation", async () => {
+    const { scene, manager, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -216,8 +216,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.rotation).toBeCloseTo(0);
   });
 
-  it("skips non-dynamic bodies", () => {
-    const { scene, context } = createPhysicsTestContext();
+  it("skips non-dynamic bodies", async () => {
+    const { scene, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -236,8 +236,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.y).toBe(50);
   });
 
-  it("skips kinematic bodies", () => {
-    const { scene, context } = createPhysicsTestContext();
+  it("skips kinematic bodies", async () => {
+    const { scene, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -255,8 +255,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.y).toBe(75);
   });
 
-  it("reads alpha from per-scene context", () => {
-    const { scene, manager, context } = createPhysicsTestContext();
+  it("reads alpha from per-scene context", async () => {
+    const { scene, manager, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -280,8 +280,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(transform.position.x).toBeCloseTo(75);
   });
 
-  it("uses per-scene alpha independently", () => {
-    const { scene, manager, sceneManager, context } = createPhysicsTestContext();
+  it("uses per-scene alpha independently", async () => {
+    const { scene, manager, sceneManager, context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 
@@ -294,7 +294,7 @@ describe("PhysicsInterpolationSystem", () => {
     manager.getContext(scene)!.alphaRef.value = 0.5;
 
     // Scene 2: alpha=1.0
-    const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+    const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
     manager.getOrCreateWorld(scene2);
     const e2 = spawnEntityInScene(scene2, "e2");
     const t2 = e2.add(new Transform());
@@ -310,8 +310,8 @@ describe("PhysicsInterpolationSystem", () => {
     expect(t2.position.x).toBeCloseTo(100);
   });
 
-  it("handles empty scene gracefully", () => {
-    const { context } = createPhysicsTestContext();
+  it("handles empty scene gracefully", async () => {
+    const { context } = await createPhysicsTestContext();
     const system = new PhysicsInterpolationSystem();
     system._setContext(context);
 

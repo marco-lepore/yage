@@ -198,7 +198,7 @@ async function main() {
   engine.use(new DebugPlugin({ startEnabled: true }));
 
   await engine.start();
-  engine.scenes.push(new DebugDemoScene());
+  await engine.scenes.push(new DebugDemoScene());
 }
 
 main().catch(console.error);

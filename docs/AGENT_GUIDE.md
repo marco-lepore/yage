@@ -197,7 +197,7 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |
-| `src/UIPlugin.ts`           | Plugin entry, registers `UIContainerKey`              |
+| `src/UIPlugin.ts`           | Plugin entry, loads Yoga + wires AssetManager         |
 | `src/UIPanel.ts`            | Layout container with Yoga flexbox                    |
 | `src/UIText.ts`             | Text rendering                                        |
 | `src/UIButton.ts`           | Interactive button                                    |
@@ -822,13 +822,13 @@ engine.scenes.push(new GameScene());
 > **Physics world access:** Physics worlds are per-scene. Components that need
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
 > ```typescript
-> import { PhysicsWorldManagerKey } from "@yagejs/physics";
+> import { PhysicsWorldKey } from "@yagejs/physics";
 > import type { PhysicsWorld } from "@yagejs/physics";
 >
 > class MyComponent extends Component {
 >   private world!: PhysicsWorld;
 >   onAdd() {
->     this.world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+>     this.world = this.use(PhysicsWorldKey);
 >   }
 > }
 > ```

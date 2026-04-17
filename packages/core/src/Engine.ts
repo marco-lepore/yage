@@ -30,6 +30,8 @@ import {
 import { ProcessSystem } from "./ProcessSystem.js";
 import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
+import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
+import type { SceneHooks } from "./SceneHooks.js";
 
 /** Engine configuration. */
 export interface EngineConfig {
@@ -64,6 +66,7 @@ export class Engine {
   private readonly scheduler: SystemScheduler;
   private readonly errorBoundary: ErrorBoundary;
   private readonly queryCache: QueryCache;
+  private readonly sceneHooks: SceneHookRegistry;
   /** The asset manager. */
   readonly assets: AssetManager;
 
@@ -86,6 +89,7 @@ export class Engine {
     this.scheduler = new SystemScheduler();
     this.inspector = new Inspector(this);
     this.assets = new AssetManager();
+    this.sceneHooks = new SceneHookRegistry();
 
     // Wire up the scheduler with error boundary
     this.scheduler.setErrorBoundary(this.errorBoundary);
@@ -101,6 +105,7 @@ export class Engine {
     this.context.register(InspectorKey, this.inspector);
     this.context.register(SystemSchedulerKey, this.scheduler);
     this.context.register(AssetManagerKey, this.assets);
+    this.context.register(SceneHookRegistryKey, this.sceneHooks);
 
     // Wire scene manager with context
     this.scenes._setContext(this.context);
@@ -123,6 +128,15 @@ export class Engine {
         this.scenes._flushDestroyQueues();
       },
     });
+  }
+
+  /**
+   * Register scene lifecycle hooks. The returned function unregisters the
+   * hooks. Infrastructure plugins (renderer, physics, debug) register hooks
+   * in their `install` or `onStart` to set up and tear down per-scene state.
+   */
+  registerSceneHooks(hooks: SceneHooks): () => void {
+    return this.sceneHooks.register(hooks);
   }
 
   /** Register a plugin. Must be called before start(). */

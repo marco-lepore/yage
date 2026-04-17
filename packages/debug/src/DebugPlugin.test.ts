@@ -94,22 +94,29 @@ vi.mock("pixi.js", () => ({
 
 import {
   EngineContext,
+  EventBus,
+  EventBusKey,
   GameLoopKey,
   InspectorKey,
+  SceneHookRegistry,
+  SceneHookRegistryKey,
+  SceneManager,
+  SceneManagerKey,
   SystemScheduler,
   SystemSchedulerKey,
 } from "@yagejs/core";
-import { CameraKey, RendererKey, RenderLayerManagerKey } from "@yagejs/renderer";
+import type { Scene } from "@yagejs/core";
+import {
+  CameraKey,
+  RendererKey,
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+} from "@yagejs/renderer";
+import type {
+  SceneRenderTree,
+  SceneRenderTreeProvider,
+} from "@yagejs/renderer";
 import { DebugPlugin } from "./DebugPlugin.js";
-
-function createMockLayerManager() {
-  return {
-    getOrCreate: () => ({
-      container: new mocks.MockContainer(),
-    }),
-    defaultLayer: { container: new mocks.MockContainer() },
-  };
-}
 
 function createContext() {
   const context = new EngineContext();
@@ -123,8 +130,6 @@ function createContext() {
   };
   const renderer = {
     application: app,
-    createScreenContainer: () => createMockLayerManager(),
-    destroyScreenContainer: vi.fn(),
   };
   const loop = {
     fixedTimestep: 20,
@@ -140,8 +145,55 @@ function createContext() {
     }),
   };
 
+  const bus = new EventBus();
+  const hookRegistry = new SceneHookRegistry();
+  const sceneManager = new SceneManager();
+
+  // Mock provider that materializes a trivial tree per scene.
+  const provider: SceneRenderTreeProvider = {
+    createForScene: (): SceneRenderTree => ({
+      get: () => ({
+        name: "default",
+        order: 0,
+        space: "world",
+        container: new mocks.MockContainer(),
+      }) as never,
+      tryGet: () => ({
+        name: "default",
+        order: 0,
+        space: "world",
+        container: new mocks.MockContainer(),
+      }) as never,
+      getAll: () => [],
+      defaultLayer: {
+        name: "default",
+        order: 0,
+        space: "world",
+      } as never,
+      ensureLayer: () =>
+        ({ name: "default", order: 0, space: "world" }) as never,
+    }),
+    destroyForScene: vi.fn(),
+    bringSceneToFront: vi.fn(),
+  };
+
+  // Hook registry mimics the renderer plugin: registers a per-scene tree
+  // on the scene's scope so DebugScene.onEnter can resolve it.
+  hookRegistry.register({
+    beforeEnter: (scene: Scene) => {
+      const tree = provider.createForScene(scene);
+      scene._registerScoped(SceneRenderTreeKey, tree);
+    },
+    afterExit: (scene: Scene) => {
+      provider.destroyForScene(scene);
+    },
+  });
+
   context.register(SystemSchedulerKey, scheduler);
-  context.register(RenderLayerManagerKey, createMockLayerManager() as never);
+  context.register(EventBusKey, bus as never);
+  context.register(SceneHookRegistryKey, hookRegistry);
+  context.register(SceneManagerKey, sceneManager);
+  context.register(SceneRenderTreeProviderKey, provider);
   context.register(RendererKey, renderer as never);
   context.register(
     CameraKey,
@@ -150,7 +202,9 @@ function createContext() {
   context.register(GameLoopKey, loop as never);
   context.register(InspectorKey, inspector as never);
 
-  return { context, scheduler, app, loop };
+  sceneManager._setContext(context);
+
+  return { context, scheduler, app, loop, sceneManager };
 }
 
 function getExposedClock(): IDebugClock {
@@ -176,13 +230,13 @@ afterEach(() => {
 });
 
 describe("DebugPlugin", () => {
-  it("exposes a clock on the debug global and enters manual mode on start when configured", () => {
+  it("exposes a clock on the debug global and enters manual mode on start when configured", async () => {
     const { context, scheduler, app } = createContext();
     const plugin = new DebugPlugin({ manualClock: true });
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
-    plugin.onStart();
+    await plugin.onStart();
 
     const clock = getExposedClock();
     expect(app.stop).toHaveBeenCalledOnce();
@@ -191,13 +245,13 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("steps exact frames and renders once per frame in manual mode", () => {
+  it("steps exact frames and renders once per frame in manual mode", async () => {
     const { context, scheduler, app, loop } = createContext();
     const plugin = new DebugPlugin({ manualClock: true });
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
-    plugin.onStart();
+    await plugin.onStart();
 
     const clock = getExposedClock();
     clock.stepFrames(3);
@@ -211,13 +265,13 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("can toggle between auto and manual clock control", () => {
+  it("can toggle between auto and manual clock control", async () => {
     const { context, scheduler, app, loop } = createContext();
     const plugin = new DebugPlugin();
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
-    plugin.onStart();
+    await plugin.onStart();
 
     const clock = getExposedClock();
 
@@ -239,13 +293,13 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("advances one frame from the step hotkey while manual clock mode is active", () => {
+  it("advances one frame from the step hotkey while manual clock mode is active", async () => {
     const { context, scheduler, app, loop } = createContext();
     const plugin = new DebugPlugin({ manualClock: true });
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
-    plugin.onStart();
+    await plugin.onStart();
 
     const event = new Event("keydown", { cancelable: true });
     const preventDefault = vi.spyOn(event, "preventDefault");

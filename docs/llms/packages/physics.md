@@ -111,9 +111,12 @@ const WALL = layers.define("wall");
 ## PhysicsWorld
 
 ```ts
-import { PhysicsWorldManagerKey } from "@yagejs/physics";
+import { PhysicsWorldKey } from "@yagejs/physics";
 
-const world = this.use(PhysicsWorldManagerKey).getOrCreateWorld(this.scene);
+// Scene-scoped key: the physics plugin's `beforeEnter` hook registers
+// the active scene's `PhysicsWorld` on its scope. Use `PhysicsWorldManagerKey`
+// (engine-scope) only for cross-scene enumeration.
+const world = this.use(PhysicsWorldKey);
 
 // Gravity
 world.setGravity(0, -980);

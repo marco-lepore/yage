@@ -3,6 +3,8 @@ import type { Entity } from "./Entity.js";
 import type { EventToken } from "./EventToken.js";
 import type { ComponentClass } from "./types.js";
 import type { SnapshotResolver } from "./Serializable.js";
+import type { Logger } from "./Logger.js";
+import { LoggerKey } from "./EngineContext.js";
 
 /**
  * Base class for all components.
@@ -46,15 +48,44 @@ export abstract class Component {
     return this.scene.context;
   }
 
-  /** Resolve a service by key, cached after first lookup. */
+  /**
+   * Resolve a service by key, cached after first lookup. Scene-scoped values
+   * (registered via `scene._registerScoped`) take precedence over engine
+   * scope. A key declared with `scope: "scene"` that falls back to engine
+   * scope emits a one-shot dev warning — almost always signals a missed
+   * `beforeEnter` hook.
+   */
   protected use<T>(key: ServiceKey<T>): T {
     this._serviceCache ??= new Map();
-    let value = this._serviceCache.get(key.id);
-    if (value === undefined) {
-      value = this.context.resolve(key);
-      this._serviceCache.set(key.id, value);
+    const cached = this._serviceCache.get(key.id);
+    if (cached !== undefined) return cached as T;
+
+    const scene = this.entity.scene;
+    const scoped = scene?._resolveScoped(key);
+    if (scoped !== undefined) {
+      this._serviceCache.set(key.id, scoped);
+      return scoped;
     }
-    return value as T;
+
+    const value = this.context.resolve(key);
+    if (key.scope === "scene") {
+      // Don't cache: a later scoped registration should take precedence,
+      // and the warning should keep firing until the plugin wiring is
+      // fixed — caching would silence it after one hit.
+      this._warnScopedFallback(key);
+      return value;
+    }
+    this._serviceCache.set(key.id, value);
+    return value;
+  }
+
+  private _warnScopedFallback<T>(key: ServiceKey<T>): void {
+    const logger = this.context.tryResolve(LoggerKey) as Logger | undefined;
+    logger?.warn(
+      "core",
+      `Scoped key "${key.id}" fell back to engine scope — did a plugin forget to register a beforeEnter hook?`,
+      { component: this.constructor.name },
+    );
   }
 
   /**

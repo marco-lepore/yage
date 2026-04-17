@@ -17,10 +17,22 @@ export interface ScenePhysicsContext {
   alphaRef: PhysicsAlphaRef;
 }
 
-/** Service key for the PhysicsWorldManager (per-scene physics worlds). */
+/**
+ * Engine-scope key for the PhysicsWorldManager. Owns all per-scene worlds;
+ * resolve it for cross-scene enumeration (save system, debug inspector).
+ */
 export const PhysicsWorldManagerKey = new ServiceKey<PhysicsWorldManager>(
   "physicsWorldManager",
 );
+
+/**
+ * Scene-scope key for the active scene's `PhysicsWorld`. Registered by the
+ * physics plugin's `beforeEnter` hook; components resolve via
+ * `this.use(PhysicsWorldKey)`.
+ */
+export const PhysicsWorldKey = new ServiceKey<PhysicsWorld>("physicsWorld", {
+  scope: "scene",
+});
 
 /** Body type for rigid bodies. */
 export type BodyType = "dynamic" | "static" | "kinematic";

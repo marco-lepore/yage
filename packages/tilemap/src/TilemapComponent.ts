@@ -1,6 +1,6 @@
 import { Component, Transform, serializable } from "@yagejs/core";
 import { Assets, Container } from "pixi.js";
-import { RenderLayerManagerKey } from "@yagejs/renderer";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
 import { extractCollisionShapes } from "./colliders.js";
 import type { TiledMapData } from "./tiled/types.js";
@@ -69,8 +69,7 @@ export class TilemapComponent extends Component {
       this.container.addChild(layer);
     }
 
-    const layers = this.use(RenderLayerManagerKey);
-    const renderLayer = layers.get(this.renderLayerName);
+    const renderLayer = this.use(SceneRenderTreeKey).get(this.renderLayerName);
     renderLayer.container.addChild(this.container);
   }
 

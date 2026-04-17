@@ -87,11 +87,15 @@ class PlayerController extends Component {
 
     if (input.isPressed("jump")) {
       const body = this.sibling(RigidBody);
-      physics.applyImpulse(body, { x: 0, y: -600 });
+      body.setVelocityY(-600);
     }
   }
 }
 ```
+
+Some keys like `PhysicsWorldKey` and `SceneRenderTreeKey` are per-scene —
+each scene gets its own instance. `this.use()` resolves the correct one
+automatically; you don't need to do anything different.
 
 ## Accessing Services from Systems
 

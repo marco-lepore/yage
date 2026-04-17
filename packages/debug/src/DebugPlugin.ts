@@ -1,17 +1,30 @@
-import { SystemSchedulerKey, InspectorKey, GameLoopKey } from "@yagejs/core";
+import {
+  EventBusKey,
+  GameLoopKey,
+  InspectorKey,
+  SceneManagerKey,
+} from "@yagejs/core";
 import type {
   EngineContext,
+  EventBus,
+  EngineEvents,
   Plugin,
-  SystemScheduler,
+  SceneManager,
   System,
+  SystemScheduler,
 } from "@yagejs/core";
 import { DebugRegistryKey } from "./types.js";
-import { RendererKey, RenderLayerManagerKey, CameraKey } from "@yagejs/renderer";
-import type { RendererPlugin } from "@yagejs/renderer";
-import { Container } from "pixi.js";
+import { CameraKey, RendererKey } from "@yagejs/renderer";
+import type {
+  RendererPlugin,
+  SceneRenderTreeProvider,
+} from "@yagejs/renderer";
+import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
+import type { Container } from "pixi.js";
 import { DebugClock } from "./DebugClock.js";
 import type { IDebugClock } from "./DebugClock.js";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
+import { DebugScene } from "./DebugScene.js";
 import { StatsStore } from "./StatsStore.js";
 import { GraphicsPool } from "./GraphicsPool.js";
 import { TextPool } from "./TextPool.js";
@@ -40,26 +53,35 @@ export interface DebugConfig {
   flags?: Record<string, boolean>;
 }
 
-/** Debug overlay plugin. Depends on the renderer plugin. */
+/**
+ * Debug overlay plugin. Mounts a private `DebugScene` through
+ * `SceneManager._mountDetached` so it goes through the same scoped-DI
+ * lifecycle as stacked scenes (the renderer's `beforeEnter` hook creates
+ * its render tree) while staying off the user-visible scene stack.
+ */
 export class DebugPlugin implements Plugin {
   readonly name = "debug";
-  readonly version = "2.0.0";
+  readonly version = "3.0.0";
   readonly dependencies = ["renderer"] as const;
 
   private readonly config: DebugConfig;
   private registry!: DebugRegistryImpl;
   private stats!: StatsStore;
-  private graphicsPool!: GraphicsPool;
-  private textPool!: TextPool;
-  private worldContainer!: Container;
-  private hudContainer!: Container;
-  private worldApi!: WorldDebugApiImpl;
-  private hudApi!: HudDebugApiImpl;
+  private graphicsPool: GraphicsPool | null = null;
+  private textPool: TextPool | null = null;
+  private worldApi: WorldDebugApiImpl | null = null;
+  private hudApi: HudDebugApiImpl | null = null;
+  private renderSystem: DebugRenderSystem | null = null;
   private systemTimings = new Map<string, number>();
   private originalUpdates = new Map<System, (dt: number) => void>();
   private keyListener: ((e: KeyboardEvent) => void) | null = null;
   private context!: EngineContext;
   private renderer!: RendererPlugin;
+  private scheduler!: SystemScheduler;
+  private sceneManager!: SceneManager;
+  private debugScene: DebugScene | null = null;
+  private provider: SceneRenderTreeProvider | null = null;
+  private eventUnsubs: Array<() => void> = [];
   private clock: DebugClock | null = null;
 
   constructor(config?: DebugConfig) {
@@ -68,26 +90,7 @@ export class DebugPlugin implements Plugin {
 
   install(context: EngineContext): void {
     this.context = context;
-
     this.renderer = context.resolve(RendererKey);
-    const camera = context.resolve(CameraKey);
-
-    // World-space debug layer (child of world container, drawn on top)
-    const worldLayers = context.resolve(RenderLayerManagerKey);
-    const debugLayer = worldLayers.getOrCreate("debug", 999999);
-    this.worldContainer = debugLayer.container;
-    this.worldContainer.eventMode = "none";
-
-    // Screen-space HUD container (sibling of world container, unaffected by camera)
-    const hudLayers = this.renderer.createScreenContainer("debug-hud");
-    this.hudContainer = hudLayers.defaultLayer.container;
-    this.hudContainer.eventMode = "none";
-
-    this.graphicsPool = new GraphicsPool(
-      this.worldContainer,
-      this.config.maxGraphics,
-    );
-    this.textPool = new TextPool(this.hudContainer, this.config.maxHudLines);
 
     this.registry = new DebugRegistryImpl();
     this.registry.enabled = this.config.startEnabled ?? false;
@@ -103,38 +106,20 @@ export class DebugPlugin implements Plugin {
 
     this.stats = new StatsStore();
 
-    this.worldApi = new WorldDebugApiImpl(
-      this.graphicsPool,
-      this.registry,
-      camera,
-    );
-    this.hudApi = new HudDebugApiImpl(
-      this.textPool,
-      this.registry,
-      camera.viewportWidth,
-      camera.viewportHeight,
-    );
-
     context.register(DebugRegistryKey, this.registry);
   }
 
   registerSystems(scheduler: SystemScheduler): void {
-    scheduler.add(
-      new DebugRenderSystem(
-        this.registry,
-        this.graphicsPool,
-        this.textPool,
-        this.worldApi,
-        this.hudApi,
-        this.stats,
-        this.worldContainer,
-        this.hudContainer,
-      ),
-    );
+    // DebugRenderSystem is registered lazily once the debug scene is ready —
+    // its constructor needs the scene's layer containers.
+    this.scheduler = scheduler;
   }
 
-  onStart(): void {
-    // Toggle / step key listener
+  async onStart(): Promise<void> {
+    this.sceneManager = this.context.resolve(SceneManagerKey);
+    const bus = this.context.resolve(EventBusKey) as EventBus<EngineEvents>;
+
+    // Key listeners (toggle, manual-clock step)
     const toggleKey = this.config.toggleKey ?? "Backquote";
     const stepKey = this.config.stepKey ?? "Period";
     this.keyListener = (e: KeyboardEvent) => {
@@ -151,9 +136,9 @@ export class DebugPlugin implements Plugin {
       window.addEventListener("keydown", this.keyListener);
     }
 
-    // Instrument system timings
-    const scheduler = this.context.resolve(SystemSchedulerKey);
-    for (const system of scheduler.getAllSystems()) {
+    // Instrument system timings — reuse the scheduler captured in
+    // `registerSystems`, which ran before `onStart`.
+    for (const system of this.scheduler.getAllSystems()) {
       if (system instanceof DebugRenderSystem) continue;
       const name = system.constructor.name;
       const original = system.update.bind(system);
@@ -174,23 +159,39 @@ export class DebugPlugin implements Plugin {
     // Manual clock for deterministic stepping
     const gameLoop = this.context.resolve(GameLoopKey);
     const app = this.renderer.application;
-
     this.clock = new DebugClock(
       gameLoop,
       () => app.stop(),
       () => app.start(),
       () => app.render(),
     );
-
     if (this.config.manualClock) {
       this.clock.setManual(true);
     }
-
     this.attachToGlobal(this.clock);
+
+    // Materialize the debug scene off-stack. `_mountDetached` routes through
+    // the same beforeEnter hooks as `push`, so the renderer materializes the
+    // debug scene's tree and registers SceneRenderTreeKey on its scope.
+    this.provider = this.context.tryResolve(SceneRenderTreeProviderKey) ?? null;
+    await this.materializeDebugScene();
+
+    // Keep the debug scene visually on top of the user stack after any
+    // push/pop/replace by reordering its root containers.
+    const bringToFront = () => {
+      if (this.debugScene && this.provider?.bringSceneToFront) {
+        this.provider.bringSceneToFront(this.debugScene);
+      }
+    };
+    this.eventUnsubs.push(bus.on("scene:pushed", bringToFront));
+    this.eventUnsubs.push(bus.on("scene:popped", bringToFront));
+    this.eventUnsubs.push(bus.on("scene:replaced", bringToFront));
   }
 
   onDestroy(): void {
-    // Restore original system.update methods
+    for (const unsub of this.eventUnsubs) unsub();
+    this.eventUnsubs.length = 0;
+
     for (const [system, original] of this.originalUpdates) {
       system.update = original;
     }
@@ -211,10 +212,79 @@ export class DebugPlugin implements Plugin {
     }
     this.registry.contributors.clear();
 
-    this.graphicsPool.destroy();
-    this.textPool.destroy();
-    // worldContainer is owned by the world RenderLayerManager — don't destroy it
-    this.renderer.destroyScreenContainer("debug-hud");
+    this.tearDownDebugInfra();
+    this.teardownDebugScene();
+  }
+
+  private async materializeDebugScene(): Promise<void> {
+    const scene = new DebugScene();
+    scene.onReady = (worldContainer, hudContainer) =>
+      this.setUpDebugInfra(worldContainer, hudContainer);
+    scene.onTearDown = () => this.tearDownDebugInfra();
+    await this.sceneManager._mountDetached(scene);
+    this.debugScene = scene;
+  }
+
+  private teardownDebugScene(): void {
+    // If destroy is called while `_mountDetached` is still pending, we don't
+    // yet hold a reference to the partially-mounted scene. Skipping unmount
+    // here is safe: onDestroy still runs `tearDownDebugInfra` below, and the
+    // engine teardown tears down the renderer next which destroys any
+    // half-created provider entries.
+    if (!this.debugScene) return;
+    this.sceneManager._unmountDetached(this.debugScene);
+    this.debugScene = null;
+    this.provider = null;
+  }
+
+  private setUpDebugInfra(
+    worldContainer: Container,
+    hudContainer: Container,
+  ): void {
+    const camera = this.context.resolve(CameraKey);
+
+    this.graphicsPool = new GraphicsPool(
+      worldContainer,
+      this.config.maxGraphics,
+    );
+    this.textPool = new TextPool(hudContainer, this.config.maxHudLines);
+
+    this.worldApi = new WorldDebugApiImpl(
+      this.graphicsPool,
+      this.registry,
+      camera,
+    );
+    this.hudApi = new HudDebugApiImpl(
+      this.textPool,
+      this.registry,
+      camera.viewportWidth,
+      camera.viewportHeight,
+    );
+
+    this.renderSystem = new DebugRenderSystem(
+      this.registry,
+      this.graphicsPool,
+      this.textPool,
+      this.worldApi,
+      this.hudApi,
+      this.stats,
+      worldContainer,
+      hudContainer,
+    );
+    this.scheduler.add(this.renderSystem);
+  }
+
+  private tearDownDebugInfra(): void {
+    if (this.renderSystem) {
+      this.scheduler.remove(this.renderSystem);
+      this.renderSystem = null;
+    }
+    this.graphicsPool?.destroy();
+    this.textPool?.destroy();
+    this.graphicsPool = null;
+    this.textPool = null;
+    this.worldApi = null;
+    this.hudApi = null;
   }
 
   private attachToGlobal(clock: IDebugClock): void {

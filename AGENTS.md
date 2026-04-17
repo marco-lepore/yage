@@ -38,11 +38,12 @@ Enforced by tooling — match these conventions exactly:
 - **Prettier**: double quotes, semicolons, 2-space indent, trailing commas
 - **ESLint**: `typescript-eslint` strict config
 - No `any` in public API signatures
+- **Prefer `import type { Foo } from "./foo.js"` over inline `import("./foo.js").Foo`.** Inline `import()` type syntax is noisy and hard to read; use top-of-file `import type` statements. Only reach for inline `import()` when breaking an otherwise unavoidable circular type dependency — and add a comment explaining why.
 
 ## Architecture Rules
 
 - **Components own game logic; Systems for engine internals** — `ComponentUpdateSystem` calls component `update(dt)`/`fixedUpdate(dt)`. Systems are for cross-cutting concerns (physics, rendering, audio).
-- **`ServiceKey<T>` for DI** — never use string keys. Type-safe resolution via `EngineContext`.
+- **`ServiceKey<T>` for DI** — never use string keys. Type-safe resolution via `Component.use(Key)` or `Component.service(Key)`. Some keys are per-scene (e.g. `PhysicsWorldKey`, `SceneRenderTreeKey`) — `use()` resolves the correct one automatically.
 - **Pixels everywhere** — all user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.
 - **Immutable `Vec2`, mutable `Transform`** — `Vec2` operations return new instances. `Transform` has mutating methods (`setPosition`, `translate`, etc.).
 - **No pixi.js imports in `@yagejs/core`** — core has zero runtime dependencies.

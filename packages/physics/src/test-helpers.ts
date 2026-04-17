@@ -14,6 +14,8 @@ import {
   SystemSchedulerKey,
   SceneManager,
   SceneManagerKey,
+  SceneHookRegistry,
+  SceneHookRegistryKey,
   Scene,
   Entity,
   _resetEntityIdCounter,
@@ -21,7 +23,7 @@ import {
 import type { EngineEvents } from "@yagejs/core";
 import { PhysicsWorld } from "./PhysicsWorld.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
-import { PhysicsWorldManagerKey } from "./types.js";
+import { PhysicsWorldKey, PhysicsWorldManagerKey } from "./types.js";
 import type { PhysicsConfig } from "./types.js";
 
 // ---- Test Scene ----
@@ -49,9 +51,9 @@ export interface PhysicsTestContext {
   physicsWorld: PhysicsWorld;
 }
 
-export function createPhysicsTestContext(
+export async function createPhysicsTestContext(
   config?: PhysicsConfig,
-): PhysicsTestContext {
+): Promise<PhysicsTestContext> {
   _resetEntityIdCounter();
 
   const ctx = new EngineContext();
@@ -71,15 +73,28 @@ export function createPhysicsTestContext(
   ctx.register(SystemSchedulerKey, scheduler);
   ctx.register(SceneManagerKey, sceneManager);
 
+  // Wire a hook registry that mirrors the physics plugin's behavior, so
+  // `sceneManager.push` materializes per-scene worlds the same way the
+  // real plugin would.
+  const hookRegistry = new SceneHookRegistry();
+  ctx.register(SceneHookRegistryKey, hookRegistry);
+
   const manager = new PhysicsWorldManager(config);
   ctx.register(PhysicsWorldManagerKey, manager);
+  hookRegistry.register({
+    beforeEnter: (s) => {
+      const world = manager.getOrCreateWorld(s);
+      s._registerScoped(PhysicsWorldKey, world);
+    },
+    afterExit: (s) => {
+      manager.destroyWorld(s);
+    },
+  });
 
   sceneManager._setContext(ctx);
   const scene = new _TestScene("test-scene");
-  sceneManager.push(scene);
+  await sceneManager.push(scene);
 
-  // Pre-create a world for the default test scene so tests that
-  // add entities to `scene` immediately get a PhysicsWorld.
   const physicsWorld = manager.getOrCreateWorld(scene);
 
   return {
@@ -95,13 +110,13 @@ export function createPhysicsTestContext(
 }
 
 /** Create an additional test scene and push it onto the scene manager. */
-export function createTestScene(
+export async function createTestScene(
   sceneManager: SceneManager,
   name: string,
   opts?: { pauseBelow?: boolean },
-): Scene {
+): Promise<Scene> {
   const scene = new _TestScene(name, opts?.pauseBelow ?? true);
-  sceneManager.push(scene);
+  await sceneManager.push(scene);
   return scene;
 }
 

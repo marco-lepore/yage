@@ -43,20 +43,29 @@ class LevelScene extends Scene {
 Add a `TilemapComponent` to an entity to render the map:
 
 ```typescript
+import { Scene, Transform } from "@yagejs/core";
 import { TilemapComponent } from "@yagejs/tilemap";
-import { RenderLayerManagerKey } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 
-onEnter(): void {
-  const layerMgr = this.service(RenderLayerManagerKey);
-  layerMgr.create("map", -10); // render behind game entities
+class LevelScene extends Scene {
+  readonly name = "level";
+  readonly preload = [Tileset, MapData];
 
-  const map = this.spawn("map");
-  map.add(new Transform());
-  map.add(new TilemapComponent({
-    mapKey: MapData.path,     // serializable asset reference
-    layers: ["ground", "walls"], // which tile layers to render (omit for all)
-    layer: "map",             // render layer name
-  }));
+  // Declare the scene's layers — the renderer plugin materializes them
+  // automatically when the scene is pushed.
+  readonly layers: readonly LayerDef[] = [
+    { name: "map", order: -10 },
+  ];
+
+  onEnter(): void {
+    const map = this.spawn("map");
+    map.add(new Transform());
+    map.add(new TilemapComponent({
+      mapKey: MapData.path,         // serializable asset reference
+      layers: ["ground", "walls"],  // which tile layers to render (omit for all)
+      layer: "map",                 // render layer name
+    }));
+  }
 }
 ```
 

@@ -153,7 +153,8 @@ vi.mock("pixi.js", () => ({
 import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIPanel } from "./UIPanel.js";
-import { Anchor, UILayerManagerKey } from "./types.js";
+import { Anchor } from "./types.js";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
 
 beforeAll(() => {
@@ -238,26 +239,29 @@ describe("UIPanel", () => {
   });
 
   describe("onAdd / onDestroy", () => {
-    it("onAdd adds container to default layer", () => {
-      const { scene, context } = createUITestContext();
-      const layerManager = context.resolve(UILayerManagerKey);
-      const defaultLayer = layerManager.defaultLayer.container;
+    it("onAdd adds container to the auto-provisioned 'ui' layer", () => {
+      const { scene } = createUITestContext();
+      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       const entity = spawnEntityInScene(scene);
       entity.add(new UIPanel());
 
-      expect(defaultLayer.children.length).toBe(1);
+      const uiLayer = tree.tryGet("ui");
+      expect(uiLayer).toBeDefined();
+      const container = (uiLayer as unknown as { container: { children: unknown[] } }).container;
+      expect(container.children.length).toBe(1);
     });
 
     it("onDestroy removes container from parent", () => {
-      const { scene, context } = createUITestContext();
-      const layerManager = context.resolve(UILayerManagerKey);
-      const defaultLayer = layerManager.defaultLayer.container;
+      const { scene } = createUITestContext();
       const entity = spawnEntityInScene(scene);
       const panel = entity.add(new UIPanel());
+      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+      const uiLayer = tree.tryGet("ui");
+      const container = (uiLayer as unknown as { container: { children: unknown[] } }).container;
 
-      expect(defaultLayer.children.length).toBe(1);
+      expect(container.children.length).toBe(1);
       panel.onDestroy!();
-      expect(defaultLayer.children.length).toBe(0);
+      expect(container.children.length).toBe(0);
     });
   });
 

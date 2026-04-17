@@ -313,7 +313,7 @@ async function main() {
 
   await loadFonts();
   await engine.start();
-  engine.scenes.push(new KitchenSinkScene());
+  await engine.scenes.push(new KitchenSinkScene());
 }
 
 main().catch(console.error);

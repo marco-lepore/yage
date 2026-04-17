@@ -43,7 +43,7 @@ import { RendererPlugin } from "@yagejs/renderer";
 const engine = new Engine({ debug: true });
 engine.use(new RendererPlugin({ width: 800, height: 600 }));
 await engine.start();
-engine.scenes.push(new MyScene());
+await engine.scenes.push(new MyScene());
 // later:
 engine.destroy();
 ```
@@ -158,11 +158,14 @@ if (entity.hasTrait(Interactable)) {
 Stack-based via `SceneManager`:
 
 ```ts
-engine.scenes.push(new GameScene());   // enters scene
-engine.scenes.pop();                    // exits top scene
-engine.scenes.replace(new MenuScene()); // swap top
-engine.scenes.clear();                  // exit all
+await engine.scenes.push(new GameScene());   // enters scene
+engine.scenes.pop();                         // exits top scene
+await engine.scenes.replace(new MenuScene());// swap top
+engine.scenes.clear();                       // exit all
 ```
+
+`push` and `replace` are async — they await `beforeEnter` hooks and
+`scene.preload` before `onEnter` fires. `pop` and `clear` are sync.
 
 Scene hooks: `onEnter`, `onExit`, `onPause` (scene pushed on top), `onResume` (scene above popped).
 
@@ -212,7 +215,30 @@ const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 
 Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`.
 
-Plugin keys: `CameraKey`, `RenderLayerManagerKey`, `InputManagerKey`, `PhysicsWorldKey`, `AudioManagerKey`, `SaveServiceKey`.
+Plugin keys: `CameraKey`, `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
+
+Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`) are per-scene —
+`this.use(key)` resolves the correct scene's instance automatically.
+
+### Scene render layers
+
+Scenes declare layers via `readonly layers`. The renderer materializes them
+when the scene is pushed. Components specify `{ layer: "world" }` to attach
+to a specific layer.
+
+```ts
+import type { LayerDef } from "@yagejs/renderer";
+
+class GameScene extends Scene {
+  readonly layers: readonly LayerDef[] = [
+    { name: "bg", order: -10 },
+    { name: "world", order: 0 },
+    { name: "hud", order: 100, space: "screen" },
+  ];
+}
+```
+
+Note: `push`/`replace` are async — `await` them to ensure `onEnter` has fired.
 
 ## Processes
 

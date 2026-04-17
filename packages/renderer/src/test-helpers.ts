@@ -17,9 +17,14 @@ import {
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
-import { CameraKey, RenderLayerManagerKey, StageKey } from "./types.js";
+import { CameraKey, StageKey, WorldRootKey } from "./types.js";
 import { Camera } from "./Camera.js";
 import { RenderLayerManager } from "./RenderLayer.js";
+import type {
+  SceneRenderTree,
+  SceneRenderTreeProvider,
+} from "./SceneRenderTree.js";
+import { SceneRenderTreeKey, SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -65,7 +70,7 @@ export class MockContainer {
   }
 }
 
-// ---- Test Context Helper ----
+// ---- Scene subclass for tests ----
 
 class _TestScene extends Scene {
   readonly name: string;
@@ -81,9 +86,57 @@ export interface RendererTestContext {
   queryCache: QueryCache;
   gameLoop: GameLoop;
   scheduler: SystemScheduler;
+  worldRoot: MockContainer;
+  screenRoot: MockContainer;
   stage: MockContainer;
   camera: Camera;
   layerManager: RenderLayerManager;
+  tree: SceneRenderTree;
+  provider: SceneRenderTreeProvider;
+}
+
+/**
+ * Minimal provider that builds a per-scene `RenderLayerManager` around the
+ * given root containers. Sufficient for renderer unit tests that don't
+ * exercise multi-scene topology.
+ */
+class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
+  private trees = new Map<Scene, { manager: RenderLayerManager; tree: SceneRenderTree }>();
+
+  constructor(
+    private readonly worldRoot: MockContainer,
+    private readonly screenRoot: MockContainer,
+  ) {}
+
+  createForScene(scene: Scene): SceneRenderTree {
+    const manager = new RenderLayerManager(
+      this.worldRoot as never,
+      this.screenRoot as never,
+    );
+    const tree: SceneRenderTree = {
+      get: (name) => manager.get(name),
+      tryGet: (name) => manager.tryGet(name),
+      getAll: () => manager.getAll(),
+      get defaultLayer() {
+        return manager.defaultLayer;
+      },
+      ensureLayer: (def) =>
+        manager.tryGet(def.name) ?? manager.createFromDef(def),
+    };
+    this.trees.set(scene, { manager, tree });
+    return tree;
+  }
+
+  destroyForScene(scene: Scene): void {
+    const entry = this.trees.get(scene);
+    if (!entry) return;
+    entry.manager.destroy();
+    this.trees.delete(scene);
+  }
+
+  managerFor(scene: Scene): RenderLayerManager | undefined {
+    return this.trees.get(scene)?.manager;
+  }
 }
 
 export function createRendererTestContext(
@@ -111,18 +164,38 @@ export function createRendererTestContext(
 
   const vw = options?.viewportWidth ?? 800;
   const vh = options?.viewportHeight ?? 600;
-  const stage = new MockContainer();
+  const worldRoot = new MockContainer();
+  const screenRoot = new MockContainer();
   const camera = new Camera(vw, vh);
-  const layerManager = new RenderLayerManager(stage as never);
 
-  ctx.register(StageKey, stage as never);
+  const provider = new MockSceneRenderTreeProvider(worldRoot, screenRoot);
+  ctx.register(StageKey, worldRoot as never);
+  ctx.register(WorldRootKey, worldRoot as never);
   ctx.register(CameraKey, camera);
-  ctx.register(RenderLayerManagerKey, layerManager);
+  ctx.register(SceneRenderTreeProviderKey, provider);
 
   const scene = new _TestScene("test-scene");
   scene._setContext(ctx);
 
-  return { context: ctx, scene, queryCache, gameLoop, scheduler, stage, camera, layerManager };
+  // Materialize the tree as if a beforeEnter hook ran.
+  const tree = provider.createForScene(scene);
+  scene._registerScoped(SceneRenderTreeKey, tree);
+  const layerManager = provider.managerFor(scene)!;
+
+  return {
+    context: ctx,
+    scene,
+    queryCache,
+    gameLoop,
+    scheduler,
+    worldRoot,
+    screenRoot,
+    stage: worldRoot,
+    camera,
+    layerManager,
+    tree,
+    provider,
+  };
 }
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {

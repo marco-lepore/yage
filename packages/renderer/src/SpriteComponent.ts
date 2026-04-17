@@ -1,6 +1,6 @@
 import { AssetHandle, Component, serializable } from "@yagejs/core";
 import { Sprite } from "pixi.js";
-import { RenderLayerManagerKey } from "./types.js";
+import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveTextureInput } from "./assets.js";
 import type { DisplaySprite, TextureInput } from "./public-types.js";
 
@@ -126,8 +126,7 @@ export class SpriteComponent extends Component {
   }
 
   onAdd(): void {
-    const layers = this.use(RenderLayerManagerKey);
-    const layer = layers.get(this.layerName);
+    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.sprite);
   }
 

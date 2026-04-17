@@ -70,25 +70,33 @@ import {
   Logger,
   LogLevel,
   Phase,
+  SceneHookRegistry,
+  SceneHookRegistryKey,
 } from "@yagejs/core";
 import { PhysicsPlugin } from "./PhysicsPlugin.js";
 import { PhysicsWorldManagerKey } from "./types.js";
 import { PhysicsWorldManager } from "./PhysicsWorldManager.js";
+
+function makeContext(): EngineContext {
+  const context = new EngineContext();
+  context.register(SceneHookRegistryKey, new SceneHookRegistry());
+  return context;
+}
 
 describe("PhysicsPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("has correct name and version", () => {
+  it("has correct name and version", async () => {
     const plugin = new PhysicsPlugin();
     expect(plugin.name).toBe("physics");
-    expect(plugin.version).toBe("2.0.0");
+    expect(plugin.version).toBe("3.0.0");
   });
 
   describe("install", () => {
-    it("registers PhysicsWorldManagerKey in context", () => {
-      const context = new EngineContext();
+    it("registers PhysicsWorldManagerKey in context", async () => {
+      const context = makeContext();
       const plugin = new PhysicsPlugin();
       plugin.install(context);
 
@@ -100,8 +108,8 @@ describe("PhysicsPlugin", () => {
   });
 
   describe("registerSystems", () => {
-    it("adds PhysicsSystem and PhysicsInterpolationSystem", () => {
-      const context = new EngineContext();
+    it("adds PhysicsSystem and PhysicsInterpolationSystem", async () => {
+      const context = makeContext();
       const plugin = new PhysicsPlugin();
       plugin.install(context);
 
@@ -123,8 +131,8 @@ describe("PhysicsPlugin", () => {
   });
 
   describe("onDestroy", () => {
-    it("calls destroy on PhysicsWorldManager", () => {
-      const context = new EngineContext();
+    it("calls destroy on PhysicsWorldManager", async () => {
+      const context = makeContext();
       const plugin = new PhysicsPlugin();
       plugin.install(context);
 

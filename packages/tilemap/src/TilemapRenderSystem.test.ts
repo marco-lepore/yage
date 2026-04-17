@@ -95,8 +95,15 @@ import {
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
-import { CameraKey, RenderLayerManagerKey, StageKey } from "@yagejs/renderer";
+import {
+  CameraKey,
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+  StageKey,
+  WorldRootKey,
+} from "@yagejs/renderer";
 import { Camera, RenderLayerManager } from "@yagejs/renderer";
+import type { SceneRenderTree } from "@yagejs/renderer";
 import { TilemapComponent } from "./TilemapComponent.js";
 import { TilemapRenderSystem } from "./TilemapRenderSystem.js";
 import type { TiledMapData } from "./tiled/types.js";
@@ -123,18 +130,37 @@ function createTestContext() {
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
-  const stage = new mocks.MockContainer();
+  const worldRoot = new mocks.MockContainer();
+  const screenRoot = new mocks.MockContainer();
   const camera = new Camera(800, 600);
-  const layerManager = new RenderLayerManager(stage as never);
+  const layerManager = new RenderLayerManager(
+    worldRoot as never,
+    screenRoot as never,
+  );
+  const tree: SceneRenderTree = {
+    get: (n) => layerManager.get(n),
+    tryGet: (n) => layerManager.tryGet(n),
+    getAll: () => layerManager.getAll(),
+    get defaultLayer() {
+      return layerManager.defaultLayer;
+    },
+    ensureLayer: (def) =>
+      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def),
+  };
 
-  ctx.register(StageKey, stage as never);
+  ctx.register(StageKey, worldRoot as never);
+  ctx.register(WorldRootKey, worldRoot as never);
   ctx.register(CameraKey, camera);
-  ctx.register(RenderLayerManagerKey, layerManager);
+  ctx.register(SceneRenderTreeProviderKey, {
+    createForScene: () => tree,
+    destroyForScene: () => undefined,
+  });
 
   const scene = new TestScene();
   scene._setContext(ctx);
+  scene._registerScoped(SceneRenderTreeKey, tree);
 
-  return { ctx, scene, queryCache, stage };
+  return { ctx, scene, queryCache, stage: worldRoot };
 }
 
 const testMap: TiledMapData = {

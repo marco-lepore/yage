@@ -1,5 +1,8 @@
 import { AssetHandle, Component, serializable } from "@yagejs/core";
-import { RenderLayerManagerKey, resolveTextureInput } from "@yagejs/renderer";
+import {
+  SceneRenderTreeKey,
+  resolveTextureInput,
+} from "@yagejs/renderer";
 import { ParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
@@ -180,8 +183,7 @@ export class ParticleEmitterComponent extends Component {
   }
 
   onAdd(): void {
-    const layers = this.use(RenderLayerManagerKey);
-    const layer = layers.get(this.config.layer);
+    const layer = this.use(SceneRenderTreeKey).get(this.config.layer);
     layer.container.addChild(this.container);
   }
 

@@ -3,8 +3,8 @@ import {
   RendererPlugin,
   GraphicsComponent,
   CameraKey,
-  RenderLayerManagerKey,
 } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
@@ -65,13 +65,13 @@ class PlayerController extends Component {
 class CameraScene extends Scene {
   readonly name = "camera";
 
-  private readonly layerMgr = this.service(RenderLayerManagerKey);
+  readonly layers: readonly LayerDef[] = [
+    { name: "bg", order: -10 },
+    { name: "world", order: 0 },
+    { name: "player", order: 10 },
+  ];
 
   onEnter(): void {
-    this.layerMgr.create("bg", -10);
-    this.layerMgr.create("world", 0);
-    this.layerMgr.create("player", 10);
-
     // Grid background (2000x2000 world)
     this.drawGrid();
 
@@ -199,7 +199,7 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-  engine.scenes.push(new CameraScene());
+  await engine.scenes.push(new CameraScene());
 }
 
 main().catch(console.error);

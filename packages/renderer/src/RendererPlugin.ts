@@ -1,32 +1,44 @@
-import { AssetManagerKey, GameLoopKey } from "@yagejs/core";
+import {
+  AssetManagerKey,
+  GameLoopKey,
+  SceneHookRegistryKey,
+} from "@yagejs/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { Application, Assets, Container, Graphics } from "pixi.js";
-import type { EventMode, Spritesheet } from "pixi.js";
+import type { Spritesheet } from "pixi.js";
 import { Camera } from "./Camera.js";
 import { DisplaySystem } from "./DisplaySystem.js";
-import { RenderLayerManager } from "./RenderLayer.js";
 import type { GraphicsContext, TextureResource } from "./public-types.js";
 import {
   CameraKey,
-  RenderLayerManagerKey,
   RendererKey,
   StageKey,
+  WorldRootKey,
 } from "./types.js";
 import type { RendererConfig } from "./types.js";
+import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
+import {
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+} from "./SceneRenderTree.js";
+import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
+
+import "./scene-augmentation.js";
 
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin {
   readonly name = "renderer";
-  readonly version = "2.0.0";
+  readonly version = "3.0.0";
 
   private app!: Application;
   private readonly config: RendererConfig;
   private readonly virtualWidth: number;
   private readonly virtualHeight: number;
-  private layerManager!: RenderLayerManager;
-  private worldContainer!: Container;
+  private worldRoot!: Container;
+  private screenRoot!: Container;
+  private provider!: SceneRenderTreeProviderImpl;
   private tickerFn: (() => void) | null = null;
-  private screenManagers = new Map<string, RenderLayerManager>();
+  private unregisterHooks: (() => void) | null = null;
 
   constructor(config: RendererConfig) {
     this.config = config;
@@ -55,11 +67,7 @@ export class RendererPlugin implements Plugin {
       this.config.container.appendChild(this.app.canvas);
     }
 
-    // 3. Create world container (child of app.stage, handles camera transform)
-    this.worldContainer = new Container();
-    this.app.stage.addChild(this.worldContainer);
-
-    // 4. Apply virtual resolution scaling to app.stage
+    // 3. Apply virtual resolution scaling to app.stage
     const scale = Math.min(
       this.config.width / this.virtualWidth,
       this.config.height / this.virtualHeight,
@@ -69,19 +77,46 @@ export class RendererPlugin implements Plugin {
     this.app.stage.scale.set(scale, scale);
     this.app.stage.position.set(offsetX / scale, offsetY / scale);
 
-    // 5. Create RenderLayerManager
-    this.layerManager = new RenderLayerManager(this.worldContainer);
+    // 4. Create dual-root topology: worldRoot (camera-transformed) +
+    //    screenRoot (un-transformed overlay). Per-scene trees attach here.
+    this.worldRoot = new Container();
+    this.worldRoot.label = "worldRoot";
+    this.screenRoot = new Container();
+    this.screenRoot.label = "screenRoot";
+    this.app.stage.addChild(this.worldRoot);
+    this.app.stage.addChild(this.screenRoot);
+
+    // 5. Create the per-scene render tree provider
+    this.provider = new SceneRenderTreeProviderImpl(
+      this.worldRoot,
+      this.screenRoot,
+    );
 
     // 6. Create Camera
     const camera = new Camera(this.virtualWidth, this.virtualHeight);
 
     // 7. Register services
     context.register(RendererKey, this);
-    context.register(StageKey, this.worldContainer);
+    context.register(StageKey, this.worldRoot);
+    context.register(WorldRootKey, this.worldRoot);
     context.register(CameraKey, camera);
-    context.register(RenderLayerManagerKey, this.layerManager);
+    context.register(SceneRenderTreeProviderKey, this.provider);
 
-    // 8. Attach PixiJS ticker to GameLoop
+    // 8. Register scene hooks: materialize a tree per scene on enter,
+    //    tear it down on exit. Registered at install time so the hook is
+    //    in place before any scene pushes.
+    const hookRegistry = context.resolve(SceneHookRegistryKey);
+    this.unregisterHooks = hookRegistry.register({
+      beforeEnter: (scene) => {
+        const tree = this.provider.createForScene(scene);
+        scene._registerScoped(SceneRenderTreeKey, tree);
+      },
+      afterExit: (scene) => {
+        this.provider.destroyForScene(scene);
+      },
+    });
+
+    // 9. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
     gameLoop.attachTicker((callback) => {
       const fn = () => callback(this.app.ticker.deltaMS);
@@ -90,7 +125,7 @@ export class RendererPlugin implements Plugin {
       return () => this.app.ticker.remove(fn);
     });
 
-    // 9. Register asset loaders (if AssetManager is available)
+    // 10. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
       load: (path: string) => Assets.load<TextureResource>(path),
@@ -117,11 +152,13 @@ export class RendererPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    this.unregisterHooks?.();
+    this.unregisterHooks = null;
     if (this.tickerFn) {
       this.app.ticker.remove(this.tickerFn);
       this.tickerFn = null;
     }
-    this.screenManagers.clear();
+    this.provider.destroyAll();
     this.app.destroy();
   }
 
@@ -140,9 +177,9 @@ export class RendererPlugin implements Plugin {
     return { width: this.virtualWidth, height: this.virtualHeight };
   }
 
-  /** The layer manager. */
-  get layers(): RenderLayerManager {
-    return this.layerManager;
+  /** The per-scene render tree provider. */
+  get sceneRenderTrees(): SceneRenderTreeProvider {
+    return this.provider;
   }
 
   /** Create a texture by drawing into a temporary graphics context. */
@@ -154,36 +191,5 @@ export class RendererPlugin implements Plugin {
     } finally {
       graphics.destroy();
     }
-  }
-
-  /**
-   * Create a screen-space container as a sibling of the world container.
-   * Not affected by the camera transform. Returns a RenderLayerManager
-   * for creating named layers within the container.
-   */
-  createScreenContainer(
-    name: string,
-    opts?: { eventMode?: EventMode },
-  ): RenderLayerManager {
-    if (this.screenManagers.has(name)) {
-      throw new Error(`Screen container "${name}" already exists.`);
-    }
-    const container = new Container();
-    container.label = name;
-    if (opts?.eventMode) container.eventMode = opts.eventMode;
-    this.app.stage.addChild(container);
-    const manager = new RenderLayerManager(container, opts?.eventMode);
-    this.screenManagers.set(name, manager);
-    return manager;
-  }
-
-  /** Destroy a screen-space container and all its children. */
-  destroyScreenContainer(name: string): void {
-    const manager = this.screenManagers.get(name);
-    if (!manager) return;
-    manager.root.removeFromParent();
-    manager.root.destroy({ children: true });
-    manager.destroy();
-    this.screenManagers.delete(name);
   }
 }

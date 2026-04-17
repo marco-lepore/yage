@@ -17,10 +17,19 @@ import {
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
-import { CameraKey, RenderLayerManagerKey, RendererKey, StageKey } from "@yagejs/renderer";
-import { Camera } from "@yagejs/renderer";
-import { RenderLayerManager } from "@yagejs/renderer";
-import { UIContainerKey, UILayerManagerKey } from "./types.js";
+import {
+  CameraKey,
+  RendererKey,
+  StageKey,
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+  WorldRootKey,
+} from "@yagejs/renderer";
+import { Camera, RenderLayerManager } from "@yagejs/renderer";
+import type {
+  SceneRenderTree,
+  SceneRenderTreeProvider,
+} from "@yagejs/renderer";
 
 // ---- Minimal mock container for test context ----
 
@@ -83,6 +92,43 @@ export class MockRendererPlugin {
   virtualSize = { width: 800, height: 600 };
 }
 
+// ---- Mock SceneRenderTree provider ----
+
+class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
+  private entries = new Map<Scene, { manager: RenderLayerManager; tree: SceneRenderTree }>();
+
+  constructor(
+    private readonly worldRoot: MockContainer,
+    private readonly screenRoot: MockContainer,
+  ) {}
+
+  createForScene(scene: Scene): SceneRenderTree {
+    const manager = new RenderLayerManager(
+      this.worldRoot as never,
+      this.screenRoot as never,
+    );
+    const tree: SceneRenderTree = {
+      get: (name) => manager.get(name),
+      tryGet: (name) => manager.tryGet(name),
+      getAll: () => manager.getAll(),
+      get defaultLayer() {
+        return manager.defaultLayer;
+      },
+      ensureLayer: (def) =>
+        manager.tryGet(def.name) ?? manager.createFromDef(def),
+    };
+    this.entries.set(scene, { manager, tree });
+    return tree;
+  }
+
+  destroyForScene(scene: Scene): void {
+    const entry = this.entries.get(scene);
+    if (!entry) return;
+    entry.manager.destroy();
+    this.entries.delete(scene);
+  }
+}
+
 // ---- Test Context ----
 
 class _TestScene extends Scene {
@@ -121,26 +167,31 @@ export function createUITestContext(): UITestContext {
 
   // Renderer mocks
   const renderer = new MockRendererPlugin();
-  const stage = new MockContainer();
+  const worldRoot = new MockContainer();
+  const screenRoot = new MockContainer();
   const camera = new Camera(800, 600);
-  const layerManager = new RenderLayerManager(stage as never);
 
   ctx.register(RendererKey, renderer as never);
-  ctx.register(StageKey, stage as never);
+  ctx.register(StageKey, worldRoot as never);
+  ctx.register(WorldRootKey, worldRoot as never);
   ctx.register(CameraKey, camera);
-  ctx.register(RenderLayerManagerKey, layerManager);
 
-  // UI layer manager + container
-  const uiContainer = new MockContainer();
-  uiContainer.label = "ui";
-  const uiLayerManager = new RenderLayerManager(uiContainer as never);
-  ctx.register(UILayerManagerKey, uiLayerManager);
-  ctx.register(UIContainerKey, uiLayerManager.defaultLayer.container as never);
+  const provider = new MockSceneRenderTreeProvider(worldRoot, screenRoot);
+  ctx.register(SceneRenderTreeProviderKey, provider);
 
   const scene = new _TestScene("test-scene");
   scene._setContext(ctx);
+  const tree = provider.createForScene(scene);
+  scene._registerScoped(SceneRenderTreeKey, tree);
 
-  return { context: ctx, scene, queryCache, uiContainer, renderer };
+  // `uiContainer` is the screen-root container the UI auto-provisions into.
+  return {
+    context: ctx,
+    scene,
+    queryCache,
+    uiContainer: screenRoot,
+    renderer,
+  };
 }
 
 export function spawnEntityInScene(scene: Scene, name = "entity"): Entity {

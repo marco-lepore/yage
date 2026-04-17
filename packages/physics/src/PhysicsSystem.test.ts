@@ -160,15 +160,15 @@ describe("PhysicsSystem", () => {
     mocks.resetHandles();
   });
 
-  it("has phase FixedUpdate and priority 0", () => {
+  it("has phase FixedUpdate and priority 0", async () => {
     const system = new PhysicsSystem();
     expect(system.phase).toBe(Phase.FixedUpdate);
     expect(system.priority).toBe(0);
   });
 
   describe("update", () => {
-    it("calls physicsWorld.step with dt converted to seconds", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
+    it("calls physicsWorld.step with dt converted to seconds", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -185,8 +185,8 @@ describe("PhysicsSystem", () => {
       expect(world.timestep).toBeCloseTo(16.67 / 1000);
     });
 
-    it("stores prev state before updating curr for dynamic bodies", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("stores prev state before updating curr for dynamic bodies", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -211,8 +211,8 @@ describe("PhysicsSystem", () => {
       expect(rb._currRotation).toBeCloseTo(0.5);
     });
 
-    it("syncs Transform → Rapier for kinematic bodies", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("syncs Transform → Rapier for kinematic bodies", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -233,8 +233,8 @@ describe("PhysicsSystem", () => {
       });
     });
 
-    it("does not sync static bodies to Rapier", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
+    it("does not sync static bodies to Rapier", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -252,8 +252,8 @@ describe("PhysicsSystem", () => {
       // And isDynamic is false so curr shouldn't be updated from Rapier
     });
 
-    it("updates Transform for dynamic bodies after step", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("updates Transform for dynamic bodies after step", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -272,8 +272,8 @@ describe("PhysicsSystem", () => {
       expect(transform.rotation).toBeCloseTo(1.0);
     });
 
-    it("clears teleport flag", () => {
-      const { scene, context } = createPhysicsTestContext();
+    it("clears teleport flag", async () => {
+      const { scene, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -288,8 +288,8 @@ describe("PhysicsSystem", () => {
       expect(rb._teleported).toBe(false);
     });
 
-    it("processes collision events", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
+    it("processes collision events", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -305,8 +305,8 @@ describe("PhysicsSystem", () => {
       expect(spy).toHaveBeenCalled();
     });
 
-    it("skips destroyed entities", () => {
-      const { scene, context } = createPhysicsTestContext();
+    it("skips destroyed entities", async () => {
+      const { scene, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -320,8 +320,8 @@ describe("PhysicsSystem", () => {
       system.update(16.67);
     });
 
-    it("handles empty scene", () => {
-      const { context } = createPhysicsTestContext();
+    it("handles empty scene", async () => {
+      const { context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -329,8 +329,8 @@ describe("PhysicsSystem", () => {
       system.update(16.67);
     });
 
-    it("does not step world when scene is paused", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
+    it("does not step world when scene is paused", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -351,8 +351,8 @@ describe("PhysicsSystem", () => {
       expect(world.stepSpy).not.toHaveBeenCalled();
     });
 
-    it("resumes stepping when scene is unpaused", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
+    it("resumes stepping when scene is unpaused", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -374,8 +374,8 @@ describe("PhysicsSystem", () => {
       expect(world.stepSpy).toHaveBeenCalled();
     });
 
-    it("steps two scenes with different timeScales independently", () => {
-      const { scene, manager, sceneManager, context } = createPhysicsTestContext();
+    it("steps two scenes with different timeScales independently", async () => {
+      const { scene, manager, sceneManager, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -385,7 +385,7 @@ describe("PhysicsSystem", () => {
       e1.add(new RigidBodyComponent({ type: "dynamic" }));
 
       // Scene 2: timeScale 2
-      const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+      const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
       scene2.timeScale = 2;
       const world2 = manager.getOrCreateWorld(scene2);
       const e2 = spawnEntityInScene(scene2, "e2");
@@ -403,8 +403,8 @@ describe("PhysicsSystem", () => {
       expect(mockWorld2.stepSpy).toHaveBeenCalledTimes(2);
     });
 
-    it("per-scene accumulators are independent", () => {
-      const { scene, manager, sceneManager, context } = createPhysicsTestContext();
+    it("per-scene accumulators are independent", async () => {
+      const { scene, manager, sceneManager, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -413,7 +413,7 @@ describe("PhysicsSystem", () => {
       e1.add(new RigidBodyComponent({ type: "dynamic" }));
 
       // Scene 2 with timeScale 0.5
-      const scene2 = createTestScene(sceneManager, "scene2", { pauseBelow: false });
+      const scene2 = await createTestScene(sceneManager, "scene2", { pauseBelow: false });
       scene2.timeScale = 0.5;
       manager.getOrCreateWorld(scene2);
       const e2 = spawnEntityInScene(scene2, "e2");
@@ -438,8 +438,8 @@ describe("PhysicsSystem", () => {
       expect(ctx2.accumulator).toBeCloseTo(0);
     });
 
-    it("caps accumulator to prevent unbounded growth at high timeScale", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext();
+    it("caps accumulator to prevent unbounded growth at high timeScale", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -461,8 +461,8 @@ describe("PhysicsSystem", () => {
       }
     });
 
-    it("stores prev/curr correctly across multiple steps", () => {
-      const { scene, physicsWorld, context } = createPhysicsTestContext({ pixelsPerMeter: 50 });
+    it("stores prev/curr correctly across multiple steps", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext({ pixelsPerMeter: 50 });
       const system = new PhysicsSystem();
       system._setContext(context);
 
@@ -489,13 +489,13 @@ describe("PhysicsSystem", () => {
       expect(rb._currPosition.y).toBeCloseTo(100);
     });
 
-    it("skips scenes without a physics context", () => {
-      const { sceneManager, context } = createPhysicsTestContext();
+    it("skips scenes without a physics context", async () => {
+      const { sceneManager, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
 
       // Push a scene that has no physics entities (no world created)
-      createTestScene(sceneManager, "no-physics", { pauseBelow: false });
+      await createTestScene(sceneManager, "no-physics", { pauseBelow: false });
 
       // Should not throw
       system.update(16.67);

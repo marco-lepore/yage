@@ -4,7 +4,7 @@ import { AudioManagerKey } from "@yagejs/audio";
 import { InputManagerKey } from "@yagejs/input";
 import {
   CollisionLayers,
-  PhysicsWorldManagerKey,
+  PhysicsWorldKey,
   RigidBodyComponent,
   type PhysicsWorld,
 } from "@yagejs/physics";
@@ -35,9 +35,7 @@ export class PlayerController extends Component {
   private static readonly GROUND_RAY_DISTANCE = 22;
 
   onAdd(): void {
-    this.physicsWorld = this.use(PhysicsWorldManagerKey).getOrCreateWorld(
-      this.scene,
-    );
+    this.physicsWorld = this.use(PhysicsWorldKey);
   }
 
   update(): void {

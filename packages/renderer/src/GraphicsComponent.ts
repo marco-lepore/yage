@@ -1,6 +1,6 @@
 import { Component, serializable } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import { RenderLayerManagerKey } from "./types.js";
+import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { GraphicsContext } from "./public-types.js";
 
 /** Options for creating a GraphicsComponent. */
@@ -43,8 +43,7 @@ export class GraphicsComponent extends Component {
   }
 
   onAdd(): void {
-    const layers = this.use(RenderLayerManagerKey);
-    const layer = layers.get(this.layerName);
+    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.graphics);
   }
 

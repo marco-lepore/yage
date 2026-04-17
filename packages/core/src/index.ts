@@ -33,6 +33,10 @@ export {
   ProcessSystemKey,
   AssetManagerKey,
 } from "./EngineContext.js";
+export type { ServiceScope, ServiceKeyOptions } from "./EngineContext.js";
+
+export type { SceneHooks } from "./SceneHooks.js";
+export { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
 
 export { EventToken, defineEvent } from "./EventToken.js";
 
