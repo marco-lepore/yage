@@ -351,15 +351,24 @@ export class UIPanel extends Component {
           `UIPanel: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
         );
       }
-      // Auto-provision a "ui" layer the first time a UIPanel is added
-      // to a scene that hasn't declared one explicitly. Marked
-      // screen-space so cameras with auto-bindings leave it untransformed.
-      layer = tree.ensureLayer({
-        name: UI_DEFAULT_LAYER,
-        order: UI_DEFAULT_LAYER_ORDER,
-        screenSpace: true,
-      });
+      // Auto-provision a "ui" layer the first time a UIPanel is added to
+      // a scene that hasn't declared one explicitly. Opt out of camera
+      // auto-binding so the layer stays screen-space — explicit camera
+      // bindings can still target it by name.
+      layer = tree.ensureLayer(
+        { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
+        { autoBindable: false },
+      );
       layer.container.eventMode = "static";
+    } else if (layer.autoBindable) {
+      // Pre-declared layer that cameras will auto-bind by default —
+      // would scroll/zoom the UI with the world. Force the author to be
+      // explicit about whether they want UI in screen-space or world-space.
+      throw new Error(
+        `UIPanel: target layer "${layerName}" is camera-auto-bindable, so a default camera would move the UI with the world. ` +
+          `Either remove it from Scene.layers (the UI plugin will auto-provision a screen-space "ui" layer), ` +
+          `or pass explicit CameraEntity { bindings } that don't include "${layerName}".`,
+      );
     }
     layer.container.addChild(this._node.container);
   }

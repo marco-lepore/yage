@@ -4,6 +4,7 @@ import type { LayerDef } from "./LayerDef.js";
 import type {
   SceneRenderTree,
   SceneRenderTreeProvider,
+  EnsureLayerOptions,
 } from "./SceneRenderTree.js";
 import { RenderLayerManager } from "./RenderLayer.js";
 import type { RenderLayer } from "./RenderLayer.js";
@@ -36,8 +37,10 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     return this.manager.defaultLayer;
   }
 
-  ensureLayer(def: LayerDef): RenderLayer {
-    return this.manager.tryGet(def.name) ?? this.manager.createFromDef(def);
+  ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer {
+    return (
+      this.manager.tryGet(def.name) ?? this.manager.createFromDef(def, opts)
+    );
   }
 }
 

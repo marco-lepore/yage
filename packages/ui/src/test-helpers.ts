@@ -120,8 +120,8 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       get defaultLayer() {
         return manager.defaultLayer;
       },
-      ensureLayer: (def) =>
-        manager.tryGet(def.name) ?? manager.createFromDef(def),
+      ensureLayer: (def, opts) =>
+        manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
     };
     this.entries.set(scene, { manager, tree, root });
     return tree;

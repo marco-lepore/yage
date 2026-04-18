@@ -151,16 +151,19 @@ export class CameraComponent extends Component {
 
   /**
    * Resolve bindings for this camera against the given render tree.
-   * If no explicit bindings were set, binds to every layer in the tree
-   * except those marked `screenSpace: true` (e.g. auto-provisioned UI
-   * layers). Callers that want to include screen-space layers must pass
-   * explicit `bindings`.
+   *
+   * If no explicit `bindings` were passed, auto-binds every layer whose
+   * `autoBindable` flag is `true` (all user-declared layers, by default).
+   * Plugin-provisioned layers that opt out via
+   * `ensureLayer(def, { autoBindable: false })` — for example the UI
+   * layer — are skipped unless the caller names them in explicit
+   * `bindings`.
    */
   getResolvedBindings(tree: SceneRenderTree): readonly CameraBinding[] {
     if (this.bindings) return this.bindings;
     return tree
       .getAll()
-      .filter((layer) => !layer.screenSpace)
+      .filter((layer) => layer.autoBindable)
       .map((layer) => ({ layer: layer.name, translateRatio: 1 }));
   }
 }

@@ -263,6 +263,27 @@ describe("UIPanel", () => {
       panel.onDestroy!();
       expect(container.children.length).toBe(0);
     });
+
+    it("throws when target layer is pre-declared and camera-auto-bindable", () => {
+      const { scene } = createUITestContext();
+      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+      // Simulate a user declaring { name: "ui", order: 1000 } on the scene —
+      // this goes through createFromDef with no opts, so autoBindable: true.
+      tree.ensureLayer({ name: "ui", order: 1000 });
+      const entity = spawnEntityInScene(scene);
+      expect(() => entity.add(new UIPanel())).toThrowError(
+        /camera-auto-bindable/,
+      );
+    });
+
+    it("auto-provisioned 'ui' layer is opted out of auto-binding", () => {
+      const { scene } = createUITestContext();
+      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+      const entity = spawnEntityInScene(scene);
+      entity.add(new UIPanel());
+      const uiLayer = tree.get("ui");
+      expect(uiLayer.autoBindable).toBe(false);
+    });
   });
 
   describe("layout", () => {

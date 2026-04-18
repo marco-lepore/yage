@@ -89,4 +89,19 @@ describe("findTopmostCamera", () => {
     const sm = makeSceneManager([]);
     expect(findTopmostCamera(sm)).toBeUndefined();
   });
+
+  it("does not skip paused scenes — a paused top scene's camera still wins", () => {
+    // When a pause menu is pushed the game scene beneath it is `isPaused`,
+    // but its camera still represents the visible world zoom. The debug
+    // overlay wants to align world-debug drawing with whatever is on
+    // screen — the topmost scene with a camera. Document this behavior.
+    const pausedCam = new CameraComponent({ name: "paused-top" });
+    const paused = makeSceneWithCamera(pausedCam);
+    (paused as unknown as { isPaused: boolean }).isPaused = true;
+    const activeLower = makeSceneWithCamera(
+      new CameraComponent({ name: "active-lower" }),
+    );
+    const sm = makeSceneManager([activeLower, paused]);
+    expect(findTopmostCamera(sm)?.cameraName).toBe("paused-top");
+  });
 });

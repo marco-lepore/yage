@@ -48,11 +48,25 @@ export class UIRoot extends Component {
   }
 
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).ensureLayer({
-      name: UI_DEFAULT_LAYER,
-      order: UI_DEFAULT_LAYER_ORDER,
-      screenSpace: true,
-    });
+    const tree = this.use(SceneRenderTreeKey);
+    const existing = tree.tryGet(UI_DEFAULT_LAYER);
+    if (existing && existing.autoBindable) {
+      // ensureLayer can't retroactively flip autoBindable on an existing
+      // layer — RenderLayer.autoBindable is readonly — so a pre-declared
+      // "ui" layer (autoBindable: true by default) would silently keep
+      // the flag and be swept up by auto-cameras.
+      throw new Error(
+        `UIRoot: target layer "${UI_DEFAULT_LAYER}" is camera-auto-bindable, so a default camera would move the UI with the world. ` +
+          `Either remove "${UI_DEFAULT_LAYER}" from Scene.layers (the UI plugin will auto-provision a screen-space layer), ` +
+          `or pass explicit CameraEntity { bindings } that don't include "${UI_DEFAULT_LAYER}".`,
+      );
+    }
+    const layer =
+      existing ??
+      tree.ensureLayer(
+        { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
+        { autoBindable: false },
+      );
     layer.container.eventMode = "static";
     layer.container.addChild(this._container);
 

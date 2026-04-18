@@ -4,10 +4,11 @@
  * `scene-augmentation.ts`) so this field is typed without core depending
  * on renderer.
  *
- * Camera behavior is determined by `CameraEntity` bindings. A camera
- * with explicit `bindings` only transforms the layers it names. A camera
- * without explicit bindings auto-binds every layer except those marked
- * `screenSpace: true` (e.g. HUD/UI layers).
+ * Every layer a user declares on a Scene is "camera-followable": a
+ * `CameraEntity` spawned without explicit `bindings` will auto-bind every
+ * declared layer. To render something in screen-space, don't declare or
+ * bind a layer for it — plugins like `@yagejs/ui` auto-provision their
+ * own opt-out layers via `ensureLayer(def, { autoBindable: false })`.
  */
 export interface LayerDef {
   /**
@@ -22,11 +23,4 @@ export interface LayerDef {
   order: number;
   /** Whether children should self-sort by their `zIndex`. Default: false. */
   sortableChildren?: boolean;
-  /**
-   * If true, cameras with auto-bindings (no explicit `bindings` option) skip
-   * this layer, so it stays at identity transform (screen-space). A camera
-   * can still transform this layer by naming it in explicit `bindings`.
-   * Default: false.
-   */
-  screenSpace?: boolean;
 }

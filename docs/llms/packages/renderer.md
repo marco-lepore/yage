@@ -139,18 +139,38 @@ class GameScene extends Scene {
   readonly layers: readonly LayerDef[] = [
     { name: "background", order: -10 },
     { name: "world", order: 0 },
-    { name: "hud", order: 100, screenSpace: true },
   ];
 }
 ```
 
-Camera behavior per layer is controlled by `CameraEntity` bindings. A
-camera spawned without explicit `bindings` auto-binds every layer except
-those marked `screenSpace: true` (e.g. HUD/UI). Layers created by
-`@yagejs/ui` / `@yagejs/ui-react` are auto-provisioned as `screenSpace`,
-so `spawn(CameraEntity, { follow: ... })` does not move the UI with the
-world. To include a screen-space layer in the camera transform, pass
-explicit `bindings` listing it.
+### Camera binding rule
+
+A `CameraEntity` spawned without explicit `bindings` auto-binds every
+layer in the scene tree with `autoBindable === true`. All layers
+declared via `Scene.layers` are auto-bindable by default — if you
+declared it, the camera follows it.
+
+Plugins can auto-provision layers that opt *out* of auto-binding by
+passing `{ autoBindable: false }` to `tree.ensureLayer(def, opts)`. The
+UI packages (`@yagejs/ui`, `@yagejs/ui-react`) do this for their `"ui"`
+layer, so a default camera never moves the HUD.
+
+To override: pass explicit `bindings` on the camera. Explicit bindings
+ignore `autoBindable` and target exactly the layers named.
+
+```ts
+// All custom world layers follow the camera; UI plugin layer stays put.
+this.spawn(CameraEntity, { follow: player.get(Transform) });
+
+// Parallax: named explicitly, background scrolls at half speed.
+this.spawn(CameraEntity, {
+  follow: player.get(Transform),
+  bindings: [
+    { layer: "background", translateRatio: 0.5 },
+    { layer: "world" },
+  ],
+});
+```
 
 ```ts
 import { SceneRenderTreeKey } from "@yagejs/renderer";

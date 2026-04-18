@@ -114,8 +114,8 @@ export function createParticlesTestContext(): ParticlesTestContext {
     get defaultLayer() {
       return layerManager.defaultLayer;
     },
-    ensureLayer: (def) =>
-      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def),
+    ensureLayer: (def, opts) =>
+      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def, opts),
   };
 
   const scene = new _TestScene("test-scene");

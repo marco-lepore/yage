@@ -2,7 +2,17 @@ import { ServiceKey } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import type { Container } from "pixi.js";
 import type { LayerDef } from "./LayerDef.js";
-import type { RenderLayer } from "./RenderLayer.js";
+import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
+
+/**
+ * Options for `ensureLayer` beyond the declarative `LayerDef`. Used by
+ * plugins (e.g. UI) to mark auto-provisioned layers as opt-out from
+ * camera auto-binding.
+ */
+export type EnsureLayerOptions = Pick<
+  CreateLayerOptions,
+  "autoBindable" | "eventMode"
+>;
 
 /**
  * Scene-owned render tree. Created by `SceneRenderTreeProvider` when a scene
@@ -22,9 +32,10 @@ export interface SceneRenderTree {
   /**
    * Get an existing layer or create it from the given definition. Used by
    * plugins like UI that auto-provision a layer if the game didn't declare
-   * one explicitly.
+   * one explicitly. Pass `{ autoBindable: false }` to opt the layer out of
+   * camera auto-binding (e.g. screen-space HUD).
    */
-  ensureLayer(def: LayerDef): RenderLayer;
+  ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer;
 }
 
 /**

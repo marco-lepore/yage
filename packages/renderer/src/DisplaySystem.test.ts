@@ -280,10 +280,13 @@ describe("DisplaySystem", () => {
     expect(layerC.rotation).toBe(-0.5);
   });
 
-  it("leaves screen-space layers at identity under a default camera", () => {
+  it("auto-bound cameras skip layers opted out via autoBindable: false", () => {
     const { scene, tree } = setup();
     tree.ensureLayer({ name: "world", order: 0 });
-    tree.ensureLayer({ name: "ui", order: 1000, screenSpace: true });
+    tree.ensureLayer(
+      { name: "ui", order: 1000 },
+      { autoBindable: false },
+    );
 
     const camEntity = spawnEntityInScene(scene, "camera");
     camEntity.add(
@@ -302,11 +305,71 @@ describe("DisplaySystem", () => {
     // World follows the camera
     expect(world.scale.x).toBe(2);
     expect(world.position.x).toBe(200);
-    // UI stays identity
+    // UI stays identity (auto-bind skipped it)
     expect(ui.scale.x).toBe(1);
     expect(ui.position.x).toBe(0);
     expect(ui.position.y).toBe(0);
     expect(ui.rotation).toBe(0);
+  });
+
+  it("higher-priority camera wins on shared layers", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+
+    // Two cameras, both targeting "world". Lower priority is processed
+    // first, higher priority writes last and wins.
+    const camLow = spawnEntityInScene(scene, "cam-low");
+    camLow.add(
+      new CameraComponent({
+        position: new Vec2(100, 0),
+        zoom: 1,
+        priority: 0,
+        bindings: [{ layer: "world" }],
+      }),
+    );
+    const camHigh = spawnEntityInScene(scene, "cam-high");
+    camHigh.add(
+      new CameraComponent({
+        position: new Vec2(300, 0),
+        zoom: 2,
+        priority: 10,
+        bindings: [{ layer: "world" }],
+      }),
+    );
+
+    system.update();
+
+    const world = tree.get("world").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    // camHigh wins: position.x = 800/2 - 300*2*1 = -200, scale = 2
+    expect(world.scale.x).toBe(2);
+    expect(world.position.x).toBe(-200);
+  });
+
+  it("explicit bindings can still target an opted-out layer", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer(
+      { name: "ui", order: 1000 },
+      { autoBindable: false },
+    );
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        bindings: [{ layer: "ui", translateRatio: 1 }],
+      }),
+    );
+
+    system.update();
+
+    const ui = tree.get("ui").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(ui.scale.x).toBe(2);
+    expect(ui.position.x).toBe(200);
   });
 
   it("resets layers to identity when the last camera is disabled", () => {
