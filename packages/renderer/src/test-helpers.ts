@@ -17,8 +17,7 @@ import {
   _resetEntityIdCounter,
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
-import { CameraKey, StageKey, WorldRootKey } from "./types.js";
-import { Camera } from "./Camera.js";
+import { RendererKey } from "./types.js";
 import { RenderLayerManager } from "./RenderLayer.js";
 import type {
   SceneRenderTree,
@@ -30,8 +29,22 @@ import { SceneRenderTreeKey, SceneRenderTreeProviderKey } from "./SceneRenderTre
 
 export class MockContainer {
   children: MockContainer[] = [];
-  position = { x: 0, y: 0 };
-  scale = { x: 1, y: 1 };
+  position = {
+    x: 0,
+    y: 0,
+    set(this: { x: number; y: number }, ax: number, ay: number) {
+      this.x = ax;
+      this.y = ay;
+    },
+  };
+  scale = {
+    x: 1,
+    y: 1,
+    set(this: { x: number; y: number }, ax: number, ay?: number) {
+      this.x = ax;
+      this.y = ay ?? ax;
+    },
+  };
   rotation = 0;
   visible = true;
   alpha = 1;
@@ -40,6 +53,7 @@ export class MockContainer {
   zIndex = 0;
   label = "";
   destroyed = false;
+  eventMode = "passive";
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -86,34 +100,33 @@ export interface RendererTestContext {
   queryCache: QueryCache;
   gameLoop: GameLoop;
   scheduler: SystemScheduler;
-  worldRoot: MockContainer;
-  screenRoot: MockContainer;
-  stage: MockContainer;
-  camera: Camera;
+  root: MockContainer;
   layerManager: RenderLayerManager;
   tree: SceneRenderTree;
-  provider: SceneRenderTreeProvider;
+  provider: MockSceneRenderTreeProvider;
 }
 
 /**
- * Minimal provider that builds a per-scene `RenderLayerManager` around the
- * given root containers. Sufficient for renderer unit tests that don't
- * exercise multi-scene topology.
+ * Minimal provider that builds a per-scene `RenderLayerManager` around a
+ * single root container per scene. Matches the one-container-per-scene
+ * topology used in production.
  */
-class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
-  private trees = new Map<Scene, { manager: RenderLayerManager; tree: SceneRenderTree }>();
+export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
+  private trees = new Map<
+    Scene,
+    { manager: RenderLayerManager; tree: SceneRenderTree; root: MockContainer }
+  >();
 
-  constructor(
-    private readonly worldRoot: MockContainer,
-    private readonly screenRoot: MockContainer,
-  ) {}
+  constructor(private readonly stage: MockContainer) {}
 
   createForScene(scene: Scene): SceneRenderTree {
-    const manager = new RenderLayerManager(
-      this.worldRoot as never,
-      this.screenRoot as never,
-    );
+    const root = new MockContainer();
+    root.label = `scene:${scene.name}`;
+    this.stage.addChild(root);
+
+    const manager = new RenderLayerManager(root as never);
     const tree: SceneRenderTree = {
+      root: root as never,
       get: (name) => manager.get(name),
       tryGet: (name) => manager.tryGet(name),
       getAll: () => manager.getAll(),
@@ -123,7 +136,7 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       ensureLayer: (def) =>
         manager.tryGet(def.name) ?? manager.createFromDef(def),
     };
-    this.trees.set(scene, { manager, tree });
+    this.trees.set(scene, { manager, tree, root });
     return tree;
   }
 
@@ -131,20 +144,43 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     const entry = this.trees.get(scene);
     if (!entry) return;
     entry.manager.destroy();
+    entry.root.removeFromParent();
     this.trees.delete(scene);
+  }
+
+  getTree(scene: Scene): SceneRenderTree | undefined {
+    return this.trees.get(scene)?.tree;
+  }
+
+  *allTrees(): IterableIterator<[Scene, SceneRenderTree]> {
+    for (const [scene, entry] of this.trees) {
+      yield [scene, entry.tree];
+    }
+  }
+
+  bringSceneToFront(scene: Scene): void {
+    const entry = this.trees.get(scene);
+    if (!entry) return;
+    const parent = entry.root.parent;
+    if (parent) {
+      parent.removeChild(entry.root);
+      parent.addChild(entry.root);
+    }
   }
 
   managerFor(scene: Scene): RenderLayerManager | undefined {
     return this.trees.get(scene)?.manager;
   }
+
+  rootFor(scene: Scene): MockContainer | undefined {
+    return this.trees.get(scene)?.root;
+  }
 }
 
-export function createRendererTestContext(
-  options?: {
-    viewportWidth?: number;
-    viewportHeight?: number;
-  },
-): RendererTestContext {
+export function createRendererTestContext(options?: {
+  viewportWidth?: number;
+  viewportHeight?: number;
+}): RendererTestContext {
   _resetEntityIdCounter();
 
   const ctx = new EngineContext();
@@ -164,23 +200,20 @@ export function createRendererTestContext(
 
   const vw = options?.viewportWidth ?? 800;
   const vh = options?.viewportHeight ?? 600;
-  const worldRoot = new MockContainer();
-  const screenRoot = new MockContainer();
-  const camera = new Camera(vw, vh);
+  const mockRenderer = { virtualSize: { width: vw, height: vh } };
+  ctx.register(RendererKey, mockRenderer as never);
 
-  const provider = new MockSceneRenderTreeProvider(worldRoot, screenRoot);
-  ctx.register(StageKey, worldRoot as never);
-  ctx.register(WorldRootKey, worldRoot as never);
-  ctx.register(CameraKey, camera);
+  const stage = new MockContainer();
+  const provider = new MockSceneRenderTreeProvider(stage);
   ctx.register(SceneRenderTreeProviderKey, provider);
 
   const scene = new _TestScene("test-scene");
   scene._setContext(ctx);
 
-  // Materialize the tree as if a beforeEnter hook ran.
   const tree = provider.createForScene(scene);
   scene._registerScoped(SceneRenderTreeKey, tree);
   const layerManager = provider.managerFor(scene)!;
+  const root = provider.rootFor(scene)!;
 
   return {
     context: ctx,
@@ -188,10 +221,7 @@ export function createRendererTestContext(
     queryCache,
     gameLoop,
     scheduler,
-    worldRoot,
-    screenRoot,
-    stage: worldRoot,
-    camera,
+    root,
     layerManager,
     tree,
     provider,

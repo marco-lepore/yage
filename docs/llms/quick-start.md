@@ -56,19 +56,16 @@ For real games, subclass `Scene`:
 
 ```ts
 import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
-import { CameraKey } from "@yagejs/renderer";
+import { SpriteComponent, CameraEntity } from "@yagejs/renderer";
 import { texture } from "@yagejs/renderer";
 
 class GameScene extends Scene {
   readonly name = "game";
   readonly preload = [texture("hero.png"), texture("tileset.png")];
 
-  private camera = this.service(CameraKey);
-
   onEnter() {
     const player = this.spawn(Player, { x: 100, y: 200 });
-    this.camera.follow(player.get(Transform));
+    const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
   }
 
   onExit() {

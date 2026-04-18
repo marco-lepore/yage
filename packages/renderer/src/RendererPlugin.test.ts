@@ -93,7 +93,7 @@ import {
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
-import { RendererKey, StageKey, CameraKey, WorldRootKey } from "./types.js";
+import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
 import type { RendererConfig } from "./types.js";
 
@@ -134,7 +134,7 @@ describe("RendererPlugin", () => {
   it("has correct name and version", () => {
     const plugin = new RendererPlugin(defaultConfig);
     expect(plugin.name).toBe("renderer");
-    expect(plugin.version).toBe("3.0.0");
+    expect(plugin.version).toBe("4.0.0");
   });
 
   describe("install", () => {
@@ -144,9 +144,6 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       expect(context.has(RendererKey)).toBe(true);
-      expect(context.has(StageKey)).toBe(true);
-      expect(context.has(WorldRootKey)).toBe(true);
-      expect(context.has(CameraKey)).toBe(true);
       expect(context.has(SceneRenderTreeProviderKey)).toBe(true);
     });
 

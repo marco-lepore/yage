@@ -1,5 +1,5 @@
 import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
@@ -190,9 +190,6 @@ class AudioScene extends Scene {
   readonly preload = [...Object.values(SFX_HANDLES), BgMusic];
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     const flashers = new Map<string, FlashOnPlay>();
 
     // --- SFX pads (three circles) ---

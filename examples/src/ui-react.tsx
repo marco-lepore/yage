@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
-import { RendererPlugin, CameraKey, GraphicsComponent, texture } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
   UIRoot,
@@ -205,9 +205,6 @@ class UIReactScene extends Scene {
   readonly preload = [...allAssets, Logo];
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
-
     // A background shape so we can see the UI is in screen-space
     const bg = this.spawn("bg-circle");
     bg.add(new Transform({ position: new Vec2(400, 300) }));

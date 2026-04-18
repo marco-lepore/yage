@@ -1,26 +1,9 @@
 import { ServiceKey } from "@yagejs/core";
-import type { Camera } from "./Camera.js";
-
-// Use lazy import types for PixiJS — these are type-only references
-// so no PixiJS runtime code is pulled in.
 
 /** Service key for the RendererPlugin. */
 export const RendererKey = new ServiceKey<
   import("./RendererPlugin.js").RendererPlugin
 >("renderer");
-
-/** Service key for the PixiJS stage container (the world root). */
-export const StageKey = new ServiceKey<
-  import("pixi.js").Container
->("stage");
-
-/** Service key for the camera-transformed world root container. */
-export const WorldRootKey = new ServiceKey<
-  import("pixi.js").Container
->("worldRoot");
-
-/** Service key for the Camera. */
-export const CameraKey = new ServiceKey<Camera>("camera");
 
 /** Configuration for the renderer plugin. */
 export interface RendererConfig {

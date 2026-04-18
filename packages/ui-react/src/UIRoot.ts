@@ -51,9 +51,9 @@ export class UIRoot extends Component {
     const layer = this.use(SceneRenderTreeKey).ensureLayer({
       name: UI_DEFAULT_LAYER,
       order: UI_DEFAULT_LAYER_ORDER,
-      space: "screen",
-      eventMode: "static",
+      screenSpace: true,
     });
+    layer.container.eventMode = "static";
     layer.container.addChild(this._container);
 
     this.root = createRoot(this._container);

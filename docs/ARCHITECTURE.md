@@ -166,8 +166,6 @@ Plugins register services using typed `ServiceKey<T>` objects. This provides:
 ```typescript
 // @yagejs/renderer exports:
 export const RendererKey = new ServiceKey<RendererPlugin>('renderer');
-export const StageKey = new ServiceKey<Container>('stage');
-export const CameraKey = new ServiceKey<Camera>('camera');
 
 // Inside RendererPlugin.install():
 class RendererPlugin implements Plugin {
@@ -176,18 +174,16 @@ class RendererPlugin implements Plugin {
     await app.init(this.config);
 
     context.register(RendererKey, this);
-    context.register(StageKey, app.stage);
-    context.register(CameraKey, new Camera());
   }
 }
 
-// Another plugin or user system can then resolve:
-class PlayerFollowSystem extends System {
-  onRegister(context: EngineContext) {
-    const camera = context.resolve(CameraKey);
-    // camera is typed as Camera
-  }
-}
+// Camera is now an entity, not a service:
+import { CameraEntity } from "@yagejs/renderer";
+
+// In a scene's onEnter():
+const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
+cam.shake(6, 300);    // convenience methods delegate to CameraComponent
+cam.zoomTo(1.5, 500); // no need for cam.get(CameraComponent)
 ```
 
 ### Well-Known Service Keys
@@ -213,9 +209,6 @@ Keys registered by official plugins:
 | Key | Type | Registered by |
 |---|---|---|
 | `RendererKey` | `Renderer` | `@yagejs/renderer` |
-| `StageKey` | `Container` (PixiJS) | `@yagejs/renderer` |
-| `WorldRootKey` | `Container` (PixiJS) | `@yagejs/renderer` |
-| `CameraKey` | `Camera` | `@yagejs/renderer` |
 | `SceneRenderTreeProviderKey` | `SceneRenderTreeProvider` | `@yagejs/renderer` |
 | `SceneRenderTreeKey` | `SceneRenderTree` (scene-scoped) | `@yagejs/renderer` |
 | `PhysicsWorldManagerKey` | `PhysicsWorldManager` | `@yagejs/physics` |

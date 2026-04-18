@@ -1,5 +1,5 @@
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
@@ -93,11 +93,8 @@ class ShapeSpawner extends Component {
 // ---------------------------------------------------------------------------
 class DebugDemoScene extends Scene {
   readonly name = "debug-demo";
-  private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    this.camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     // Spawner entity
     const ctrl = this.spawn("spawner");
     ctrl.add(new Transform());

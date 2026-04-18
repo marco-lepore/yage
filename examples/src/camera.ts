@@ -2,7 +2,7 @@ import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, createKeyf
 import {
   RendererPlugin,
   GraphicsComponent,
-  CameraKey,
+  CameraEntity,
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
@@ -18,7 +18,12 @@ class PlayerController extends Component {
   private speed = 0.25; // px per ms
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
-  private readonly camera = this.service(CameraKey);
+  private readonly camera: CameraEntity;
+
+  constructor(camera: CameraEntity) {
+    super();
+    this.camera = camera;
+  }
 
   onAdd(): void {
     // Smooth follow with a deadzone so camera doesn't jitter on tiny movements
@@ -72,6 +77,8 @@ class CameraScene extends Scene {
   ];
 
   onEnter(): void {
+    const cam = this.spawn(CameraEntity);
+
     // Grid background (2000x2000 world)
     this.drawGrid();
 
@@ -89,7 +96,7 @@ class CameraScene extends Scene {
         g.circle(0, 0, 3).fill({ color: 0xffffff });
       }),
     );
-    player.add(new PlayerController());
+    player.add(new PlayerController(cam));
   }
 
   private drawGrid(): void {

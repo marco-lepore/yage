@@ -14,7 +14,7 @@ finished example is under 30 lines of TypeScript.
 
 ```typescript
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 
 class Spin extends Component {
@@ -33,8 +33,7 @@ class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
+    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
 
     const tri = this.spawn("triangle");
     tri.add(new Transform({ position: new Vec2(400, 300) }));
@@ -64,7 +63,7 @@ engine.scenes.push(new HelloWorldScene());
 
 ```typescript
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { GraphicsComponent, RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 ```
 
@@ -75,7 +74,7 @@ import { DebugPlugin } from "@yagejs/debug";
 - **`Vec2`** is a 2D vector used throughout the engine.
 - **`GraphicsComponent`** draws shapes via the PixiJS v8 graphics API.
 - **`RendererPlugin`** sets up the PixiJS v8 rendering pipeline.
-- **`CameraKey`** is the DI key used to resolve the camera service.
+- **`CameraEntity`** is the camera — spawn it in your scene. It exposes `follow()`, `shake()`, `zoomTo()`, `bounds`, and more directly.
 - **`DebugPlugin`** enables the FPS counter, entity inspector, and dev overlays.
 
 ### 2. A Custom Component — `Spin`
@@ -124,18 +123,17 @@ class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
+    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
     // ...
   }
 }
 ```
 
 `HelloWorldScene` extends `Scene` and implements `onEnter()`, which runs when
-the scene becomes active. `this.context.resolve(CameraKey)` retrieves the
-camera service via dependency injection.
+the scene becomes active. `this.spawn(CameraEntity, { ... })` creates the
+camera as an entity in the scene.
 
-Setting `camera.position = new Vec2(400, 300)` shifts the world origin to the
+Setting the camera position to `(400, 300)` shifts the world origin to the
 top-left corner of the default 800 × 600 viewport. The triangle is then spawned
 at world position `(400, 300)` and lands in the middle of the screen. By
 default the camera is at `(0, 0)` which puts world origin at the *centre* of

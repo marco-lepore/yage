@@ -18,8 +18,8 @@ export class DebugScene extends Scene {
   override readonly pauseBelow = false;
   override readonly transparentBelow = true;
   readonly layers: readonly LayerDef[] = [
-    { name: "debug-world", order: 999999, space: "world" },
-    { name: "debug-hud", order: 999999, space: "screen" },
+    { name: "debug-world", order: 999999 },
+    { name: "debug-hud", order: 999999 },
   ];
 
   /** Called after `_mountDetached` has materialized the render tree. */

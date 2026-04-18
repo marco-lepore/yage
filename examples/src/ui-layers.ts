@@ -1,5 +1,5 @@
 import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
-import { RendererPlugin, CameraKey, GraphicsComponent, SceneRenderTreeKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import { injectStyles, getContainer } from "./shared.js";
@@ -28,15 +28,12 @@ class UILayersScene extends Scene {
   readonly name = "ui-layers";
   readonly preload = [...allAssets];
   readonly layers: readonly LayerDef[] = [
-    { name: "hud", order: 1010, space: "screen", eventMode: "static" },
-    { name: "menu", order: 1020, space: "screen", eventMode: "static" },
-    { name: "dialog", order: 1030, space: "screen", eventMode: "static" },
+    { name: "hud", order: 1010 },
+    { name: "menu", order: 1020 },
+    { name: "dialog", order: 1030 },
   ];
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     // Background shapes
     const shapes = [0x1e3a5f, 0x3b1f5c, 0x1f3b2f, 0x5c3b1f];
     for (let i = 0; i < shapes.length; i++) {

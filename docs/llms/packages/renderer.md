@@ -19,7 +19,7 @@ engine.use(new RendererPlugin({
 }));
 ```
 
-Registers `CameraKey`, `RendererKey`, `StageKey`, `WorldRootKey`, and `SceneRenderTreeProviderKey` in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
+Registers `RendererKey` and `SceneRenderTreeProviderKey` in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
 
 ## Components
 
@@ -83,27 +83,29 @@ anim.playOneShot("attack"); // locks until complete, then reverts
 
 ## Camera
 
-Resolved via `CameraKey`. Pure math, no PixiJS dependency.
+The camera is an entity, not a service. Spawn a `CameraEntity` in your scene
+and use it directly for follow, shake, zoom, and bounds — all convenience methods are on the entity.
 
 ```ts
-import { CameraKey } from "@yagejs/renderer";
+import { CameraEntity } from "@yagejs/renderer";
 
-const camera = context.resolve(CameraKey);
-
-camera.follow(transform, {
+// In a scene's onEnter():
+const cam = this.spawn(CameraEntity, {
+  follow: player.get(Transform),
   smoothing: 0.1,
   offset: { x: 0, y: -50 },
   deadzone: { halfWidth: 20, halfHeight: 20 },
 });
-camera.unfollow();
 
-camera.shake(10, 500, { decay: 0.02 });
-camera.zoomTo(2.0, 1000, easeOutQuad);
+cam.unfollow();
 
-camera.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
+cam.shake(10, 500, { decay: 0.02 });
+cam.zoomTo(2.0, 1000, easeOutQuad);
 
-const world = camera.screenToWorld(mouseX, mouseY);
-const screen = camera.worldToScreen(entity.x, entity.y);
+cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
+
+const world = cam.screenToWorld(mouseX, mouseY);
+const screen = cam.worldToScreen(entity.x, entity.y);
 ```
 
 ### Coordinate Convention
@@ -115,11 +117,10 @@ For top-left-origin games (tilemap editors, classic arcade layouts), offset the 
 ```ts
 class GameScene extends Scene {
   readonly name = "game";
-  private camera = this.service(CameraKey);
 
   onEnter() {
     // Top-left-origin: world (0,0) maps to screen (0,0)
-    this.camera.position = new Vec2(400, 300); // viewport is 800×600
+    this.spawn(CameraEntity, { position: new Vec2(400, 300) }); // viewport is 800×600
   }
 }
 ```
@@ -138,10 +139,18 @@ class GameScene extends Scene {
   readonly layers: readonly LayerDef[] = [
     { name: "background", order: -10 },
     { name: "world", order: 0 },
-    { name: "hud", order: 100, space: "screen" },
+    { name: "hud", order: 100, screenSpace: true },
   ];
 }
 ```
+
+Camera behavior per layer is controlled by `CameraEntity` bindings. A
+camera spawned without explicit `bindings` auto-binds every layer except
+those marked `screenSpace: true` (e.g. HUD/UI). Layers created by
+`@yagejs/ui` / `@yagejs/ui-react` are auto-provisioned as `screenSpace`,
+so `spawn(CameraEntity, { follow: ... })` does not move the UI with the
+world. To include a screen-space layer in the camera transform, pass
+explicit `bindings` listing it.
 
 ```ts
 import { SceneRenderTreeKey } from "@yagejs/renderer";

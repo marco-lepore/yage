@@ -4,17 +4,11 @@ import {
   SceneHookRegistryKey,
 } from "@yagejs/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
-import { Application, Assets, Container, Graphics } from "pixi.js";
+import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
-import { Camera } from "./Camera.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import type { GraphicsContext, TextureResource } from "./public-types.js";
-import {
-  CameraKey,
-  RendererKey,
-  StageKey,
-  WorldRootKey,
-} from "./types.js";
+import { RendererKey } from "./types.js";
 import type { RendererConfig } from "./types.js";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import {
@@ -28,14 +22,12 @@ import "./scene-augmentation.js";
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin {
   readonly name = "renderer";
-  readonly version = "3.0.0";
+  readonly version = "4.0.0";
 
   private app!: Application;
   private readonly config: RendererConfig;
   private readonly virtualWidth: number;
   private readonly virtualHeight: number;
-  private worldRoot!: Container;
-  private screenRoot!: Container;
   private provider!: SceneRenderTreeProviderImpl;
   private tickerFn: (() => void) | null = null;
   private unregisterHooks: (() => void) | null = null;
@@ -77,34 +69,16 @@ export class RendererPlugin implements Plugin {
     this.app.stage.scale.set(scale, scale);
     this.app.stage.position.set(offsetX / scale, offsetY / scale);
 
-    // 4. Create dual-root topology: worldRoot (camera-transformed) +
-    //    screenRoot (un-transformed overlay). Per-scene trees attach here.
-    this.worldRoot = new Container();
-    this.worldRoot.label = "worldRoot";
-    this.screenRoot = new Container();
-    this.screenRoot.label = "screenRoot";
-    this.app.stage.addChild(this.worldRoot);
-    this.app.stage.addChild(this.screenRoot);
+    // 4. Create the per-scene render tree provider.
+    //    Each scene gets one root container as a direct child of app.stage.
+    this.provider = new SceneRenderTreeProviderImpl(this.app.stage);
 
-    // 5. Create the per-scene render tree provider
-    this.provider = new SceneRenderTreeProviderImpl(
-      this.worldRoot,
-      this.screenRoot,
-    );
-
-    // 6. Create Camera
-    const camera = new Camera(this.virtualWidth, this.virtualHeight);
-
-    // 7. Register services
+    // 5. Register services
     context.register(RendererKey, this);
-    context.register(StageKey, this.worldRoot);
-    context.register(WorldRootKey, this.worldRoot);
-    context.register(CameraKey, camera);
     context.register(SceneRenderTreeProviderKey, this.provider);
 
-    // 8. Register scene hooks: materialize a tree per scene on enter,
-    //    tear it down on exit. Registered at install time so the hook is
-    //    in place before any scene pushes.
+    // 6. Register scene hooks: materialize a tree per scene on enter,
+    //    tear it down on exit.
     const hookRegistry = context.resolve(SceneHookRegistryKey);
     this.unregisterHooks = hookRegistry.register({
       beforeEnter: (scene) => {
@@ -116,7 +90,7 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 9. Attach PixiJS ticker to GameLoop
+    // 7. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
     gameLoop.attachTicker((callback) => {
       const fn = () => callback(this.app.ticker.deltaMS);
@@ -125,7 +99,7 @@ export class RendererPlugin implements Plugin {
       return () => this.app.ticker.remove(fn);
     });
 
-    // 10. Register asset loaders (if AssetManager is available)
+    // 8. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
       load: (path: string) => Assets.load<TextureResource>(path),

@@ -14,7 +14,7 @@ import {
   GraphicsComponent,
   AnimatedSpriteComponent,
   AnimationController,
-  CameraKey,
+  CameraEntity,
   texture,
   type LayerDef,
 } from "@yagejs/renderer";
@@ -268,7 +268,7 @@ type PlayerAnim = "idle" | "walk" | "jump" | "land" | "shoot" | "hurt";
 
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly camera = this.service(CameraKey);
+  private readonly camera: CameraEntity;
   private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
   private readonly anim = this.sibling(AnimationController) as AnimationController<PlayerAnim>;
@@ -277,6 +277,11 @@ class PlayerController extends Component {
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly collider = this.sibling(ColliderComponent);
   private readonly pc = this.sibling(ProcessComponent);
+
+  constructor(camera: CameraEntity) {
+    super();
+    this.camera = camera;
+  }
 
   private grounded = false;
   private coyoteTimer = 0;
@@ -536,7 +541,7 @@ const ENEMY_HALF_H = 16; // collider is 32px tall
 
 class EnemyController extends Component {
   private physicsWorld!: PhysicsWorld;
-  private readonly camera = this.service(CameraKey);
+  private readonly camera: CameraEntity;
   private readonly audio = this.service(AudioManagerKey);
   private readonly anim = this.sibling(AnimationController) as AnimationController<EnemyAnim>;
   private readonly sprite = this.sibling(AnimatedSpriteComponent);
@@ -569,10 +574,11 @@ class EnemyController extends Component {
   private static readonly SLASH_FRAME_END = 9;
   private static readonly COOLDOWN_DURATION = 500;
 
-  constructor(patrolLeft: number, patrolRight: number) {
+  constructor(patrolLeft: number, patrolRight: number, camera: CameraEntity) {
     super();
     this.patrolLeft = patrolLeft;
     this.patrolRight = patrolRight;
+    this.camera = camera;
   }
 
   onAdd(): void {
@@ -820,7 +826,7 @@ class EnemyController extends Component {
 // ---------------------------------------------------------------------------
 // Blueprints
 // ---------------------------------------------------------------------------
-const PlayerBP = defineBlueprint("player", (entity) => {
+const PlayerBP = defineBlueprint<{ camera: CameraEntity }>("player", (entity, { camera }) => {
   entity.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
   const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
   const spriteComp = entity.add(
@@ -853,7 +859,7 @@ const PlayerBP = defineBlueprint("player", (entity) => {
     }),
   );
   entity.add(new ProcessComponent());
-  entity.add(new PlayerController());
+  entity.add(new PlayerController(camera));
 });
 
 const PlatformBP = defineBlueprint<{
@@ -885,7 +891,8 @@ const EnemyBP = defineBlueprint<{
   y: number;
   patrolLeft: number;
   patrolRight: number;
-}>("enemy", (entity, { x, y, patrolLeft, patrolRight }) => {
+  camera: CameraEntity;
+}>("enemy", (entity, { x, y, patrolLeft, patrolRight, camera }) => {
   entity.tags.add("enemy");
   entity.add(new Transform({ position: new Vec2(x, y) }));
   const idleSource = { sheet: EnemyIdleTex.path, frameWidth: 24, frameHeight: 32 };
@@ -943,7 +950,7 @@ const EnemyBP = defineBlueprint<{
     }),
   );
   entity.add(new ProcessComponent());
-  entity.add(new EnemyController(patrolLeft, patrolRight));
+  entity.add(new EnemyController(patrolLeft, patrolRight, camera));
 });
 
 const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
@@ -1043,6 +1050,8 @@ class ShooterScene extends Scene {
     won = false;
     winMsg.style.display = "none";
 
+    const cam = this.spawn(CameraEntity);
+
     // Background music
     this.audio.play(BgMusic.path, { channel: "music", loop: true });
 
@@ -1054,8 +1063,8 @@ class ShooterScene extends Scene {
 
     this.drawBackground();
     this.buildLevel();
-    this.spawnEnemies();
-    playerEntity = this.spawn(PlayerBP);
+    this.spawnEnemies(cam);
+    playerEntity = this.spawn(PlayerBP, { camera: cam });
   }
 
   // -- Background --
@@ -1107,17 +1116,18 @@ class ShooterScene extends Scene {
   }
 
   // -- Enemies --
-  private spawnEnemies(): void {
-    this.spawn(EnemyBP, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450 }); // ground left
-    this.spawn(EnemyBP, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750 }); // ground mid
-    this.spawn(EnemyBP, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100 }); // ground right
-    this.spawn(EnemyBP, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600 }); // on mid-left platform
-    this.spawn(EnemyBP, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940 }); // on mid-right platform
+  private spawnEnemies(camera: CameraEntity): void {
+    this.spawn(EnemyBP, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450, camera }); // ground left
+    this.spawn(EnemyBP, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750, camera }); // ground mid
+    this.spawn(EnemyBP, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100, camera }); // ground right
+    this.spawn(EnemyBP, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600, camera }); // on mid-left platform
+    this.spawn(EnemyBP, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940, camera }); // on mid-right platform
     this.spawn(EnemyBP, {
       x: 1050,
       y: 450,
       patrolLeft: 940,
       patrolRight: 1150,
+      camera,
     }); // on upper-right platform
   }
 }

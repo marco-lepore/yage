@@ -2,7 +2,7 @@ import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint
 import {
   RendererPlugin,
   GraphicsComponent,
-  CameraKey,
+  CameraEntity,
   type GraphicsContext,
   type LayerDef,
 } from "@yagejs/renderer";
@@ -171,12 +171,17 @@ class MovingPlatform extends Component {
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly camera = this.service(CameraKey);
+  private readonly camera: CameraEntity;
   private physicsWorld!: PhysicsWorld;
   private readonly audio = this.service(AudioManagerKey);
   private readonly graphics = this.sibling(GraphicsComponent);
   private readonly transform = this.sibling(Transform);
   private readonly rb = this.sibling(RigidBodyComponent);
+
+  constructor(camera: CameraEntity) {
+    super();
+    this.camera = camera;
+  }
 
   private grounded = false;
   private coyoteTimer = 0; // ms remaining
@@ -313,7 +318,7 @@ function drawPlayerGraphics(
 // ---------------------------------------------------------------------------
 // Blueprints
 // ---------------------------------------------------------------------------
-const PlayerBP = defineBlueprint("player", (entity) => {
+const PlayerBP = defineBlueprint<{ camera: CameraEntity }>("player", (entity, { camera }) => {
   entity.add(
     new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }),
   );
@@ -341,7 +346,7 @@ const PlayerBP = defineBlueprint("player", (entity) => {
         LAYER_DEATH,
     }),
   );
-  entity.add(new PlayerController());
+  entity.add(new PlayerController(camera));
 });
 
 const PlatformBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>(
@@ -517,6 +522,8 @@ class PlatformerScene extends Scene {
     won = false;
     winMsg.style.display = "none";
 
+    const cam = this.spawn(CameraEntity);
+
     // Background music
     this.audio.play(BgMusic.path, { channel: "music", loop: true });
 
@@ -542,7 +549,7 @@ class PlatformerScene extends Scene {
 
     this.drawBackground();
     this.buildLevel();
-    this.spawn(PlayerBP);
+    this.spawn(PlayerBP, { camera: cam });
   }
 
   // -- Background grid --

@@ -30,7 +30,7 @@ const { mocks } = vi.hoisted(() => {
     };
     rotation = 0;
     visible = true;
-    eventMode = "auto";
+    eventMode = "passive";
     zIndex = 0;
     mask: MockContainer | null = null;
 
@@ -107,7 +107,6 @@ import {
 } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
 import {
-  CameraKey,
   RendererKey,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
@@ -130,6 +129,7 @@ function createContext() {
   };
   const renderer = {
     application: app,
+    virtualSize: { width: 640, height: 360 },
   };
   const loop = {
     fixedTimestep: 20,
@@ -149,36 +149,34 @@ function createContext() {
   const hookRegistry = new SceneHookRegistry();
   const sceneManager = new SceneManager();
 
-  // Mock provider that materializes a trivial tree per scene.
   const provider: SceneRenderTreeProvider = {
     createForScene: (): SceneRenderTree => ({
-      get: () => ({
-        name: "default",
-        order: 0,
-        space: "world",
-        container: new mocks.MockContainer(),
-      }) as never,
-      tryGet: () => ({
-        name: "default",
-        order: 0,
-        space: "world",
-        container: new mocks.MockContainer(),
-      }) as never,
+      root: new mocks.MockContainer() as never,
+      get: () =>
+        ({
+          name: "default",
+          order: 0,
+          container: new mocks.MockContainer(),
+        }) as never,
+      tryGet: () =>
+        ({
+          name: "default",
+          order: 0,
+          container: new mocks.MockContainer(),
+        }) as never,
       getAll: () => [],
       defaultLayer: {
         name: "default",
         order: 0,
-        space: "world",
       } as never,
-      ensureLayer: () =>
-        ({ name: "default", order: 0, space: "world" }) as never,
+      ensureLayer: () => ({ name: "default", order: 0 }) as never,
     }),
     destroyForScene: vi.fn(),
+    getTree: vi.fn(),
+    allTrees: () => [][Symbol.iterator](),
     bringSceneToFront: vi.fn(),
   };
 
-  // Hook registry mimics the renderer plugin: registers a per-scene tree
-  // on the scene's scope so DebugScene.onEnter can resolve it.
   hookRegistry.register({
     beforeEnter: (scene: Scene) => {
       const tree = provider.createForScene(scene);
@@ -195,10 +193,6 @@ function createContext() {
   context.register(SceneManagerKey, sceneManager);
   context.register(SceneRenderTreeProviderKey, provider);
   context.register(RendererKey, renderer as never);
-  context.register(
-    CameraKey,
-    { zoom: 1, viewportWidth: 640, viewportHeight: 360 } as never,
-  );
   context.register(GameLoopKey, loop as never);
   context.register(InspectorKey, inspector as never);
 

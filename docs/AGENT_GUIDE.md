@@ -795,19 +795,18 @@ Use a Scene subclass when you need full lifecycle hooks, asset preloading, or re
 
 ```typescript
 import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { CameraKey } from "@yagejs/renderer";
+import { CameraEntity } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 
 class GameScene extends Scene {
   readonly name = "game";
 
   // Lazy proxies — safe to declare as fields, resolved on first use
-  private camera = this.service(CameraKey);
   private input = this.service(InputManagerKey);
 
   onEnter() {
     const player = this.spawn(PlayerEntity, { x: 100, y: 200 });
-    this.camera.follow(player);
+    const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
   }
 
   onExit() {

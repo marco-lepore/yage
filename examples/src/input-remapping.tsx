@@ -8,7 +8,6 @@ import {
 } from "@yagejs/core";
 import {
   RendererPlugin,
-  CameraKey,
   GraphicsComponent,
 } from "@yagejs/renderer";
 import {
@@ -440,9 +439,6 @@ class InputRemappingScene extends Scene {
   readonly name = "input-remapping";
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
-
     // Spawn players
     for (const [, meta] of Object.entries(GROUP_META)) {
       const startX = meta.color === 0x3b82f6 ? 200 : 350;

@@ -1,5 +1,5 @@
 import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
@@ -206,11 +206,8 @@ class CollisionsScene extends Scene {
   readonly preload = [CoinSfx, HurtSfx];
 
   private readonly audio = this.service(AudioManagerKey);
-  private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    this.camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     setScore(0);
 
     // Scene-level event listeners

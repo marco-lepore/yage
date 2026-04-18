@@ -36,7 +36,7 @@ import GameEmbed from "../../components/GameEmbed.astro";
   <TabItem label="main.ts">
 ```typescript
 import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, CameraEntity } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { UIPlugin } from "@yagejs/ui";
 import { Ball } from "./Ball";
@@ -47,8 +47,7 @@ class PongScene extends Scene {
   readonly name = "pong";
 
   onEnter() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(300, 200);
+    this.spawn(CameraEntity, { position: new Vec2(300, 200) });
 
     this.spawn(Scoreboard);
     const ball = this.spawn(Ball, { w: 600, h: 400 });

@@ -14,7 +14,7 @@ import type {
   SystemScheduler,
 } from "@yagejs/core";
 import { DebugRegistryKey } from "./types.js";
-import { CameraKey, RendererKey } from "@yagejs/renderer";
+import { CameraComponent, RendererKey } from "@yagejs/renderer";
 import type {
   RendererPlugin,
   SceneRenderTreeProvider,
@@ -237,11 +237,25 @@ export class DebugPlugin implements Plugin {
     this.provider = null;
   }
 
+  private findActiveCamera(): CameraComponent | undefined {
+    return findTopmostCamera(this.sceneManager);
+  }
+
   private setUpDebugInfra(
     worldContainer: Container,
     hudContainer: Container,
   ): void {
-    const camera = this.context.resolve(CameraKey);
+    const vw = this.renderer.virtualSize.width;
+    const vh = this.renderer.virtualSize.height;
+
+    // Lazy camera accessor — reads from whichever stacked scene has a camera
+    const cameraProxy = {
+      get zoom() {
+        return self.findActiveCamera()?.zoom ?? 1;
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
 
     this.graphicsPool = new GraphicsPool(
       worldContainer,
@@ -252,13 +266,13 @@ export class DebugPlugin implements Plugin {
     this.worldApi = new WorldDebugApiImpl(
       this.graphicsPool,
       this.registry,
-      camera,
+      cameraProxy,
     );
     this.hudApi = new HudDebugApiImpl(
       this.textPool,
       this.registry,
-      camera.viewportWidth,
-      camera.viewportHeight,
+      vw,
+      vh,
     );
 
     this.renderSystem = new DebugRenderSystem(
@@ -270,6 +284,7 @@ export class DebugPlugin implements Plugin {
       this.stats,
       worldContainer,
       hudContainer,
+      { findCamera: () => self.findActiveCamera(), viewportWidth: vw, viewportHeight: vh },
     );
     this.scheduler.add(this.renderSystem);
   }
@@ -304,4 +319,24 @@ export class DebugPlugin implements Plugin {
       delete (g as Record<string, unknown>)["clock"];
     }
   }
+}
+
+/**
+ * Find the camera on the topmost scene that has one. `sceneManager.all`
+ * is bottom→top, so we walk in reverse — a pause/HUD scene's camera wins
+ * over a frozen scene beneath it.
+ */
+export function findTopmostCamera(
+  sceneManager: SceneManager,
+): CameraComponent | undefined {
+  const stack = sceneManager.all;
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const scene = stack[i];
+    if (!scene) continue;
+    for (const entity of scene.getEntities()) {
+      const cam = entity.tryGet(CameraComponent);
+      if (cam) return cam;
+    }
+  }
+  return undefined;
 }

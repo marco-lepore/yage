@@ -12,6 +12,7 @@ const { MockContainer } = vi.hoisted(() => {
     sortableChildren = false;
     zIndex = 0;
     label = "";
+    eventMode = "passive";
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -42,52 +43,40 @@ vi.mock("pixi.js", () => ({
 import { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 
 describe("RenderLayer", () => {
-  it("stores name, order, space, and container", () => {
+  it("stores name, order, and container", () => {
     const container = { name: "test" } as never;
-    const layer = new RenderLayer("bg", 5, "world", container);
+    const layer = new RenderLayer("bg", 5, container);
     expect(layer.name).toBe("bg");
     expect(layer.order).toBe(5);
-    expect(layer.space).toBe("world");
     expect(layer.container).toBe(container);
   });
 });
 
 describe("RenderLayerManager", () => {
-  let worldRoot: InstanceType<typeof MockContainer>;
-  let screenRoot: InstanceType<typeof MockContainer>;
+  let root: InstanceType<typeof MockContainer>;
   let manager: RenderLayerManager;
 
   beforeEach(() => {
-    worldRoot = new MockContainer();
-    screenRoot = new MockContainer();
-    manager = new RenderLayerManager(worldRoot as never, screenRoot as never);
+    root = new MockContainer();
+    manager = new RenderLayerManager(root as never);
   });
 
-  it("creates a default world-space layer at order 0", () => {
+  it("creates a default layer at order 0", () => {
     const def = manager.defaultLayer;
     expect(def.name).toBe("default");
     expect(def.order).toBe(0);
-    expect(def.space).toBe("world");
   });
 
-  it("default layer container is added to worldRoot", () => {
-    expect(worldRoot.children).toHaveLength(1);
-    expect(worldRoot.children[0]).toBe(manager.defaultLayer.container);
+  it("default layer container is added to root", () => {
+    expect(root.children).toHaveLength(1);
+    expect(root.children[0]).toBe(manager.defaultLayer.container);
   });
 
-  it("creates named world-space layers", () => {
+  it("creates named layers", () => {
     const ui = manager.create("ui", 100);
     expect(ui.name).toBe("ui");
     expect(ui.order).toBe(100);
-    expect(ui.space).toBe("world");
-    expect(worldRoot.children).toContain(ui.container);
-  });
-
-  it("creates screen-space layers under screenRoot", () => {
-    const hud = manager.create("hud", 100, "screen");
-    expect(hud.space).toBe("screen");
-    expect(screenRoot.children).toContain(hud.container);
-    expect(worldRoot.children).not.toContain(hud.container);
+    expect(root.children).toContain(ui.container);
   });
 
   it("get() returns existing layer", () => {
@@ -128,22 +117,47 @@ describe("RenderLayerManager", () => {
     const layer = manager.createFromDef({
       name: "hud",
       order: 100,
-      space: "screen",
       sortableChildren: true,
     });
     expect(layer.name).toBe("hud");
-    expect(layer.space).toBe("screen");
     expect(layer.container.sortableChildren).toBe(true);
   });
 
-  it("world layers propagate order to container zIndex", () => {
+  it("layers propagate order to container zIndex", () => {
     manager.create("fg", 10);
     manager.create("bg", -5);
     const bgLayer = manager.get("bg");
     const defLayer = manager.defaultLayer;
     const fgLayer = manager.get("fg");
-    expect((bgLayer.container as unknown as InstanceType<typeof MockContainer>).zIndex).toBe(-5);
-    expect((defLayer.container as unknown as InstanceType<typeof MockContainer>).zIndex).toBe(0);
-    expect((fgLayer.container as unknown as InstanceType<typeof MockContainer>).zIndex).toBe(10);
+    expect(
+      (bgLayer.container as unknown as InstanceType<typeof MockContainer>)
+        .zIndex,
+    ).toBe(-5);
+    expect(
+      (defLayer.container as unknown as InstanceType<typeof MockContainer>)
+        .zIndex,
+    ).toBe(0);
+    expect(
+      (fgLayer.container as unknown as InstanceType<typeof MockContainer>)
+        .zIndex,
+    ).toBe(10);
+  });
+
+  it("applies default eventMode to created layers", () => {
+    const mgr = new RenderLayerManager(root as never, "passive");
+    const layer = mgr.create("fg", 10);
+    expect(
+      (layer.container as unknown as InstanceType<typeof MockContainer>)
+        .eventMode,
+    ).toBe("passive");
+  });
+
+  it("per-layer eventMode overrides default", () => {
+    const mgr = new RenderLayerManager(root as never, "passive");
+    const layer = mgr.create("ui", 100, { eventMode: "static" as never });
+    expect(
+      (layer.container as unknown as InstanceType<typeof MockContainer>)
+        .eventMode,
+    ).toBe("static");
   });
 });

@@ -55,6 +55,27 @@ input.isPointerDown();            // any pointer button held
 
 Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`.
 
+### Camera wiring for world coordinates
+
+`getPointerPosition()` returns screen coords by default. To get world coords, wire the camera in your scene:
+
+```ts
+import { CameraEntity } from "@yagejs/renderer";
+import { InputManagerKey } from "@yagejs/input";
+
+onEnter(): void {
+  const cam = this.spawn(CameraEntity, { ... });
+  const input = this.context.resolve(InputManagerKey);
+  input.setCamera(cam); // CameraEntity satisfies CameraLike
+}
+
+onExit(): void {
+  this.context.resolve(InputManagerKey).clearCamera();
+}
+```
+
+Any object implementing `CameraLike` (has `screenToWorld(x, y)`) works with `setCamera()`. `CameraEntity` satisfies this interface.
+
 ## Runtime Rebinding
 
 ```ts

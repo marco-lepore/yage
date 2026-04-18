@@ -10,14 +10,11 @@ class PlayerController extends Component {
   private input = this.service(InputManagerKey);
   private sprite = this.sibling(SpriteComponent);
 
-  // Cached resolution -- only usable after onAdd()
-  private camera!: Camera;
-  onAdd() {
-    this.camera = this.use(CameraKey);
-  }
-
   // For physics entities — always go through the rigid body
   private rb = this.sibling(RigidBodyComponent);
+
+  // Camera is now an entity — pass it as a constructor parameter if needed
+  constructor(private readonly camera?: CameraEntity) { super(); }
 
   update(dt: number) {
     const dir = this.input.getVector("left", "right", "up", "down");

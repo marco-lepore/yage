@@ -108,11 +108,15 @@ anim.play("jump", { onComplete: () => anim.play("idle") });
 
 ## Camera
 
-The camera controls the viewport into your game world. Access it through the
-renderer context.
+The camera controls the viewport into your game world. Spawn a `CameraEntity`
+in your scene to create it:
 
 ```typescript
-const camera = engine.resolve(CameraKey);
+import { CameraEntity } from "@yagejs/renderer";
+
+const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+// All camera operations are available directly on cam:
+// cam.follow(), cam.shake(), cam.zoomTo(), cam.bounds, etc.
 ```
 
 ### Coordinate Convention
@@ -135,11 +139,10 @@ camera by half the viewport in `onEnter`:
 ```typescript
 class GameScene extends Scene {
   readonly name = "game";
-  private camera = this.service(CameraKey);
 
   onEnter() {
     // Top-left origin: world (0,0) → screen (0,0)
-    this.camera.position = new Vec2(400, 300); // viewport is 800×600
+    this.spawn(CameraEntity, { position: new Vec2(400, 300) }); // viewport is 800×600
   }
 }
 ```
@@ -151,7 +154,8 @@ either convention — they just move to frame the target.
 ### Following a Target
 
 ```typescript
-camera.follow(player, {
+const cam = this.spawn(CameraEntity, {
+  follow: player.get(Transform),
   smoothing: 0.1,
   offset: { x: 0, y: -50 },
   deadzone: { width: 100, height: 60 },

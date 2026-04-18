@@ -18,13 +18,9 @@ import {
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import {
-  Camera,
-  CameraKey,
   RenderLayerManager,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
-  StageKey,
-  WorldRootKey,
 } from "@yagejs/renderer";
 import type { SceneRenderTree } from "@yagejs/renderer";
 
@@ -41,6 +37,7 @@ export class MockContainer {
   zIndex = 0;
   label = "";
   destroyed = false;
+  eventMode = "passive";
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -85,8 +82,7 @@ export interface ParticlesTestContext {
   queryCache: QueryCache;
   gameLoop: GameLoop;
   scheduler: SystemScheduler;
-  stage: MockContainer;
-  camera: Camera;
+  root: MockContainer;
   layerManager: RenderLayerManager;
 }
 
@@ -108,14 +104,10 @@ export function createParticlesTestContext(): ParticlesTestContext {
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
-  const worldRoot = new MockContainer();
-  const screenRoot = new MockContainer();
-  const camera = new Camera(800, 600);
-  const layerManager = new RenderLayerManager(
-    worldRoot as never,
-    screenRoot as never,
-  );
+  const root = new MockContainer();
+  const layerManager = new RenderLayerManager(root as never);
   const tree: SceneRenderTree = {
+    root: root as never,
     get: (name) => layerManager.get(name),
     tryGet: (name) => layerManager.tryGet(name),
     getAll: () => layerManager.getAll(),
@@ -126,15 +118,15 @@ export function createParticlesTestContext(): ParticlesTestContext {
       layerManager.tryGet(def.name) ?? layerManager.createFromDef(def),
   };
 
-  ctx.register(StageKey, worldRoot as never);
-  ctx.register(WorldRootKey, worldRoot as never);
-  ctx.register(CameraKey, camera);
+  const scene = new _TestScene("test-scene");
   ctx.register(SceneRenderTreeProviderKey, {
     createForScene: () => tree,
     destroyForScene: () => undefined,
+    getTree: () => tree,
+    allTrees: function* () {
+      yield [scene, tree];
+    },
   });
-
-  const scene = new _TestScene("test-scene");
   scene._setContext(ctx);
   scene._registerScoped(SceneRenderTreeKey, tree);
 
@@ -144,8 +136,7 @@ export function createParticlesTestContext(): ParticlesTestContext {
     queryCache,
     gameLoop,
     scheduler,
-    stage: worldRoot,
-    camera,
+    root,
     layerManager,
   };
 }

@@ -38,13 +38,6 @@ export class InputPlugin implements Plugin {
       this.manager.setGroups(this.config.groups);
     }
 
-    if (this.config.cameraKey) {
-      const camera = context.tryResolve(this.config.cameraKey);
-      if (camera) {
-        this.manager._setCamera(camera);
-      }
-    }
-
     const renderer = this.config.rendererKey
       ? context.tryResolve(this.config.rendererKey)
       : undefined;

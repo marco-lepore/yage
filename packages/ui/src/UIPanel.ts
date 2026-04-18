@@ -351,16 +351,15 @@ export class UIPanel extends Component {
           `UIPanel: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
         );
       }
-      // Auto-provision a screen-space "ui" layer the first time a UIPanel
-      // is added to a scene that hasn't declared one explicitly. Also runs
-      // when `{ layer: "ui" }` is passed explicitly — the default name
-      // always resolves, even on scenes that omit it.
+      // Auto-provision a "ui" layer the first time a UIPanel is added
+      // to a scene that hasn't declared one explicitly. Marked
+      // screen-space so cameras with auto-bindings leave it untransformed.
       layer = tree.ensureLayer({
         name: UI_DEFAULT_LAYER,
         order: UI_DEFAULT_LAYER_ORDER,
-        space: "screen",
-        eventMode: "static",
+        screenSpace: true,
       });
+      layer.container.eventMode = "static";
     }
     layer.container.addChild(this._node.container);
   }

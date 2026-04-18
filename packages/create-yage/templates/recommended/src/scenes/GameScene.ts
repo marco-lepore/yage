@@ -1,6 +1,6 @@
 import { Scene, Transform, Vec2, defineEvent } from "@yagejs/core";
 import {
-  CameraKey,
+  CameraEntity,
   GraphicsComponent,
   texture,
   type LayerDef,
@@ -70,14 +70,11 @@ export class GameScene extends Scene {
 
     const player = this.spawn(Player, { x: SPAWN_X, y: SPAWN_Y });
 
-    const camera = this.context.resolve(CameraKey);
-    camera.follow(player.get(Transform), { smoothing: 0.12 });
-    camera.bounds = {
-      minX: 0,
-      minY: 0,
-      maxX: WORLD_WIDTH,
-      maxY: WORLD_HEIGHT,
-    };
+    this.spawn(CameraEntity, {
+      follow: player.get(Transform),
+      smoothing: 0.12,
+      bounds: { minX: 0, minY: 0, maxX: WORLD_WIDTH, maxY: WORLD_HEIGHT },
+    });
 
     this.on(PlayerHit, () => {
       const p = this.findEntity("player");

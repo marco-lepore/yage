@@ -1,5 +1,5 @@
 import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 
 class Spin extends Component {
@@ -24,9 +24,6 @@ class HelloWorldScene extends Scene {
   }
 
   onEnter() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(this.w / 2, this.h / 2);
-
     const tri = this.spawn("triangle");
     tri.add(new Transform({ position: new Vec2(this.w / 2, this.h / 2) }));
     tri.add(

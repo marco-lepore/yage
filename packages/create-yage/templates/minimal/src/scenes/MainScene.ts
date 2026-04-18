@@ -1,5 +1,5 @@
 import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { CameraKey, GraphicsComponent } from "@yagejs/renderer";
+import { GraphicsComponent } from "@yagejs/renderer";
 
 /**
  * Empty starter scene. Edit this file to start building your game.
@@ -13,9 +13,6 @@ export class MainScene extends Scene {
   readonly name = "main";
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
-
     const placeholder = this.spawn("placeholder");
     placeholder.add(new Transform({ position: new Vec2(400, 300) }));
     placeholder.add(
