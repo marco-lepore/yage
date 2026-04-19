@@ -117,6 +117,7 @@ export class Engine {
     this.loop.setCallbacks({
       earlyUpdate: (dt) => {
         this.logger.setFrame(this.loop.frameCount);
+        this.scenes._tickTransition(dt);
         this.scheduler.run(Phase.EarlyUpdate, dt);
       },
       fixedUpdate: (dt) => this.scheduler.run(Phase.FixedUpdate, dt),
@@ -188,9 +189,11 @@ export class Engine {
       };
     }
 
-    // Notify plugins
+    // Notify plugins. Awaited so users can reliably call scenes.push()
+    // right after `await engine.start()` without racing plugin init
+    // (e.g. DebugPlugin mounts a detached debug scene in onStart).
     for (const plugin of sorted) {
-      plugin.onStart?.();
+      await plugin.onStart?.();
     }
 
     // Emit engine started event
@@ -205,8 +208,8 @@ export class Engine {
     // Stop the loop
     this.loop.stop();
 
-    // Clear scenes
-    this.scenes.clear();
+    // Tear down scenes synchronously; also short-circuits any queued async work.
+    this.scenes._destroy();
 
     // Unregister all systems (reverse order for clean teardown)
     const allSystems = this.scheduler.getAllSystems();

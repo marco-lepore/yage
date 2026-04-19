@@ -31,10 +31,10 @@ test.describe("Scene stack fixture", () => {
     });
     expect(await getEntityByName(page, "overlay-marker")).toBeDefined();
 
-    await page.evaluate(() => {
-      (
+    await page.evaluate(async () => {
+      await (
         window as Window & {
-          __sceneStackTest__: { popTop(): void };
+          __sceneStackTest__: { popTop(): Promise<void> };
         }
       ).__sceneStackTest__.popTop();
     });

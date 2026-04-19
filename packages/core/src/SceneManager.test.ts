@@ -13,6 +13,7 @@ import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
+import type { SceneTransition } from "./SceneTransition.js";
 
 class GameScene extends Scene {
   readonly name: string;
@@ -121,7 +122,7 @@ describe("SceneManager", () => {
       const { manager } = setup();
       const scene = new GameScene("main");
       await manager.push(scene);
-      const popped = manager.pop();
+      const popped = await manager.pop();
       expect(popped).toBe(scene);
       expect(scene.exitCalled).toBe(true);
       expect(manager.active).toBeUndefined();
@@ -133,7 +134,7 @@ describe("SceneManager", () => {
       const pause = new GameScene("pause");
       await manager.push(main);
       await manager.push(pause);
-      manager.pop();
+      await manager.pop();
       expect(main.resumeCalled).toBe(true);
       expect(main.isPaused).toBe(false);
       expect(manager.active).toBe(main);
@@ -141,7 +142,7 @@ describe("SceneManager", () => {
 
     it("returns undefined when stack is empty", async () => {
       const { manager } = setup();
-      expect(manager.pop()).toBeUndefined();
+      expect(await manager.pop()).toBeUndefined();
     });
 
     it("destroys all entities in popped scene", async () => {
@@ -150,7 +151,7 @@ describe("SceneManager", () => {
       await manager.push(scene);
       scene.spawn("player");
       scene.spawn("enemy");
-      manager.pop();
+      await manager.pop();
       expect(scene.getEntities().size).toBe(0);
     });
   });
@@ -203,14 +204,14 @@ describe("SceneManager", () => {
     });
   });
 
-  describe("clear", () => {
-    it("clears all scenes from top to bottom", async () => {
+  describe("popAll", () => {
+    it("pops all scenes from top to bottom", async () => {
       const { manager } = setup();
       const a = new GameScene("a");
       const b = new GameScene("b");
       await manager.push(a);
       await manager.push(b);
-      manager.clear();
+      await manager.popAll();
       expect(a.exitCalled).toBe(true);
       expect(b.exitCalled).toBe(true);
       expect(manager.all).toEqual([]);
@@ -236,7 +237,7 @@ describe("SceneManager", () => {
       bus.on("scene:popped", handler);
       const scene = new GameScene("main");
       await manager.push(scene);
-      manager.pop();
+      await manager.pop();
       expect(handler).toHaveBeenCalledWith({ scene });
     });
 
@@ -253,15 +254,15 @@ describe("SceneManager", () => {
     });
   });
 
-  describe("clear edge cases", () => {
+  describe("popAll edge cases", () => {
     it("handles corrupted stack with undefined entry gracefully", async () => {
       const { manager } = setup();
       // Inject an undefined into the internal stack to trigger the defensive guard.
       // This simulates an impossible state where pop() returns undefined despite length > 0.
       const stack = (manager as unknown as { stack: Array<Scene | undefined> })["stack"];
       stack.push(undefined as unknown as Scene);
-      // clear should not throw — the guard breaks out of the loop
-      manager.clear();
+      // popAll should not throw — the loop terminates cleanly
+      await manager.popAll();
       expect(manager.active).toBeUndefined();
     });
   });
@@ -339,7 +340,7 @@ describe("SceneManager", () => {
       await manager.push(game);
       await manager.push(pauseMenu);
       expect(game.isPaused).toBe(true);
-      manager.pop();
+      await manager.pop();
       expect(game.isPaused).toBe(false);
       expect(game.resumeCalled).toBe(true);
     });
@@ -354,7 +355,7 @@ describe("SceneManager", () => {
       await manager.push(pause2); // pauses pause1 (and game stays paused)
       expect(game.isPaused).toBe(true);
       expect(pause1.isPaused).toBe(true);
-      manager.pop(); // pop pause2
+      await manager.pop(); // pop pause2
       // pause1 still has pauseBelow=true, so game stays paused
       expect(game.isPaused).toBe(true);
       expect(pause1.isPaused).toBe(false);
@@ -391,7 +392,7 @@ describe("SceneManager", () => {
       await manager.push(scene);
       expect(events).toEqual(["before:game"]);
       expect(scene.enterCalled).toBe(true);
-      manager.pop();
+      await manager.pop();
       expect(events).toEqual(["before:game", "after:game"]);
     });
 
@@ -427,7 +428,7 @@ describe("SceneManager", () => {
       });
       const scene = new GameScene("g");
       await manager.push(scene);
-      manager.pop();
+      await manager.pop();
       // afterExit hook should have seen the scoped value still present.
       expect(sawScoped).toBe("hello");
       // After pop, the map is cleared.
@@ -467,7 +468,7 @@ describe("SceneManager", () => {
 
   describe("scene hooks (extended)", () => {
 
-    it("runs hooks on replace (afterExit for old, beforeEnter for new)", async () => {
+    it("runs beforeEnter for new before afterExit for old on replace", async () => {
       const { manager, hooks } = setupWithHooks();
       const events: string[] = [];
       hooks.register({
@@ -482,14 +483,16 @@ describe("SceneManager", () => {
       await manager.push(first);
       const second = new GameScene("second");
       await manager.replace(second);
+      // beforeEnter + preload for the new scene run before the old scene
+      // is torn down, so a failed asset load can't leave the stack empty.
       expect(events).toEqual([
         "before:first",
-        "after:first",
         "before:second",
+        "after:first",
       ]);
     });
 
-    it("runs afterExit hooks on clear for every scene", async () => {
+    it("runs afterExit hooks on popAll for every scene", async () => {
       const { manager, hooks } = setupWithHooks();
       const exited: string[] = [];
       hooks.register({
@@ -500,37 +503,39 @@ describe("SceneManager", () => {
       await manager.push(new GameScene("a"));
       await manager.push(new GameScene("b"));
       await manager.push(new GameScene("c"));
-      manager.clear();
-      // Cleared top-to-bottom
+      await manager.popAll();
+      // Popped top-to-bottom
       expect(exited).toEqual(["c", "b", "a"]);
     });
   });
 
   describe("reentrant guard", () => {
-    it("throws when push is called during an in-progress push", async () => {
+    it("throws when push is called reentrantly from a lifecycle hook", async () => {
       const { manager, hooks } = setupWithHooks();
       hooks.register({
         beforeEnter: async () => {
           // Attempt reentrant push inside a hook
           await expect(
             manager.push(new GameScene("reentrant")),
-          ).rejects.toThrow("called during an in-progress transition");
+          ).rejects.toThrow("called reentrantly from a scene lifecycle hook");
         },
       });
       await manager.push(new GameScene("main"));
     });
 
-    it("throws when pop is called during an in-progress push", async () => {
+    it("rejects when pop is called reentrantly from a lifecycle hook", async () => {
       const { manager, hooks } = setupWithHooks();
       await manager.push(new GameScene("base"));
+      let popPromise: Promise<unknown> | undefined;
       hooks.register({
         beforeEnter: () => {
-          expect(() => manager.pop()).toThrow(
-            "called during an in-progress transition",
-          );
+          popPromise = manager.pop();
         },
       });
       await manager.push(new GameScene("trigger"));
+      await expect(popPromise).rejects.toThrow(
+        "called reentrantly from a scene lifecycle hook",
+      );
     });
   });
 
@@ -587,6 +592,238 @@ describe("SceneManager", () => {
       await manager.replace(overlay);
       // game.onResume should fire AFTER overlay.onEnter
       expect(events).toEqual(["enter:overlay", "resume:game"]);
+    });
+  });
+
+  describe("transitions", () => {
+    function makeFakeTransition(
+      duration: number,
+      log?: string[],
+    ): {
+      transition: SceneTransition;
+      ticks: Array<{ dt: number; elapsed: number }>;
+    } {
+      const ticks: Array<{ dt: number; elapsed: number }> = [];
+      return {
+        ticks,
+        transition: {
+          duration,
+          begin(ctx) {
+            log?.push(`begin(${ctx.elapsed})`);
+          },
+          tick(dt, ctx) {
+            ticks.push({ dt, elapsed: ctx.elapsed });
+            log?.push(`tick(${dt},${ctx.elapsed})`);
+          },
+          end(ctx) {
+            log?.push(`end(${ctx.elapsed})`);
+          },
+        },
+      };
+    }
+
+    async function flush(): Promise<void> {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    it("isTransitioning is true during a transition", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("main");
+      const { transition } = makeFakeTransition(100);
+      const p = manager.push(scene, { transition });
+      await flush();
+      expect(manager.isTransitioning).toBe(true);
+      manager._tickTransition(100);
+      await p;
+      expect(manager.isTransitioning).toBe(false);
+    });
+
+    it("isTransitioning is false when no transition is provided", async () => {
+      const { manager } = setup();
+      await manager.push(new GameScene("main"));
+      expect(manager.isTransitioning).toBe(false);
+    });
+
+    it("_tickTransition advances elapsed and calls tick", async () => {
+      const { manager } = setup();
+      const { transition, ticks } = makeFakeTransition(100);
+      const p = manager.push(new GameScene("a"), { transition });
+      await flush();
+      manager._tickTransition(16);
+      expect(ticks).toHaveLength(1);
+      expect(ticks[0]!.dt).toBe(16);
+      expect(ticks[0]!.elapsed).toBe(16);
+      manager._tickTransition(84);
+      await p;
+    });
+
+    it("calls begin on first tick and end when elapsed >= duration", async () => {
+      const { manager } = setup();
+      const log: string[] = [];
+      const { transition } = makeFakeTransition(50, log);
+      const p = manager.push(new GameScene("a"), { transition });
+      await flush();
+      manager._tickTransition(20);
+      expect(log).toContain("begin(0)");
+      manager._tickTransition(30);
+      expect(log).toContain("end(50)");
+      expect(manager.isTransitioning).toBe(false);
+      await p;
+    });
+
+    it("zero-duration transition calls begin and end immediately", async () => {
+      const { manager } = setup();
+      const log: string[] = [];
+      const { transition } = makeFakeTransition(0, log);
+      await manager.push(new GameScene("a"), { transition });
+      expect(log).toContain("begin(0)");
+      expect(log).toContain("end(0)");
+      expect(manager.isTransitioning).toBe(false);
+    });
+
+    it("queues sequential pushes", async () => {
+      const { manager } = setup();
+      const { transition: t1 } = makeFakeTransition(100);
+      const { transition: t2 } = makeFakeTransition(100);
+      const p1 = manager.push(new GameScene("a"), { transition: t1 });
+      const p2 = manager.push(new GameScene("b"), { transition: t2 });
+      await flush();
+      expect(manager.isTransitioning).toBe(true);
+      manager._tickTransition(100);
+      await p1;
+      await flush();
+      expect(manager.isTransitioning).toBe(true);
+      manager._tickTransition(100);
+      await p2;
+      expect(manager.isTransitioning).toBe(false);
+      expect(manager.all).toHaveLength(2);
+    });
+
+    it("popAll queues after an in-flight transition instead of cancelling it", async () => {
+      const { manager } = setup();
+      const log: string[] = [];
+      const { transition } = makeFakeTransition(200, log);
+      const pushPromise = manager.push(new GameScene("a"), { transition });
+      await flush();
+      manager._tickTransition(50);
+      expect(manager.isTransitioning).toBe(true);
+
+      const popAllPromise = manager.popAll();
+      // Doesn't interrupt the in-flight transition.
+      expect(manager.isTransitioning).toBe(true);
+      expect(manager.all).toHaveLength(1);
+
+      // Let the transition finish, then popAll runs.
+      manager._tickTransition(200);
+      await pushPromise;
+      await popAllPromise;
+
+      expect(log).toContain("end(200)");
+      expect(manager.isTransitioning).toBe(false);
+      expect(manager.all).toHaveLength(0);
+    });
+
+    it("pop with transition runs transition before removing", async () => {
+      const { manager } = setup();
+      await manager.push(new GameScene("a"));
+      await manager.push(new GameScene("b"));
+      const log: string[] = [];
+      const { transition } = makeFakeTransition(100, log);
+      const popPromise = manager.pop({ transition });
+      await flush();
+      expect(manager.all).toHaveLength(2);
+      manager._tickTransition(100);
+      const popped = await popPromise;
+      expect(popped?.name).toBe("b");
+      expect(manager.all).toHaveLength(1);
+      expect(log).toContain("begin(0)");
+      expect(log).toContain("end(100)");
+    });
+
+    it("replace with transition keeps both scenes during transition", async () => {
+      const { manager, ctx } = setup();
+      const bus = ctx.resolve(EventBusKey);
+      const replaceHandler = vi.fn();
+      bus.on("scene:replaced", replaceHandler);
+
+      const old = new GameScene("old");
+      await manager.push(old);
+      const log: string[] = [];
+      const { transition } = makeFakeTransition(100, log);
+      const replacePromise = manager.replace(new GameScene("new"), {
+        transition,
+      });
+      await flush();
+      expect(manager.all).toHaveLength(2);
+      expect(old.exitCalled).toBe(false);
+
+      manager._tickTransition(100);
+      await replacePromise;
+
+      expect(old.exitCalled).toBe(true);
+      expect(manager.all).toHaveLength(1);
+      expect(manager.active?.name).toBe("new");
+      expect(replaceHandler).toHaveBeenCalledTimes(1);
+      expect(log).toContain("end(100)");
+    });
+
+    it("emits scene:transition:started and scene:transition:ended events", async () => {
+      const { manager, ctx } = setup();
+      const bus = ctx.resolve(EventBusKey);
+      const started = vi.fn();
+      const ended = vi.fn();
+      bus.on("scene:transition:started", started);
+      bus.on("scene:transition:ended", ended);
+
+      const { transition } = makeFakeTransition(50);
+      const scene = new GameScene("a");
+      const p = manager.push(scene, { transition });
+      await flush();
+      expect(started).toHaveBeenCalledWith({
+        kind: "push",
+        fromScene: undefined,
+        toScene: scene,
+      });
+      manager._tickTransition(50);
+      expect(ended).toHaveBeenCalledWith({
+        kind: "push",
+        fromScene: undefined,
+        toScene: scene,
+      });
+      await p;
+    });
+
+    it("does not re-call begin if it throws on first tick", async () => {
+      const { manager } = setup();
+      let beginCalls = 0;
+      const transition: SceneTransition = {
+        duration: 100,
+        begin() {
+          beginCalls++;
+          throw new Error("boom");
+        },
+        tick() {},
+      };
+      const p = manager.push(new GameScene("a"), { transition });
+      await flush();
+      manager._tickTransition(16);
+      manager._tickTransition(16);
+      manager._tickTransition(16);
+      expect(beginCalls).toBe(1);
+      manager._tickTransition(100);
+      await p;
+    });
+
+    it("scene.isTransitioning reflects manager state", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      const { transition } = makeFakeTransition(100);
+      const p = manager.push(scene, { transition });
+      await flush();
+      expect(scene.isTransitioning).toBe(true);
+      manager._tickTransition(100);
+      await p;
+      expect(scene.isTransitioning).toBe(false);
     });
   });
 });

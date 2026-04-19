@@ -78,6 +78,24 @@ anim.play("bob");
 
 `KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in milliseconds along the track.
 
+### Scene Transitions
+
+| Export | Purpose |
+|---|---|
+| `SceneTransition` | Interface: `duration`, `begin?`, `tick`, `end?` |
+| `SceneTransitionContext` | `elapsed`, `kind`, `engineContext`, `fromScene`, `toScene` |
+| `SceneTransitionKind` | `"push" \| "pop" \| "replace"` |
+| `SceneTransitionOptions` | `{ transition?: SceneTransition }` |
+| `resolveTransition(callSite, destination)` | Precedence: call-site → `scene.defaultTransition` → undefined |
+
+Core ships the transition contract + orchestration only. Concrete transitions (`fade`, `flash`, `crossFade`) live in `@yagejs/renderer`.
+
+`SceneManager.push/pop/replace` accept `{ transition }`. `Scene.defaultTransition` provides a per-scene default. `Scene.isTransitioning` and `SceneManager.isTransitioning` reflect active transition state.
+
+Events: `scene:transition:started { kind, fromScene, toScene }`, `scene:transition:ended { kind, fromScene, toScene }` (fromScene/toScene may be `undefined`).
+
+**Breaking:** `SceneManager.pop()` returns `Promise<Scene | undefined>`.
+
 ### Easing
 
 `easeLinear`, `easeInQuad`, `easeOutQuad`, `easeInOutQuad`, `easeOutBounce`

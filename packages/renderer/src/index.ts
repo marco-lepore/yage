@@ -88,6 +88,9 @@ export {
 } from "./SceneRenderTree.js";
 export { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 
+// Transitions
+export * from "./transitions/index.js";
+
 // Asset factories
 export {
   renderAsset,

@@ -1,0 +1,185 @@
+---
+title: "Scene Transitions"
+description: "Animate handoffs between scenes with fade, flash, and custom transitions"
+---
+
+Scene transitions animate the visual handoff when pushing, popping, or replacing
+scenes. During a transition, both scenes coexist on the stack so you can
+crossfade, flash, or run any custom animation.
+
+## Quick Start
+
+```typescript
+import { fade } from "@yagejs/renderer";
+
+// Push with a fade to black
+await engine.scenes.push(new GameScene(), {
+  transition: fade({ duration: 400 }),
+});
+
+// Pop with a fade
+await engine.scenes.pop({
+  transition: fade({ duration: 300 }),
+});
+```
+
+## Built-in Transitions
+
+### Renderer (visual)
+
+**`fade({ duration?, color? })`** — Fades to a solid color and back. The
+first half fades out, the second half fades in. Defaults to 300ms, black.
+
+```typescript
+import { fade } from "@yagejs/renderer";
+
+fade() // 300ms black
+fade({ duration: 500, color: 0x1a1a2e }) // 500ms dark blue
+```
+
+**`flash({ duration?, color? })`** — Flashes a solid color that decays from
+full opacity to zero. Great for impacts or screen-clearing effects. Defaults
+to 200ms, white.
+
+```typescript
+import { flash } from "@yagejs/renderer";
+
+flash() // 200ms white
+flash({ duration: 150, color: 0xff0000 }) // quick red flash
+```
+
+**`crossFade({ duration? })`** — Cross-dissolves between scenes. The
+outgoing scene fades 1→0 while the incoming scene fades 0→1. Both stay
+visible throughout — no blackout in the middle. Defaults to 400ms.
+
+```typescript
+import { crossFade } from "@yagejs/renderer";
+
+crossFade() // 400ms
+crossFade({ duration: 600 })
+```
+
+`@yagejs/core` ships the `SceneTransition` contract and orchestration but
+no concrete transitions — all built-ins live in `@yagejs/renderer` because
+they need PIXI. For multi-step sequences (delayed fades, strobing flashes,
+chained effects) write a custom transition against the contract; the
+built-ins each manage their own scene visibility, so chaining them is
+usually not what you want.
+
+## Per-Scene Defaults
+
+Set `defaultTransition` on a scene class to use it automatically when no
+call-site transition is provided:
+
+```typescript
+class MenuScene extends Scene {
+  readonly name = "menu";
+  readonly defaultTransition = fade({ duration: 300 });
+
+  onEnter() { /* ... */ }
+}
+
+// Uses MenuScene.defaultTransition automatically
+await engine.scenes.push(new MenuScene());
+
+// Override with a call-site transition
+await engine.scenes.push(new MenuScene(), {
+  transition: flash({ duration: 200 }),
+});
+```
+
+## Checking Transition State
+
+```typescript
+// On the scene manager
+if (engine.scenes.isTransitioning) {
+  // don't accept input during transitions
+}
+
+// On any scene
+if (scene.isTransitioning) {
+  return;
+}
+```
+
+## Events
+
+The engine event bus emits events when transitions start and end:
+
+```typescript
+engine.events.on("scene:transition:started", ({ kind }) => {
+  console.log(`Transition started: ${kind}`); // "push", "pop", or "replace"
+});
+
+engine.events.on("scene:transition:ended", ({ kind }) => {
+  console.log(`Transition ended: ${kind}`);
+});
+```
+
+## Custom Transitions
+
+Implement the `SceneTransition` interface to create your own. The
+`getSceneContainer` helper from `@yagejs/renderer` returns the PIXI
+`Container` for a scene so you can manipulate its `alpha`, `visible`,
+`position`, or `filters` directly:
+
+```typescript
+import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
+import type { Container } from "pixi.js";
+import { getSceneContainer } from "@yagejs/renderer";
+
+function slideIn(duration: number, width: number): SceneTransition {
+  let toRoot: Container | undefined;
+  return {
+    duration,
+    begin(ctx: SceneTransitionContext) {
+      toRoot = getSceneContainer(ctx, ctx.toScene);
+      if (toRoot) toRoot.x = width;
+    },
+    tick(_dt: number, ctx: SceneTransitionContext) {
+      if (!toRoot) return;
+      const t = Math.min(ctx.elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      toRoot.x = width * (1 - eased);
+    },
+    end() {
+      if (toRoot) toRoot.x = 0;
+      toRoot = undefined;
+    },
+  };
+}
+```
+
+The `SceneTransitionContext` gives you:
+- `elapsed` — wall-clock ms since `begin()`
+- `kind` — `"push"`, `"pop"`, or `"replace"`
+- `engineContext` — DI container for resolving services
+- `fromScene` / `toScene` — the scenes involved
+
+## Lifecycle Details
+
+### How `replace` Works
+
+When replacing with a transition:
+1. The new scene is pushed first (`onEnter` fires)
+2. `transition.begin()` runs synchronously after mount/`onEnter` and before
+   the first frame is rendered — safe to reach `toScene`'s container here
+3. Both scenes coexist during the transition (`tick` per frame)
+4. `transition.end()` fires (can still reference both scenes)
+5. The old scene is removed (`onExit`, entity destruction)
+6. `scene:replaced` event emitted
+
+### Queueing
+
+Multiple `push`/`pop`/`replace`/`popAll` calls queue automatically — they
+don't cancel each other. Each completes its transition before the next
+starts.
+
+`engine.scenes.popAll()` is also queued: it waits for any in-flight
+transition and pending ops to finish before tearing the stack down. Use it
+for "restart from menu"-style flows — not as an emergency abort.
+
+:::caution[Breaking Change]
+`SceneManager.pop()` now returns `Promise<Scene | undefined>`. Update existing
+`pop()` calls to use `await` or `void`.
+:::

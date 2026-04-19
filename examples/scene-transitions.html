@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Scene Transitions</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Scene Transitions</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <div class="slider-row">
+        <label for="duration">Duration:</label>
+        <input id="duration" type="range" min="100" max="2000" step="50" value="400" />
+        <span id="duration-label">400ms</span>
+      </div>
+      <div class="row">
+        <button id="btn-push-fade">Push (fade)</button>
+        <button id="btn-push-flash">Push (flash)</button>
+        <button id="btn-push-crossfade">Push (crossFade)</button>
+        <button id="btn-push-slide">Push (custom slideIn)</button>
+      </div>
+      <div class="row">
+        <button id="btn-push-default">Push Level (default transition)</button>
+        <button id="btn-replace">Replace (fade)</button>
+        <button id="btn-pop">Pop (fade)</button>
+        <button id="btn-clear">Clear → Menu</button>
+      </div>
+      <div id="status">Stack:
+Transitioning:</div>
+    </div>
+    <script type="module" src="/src/scene-transitions.ts"></script>
+  </body>
+</html>

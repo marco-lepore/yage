@@ -28,7 +28,7 @@ export interface Plugin {
   /** Register systems with the scheduler. Called after install. */
   registerSystems?(scheduler: import("./SystemScheduler.js").SystemScheduler): void;
   /** Called after all plugins are installed and the engine has started. */
-  onStart?(): void;
+  onStart?(): void | Promise<void>;
   /** Called when the engine is destroyed. */
   onDestroy?(): void;
 }
