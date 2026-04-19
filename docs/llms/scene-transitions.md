@@ -68,10 +68,10 @@ scene-visibility and would fight each other if chained.
 ### Push
 
 1. New scene enters (`onEnter`)
-2. `transition.begin()` fires
-3. Per-frame `transition.tick(dt, ctx)` advances
-4. `transition.end()` fires
-5. Old scene receives `onPause` if applicable
+2. Old scene receives `onPause` if applicable (fires before the transition begins)
+3. `transition.begin()` fires
+4. Per-frame `transition.tick(dt, ctx)` advances
+5. `transition.end()` fires
 
 ### Pop
 
@@ -95,8 +95,8 @@ Concurrent `push`/`pop`/`replace` calls queue via `_pendingChain`. Re-entrant ca
 
 ## Events
 
-- `scene:transition:started { kind }` — emitted when a transition begins
-- `scene:transition:ended { kind }` — emitted when a transition completes
+- `scene:transition:started { kind, fromScene, toScene }` — emitted when a transition begins (`fromScene`/`toScene` may be `undefined`)
+- `scene:transition:ended { kind, fromScene, toScene }` — emitted when a transition completes
 
 ## Checking State
 

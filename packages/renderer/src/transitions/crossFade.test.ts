@@ -144,6 +144,58 @@ describe("crossFade", () => {
     expect(toContainer.alpha).toBe(1);
   });
 
+  it("end() leaves fromContainer faded on pop/replace to avoid a one-frame flash", () => {
+    const t = crossFade({ duration: 100 });
+    const fromContainer = { alpha: 0.3 };
+    const toContainer = { alpha: 0.7 };
+    const fromScene = { name: "from" } as Scene;
+    const toScene = { name: "to" } as Scene;
+
+    const makeEndCtx = (kind: SceneTransitionKind) =>
+      makeCtx({
+        elapsed: 100,
+        kind,
+        fromScene,
+        toScene,
+        fromContainer,
+        toContainer,
+      });
+
+    t.begin!(
+      makeCtx({
+        elapsed: 0,
+        kind: "pop",
+        fromScene,
+        toScene,
+        fromContainer,
+        toContainer,
+      }),
+    );
+    t.tick(100, makeEndCtx("pop"));
+    t.end!(makeEndCtx("pop"));
+
+    expect(fromContainer.alpha).toBe(0);
+    expect(toContainer.alpha).toBe(1);
+
+    fromContainer.alpha = 0.3;
+    toContainer.alpha = 0.7;
+    t.begin!(
+      makeCtx({
+        elapsed: 0,
+        kind: "replace",
+        fromScene,
+        toScene,
+        fromContainer,
+        toContainer,
+      }),
+    );
+    t.tick(100, makeEndCtx("replace"));
+    t.end!(makeEndCtx("replace"));
+
+    expect(fromContainer.alpha).toBe(0);
+    expect(toContainer.alpha).toBe(1);
+  });
+
   it("tolerates an undefined fromScene (first push)", () => {
     const t = crossFade({ duration: 100 });
     const toContainer = { alpha: 1 };

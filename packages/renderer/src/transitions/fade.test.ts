@@ -56,8 +56,8 @@ describe("fade", () => {
     expect(t.duration).toBe(300);
   });
 
-  it("accepts custom duration and color", () => {
-    const t = fade({ duration: 500, color: 0xff0000 });
+  it("accepts custom duration", () => {
+    const t = fade({ duration: 500 });
     expect(t.duration).toBe(500);
   });
 

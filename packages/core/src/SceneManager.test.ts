@@ -13,6 +13,7 @@ import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
+import type { SceneTransition } from "./SceneTransition.js";
 
 class GameScene extends Scene {
   readonly name: string;
@@ -597,7 +598,7 @@ describe("SceneManager", () => {
       duration: number,
       log?: string[],
     ): {
-      transition: import("./SceneTransition.js").SceneTransition;
+      transition: SceneTransition;
       ticks: Array<{ dt: number; elapsed: number }>;
     } {
       const ticks: Array<{ dt: number; elapsed: number }> = [];
@@ -773,18 +774,27 @@ describe("SceneManager", () => {
       bus.on("scene:transition:ended", ended);
 
       const { transition } = makeFakeTransition(50);
-      const p = manager.push(new GameScene("a"), { transition });
+      const scene = new GameScene("a");
+      const p = manager.push(scene, { transition });
       await flush();
-      expect(started).toHaveBeenCalledWith({ kind: "push" });
+      expect(started).toHaveBeenCalledWith({
+        kind: "push",
+        fromScene: undefined,
+        toScene: scene,
+      });
       manager._tickTransition(50);
-      expect(ended).toHaveBeenCalledWith({ kind: "push" });
+      expect(ended).toHaveBeenCalledWith({
+        kind: "push",
+        fromScene: undefined,
+        toScene: scene,
+      });
       await p;
     });
 
     it("does not re-call begin if it throws on first tick", async () => {
       const { manager } = setup();
       let beginCalls = 0;
-      const transition: import("./SceneTransition.js").SceneTransition = {
+      const transition: SceneTransition = {
         duration: 100,
         begin() {
           beginCalls++;

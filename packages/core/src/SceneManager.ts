@@ -18,7 +18,6 @@ interface TransitionRun {
   kind: SceneTransitionKind;
   transition: SceneTransition;
   elapsed: number;
-  begun: boolean;
   fromScene: Scene | undefined;
   toScene: Scene | undefined;
   resolve: () => void;
@@ -222,10 +221,12 @@ export class SceneManager {
 
   // ---- Private helpers ----
 
-  private _enqueue<T>(work: (gen: number) => Promise<T>): Promise<T> {
+  private _enqueue<T>(
+    work: (gen: number) => Promise<T>,
+  ): Promise<T | undefined> {
     const myGen = this._transitionGeneration;
     const next = this._pendingChain.then(async () => {
-      if (this._transitionGeneration !== myGen) return undefined as T;
+      if (this._transitionGeneration !== myGen) return undefined;
       return work(myGen);
     });
 
@@ -340,21 +341,25 @@ export class SceneManager {
       kind,
       transition,
       elapsed: 0,
-      begun: false,
       fromScene,
       toScene,
       resolve: resolveRun,
     };
     this._currentRun = run;
-    this.bus?.emit("scene:transition:started", { kind });
+    this.bus?.emit("scene:transition:started", {
+      kind,
+      fromScene,
+      toScene,
+    });
 
     // Fire begin synchronously so the transition can paint its start state
     // before any render happens. For push/replace this lets built-ins hide
     // the incoming scene before a frame could show it covering the old one.
-    run.begun = true;
     this._safeCall(run, "begin");
 
-    if (transition.duration <= 0) {
+    // `> 0` also rejects NaN/Infinity so a malformed duration can't loop
+    // forever in _tickTransition.
+    if (!(transition.duration > 0)) {
       this._cleanupRun(run);
       return;
     }
@@ -367,7 +372,11 @@ export class SceneManager {
 
     this._safeCall(run, "end");
     this._currentRun = undefined;
-    this.bus?.emit("scene:transition:ended", { kind: run.kind });
+    this.bus?.emit("scene:transition:ended", {
+      kind: run.kind,
+      fromScene: run.fromScene,
+      toScene: run.toScene,
+    });
     run.resolve();
   }
 

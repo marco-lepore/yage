@@ -162,10 +162,12 @@ The `SceneTransitionContext` gives you:
 
 When replacing with a transition:
 1. The new scene is pushed first (`onEnter` fires)
-2. Both scenes coexist during the transition
-3. `transition.end()` fires (can still reference both scenes)
-4. The old scene is removed (`onExit`, entity destruction)
-5. `scene:replaced` event emitted
+2. `transition.begin()` runs synchronously after mount/`onEnter` and before
+   the first frame is rendered — safe to reach `toScene`'s container here
+3. Both scenes coexist during the transition (`tick` per frame)
+4. `transition.end()` fires (can still reference both scenes)
+5. The old scene is removed (`onExit`, entity destruction)
+6. `scene:replaced` event emitted
 
 ### Queueing
 

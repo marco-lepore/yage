@@ -108,9 +108,9 @@ class GameController extends Component {
     if (this.input.isJustPressed("fast")) scene.timeScale = 2;
 
     if (this.input.isJustPressed("pause")) {
-      // Fire-and-forget: the SceneManager's reentrancy guard will reject
-      // if pause is hammered during an in-progress transition — ignore
-      // those so a stray press doesn't crash the game.
+      // Fire-and-forget: push is async. If push ever rejects (e.g. preload
+      // failure), consume the rejection so a stray keypress doesn't surface
+      // an unhandled rejection to the console.
       engine.scenes.push(new PauseScene()).catch(() => {});
     }
 
@@ -159,14 +159,14 @@ class PauseScene extends Scene {
     panel.text("Physics and game logic are frozen", textStyle("subtitle"));
 
     panel.button("Resume", {
-      width: 220, height: 40,
+      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => void engine.scenes.pop(),
       ...nineSliceBtn,
     });
 
     panel.button("Resume in Slow-Mo (0.25x)", {
-      width: 220, height: 40,
+      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => {
         if (game) game.timeScale = 0.25;
@@ -176,7 +176,7 @@ class PauseScene extends Scene {
     });
 
     panel.button("Resume at Normal Speed", {
-      width: 220, height: 40,
+      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => {
         if (game) game.timeScale = 1;

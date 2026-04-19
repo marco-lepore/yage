@@ -18,8 +18,16 @@ export interface EngineEvents {
   "scene:pushed": { scene: SceneRef };
   "scene:popped": { scene: SceneRef };
   "scene:replaced": { oldScene: SceneRef; newScene: SceneRef };
-  "scene:transition:started": { kind: SceneTransitionKind };
-  "scene:transition:ended": { kind: SceneTransitionKind };
+  "scene:transition:started": {
+    kind: SceneTransitionKind;
+    fromScene: SceneRef | undefined;
+    toScene: SceneRef | undefined;
+  };
+  "scene:transition:ended": {
+    kind: SceneTransitionKind;
+    fromScene: SceneRef | undefined;
+    toScene: SceneRef | undefined;
+  };
   "engine:started": undefined;
   "engine:stopped": undefined;
 }

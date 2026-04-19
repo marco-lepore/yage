@@ -92,7 +92,7 @@ Core ships the transition contract + orchestration only. Concrete transitions (`
 
 `SceneManager.push/pop/replace` accept `{ transition }`. `Scene.defaultTransition` provides a per-scene default. `Scene.isTransitioning` and `SceneManager.isTransitioning` reflect active transition state.
 
-Events: `scene:transition:started { kind }`, `scene:transition:ended { kind }`.
+Events: `scene:transition:started { kind, fromScene, toScene }`, `scene:transition:ended { kind, fromScene, toScene }` (fromScene/toScene may be `undefined`).
 
 **Breaking:** `SceneManager.pop()` returns `Promise<Scene | undefined>`.
 
