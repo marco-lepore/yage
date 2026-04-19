@@ -28,9 +28,9 @@ class UILayersScene extends Scene {
   readonly name = "ui-layers";
   readonly preload = [...allAssets];
   readonly layers: readonly LayerDef[] = [
-    { name: "hud", order: 1010 },
-    { name: "menu", order: 1020 },
-    { name: "dialog", order: 1030 },
+    { name: "hud", order: 1010, space: "screen" },
+    { name: "menu", order: 1020, space: "screen" },
+    { name: "dialog", order: 1030, space: "screen" },
   ];
 
   onEnter(): void {

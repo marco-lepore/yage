@@ -113,7 +113,7 @@ test.describe("Camera parallax — per-layer translateRatio bindings", () => {
     }
   });
 
-  test("UI layer (auto-provisioned, autoBindable: false) stays at identity", async ({
+  test("UI layer (auto-provisioned, space: 'screen') stays at identity", async ({
     page,
   }) => {
     await gotoFixture(page, "/camera-parallax.html");

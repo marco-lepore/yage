@@ -152,18 +152,18 @@ export class CameraComponent extends Component {
   /**
    * Resolve bindings for this camera against the given render tree.
    *
-   * If no explicit `bindings` were passed, auto-binds every layer whose
-   * `autoBindable` flag is `true` (all user-declared layers, by default).
-   * Plugin-provisioned layers that opt out via
-   * `ensureLayer(def, { autoBindable: false })` — for example the UI
-   * layer — are skipped unless the caller names them in explicit
-   * `bindings`.
+   * If no explicit `bindings` were passed, auto-binds every world-space
+   * layer (`LayerDef.space === "world"`, the default). Screen-space layers
+   * — declared with `space: "screen"` or auto-provisioned by plugins via
+   * `ensureLayer(def, { space: "screen" })`, e.g. the UI layer — are
+   * skipped so they stay fixed to the viewport. Cameras can still
+   * explicitly bind a screen-space layer by naming it in `bindings`.
    */
   getResolvedBindings(tree: SceneRenderTree): readonly CameraBinding[] {
     if (this.bindings) return this.bindings;
     return tree
       .getAll()
-      .filter((layer) => layer.autoBindable)
+      .filter((layer) => layer.space === "world")
       .map((layer) => ({ layer: layer.name, translateRatio: 1 }));
   }
 }

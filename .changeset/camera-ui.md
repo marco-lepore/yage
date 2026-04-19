@@ -8,6 +8,6 @@ author: marco-lepore
 
 Rework the camera system into an entity + layer-binding model, and give every scene its own container.
 
-- `UIPanel` auto-provisions a `"ui"` layer via `ensureLayer({ autoBindable: false })` when the scene didn't declare one, keeping UI in screen-space without any camera wiring.
-- Adding a `UIPanel` to a layer that would be auto-bound by the default camera now throws with a pointer at how to fix it (remove the layer from `Scene.layers`, or pass explicit `CameraEntity { bindings }` that exclude it). This prevents the surprise of UI scrolling with the world.
-- `layer.container.eventMode = "static"` is applied whether UIPanel creates the layer or reuses an existing opted-out one, so HUD hit-testing works in both cases.
+- `UIPanel` auto-provisions a `"ui"` layer via `ensureLayer(def, { space: "screen" })` when the scene didn't declare one, keeping UI pinned to the viewport without any camera wiring.
+- `UIPanel` can now target a world-space layer deliberately — declare a `LayerDef` with `space: "world"` (the default) and pass its name via `UIPanelOptions.layer` to get diegetic UI that follows the camera (interaction prompts, entity-anchored health bars, damage numbers). The previous throw that rejected UI on camera-auto-bindable layers is gone; the layer's declared `space` is now the single source of truth.
+- `layer.container.eventMode = "static"` is applied whether UIPanel creates the layer or reuses an existing one, so HUD hit-testing works in both cases.

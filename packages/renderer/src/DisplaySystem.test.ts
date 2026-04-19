@@ -300,10 +300,10 @@ describe("DisplaySystem", () => {
     expect(layerC.rotation).toBeCloseTo(-Math.PI / 2);
   });
 
-  it("auto-bound cameras skip layers opted out via autoBindable: false", () => {
+  it("auto-bound cameras skip screen-space layers", () => {
     const { scene, tree } = setup();
     tree.ensureLayer({ name: "world", order: 0 });
-    tree.ensureLayer({ name: "ui", order: 1000 }, { autoBindable: false });
+    tree.ensureLayer({ name: "ui", order: 1000 }, { space: "screen" });
 
     const camEntity = spawnEntityInScene(scene, "camera");
     camEntity.add(
@@ -364,9 +364,9 @@ describe("DisplaySystem", () => {
     expect(world.position.x).toBe(-200);
   });
 
-  it("explicit bindings can still target an opted-out layer", () => {
+  it("explicit bindings can still target a screen-space layer", () => {
     const { scene, tree } = setup();
-    tree.ensureLayer({ name: "ui", order: 1000 }, { autoBindable: false });
+    tree.ensureLayer({ name: "ui", order: 1000 }, { space: "screen" });
 
     const camEntity = spawnEntityInScene(scene, "camera");
     camEntity.add(

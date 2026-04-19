@@ -73,7 +73,7 @@ export { CameraZoom } from "./CameraZoom.js";
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";
 export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
-export type { CreateLayerOptions } from "./RenderLayer.js";
+export type { CreateLayerOptions, LayerSpace } from "./RenderLayer.js";
 
 // Per-scene render tree
 export type { LayerDef } from "./LayerDef.js";

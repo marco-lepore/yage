@@ -126,7 +126,7 @@ class WorldScene extends Scene {
       }),
     );
 
-    // HUD — UIPanel auto-provisions the "ui" layer with autoBindable: false,
+    // HUD — UIPanel auto-provisions the "ui" layer as `space: "screen"`,
     // so it stays pinned to top-left as the world scrolls underneath.
     const hud = this.spawn("hud");
     const panel = hud.add(
