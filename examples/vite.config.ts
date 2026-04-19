@@ -1,7 +1,20 @@
 import { defineConfig } from "vite";
+import { readdirSync } from "fs";
 import { resolve } from "path";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
+
+// Auto-discover every *.html at the examples root so new examples are picked
+// up by the production build without touching this file. `index.html` keeps
+// the conventional "main" key; everything else uses its filename stem.
+const htmlInputs = Object.fromEntries(
+  readdirSync(__dirname)
+    .filter((f) => f.endsWith(".html"))
+    .map((f) => {
+      const stem = f.slice(0, -".html".length);
+      return [stem === "index" ? "main" : stem, resolve(__dirname, f)];
+    }),
+);
 
 export default defineConfig({
   base: process.env.VITE_BASE || "/",
@@ -28,26 +41,7 @@ export default defineConfig({
       output: {
         keepNames: true,
       },
-      input: {
-        main: resolve(__dirname, "index.html"),
-        debug: resolve(__dirname, "debug.html"),
-        "hello-world": resolve(__dirname, "hello-world.html"),
-        camera: resolve(__dirname, "camera.html"),
-        "physics-basics": resolve(__dirname, "physics-basics.html"),
-        "physics-collisions": resolve(__dirname, "physics-collisions.html"),
-        platformer: resolve(__dirname, "platformer.html"),
-        shooter: resolve(__dirname, "shooter.html"),
-        particles: resolve(__dirname, "particles.html"),
-        audio: resolve(__dirname, "audio.html"),
-        ui: resolve(__dirname, "ui.html"),
-        "ui-react": resolve(__dirname, "ui-react.html"),
-        "pixi-ui-kitchen-sink": resolve(__dirname, "pixi-ui-kitchen-sink.html"),
-        tilemap: resolve(__dirname, "tilemap.html"),
-        "input-remapping": resolve(__dirname, "input-remapping.html"),
-        "scene-pause": resolve(__dirname, "scene-pause.html"),
-        "save-load": resolve(__dirname, "save-load.html"),
-        "ui-layers": resolve(__dirname, "ui-layers.html"),
-      },
+      input: htmlInputs,
     },
   },
 });
