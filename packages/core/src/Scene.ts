@@ -9,6 +9,7 @@ import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
 import type { ServiceKey } from "./EngineContext.js";
 import type { SnapshotResolver } from "./Serializable.js";
+import type { SceneTransition } from "./SceneTransition.js";
 import { filterEntities } from "./EntityFilter.js";
 import type { EntityFilter } from "./EntityFilter.js";
 import type { TraitToken } from "./Trait.js";
@@ -35,6 +36,9 @@ export abstract class Scene {
 
   /** Asset handles to load before onEnter(). Override in subclasses. */
   readonly preload?: readonly AssetHandle<unknown>[];
+
+  /** Default transition used when this scene is the destination of a push/pop/replace. */
+  readonly defaultTransition?: SceneTransition;
 
   /** Manual pause flag. Set by game code to pause this scene regardless of stack position. */
   paused = false;
@@ -71,6 +75,12 @@ export abstract class Scene {
       if (stack[i]!.pauseBelow) return true;
     }
     return false;
+  }
+
+  /** Whether a scene transition is currently running. */
+  get isTransitioning(): boolean {
+    const sm = this._context?.tryResolve(SceneManagerKey);
+    return sm?.isTransitioning ?? false;
   }
 
   /** Convenience accessor for the AssetManager. */

@@ -89,6 +89,14 @@ export { Scene } from "./Scene.js";
 
 export { SceneManager } from "./SceneManager.js";
 
+export type {
+  SceneTransition,
+  SceneTransitionContext,
+  SceneTransitionKind,
+  SceneTransitionOptions,
+} from "./SceneTransition.js";
+export { resolveTransition } from "./SceneTransition.js";
+
 export { Process } from "./Process.js";
 export type { ProcessOptions } from "./Process.js";
 export {

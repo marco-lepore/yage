@@ -88,6 +88,15 @@ export {
 } from "./SceneRenderTree.js";
 export { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 
+// Transitions
+export { fade } from "./transitions/fade.js";
+export type { FadeOptions } from "./transitions/fade.js";
+export { flash } from "./transitions/flash.js";
+export type { FlashOptions } from "./transitions/flash.js";
+export { crossFade } from "./transitions/crossFade.js";
+export type { CrossFadeOptions } from "./transitions/crossFade.js";
+export { getSceneContainer } from "./transitions/helpers.js";
+
 // Asset factories
 export {
   renderAsset,
