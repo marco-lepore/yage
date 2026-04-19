@@ -284,15 +284,18 @@ import { extractCollisionShapes, toPhysicsColliders } from "@yagejs/tilemap";
 
 ## Camera Bounds
 
-Use the tilemap dimensions to constrain the camera:
+Use the tilemap dimensions to constrain the camera. The camera is an entity
+you spawn in the scene:
 
 ```typescript
-const camera = this.service(CameraKey);
-camera.bounds = {
-  x: 0,
-  y: 0,
-  width: tilemap.widthPx,
-  height: tilemap.heightPx,
+import { CameraEntity } from "@yagejs/renderer";
+
+const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
+cam.bounds = {
+  minX: 0,
+  minY: 0,
+  maxX: tilemap.widthPx,
+  maxY: tilemap.heightPx,
 };
 ```
 

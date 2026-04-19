@@ -7,7 +7,7 @@ import {
   Vec2,
   serializable,
 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 import type { SaveService, SnapshotResolver } from "@yagejs/save";
@@ -109,9 +109,6 @@ class TestScene extends Scene {
   readonly name = "test-scene";
 
   onEnter() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     const player = this.spawn(Player);
     const hat = this.spawn(Hat);
     player.addChild("hat", hat);
@@ -122,10 +119,6 @@ class TestScene extends Scene {
     companion.leaderId = player.id;
   }
 
-  afterRestore() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-  }
 }
 
 // ---- Boot ----

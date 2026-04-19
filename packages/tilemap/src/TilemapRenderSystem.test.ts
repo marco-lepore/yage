@@ -13,6 +13,7 @@ const { mocks } = vi.hoisted(() => {
     zIndex = 0;
     label = "";
     destroyed = false;
+    eventMode = "passive";
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -96,13 +97,10 @@ import {
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import {
-  CameraKey,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
-  StageKey,
-  WorldRootKey,
 } from "@yagejs/renderer";
-import { Camera, RenderLayerManager } from "@yagejs/renderer";
+import { RenderLayerManager } from "@yagejs/renderer";
 import type { SceneRenderTree } from "@yagejs/renderer";
 import { TilemapComponent } from "./TilemapComponent.js";
 import { TilemapRenderSystem } from "./TilemapRenderSystem.js";
@@ -130,37 +128,33 @@ function createTestContext() {
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
-  const worldRoot = new mocks.MockContainer();
-  const screenRoot = new mocks.MockContainer();
-  const camera = new Camera(800, 600);
-  const layerManager = new RenderLayerManager(
-    worldRoot as never,
-    screenRoot as never,
-  );
+  const root = new mocks.MockContainer();
+  const layerManager = new RenderLayerManager(root as never);
   const tree: SceneRenderTree = {
+    root: root as never,
     get: (n) => layerManager.get(n),
     tryGet: (n) => layerManager.tryGet(n),
     getAll: () => layerManager.getAll(),
     get defaultLayer() {
       return layerManager.defaultLayer;
     },
-    ensureLayer: (def) =>
-      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def),
+    ensureLayer: (def, opts) =>
+      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def, opts),
   };
 
-  ctx.register(StageKey, worldRoot as never);
-  ctx.register(WorldRootKey, worldRoot as never);
-  ctx.register(CameraKey, camera);
+  const scene = new TestScene();
   ctx.register(SceneRenderTreeProviderKey, {
     createForScene: () => tree,
     destroyForScene: () => undefined,
+    getTree: () => tree,
+    allTrees: function* () {
+      yield [scene, tree];
+    },
   });
-
-  const scene = new TestScene();
   scene._setContext(ctx);
   scene._registerScoped(SceneRenderTreeKey, tree);
 
-  return { ctx, scene, queryCache, stage: worldRoot };
+  return { ctx, scene, queryCache, root };
 }
 
 const testMap: TiledMapData = {
@@ -190,16 +184,20 @@ describe("TilemapRenderSystem", () => {
     system.onRegister!(ctx);
 
     const entity = scene.spawn("tilemap");
-    entity.add(new Transform({
-      position: new Vec2(50, 100),
-      rotation: 0.5,
-      scale: new Vec2(2, 3),
-    }));
+    entity.add(
+      new Transform({
+        position: new Vec2(50, 100),
+        rotation: 0.5,
+        scale: new Vec2(2, 3),
+      }),
+    );
     const comp = entity.add(new TilemapComponent({ map: testMap }));
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.position.x).toBe(50);
     expect(container.position.y).toBe(100);
     expect(container.rotation).toBe(0.5);
@@ -221,7 +219,9 @@ describe("TilemapRenderSystem", () => {
 
     system.update();
 
-    const container = comp.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.position.x).toBe(0); // Not synced
   });
 });

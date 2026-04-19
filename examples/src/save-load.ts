@@ -22,7 +22,6 @@ import {
 import {
   RendererPlugin,
   GraphicsComponent,
-  CameraKey,
   GraphicsContext,
   type LayerDef,
 } from "@yagejs/renderer";
@@ -480,9 +479,6 @@ class SaveDemoScene extends Scene {
     this.gs = new GameState(saveService);
     this.context.unregister(GameStateKey);
     this.context.register(GameStateKey, this.gs);
-
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
 
     this.setupListeners();
     this.buildStaticGeometry();

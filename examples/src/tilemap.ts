@@ -1,11 +1,10 @@
 import { Engine, Scene, Component, Transform, Vec2, defineBlueprint } from "@yagejs/core";
 import {
   RendererPlugin,
-  CameraKey,
+  CameraEntity,
   renderAsset,
   type LayerDef,
 } from "@yagejs/renderer";
-import type { Camera } from "@yagejs/renderer";
 import { TilemapPlugin, TilemapComponent, tiledMap } from "@yagejs/tilemap";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
@@ -34,11 +33,15 @@ const PAN_SPEED = 0.35; // px per ms
 // ---------------------------------------------------------------------------
 class CameraPan extends Component {
   private readonly input = this.service(InputManagerKey);
-  private camera!: Camera;
+  private readonly camera: CameraEntity;
   private wheelHandler!: (e: WheelEvent) => void;
 
+  constructor(camera: CameraEntity) {
+    super();
+    this.camera = camera;
+  }
+
   onAdd(): void {
-    this.camera = this.use(CameraKey);
 
     // Listen for mouse wheel zoom (not yet supported by InputPlugin)
     const container = getContainer();
@@ -100,9 +103,9 @@ const DungeonMapBP = defineBlueprint<{ map: TiledMapData }>(
   },
 );
 
-const CameraCtrlBP = defineBlueprint("camera-ctrl", (entity) => {
+const CameraCtrlBP = defineBlueprint<{ camera: CameraEntity }>("camera-ctrl", (entity, { camera }) => {
   entity.add(new Transform());
-  entity.add(new CameraPan());
+  entity.add(new CameraPan(camera));
 });
 
 // ---------------------------------------------------------------------------
@@ -112,8 +115,6 @@ class TilemapScene extends Scene {
   readonly name = "tilemap";
   readonly preload = [DungeonMap];
   readonly layers: readonly LayerDef[] = [{ name: "map", order: -10 }];
-  private readonly camera = this.service(CameraKey);
-
   onEnter(): void {
     // -- Tilemap entity --
     const mapData = this.assets.get(DungeonMap);
@@ -130,9 +131,10 @@ class TilemapScene extends Scene {
     const startY = spawn?.y ?? mapH / 2;
 
     // -- Camera setup --
-    this.camera.position = new Vec2(startX, startY);
-    this.camera.bounds = { minX: 0, minY: 0, maxX: mapW, maxY: mapH };
-
+    const cam = this.spawn(CameraEntity, {
+      position: new Vec2(startX, startY),
+      bounds: { minX: 0, minY: 0, maxX: mapW, maxY: mapH },
+    });
     // -- Register wall collision shapes as a debug contributor --
     const shapes = tilemap.getCollisionShapes("walls");
     const rectShapes = shapes.filter(
@@ -142,7 +144,7 @@ class TilemapScene extends Scene {
     registry?.register(new WallDebugContributor(rectShapes));
 
     // -- Camera controller --
-    this.spawn(CameraCtrlBP);
+    this.spawn(CameraCtrlBP, { camera: cam });
   }
 }
 

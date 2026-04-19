@@ -108,11 +108,16 @@ anim.play("jump", { onComplete: () => anim.play("idle") });
 
 ## Camera
 
-The camera controls the viewport into your game world. Access it through the
-renderer context.
+The camera controls the viewport into your game world. Spawn a `CameraEntity`
+in your scene to create it:
 
 ```typescript
-const camera = engine.resolve(CameraKey);
+import { Vec2 } from "@yagejs/core";
+import { CameraEntity } from "@yagejs/renderer";
+
+const camera = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+// All camera operations are available directly on camera:
+// camera.follow(), camera.shake(), camera.zoomTo(), camera.bounds, etc.
 ```
 
 ### Coordinate Convention
@@ -135,11 +140,10 @@ camera by half the viewport in `onEnter`:
 ```typescript
 class GameScene extends Scene {
   readonly name = "game";
-  private camera = this.service(CameraKey);
 
   onEnter() {
     // Top-left origin: world (0,0) → screen (0,0)
-    this.camera.position = new Vec2(400, 300); // viewport is 800×600
+    this.spawn(CameraEntity, { position: new Vec2(400, 300) }); // viewport is 800×600
   }
 }
 ```
@@ -151,10 +155,11 @@ either convention — they just move to frame the target.
 ### Following a Target
 
 ```typescript
-camera.follow(player, {
+const cam = this.spawn(CameraEntity, {
+  follow: player.get(Transform),
   smoothing: 0.1,
   offset: { x: 0, y: -50 },
-  deadzone: { width: 100, height: 60 },
+  deadzone: { halfWidth: 50, halfHeight: 30 },
 });
 ```
 
@@ -200,10 +205,22 @@ camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 Render layers control draw order. Entities on higher layers render on top.
 
 ```typescript
-import { RenderLayers } from "@yagejs/renderer";
+import { Scene } from "@yagejs/core";
+import { RendererPlugin, type LayerDef } from "@yagejs/renderer";
 
-const layers = new RenderLayers(["background", "tiles", "characters", "fx", "ui"]);
-engine.use(new RendererPlugin({ width: 800, height: 600, layers }));
+class GameScene extends Scene {
+  readonly name = "game";
+
+  readonly layers: readonly LayerDef[] = [
+    { name: "background", order: -20 },
+    { name: "tiles", order: -10 },
+    { name: "characters", order: 0 },
+    { name: "fx", order: 10 },
+    { name: "ui", order: 100 },
+  ];
+}
+
+engine.use(new RendererPlugin({ width: 800, height: 600 }));
 ```
 
 Assign a layer via the `layer` property on `SpriteComponent` or

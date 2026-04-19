@@ -1,5 +1,5 @@
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, CameraKey, GraphicsComponent } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
@@ -31,9 +31,6 @@ class GameScene extends Scene {
   tsText!: UIText;
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     // Walls
     this.wall(WIDTH / 2, HEIGHT - WALL / 2, WIDTH, WALL);
     this.wall(WIDTH / 2, WALL / 2, WIDTH, WALL);

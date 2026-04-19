@@ -5,7 +5,7 @@ import {
   Transform,
   Vec2,
 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles } from "./shared.js";
@@ -32,9 +32,6 @@ class PhysicsBounceScene extends Scene {
   readonly name = "physics-bounce";
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     this.spawnFloor();
     this.spawnBall();
   }

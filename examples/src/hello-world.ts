@@ -1,5 +1,5 @@
 import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, getContainer } from "./shared.js";
 
@@ -27,9 +27,6 @@ class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
-
     // Blue circle
     const circle = this.spawn("circle");
     circle.add(new Transform({ position: new Vec2(250, 300) }));

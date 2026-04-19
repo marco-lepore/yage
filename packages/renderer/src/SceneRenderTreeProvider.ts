@@ -4,23 +4,22 @@ import type { LayerDef } from "./LayerDef.js";
 import type {
   SceneRenderTree,
   SceneRenderTreeProvider,
+  EnsureLayerOptions,
 } from "./SceneRenderTree.js";
 import { RenderLayerManager } from "./RenderLayer.js";
 import type { RenderLayer } from "./RenderLayer.js";
 
 interface SceneEntry {
-  worldContainer: Container;
-  screenContainer: Container;
+  root: Container;
   manager: RenderLayerManager;
   tree: SceneRenderTreeImpl;
 }
 
-/**
- * Scene-bound wrapper around a `RenderLayerManager`. Exposed via
- * `SceneRenderTreeKey`; components resolve it through `Component.use()`.
- */
 class SceneRenderTreeImpl implements SceneRenderTree {
-  constructor(private readonly manager: RenderLayerManager) {}
+  constructor(
+    readonly root: Container,
+    private readonly manager: RenderLayerManager,
+  ) {}
 
   get(name: string): RenderLayer {
     return this.manager.get(name);
@@ -38,23 +37,32 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     return this.manager.defaultLayer;
   }
 
-  ensureLayer(def: LayerDef): RenderLayer {
-    return this.manager.tryGet(def.name) ?? this.manager.createFromDef(def);
+  ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer {
+    return (
+      this.manager.tryGet(def.name) ?? this.manager.createFromDef(def, opts)
+    );
   }
 }
 
 /**
- * Materializes a per-scene render tree with two root containers
- * (world + screen). Registered under `SceneRenderTreeProviderKey` by the
- * renderer plugin and consumed via the `beforeEnter` scene hook.
+ * Materializes a per-scene render tree with one root container per scene,
+ * added as a direct child of `app.stage`. Registered under
+ * `SceneRenderTreeProviderKey` by the renderer plugin.
+ *
+ * ```
+ * app.stage
+ *  ├── scene A root
+ *  │    ├── layer "bg" (order -10)
+ *  │    ├── layer "world" (order 0)
+ *  │    └── layer "hud" (order 100)
+ *  └── scene B root
+ *       └── ...
+ * ```
  */
 export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   private entries = new Map<Scene, SceneEntry>();
 
-  constructor(
-    private readonly worldRoot: Container,
-    private readonly screenRoot: Container,
-  ) {}
+  constructor(private readonly stage: Container) {}
 
   createForScene(scene: Scene): SceneRenderTree {
     if (this.entries.has(scene)) {
@@ -63,56 +71,48 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       );
     }
 
-    const worldContainer = new Container();
-    worldContainer.label = `scene:${scene.name}:world`;
-    this.worldRoot.addChild(worldContainer);
+    const root = new Container();
+    root.label = `scene:${scene.name}`;
+    this.stage.addChild(root);
 
-    const screenContainer = new Container();
-    screenContainer.label = `scene:${scene.name}:screen`;
-    this.screenRoot.addChild(screenContainer);
+    const manager = new RenderLayerManager(root, "passive");
 
-    const manager = new RenderLayerManager(worldContainer, screenContainer);
-
-    // Known limitation: the manager already auto-created a world-space
-    // "default" layer in its constructor, so a user-declared LayerDef for
-    // "default" is silently dropped by `tryGet` below. Pick a different
-    // name if you need custom space/order/eventMode for your main layer.
     for (const def of scene.layers ?? []) {
       if (manager.tryGet(def.name)) continue;
       manager.createFromDef(def);
     }
 
-    const tree = new SceneRenderTreeImpl(manager);
-    this.entries.set(scene, { worldContainer, screenContainer, manager, tree });
+    const tree = new SceneRenderTreeImpl(root, manager);
+    this.entries.set(scene, { root, manager, tree });
     return tree;
   }
 
   destroyForScene(scene: Scene): void {
     const entry = this.entries.get(scene);
     if (!entry) return;
-    entry.worldContainer.removeFromParent();
-    entry.worldContainer.destroy({ children: true });
-    entry.screenContainer.removeFromParent();
-    entry.screenContainer.destroy({ children: true });
+    entry.root.removeFromParent();
+    entry.root.destroy({ children: true });
     entry.manager.destroy();
     this.entries.delete(scene);
   }
 
-  /**
-   * Move the scene's world + screen containers to the end of their
-   * respective roots so they render on top of peers. Used by DebugPlugin to
-   * keep the debug scene visually above the stacked user scenes.
-   */
+  getTree(scene: Scene): SceneRenderTree | undefined {
+    return this.entries.get(scene)?.tree;
+  }
+
+  *allTrees(): IterableIterator<[Scene, SceneRenderTree]> {
+    for (const [scene, entry] of this.entries) {
+      yield [scene, entry.tree];
+    }
+  }
+
   bringSceneToFront(scene: Scene): void {
     const entry = this.entries.get(scene);
     if (!entry) return;
-    if (entry.worldContainer.parent === this.worldRoot) {
-      this.worldRoot.removeChild(entry.worldContainer);
-      this.worldRoot.addChild(entry.worldContainer);
-    }
-    if (entry.screenContainer.parent === this.screenRoot) {
-      this.screenRoot.removeChild(entry.screenContainer);
-      this.screenRoot.addChild(entry.screenContainer);
+    const parent = entry.root.parent;
+    if (parent) {
+      parent.removeChild(entry.root);
+      parent.addChild(entry.root);
     }
   }
 

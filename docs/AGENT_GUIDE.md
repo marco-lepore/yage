@@ -93,54 +93,59 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/core`
 
-| File                     | Purpose                                       |
-| ------------------------ | --------------------------------------------- |
-| `src/index.ts`           | Barrel export -- all public API               |
-| `src/Engine.ts`          | Entry point, plugin orchestration             |
-| `src/EngineContext.ts`   | DI container (ServiceKey, register, resolve)  |
-| `src/Entity.ts`          | Entity class (component CRUD)                 |
-| `src/Component.ts`       | Base component class                          |
-| `src/System.ts`          | Base system class, Phase enum                 |
-| `src/SystemScheduler.ts` | Ordered system execution                      |
-| `src/GameLoop.ts`        | Fixed timestep loop                           |
-| `src/QueryCache.ts`      | Incremental entity query cache                |
-| `src/EventBus.ts`        | Typed pub/sub                                 |
-| `src/SceneManager.ts`    | Scene stack (push/pop/replace)                |
-| `src/Scene.ts`           | Scene base class (entity factory)             |
-| `src/Process.ts`         | Coroutine / tween / sequence                  |
-| `src/ProcessSlot.ts`     | Reusable restartable process handle (cooldowns, effects) |
-| `src/ProcessComponent.ts`| Entity component for slots + one-off processes |
-| `src/TimerEntity.ts`     | Pre-built entity exposing ProcessComponent API |
-| `src/Serializable.ts`    | `@serializable` decorator, `SerializableRegistry`, `SnapshotResolver` |
-| `src/Trait.ts`           | Trait system (`defineTrait`, `@trait`)          |
-| `src/Blueprint.ts`       | Reusable entity templates (deprecated)        |
-| `src/ErrorBoundary.ts`   | System/component error wrapping               |
-| `src/Inspector.ts`       | Programmatic state queries                    |
-| `src/Logger.ts`          | Structured logging                            |
-| `src/Vec2.ts`            | Immutable 2D vector                           |
-| `src/Transform.ts`       | Position/rotation/scale component             |
-| `src/MathUtils.ts`       | Math utilities                                |
-| `src/types.ts`           | Shared type definitions                       |
-| `src/test-utils.ts`      | Mock factories for testing                    |
-| `package.json`           | Zero runtime dependencies                     |
-| `tsconfig.json`          | Extends root tsconfig.base.json               |
-| `tsup.config.ts`         | Build config (ESM + CJS + .d.ts)              |
-| `vitest.config.ts`       | Test config (100% coverage threshold)         |
+| File                      | Purpose                                                               |
+| ------------------------- | --------------------------------------------------------------------- |
+| `src/index.ts`            | Barrel export -- all public API                                       |
+| `src/Engine.ts`           | Entry point, plugin orchestration                                     |
+| `src/EngineContext.ts`    | DI container (ServiceKey, register, resolve)                          |
+| `src/Entity.ts`           | Entity class (component CRUD)                                         |
+| `src/Component.ts`        | Base component class                                                  |
+| `src/System.ts`           | Base system class, Phase enum                                         |
+| `src/SystemScheduler.ts`  | Ordered system execution                                              |
+| `src/GameLoop.ts`         | Fixed timestep loop                                                   |
+| `src/QueryCache.ts`       | Incremental entity query cache                                        |
+| `src/EventBus.ts`         | Typed pub/sub                                                         |
+| `src/SceneManager.ts`     | Scene stack (push/pop/replace)                                        |
+| `src/Scene.ts`            | Scene base class (entity factory)                                     |
+| `src/Process.ts`          | Coroutine / tween / sequence                                          |
+| `src/ProcessSlot.ts`      | Reusable restartable process handle (cooldowns, effects)              |
+| `src/ProcessComponent.ts` | Entity component for slots + one-off processes                        |
+| `src/TimerEntity.ts`      | Pre-built entity exposing ProcessComponent API                        |
+| `src/Serializable.ts`     | `@serializable` decorator, `SerializableRegistry`, `SnapshotResolver` |
+| `src/Trait.ts`            | Trait system (`defineTrait`, `@trait`)                                |
+| `src/Blueprint.ts`        | Reusable entity templates (deprecated)                                |
+| `src/ErrorBoundary.ts`    | System/component error wrapping                                       |
+| `src/Inspector.ts`        | Programmatic state queries                                            |
+| `src/Logger.ts`           | Structured logging                                                    |
+| `src/Vec2.ts`             | Immutable 2D vector                                                   |
+| `src/Transform.ts`        | Position/rotation/scale component                                     |
+| `src/MathUtils.ts`        | Math utilities                                                        |
+| `src/types.ts`            | Shared type definitions                                               |
+| `src/test-utils.ts`       | Mock factories for testing                                            |
+| `package.json`            | Zero runtime dependencies                                             |
+| `tsconfig.json`           | Extends root tsconfig.base.json                                       |
+| `tsup.config.ts`          | Build config (ESM + CJS + .d.ts)                                      |
+| `vitest.config.ts`        | Test config (100% coverage threshold)                                 |
 
 ### `@yagejs/renderer`
 
-| File                             | Purpose                            |
-| -------------------------------- | ---------------------------------- |
-| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup      |
-| `src/SpriteComponent.ts`         | Sprite wrapper                     |
-| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`     |
-| `src/AnimatedSpriteComponent.ts` | Animated sprite (FrameSource serializable) |
-| `src/AnimationController.ts`     | Named animations, one-shot locking |
+| File                             | Purpose                                      |
+| -------------------------------- | -------------------------------------------- |
+| `src/RendererPlugin.ts`          | Plugin entry, PixiJS v8 setup                |
+| `src/SpriteComponent.ts`         | Sprite wrapper                               |
+| `src/GraphicsComponent.ts`       | Graphics wrapper with `draw()`               |
+| `src/AnimatedSpriteComponent.ts` | Animated sprite (FrameSource serializable)   |
+| `src/AnimationController.ts`     | Named animations, one-shot locking           |
 | `src/spritesheet.ts`             | `sliceSheet`, `FrameSource`, `resolveFrames` |
-| `src/assets.ts`                  | `texture()`, `spritesheet()` factories |
-| `src/Camera.ts`                  | Follow, zoom, shake, bounds        |
-| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync |
-| `src/RenderLayer.ts`             | Named draw-order layers            |
+| `src/assets.ts`                  | `texture()`, `spritesheet()` factories       |
+| `src/CameraEntity.ts`            | Entity for camera instances                  |
+| `src/CameraComponent.ts`         | Core camera component                        |
+| `src/CameraFollow.ts`            | Follow behavior component                    |
+| `src/CameraShake.ts`             | Shake behavior component                     |
+| `src/CameraZoom.ts`              | Zoom behavior component                      |
+| `src/CameraBoundsComponent.ts`   | Bounds constraint component                  |
+| `src/DisplaySystem.ts`           | Render-phase Transform→PixiJS sync           |
+| `src/RenderLayer.ts`             | Named draw-order layers                      |
 
 ### `@yagejs/physics`
 
@@ -232,23 +237,23 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/save`
 
-| File                          | Purpose                                        |
-| ----------------------------- | ---------------------------------------------- |
-| `src/SavePlugin.ts`           | Plugin entry, registers `SaveServiceKey`       |
-| `src/SaveService.ts`          | Snapshot + user data save/load orchestration   |
-| `src/LocalStorageAdapter.ts`  | `SaveStorage` impl for browser localStorage   |
-| `src/types.ts`                | `SaveStorage`, snapshot types                  |
-| `src/keys.ts`                 | `SaveServiceKey`                               |
+| File                         | Purpose                                      |
+| ---------------------------- | -------------------------------------------- |
+| `src/SavePlugin.ts`          | Plugin entry, registers `SaveServiceKey`     |
+| `src/SaveService.ts`         | Snapshot + user data save/load orchestration |
+| `src/LocalStorageAdapter.ts` | `SaveStorage` impl for browser localStorage  |
+| `src/types.ts`               | `SaveStorage`, snapshot types                |
+| `src/keys.ts`                | `SaveServiceKey`                             |
 
 ### Project Root
 
-| File                       | Purpose                           |
-| -------------------------- | --------------------------------- |
-| `package.json`             | Workspace root, scripts           |
-| `turbo.json`               | Turborepo task pipeline           |
-| `tsconfig.base.json`       | Shared TypeScript config          |
-| `playwright.config.ts`     | E2E test config                   |
-| `.github/workflows/ci.yml` | CI pipeline                       |
+| File                       | Purpose                  |
+| -------------------------- | ------------------------ |
+| `package.json`             | Workspace root, scripts  |
+| `turbo.json`               | Turborepo task pipeline  |
+| `tsconfig.base.json`       | Shared TypeScript config |
+| `playwright.config.ts`     | E2E test config          |
+| `.github/workflows/ci.yml` | CI pipeline              |
 
 ---
 
@@ -268,13 +273,13 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 
 ### When to Run What
 
-| Change                                     | Run                                                            |
-| ------------------------------------------ | -------------------------------------------------------------- |
-| Modified core logic (Entity, System, etc.) | `npx turbo test --filter=@yagejs/core`                           |
-| Modified a plugin                          | `npx turbo test --filter=@yagejs/<plugin>`                       |
+| Change                                     | Run                                                                  |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| Modified core logic (Entity, System, etc.) | `npx turbo test --filter=@yagejs/core`                               |
+| Modified a plugin                          | `npx turbo test --filter=@yagejs/<plugin>`                           |
 | Modified an example                        | `npx turbo build && npx playwright test e2e/specs/<example>.spec.ts` |
-| Before committing                          | `npx turbo lint && npx turbo test`                             |
-| Before PR                                  | Full sequence above                                            |
+| Before committing                          | `npx turbo lint && npx turbo test`                                   |
+| Before PR                                  | Full sequence above                                                  |
 
 ### Writing Tests
 
@@ -559,7 +564,10 @@ Components that participate in save/load need three things: `@serializable`, `se
 ```typescript
 import { Component, serializable } from "@yagejs/core";
 
-interface MyData { value: number; label: string; }
+interface MyData {
+  value: number;
+  label: string;
+}
 
 @serializable
 class MyComponent extends Component {
@@ -605,19 +613,19 @@ new AnimatedSpriteComponent({ textures: myTextureArray });
 
 **Serialization status by component:**
 
-| Component | Pattern | String key |
-|---|---|---|
-| `Transform` | Full | N/A (all primitives) |
-| `SpriteComponent` | Full when using string texture key | `texture: "sprite.png"` |
-| `GraphicsComponent` | Partial (layer only, draw in afterRestore) | N/A |
-| `RigidBodyComponent` | Full | N/A (all primitives) |
-| `ColliderComponent` | Full | N/A (all primitives) |
-| `AnimatedSpriteComponent` | Full when using `source` | `source: { sheet, frameWidth }` or `{ atlas, animation }` |
-| `AnimationController` | Full when ALL defs use `source` | Same as above |
-| `SoundComponent` | Full | `alias` is already a string |
-| `ParticleEmitterComponent` | Full when using `textureKey` | `textureKey: "particle.png"` |
-| `TilemapComponent` | Full when using `mapKey` | `mapKey: "dungeon.json"` |
-| `UIPanel` / `UIRoot` | Not serializable | State belongs in owning component/entity |
+| Component                  | Pattern                                    | String key                                                |
+| -------------------------- | ------------------------------------------ | --------------------------------------------------------- |
+| `Transform`                | Full                                       | N/A (all primitives)                                      |
+| `SpriteComponent`          | Full when using string texture key         | `texture: "sprite.png"`                                   |
+| `GraphicsComponent`        | Partial (layer only, draw in afterRestore) | N/A                                                       |
+| `RigidBodyComponent`       | Full                                       | N/A (all primitives)                                      |
+| `ColliderComponent`        | Full                                       | N/A (all primitives)                                      |
+| `AnimatedSpriteComponent`  | Full when using `source`                   | `source: { sheet, frameWidth }` or `{ atlas, animation }` |
+| `AnimationController`      | Full when ALL defs use `source`            | Same as above                                             |
+| `SoundComponent`           | Full                                       | `alias` is already a string                               |
+| `ParticleEmitterComponent` | Full when using `textureKey`               | `textureKey: "particle.png"`                              |
+| `TilemapComponent`         | Full when using `mapKey`                   | `mapKey: "dungeon.json"`                                  |
+| `UIPanel` / `UIRoot`       | Not serializable                           | State belongs in owning component/entity                  |
 
 ### Make an Entity Serializable
 
@@ -660,8 +668,8 @@ engine.use(new SavePlugin());
 
 // In game code:
 const save = this.service(SaveServiceKey);
-save.saveSnapshot("slot1");          // save full game state
-await save.loadSnapshot("slot1");    // restore from snapshot
+save.saveSnapshot("slot1"); // save full game state
+await save.loadSnapshot("slot1"); // restore from snapshot
 save.saveData("settings", { volume: 0.8 }); // save user data
 const settings = save.loadData("settings"); // load user data
 ```
@@ -712,7 +720,10 @@ class InventoryUI extends Component {
     const panel = this.entity.add(new UIPanel({ width: 300, height: 400 }));
     const tabs = ["Weapons", "Armor", "Items"];
     for (let i = 0; i < tabs.length; i++) {
-      const btn = new UIButton({ text: tabs[i]!, onClick: () => this.switchTab(i) });
+      const btn = new UIButton({
+        text: tabs[i]!,
+        onClick: () => this.switchTab(i),
+      });
       this.tabButtons.push(btn);
       panel.addChild(btn);
     }
@@ -730,7 +741,9 @@ class InventoryUI extends Component {
     }
   }
 
-  serialize() { return { selectedTab: this.selectedTab }; }
+  serialize() {
+    return { selectedTab: this.selectedTab };
+  }
 
   static fromSnapshot(data: { selectedTab: number }): InventoryUI {
     const comp = new InventoryUI();
@@ -795,19 +808,18 @@ Use a Scene subclass when you need full lifecycle hooks, asset preloading, or re
 
 ```typescript
 import { Scene, Transform, Vec2 } from "@yagejs/core";
-import { CameraKey } from "@yagejs/renderer";
+import { CameraEntity } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
 
 class GameScene extends Scene {
   readonly name = "game";
 
   // Lazy proxies — safe to declare as fields, resolved on first use
-  private camera = this.service(CameraKey);
   private input = this.service(InputManagerKey);
 
   onEnter() {
     const player = this.spawn(PlayerEntity, { x: 100, y: 200 });
-    this.camera.follow(player);
+    const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
   }
 
   onExit() {
@@ -821,6 +833,7 @@ engine.scenes.push(new GameScene());
 
 > **Physics world access:** Physics worlds are per-scene. Components that need
 > direct world access (raycasts, gravity) resolve once in `onAdd()`:
+>
 > ```typescript
 > import { PhysicsWorldKey } from "@yagejs/physics";
 > import type { PhysicsWorld } from "@yagejs/physics";
@@ -871,38 +884,38 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 
 ### Conventions
 
-| Convention                       | Details                                                                                                                                                                                             |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Immutable Vec2**               | `Vec2` is immutable. All operations return new instances. Never mutate `v.x`/`v.y` directly.                                                                                                        |
-| **Transform is mutable**         | `Transform` is the one mutable component. Use `setPosition()`, `translate()`, etc.                                                                                                                  |
-| **Components own game logic**    | Components can have `update(dt)` and `fixedUpdate(dt)` methods — the built-in `ComponentUpdateSystem` calls them. Systems are for engine internals and cross-cutting concerns (physics, rendering). |
-| **Phase assignment**             | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                           |
-| **ServiceKey for DI**            | Always use `ServiceKey<T>` for type-safe service resolution. Never use string keys directly.                                                                                                        |
-| **Plain objects for config**     | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                 |
-| **Pixels everywhere**            | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                   |
-| **co-located unit tests**        | `Foo.ts` test goes in `Foo.test.ts` in the same directory.                                                                                                                                          |
-| **E2E tests in `e2e/`**          | Integration tests at repo root, not inside packages.                                                                                                                                                |
-| **AssetHandle factories**        | Each plugin exports a factory (e.g., `texture()`, `spritesheet()`, `sound()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                               |
-| **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                               |
-| **Entity events for game logic** | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                            |
-| **`@serializable` for save/load** | Decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()`. Use string keys (`FrameSource`, `textureKey`) instead of raw PixiJS objects for full serialization. |
+| Convention                         | Details                                                                                                                                                                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Immutable Vec2**                 | `Vec2` is immutable. All operations return new instances. Never mutate `v.x`/`v.y` directly.                                                                                                        |
+| **Transform is mutable**           | `Transform` is the one mutable component. Use `setPosition()`, `translate()`, etc.                                                                                                                  |
+| **Components own game logic**      | Components can have `update(dt)` and `fixedUpdate(dt)` methods — the built-in `ComponentUpdateSystem` calls them. Systems are for engine internals and cross-cutting concerns (physics, rendering). |
+| **Phase assignment**               | Physics in `FixedUpdate`. Input polling in `EarlyUpdate`. Rendering in `Render`. Cleanup in `EndOfFrame`.                                                                                           |
+| **ServiceKey for DI**              | Always use `ServiceKey<T>` for type-safe service resolution. Never use string keys directly.                                                                                                        |
+| **Plain objects for config**       | Plugin configs, action maps, collider shapes -- all plain objects. No `Map`, no classes for config.                                                                                                 |
+| **Pixels everywhere**              | All user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.                                                                                                   |
+| **co-located unit tests**          | `Foo.ts` test goes in `Foo.test.ts` in the same directory.                                                                                                                                          |
+| **E2E tests in `e2e/`**            | Integration tests at repo root, not inside packages.                                                                                                                                                |
+| **AssetHandle factories**          | Each plugin exports a factory (e.g., `texture()`, `spritesheet()`, `sound()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                               |
+| **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                                |
+| **Entity events for game logic**   | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                            |
+| **`@serializable` for save/load**  | Decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()`. Use string keys (`FrameSource`, `textureKey`) instead of raw PixiJS objects for full serialization.  |
 
 ### Pitfalls to Avoid
 
-| Pitfall                                                       | Why                                                                                                                                                                                               | Instead                                                                                                           |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **Putting engine-level cross-cutting concerns in Components** | Physics stepping, render sync, and collision dispatch need efficient cross-entity queries and strict phase ordering. Putting these in Components means duplicate work and no centralized control. | Use Systems for engine-level concerns (physics, rendering, audio). Components are for game logic.                 |
-| **Importing PixiJS types into `@yagejs/core`**                  | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee.                                                                                                                | Keep PixiJS types inside `@yagejs/renderer`. Use abstract interfaces in core if needed.                             |
-| **Using `context.resolve()` in a constructor**                | Context may not be fully populated during plugin installation.                                                                                                                                    | Use `onRegister()` for systems or `onEnter()` for scenes to resolve services.                                     |
-| **Mutating Vec2**                                             | Vec2 is immutable by design. Mutations would break assumptions in caching and comparison.                                                                                                         | Use `vec.add()`, `vec.scale()`, etc. which return new instances.                                                  |
-| **Running async code in system `update()`**                   | The game loop is synchronous. Async operations skip frames and cause non-determinism.                                                                                                             | Start async work outside the loop, use events to communicate completion, or use Process for frame-aligned delays. |
-| **Forgetting to export from `index.ts`**                      | Unexported types won't be available to consumers.                                                                                                                                                 | Always add new public types to the package's barrel export.                                                       |
-| **Registering duplicate ServiceKeys**                         | `EngineContext.register()` throws on duplicates.                                                                                                                                                  | Check with `context.has()` first, or ensure only one plugin registers each key.                                   |
-| **Putting unit tests in `e2e/`**                              | Unit tests should be fast and not require a browser.                                                                                                                                              | Co-locate with source. Only put browser-dependent tests in `e2e/`.                                                |
-| **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing. |
-| **Using boolean flags for cooldown state**                    | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                    |
-| **Assuming render order = spawn order**                       | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                            |
-| **Passing raw `Texture` objects to serializable components** | `Texture` is a PixiJS runtime object — not JSON-serializable. `serialize()` returns `null` and the entity must handle reconstruction manually.                                                     | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` for particles, `texture: "path"` for sprites. |
+| Pitfall                                                       | Why                                                                                                                                                                                               | Instead                                                                                                                     |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Putting engine-level cross-cutting concerns in Components** | Physics stepping, render sync, and collision dispatch need efficient cross-entity queries and strict phase ordering. Putting these in Components means duplicate work and no centralized control. | Use Systems for engine-level concerns (physics, rendering, audio). Components are for game logic.                           |
+| **Importing PixiJS types into `@yagejs/core`**                | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee.                                                                                                                | Keep PixiJS types inside `@yagejs/renderer`. Use abstract interfaces in core if needed.                                     |
+| **Using `context.resolve()` in a constructor**                | Context may not be fully populated during plugin installation.                                                                                                                                    | Use `onRegister()` for systems or `onEnter()` for scenes to resolve services.                                               |
+| **Mutating Vec2**                                             | Vec2 is immutable by design. Mutations would break assumptions in caching and comparison.                                                                                                         | Use `vec.add()`, `vec.scale()`, etc. which return new instances.                                                            |
+| **Running async code in system `update()`**                   | The game loop is synchronous. Async operations skip frames and cause non-determinism.                                                                                                             | Start async work outside the loop, use events to communicate completion, or use Process for frame-aligned delays.           |
+| **Forgetting to export from `index.ts`**                      | Unexported types won't be available to consumers.                                                                                                                                                 | Always add new public types to the package's barrel export.                                                                 |
+| **Registering duplicate ServiceKeys**                         | `EngineContext.register()` throws on duplicates.                                                                                                                                                  | Check with `context.has()` first, or ensure only one plugin registers each key.                                             |
+| **Putting unit tests in `e2e/`**                              | Unit tests should be fast and not require a browser.                                                                                                                                              | Co-locate with source. Only put browser-dependent tests in `e2e/`.                                                          |
+| **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing.   |
+| **Using boolean flags for cooldown state**                    | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                              |
+| **Assuming render order = spawn order**                       | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                                      |
+| **Passing raw `Texture` objects to serializable components**  | `Texture` is a PixiJS runtime object — not JSON-serializable. `serialize()` returns `null` and the entity must handle reconstruction manually.                                                    | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` for particles, `texture: "path"` for sprites. |
 
 ### Type Safety Checklist
 
@@ -930,8 +943,8 @@ Quick summary of the key architectural decisions:
 | Internal coordinate conversion                          | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                           |
 | Error resilience (`ErrorBoundary`)                      | One bad component/system never crashes the loop; errors are logged and inspectable                                                             |
 | Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
-| `@serializable` decorator in core                      | Components/entities self-register at import time. `SaveService` reads the registry — no manual registration needed                              |
-| String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), string texture key (sprites) enable serialization without coupling to PixiJS objects        |
+| `@serializable` decorator in core                       | Components/entities self-register at import time. `SaveService` reads the registry — no manual registration needed                             |
+| String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), string texture key (sprites) enable serialization without coupling to PixiJS objects      |
 
 ---
 

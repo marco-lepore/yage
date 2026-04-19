@@ -28,6 +28,7 @@ Read this before writing any code:
 - **Developer ergonomics first** — always consider how the end-developer will use an API. Fewer arguments, sensible defaults, discoverable names.
 - **SOLID principles** — single responsibility, open/closed, etc. Apply pragmatically, not dogmatically.
 - **Learn from existing code, but stay critical** — the codebase is WIP. Study existing patterns before writing new code, but don't blindly copy if you see something that could be better. Flag concerns.
+- **Refactors mean rethinking, not reshuffling** — when moving to a different architecture or public API, don't preserve old access patterns for backward compatibility unless explicitly asked. The path of least resistance (minimal diff, keep old call sites working) often smuggles the old design into the new one. Question whether every existing abstraction still belongs. When in doubt, ask rather than defaulting to compatibility shims.
 - **Right tool for the job** — the engine offers multiple approaches (e.g., Scene subclass vs `defineInlineScene`). Choose based on the actual use case. A complex game scene belongs in a class; a quick prototype can use an inline setup.
 
 ## Coding Style
@@ -43,7 +44,7 @@ Enforced by tooling — match these conventions exactly:
 ## Architecture Rules
 
 - **Components own game logic; Systems for engine internals** — `ComponentUpdateSystem` calls component `update(dt)`/`fixedUpdate(dt)`. Systems are for cross-cutting concerns (physics, rendering, audio).
-- **`ServiceKey<T>` for DI** — never use string keys. Type-safe resolution via `Component.use(Key)` or `Component.service(Key)`. Some keys are per-scene (e.g. `PhysicsWorldKey`, `SceneRenderTreeKey`) — `use()` resolves the correct one automatically.
+- **`ServiceKey<T>` for plugin-owned infrastructure** — never use string keys. Type-safe resolution via `Component.use(Key)` or `Component.service(Key)`. Some keys are per-scene (e.g. `PhysicsWorldKey`, `SceneRenderTreeKey`) — `use()` resolves the correct one automatically. ServiceKey is for infrastructure owned by plugins (renderer, physics world, input manager). Entity-hosted state is accessed through entity queries or direct references from `spawn()` — never registered as a service. If a Component self-registers into DI, that's a sign it should be found through the ECS instead.
 - **Pixels everywhere** — all user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.
 - **Immutable `Vec2`, mutable `Transform`** — `Vec2` operations return new instances. `Transform` has mutating methods (`setPosition`, `translate`, etc.).
 - **No pixi.js imports in `@yagejs/core`** — core has zero runtime dependencies.

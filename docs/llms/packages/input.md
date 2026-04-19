@@ -7,19 +7,21 @@ Depends on `@yagejs/core`. Keyboard, mouse, and pointer input with action maps.
 ```ts
 import { InputPlugin } from "@yagejs/input";
 
-engine.use(new InputPlugin({
-  actions: {
-    jump: ["Space", "KeyW"],
-    left: ["ArrowLeft", "KeyA"],
-    right: ["ArrowRight", "KeyD"],
-    fire: ["MouseLeft"],
-  },
-  groups: {
-    gameplay: ["jump", "left", "right", "fire"],
-    menu: ["confirm", "cancel"],
-  },
-  preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
-}));
+engine.use(
+  new InputPlugin({
+    actions: {
+      jump: ["Space", "KeyW"],
+      left: ["ArrowLeft", "KeyA"],
+      right: ["ArrowRight", "KeyD"],
+      fire: ["MouseLeft"],
+    },
+    groups: {
+      gameplay: ["jump", "left", "right", "fire"],
+      menu: ["confirm", "cancel"],
+    },
+    preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
+  }),
+);
 ```
 
 Registers `InputManagerKey` in `EngineContext`.
@@ -32,28 +34,49 @@ import { InputManagerKey } from "@yagejs/input";
 const input = context.resolve(InputManagerKey);
 
 // Pressed state
-input.isPressed("jump");       // held this frame
-input.isJustPressed("fire");   // pressed this frame (edge)
-input.isJustReleased("jump");  // released this frame (edge)
+input.isPressed("jump"); // held this frame
+input.isJustPressed("fire"); // pressed this frame (edge)
+input.isJustReleased("jump"); // released this frame (edge)
 
 // Hold duration
 input.getHoldDuration("fire"); // ms held, 0 if not held
-input.isHeldFor("fire", 500);  // held >= 500ms
+input.isHeldFor("fire", 500); // held >= 500ms
 
 // Axis/vector
-input.getAxis("left", "right");             // -1, 0, or 1
+input.getAxis("left", "right"); // -1, 0, or 1
 input.getVector("left", "right", "up", "down"); // Vec2 (not normalized)
 ```
 
 ## Pointer
 
 ```ts
-input.getPointerPosition();       // Vec2 in world coords (if camera set)
+input.getPointerPosition(); // Vec2 in world coords (if camera set)
 input.getPointerScreenPosition(); // Vec2 in screen coords
-input.isPointerDown();            // any pointer button held
+input.isPointerDown(); // any pointer button held
 ```
 
 Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`.
+
+### Camera wiring for world coordinates
+
+`getPointerPosition()` returns screen coords by default. To get world coords, wire the camera in your scene:
+
+```ts
+import { CameraEntity } from "@yagejs/renderer";
+import { InputManagerKey } from "@yagejs/input";
+
+onEnter(): void {
+  const cam = this.spawn(CameraEntity, {});
+  const input = this.context.resolve(InputManagerKey);
+  input.setCamera(cam); // CameraEntity satisfies CameraLike
+}
+
+onExit(): void {
+  this.context.resolve(InputManagerKey).clearCamera();
+}
+```
+
+Any object implementing `CameraLike` (has `screenToWorld(x, y)`) works with `setCamera()`. `CameraEntity` satisfies this interface.
 
 ## Runtime Rebinding
 
@@ -63,20 +86,20 @@ input.rebind("jump", "KeyZ");
 
 // With conflict resolution (only between actions in the same group)
 input.rebind("jump", "KeyA", { conflict: "replace" }); // steals from other action
-input.rebind("jump", "KeyA", { conflict: "reject" });  // fails if conflict (default)
+input.rebind("jump", "KeyA", { conflict: "reject" }); // fails if conflict (default)
 
 // Slot-based (replace binding at index)
 input.rebind("jump", "KeyZ", { slot: 0 });
 
 // Query bindings
-input.getBindings("jump");       // readonly string[]
+input.getBindings("jump"); // readonly string[]
 input.getActionsForKey("Space"); // string[]
 
 // Persistence
-const saved = input.exportBindings();  // ActionMapDefinition
+const saved = input.exportBindings(); // ActionMapDefinition
 input.loadBindings(saved);
-input.resetBindings();                 // restore defaults
-input.resetBindings("jump");           // restore single action
+input.resetBindings(); // restore defaults
+input.resetBindings("jump"); // restore single action
 ```
 
 ## Action Groups
@@ -87,7 +110,7 @@ input.setGroups({
   menu: ["confirm", "cancel"],
 });
 
-input.disableGroup("gameplay");  // gameplay actions return false
+input.disableGroup("gameplay"); // gameplay actions return false
 input.enableGroup("gameplay");
 input.setActiveGroups(["menu"]); // only menu active, all others disabled
 input.isGroupEnabled("gameplay");

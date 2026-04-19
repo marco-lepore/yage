@@ -18,14 +18,11 @@ import {
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import {
-  CameraKey,
   RendererKey,
-  StageKey,
+  RenderLayerManager,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
-  WorldRootKey,
 } from "@yagejs/renderer";
-import { Camera, RenderLayerManager } from "@yagejs/renderer";
 import type {
   SceneRenderTree,
   SceneRenderTreeProvider,
@@ -35,7 +32,14 @@ import type {
 
 export class MockContainer {
   children: MockContainer[] = [];
-  position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+  position = {
+    x: 0,
+    y: 0,
+    set(this: { x: number; y: number }, ax: number, ay: number) {
+      this.x = ax;
+      this.y = ay;
+    },
+  };
   scale = { x: 1, y: 1 };
   rotation = 0;
   visible = true;
@@ -45,7 +49,7 @@ export class MockContainer {
   zIndex = 0;
   label = "";
   destroyed = false;
-  eventMode = "auto";
+  eventMode = "passive";
   cursor = "default";
 
   addChild(child: MockContainer): MockContainer {
@@ -95,29 +99,31 @@ export class MockRendererPlugin {
 // ---- Mock SceneRenderTree provider ----
 
 class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
-  private entries = new Map<Scene, { manager: RenderLayerManager; tree: SceneRenderTree }>();
+  private entries = new Map<
+    Scene,
+    { manager: RenderLayerManager; tree: SceneRenderTree; root: MockContainer }
+  >();
 
-  constructor(
-    private readonly worldRoot: MockContainer,
-    private readonly screenRoot: MockContainer,
-  ) {}
+  constructor(private readonly stage: MockContainer) {}
 
   createForScene(scene: Scene): SceneRenderTree {
-    const manager = new RenderLayerManager(
-      this.worldRoot as never,
-      this.screenRoot as never,
-    );
+    const root = new MockContainer();
+    root.label = `scene:${scene.name}`;
+    this.stage.addChild(root);
+
+    const manager = new RenderLayerManager(root as never);
     const tree: SceneRenderTree = {
+      root: root as never,
       get: (name) => manager.get(name),
       tryGet: (name) => manager.tryGet(name),
       getAll: () => manager.getAll(),
       get defaultLayer() {
         return manager.defaultLayer;
       },
-      ensureLayer: (def) =>
-        manager.tryGet(def.name) ?? manager.createFromDef(def),
+      ensureLayer: (def, opts) =>
+        manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
     };
-    this.entries.set(scene, { manager, tree });
+    this.entries.set(scene, { manager, tree, root });
     return tree;
   }
 
@@ -125,7 +131,18 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     const entry = this.entries.get(scene);
     if (!entry) return;
     entry.manager.destroy();
+    entry.root.removeFromParent();
     this.entries.delete(scene);
+  }
+
+  getTree(scene: Scene): SceneRenderTree | undefined {
+    return this.entries.get(scene)?.tree;
+  }
+
+  *allTrees(): IterableIterator<[Scene, SceneRenderTree]> {
+    for (const [scene, entry] of this.entries) {
+      yield [scene, entry.tree];
+    }
   }
 }
 
@@ -143,8 +160,8 @@ export interface UITestContext {
   context: EngineContext;
   scene: Scene;
   queryCache: QueryCache;
-  uiContainer: MockContainer;
   renderer: MockRendererPlugin;
+  tree: SceneRenderTree;
 }
 
 export function createUITestContext(): UITestContext {
@@ -165,18 +182,11 @@ export function createUITestContext(): UITestContext {
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
-  // Renderer mocks
   const renderer = new MockRendererPlugin();
-  const worldRoot = new MockContainer();
-  const screenRoot = new MockContainer();
-  const camera = new Camera(800, 600);
-
   ctx.register(RendererKey, renderer as never);
-  ctx.register(StageKey, worldRoot as never);
-  ctx.register(WorldRootKey, worldRoot as never);
-  ctx.register(CameraKey, camera);
 
-  const provider = new MockSceneRenderTreeProvider(worldRoot, screenRoot);
+  const stage = renderer.application.stage;
+  const provider = new MockSceneRenderTreeProvider(stage);
   ctx.register(SceneRenderTreeProviderKey, provider);
 
   const scene = new _TestScene("test-scene");
@@ -184,13 +194,12 @@ export function createUITestContext(): UITestContext {
   const tree = provider.createForScene(scene);
   scene._registerScoped(SceneRenderTreeKey, tree);
 
-  // `uiContainer` is the screen-root container the UI auto-provisions into.
   return {
     context: ctx,
     scene,
     queryCache,
-    uiContainer: screenRoot,
     renderer,
+    tree,
   };
 }
 

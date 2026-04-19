@@ -6,12 +6,9 @@ import {
   SystemScheduler,
 } from "@yagejs/core";
 
-// Local mock keys matching the string IDs used by the renderer package.
+// Local mock key matching the string ID used by the renderer package.
 // Tests shouldn't depend on @yagejs/renderer.
 const RendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>("renderer");
-const CameraKey = new ServiceKey<{
-  screenToWorld(sx: number, sy: number): { x: number; y: number };
-}>("camera");
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
@@ -19,7 +16,6 @@ import { InputManager } from "./InputManager.js";
 
 function createContext(options?: {
   withRenderer?: boolean;
-  withCamera?: boolean;
   canvas?: HTMLCanvasElement;
 }): EngineContext {
   const context = new EngineContext();
@@ -27,11 +23,6 @@ function createContext(options?: {
   if (options?.withRenderer) {
     const canvas = options.canvas ?? document.createElement("canvas");
     context.register(RendererKey, { canvas });
-  }
-  if (options?.withCamera) {
-    context.register(CameraKey, {
-      screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
-    });
   }
   return context;
 }
@@ -216,17 +207,37 @@ describe("InputPlugin", () => {
     expect(manager.isPressed("jump")).toBe(true);
   });
 
-  it("wires camera for pointer world-coordinate conversion", () => {
-    context = createContext({ withCamera: true });
-    plugin = new InputPlugin({ cameraKey: CameraKey });
+  it("setCamera enables pointer world-coordinate conversion", () => {
+    context = createContext();
+    plugin = new InputPlugin();
     plugin.install(context);
 
     const manager = context.resolve(InputManagerKey);
+    manager.setCamera({
+      screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
+    });
     manager._onPointerMove(50, 100);
 
     const worldPos = manager.getPointerPosition();
     expect(worldPos.x).toBe(100);
     expect(worldPos.y).toBe(200);
+  });
+
+  it("clearCamera reverts to screen coordinates", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+
+    const manager = context.resolve(InputManagerKey);
+    manager.setCamera({
+      screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
+    });
+    manager.clearCamera();
+    manager._onPointerMove(50, 100);
+
+    const pos = manager.getPointerPosition();
+    expect(pos.x).toBe(50);
+    expect(pos.y).toBe(100);
   });
 
   it("uses custom target element for pointer events", () => {
@@ -317,21 +328,6 @@ describe("InputPlugin", () => {
     const spy = vi.spyOn(event, "preventDefault");
     window.dispatchEvent(event);
     expect(spy).toHaveBeenCalled();
-  });
-
-  it("ignores cameraKey when camera is not registered", () => {
-    context = createContext();
-    // cameraKey provided but camera not registered in context
-    plugin = new InputPlugin({ cameraKey: CameraKey });
-
-    expect(() => plugin.install(context)).not.toThrow();
-
-    const manager = context.resolve(InputManagerKey);
-    // Pointer should still work (screen coords only)
-    manager._onPointerMove(10, 20);
-    const pos = manager.getPointerPosition();
-    expect(pos.x).toBe(10);
-    expect(pos.y).toBe(20);
   });
 
   it("ignores unmapped mouse buttons on pointerdown and pointerup", () => {

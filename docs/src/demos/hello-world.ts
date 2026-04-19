@@ -9,7 +9,7 @@ import {
   ProcessSlot,
   defineEvent,
 } from "@yagejs/core";
-import { GraphicsComponent, RendererPlugin, CameraKey } from "@yagejs/renderer";
+import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
@@ -229,9 +229,6 @@ class PongScene extends Scene {
   }
 
   onEnter() {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(this.W / 2, this.H / 2);
-
     this.spawn(Scoreboard);
     const ball = this.spawn(Ball, { w: this.W, h: this.H });
     this.spawn(Paddle, { x: 30, y: this.H / 2, ball, side: "left" });

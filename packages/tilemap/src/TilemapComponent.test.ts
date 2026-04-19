@@ -13,6 +13,7 @@ const { mocks } = vi.hoisted(() => {
     zIndex = 0;
     label = "";
     destroyed = false;
+    eventMode = "passive";
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -88,7 +89,16 @@ vi.mock("./tiled/parseTiledMap.js", () => ({
       {
         name: "collisions",
         objects: [
-          { id: 1, name: "wall", x: 0, y: 0, width: 32, height: 32, rotation: 0, visible: true },
+          {
+            id: 1,
+            name: "wall",
+            x: 0,
+            y: 0,
+            width: 32,
+            height: 32,
+            rotation: 0,
+            visible: true,
+          },
         ],
         visible: true,
       },
@@ -117,13 +127,10 @@ import {
 } from "@yagejs/core";
 import type { EngineEvents } from "@yagejs/core";
 import {
-  CameraKey,
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
-  StageKey,
-  WorldRootKey,
 } from "@yagejs/renderer";
-import { Camera, RenderLayerManager } from "@yagejs/renderer";
+import { RenderLayerManager } from "@yagejs/renderer";
 import type { SceneRenderTree } from "@yagejs/renderer";
 import { TilemapComponent } from "./TilemapComponent.js";
 import type { TiledMapData } from "./tiled/types.js";
@@ -150,37 +157,33 @@ function createTestContext() {
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
-  const worldRoot = new mocks.MockContainer();
-  const screenRoot = new mocks.MockContainer();
-  const camera = new Camera(800, 600);
-  const layerManager = new RenderLayerManager(
-    worldRoot as never,
-    screenRoot as never,
-  );
+  const root = new mocks.MockContainer();
+  const layerManager = new RenderLayerManager(root as never);
   const tree: SceneRenderTree = {
+    root: root as never,
     get: (n) => layerManager.get(n),
     tryGet: (n) => layerManager.tryGet(n),
     getAll: () => layerManager.getAll(),
     get defaultLayer() {
       return layerManager.defaultLayer;
     },
-    ensureLayer: (def) =>
-      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def),
+    ensureLayer: (def, opts) =>
+      layerManager.tryGet(def.name) ?? layerManager.createFromDef(def, opts),
   };
 
-  ctx.register(StageKey, worldRoot as never);
-  ctx.register(WorldRootKey, worldRoot as never);
-  ctx.register(CameraKey, camera);
+  const scene = new TestScene();
   ctx.register(SceneRenderTreeProviderKey, {
     createForScene: () => tree,
     destroyForScene: () => undefined,
+    getTree: () => tree,
+    allTrees: function* () {
+      yield [scene, tree];
+    },
   });
-
-  const scene = new TestScene();
   scene._setContext(ctx);
   scene._registerScoped(SceneRenderTreeKey, tree);
 
-  return { ctx, scene, layerManager, stage: worldRoot };
+  return { ctx, scene, layerManager, root };
 }
 
 const testMap: TiledMapData = {
@@ -206,7 +209,16 @@ const testMap: TiledMapData = {
       id: 2,
       name: "collisions",
       objects: [
-        { id: 1, name: "wall", x: 0, y: 0, width: 32, height: 32, rotation: 0, visible: true },
+        {
+          id: 1,
+          name: "wall",
+          x: 0,
+          y: 0,
+          width: 32,
+          height: 32,
+          rotation: 0,
+          visible: true,
+        },
       ],
       opacity: 1,
       visible: true,
@@ -248,10 +260,14 @@ describe("TilemapComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new TilemapComponent({ map: testMap }));
 
-    const layerContainer = layerManager.defaultLayer.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const layerContainer = layerManager.defaultLayer
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(layerContainer.children).toContain(comp.container);
     // createTilemapLayers mock returns 2 children
-    expect((comp.container as unknown as InstanceType<typeof mocks.MockContainer>).children).toHaveLength(2);
+    expect(
+      (comp.container as unknown as InstanceType<typeof mocks.MockContainer>)
+        .children,
+    ).toHaveLength(2);
   });
 
   it("onDestroy removes container from parent and destroys it", () => {
@@ -260,7 +276,9 @@ describe("TilemapComponent", () => {
     entity.add(new Transform());
     const comp = entity.add(new TilemapComponent({ map: testMap }));
 
-    const container = comp.container as unknown as InstanceType<typeof mocks.MockContainer>;
+    const container = comp.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
     expect(container.parent).not.toBeNull();
 
     comp.onDestroy?.();
@@ -364,7 +382,10 @@ describe("TilemapComponent", () => {
 
     it("fromSnapshot round-trips", () => {
       mocks.mockAssetsGet.mockReturnValue(testMap);
-      const original = new TilemapComponent({ mapKey: "dungeon.json", layer: "bg" });
+      const original = new TilemapComponent({
+        mapKey: "dungeon.json",
+        layer: "bg",
+      });
       const data = original.serialize()!;
       const restored = TilemapComponent.fromSnapshot(data);
       expect(restored.serialize()).toEqual(data);

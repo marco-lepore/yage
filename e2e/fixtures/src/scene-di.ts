@@ -16,7 +16,6 @@ import {
 import {
   RendererPlugin,
   GraphicsComponent,
-  CameraKey,
   SceneRenderTreeKey,
 } from "@yagejs/renderer";
 import type { LayerDef, SceneRenderTree } from "@yagejs/renderer";
@@ -105,9 +104,6 @@ class SceneA extends Scene {
   ];
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     // Physics probe entity (needs Transform + RigidBody to create a world)
     const probeEntity = this.spawn("physics-probe");
     probeEntity.add(new Transform({ position: new Vec2(100, 100) }));

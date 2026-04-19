@@ -2,7 +2,13 @@ import { Component } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
-import { FlexDirection as YogaFlexDirection, Gutter, Edge, Overflow, Display } from "yoga-layout";
+import {
+  FlexDirection as YogaFlexDirection,
+  Gutter,
+  Edge,
+  Overflow,
+  Display,
+} from "yoga-layout";
 import { Align, Justify } from "yoga-layout";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
@@ -121,7 +127,9 @@ export class PanelNode implements UIContainerElement {
 
   /** Add a text element. */
   text(content: string, style?: Partial<TextStyleOptions>): UIText {
-    const t = new UIText(style ? { children: content, style } : { children: content });
+    const t = new UIText(
+      style ? { children: content, style } : { children: content },
+    );
     this.addElement(t);
     return t;
   }
@@ -351,17 +359,25 @@ export class UIPanel extends Component {
           `UIPanel: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
         );
       }
-      // Auto-provision a screen-space "ui" layer the first time a UIPanel
-      // is added to a scene that hasn't declared one explicitly. Also runs
-      // when `{ layer: "ui" }` is passed explicitly — the default name
-      // always resolves, even on scenes that omit it.
-      layer = tree.ensureLayer({
-        name: UI_DEFAULT_LAYER,
-        order: UI_DEFAULT_LAYER_ORDER,
-        space: "screen",
-        eventMode: "static",
-      });
+      // Auto-provision a "ui" layer the first time a UIPanel is added to
+      // a scene that hasn't declared one explicitly. Opt out of camera
+      // auto-binding so the layer stays screen-space — explicit camera
+      // bindings can still target it by name.
+      layer = tree.ensureLayer(
+        { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
+        { autoBindable: false },
+      );
+    } else if (layer.autoBindable) {
+      // Pre-declared layer that cameras will auto-bind by default —
+      // would scroll/zoom the UI with the world. Force the author to be
+      // explicit about whether they want UI in screen-space or world-space.
+      throw new Error(
+        `UIPanel: target layer "${layerName}" is camera-auto-bindable, so a default camera would move the UI with the world. ` +
+          `Either remove it from Scene.layers (the UI plugin will auto-provision a screen-space "ui" layer), ` +
+          `or pass explicit CameraEntity { bindings } that don't include "${layerName}".`,
+      );
     }
+    layer.container.eventMode = "static";
     layer.container.addChild(this._node.container);
   }
 

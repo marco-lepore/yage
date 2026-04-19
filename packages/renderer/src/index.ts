@@ -3,12 +3,7 @@
 import "./scene-augmentation.js";
 
 // Service keys & config
-export {
-  RendererKey,
-  StageKey,
-  CameraKey,
-  WorldRootKey,
-} from "./types.js";
+export { RendererKey } from "./types.js";
 export type { RendererConfig } from "./types.js";
 export type {
   ColorValue,
@@ -31,7 +26,10 @@ export { RendererPlugin } from "./RendererPlugin.js";
 export { SpriteComponent } from "./SpriteComponent.js";
 export type { SpriteComponentOptions, SpriteData } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";
-export type { GraphicsComponentOptions, GraphicsData } from "./GraphicsComponent.js";
+export type {
+  GraphicsComponentOptions,
+  GraphicsData,
+} from "./GraphicsComponent.js";
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 export type {
   AnimatedSpriteComponentOptions,
@@ -56,13 +54,21 @@ export type {
   AtlasFrameSource,
 } from "./spritesheet.js";
 
-// Camera
-export { Camera } from "./Camera.js";
+// Camera — entity-based system
+export { CameraEntity } from "./CameraEntity.js";
+export type { CameraEntityParams } from "./CameraEntity.js";
+export { CameraComponent } from "./CameraComponent.js";
 export type {
   CameraBounds,
   CameraFollowOptions,
   CameraShakeOptions,
-} from "./Camera.js";
+  CameraBinding,
+  CameraComponentOptions,
+} from "./CameraComponent.js";
+export { CameraFollow } from "./CameraFollow.js";
+export { CameraShake } from "./CameraShake.js";
+export { CameraBoundsComponent } from "./CameraBoundsComponent.js";
+export { CameraZoom } from "./CameraZoom.js";
 
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";
@@ -72,6 +78,7 @@ export type { CreateLayerOptions } from "./RenderLayer.js";
 // Per-scene render tree
 export type { LayerDef } from "./LayerDef.js";
 export type {
+  EnsureLayerOptions,
   SceneRenderTree,
   SceneRenderTreeProvider,
 } from "./SceneRenderTree.js";

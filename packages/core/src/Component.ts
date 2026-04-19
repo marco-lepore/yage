@@ -91,7 +91,7 @@ export abstract class Component {
   /**
    * Lazy proxy-based service resolution. Can be used at field-declaration time:
    * ```ts
-   * readonly camera = this.service(CameraKey);
+   * readonly input = this.service(InputManagerKey);
    * ```
    * The actual resolution is deferred until first property access.
    */

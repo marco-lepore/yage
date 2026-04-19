@@ -1,4 +1,4 @@
-export { RendererKey, StageKey, CameraKey, WorldRootKey } from "./types.js";
+export { RendererKey } from "./types.js";
 export type { RendererConfig } from "./types.js";
 export {
   SceneRenderTreeKey,

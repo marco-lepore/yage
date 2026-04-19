@@ -165,7 +165,7 @@ describe("InputManager", () => {
     const mockCamera = {
       screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
     };
-    input._setCamera(mockCamera);
+    input.setCamera(mockCamera);
     input._onPointerMove(100, 50);
     const pos = input.getPointerPosition();
     expect(pos.x).toBe(200);

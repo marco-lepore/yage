@@ -6,7 +6,7 @@ import {
   Transform,
   Vec2,
 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles } from "./shared.js";
 
@@ -48,9 +48,6 @@ class BaseScene extends Scene {
   readonly name = "base-scene";
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     const marker = this.spawn("base-marker");
     marker.add(new Transform({ position: new Vec2(180, 180) }));
     marker.add(

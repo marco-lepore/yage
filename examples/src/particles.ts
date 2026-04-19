@@ -3,7 +3,7 @@ import type { Entity } from "@yagejs/core";
 import {
   RendererPlugin,
   RendererKey,
-  CameraKey,
+  CameraEntity,
   GraphicsComponent,
   type TextureInput,
   type TextureResource,
@@ -99,8 +99,9 @@ class ParticlesScene extends Scene {
   private presetIndicators = new Map<PresetName, GraphicsComponent>();
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 300);
+    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    const input = this.context.resolve(InputManagerKey);
+    input.setCamera(cam);
 
     // Generate a small white circle texture for particles
     const renderer = this.context.resolve(RendererKey);
@@ -182,6 +183,10 @@ class ParticlesScene extends Scene {
     });
   }
 
+  onExit(): void {
+    this.context.resolve(InputManagerKey).clearCamera();
+  }
+
   private updatePresetBar(prev: PresetName, next: PresetName): void {
     const prevComp = this.presetIndicators.get(prev);
     if (prevComp) this.drawPresetDot(prevComp, PRESET_COLORS[prev], false);
@@ -224,7 +229,6 @@ async function main() {
       preset_rain: ["Digit4"],
     },
     preventDefaultKeys: ["Space"],
-    cameraKey: CameraKey,
     rendererKey: RendererKey,
   }));
   engine.use(new ParticlesPlugin());

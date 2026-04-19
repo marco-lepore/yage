@@ -25,8 +25,6 @@ export interface InputConfig {
   groups?: Record<string, string[]>;
   /** Key codes to call preventDefault() on (default: none). */
   preventDefaultKeys?: string[];
-  /** Service key for the camera (enables pointer world-coordinate conversion). */
-  cameraKey?: ServiceKey<CameraLike>;
   /** Service key for the renderer (used to auto-target pointer events to its canvas). */
   rendererKey?: ServiceKey<RendererLike>;
 }

@@ -396,9 +396,14 @@ export class InputManager {
     this.justReleasedKeys.clear();
   }
 
-  /** @internal Set camera for pointer world-coord conversion. */
-  _setCamera(camera: CameraLike): void {
+  /** Set camera for pointer world-coord conversion. */
+  setCamera(camera: CameraLike): void {
     this.camera = camera;
+  }
+
+  /** Clear the camera reference (e.g. on scene exit). */
+  clearCamera(): void {
+    this.camera = null;
   }
 
   /** Get all configured action names. */

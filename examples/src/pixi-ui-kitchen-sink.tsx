@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
-import { RendererPlugin, CameraKey, GraphicsComponent } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { UIPlugin, createNineSliceView } from "@yagejs/ui";
 import {
   UIRoot,
@@ -272,9 +272,6 @@ class KitchenSinkScene extends Scene {
   readonly preload = allAssets;
 
   onEnter(): void {
-    const camera = this.context.resolve(CameraKey);
-    camera.position = new Vec2(400, 350);
-
     // Subtle background
     const bg = this.spawn("bg");
     bg.add(new Transform({ position: new Vec2(400, 350) }));

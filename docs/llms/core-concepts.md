@@ -71,7 +71,7 @@ interface Plugin {
 ```ts
 class MyComponent extends Component {
   // Lazy DI resolution (cached after first call)
-  private camera = this.service(CameraKey);
+  private input = this.service(InputManagerKey);
 
   // Lazy sibling resolution
   private sprite = this.sibling(SpriteComponent);
@@ -215,7 +215,7 @@ const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 
 Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`.
 
-Plugin keys: `CameraKey`, `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
+Plugin keys: `RendererKey`, `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 
 Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`) are per-scene —
 `this.use(key)` resolves the correct scene's instance automatically.

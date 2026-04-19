@@ -1,5 +1,5 @@
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent, CameraKey } from "@yagejs/renderer";
+import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   PhysicsWorldKey,
@@ -113,11 +113,8 @@ class InputController extends Component {
 // ---------------------------------------------------------------------------
 class PhysicsBasicsScene extends Scene {
   readonly name = "physics-basics";
-  private readonly camera = this.service(CameraKey);
 
   onEnter(): void {
-    this.camera.position = new Vec2(WIDTH / 2, HEIGHT / 2);
-
     // Controller entity
     const ctrl = this.spawn("controller");
     ctrl.add(new Transform());
