@@ -190,6 +190,28 @@ world root.
 
 Runs in `Phase.Render`. Syncs entity `Transform` to PixiJS display object positions, applying camera offset and zoom.
 
+## Scene Transitions
+
+Built-in visual transitions. Use with `SceneManager.push/pop/replace({ transition })`.
+
+```ts
+import { crossFade, fade, flash } from "@yagejs/renderer";
+
+await engine.scenes.push(nextScene, { transition: fade({ duration: 400 }) });
+await engine.scenes.push(nextScene, { transition: crossFade({ duration: 500 }) });
+await engine.scenes.pop({ transition: flash({ duration: 200, color: 0xff0000 }) });
+await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 }) });
+```
+
+| Export | Signature | Description |
+|---|---|---|
+| `fade` | `(opts?: { duration?: number; color?: number }) => SceneTransition` | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 300ms, black. |
+| `flash` | `(opts?: { duration?: number; color?: number }) => SceneTransition` | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 200ms, white. |
+| `crossFade` | `(opts?: { duration?: number }) => SceneTransition` | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 400ms. |
+| `getSceneContainer` | `(ctx: SceneTransitionContext, scene: Scene \| undefined) => Container \| undefined` | Helper for custom transitions — resolves a scene's PIXI root container. |
+
+`fade` and `flash` add a stage-level `Graphics` overlay during the transition and clean up on `end()`. `crossFade` manipulates per-scene containers directly via `getSceneContainer`.
+
 ## Asset Factories
 
 ```ts
