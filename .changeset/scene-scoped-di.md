@@ -6,7 +6,6 @@
 "@yagejs/ui": patch
 "@yagejs/particles": patch
 "@yagejs/tilemap": patch
-"@yagejs/save": patch
 "create-yage": patch
 ---
 

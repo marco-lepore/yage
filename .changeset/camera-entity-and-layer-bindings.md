@@ -4,12 +4,6 @@
 "@yagejs/ui": minor
 "@yagejs/ui-react": patch
 "@yagejs/debug": patch
-"@yagejs/core": patch
-"@yagejs/physics": patch
-"@yagejs/audio": patch
-"@yagejs/particles": patch
-"@yagejs/tilemap": patch
-"@yagejs/save": patch
 "create-yage": patch
 ---
 
@@ -49,3 +43,7 @@ Rework the camera system into an entity + layer-binding model, and give every sc
 - `DebugScene` declares its layers without `space`; the overlay now uses the same auto-binding model as user scenes.
 - `DebugRenderSystem` factors `cam.rotation` into the world-container translation, matching the main `DisplaySystem`.
 - `findTopmostCamera` returns the highest-priority **enabled** camera on the topmost scene with one, matching `DisplaySystem`'s own selection rules instead of picking whichever camera happened to be found first.
+
+**`create-yage`**
+
+- Template scenes (`minimal` and `recommended`) migrated to the new `CameraEntity` API.
