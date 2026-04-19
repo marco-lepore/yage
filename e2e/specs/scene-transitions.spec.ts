@@ -150,18 +150,18 @@ test.describe("Scene transitions", () => {
     ]);
   });
 
-  test("clear mid-transition fires ended and cancels queued pushes", async ({
+  test("popAll queues after in-flight and pending transitions instead of cancelling them", async ({
     page,
   }) => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
     await call(page, "resetEvents");
 
-    // Start a long transition, then queue another, then clear.
+    // Start a transition, queue another, then enqueue popAll.
     await page.evaluate(() => {
       const api = (window as Win).__sceneTransitionTest__;
-      void api.pushWithTransition("fade", 2000);
       void api.pushWithTransition("fade", 200);
+      void api.pushWithTransition("fade", 100);
     });
 
     await stepFrames(page, 1, 16);
@@ -169,20 +169,21 @@ test.describe("Scene transitions", () => {
 
     await call(page, "clearAll");
 
-    // Stack should be empty; queued push should not have run.
-    expect(await getSceneStack(page)).toHaveLength(0);
+    // popAll is queued — in-flight transition keeps running.
+    expect(await call(page, "getIsTransitioning")).toBe(true);
+    expect((await getSceneStack(page)).length).toBeGreaterThan(0);
 
-    // Step some frames to let any pending microtasks settle.
-    await stepFrames(page, 5, 16);
+    // Drain: 200ms + 100ms of transitions, then popAll. ~20 frames @16ms
+    // covers both plus slack for queue handoffs.
+    await stepFrames(page, 30, 16);
     expect(await getSceneStack(page)).toHaveLength(0);
 
     const events = await call(page, "getTransitionEvents");
-    // Only ONE started and ONE ended — the queued push never ran.
     const started = events.filter((e) => e.type === "started");
     const ended = events.filter((e) => e.type === "ended");
-    expect(started).toHaveLength(1);
-    expect(ended).toHaveLength(1);
-    expect(ended[0]).toEqual({ type: "ended", kind: "push" });
+    // Both pushes completed their transitions before popAll ran.
+    expect(started).toHaveLength(2);
+    expect(ended).toHaveLength(2);
   });
 
   test("replace keeps both scenes then removes old and emits scene:replaced once", async ({
@@ -275,7 +276,9 @@ test.describe("Scene transitions", () => {
     expect(await call(page, "getSceneAlpha", 2)).toBe(1);
   });
 
-  test("clear cancels in-flight transition", async ({ page }) => {
+  test("popAll empties the stack after any in-flight transition finishes", async ({
+    page,
+  }) => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
 
@@ -283,7 +286,11 @@ test.describe("Scene transitions", () => {
     await stepFrames(page, 1);
     await call(page, "clearAll");
 
-    const stack = await getSceneStack(page);
-    expect(stack).toHaveLength(0);
+    // Still transitioning — popAll hasn't started yet.
+    expect((await getSceneStack(page)).length).toBeGreaterThan(0);
+
+    // Finish the transition and let popAll run.
+    await stepFrames(page, 15, 16);
+    expect(await getSceneStack(page)).toHaveLength(0);
   });
 });

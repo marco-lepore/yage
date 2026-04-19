@@ -171,11 +171,13 @@ When replacing with a transition:
 
 ### Queueing
 
-Multiple `push`/`pop`/`replace` calls queue automatically — they don't cancel
-each other. Each completes its transition before the next starts.
+Multiple `push`/`pop`/`replace`/`popAll` calls queue automatically — they
+don't cancel each other. Each completes its transition before the next
+starts.
 
-Calling `engine.scenes.clear()` cancels all in-flight and queued transitions
-immediately.
+`engine.scenes.popAll()` is also queued: it waits for any in-flight
+transition and pending ops to finish before tearing the stack down. Use it
+for "restart from menu"-style flows — not as an emergency abort.
 
 :::caution[Breaking Change]
 `SceneManager.pop()` now returns `Promise<Scene | undefined>`. Update existing

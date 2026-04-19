@@ -261,7 +261,7 @@ bind("btn-replace", () => {
 });
 
 bind("btn-clear", () => {
-  engine.scenes.clear();
+  void engine.scenes.popAll();
   void engine.scenes.push(new MenuScene());
 });
 

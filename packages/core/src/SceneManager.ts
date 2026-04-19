@@ -33,8 +33,8 @@ export class SceneManager {
   private logger: Logger | undefined;
   private _currentRun: TransitionRun | undefined;
   private _pendingChain: Promise<void> = Promise.resolve();
-  private _transitionGeneration = 0;
   private _mutationDepth = 0;
+  private _destroyed = false;
 
   /**
    * Set the engine context.
@@ -76,12 +76,12 @@ export class SceneManager {
    */
   async push(scene: Scene, opts?: SceneTransitionOptions): Promise<void> {
     this._assertNotMutating("push");
-    return this._enqueue(async (gen) => {
+    await this._enqueue(async () => {
       const fromScene = this.active;
       await this._pushScene(scene);
 
       const transition = resolveTransition(opts?.transition, scene);
-      if (!transition || this._transitionGeneration !== gen) return;
+      if (!transition) return;
 
       await this._runTransition("push", transition, fromScene, scene);
     });
@@ -90,7 +90,7 @@ export class SceneManager {
   /** Pop the top scene. Scenes below may receive onResume(). */
   async pop(opts?: SceneTransitionOptions): Promise<Scene | undefined> {
     this._assertNotMutating("pop");
-    return this._enqueue(async (gen) => {
+    return this._enqueue(async () => {
       if (this.stack.length === 0) return undefined;
 
       const fromScene = this.active;
@@ -100,7 +100,6 @@ export class SceneManager {
 
       if (transition) {
         await this._runTransition("pop", transition, fromScene, destination);
-        if (this._transitionGeneration !== gen) return undefined;
       }
 
       return this._popScene();
@@ -115,7 +114,7 @@ export class SceneManager {
    */
   async replace(scene: Scene, opts?: SceneTransitionOptions): Promise<void> {
     this._assertNotMutating("replace");
-    return this._enqueue(async (gen) => {
+    await this._enqueue(async () => {
       const transition = resolveTransition(opts?.transition, scene);
 
       if (!transition) {
@@ -125,10 +124,7 @@ export class SceneManager {
 
       const old = this.active;
       await this._pushScene(scene, true);
-      if (this._transitionGeneration !== gen) return;
-
       await this._runTransition("replace", transition, old, scene);
-      if (this._transitionGeneration !== gen) return;
 
       if (old) {
         this._removeScene(old, true);
@@ -141,25 +137,21 @@ export class SceneManager {
   }
 
   /**
-   * Clear all scenes. Each receives onExit() from top to bottom.
-   * Invalidates any queued or in-flight transition work.
+   * Pop every scene on the stack, top to bottom. Each receives onExit().
+   * Queued like push/pop/replace — runs after any in-flight transition.
+   * Use for "restart from menu"-style flows. Does not run transitions.
    */
-  clear(): void {
-    this._assertNotMutating("clear");
-
-    this._transitionGeneration++;
-    if (this._currentRun) {
-      this._cleanupRun(this._currentRun);
-    }
-    this._pendingChain = Promise.resolve();
-
-    this._withMutationSync(() => {
-      while (this.stack.length > 0) {
-        const scene = this.stack.pop();
-        if (!scene) break;
-        this._teardownScene(scene);
-        this.bus?.emit("scene:popped", { scene });
-      }
+  async popAll(): Promise<void> {
+    this._assertNotMutating("popAll");
+    await this._enqueue(async () => {
+      this._withMutationSync(() => {
+        while (this.stack.length > 0) {
+          const scene = this.stack.pop();
+          if (!scene) break;
+          this._teardownScene(scene);
+          this.bus?.emit("scene:popped", { scene });
+        }
+      });
     });
   }
 
@@ -186,6 +178,30 @@ export class SceneManager {
   _unmountDetached(scene: Scene): void {
     this._withMutationSync(() => {
       this._teardownScene(scene);
+    });
+  }
+
+  /**
+   * Mark the manager destroyed and synchronously tear down every scene.
+   * Called by Engine.destroy(). Any queued async work short-circuits on
+   * resume; in-flight transitions' pending promises are resolved via
+   * _cleanupRun so they don't leak.
+   * @internal
+   */
+  _destroy(): void {
+    this._destroyed = true;
+    if (this._currentRun) {
+      this._cleanupRun(this._currentRun);
+    }
+    this._pendingChain = Promise.resolve();
+
+    this._withMutationSync(() => {
+      while (this.stack.length > 0) {
+        const scene = this.stack.pop();
+        if (!scene) break;
+        this._teardownScene(scene);
+        this.bus?.emit("scene:popped", { scene });
+      }
     });
   }
 
@@ -221,13 +237,11 @@ export class SceneManager {
 
   // ---- Private helpers ----
 
-  private _enqueue<T>(
-    work: (gen: number) => Promise<T>,
-  ): Promise<T | undefined> {
-    const myGen = this._transitionGeneration;
+  private _enqueue<T>(work: () => Promise<T>): Promise<T | undefined> {
+    if (this._destroyed) return Promise.resolve(undefined);
     const next = this._pendingChain.then(async () => {
-      if (this._transitionGeneration !== myGen) return undefined;
-      return work(myGen);
+      if (this._destroyed) return undefined;
+      return work();
     });
 
     this._pendingChain = next.then(
@@ -332,6 +346,11 @@ export class SceneManager {
     fromScene: Scene | undefined,
     toScene: Scene | undefined,
   ): Promise<void> {
+    // If destroy() landed between this op's prior await and here, bail
+    // before registering a _currentRun whose promise would never resolve
+    // (the loop is stopped, so _tickTransition won't fire).
+    if (this._destroyed) return;
+
     let resolveRun!: () => void;
     const promise = new Promise<void>((resolve) => {
       resolveRun = resolve;
@@ -421,8 +440,9 @@ export class SceneManager {
   private _assertNotMutating(method: string): void {
     if (this._mutationDepth === 0) return;
     throw new Error(
-      `SceneManager.${method}() called during an in-progress transition. ` +
-        "Await the current push/replace before starting another.",
+      `SceneManager.${method}() called reentrantly from a scene lifecycle hook ` +
+        "(onEnter/onExit/onPause/onResume or a beforeEnter/afterExit hook). " +
+        "Defer the call outside the hook, e.g. via queueMicrotask() or from a component update().",
     );
   }
 

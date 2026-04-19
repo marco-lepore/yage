@@ -159,13 +159,13 @@ Stack-based via `SceneManager`:
 
 ```ts
 await engine.scenes.push(new GameScene());   // enters scene
-engine.scenes.pop();                         // exits top scene
+await engine.scenes.pop();                   // exits top scene
 await engine.scenes.replace(new MenuScene());// swap top
-engine.scenes.clear();                       // exit all
+await engine.scenes.popAll();                // exits all (queued)
 ```
 
-`push` and `replace` are async — they await `beforeEnter` hooks and
-`scene.preload` before `onEnter` fires. `pop` and `clear` are sync.
+All four are async and queued — they await `beforeEnter` hooks,
+`scene.preload`, and any in-flight transition before applying.
 
 Scene hooks: `onEnter`, `onExit`, `onPause` (scene pushed on top), `onResume` (scene above popped).
 

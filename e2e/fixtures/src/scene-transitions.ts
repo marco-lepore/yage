@@ -151,5 +151,9 @@ interface SceneTransitionTestApi {
     const tree = provider.getTree(scene);
     return tree ? tree.root.alpha : null;
   },
-  clearAll: () => engine.scenes.clear(),
+  clearAll: () => {
+    // Fire-and-forget — popAll is queued. Awaiting would deadlock because
+    // Playwright can't step frames while blocked inside evaluate().
+    void engine.scenes.popAll();
+  },
 };

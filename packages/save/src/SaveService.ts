@@ -203,7 +203,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       }
 
       const sceneManager = this.context.resolve(SceneManagerKey);
-      sceneManager.clear();
+      await sceneManager.popAll();
 
       for (const entry of snapshot.scenes) {
         const SceneClass = SerializableRegistry.get(entry.type) as

@@ -89,9 +89,9 @@ scene-visibility and would fight each other if chained.
 
 ## Queueing
 
-Concurrent `push`/`pop`/`replace` calls queue via `_pendingChain`. Re-entrant calls from lifecycle hooks throw.
+Concurrent `push`/`pop`/`replace`/`popAll` calls queue via `_pendingChain`. Re-entrant calls from lifecycle hooks throw.
 
-`clear()` cancels all in-flight and queued work via a generation counter.
+`popAll()` is also queued — it waits for any in-flight transition and pending ops to finish before tearing the stack down. There is no mid-run cancellation.
 
 ## Events
 
@@ -139,7 +139,7 @@ function slideIn(duration: number, width: number): SceneTransition {
 
 Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
-- `end` may fire mid-run when `scenes.clear()` cancels. Restore any persistent properties (visibility, alpha) to safe defaults there.
+- `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as a matter of hygiene.
 
 ## Breaking Change
 

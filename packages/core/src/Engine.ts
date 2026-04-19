@@ -208,8 +208,8 @@ export class Engine {
     // Stop the loop
     this.loop.stop();
 
-    // Clear scenes
-    this.scenes.clear();
+    // Tear down scenes synchronously; also short-circuits any queued async work.
+    this.scenes._destroy();
 
     // Unregister all systems (reverse order for clean teardown)
     const allSystems = this.scheduler.getAllSystems();

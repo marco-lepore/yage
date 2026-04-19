@@ -204,14 +204,14 @@ describe("SceneManager", () => {
     });
   });
 
-  describe("clear", () => {
-    it("clears all scenes from top to bottom", async () => {
+  describe("popAll", () => {
+    it("pops all scenes from top to bottom", async () => {
       const { manager } = setup();
       const a = new GameScene("a");
       const b = new GameScene("b");
       await manager.push(a);
       await manager.push(b);
-      manager.clear();
+      await manager.popAll();
       expect(a.exitCalled).toBe(true);
       expect(b.exitCalled).toBe(true);
       expect(manager.all).toEqual([]);
@@ -254,15 +254,15 @@ describe("SceneManager", () => {
     });
   });
 
-  describe("clear edge cases", () => {
+  describe("popAll edge cases", () => {
     it("handles corrupted stack with undefined entry gracefully", async () => {
       const { manager } = setup();
       // Inject an undefined into the internal stack to trigger the defensive guard.
       // This simulates an impossible state where pop() returns undefined despite length > 0.
       const stack = (manager as unknown as { stack: Array<Scene | undefined> })["stack"];
       stack.push(undefined as unknown as Scene);
-      // clear should not throw — the guard breaks out of the loop
-      manager.clear();
+      // popAll should not throw — the loop terminates cleanly
+      await manager.popAll();
       expect(manager.active).toBeUndefined();
     });
   });
@@ -490,7 +490,7 @@ describe("SceneManager", () => {
       ]);
     });
 
-    it("runs afterExit hooks on clear for every scene", async () => {
+    it("runs afterExit hooks on popAll for every scene", async () => {
       const { manager, hooks } = setupWithHooks();
       const exited: string[] = [];
       hooks.register({
@@ -501,27 +501,27 @@ describe("SceneManager", () => {
       await manager.push(new GameScene("a"));
       await manager.push(new GameScene("b"));
       await manager.push(new GameScene("c"));
-      manager.clear();
-      // Cleared top-to-bottom
+      await manager.popAll();
+      // Popped top-to-bottom
       expect(exited).toEqual(["c", "b", "a"]);
     });
   });
 
   describe("reentrant guard", () => {
-    it("throws when push is called during an in-progress push", async () => {
+    it("throws when push is called reentrantly from a lifecycle hook", async () => {
       const { manager, hooks } = setupWithHooks();
       hooks.register({
         beforeEnter: async () => {
           // Attempt reentrant push inside a hook
           await expect(
             manager.push(new GameScene("reentrant")),
-          ).rejects.toThrow("called during an in-progress transition");
+          ).rejects.toThrow("called reentrantly from a scene lifecycle hook");
         },
       });
       await manager.push(new GameScene("main"));
     });
 
-    it("rejects when pop is called during an in-progress push", async () => {
+    it("rejects when pop is called reentrantly from a lifecycle hook", async () => {
       const { manager, hooks } = setupWithHooks();
       await manager.push(new GameScene("base"));
       let popPromise: Promise<unknown> | undefined;
@@ -532,7 +532,7 @@ describe("SceneManager", () => {
       });
       await manager.push(new GameScene("trigger"));
       await expect(popPromise).rejects.toThrow(
-        "called during an in-progress transition",
+        "called reentrantly from a scene lifecycle hook",
       );
     });
   });
@@ -697,7 +697,7 @@ describe("SceneManager", () => {
       expect(manager.all).toHaveLength(2);
     });
 
-    it("clear() during an active transition calls end and cancels queued ops", async () => {
+    it("popAll queues after an in-flight transition instead of cancelling it", async () => {
       const { manager } = setup();
       const log: string[] = [];
       const { transition } = makeFakeTransition(200, log);
@@ -706,18 +706,18 @@ describe("SceneManager", () => {
       manager._tickTransition(50);
       expect(manager.isTransitioning).toBe(true);
 
-      const { transition: t2 } = makeFakeTransition(100);
-      const queuedPromise = manager.push(new GameScene("b"), {
-        transition: t2,
-      });
+      const popAllPromise = manager.popAll();
+      // Doesn't interrupt the in-flight transition.
+      expect(manager.isTransitioning).toBe(true);
+      expect(manager.all).toHaveLength(1);
 
-      manager.clear();
-      expect(manager.isTransitioning).toBe(false);
-      expect(log).toContain("end(50)");
-      expect(manager.all).toHaveLength(0);
-
+      // Let the transition finish, then popAll runs.
+      manager._tickTransition(200);
       await pushPromise;
-      await queuedPromise;
+      await popAllPromise;
+
+      expect(log).toContain("end(200)");
+      expect(manager.isTransitioning).toBe(false);
       expect(manager.all).toHaveLength(0);
     });
 
