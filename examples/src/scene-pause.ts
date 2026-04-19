@@ -161,7 +161,7 @@ class PauseScene extends Scene {
     panel.button("Resume", {
       width: 220, height: 40,
       textStyle: textStyle("button"),
-      onClick: () => engine.scenes.pop(),
+      onClick: () => void engine.scenes.pop(),
       ...nineSliceBtn,
     });
 
@@ -170,7 +170,7 @@ class PauseScene extends Scene {
       textStyle: textStyle("button"),
       onClick: () => {
         if (game) game.timeScale = 0.25;
-        engine.scenes.pop();
+        void engine.scenes.pop();
       },
       ...nineSliceBtn,
     });
@@ -180,7 +180,7 @@ class PauseScene extends Scene {
       textStyle: textStyle("button"),
       onClick: () => {
         if (game) game.timeScale = 1;
-        engine.scenes.pop();
+        void engine.scenes.pop();
       },
       ...nineSliceBtn,
     });
@@ -202,7 +202,7 @@ class PauseEscHandler extends Component {
 
   update(): void {
     if (this.input.isJustPressed("pause")) {
-      engine.scenes.pop();
+      void engine.scenes.pop();
     }
   }
 }

@@ -1,0 +1,278 @@
+import {
+  Engine,
+  Scene,
+  Transform,
+  Vec2,
+  type SceneTransition,
+  type SceneTransitionContext,
+} from "@yagejs/core";
+import {
+  RendererPlugin,
+  GraphicsComponent,
+  SceneRenderTreeProviderKey,
+  crossFade,
+  fade,
+  flash,
+} from "@yagejs/renderer";
+import { getContainer, injectStyles } from "./shared.js";
+
+injectStyles(`
+  .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
+  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+  .row button {
+    background: #1d4ed8;
+    border: 1px solid #2563eb;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .row button:hover { background: #2563eb; }
+  .row button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .slider-row { display: flex; gap: 0.5rem; align-items: center; justify-content: center; font-size: 0.85rem; }
+  .slider-row input { flex: 1; max-width: 280px; }
+  #status {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: #aaa;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 8px 12px;
+    white-space: pre;
+  }
+`);
+
+const WIDTH = 640;
+const HEIGHT = 360;
+
+// ----- Custom slideIn transition --------------------------------------------
+// Slides the incoming scene's root container in from the right.
+function slideIn(duration: number): SceneTransition {
+  let toRoot: import("pixi.js").Container | undefined;
+  return {
+    duration,
+    begin(ctx: SceneTransitionContext) {
+      if (!ctx.toScene) return;
+      const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
+      toRoot = provider.getTree(ctx.toScene)?.root;
+      if (toRoot) toRoot.x = WIDTH;
+    },
+    tick(_dt, ctx) {
+      if (!toRoot) return;
+      const t = Math.min(ctx.elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      toRoot.x = WIDTH * (1 - eased);
+    },
+    end() {
+      if (toRoot) toRoot.x = 0;
+      toRoot = undefined;
+    },
+  };
+}
+
+// ----- Scene base with label + background ----------------------------------
+abstract class LabeledScene extends Scene {
+  protected readonly color: number;
+  protected readonly label: string;
+
+  constructor(label: string, color: number) {
+    super();
+    this.label = label;
+    this.color = color;
+  }
+
+  onEnter(): void {
+    const bg = this.spawn("bg");
+    bg.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
+    bg.add(
+      new GraphicsComponent().draw((g) => {
+        g.rect(-WIDTH / 2, -HEIGHT / 2, WIDTH, HEIGHT).fill({
+          color: this.color,
+        });
+      }),
+    );
+
+    // A large disc drawn from many rects spells out the label visually.
+    const marker = this.spawn("marker");
+    marker.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
+    marker.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 109).fill({ color: 0xffffff, alpha: 0.15 });
+        g.circle(0, 0, 82).stroke({ color: 0xffffff, width: 4 });
+      }),
+    );
+
+    // Draw the label as a blocky glyph via rects (avoids text font deps).
+    const text = this.spawn("text");
+    text.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
+    text.add(
+      new GraphicsComponent().draw((g) => {
+        drawBlockText(g, this.label, 0, 0, 8);
+      }),
+    );
+  }
+}
+
+class MenuScene extends LabeledScene {
+  readonly name = "menu";
+  constructor() {
+    super("MENU", 0x1e3a8a); // deep blue
+  }
+}
+
+class LevelScene extends LabeledScene {
+  readonly name = "level";
+  // Demonstrate per-scene defaultTransition — pushing without a call-site
+  // option still animates using this transition.
+  override readonly defaultTransition = fade({ duration: 400, color: 0x000000 });
+
+  constructor() {
+    super("LEVEL", 0x14532d); // deep green
+  }
+}
+
+class GameOverScene extends LabeledScene {
+  readonly name = "gameover";
+  constructor() {
+    super("OVER", 0x7f1d1d); // deep red
+  }
+}
+
+// ----- Tiny block-pixel text renderer --------------------------------------
+const GLYPHS: Record<string, string[]> = {
+  M: ["# #", "###", "###", "# #", "# #"],
+  E: ["###", "#  ", "## ", "#  ", "###"],
+  N: ["# #", "###", "###", "###", "# #"],
+  U: ["# #", "# #", "# #", "# #", "###"],
+  L: ["#  ", "#  ", "#  ", "#  ", "###"],
+  V: ["# #", "# #", "# #", "# #", " # "],
+  O: ["###", "# #", "# #", "# #", "###"],
+  R: ["## ", "# #", "## ", "# #", "# #"],
+  " ": ["   ", "   ", "   ", "   ", "   "],
+};
+
+function drawBlockText(
+  g: import("pixi.js").Graphics,
+  text: string,
+  cx: number,
+  cy: number,
+  px: number,
+): void {
+  const rows = 5;
+  const glyphWidth = 3 * px;
+  const spacing = px;
+  const totalWidth =
+    text.length * glyphWidth + (text.length - 1) * spacing;
+  let x = cx - totalWidth / 2;
+  const yTop = cy - (rows * px) / 2;
+  for (const ch of text) {
+    const glyph = GLYPHS[ch] ?? GLYPHS[" "]!;
+    for (let ry = 0; ry < rows; ry++) {
+      const row = glyph[ry]!;
+      for (let rx = 0; rx < 3; rx++) {
+        if (row[rx] === "#") {
+          g.rect(x + rx * px, yTop + ry * px, px, px).fill({
+            color: 0xffffff,
+          });
+        }
+      }
+    }
+    x += glyphWidth + spacing;
+  }
+}
+
+// ----- Boot ----------------------------------------------------------------
+const engine = new Engine();
+engine.use(
+  new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x111111,
+    container: getContainer(),
+  }),
+);
+await engine.start();
+await engine.scenes.push(new MenuScene());
+
+// ----- UI wiring -----------------------------------------------------------
+const durationSlider = document.getElementById("duration") as HTMLInputElement;
+const durationLabel = document.getElementById("duration-label") as HTMLElement;
+const statusEl = document.getElementById("status") as HTMLElement;
+
+function currentDuration(): number {
+  return parseInt(durationSlider.value, 10);
+}
+
+durationSlider.addEventListener("input", () => {
+  durationLabel.textContent = `${currentDuration()}ms`;
+});
+durationLabel.textContent = `${currentDuration()}ms`;
+
+function nextScene(): LabeledScene {
+  const current = engine.scenes.active?.name;
+  if (current === "menu") return new LevelScene();
+  if (current === "level") return new GameOverScene();
+  return new MenuScene();
+}
+
+function bind(id: string, fn: () => void): void {
+  document.getElementById(id)?.addEventListener("click", fn);
+}
+
+bind("btn-push-fade", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: fade({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-push-flash", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: flash({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-push-crossfade", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: crossFade({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-push-slide", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: slideIn(currentDuration()),
+  });
+});
+
+bind("btn-push-default", () => {
+  // LevelScene has a defaultTransition — no call-site option needed.
+  void engine.scenes.push(new LevelScene());
+});
+
+bind("btn-pop", () => {
+  void engine.scenes.pop({ transition: fade({ duration: currentDuration() }) });
+});
+
+bind("btn-replace", () => {
+  void engine.scenes.replace(nextScene(), {
+    transition: fade({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-clear", () => {
+  engine.scenes.clear();
+  void engine.scenes.push(new MenuScene());
+});
+
+// ----- Live status panel ---------------------------------------------------
+function renderStatus(): void {
+  const names = engine.scenes.all.map((s) => s.name).join(" → ") || "(empty)";
+  const transitioning = engine.scenes.isTransitioning ? "yes" : "no";
+  statusEl.textContent =
+    `Stack:         ${names}\n` +
+    `Transitioning: ${transitioning}`;
+}
+
+setInterval(renderStatus, 50);
+renderStatus();
