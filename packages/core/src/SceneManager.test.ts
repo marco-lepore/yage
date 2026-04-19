@@ -468,7 +468,7 @@ describe("SceneManager", () => {
 
   describe("scene hooks (extended)", () => {
 
-    it("runs hooks on replace (afterExit for old, beforeEnter for new)", async () => {
+    it("runs beforeEnter for new before afterExit for old on replace", async () => {
       const { manager, hooks } = setupWithHooks();
       const events: string[] = [];
       hooks.register({
@@ -483,10 +483,12 @@ describe("SceneManager", () => {
       await manager.push(first);
       const second = new GameScene("second");
       await manager.replace(second);
+      // beforeEnter + preload for the new scene run before the old scene
+      // is torn down, so a failed asset load can't leave the stack empty.
       expect(events).toEqual([
         "before:first",
-        "after:first",
         "before:second",
+        "after:first",
       ]);
     });
 

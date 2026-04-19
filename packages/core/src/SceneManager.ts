@@ -261,8 +261,10 @@ export class SceneManager {
     await this._withMutation(async () => {
       scene._setContext(this._context);
       await this.hookRegistry?.runBeforeEnter(scene);
-      this.stack.push(scene);
+      // Preload before pushing so a failed asset load doesn't leave an
+      // un-entered scene on the stack.
       await this._preloadScene(scene);
+      this.stack.push(scene);
       scene.onEnter?.();
       this._firePauseTransitions(wasPaused);
       if (!suppressEvent) {
@@ -291,13 +293,15 @@ export class SceneManager {
     const wasPaused = this._snapshotPauseStates();
 
     await this._withMutation(async () => {
-      const old = this.stack.pop();
-      if (old) this._teardownScene(old);
-
       scene._setContext(this._context);
       await this.hookRegistry?.runBeforeEnter(scene);
-      this.stack.push(scene);
+      // Preload before mutating the stack so a failed asset load doesn't
+      // tear down the old scene without a working replacement.
       await this._preloadScene(scene);
+
+      const old = this.stack.pop();
+      if (old) this._teardownScene(old);
+      this.stack.push(scene);
       scene.onEnter?.();
 
       this._firePauseTransitions(wasPaused);
@@ -376,9 +380,10 @@ export class SceneManager {
     // the incoming scene before a frame could show it covering the old one.
     this._safeCall(run, "begin");
 
-    // `> 0` also rejects NaN/Infinity so a malformed duration can't loop
-    // forever in _tickTransition.
-    if (!(transition.duration > 0)) {
+    // Reject NaN and Infinity (Infinity > 0 is true, so the naive check
+    // lets it through and _tickTransition would loop forever without ever
+    // reaching elapsed >= duration, hanging the _pendingChain).
+    if (!Number.isFinite(transition.duration) || transition.duration <= 0) {
       this._cleanupRun(run);
       return;
     }

@@ -173,9 +173,15 @@ test.describe("Scene transitions", () => {
     expect(await call(page, "getIsTransitioning")).toBe(true);
     expect((await getSceneStack(page)).length).toBeGreaterThan(0);
 
-    // Drain: 200ms + 100ms of transitions, then popAll. ~20 frames @16ms
-    // covers both plus slack for queue handoffs.
-    await stepFrames(page, 30, 16);
+    // Drain each queued op in its own evaluate. stepFrames is a sync
+    // loop inside a single page.evaluate, so microtasks only drain at
+    // its boundaries — the second push can't start ticking until the
+    // first push's transition promise resolves and the _pendingChain
+    // advances, which happens between evaluates.
+    await stepFrames(page, 15, 16); // drain 200ms fade
+    await stepFrames(page, 10, 16); // drain 100ms fade
+    await stepFrames(page, 1, 16); // let popAll microtask run
+
     expect(await getSceneStack(page)).toHaveLength(0);
 
     const events = await call(page, "getTransitionEvents");
