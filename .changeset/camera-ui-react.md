@@ -1,0 +1,11 @@
+---
+"@yagejs/ui-react": patch
+---
+
+pr: 21
+commit: 32b35dcc89b5e28fdb852a08127f0a6f06ded819
+author: marco-lepore
+
+Rework the camera system into an entity + layer-binding model, and give every scene its own container.
+
+- `UIRoot` refuses to mount if its default layer is camera-auto-bindable, with the same error guidance as `UIPanel`.
