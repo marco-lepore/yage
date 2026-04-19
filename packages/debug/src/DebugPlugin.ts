@@ -8,6 +8,7 @@ import type {
   EngineContext,
   EventBus,
   EngineEvents,
+  Inspector,
   Plugin,
   SceneManager,
   System,
@@ -15,10 +16,7 @@ import type {
 } from "@yagejs/core";
 import { DebugRegistryKey } from "./types.js";
 import { CameraComponent, RendererKey } from "@yagejs/renderer";
-import type {
-  RendererPlugin,
-  SceneRenderTreeProvider,
-} from "@yagejs/renderer";
+import type { RendererPlugin, SceneRenderTreeProvider } from "@yagejs/renderer";
 import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
 import type { Container } from "pixi.js";
 import { DebugClock } from "./DebugClock.js";
@@ -51,6 +49,29 @@ export interface DebugConfig {
   startEnabled?: boolean;
   /** Initial flag overrides, keyed by "contributorName.flagName". */
   flags?: Record<string, boolean>;
+}
+
+interface LayerTransformSnapshot {
+  x: number;
+  y: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+}
+
+interface CameraStackSnapshot {
+  scene: string;
+  name: string | undefined;
+  priority: number;
+  enabled: boolean;
+}
+
+interface InspectorDiagnostics {
+  getLayerTransform(
+    sceneName: string,
+    layerName: string,
+  ): LayerTransformSnapshot | undefined;
+  getCameraStack(): CameraStackSnapshot[];
 }
 
 /**
@@ -174,6 +195,7 @@ export class DebugPlugin implements Plugin {
     // the same beforeEnter hooks as `push`, so the renderer materializes the
     // debug scene's tree and registers SceneRenderTreeKey on its scope.
     this.provider = this.context.tryResolve(SceneRenderTreeProviderKey) ?? null;
+    this.attachInspectorDiagnostics(inspector);
     await this.materializeDebugScene();
 
     // Keep the debug scene visually on top of the user stack after any
@@ -248,14 +270,14 @@ export class DebugPlugin implements Plugin {
     const vw = this.renderer.virtualSize.width;
     const vh = this.renderer.virtualSize.height;
 
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     // Lazy camera accessor — reads from whichever stacked scene has a camera
     const cameraProxy = {
       get zoom() {
         return self.findActiveCamera()?.zoom ?? 1;
       },
     };
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const self = this;
 
     this.graphicsPool = new GraphicsPool(
       worldContainer,
@@ -268,12 +290,7 @@ export class DebugPlugin implements Plugin {
       this.registry,
       cameraProxy,
     );
-    this.hudApi = new HudDebugApiImpl(
-      this.textPool,
-      this.registry,
-      vw,
-      vh,
-    );
+    this.hudApi = new HudDebugApiImpl(this.textPool, this.registry, vw, vh);
 
     this.renderSystem = new DebugRenderSystem(
       this.registry,
@@ -284,7 +301,11 @@ export class DebugPlugin implements Plugin {
       this.stats,
       worldContainer,
       hudContainer,
-      { findCamera: () => self.findActiveCamera(), viewportWidth: vw, viewportHeight: vh },
+      {
+        findCamera: () => self.findActiveCamera(),
+        viewportWidth: vw,
+        viewportHeight: vh,
+      },
     );
     this.scheduler.add(this.renderSystem);
   }
@@ -300,6 +321,51 @@ export class DebugPlugin implements Plugin {
     this.textPool = null;
     this.worldApi = null;
     this.hudApi = null;
+  }
+
+  private attachInspectorDiagnostics(inspector: Inspector): void {
+    const g = (globalThis as Record<string, unknown>)["__yage__"];
+    if (!g || typeof g !== "object") return;
+
+    const debugSurface = g as Record<string, unknown>;
+    const diagnostics = inspector as Inspector & InspectorDiagnostics;
+    debugSurface["inspector"] = inspector;
+
+    diagnostics.getLayerTransform = (sceneName, layerName) => {
+      const scene = this.sceneManager.all.find(
+        (candidate) => candidate.name === sceneName,
+      );
+      if (!scene) return undefined;
+
+      const layer = this.provider?.getTree(scene)?.tryGet(layerName);
+      if (!layer) return undefined;
+
+      const container = layer.container;
+      return {
+        x: container.position.x,
+        y: container.position.y,
+        scaleX: container.scale.x,
+        scaleY: container.scale.y,
+        rotation: container.rotation,
+      };
+    };
+
+    diagnostics.getCameraStack = () => {
+      const cameras: CameraStackSnapshot[] = [];
+      for (const scene of this.sceneManager.all) {
+        for (const entity of scene.getEntities()) {
+          const cam = entity.tryGet(CameraComponent);
+          if (!cam) continue;
+          cameras.push({
+            scene: scene.name,
+            name: cam.cameraName,
+            priority: cam.priority,
+            enabled: cam.enabled,
+          });
+        }
+      }
+      return cameras;
+    };
   }
 
   private attachToGlobal(clock: IDebugClock): void {
@@ -322,9 +388,9 @@ export class DebugPlugin implements Plugin {
 }
 
 /**
- * Find the camera on the topmost scene that has one. `sceneManager.all`
- * is bottom→top, so we walk in reverse — a pause/HUD scene's camera wins
- * over a frozen scene beneath it.
+ * Find the highest-priority enabled camera on the topmost scene that has one.
+ * `sceneManager.all` is bottom→top, so we walk in reverse — a pause/HUD
+ * scene's camera wins over a frozen scene beneath it.
  */
 export function findTopmostCamera(
   sceneManager: SceneManager,
@@ -333,10 +399,19 @@ export function findTopmostCamera(
   for (let i = stack.length - 1; i >= 0; i--) {
     const scene = stack[i];
     if (!scene) continue;
+    let highestPriorityCamera: CameraComponent | undefined;
     for (const entity of scene.getEntities()) {
       const cam = entity.tryGet(CameraComponent);
-      if (cam) return cam;
+      if (
+        cam &&
+        cam.enabled &&
+        (!highestPriorityCamera ||
+          cam.priority > highestPriorityCamera.priority)
+      ) {
+        highestPriorityCamera = cam;
+      }
     }
+    if (highestPriorityCamera) return highestPriorityCamera;
   }
   return undefined;
 }

@@ -42,14 +42,18 @@ import { CameraComponent } from "@yagejs/renderer";
 import type { Scene, SceneManager } from "@yagejs/core";
 import { findTopmostCamera } from "./DebugPlugin.js";
 
-function makeSceneWithCamera(cam?: CameraComponent): Scene {
-  const entity = {
+function makeSceneWithCameras(cameras: CameraComponent[]): Scene {
+  const entities = cameras.map((camera) => ({
     tryGet: (C: unknown) =>
-      C === CameraComponent ? (cam as unknown) : undefined,
-  };
+      C === CameraComponent ? (camera as unknown) : undefined,
+  }));
   return {
-    getEntities: () => (cam ? [entity] : []),
+    getEntities: () => entities,
   } as unknown as Scene;
+}
+
+function makeSceneWithCamera(cam?: CameraComponent): Scene {
+  return makeSceneWithCameras(cam ? [cam] : []);
 }
 
 function makeSceneManager(stack: Scene[]): SceneManager {
@@ -103,5 +107,17 @@ describe("findTopmostCamera", () => {
     );
     const sm = makeSceneManager([activeLower, paused]);
     expect(findTopmostCamera(sm)?.cameraName).toBe("paused-top");
+  });
+
+  it("returns the highest-priority enabled camera within a scene", () => {
+    const low = new CameraComponent({ name: "low", priority: 1 });
+    const high = new CameraComponent({ name: "high", priority: 10 });
+    const disabledTop = new CameraComponent({ name: "disabled", priority: 20 });
+    disabledTop.enabled = false;
+
+    const scene = makeSceneWithCameras([low, disabledTop, high]);
+    const sm = makeSceneManager([scene]);
+
+    expect(findTopmostCamera(sm)?.cameraName).toBe("high");
   });
 });

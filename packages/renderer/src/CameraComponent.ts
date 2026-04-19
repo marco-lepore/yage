@@ -68,9 +68,6 @@ export class CameraComponent extends Component {
   readonly priority: number;
   readonly cameraName: string | undefined;
 
-  viewportWidth = 0;
-  viewportHeight = 0;
-
   constructor(options?: CameraComponentOptions) {
     super();
     this.position = options?.position ?? Vec2.ZERO;
@@ -81,10 +78,12 @@ export class CameraComponent extends Component {
     this.cameraName = options?.name;
   }
 
-  onAdd(): void {
-    const renderer = this.use(RendererKey);
-    this.viewportWidth = renderer.virtualSize.width;
-    this.viewportHeight = renderer.virtualSize.height;
+  get viewportWidth(): number {
+    return this.use(RendererKey).virtualSize.width;
+  }
+
+  get viewportHeight(): number {
+    return this.use(RendererKey).virtualSize.height;
   }
 
   /** Effective position including shake offset. */
@@ -94,10 +93,7 @@ export class CameraComponent extends Component {
   }
 
   /** Start following a target. */
-  follow(
-    target: { position: Vec2Like },
-    options?: CameraFollowOptions,
-  ): void {
+  follow(target: { position: Vec2Like }, options?: CameraFollowOptions): void {
     this.entity.get(CameraFollow).start(target, options);
   }
 
@@ -116,11 +112,7 @@ export class CameraComponent extends Component {
   }
 
   /** Animate zoom to a target value over a duration. */
-  zoomTo(
-    target: number,
-    duration: number,
-    easing?: EasingFunction,
-  ): void {
+  zoomTo(target: number, duration: number, easing?: EasingFunction): void {
     this.entity.get(CameraZoom).start(target, duration, easing);
   }
 
@@ -136,17 +128,25 @@ export class CameraComponent extends Component {
   /** Convert screen coordinates to world coordinates. */
   screenToWorld(screenX: number, screenY: number): Vec2 {
     const pos = this.effectivePosition;
-    const wx = (screenX - this.viewportWidth / 2) / this.zoom + pos.x;
-    const wy = (screenY - this.viewportHeight / 2) / this.zoom + pos.y;
-    return new Vec2(wx, wy);
+    const offset = new Vec2(
+      screenX - this.viewportWidth / 2,
+      screenY - this.viewportHeight / 2,
+    )
+      .scale(1 / this.zoom)
+      .rotate(this.rotation);
+    return pos.add(offset);
   }
 
   /** Convert world coordinates to screen coordinates. */
   worldToScreen(worldX: number, worldY: number): Vec2 {
     const pos = this.effectivePosition;
-    const sx = (worldX - pos.x) * this.zoom + this.viewportWidth / 2;
-    const sy = (worldY - pos.y) * this.zoom + this.viewportHeight / 2;
-    return new Vec2(sx, sy);
+    const offset = new Vec2(worldX - pos.x, worldY - pos.y)
+      .rotate(-this.rotation)
+      .scale(this.zoom);
+    return new Vec2(
+      offset.x + this.viewportWidth / 2,
+      offset.y + this.viewportHeight / 2,
+    );
   }
 
   /**

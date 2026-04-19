@@ -33,7 +33,7 @@ class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter() {
-    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    this.spawn(CameraEntity, { position: new Vec2(400, 300) });
 
     const tri = this.spawn("triangle");
     tri.add(new Transform({ position: new Vec2(400, 300) }));
@@ -123,7 +123,7 @@ class HelloWorldScene extends Scene {
   readonly name = "hello-world";
 
   onEnter() {
-    const cam = this.spawn(CameraEntity, { position: new Vec2(400, 300) });
+    this.spawn(CameraEntity, { position: new Vec2(400, 300) });
     // ...
   }
 }

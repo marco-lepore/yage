@@ -3,15 +3,13 @@
  * `e2e/specs/camera-parallax.spec.ts`. Uses `manualClock: true` so the
  * spec can deterministically step frames.
  *
- * Exposes `window.__cameraTest__` with helpers to drive the camera and
- * read back per-layer container transforms.
+ * Exposes `window.__cameraTest__` with helpers to drive the camera.
  */
 import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
   CameraEntity,
-  SceneRenderTreeKey,
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
@@ -81,43 +79,18 @@ await engine.start();
 const scene = new ParallaxScene();
 await engine.scenes.push(scene);
 
-interface LayerXform {
-  x: number;
-  y: number;
-  scaleX: number;
-  scaleY: number;
-  rotation: number;
-}
-
-function layerTransform(name: string): LayerXform | null {
-  const tree = scene._resolveScoped(SceneRenderTreeKey);
-  if (!tree) return null;
-  const layer = tree.tryGet(name);
-  if (!layer) return null;
-  const c = layer.container;
-  return {
-    x: c.position.x,
-    y: c.position.y,
-    scaleX: c.scale.x,
-    scaleY: c.scale.y,
-    rotation: c.rotation,
-  };
-}
-
-(window as Window & {
-  __cameraTest__?: {
-    setCameraPosition(x: number, y: number): void;
-    setCameraZoom(z: number): void;
-    getLayerTransform(name: string): LayerXform | null;
-    getViewport(): { width: number; height: number };
-  };
-}).__cameraTest__ = {
+(
+  window as Window & {
+    __cameraTest__?: {
+      setCameraPosition(x: number, y: number): void;
+      setCameraZoom(z: number): void;
+    };
+  }
+).__cameraTest__ = {
   setCameraPosition: (x, y) => {
     scene.camera.position = new Vec2(x, y);
   },
   setCameraZoom: (z) => {
     scene.camera.zoom = z;
   },
-  getLayerTransform: layerTransform,
-  getViewport: () => ({ width: WIDTH, height: HEIGHT }),
 };

@@ -57,8 +57,7 @@ export class UIRoot extends Component {
       // the flag and be swept up by auto-cameras.
       throw new Error(
         `UIRoot: target layer "${UI_DEFAULT_LAYER}" is camera-auto-bindable, so a default camera would move the UI with the world. ` +
-          `Either remove "${UI_DEFAULT_LAYER}" from Scene.layers (the UI plugin will auto-provision a screen-space layer), ` +
-          `or pass explicit CameraEntity { bindings } that don't include "${UI_DEFAULT_LAYER}".`,
+          `Remove "${UI_DEFAULT_LAYER}" from Scene.layers and let the UI plugin auto-provision a screen-space layer instead.`,
       );
     }
     const layer =
@@ -87,11 +86,7 @@ export class UIRoot extends Component {
     const wrapped = createElement(
       EngineCtx.Provider,
       { value: this.context },
-      createElement(
-        SceneCtx.Provider,
-        { value: this.scene },
-        element,
-      ),
+      createElement(SceneCtx.Provider, { value: this.scene }, element),
     );
 
     this.root.render(wrapped);

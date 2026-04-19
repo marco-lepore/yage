@@ -288,12 +288,14 @@ Use the tilemap dimensions to constrain the camera. The camera is an entity
 you spawn in the scene:
 
 ```typescript
+import { CameraEntity } from "@yagejs/renderer";
+
 const cam = this.spawn(CameraEntity, { follow: player.get(Transform) });
 cam.bounds = {
-  x: 0,
-  y: 0,
-  width: tilemap.widthPx,
-  height: tilemap.heightPx,
+  minX: 0,
+  minY: 0,
+  maxX: tilemap.widthPx,
+  maxY: tilemap.heightPx,
 };
 ```
 

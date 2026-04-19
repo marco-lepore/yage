@@ -59,7 +59,10 @@ vi.mock("pixi.js", () => ({
 import { Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity } from "./CameraEntity.js";
 import { CameraComponent } from "./CameraComponent.js";
+import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
+import { CameraShake } from "./CameraShake.js";
 import { createRendererTestContext } from "./test-helpers.js";
+import { RendererKey } from "./types.js";
 
 describe("CameraEntity", () => {
   it("spawns without params (no crash on params.position)", () => {
@@ -110,5 +113,72 @@ describe("CameraEntity", () => {
     const t = player.add(new Transform({ position: new Vec2(100, 100) }));
     const cam = scene.spawn(CameraEntity);
     expect(() => cam.follow(t, { smoothing: 0.1 })).not.toThrow();
+  });
+
+  it("worldToScreen and screenToWorld account for camera rotation", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity, { position: new Vec2(100, 50) });
+    cam.rotation = Math.PI / 2;
+
+    const screen = cam.worldToScreen(100, 150);
+    expect(screen.x).toBeCloseTo(500);
+    expect(screen.y).toBeCloseTo(300);
+
+    const world = cam.screenToWorld(500, 300);
+    expect(world.x).toBeCloseTo(100);
+    expect(world.y).toBeCloseTo(150);
+  });
+
+  it("uses the current renderer viewport size for conversions", () => {
+    const ctx = createRendererTestContext();
+    const cam = ctx.scene.spawn(CameraEntity);
+    const renderer = ctx.context.resolve(RendererKey) as {
+      virtualSize: { width: number; height: number };
+    };
+
+    renderer.virtualSize.width = 1024;
+    renderer.virtualSize.height = 768;
+
+    const world = cam.screenToWorld(512, 384);
+    expect(world.x).toBe(0);
+    expect(world.y).toBe(0);
+  });
+
+  it("centers the camera when the viewport is larger than its bounds", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity, { position: new Vec2(10, 10) });
+    cam.bounds = { minX: 0, minY: 0, maxX: 100, maxY: 80 };
+
+    cam.get(CameraBoundsComponent).update();
+
+    expect(cam.position.x).toBe(50);
+    expect(cam.position.y).toBe(40);
+  });
+
+  it("CameraShake.stop() clears active shake state immediately", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    const shake = cam.get(CameraShake);
+
+    shake.start(10, 100, { decay: 0.5 });
+    shake.update(16);
+    expect(shake.offset.equals(Vec2.ZERO)).toBe(false);
+
+    shake.stop();
+    expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
+
+    shake.update(16);
+    expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
+  });
+
+  it("clamps decayed shake intensity at zero", () => {
+    const { scene } = createRendererTestContext();
+    const cam = scene.spawn(CameraEntity);
+    const shake = cam.get(CameraShake);
+
+    shake.start(10, 100, { decay: 2 });
+    shake.update(90);
+
+    expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
   });
 });

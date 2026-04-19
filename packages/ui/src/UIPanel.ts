@@ -2,7 +2,13 @@ import { Component } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
-import { FlexDirection as YogaFlexDirection, Gutter, Edge, Overflow, Display } from "yoga-layout";
+import {
+  FlexDirection as YogaFlexDirection,
+  Gutter,
+  Edge,
+  Overflow,
+  Display,
+} from "yoga-layout";
 import { Align, Justify } from "yoga-layout";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
@@ -121,7 +127,9 @@ export class PanelNode implements UIContainerElement {
 
   /** Add a text element. */
   text(content: string, style?: Partial<TextStyleOptions>): UIText {
-    const t = new UIText(style ? { children: content, style } : { children: content });
+    const t = new UIText(
+      style ? { children: content, style } : { children: content },
+    );
     this.addElement(t);
     return t;
   }
@@ -359,7 +367,6 @@ export class UIPanel extends Component {
         { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
         { autoBindable: false },
       );
-      layer.container.eventMode = "static";
     } else if (layer.autoBindable) {
       // Pre-declared layer that cameras will auto-bind by default —
       // would scroll/zoom the UI with the world. Force the author to be
@@ -370,6 +377,7 @@ export class UIPanel extends Component {
           `or pass explicit CameraEntity { bindings } that don't include "${layerName}".`,
       );
     }
+    layer.container.eventMode = "static";
     layer.container.addChild(this._node.container);
   }
 

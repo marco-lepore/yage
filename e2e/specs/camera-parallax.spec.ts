@@ -12,13 +12,21 @@ interface LayerXform {
 interface ParallaxAPI {
   setCameraPosition(x: number, y: number): void;
   setCameraZoom(z: number): void;
-  getLayerTransform(name: string): LayerXform | null;
-  getViewport(): { width: number; height: number };
 }
 
-type ParallaxWin = Window & { __cameraTest__: ParallaxAPI };
+interface InspectorDiagnostics {
+  getLayerTransform(
+    sceneName: string,
+    layerName: string,
+  ): LayerXform | undefined;
+}
 
-async function waitForCameraTest(page: Page): Promise<void> {
+type ParallaxWin = Window & {
+  __cameraTest__?: ParallaxAPI;
+  __yage__?: { inspector: InspectorDiagnostics };
+};
+
+async function waitForControls(page: Page): Promise<void> {
   await page.waitForFunction(
     () => (window as ParallaxWin).__cameraTest__ !== undefined,
   );
@@ -32,6 +40,7 @@ async function setCamera(
   await page.evaluate(
     ({ x, y, z }) => {
       const api = (window as ParallaxWin).__cameraTest__;
+      if (!api) throw new Error("__cameraTest__ controls are not available");
       api.setCameraPosition(x, y);
       api.setCameraZoom(z);
     },
@@ -41,12 +50,13 @@ async function setCamera(
   await stepFrames(page, 1);
 }
 
-async function getLayer(
-  page: Page,
-  name: string,
-): Promise<LayerXform | null> {
+async function getLayer(page: Page, name: string): Promise<LayerXform | null> {
   return page.evaluate(
-    (n) => (window as ParallaxWin).__cameraTest__.getLayerTransform(n),
+    (n) =>
+      (window as ParallaxWin).__yage__?.inspector.getLayerTransform(
+        "parallax",
+        n,
+      ) ?? null,
     name,
   );
 }
@@ -57,7 +67,7 @@ test.describe("Camera parallax — per-layer translateRatio bindings", () => {
   }) => {
     await gotoFixture(page, "/camera-parallax.html");
     await waitForClock(page);
-    await waitForCameraTest(page);
+    await waitForControls(page);
 
     // Fixture viewport is 800x600; at camera (0,0) every bound layer sits
     // at (viewportW/2, viewportH/2) = (400, 300).
@@ -92,7 +102,7 @@ test.describe("Camera parallax — per-layer translateRatio bindings", () => {
   test("zoom scales every bound layer uniformly", async ({ page }) => {
     await gotoFixture(page, "/camera-parallax.html");
     await waitForClock(page);
-    await waitForCameraTest(page);
+    await waitForControls(page);
 
     await setCamera(page, { x: 0, y: 0 }, 2);
 
@@ -108,7 +118,7 @@ test.describe("Camera parallax — per-layer translateRatio bindings", () => {
   }) => {
     await gotoFixture(page, "/camera-parallax.html");
     await waitForClock(page);
-    await waitForCameraTest(page);
+    await waitForControls(page);
 
     // Aggressive camera movement + zoom — none of it should affect the UI.
     await setCamera(page, { x: 500, y: 300 }, 3);

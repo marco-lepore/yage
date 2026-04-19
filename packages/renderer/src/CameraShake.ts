@@ -28,22 +28,31 @@ export class CameraShake extends Component {
     this.offset = Vec2.ZERO;
   }
 
+  /** Cancel the current shake immediately. */
+  stop(): void {
+    this.offset = Vec2.ZERO;
+    this.duration = 0;
+    this.intensity = 0;
+    this.elapsed = 0;
+    this.decay = 0;
+  }
+
   update(dt: number): void {
     if (this.duration <= 0) return;
 
     this.elapsed += dt;
     if (this.elapsed >= this.duration) {
-      this.offset = Vec2.ZERO;
-      this.duration = 0;
-      this.elapsed = 0;
-      this.intensity = 0;
+      this.stop();
       return;
     }
 
     let currentIntensity = this.intensity;
     if (this.decay > 0) {
       const progress = this.elapsed / this.duration;
-      currentIntensity = this.intensity * (1 - progress * this.decay);
+      currentIntensity = Math.max(
+        0,
+        this.intensity * (1 - progress * this.decay),
+      );
     }
 
     const phase = this.elapsed * 0.1;

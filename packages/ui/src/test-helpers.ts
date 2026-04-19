@@ -185,7 +185,7 @@ export function createUITestContext(): UITestContext {
   const renderer = new MockRendererPlugin();
   ctx.register(RendererKey, renderer as never);
 
-  const stage = new MockContainer();
+  const stage = renderer.application.stage;
   const provider = new MockSceneRenderTreeProvider(stage);
   ctx.register(SceneRenderTreeProviderKey, provider);
 

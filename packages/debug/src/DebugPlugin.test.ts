@@ -307,4 +307,27 @@ describe("DebugPlugin", () => {
 
     plugin.onDestroy();
   });
+
+  it("augments the debug inspector with renderer diagnostics", async () => {
+    const { context, scheduler } = createContext();
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    const inspector = (
+      (globalThis as Record<string, unknown>)["__yage__"] as {
+        inspector: {
+          getLayerTransform?: unknown;
+          getCameraStack?: unknown;
+        };
+      }
+    ).inspector;
+
+    expect(typeof inspector.getLayerTransform).toBe("function");
+    expect(typeof inspector.getCameraStack).toBe("function");
+
+    plugin.onDestroy();
+  });
 });

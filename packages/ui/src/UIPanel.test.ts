@@ -4,7 +4,14 @@ import { Direction } from "yoga-layout";
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
     children: MockContainer[] = [];
-    position = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    position = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     scale = { x: 1, y: 1 };
     rotation = 0;
     visible = true;
@@ -60,15 +67,25 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockGraphics extends MockContainer {
-    clear(): MockGraphics { return this; }
+    clear(): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    rect(...args: unknown[]): MockGraphics { return this; }
+    rect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    roundRect(...args: unknown[]): MockGraphics { return this; }
+    roundRect(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    fill(...args: unknown[]): MockGraphics { return this; }
+    fill(...args: unknown[]): MockGraphics {
+      return this;
+    }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    stroke(...args: unknown[]): MockGraphics { return this; }
+    stroke(...args: unknown[]): MockGraphics {
+      return this;
+    }
   }
 
   class MockText extends MockContainer {
@@ -76,14 +93,22 @@ const { mocks } = vi.hoisted(() => {
     style: Record<string, unknown>;
     width: number;
     height: number;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
       super();
       this.text = opts?.text ?? "";
       this.style = opts?.style ?? {};
-      this.width = (opts?.style?.fontSize as number ?? 14) * this.text.length * 0.5;
-      this.height = (opts?.style?.fontSize as number ?? 14);
+      this.width =
+        ((opts?.style?.fontSize as number) ?? 14) * this.text.length * 0.5;
+      this.height = (opts?.style?.fontSize as number) ?? 14;
     }
   }
 
@@ -92,7 +117,14 @@ const { mocks } = vi.hoisted(() => {
     width = 0;
     height = 0;
     tint = 0xffffff;
-    anchor = { x: 0, y: 0, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(texture?: unknown) {
       super();
@@ -125,7 +157,14 @@ const { mocks } = vi.hoisted(() => {
     texture: unknown;
     width = 0;
     height = 0;
-    tileScale = { x: 1, y: 1, set(ax: number, ay: number) { this.x = ax; this.y = ay; } };
+    tileScale = {
+      x: 1,
+      y: 1,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
     tilePosition = { x: 0, y: 0 };
 
     constructor(opts?: Record<string, unknown>) {
@@ -138,7 +177,16 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText, MockSprite, MockNineSliceSprite, MockTilingSprite } };
+  return {
+    mocks: {
+      MockContainer,
+      MockGraphics,
+      MockText,
+      MockSprite,
+      MockNineSliceSprite,
+      MockTilingSprite,
+    },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -178,7 +226,10 @@ describe("UIPanel", () => {
   });
 
   it("stores anchor and offset", () => {
-    const panel = new UIPanel({ anchor: Anchor.Center, offset: { x: 10, y: 20 } });
+    const panel = new UIPanel({
+      anchor: Anchor.Center,
+      offset: { x: 10, y: 20 },
+    });
     expect(panel._anchor).toBe(Anchor.Center);
     expect(panel._offset).toEqual({ x: 10, y: 20 });
   });
@@ -247,7 +298,9 @@ describe("UIPanel", () => {
 
       const uiLayer = tree.tryGet("ui");
       expect(uiLayer).toBeDefined();
-      const container = (uiLayer as unknown as { container: { children: unknown[] } }).container;
+      const container = (
+        uiLayer as unknown as { container: { children: unknown[] } }
+      ).container;
       expect(container.children.length).toBe(1);
     });
 
@@ -257,7 +310,9 @@ describe("UIPanel", () => {
       const panel = entity.add(new UIPanel());
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       const uiLayer = tree.tryGet("ui");
-      const container = (uiLayer as unknown as { container: { children: unknown[] } }).container;
+      const container = (
+        uiLayer as unknown as { container: { children: unknown[] } }
+      ).container;
 
       expect(container.children.length).toBe(1);
       panel.onDestroy!();
@@ -283,6 +338,17 @@ describe("UIPanel", () => {
       entity.add(new UIPanel());
       const uiLayer = tree.get("ui");
       expect(uiLayer.autoBindable).toBe(false);
+    });
+
+    it("normalizes existing opted-out UI layers to static event mode", () => {
+      const { scene } = createUITestContext();
+      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+      tree.ensureLayer({ name: "ui", order: 1000 }, { autoBindable: false });
+      const entity = spawnEntityInScene(scene);
+
+      entity.add(new UIPanel());
+
+      expect(tree.get("ui").container.eventMode).toBe("static");
     });
   });
 

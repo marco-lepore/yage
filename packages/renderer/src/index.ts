@@ -26,7 +26,10 @@ export { RendererPlugin } from "./RendererPlugin.js";
 export { SpriteComponent } from "./SpriteComponent.js";
 export type { SpriteComponentOptions, SpriteData } from "./SpriteComponent.js";
 export { GraphicsComponent } from "./GraphicsComponent.js";
-export type { GraphicsComponentOptions, GraphicsData } from "./GraphicsComponent.js";
+export type {
+  GraphicsComponentOptions,
+  GraphicsData,
+} from "./GraphicsComponent.js";
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 export type {
   AnimatedSpriteComponentOptions,
@@ -75,6 +78,7 @@ export type { CreateLayerOptions } from "./RenderLayer.js";
 // Per-scene render tree
 export type { LayerDef } from "./LayerDef.js";
 export type {
+  EnsureLayerOptions,
   SceneRenderTree,
   SceneRenderTreeProvider,
 } from "./SceneRenderTree.js";

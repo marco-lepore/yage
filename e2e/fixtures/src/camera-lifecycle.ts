@@ -15,7 +15,6 @@ import {
   GraphicsComponent,
   CameraEntity,
   CameraComponent,
-  SceneRenderTreeKey,
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
@@ -30,9 +29,7 @@ const HEIGHT = 600;
 class BaseScene extends Scene {
   readonly name = "base";
 
-  readonly layers: readonly LayerDef[] = [
-    { name: "world", order: 0 },
-  ];
+  readonly layers: readonly LayerDef[] = [{ name: "world", order: 0 }];
 
   camera!: CameraEntity;
 
@@ -96,45 +93,18 @@ await engine.start();
 const baseScene = new BaseScene();
 await engine.scenes.push(baseScene);
 
-let overlayScene: OverlayScene | null = null;
-
-interface LayerXform {
-  x: number;
-  y: number;
-  scaleX: number;
-  scaleY: number;
-  rotation: number;
-}
-
-function layerTransformOf(scene: Scene, name: string): LayerXform | null {
-  const tree = scene._resolveScoped(SceneRenderTreeKey);
-  if (!tree) return null;
-  const layer = tree.tryGet(name);
-  if (!layer) return null;
-  const c = layer.container;
-  return {
-    x: c.position.x,
-    y: c.position.y,
-    scaleX: c.scale.x,
-    scaleY: c.scale.y,
-    rotation: c.rotation,
-  };
-}
-
-(window as Window & {
-  __cameraTest__?: {
-    setBaseCameraPosition(x: number, y: number): void;
-    setBaseCameraZoom(z: number): void;
-    disableBaseCamera(): void;
-    enableBaseCamera(): void;
-    getBaseLayerTransform(name: string): LayerXform | null;
-    getOverlayLayerTransform(name: string): LayerXform | null;
-    pushOverlay(): Promise<void>;
-    popTop(): void;
-    getSceneStackNames(): string[];
-    getCameraNamesInStack(): string[];
-  };
-}).__cameraTest__ = {
+(
+  window as Window & {
+    __cameraTest__?: {
+      setBaseCameraPosition(x: number, y: number): void;
+      setBaseCameraZoom(z: number): void;
+      disableBaseCamera(): void;
+      enableBaseCamera(): void;
+      pushOverlay(): Promise<void>;
+      popTop(): Promise<void>;
+    };
+  }
+).__cameraTest__ = {
   setBaseCameraPosition: (x, y) => {
     baseScene.camera.position = new Vec2(x, y);
   },
@@ -147,28 +117,10 @@ function layerTransformOf(scene: Scene, name: string): LayerXform | null {
   enableBaseCamera: () => {
     baseScene.camera.get(CameraComponent).enabled = true;
   },
-  getBaseLayerTransform: (name) => layerTransformOf(baseScene, name),
-  getOverlayLayerTransform: (name) =>
-    overlayScene ? layerTransformOf(overlayScene, name) : null,
   pushOverlay: async () => {
-    overlayScene = new OverlayScene();
-    await engine.scenes.push(overlayScene);
+    await engine.scenes.push(new OverlayScene());
   },
-  popTop: () => {
-    engine.scenes.pop();
-    overlayScene = null;
-  },
-  getSceneStackNames: () => engine.scenes.all.map((s) => s.name),
-  getCameraNamesInStack: () => {
-    const names: string[] = [];
-    for (const scene of engine.scenes.all) {
-      for (const entity of scene.getEntities()) {
-        if (entity.tryGet(CameraComponent)) {
-          names.push(scene.name);
-          break;
-        }
-      }
-    }
-    return names;
+  popTop: async () => {
+    await engine.scenes.pop();
   },
 };

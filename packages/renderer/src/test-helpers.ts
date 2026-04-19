@@ -1,29 +1,26 @@
 import {
   EngineContext,
-  QueryCache,
   QueryCacheKey,
-  EventBus,
-  EventBusKey,
-  ErrorBoundary,
   ErrorBoundaryKey,
-  Logger,
-  LogLevel,
   GameLoop,
   GameLoopKey,
   SystemScheduler,
   SystemSchedulerKey,
   Scene,
   Entity,
-  _resetEntityIdCounter,
+  createMockScene,
 } from "@yagejs/core";
-import type { EngineEvents } from "@yagejs/core";
+import type { QueryCache } from "@yagejs/core";
 import { RendererKey } from "./types.js";
 import { RenderLayerManager } from "./RenderLayer.js";
 import type {
   SceneRenderTree,
   SceneRenderTreeProvider,
 } from "./SceneRenderTree.js";
-import { SceneRenderTreeKey, SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
+import {
+  SceneRenderTreeKey,
+  SceneRenderTreeProviderKey,
+} from "./SceneRenderTree.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -84,16 +81,6 @@ export class MockContainer {
   }
 }
 
-// ---- Scene subclass for tests ----
-
-class _TestScene extends Scene {
-  readonly name: string;
-  constructor(name: string) {
-    super();
-    this.name = name;
-  }
-}
-
 export interface RendererTestContext {
   context: EngineContext;
   scene: Scene;
@@ -120,6 +107,12 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
   constructor(private readonly stage: MockContainer) {}
 
   createForScene(scene: Scene): SceneRenderTree {
+    if (this.trees.has(scene)) {
+      throw new Error(
+        `Scene "${scene.name}" already has a render tree attached.`,
+      );
+    }
+
     const root = new MockContainer();
     root.label = `scene:${scene.name}`;
     this.stage.addChild(root);
@@ -143,8 +136,8 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
   destroyForScene(scene: Scene): void {
     const entry = this.trees.get(scene);
     if (!entry) return;
+    entry.root.destroy();
     entry.manager.destroy();
-    entry.root.removeFromParent();
     this.trees.delete(scene);
   }
 
@@ -181,20 +174,13 @@ export function createRendererTestContext(options?: {
   viewportWidth?: number;
   viewportHeight?: number;
 }): RendererTestContext {
-  _resetEntityIdCounter();
-
-  const ctx = new EngineContext();
-  const queryCache = new QueryCache();
-  const bus = new EventBus<EngineEvents>();
-  const logger = new Logger({ level: LogLevel.Debug });
-  const boundary = new ErrorBoundary(logger);
+  const { scene, context: ctx } = createMockScene("test-scene");
+  const queryCache = ctx.resolve(QueryCacheKey);
+  const boundary = ctx.resolve(ErrorBoundaryKey);
   const gameLoop = new GameLoop();
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
 
-  ctx.register(QueryCacheKey, queryCache);
-  ctx.register(EventBusKey, bus);
-  ctx.register(ErrorBoundaryKey, boundary);
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
 
@@ -206,9 +192,6 @@ export function createRendererTestContext(options?: {
   const stage = new MockContainer();
   const provider = new MockSceneRenderTreeProvider(stage);
   ctx.register(SceneRenderTreeProviderKey, provider);
-
-  const scene = new _TestScene("test-scene");
-  scene._setContext(ctx);
 
   const tree = provider.createForScene(scene);
   scene._registerScoped(SceneRenderTreeKey, tree);

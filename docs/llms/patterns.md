@@ -8,17 +8,19 @@
 class PlayerController extends Component {
   // Lazy proxy -- safe at field-declaration time, resolves on first access
   private input = this.service(InputManagerKey);
-  private sprite = this.sibling(SpriteComponent);
 
   // For physics entities — always go through the rigid body
   private rb = this.sibling(RigidBodyComponent);
 
   // Camera is now an entity — pass it as a constructor parameter if needed
-  constructor(private readonly camera?: CameraEntity) { super(); }
+  constructor(private readonly camera?: CameraEntity) {
+    super();
+  }
 
-  update(dt: number) {
+  update(_dt: number) {
     const dir = this.input.getVector("left", "right", "up", "down");
-    this.rb.setVelocity(dir.scale(200));
+    const speed = 200 / (this.camera?.zoom ?? 1);
+    this.rb.setVelocity(dir.scale(speed));
     // For non-physics entities, use: this.entity.get(Transform).translate(dir.scale(200 * dt / 1000));
   }
 }
@@ -33,7 +35,9 @@ class DamageReceiver extends Component {
     this.listen(this.entity, HitEvent, ({ damage }) => {
       this.health -= damage;
     });
-    this.listenScene(SpawnEvent, (data, entity) => { /* ... */ });
+    this.listenScene(SpawnEvent, (data, entity) => {
+      /* ... */
+    });
   }
 }
 ```
@@ -59,8 +63,8 @@ import {
 } from "@yagejs/core";
 
 class DisplaySyncSystem extends System {
-  readonly phase = Phase.Render;  // which frame phase to run in
-  readonly priority = 0;          // lower = earlier within the phase (default: 0)
+  readonly phase = Phase.Render; // which frame phase to run in
+  readonly priority = 0; // lower = earlier within the phase (default: 0)
 
   private bodies!: QueryResult;
 
@@ -75,7 +79,10 @@ class DisplaySyncSystem extends System {
     for (const entity of this.bodies) {
       const transform = entity.get(Transform);
       const sprite = entity.get(SpriteComponent);
-      sprite.pixiSprite.position.set(transform.position.x, transform.position.y);
+      sprite.pixiSprite.position.set(
+        transform.position.x,
+        transform.position.y,
+      );
     }
   }
 
@@ -87,14 +94,14 @@ class DisplaySyncSystem extends System {
 
 **Phase choices:**
 
-| Phase | Use for |
-|---|---|
-| `EarlyUpdate` | Input polling, pre-frame setup |
+| Phase         | Use for                                    |
+| ------------- | ------------------------------------------ |
+| `EarlyUpdate` | Input polling, pre-frame setup             |
 | `FixedUpdate` | Physics stepping, deterministic simulation |
-| `Update` | General game logic, AI |
-| `LateUpdate` | Camera follow, post-logic adjustments |
-| `Render` | Display object sync, draw calls |
-| `EndOfFrame` | Cleanup, deferred operations |
+| `Update`      | General game logic, AI                     |
+| `LateUpdate`  | Camera follow, post-logic adjustments      |
+| `Render`      | Display object sync, draw calls            |
+| `EndOfFrame`  | Cleanup, deferred operations               |
 
 **Priority within a phase**: lower number runs earlier. The built-in `ComponentUpdateSystem` and `ComponentFixedUpdateSystem` use priority `1000`, so plugin systems at priority `0` run first (e.g. physics step before game logic sees results).
 
@@ -115,9 +122,9 @@ for (const entity of enemies) {
   // ...
 }
 
-enemies.size;       // current count
-enemies.first;      // first match or undefined
-enemies.toArray();  // snapshot as array (allocates)
+enemies.size; // current count
+enemies.first; // first match or undefined
+enemies.toArray(); // snapshot as array (allocates)
 ```
 
 ## Entity Patterns
@@ -150,7 +157,9 @@ class Crate extends Entity {
     this.hp -= n;
     if (this.hp <= 0) this.destroy();
   }
-  setup() { /* ... */ }
+  setup() {
+    /* ... */
+  }
 }
 
 // Query with type guard:
@@ -192,7 +201,7 @@ const seq = new Sequence()
   .wait(2000)
   .then(Tween.to(boss, "y", 100, 800, easeOutQuad))
   .call(() => ui.hideDialogue())
-  .then(Tween.custom(v => camera.zoom = v, 1, 1.5, 500));
+  .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 500));
 
 pc.run(seq.start());
 ```
@@ -204,16 +213,18 @@ pc.run(seq.start());
 pc.run(Tween.to(transform, "rotation", Math.PI, 500, easeInOutQuad));
 
 // Custom setter
-pc.run(Tween.custom(v => sprite.alpha = v, 1, 0, 300));
+pc.run(Tween.custom((v) => (sprite.alpha = v), 1, 0, 300));
 
 // Vec2 tween
-pc.run(Tween.vec2(
-  v => transform.setPosition(v),
-  Vec2.ZERO,
-  new Vec2(200, 100),
-  600,
-  easeOutBounce,
-));
+pc.run(
+  Tween.vec2(
+    (v) => transform.setPosition(v),
+    Vec2.ZERO,
+    new Vec2(200, 100),
+    600,
+    easeOutBounce,
+  ),
+);
 ```
 
 ### Process.delay for one-shots
@@ -228,10 +239,10 @@ All test utilities are exported from `@yagejs/core`. Tests run in Vitest (Node.j
 
 ```ts
 import {
-  createTestEngine,   // fully wired Engine (async)
-  createMockScene,    // lightweight Scene + EngineContext
-  createMockEntity,   // entity in a mock scene with full context
-  advanceFrames,      // tick the game loop N times
+  createTestEngine, // fully wired Engine (async)
+  createMockScene, // lightweight Scene + EngineContext
+  createMockEntity, // entity in a mock scene with full context
+  advanceFrames, // tick the game loop N times
 } from "@yagejs/core";
 ```
 
@@ -288,14 +299,20 @@ import { createMockScene, SceneManagerKey, Phase, System } from "@yagejs/core";
 class CountSystem extends System {
   readonly phase = Phase.Update;
   count = 0;
-  update() { this.count++; }
+  update() {
+    this.count++;
+  }
 }
 
 describe("CountSystem", () => {
   function setup() {
     const { scene, context } = createMockScene();
     // Systems need SceneManager — mock it
-    const sceneManager = { get active() { return scene; } };
+    const sceneManager = {
+      get active() {
+        return scene;
+      },
+    };
     context.register(SceneManagerKey, sceneManager as never);
 
     const sys = new CountSystem();
@@ -420,7 +437,9 @@ describe("Sequence", () => {
 import { describe, it, expect } from "vitest";
 import { Engine, ServiceKey, type Plugin } from "@yagejs/core";
 
-class FooService { value = 42; }
+class FooService {
+  value = 42;
+}
 const FooKey = new ServiceKey<FooService>("foo");
 
 const FooPlugin: Plugin = {
@@ -458,8 +477,8 @@ describe("FooPlugin", () => {
 
 ```ts
 class PauseScene extends Scene {
-  override readonly pauseBelow = true;        // freeze scene below
-  override readonly transparentBelow = true;  // keep rendering below
+  override readonly pauseBelow = true; // freeze scene below
+  override readonly transparentBelow = true; // keep rendering below
 
   onEnter() {
     // Push: engine.scenes.push(new PauseScene());
@@ -471,14 +490,14 @@ class PauseScene extends Scene {
 ### Time scale
 
 ```ts
-scene.timeScale = 0.25;  // slow-mo
-scene.timeScale = 2;     // fast-forward
+scene.timeScale = 0.25; // slow-mo
+scene.timeScale = 2; // fast-forward
 ```
 
 ### Cross-scene access
 
 ```ts
-const game = engine.scenes.all.find(s => s.name === "game") as GameScene;
+const game = engine.scenes.all.find((s) => s.name === "game") as GameScene;
 game.timeScale = 0.25;
 ```
 
@@ -498,16 +517,18 @@ this.context.register(GameStateKey, { score: 0, health: 100 });
 
 ```ts
 const store = createStore({ score: 0 });
-store.set({ score: 10 });                    // ECS writes
-const score = useStore(store, s => s.score); // React reads
+store.set({ score: 10 }); // ECS writes
+const score = useStore(store, (s) => s.score); // React reads
 ```
 
 ### Event-driven state
 
 ```ts
 const CoinCollected = defineEvent("coin:collected");
-this.on(CoinCollected, () => { state.score += 10; });
-entity.emit(CoinCollected);  // from trigger handler
+this.on(CoinCollected, () => {
+  state.score += 10;
+});
+entity.emit(CoinCollected); // from trigger handler
 ```
 
 ## Common Game Patterns
@@ -515,10 +536,18 @@ entity.emit(CoinCollected);  // from trigger handler
 ### Blueprints for spawning
 
 ```ts
-const CoinBP = defineBlueprint<{ x: number; y: number }>("coin", (entity, { x, y }) => {
-  entity.add(new Transform({ position: new Vec2(x, y) }));
-  entity.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, sensor: true }));
-});
+const CoinBP = defineBlueprint<{ x: number; y: number }>(
+  "coin",
+  (entity, { x, y }) => {
+    entity.add(new Transform({ position: new Vec2(x, y) }));
+    entity.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 10 },
+        sensor: true,
+      }),
+    );
+  },
+);
 scene.spawn(CoinBP, { x: 200, y: 300 });
 ```
 
@@ -527,8 +556,14 @@ scene.spawn(CoinBP, { x: 200, y: 300 });
 ```ts
 class HealthComponent extends Component {
   hp: number;
-  constructor(public readonly maxHp: number) { super(); this.hp = maxHp; }
-  takeDamage(n: number) { this.hp = Math.max(0, this.hp - n); if (this.hp <= 0) this.entity.emit(EntityDied); }
+  constructor(public readonly maxHp: number) {
+    super();
+    this.hp = maxHp;
+  }
+  takeDamage(n: number) {
+    this.hp = Math.max(0, this.hp - n);
+    if (this.hp <= 0) this.entity.emit(EntityDied);
+  }
 }
 ```
 

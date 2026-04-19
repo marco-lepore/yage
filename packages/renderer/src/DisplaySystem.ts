@@ -1,9 +1,4 @@
-import {
-  System,
-  Phase,
-  Transform,
-  QueryCacheKey,
-} from "@yagejs/core";
+import { System, Phase, Transform, QueryCacheKey } from "@yagejs/core";
 import type { EngineContext, QueryResult, Scene } from "@yagejs/core";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
@@ -68,6 +63,21 @@ export class DisplaySystem extends System {
     this.applyCameraTransforms();
   }
 
+  /**
+   * Apply per-layer camera transforms for every live scene.
+   *
+   * Layers are reset to identity first so disabling or destroying the last
+   * camera cannot leave stale transforms behind on a scene's containers.
+   *
+   * Within a scene, enabled cameras are sorted by ascending `priority`; when
+   * multiple cameras bind the same layer, the later write wins, so the
+   * highest-priority camera fully overwrites translation, scale, and rotation
+   * rather than blending with earlier cameras.
+   *
+   * `binding.translateRatio` only affects the translation vector used for
+   * parallax. Scale (`cam.zoom`) and rotation (`-cam.rotation`) are always
+   * applied at full strength for any bound layer.
+   */
   private applyCameraTransforms(): void {
     // Reset every live scene's layers to identity. This must cover scenes
     // even when they have no active camera — otherwise layers keep the last
@@ -107,8 +117,9 @@ export class DisplaySystem extends System {
 
           const c = layer.container;
           const ratio = binding.translateRatio ?? 1;
-          c.position.x = cam.viewportWidth / 2 - pos.x * cam.zoom * ratio;
-          c.position.y = cam.viewportHeight / 2 - pos.y * cam.zoom * ratio;
+          const rotatedPos = pos.scale(cam.zoom * ratio).rotate(-cam.rotation);
+          c.position.x = cam.viewportWidth / 2 - rotatedPos.x;
+          c.position.y = cam.viewportHeight / 2 - rotatedPos.y;
           c.scale.set(cam.zoom);
           c.rotation = -cam.rotation;
         }

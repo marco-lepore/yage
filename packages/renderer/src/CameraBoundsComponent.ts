@@ -23,8 +23,14 @@ export class CameraBoundsComponent extends Component {
     const minCamY = this.bounds.minY + halfViewH;
     const maxCamY = this.bounds.maxY - halfViewH;
 
-    const clampedX = Math.max(minCamX, Math.min(maxCamX, this.cam.position.x));
-    const clampedY = Math.max(minCamY, Math.min(maxCamY, this.cam.position.y));
+    const clampedX =
+      minCamX > maxCamX
+        ? (this.bounds.minX + this.bounds.maxX) / 2
+        : Math.max(minCamX, Math.min(maxCamX, this.cam.position.x));
+    const clampedY =
+      minCamY > maxCamY
+        ? (this.bounds.minY + this.bounds.maxY) / 2
+        : Math.max(minCamY, Math.min(maxCamY, this.cam.position.y));
     this.cam.position = new Vec2(clampedX, clampedY);
   }
 }

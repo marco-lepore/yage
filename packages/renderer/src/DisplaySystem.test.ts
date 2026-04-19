@@ -280,13 +280,30 @@ describe("DisplaySystem", () => {
     expect(layerC.rotation).toBe(-0.5);
   });
 
+  it("keeps the camera anchor centered when rotation and translation are both applied", () => {
+    const { scene, tree } = setup();
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 0),
+        rotation: Math.PI / 2,
+      }),
+    );
+
+    system.update();
+
+    const layerC = tree.defaultLayer.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(layerC.position.x).toBeCloseTo(400);
+    expect(layerC.position.y).toBeCloseTo(400);
+    expect(layerC.rotation).toBeCloseTo(-Math.PI / 2);
+  });
+
   it("auto-bound cameras skip layers opted out via autoBindable: false", () => {
     const { scene, tree } = setup();
     tree.ensureLayer({ name: "world", order: 0 });
-    tree.ensureLayer(
-      { name: "ui", order: 1000 },
-      { autoBindable: false },
-    );
+    tree.ensureLayer({ name: "ui", order: 1000 }, { autoBindable: false });
 
     const camEntity = spawnEntityInScene(scene, "camera");
     camEntity.add(
@@ -349,10 +366,7 @@ describe("DisplaySystem", () => {
 
   it("explicit bindings can still target an opted-out layer", () => {
     const { scene, tree } = setup();
-    tree.ensureLayer(
-      { name: "ui", order: 1000 },
-      { autoBindable: false },
-    );
+    tree.ensureLayer({ name: "ui", order: 1000 }, { autoBindable: false });
 
     const camEntity = spawnEntityInScene(scene, "camera");
     camEntity.add(

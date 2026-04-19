@@ -75,11 +75,13 @@ export class DebugRenderSystem extends System {
       return;
     }
 
-    const pos = cam.effectivePosition;
     const vw = this.cameraAccessor.viewportWidth;
     const vh = this.cameraAccessor.viewportHeight;
-    this.worldContainer.position.x = vw / 2 - pos.x * cam.zoom;
-    this.worldContainer.position.y = vh / 2 - pos.y * cam.zoom;
+    const rotatedPos = cam.effectivePosition
+      .scale(cam.zoom)
+      .rotate(-cam.rotation);
+    this.worldContainer.position.x = vw / 2 - rotatedPos.x;
+    this.worldContainer.position.y = vh / 2 - rotatedPos.y;
     this.worldContainer.scale.set(cam.zoom);
     this.worldContainer.rotation = -cam.rotation;
   }
