@@ -64,13 +64,13 @@ await engine.scenes.push(new BaseScene());
 (window as Window & {
   __sceneStackTest__?: {
     pushOverlay(): Promise<void>;
-    popTop(): void;
+    popTop(): Promise<void>;
     replaceWithReplacement(): Promise<void>;
   };
 }).__sceneStackTest__ = {
   pushOverlay: () => engine.scenes.push(new OverlayScene()),
-  popTop: () => {
-    engine.scenes.pop();
+  popTop: async () => {
+    await engine.scenes.pop();
   },
   replaceWithReplacement: () => engine.scenes.replace(new ReplacementScene()),
 };
