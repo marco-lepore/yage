@@ -108,7 +108,7 @@ export class GameLoop {
 
   /** Process one frame with the given dt in milliseconds. */
   tick(dtMs: number): void {
-    if (!this.callbacks) return;
+    if (!this.running || !this.callbacks) return;
 
     this._frameCount++;
 

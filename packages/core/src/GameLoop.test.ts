@@ -107,6 +107,23 @@ describe("GameLoop", () => {
       expect(() => loop.tick(16)).not.toThrow();
     });
 
+    it("ignores ticks before start", () => {
+      const loop = new GameLoop({ fixedTimestep: 16 });
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+
+      loop.tick(16);
+
+      expect(cbs.earlyUpdate).not.toHaveBeenCalled();
+      expect(cbs.fixedUpdate).not.toHaveBeenCalled();
+      expect(cbs.update).not.toHaveBeenCalled();
+      expect(cbs.lateUpdate).not.toHaveBeenCalled();
+      expect(cbs.render).not.toHaveBeenCalled();
+      expect(cbs.endOfFrame).not.toHaveBeenCalled();
+      expect(loop.frameCount).toBe(0);
+      expect(loop.interpolationAlpha).toBe(0);
+    });
+
     it("increments frame count", () => {
       const loop = new GameLoop();
       const cbs = createCallbacks();
