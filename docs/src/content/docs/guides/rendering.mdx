@@ -216,7 +216,7 @@ class GameScene extends Scene {
     { name: "tiles", order: -10 },
     { name: "characters", order: 0 },
     { name: "fx", order: 10 },
-    { name: "ui", order: 100 },
+    { name: "ui", order: 100, space: "screen" },
   ];
 }
 
@@ -226,6 +226,25 @@ engine.use(new RendererPlugin({ width: 800, height: 600 }));
 Assign a layer via the `layer` property on `SpriteComponent` or
 `GraphicsComponent`. Entities within the same layer are sorted by their
 y-position by default.
+
+### Layer space
+
+Each `LayerDef` has a `space: "world" | "screen"` (default `"world"`)
+that controls whether cameras transform it:
+
+- **`"world"`** — layers scroll and zoom with the camera. Use for
+  gameplay layers (background, tiles, characters, fx), parallax, and
+  *diegetic* UI that should follow an entity (interaction prompts,
+  health bars, damage numbers).
+- **`"screen"`** — layers stay fixed to the viewport. Use for HUD,
+  menus, dialogs, and any UI you want anchored to the screen. A
+  `CameraEntity` spawned without explicit `bindings` skips screen-space
+  layers on auto-bind; you can still bind one explicitly by naming it
+  in `bindings`.
+
+If no `"ui"` layer is declared, `@yagejs/ui` auto-provisions one as
+`space: "screen"` the first time a `UIPanel` is added, so HUDs just
+work without any layer wiring.
 
 ## Asset Factories
 

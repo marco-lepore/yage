@@ -146,17 +146,32 @@ class GameScene extends Scene {
 ### Camera binding rule
 
 A `CameraEntity` spawned without explicit `bindings` auto-binds every
-layer in the scene tree with `autoBindable === true`. All layers
-declared via `Scene.layers` are auto-bindable by default — if you
-declared it, the camera follows it.
+world-space layer in the scene tree (`LayerDef.space === "world"`, the
+default). Declare a layer with `space: "screen"` to keep it fixed to the
+viewport — cameras skip it on auto-bind.
 
-Plugins can auto-provision layers that opt *out* of auto-binding by
-passing `{ autoBindable: false }` to `tree.ensureLayer(def, opts)`. The
-UI packages (`@yagejs/ui`, `@yagejs/ui-react`) do this for their `"ui"`
-layer, so a default camera never moves the HUD.
+```ts
+readonly layers: readonly LayerDef[] = [
+  { name: "background", order: -10 },                  // world-space (default)
+  { name: "world",      order: 0 },                    // world-space
+  { name: "hud",        order: 100, space: "screen" }, // screen-space HUD
+];
+```
+
+Plugins auto-provision screen-space layers via
+`tree.ensureLayer(def, { space: "screen" })`. The UI packages
+(`@yagejs/ui`, `@yagejs/ui-react`) do this for their `"ui"` layer, so a
+bare `new UIPanel()` stays pinned to the viewport under the default
+camera.
+
+Diegetic UI (entity-anchored prompts, health bars, damage numbers) is a
+legitimate use case: declare a world-space layer and parent a
+`UIPanel({ layer: "..." })` into it — the panel's container scrolls and
+zooms with the camera.
 
 To override: pass explicit `bindings` on the camera. Explicit bindings
-ignore `autoBindable` and target exactly the layers named.
+ignore `space` and target exactly the layers named, which is how you
+bind a screen-space layer to a second camera or build parallax.
 
 ```ts
 // All custom world layers follow the camera; UI plugin layer stays put.
@@ -226,13 +241,4 @@ const asset = renderAsset("ui-atlas.json");
 class MyScene extends Scene {
   readonly preload = [heroTex, sheet];
 }
-```
-
-## Screen Containers
-
-For HUD/UI layers unaffected by the camera:
-
-```ts
-const renderer = context.resolve(RendererKey);
-const hudLayers = renderer.createScreenContainer("hud");
 ```

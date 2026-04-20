@@ -2,6 +2,9 @@ import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
 import type { LayerDef } from "./LayerDef.js";
 
+/** Coordinate space a layer lives in. See `LayerDef.space`. */
+export type LayerSpace = "world" | "screen";
+
 /** Options for creating a layer. */
 export interface CreateLayerOptions {
   /** Per-layer override for PixiJS event mode. Falls back to the manager default. */
@@ -9,12 +12,12 @@ export interface CreateLayerOptions {
   /** Whether the container should sort children by their own zIndex. */
   sortableChildren?: boolean;
   /**
-   * Whether a `CameraEntity` spawned without explicit `bindings` should
-   * auto-bind this layer. Default: true. Set false for plugin-owned
-   * screen-space layers (e.g. UI). Cameras can still explicitly bind
-   * the layer by naming it in `bindings`.
+   * Coordinate space. `"world"` (default) layers are picked up by cameras
+   * spawned without explicit `bindings`; `"screen"` layers are skipped so
+   * they stay fixed to the viewport. Cameras can still explicitly bind
+   * screen-space layers by naming them in `bindings`.
    */
-  autoBindable?: boolean;
+  space?: LayerSpace;
 }
 
 /** A named rendering layer — a pixi container at a given draw order. */
@@ -22,22 +25,19 @@ export class RenderLayer {
   readonly name: string;
   readonly order: number;
   readonly container: Container;
-  /**
-   * Whether cameras with auto-bindings include this layer. See
-   * `CreateLayerOptions.autoBindable`.
-   */
-  readonly autoBindable: boolean;
+  /** Coordinate space — see `CreateLayerOptions.space`. */
+  readonly space: LayerSpace;
 
   constructor(
     name: string,
     order: number,
     container: Container,
-    autoBindable = true,
+    space: LayerSpace = "world",
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
-    this.autoBindable = autoBindable;
+    this.space = space;
   }
 }
 
@@ -74,12 +74,7 @@ export class RenderLayerManager {
     if (eventMode) container.eventMode = eventMode;
     if (opts?.sortableChildren) container.sortableChildren = true;
 
-    const layer = new RenderLayer(
-      name,
-      order,
-      container,
-      opts?.autoBindable ?? true,
-    );
+    const layer = new RenderLayer(name, order, container, opts?.space ?? "world");
     this.layers.set(name, layer);
 
     this.rootContainer.addChild(container);
@@ -89,14 +84,16 @@ export class RenderLayerManager {
   }
 
   /**
-   * Create a layer from a declarative `LayerDef`. Additional runtime
-   * options (e.g. `autoBindable: false` for plugin-owned screen-space
-   * layers) can be passed via `opts` — these are not part of the public
-   * `LayerDef` surface.
+   * Create a layer from a declarative `LayerDef`. Fields on the def
+   * (`space`, `sortableChildren`) take precedence over the runtime `opts`
+   * so a scene's declaration stays authoritative; `opts` is primarily for
+   * plugin-side overrides when auto-provisioning a layer the scene didn't
+   * declare (via `ensureLayer`).
    */
   createFromDef(def: LayerDef, opts?: CreateLayerOptions): RenderLayer {
     const merged: CreateLayerOptions = { ...opts };
     if (def.sortableChildren) merged.sortableChildren = def.sortableChildren;
+    if (def.space !== undefined) merged.space = def.space;
     return this.create(def.name, def.order, merged);
   }
 

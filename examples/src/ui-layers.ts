@@ -28,9 +28,9 @@ class UILayersScene extends Scene {
   readonly name = "ui-layers";
   readonly preload = [...allAssets];
   readonly layers: readonly LayerDef[] = [
-    { name: "hud", order: 1010 },
-    { name: "menu", order: 1020 },
-    { name: "dialog", order: 1030 },
+    { name: "hud", order: 1010, space: "screen" },
+    { name: "menu", order: 1020, space: "screen" },
+    { name: "dialog", order: 1030, space: "screen" },
   ];
 
   onEnter(): void {
@@ -70,8 +70,8 @@ class UILayersScene extends Scene {
     hud.text("Score: 1,234", textStyle("body", { fill: 0xfacc15 }));
 
     hud.button("Toggle Menu (order 20)", {
-      width: 200, height: 36,
-      textStyle: textStyle("buttonSmall"),
+      width: 260, height: 44,
+      textStyle: textStyle("button"),
       onClick: () => {
         menuVisible = !menuVisible;
         menuPanel.visible = menuVisible;
@@ -80,8 +80,8 @@ class UILayersScene extends Scene {
     });
 
     hud.button("Toggle Dialog (order 30)", {
-      width: 200, height: 36,
-      textStyle: textStyle("buttonSmall"),
+      width: 260, height: 44,
+      textStyle: textStyle("button"),
       onClick: () => {
         dialogVisible = !dialogVisible;
         dialogPanel.visible = dialogVisible;
@@ -108,19 +108,19 @@ class UILayersScene extends Scene {
     menuPanel.text("Renders above HUD, below Dialog", textStyle("body"));
 
     menuPanel.button("Settings", {
-      width: 160, height: 36,
+      width: 220, height: 44,
       textStyle: textStyle("button"),
       onClick: () => console.log("Settings clicked"),
       ...nineSliceBtn,
     });
     menuPanel.button("Inventory", {
-      width: 160, height: 36,
+      width: 220, height: 44,
       textStyle: textStyle("button"),
       onClick: () => console.log("Inventory clicked"),
       ...nineSliceBtn,
     });
     menuPanel.button("Close Menu", {
-      width: 160, height: 36,
+      width: 220, height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         menuVisible = false;
@@ -150,7 +150,7 @@ class UILayersScene extends Scene {
 
     const btnRow = dialogPanel.panel({ direction: "row", gap: 10 });
     btnRow.button("Yes", {
-      width: 80, height: 36,
+      width: 110, height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         dialogVisible = false;
@@ -160,7 +160,7 @@ class UILayersScene extends Scene {
       ...nineSliceBtn,
     });
     btnRow.button("No", {
-      width: 80, height: 36,
+      width: 110, height: 44,
       textStyle: textStyle("button"),
       onClick: () => {
         dialogVisible = false;

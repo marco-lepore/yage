@@ -56,7 +56,7 @@ class ParallaxScene extends Scene {
       ],
     });
 
-    // Trigger UI layer auto-provisioning (autoBindable: false).
+    // Trigger UI layer auto-provisioning (space: "screen").
     const hud = this.spawn("hud");
     hud.add(new UIPanel({ anchor: Anchor.TopLeft, padding: 8 })).text("HUD");
   }

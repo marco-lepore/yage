@@ -46,7 +46,7 @@ class BaseScene extends Scene {
       position: new Vec2(0, 0),
     });
 
-    // Force UI-layer auto-provisioning (autoBindable: false).
+    // Force UI-layer auto-provisioning (space: "screen").
     const hud = this.spawn("hud");
     hud.add(new UIPanel({ anchor: Anchor.TopLeft, padding: 8 })).text("HUD");
   }

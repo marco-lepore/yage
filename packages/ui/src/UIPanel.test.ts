@@ -319,36 +319,43 @@ describe("UIPanel", () => {
       expect(container.children.length).toBe(0);
     });
 
-    it("throws when target layer is pre-declared and camera-auto-bindable", () => {
-      const { scene } = createUITestContext();
-      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
-      // Simulate a user declaring { name: "ui", order: 1000 } on the scene —
-      // this goes through createFromDef with no opts, so autoBindable: true.
-      tree.ensureLayer({ name: "ui", order: 1000 });
-      const entity = spawnEntityInScene(scene);
-      expect(() => entity.add(new UIPanel())).toThrowError(
-        /camera-auto-bindable/,
-      );
-    });
-
-    it("auto-provisioned 'ui' layer is opted out of auto-binding", () => {
+    it("auto-provisioned 'ui' layer is screen-space", () => {
       const { scene } = createUITestContext();
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       const entity = spawnEntityInScene(scene);
       entity.add(new UIPanel());
       const uiLayer = tree.get("ui");
-      expect(uiLayer.autoBindable).toBe(false);
+      expect(uiLayer.space).toBe("screen");
     });
 
-    it("normalizes existing opted-out UI layers to static event mode", () => {
+    it("normalizes existing screen-space UI layers to static event mode", () => {
       const { scene } = createUITestContext();
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
-      tree.ensureLayer({ name: "ui", order: 1000 }, { autoBindable: false });
+      tree.ensureLayer({ name: "ui", order: 1000 }, { space: "screen" });
       const entity = spawnEntityInScene(scene);
 
       entity.add(new UIPanel());
 
       expect(tree.get("ui").container.eventMode).toBe("static");
+    });
+
+    it("renders into a pre-declared world-space layer (diegetic UI)", () => {
+      const { scene } = createUITestContext();
+      const tree = scene._resolveScoped(SceneRenderTreeKey)!;
+      // Declared on Scene.layers with no `space` override — defaults to
+      // "world", meaning cameras transform the layer. Legitimate for
+      // entity-anchored prompts, health bars, damage numbers, etc.
+      tree.ensureLayer({ name: "world-ui", order: 500 });
+      const entity = spawnEntityInScene(scene);
+
+      entity.add(new UIPanel({ layer: "world-ui" }));
+
+      const layer = tree.get("world-ui");
+      expect(layer.space).toBe("world");
+      const container = (
+        layer as unknown as { container: { children: unknown[] } }
+      ).container;
+      expect(container.children.length).toBe(1);
     });
   });
 

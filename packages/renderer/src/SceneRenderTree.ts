@@ -6,12 +6,12 @@ import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
 
 /**
  * Options for `ensureLayer` beyond the declarative `LayerDef`. Used by
- * plugins (e.g. UI) to mark auto-provisioned layers as opt-out from
- * camera auto-binding.
+ * plugins (e.g. UI) to auto-provision screen-space layers so they stay
+ * fixed to the viewport under the default camera.
  */
 export type EnsureLayerOptions = Pick<
   CreateLayerOptions,
-  "autoBindable" | "eventMode"
+  "space" | "eventMode"
 >;
 
 /**
@@ -32,8 +32,8 @@ export interface SceneRenderTree {
   /**
    * Get an existing layer or create it from the given definition. Used by
    * plugins like UI that auto-provision a layer if the game didn't declare
-   * one explicitly. Pass `{ autoBindable: false }` to opt the layer out of
-   * camera auto-binding (e.g. screen-space HUD).
+   * one explicitly. Pass `{ space: "screen" }` so a default camera leaves
+   * the layer fixed to the viewport (e.g. screen-space HUD).
    */
   ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer;
 }
