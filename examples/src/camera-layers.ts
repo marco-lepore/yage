@@ -2,8 +2,8 @@
  * Camera Layers — showcases the recent camera/scene refactors:
  *
  *   - Parallax via CameraBinding.translateRatio per layer.
- *   - Declared Scene.layers auto-bound; UI layer auto-provisioned by UIPanel
- *     opts out of auto-binding and stays screen-space.
+ *   - World-space Scene.layers follow the camera; the "ui" layer (auto-
+ *     provisioned by UIPanel as `space: "screen"`) stays fixed to the viewport.
  *   - Stacked scene with its own CameraEntity — demonstrates that the debug
  *     overlay follows the topmost camera and that removing cameras resets
  *     layer transforms (no stale pan/zoom).

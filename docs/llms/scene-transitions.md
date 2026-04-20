@@ -141,6 +141,19 @@ Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
 - `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as a matter of hygiene.
 
+## Composition with LoadingScene
+
+`LoadingScene` (core) carries its own `transition` — the one used for the handoff to its target. That composes with any call-site transition passed to `push`/`replace`:
+
+```ts
+await engine.scenes.replace(new Boot(), {
+  transition: fade({ duration: 400 }),    // mount Boot with this fade
+});
+// Boot.transition fires separately when Boot hands off to its target.
+```
+
+See `loading-scene.md` for the full Boot scene contract.
+
 ## Breaking Change
 
 `SceneManager.pop()` returns `Promise<Scene | undefined>` (was synchronous). Update all call sites to `await` or `void`.

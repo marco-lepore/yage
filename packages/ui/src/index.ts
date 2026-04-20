@@ -57,6 +57,8 @@ export { UIImage } from "./UIImage.js";
 export { UINineSlice } from "./UINineSlice.js";
 export { UIProgressBar } from "./UIProgressBar.js";
 export { UICheckbox } from "./UICheckbox.js";
+export { LoadingSceneProgressBar } from "./LoadingSceneProgressBar.js";
+export type { LoadingSceneProgressBarOptions } from "./LoadingSceneProgressBar.js";
 
 // @pixi/ui wrappers
 export {

@@ -173,6 +173,28 @@ console.log(engine.logger.formatRecentLogs(20));
 
 `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`
 
+## LoadingScene
+
+Base class for a progress-bar loading screen. Orchestrates preload, emits events on the bus, and hands off to a target scene. No rendering — the visual lives in `@yagejs/ui` (`LoadingSceneProgressBar`) or user-written components subscribing to the events. Full reference: `loading-scene.md`.
+
+```ts
+import { LoadingScene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly minDuration = 500;
+  readonly transition = fade({ duration: 300 });
+  override onEnter() {
+    this.spawn(LoadingSceneProgressBar);
+    this.startLoading();
+  }
+}
+```
+
+Emits `scene:loading:progress` and `scene:loading:done` on `EventBusKey`. Set `autoContinue = false` and call `scene.continue()` to gate the handoff (e.g. "press any key").
+
 ## Core Types
 
 ```ts

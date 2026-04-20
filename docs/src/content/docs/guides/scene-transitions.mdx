@@ -156,6 +156,19 @@ The `SceneTransitionContext` gives you:
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
 
+## Composition with Loading Scenes
+
+[`LoadingScene`](/guides/loading-scene/) carries its own `transition` — the
+one used when it hands off to its target scene. It composes cleanly with a
+call-site transition passed to `push`/`replace`:
+
+```typescript
+await engine.scenes.replace(new Boot(), {
+  transition: fade({ duration: 400 }),   // mount Boot with this fade
+});
+// Boot.transition animates the handoff Boot → target separately.
+```
+
 ## Lifecycle Details
 
 ### How `replace` Works

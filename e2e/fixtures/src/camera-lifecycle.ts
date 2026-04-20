@@ -4,8 +4,8 @@
  *
  * Exercises:
  *   1. Layer transform resets to identity when the last camera is disabled.
- *   2. A layer opted out of auto-binding stays at identity even under
- *      aggressive camera motion.
+ *   2. A screen-space layer stays at identity even under aggressive camera
+ *      motion.
  *   3. Pushing a second scene with its own camera doesn't disturb the
  *      lower scene's layer transforms.
  */
