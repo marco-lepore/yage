@@ -47,7 +47,8 @@ start" — all without a separate flag.
 
 `target` accepts an eagerly-constructed `Scene` instance or a factory
 function. Use the factory form when target construction has side effects
-you'd rather defer until loading actually finishes:
+you'd rather defer until loading actually starts (the factory runs before
+`assets.loadAll`, so `target.preload` is still inspected):
 
 ```typescript
 class Boot extends LoadingScene {

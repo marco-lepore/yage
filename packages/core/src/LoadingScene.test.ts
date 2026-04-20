@@ -313,12 +313,11 @@ describe("LoadingScene", () => {
       readonly name = "other";
     }
 
+    let replaced = false;
     let progressEventsAfterReplace = 0;
     let doneFired = false;
     bus.on("scene:loading:progress", (ev) => {
-      if (ev.scene === boot && !boot.isPaused && !manager.all.includes(boot)) {
-        progressEventsAfterReplace++;
-      }
+      if (replaced && ev.scene === boot) progressEventsAfterReplace++;
     });
     bus.on("scene:loading:done", (ev) => {
       if (ev.scene === boot) doneFired = true;
@@ -330,6 +329,7 @@ describe("LoadingScene", () => {
     // Replace the loading scene from outside, then complete the loader.
     const other = new OtherScene();
     await manager.replace(other);
+    replaced = true;
 
     resolveLoad!("done");
     // Give any stray async work a chance to run.

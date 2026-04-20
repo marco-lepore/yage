@@ -42,11 +42,15 @@ export interface LoadingSceneProgressBarOptions {
 /**
  * Ready-made loading progress bar for use inside a `LoadingScene`.
  *
- * Spawn it from the scene's `onEnter`:
+ * Spawn it from the scene's `onEnter`, then call `this.startLoading()` to
+ * kick off the load:
  * ```ts
  * class Boot extends LoadingScene {
  *   readonly target = new GameScene();
- *   override onEnter() { this.spawn(LoadingSceneProgressBar); }
+ *   override onEnter() {
+ *     this.spawn(LoadingSceneProgressBar);
+ *     this.startLoading();
+ *   }
  * }
  * ```
  *

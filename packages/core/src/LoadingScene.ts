@@ -1,5 +1,9 @@
 import { Scene } from "./Scene.js";
-import { EventBusKey, SceneManagerKey } from "./EngineContext.js";
+import {
+  EventBusKey,
+  LoggerKey,
+  SceneManagerKey,
+} from "./EngineContext.js";
 import type { SceneTransition } from "./SceneTransition.js";
 
 /**
@@ -24,6 +28,7 @@ import type { SceneTransition } from "./SceneTransition.js";
  *   readonly transition = fade({ duration: 300 });
  *   override onEnter() {
  *     this.spawn(LoadingSceneProgressBar);
+ *     this.startLoading();
  *   }
  * }
  *
@@ -41,7 +46,8 @@ export abstract class LoadingScene extends Scene {
   /**
    * Scene to load and transition to. Accepts an instance or a factory —
    * use a factory when target construction should be deferred until
-   * loading finishes (heavy constructors, side effects).
+   * loading starts (heavy constructors, side effects). The factory runs
+   * before `assets.loadAll` so `target.preload` can be inspected.
    */
   abstract readonly target: Scene | (() => Scene);
 
@@ -92,7 +98,19 @@ export abstract class LoadingScene extends Scene {
   startLoading(): void {
     if (this._started) return;
     this._started = true;
-    void this._run();
+    // `_run` is fire-and-forget. Attach a catch so unhandled rejections
+    // (e.g., `scenes.replace` failure, a target factory that throws,
+    // or a load error with no `onLoadError` override) land in the engine
+    // logger instead of the browser's unhandled-rejection channel.
+    this._run().catch((err) => {
+      if (!this._active) return;
+      const logger = this.context.tryResolve(LoggerKey);
+      if (logger) {
+        logger.error("LoadingScene", "loading failed", { error: err });
+      } else {
+        console.error("[LoadingScene] loading failed:", err);
+      }
+    });
   }
 
   /**
@@ -116,19 +134,22 @@ export abstract class LoadingScene extends Scene {
   }
 
   private async _run(): Promise<void> {
+    // Yield past the push-mutation window onEnter runs inside. Without
+    // this, a target with empty or cached preload resumes the handoff
+    // while SceneManager is still mid-mutation, and scenes.replace
+    // would reject as reentrant.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (!this._active) return;
+
+    const target =
+      typeof this.target === "function" ? this.target() : this.target;
+    const startedAt = performance.now();
+    const bus = this.context.resolve(EventBusKey);
+
+    // `onLoadError` is specifically for asset-load failures. Narrow the
+    // try/catch to the load phase so target-factory errors and
+    // scenes.replace errors aren't silently swallowed through it.
     try {
-      // Yield past the push-mutation window onEnter runs inside. Without
-      // this, a target with empty or cached preload resumes the handoff
-      // while SceneManager is still mid-mutation, and scenes.replace
-      // would reject as reentrant.
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      if (!this._active) return;
-
-      const target =
-        typeof this.target === "function" ? this.target() : this.target;
-      const startedAt = performance.now();
-      const bus = this.context.resolve(EventBusKey);
-
       await this.assets.loadAll(target.preload ?? [], (ratio) => {
         if (!this._active) return;
         this._progress = ratio;
@@ -142,24 +163,8 @@ export abstract class LoadingScene extends Scene {
         await new Promise<void>((resolve) => setTimeout(resolve, remaining));
         if (!this._active) return;
       }
-
-      bus.emit("scene:loading:done", { scene: this });
-
-      if (!this.autoContinue && !this._continueRequested) {
-        await new Promise<void>((resolve) => {
-          this._continueGate = resolve;
-        });
-        if (!this._active) return;
-      }
-
-      const scenes = this.context.resolve(SceneManagerKey);
-      await scenes.replace(
-        target,
-        this.transition ? { transition: this.transition } : undefined,
-      );
     } catch (err) {
-      // If the scene was exited mid-await, any thrown error is incidental
-      // (e.g. from a rejected loader that no longer matters). Swallow.
+      // Scene exited mid-await → thrown error is incidental. Swallow.
       if (!this._active) return;
       const error = err instanceof Error ? err : new Error(String(err));
       if (this.onLoadError) {
@@ -168,5 +173,20 @@ export abstract class LoadingScene extends Scene {
       }
       throw error;
     }
+
+    bus.emit("scene:loading:done", { scene: this });
+
+    if (!this.autoContinue && !this._continueRequested) {
+      await new Promise<void>((resolve) => {
+        this._continueGate = resolve;
+      });
+      if (!this._active) return;
+    }
+
+    const scenes = this.context.resolve(SceneManagerKey);
+    await scenes.replace(
+      target,
+      this.transition ? { transition: this.transition } : undefined,
+    );
   }
 }
