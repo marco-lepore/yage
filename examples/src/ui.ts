@@ -171,7 +171,7 @@ class UIExampleScene extends Scene {
 
     // Damage / Heal buttons
     let hp = 0.8;
-    const hudBtns = hud._node.panel({ direction: "row", gap: 6 });
+    const hudBtns = hud.panel({ direction: "row", gap: 6 });
     hudBtns.button("Take Damage", {
       width: 110,
       height: 28,

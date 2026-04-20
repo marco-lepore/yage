@@ -87,6 +87,13 @@ export abstract class LoadingScene extends Scene {
   private _active = true;
   private _continueRequested = false;
   private _continueGate?: () => void;
+  // Bumped on every `_run` attempt. `AssetManager.loadAll` uses `Promise.all`
+  // under the hood, so individual loaders from a failed attempt can still
+  // resolve and fire `onProgress` after the attempt rejects. Without this
+  // guard, a retry kicked off from `onLoadError` would see stale progress
+  // callbacks mutate `_progress` and emit `scene:loading:progress` events
+  // attributed to the current attempt.
+  private _attempt = 0;
 
   /** Current load progress, 0 → 1. Updated as the AssetManager reports progress. */
   get progress(): number {
@@ -158,6 +165,7 @@ export abstract class LoadingScene extends Scene {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     if (!this._active) return;
 
+    const attempt = ++this._attempt;
     const target =
       typeof this.target === "function" ? this.target() : this.target;
     const startedAt = performance.now();
@@ -168,25 +176,28 @@ export abstract class LoadingScene extends Scene {
     // scenes.replace errors aren't silently swallowed through it.
     try {
       await this.assets.loadAll(target.preload ?? [], (ratio) => {
-        if (!this._active) return;
+        if (!this._active || attempt !== this._attempt) return;
         this._progress = ratio;
         bus.emit("scene:loading:progress", { scene: this, ratio });
       });
-      if (!this._active) return;
+      if (!this._active || attempt !== this._attempt) return;
 
       const elapsed = performance.now() - startedAt;
       const remaining = this.minDuration - elapsed;
       if (remaining > 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-        if (!this._active) return;
+        if (!this._active || attempt !== this._attempt) return;
       }
     } catch (err) {
       // Scene exited mid-await → thrown error is incidental. Swallow.
-      if (!this._active) return;
+      if (!this._active || attempt !== this._attempt) return;
       const error = err instanceof Error ? err : new Error(String(err));
       // Release the start guard so the hook (or anyone with a reference)
-      // can call startLoading() again to retry.
+      // can call startLoading() again to retry. Bumping `_attempt` here
+      // invalidates any still-in-flight progress callbacks from this
+      // failed attempt before the retry's `onProgress` can fire.
       this._started = false;
+      this._attempt++;
       if (this.onLoadError) {
         await this.onLoadError(error);
         return;
@@ -200,7 +211,7 @@ export abstract class LoadingScene extends Scene {
       await new Promise<void>((resolve) => {
         this._continueGate = resolve;
       });
-      if (!this._active) return;
+      if (!this._active || attempt !== this._attempt) return;
     }
 
     const scenes = this.context.resolve(SceneManagerKey);
