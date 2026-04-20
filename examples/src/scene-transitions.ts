@@ -17,7 +17,12 @@ import {
   fade,
   flash,
 } from "@yagejs/renderer";
-import { LoadingSceneProgressBar, UIPlugin } from "@yagejs/ui";
+import {
+  Anchor,
+  LoadingSceneProgressBar,
+  UIPanel,
+  UIPlugin,
+} from "@yagejs/ui";
 import { getContainer, injectStyles } from "./shared.js";
 
 injectStyles(`
@@ -108,14 +113,13 @@ abstract class LabeledScene extends Scene {
       }),
     );
 
-    // Draw the label as a blocky glyph via rects (avoids text font deps).
-    const text = this.spawn("text");
-    text.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
-    text.add(
-      new GraphicsComponent().draw((g) => {
-        drawBlockText(g, this.label, 0, 0, 8);
-      }),
-    );
+    const label = this.spawn("label");
+    const panel = label.add(new UIPanel({ anchor: Anchor.Center }));
+    panel.text(this.label, {
+      fontSize: 64,
+      fontWeight: "bold",
+      fill: 0xffffff,
+    });
   }
 }
 
@@ -144,50 +148,6 @@ class GameOverScene extends LabeledScene {
   readonly name = "gameover";
   constructor() {
     super("OVER", 0x7f1d1d); // deep red
-  }
-}
-
-// ----- Tiny block-pixel text renderer --------------------------------------
-const GLYPHS: Record<string, string[]> = {
-  A: [" # ", "# #", "###", "# #", "# #"],
-  D: ["## ", "# #", "# #", "# #", "## "],
-  M: ["# #", "###", "###", "# #", "# #"],
-  E: ["###", "#  ", "## ", "#  ", "###"],
-  N: ["# #", "###", "###", "###", "# #"],
-  U: ["# #", "# #", "# #", "# #", "###"],
-  L: ["#  ", "#  ", "#  ", "#  ", "###"],
-  V: ["# #", "# #", "# #", "# #", " # "],
-  O: ["###", "# #", "# #", "# #", "###"],
-  R: ["## ", "# #", "## ", "# #", "# #"],
-  " ": ["   ", "   ", "   ", "   ", "   "],
-};
-
-function drawBlockText(
-  g: import("pixi.js").Graphics,
-  text: string,
-  cx: number,
-  cy: number,
-  px: number,
-): void {
-  const rows = 5;
-  const glyphWidth = 3 * px;
-  const spacing = px;
-  const totalWidth = text.length * glyphWidth + (text.length - 1) * spacing;
-  let x = cx - totalWidth / 2;
-  const yTop = cy - (rows * px) / 2;
-  for (const ch of text) {
-    const glyph = GLYPHS[ch] ?? GLYPHS[" "]!;
-    for (let ry = 0; ry < rows; ry++) {
-      const row = glyph[ry]!;
-      for (let rx = 0; rx < 3; rx++) {
-        if (row[rx] === "#") {
-          g.rect(x + rx * px, yTop + ry * px, px, px).fill({
-            color: 0xffffff,
-          });
-        }
-      }
-    }
-    x += glyphWidth + spacing;
   }
 }
 
