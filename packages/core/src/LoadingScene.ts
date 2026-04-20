@@ -67,7 +67,19 @@ export abstract class LoadingScene extends Scene {
    */
   readonly autoContinue: boolean = true;
 
-  /** Optional hook; fires if asset loading rejects. Default: rethrow. */
+  /**
+   * Optional hook; fires if asset loading rejects. The scene stays mounted
+   * whether or not this is set. When set, the hook is the recovery channel:
+   * draw a retry UI, push an error scene, or call `this.startLoading()`
+   * again to retry the load. When unset, the error is logged via the engine
+   * logger and the scene remains mounted in a failed state with no
+   * automatic recovery.
+   *
+   * The hook may still be running when the scene is replaced externally —
+   * don't assume the scene is live (check `this.context.tryResolve` rather
+   * than `this.service` before touching engine services, and avoid spawning
+   * new entities after an `await`).
+   */
   onLoadError?(error: Error): void | Promise<void>;
 
   private _progress = 0;
@@ -82,7 +94,10 @@ export abstract class LoadingScene extends Scene {
   }
 
   /**
-   * Kick off asset loading. Idempotent — subsequent calls are no-ops.
+   * Kick off asset loading. While a load is in flight, subsequent calls
+   * are no-ops. After a load failure the guard is released, so calling
+   * `startLoading()` from `onLoadError` (or from a retry button) kicks off
+   * a fresh load against the same target.
    *
    * Usually called once from `onEnter` after spawning the loading UI:
    * ```ts
@@ -98,10 +113,12 @@ export abstract class LoadingScene extends Scene {
   startLoading(): void {
     if (this._started) return;
     this._started = true;
-    // `_run` is fire-and-forget. Attach a catch so unhandled rejections
-    // (e.g., `scenes.replace` failure, a target factory that throws,
-    // or a load error with no `onLoadError` override) land in the engine
-    // logger instead of the browser's unhandled-rejection channel.
+    // `_run` is fire-and-forget — the scene is already mounted, so there's
+    // no `push`/`replace` caller to propagate errors to. The catch is the
+    // final terminus for anything `_run` rethrows (target factory failure,
+    // `scenes.replace` failure, or a load error with no `onLoadError`
+    // override). Log it so the failure doesn't vanish into the browser's
+    // unhandled-rejection channel.
     this._run().catch((err) => {
       if (!this._active) return;
       const logger = this.context.tryResolve(LoggerKey);
@@ -167,6 +184,9 @@ export abstract class LoadingScene extends Scene {
       // Scene exited mid-await → thrown error is incidental. Swallow.
       if (!this._active) return;
       const error = err instanceof Error ? err : new Error(String(err));
+      // Release the start guard so the hook (or anyone with a reference)
+      // can call startLoading() again to retry.
+      this._started = false;
       if (this.onLoadError) {
         await this.onLoadError(error);
         return;

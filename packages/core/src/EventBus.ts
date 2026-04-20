@@ -1,6 +1,7 @@
 import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { SceneTransitionKind } from "./SceneTransition.js";
+import type { Scene } from "./Scene.js";
 
 // Forward declarations for event payloads
 type EntityRef = { readonly id: number; readonly name: string };
@@ -28,8 +29,11 @@ export interface EngineEvents {
     fromScene: SceneRef | undefined;
     toScene: SceneRef | undefined;
   };
-  "scene:loading:progress": { scene: SceneRef; ratio: number };
-  "scene:loading:done": { scene: SceneRef };
+  // Full Scene (not SceneRef) — subscribers typically compare by identity
+  // against a Scene reference and may cast to LoadingScene to call
+  // continue()/progress. Widening here avoids forcing casts at every site.
+  "scene:loading:progress": { scene: Scene; ratio: number };
+  "scene:loading:done": { scene: Scene };
   "engine:started": undefined;
   "engine:stopped": undefined;
 }

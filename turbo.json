@@ -5,6 +5,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@yagejs/e2e#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["fixtures/dist/**"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },

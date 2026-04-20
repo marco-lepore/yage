@@ -54,7 +54,7 @@ class UIExampleScene extends Scene {
 
     // Logo
     const logo = new UIImage({ texture: Logo, width: 180, height: 58 });
-    menu._node.addElement(logo);
+    menu.addElement(logo);
 
     menu.text("UI Demo", textStyle("title", { fontSize: 28 }));
     menu.text("Builder API", textStyle("subtitle"));
@@ -155,7 +155,7 @@ class UIExampleScene extends Scene {
       height: 12,
       fillBackground: { color: 0x22c55e, alpha: 1 },
     });
-    hud._node.addElement(hpBar);
+    hud.addElement(hpBar);
 
     // XP
     hud.text("XP", textStyle("body", { fill: 0x3b82f6 }));
@@ -165,7 +165,7 @@ class UIExampleScene extends Scene {
       height: 12,
       fillBackground: { color: 0x3b82f6, alpha: 1 },
     });
-    hud._node.addElement(xpBar);
+    hud.addElement(xpBar);
 
     hud.text("Score: 0", textStyle("body", { fontSize: 16, fill: 0xfacc15 }));
 

@@ -104,7 +104,7 @@ export class LoadingSceneProgressBar extends Entity {
       trackBackground: opts.track ?? DEFAULT_TRACK,
       fillBackground: opts.fill ?? DEFAULT_FILL,
     });
-    panel._node.addElement(bar);
+    panel.addElement(bar);
 
     this.add(new LoadingProgressSync(bar, backdropEntity));
   }

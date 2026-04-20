@@ -39,8 +39,18 @@ ui.add(root);
 root.render(<MyMenu />);
 ```
 
-The React tree renders into the screen-space UI layer, positioned by the
-`anchor` and optional `offset`.
+By default the React tree renders into the auto-provisioned screen-space
+`"ui"` layer, positioned by the `anchor` and optional `offset`. Pass
+`layer: "<name>"` to mount on any layer you've declared on
+`Scene.layers` — a `space: "world"` layer is the canonical way to host
+diegetic UI that follows the camera:
+
+```typescript
+const root = new UIRoot({
+  layer: "overlay",              // must be declared on Scene.layers
+  anchor: Anchor.TopCenter,
+});
+```
 
 ## JSX Components
 

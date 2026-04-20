@@ -236,6 +236,40 @@ describe("LoadingScene", () => {
     expect(elapsed).toBeGreaterThanOrEqual(110);
   });
 
+  it("allows retry from onLoadError by calling startLoading() again", async () => {
+    const { manager, assets } = setup();
+    let failNext = true;
+    assets.registerLoader("maybe", {
+      load: async (p) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("transient");
+        }
+        return `loaded:${p}`;
+      },
+    });
+
+    const target = targetWithPreload([new AssetHandle<string>("maybe", "a")]);
+    const errors: Error[] = [];
+
+    class RetryBoot extends LoadingScene {
+      readonly target = target;
+      override onEnter(): void {
+        this.startLoading();
+      }
+      override onLoadError(err: Error): void {
+        errors.push(err);
+        this.startLoading(); // retry
+      }
+    }
+
+    const boot = new RetryBoot();
+    await manager.push(boot);
+    await vi.waitFor(() => expect(manager.active).toBe(target));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toBe("transient");
+  });
+
   it("invokes onLoadError when loading rejects and stays mounted", async () => {
     const { manager, assets } = setup();
     const FailAsset = new AssetHandle<string>("fail", "bad.dat");
@@ -279,12 +313,19 @@ describe("LoadingScene", () => {
   });
 
   it("continue() is idempotent", async () => {
-    const { manager } = setup();
+    const { manager, bus } = setup();
     const target = new TargetScene();
     const boot = new AutoBoot(target, { autoContinue: false });
 
+    let doneFired = false;
+    bus.on("scene:loading:done", (ev) => {
+      if (ev.scene === boot) doneFired = true;
+    });
+
     await manager.push(boot);
-    await new Promise((r) => setTimeout(r, 20));
+    // Wait for _run to reach the continue gate (loading:done fires right
+    // before the gate is awaited).
+    await vi.waitFor(() => expect(doneFired).toBe(true));
 
     boot.continue();
     boot.continue();
@@ -342,20 +383,24 @@ describe("LoadingScene", () => {
   });
 
   it("does not leak when an autoContinue=false scene is replaced while gated", async () => {
-    const { manager } = setup();
+    const { manager, bus } = setup();
     const target = new TargetScene();
     const boot = new AutoBoot(target, { autoContinue: false });
 
+    let doneFired = false;
+    bus.on("scene:loading:done", (ev) => {
+      if (ev.scene === boot) doneFired = true;
+    });
+
     await manager.push(boot);
-    // Wait for _run to reach the continue gate.
-    await new Promise((r) => setTimeout(r, 20));
+    // Wait until _run is parked at the continue gate.
+    await vi.waitFor(() => expect(doneFired).toBe(true));
 
     class OtherScene extends Scene {
       readonly name = "other";
     }
     // Replacing while gated must not hang — _run should terminate cleanly.
     await manager.replace(new OtherScene());
-    await new Promise((r) => setTimeout(r, 20));
 
     expect(manager.active?.name).toBe("other");
     expect(target.entered).toBe(false);

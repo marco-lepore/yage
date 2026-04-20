@@ -340,6 +340,28 @@ export class UIPanel extends Component {
     return this._node.panel(opts);
   }
 
+  /**
+   * Append an arbitrary `UIElement` (e.g. `UIImage`, `UIProgressBar`,
+   * `UICheckbox`) as the last child. Prefer the `.text()`, `.button()`,
+   * and `.panel()` builders for those element types — they're shorter.
+   */
+  addElement(child: UIElement): void {
+    this._node.addElement(child);
+  }
+
+  /** Remove a previously added element. No-op if the element isn't a child. */
+  removeElement(child: UIElement): void {
+    this._node.removeElement(child);
+  }
+
+  /**
+   * Insert `child` immediately before `before` in this panel's child list.
+   * Falls back to append if `before` isn't a current child.
+   */
+  insertElementBefore(child: UIElement, before: UIElement): void {
+    this._node.insertElementBefore(child, before);
+  }
+
   /** Whether this panel is visible. */
   get visible(): boolean {
     return this._node.visible;

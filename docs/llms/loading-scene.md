@@ -50,7 +50,7 @@ abstract class LoadingScene extends Scene {
 - `minDuration` — wall-clock ms. Prevents flicker on cached loads.
 - `transition` — optional `SceneTransition` for the loading→target `replace`.
 - `autoContinue` — when `true` (default), `continue()` fires automatically after `minDuration`. Set `false` to gate the handoff behind a manual `continue()` call — e.g. "press any key".
-- `onLoadError` — optional. If loading rejects and this is defined, the scene stays mounted and the hook fires. Without it, the error rethrows.
+- `onLoadError` — optional recovery hook. If loading rejects, the scene stays mounted either way. With a hook set, the hook fires — call `this.startLoading()` from it to retry. Without one, the error is logged via the engine logger and the scene sits in a failed state. `startLoading()` is safe to call again after a failure.
 
 ## Events
 
