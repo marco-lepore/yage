@@ -36,10 +36,15 @@ abstract class LoadingScene extends Scene {
   readonly autoContinue: boolean;                  // default true
   readonly progress: number;                       // getter, 0 → 1
 
-  /** Kick off asset loading. Idempotent — subsequent calls are no-ops. */
+  /**
+   * Kick off asset loading. No-op while a load is in flight or after a
+   * successful load. After a load failure the guard is released, so
+   * `startLoading()` may be called again to retry (typically from
+   * `onLoadError`).
+   */
   startLoading(): void;
 
-  /** Trigger the handoff. No-op if already called. */
+  /** Trigger the handoff. No-op if already called. Unchanged by retries. */
   continue(): void;
 
   onLoadError?(error: Error): void | Promise<void>;
@@ -50,7 +55,7 @@ abstract class LoadingScene extends Scene {
 - `minDuration` — wall-clock ms. Prevents flicker on cached loads.
 - `transition` — optional `SceneTransition` for the loading→target `replace`.
 - `autoContinue` — when `true` (default), `continue()` fires automatically after `minDuration`. Set `false` to gate the handoff behind a manual `continue()` call — e.g. "press any key".
-- `onLoadError` — optional. If loading rejects and this is defined, the scene stays mounted and the hook fires. Without it, the error rethrows.
+- `onLoadError` — optional recovery hook. If loading rejects, the scene stays mounted either way. With a hook set, the hook fires — call `this.startLoading()` from it to retry. Without one, the error is logged via the engine logger and the scene sits in a failed state.
 
 ## Events
 

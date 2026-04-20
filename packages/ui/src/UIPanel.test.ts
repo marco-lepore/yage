@@ -435,7 +435,7 @@ describe("UIPanel", () => {
     it("removeElement removes child from both trees", () => {
       const panel = new UIPanel();
       const btn = panel.button("A", { width: 100, height: 30 });
-      panel._node.removeElement(btn);
+      panel.removeElement(btn);
       expect(panel._node.children).not.toContain(btn);
       expect(panel._node.yogaNode.getChildCount()).toBe(0);
     });

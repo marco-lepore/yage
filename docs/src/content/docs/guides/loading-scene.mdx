@@ -188,9 +188,9 @@ in that case the handoff runs as soon as loading completes.
 
 ## Error Handling
 
-Loader rejections rethrow by default, propagating to whoever called
-`push`/`replace` on the loading scene. Override `onLoadError` to handle
-them in-place:
+Loading runs asynchronously after `push`/`replace` resolves, so there's no
+caller to propagate rejections back to — the scene stays mounted in a
+failed state. Override `onLoadError` to recover in place:
 
 ```typescript
 class Boot extends LoadingScene {
@@ -201,10 +201,22 @@ class Boot extends LoadingScene {
   }
 
   onLoadError(err: Error) {
-    // Scene stays mounted — you can draw a retry UI or push an error scene
+    // Scene stays mounted. Draw a retry UI, push an error scene,
+    // or call startLoading() again to retry.
   }
 }
 ```
+
+`startLoading()` is safe to call again from `onLoadError` (or from a retry
+button's click handler) — the internal start guard is released on failure.
+
+Without an `onLoadError` override the error is logged via the engine
+logger and the scene stays on screen. Ship an override for any
+user-visible build.
+
+The hook may still be mid-await when the scene is replaced externally.
+If your `onLoadError` is async, don't assume the scene is live after the
+await — spawn UI eagerly, before any `await`.
 
 ## Asset Caching
 

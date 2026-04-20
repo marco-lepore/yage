@@ -67,7 +67,19 @@ export abstract class LoadingScene extends Scene {
    */
   readonly autoContinue: boolean = true;
 
-  /** Optional hook; fires if asset loading rejects. Default: rethrow. */
+  /**
+   * Optional hook; fires if asset loading rejects. The scene stays mounted
+   * whether or not this is set. When set, the hook is the recovery channel:
+   * draw a retry UI, push an error scene, or call `this.startLoading()`
+   * again to retry the load. When unset, the error is logged via the engine
+   * logger and the scene remains mounted in a failed state with no
+   * automatic recovery.
+   *
+   * The hook may still be running when the scene is replaced externally —
+   * don't assume the scene is live (check `this.context.tryResolve` rather
+   * than `this.service` before touching engine services, and avoid spawning
+   * new entities after an `await`).
+   */
   onLoadError?(error: Error): void | Promise<void>;
 
   private _progress = 0;
@@ -75,6 +87,13 @@ export abstract class LoadingScene extends Scene {
   private _active = true;
   private _continueRequested = false;
   private _continueGate?: () => void;
+  // Bumped on every `_run` attempt. `AssetManager.loadAll` uses `Promise.all`
+  // under the hood, so individual loaders from a failed attempt can still
+  // resolve and fire `onProgress` after the attempt rejects. Without this
+  // guard, a retry kicked off from `onLoadError` would see stale progress
+  // callbacks mutate `_progress` and emit `scene:loading:progress` events
+  // attributed to the current attempt.
+  private _attempt = 0;
 
   /** Current load progress, 0 → 1. Updated as the AssetManager reports progress. */
   get progress(): number {
@@ -82,7 +101,10 @@ export abstract class LoadingScene extends Scene {
   }
 
   /**
-   * Kick off asset loading. Idempotent — subsequent calls are no-ops.
+   * Kick off asset loading. While a load is in flight, subsequent calls
+   * are no-ops. After a load failure the guard is released, so calling
+   * `startLoading()` from `onLoadError` (or from a retry button) kicks off
+   * a fresh load against the same target.
    *
    * Usually called once from `onEnter` after spawning the loading UI:
    * ```ts
@@ -98,10 +120,12 @@ export abstract class LoadingScene extends Scene {
   startLoading(): void {
     if (this._started) return;
     this._started = true;
-    // `_run` is fire-and-forget. Attach a catch so unhandled rejections
-    // (e.g., `scenes.replace` failure, a target factory that throws,
-    // or a load error with no `onLoadError` override) land in the engine
-    // logger instead of the browser's unhandled-rejection channel.
+    // `_run` is fire-and-forget — the scene is already mounted, so there's
+    // no `push`/`replace` caller to propagate errors to. The catch is the
+    // final terminus for anything `_run` rethrows (target factory failure,
+    // `scenes.replace` failure, or a load error with no `onLoadError`
+    // override). Log it so the failure doesn't vanish into the browser's
+    // unhandled-rejection channel.
     this._run().catch((err) => {
       if (!this._active) return;
       const logger = this.context.tryResolve(LoggerKey);
@@ -141,6 +165,7 @@ export abstract class LoadingScene extends Scene {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     if (!this._active) return;
 
+    const attempt = ++this._attempt;
     const target =
       typeof this.target === "function" ? this.target() : this.target;
     const startedAt = performance.now();
@@ -151,22 +176,28 @@ export abstract class LoadingScene extends Scene {
     // scenes.replace errors aren't silently swallowed through it.
     try {
       await this.assets.loadAll(target.preload ?? [], (ratio) => {
-        if (!this._active) return;
+        if (!this._active || attempt !== this._attempt) return;
         this._progress = ratio;
         bus.emit("scene:loading:progress", { scene: this, ratio });
       });
-      if (!this._active) return;
+      if (!this._active || attempt !== this._attempt) return;
 
       const elapsed = performance.now() - startedAt;
       const remaining = this.minDuration - elapsed;
       if (remaining > 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-        if (!this._active) return;
+        if (!this._active || attempt !== this._attempt) return;
       }
     } catch (err) {
       // Scene exited mid-await → thrown error is incidental. Swallow.
-      if (!this._active) return;
+      if (!this._active || attempt !== this._attempt) return;
       const error = err instanceof Error ? err : new Error(String(err));
+      // Release the start guard so the hook (or anyone with a reference)
+      // can call startLoading() again to retry. Bumping `_attempt` here
+      // invalidates any still-in-flight progress callbacks from this
+      // failed attempt before the retry's `onProgress` can fire.
+      this._started = false;
+      this._attempt++;
       if (this.onLoadError) {
         await this.onLoadError(error);
         return;
@@ -180,7 +211,7 @@ export abstract class LoadingScene extends Scene {
       await new Promise<void>((resolve) => {
         this._continueGate = resolve;
       });
-      if (!this._active) return;
+      if (!this._active || attempt !== this._attempt) return;
     }
 
     const scenes = this.context.resolve(SceneManagerKey);

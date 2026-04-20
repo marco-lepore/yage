@@ -151,7 +151,7 @@ const img = new UIImage({
   height: 32,
   tint: 0xffffff,
 });
-panel._node.addElement(img);
+panel.addElement(img);
 ```
 
 ### Progress Bars
@@ -164,7 +164,7 @@ const bar = new UIProgressBar({
   trackBackground: { color: 0x333333 },
   fillBackground: { color: 0x44cc44 },
 });
-panel._node.addElement(bar);
+panel.addElement(bar);
 
 // Update value
 bar.update({ value: 0.5 });
@@ -183,7 +183,7 @@ const cb = new UICheckbox({
     console.log("fullscreen:", checked);
   },
 });
-panel._node.addElement(cb);
+panel.addElement(cb);
 ```
 
 :::note

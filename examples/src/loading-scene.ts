@@ -173,7 +173,8 @@ class PressAnyKeyLogic extends Component {
     if (!this.ready) return;
     if (this.input.isJustPressed("continue")) {
       this.ready = false;
-      (this.scene as LoadingScene).continue();
+      const scene = this.scene;
+      if (scene instanceof LoadingScene) scene.continue();
     }
   }
 

@@ -764,7 +764,8 @@ const inventoryStore = createStore({ selectedTab: 0, scrollY: 0 });
 class InventoryEntity extends Entity {
   setup() {
     this.add(new Transform());
-    this.add(new UIRoot({ element: createElement(InventoryPanel) }));
+    const root = this.add(new UIRoot());
+    root.render(createElement(InventoryPanel));
   }
 
   serialize() {

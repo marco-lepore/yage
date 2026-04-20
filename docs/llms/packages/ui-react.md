@@ -8,7 +8,11 @@ Depends on `@yagejs/ui`, `react`. React reconciler over the UI system.
 import { UIRoot } from "@yagejs/ui-react";
 import { Anchor } from "@yagejs/ui";
 
-const root = new UIRoot({ anchor: Anchor.Center, offset: { x: 0, y: 0 } });
+const root = new UIRoot({
+  anchor: Anchor.Center,
+  offset: { x: 0, y: 0 },
+  layer: "ui",                   // optional; defaults to auto-provisioned "ui" (screen-space). Pass a world-space layer name for diegetic UI.
+});
 entity.add(root);
 root.render(<MyComponent />);
 ```
@@ -21,7 +25,7 @@ import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-re
 <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
   <Text style={{ fontSize: 24, fill: 0xffffff }}>Hello</Text>
   <Button width={150} height={40} bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
-  <ProgressBar width={200} height={16} value={75} fillBackground={{ color: 0x44cc44 }} />
+  <ProgressBar width={200} height={16} value={0.75} fillBackground={{ color: 0x44cc44 }} />
   <Checkbox label="Mute" checked={false} onChange={(v) => {}} />
   <Image texture={iconTex} width={32} height={32} />
 </Panel>
