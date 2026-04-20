@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Loading Scene</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Loading Scene</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <p class="explain">
+        <code>LoadingScene</code> preloads the target's assets, emits <code>scene:loading:progress</code> events, and hands off via a fade transition.
+        The default <code>LoadingSceneProgressBar</code> (from <code>@yagejs/ui</code>) subscribes to the events and renders the bar — no render hooks, no per-frame polling.
+        Set <code>autoContinue: false</code> to gate the handoff on <code>scene.continue()</code> (e.g. "press space to continue").
+      </p>
+      <div class="row">
+        <button id="btn-auto">Auto-continue (cached — minDuration kicks in)</button>
+        <button id="btn-press-any-key">Press space to continue</button>
+        <button id="btn-uncache">Fresh assets (real load)</button>
+      </div>
+    </div>
+    <script type="module" src="/src/loading-scene.ts"></script>
+  </body>
+</html>

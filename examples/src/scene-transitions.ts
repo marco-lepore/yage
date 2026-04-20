@@ -1,8 +1,11 @@
 import {
+  AssetHandle,
   Engine,
+  LoadingScene,
   Scene,
   Transform,
   Vec2,
+  type AssetLoader,
   type SceneTransition,
   type SceneTransitionContext,
 } from "@yagejs/core";
@@ -14,6 +17,7 @@ import {
   fade,
   flash,
 } from "@yagejs/renderer";
+import { LoadingSceneProgressBar, UIPlugin } from "@yagejs/ui";
 import { getContainer, injectStyles } from "./shared.js";
 
 injectStyles(`
@@ -126,7 +130,10 @@ class LevelScene extends LabeledScene {
   readonly name = "level";
   // Demonstrate per-scene defaultTransition — pushing without a call-site
   // option still animates using this transition.
-  override readonly defaultTransition = fade({ duration: 400, color: 0x000000 });
+  override readonly defaultTransition = fade({
+    duration: 400,
+    color: 0x000000,
+  });
 
   constructor() {
     super("LEVEL", 0x14532d); // deep green
@@ -142,6 +149,8 @@ class GameOverScene extends LabeledScene {
 
 // ----- Tiny block-pixel text renderer --------------------------------------
 const GLYPHS: Record<string, string[]> = {
+  A: [" # ", "# #", "###", "# #", "# #"],
+  D: ["## ", "# #", "# #", "# #", "## "],
   M: ["# #", "###", "###", "# #", "# #"],
   E: ["###", "#  ", "## ", "#  ", "###"],
   N: ["# #", "###", "###", "###", "# #"],
@@ -163,8 +172,7 @@ function drawBlockText(
   const rows = 5;
   const glyphWidth = 3 * px;
   const spacing = px;
-  const totalWidth =
-    text.length * glyphWidth + (text.length - 1) * spacing;
+  const totalWidth = text.length * glyphWidth + (text.length - 1) * spacing;
   let x = cx - totalWidth / 2;
   const yTop = cy - (rows * px) / 2;
   for (const ch of text) {
@@ -183,6 +191,61 @@ function drawBlockText(
   }
 }
 
+// ----- Loading demo --------------------------------------------------------
+// A tiny LoadingScene subclass that preloads a few synthetic "slow" assets
+// before replacing itself with a target scene. Shows how LoadingScene
+// composes with the transition system: the mount transition animates the
+// loading screen in, and LoadingScene.transition animates the handoff out.
+
+const slowLoader: AssetLoader<string> = {
+  load: (path: string) =>
+    new Promise((resolve) => {
+      const delay = 150 + Math.random() * 350;
+      setTimeout(() => resolve(`loaded:${path}`), delay);
+    }),
+};
+
+function makeFakePreload(): AssetHandle<string>[] {
+  const salt = Math.random().toString(36).slice(2, 6);
+  return [
+    new AssetHandle<string>("slow", `player-${salt}`),
+    new AssetHandle<string>("slow", `world-${salt}`),
+    new AssetHandle<string>("slow", `sfx-${salt}`),
+    new AssetHandle<string>("slow", `music-${salt}`),
+  ];
+}
+
+// A dedicated LabeledScene variant that declares the synthetic preload so
+// LoadingScene has something to chew on during the demo.
+class LoadedLevel extends LabeledScene {
+  readonly name = "loaded";
+  override readonly preload = makeFakePreload();
+  constructor() {
+    super("LOADED", 0x581c87); // purple
+  }
+}
+
+class LoadThenShow extends LoadingScene {
+  override readonly name = "loading";
+  readonly target = () => new LoadedLevel();
+  override readonly minDuration = 400;
+  override readonly transition: SceneTransition;
+
+  constructor(handoffMs: number) {
+    super();
+    this.transition = fade({ duration: handoffMs });
+  }
+
+  override onEnter(): void {
+    this.spawn(LoadingSceneProgressBar, {
+      backdrop: { color: 0x0b0f14, alpha: 1 },
+      fill: { color: 0x38bdf8, alpha: 1 },
+      track: { color: 0x1e293b, alpha: 1 },
+    });
+    this.startLoading();
+  }
+}
+
 // ----- Boot ----------------------------------------------------------------
 const engine = new Engine();
 engine.use(
@@ -193,7 +256,9 @@ engine.use(
     container: getContainer(),
   }),
 );
+engine.use(new UIPlugin());
 await engine.start();
+engine.assets.registerLoader("slow", slowLoader);
 await engine.scenes.push(new MenuScene());
 
 // ----- UI wiring -----------------------------------------------------------
@@ -260,6 +325,16 @@ bind("btn-replace", () => {
   });
 });
 
+bind("btn-push-load", () => {
+  // Replace the top scene with a loading screen that fades in via the
+  // current duration, preloads synthetic "slow" assets, then fades to a
+  // dedicated LoadedLevel. Demonstrates LoadingScene composing cleanly
+  // with transitions on both ends — mount and handoff.
+  void engine.scenes.replace(new LoadThenShow(currentDuration()), {
+    transition: fade({ duration: currentDuration() }),
+  });
+});
+
 bind("btn-clear", () => {
   void engine.scenes.popAll();
   void engine.scenes.push(new MenuScene());
@@ -270,8 +345,7 @@ function renderStatus(): void {
   const names = engine.scenes.all.map((s) => s.name).join(" → ") || "(empty)";
   const transitioning = engine.scenes.isTransitioning ? "yes" : "no";
   statusEl.textContent =
-    `Stack:         ${names}\n` +
-    `Transitioning: ${transitioning}`;
+    `Stack:         ${names}\n` + `Transitioning: ${transitioning}`;
 }
 
 setInterval(renderStatus, 50);

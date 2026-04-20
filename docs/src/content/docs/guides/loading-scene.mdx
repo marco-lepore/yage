@@ -1,0 +1,239 @@
+---
+title: "Loading Scene"
+description: "Orchestrate preload, progress UI, and handoff to the real game scene"
+---
+
+`LoadingScene` is a small base class in `@yagejs/core` that handles the
+boring parts of a loading screen — preloading assets, reporting progress,
+enforcing a minimum visible duration, and handing off to the real scene.
+It does **not** render anything itself. Rendering is done by entities and
+components, same as everywhere else in YAGE.
+
+This gives you two layers:
+
+- **Orchestration** (`LoadingScene`, in core) — the logic that sequences
+  the load and emits progress events on the bus.
+- **Visuals** (`LoadingSceneProgressBar`, in `@yagejs/ui`, or your own
+  components) — subscribe to the events and draw whatever you like.
+
+## Quick Start
+
+```typescript
+import { LoadingScene } from "@yagejs/core";
+import { fade } from "@yagejs/renderer";
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly minDuration = 500;
+  readonly transition = fade({ duration: 300 });
+
+  override onEnter() {
+    this.spawn(LoadingSceneProgressBar);
+    this.startLoading();
+  }
+}
+
+await engine.scenes.replace(new Boot());
+```
+
+Loading doesn't start automatically — call `this.startLoading()` when
+you want it to begin. Usually that's the last line of `onEnter`, after
+you've spawned the progress UI. Deferring the call gates the start of
+loading behind a title screen, intro animation, or "press any key to
+start" — all without a separate flag.
+
+## Target: instance or factory
+
+`target` accepts an eagerly-constructed `Scene` instance or a factory
+function. Use the factory form when target construction has side effects
+you'd rather defer until loading actually finishes:
+
+```typescript
+class Boot extends LoadingScene {
+  readonly target = () => new GameScene({ level: 1 });
+  override onEnter() {
+    this.spawn(LoadingSceneProgressBar);
+    this.startLoading();
+  }
+}
+```
+
+The factory is invoked exactly once.
+
+## `minDuration` — the anti-flicker
+
+If the target's preload resolves instantly (cached assets, empty
+`preload`), the loading scene flashes on screen for one frame and the
+player feels the pop. Set `minDuration` to the shortest time you're
+willing to show the bar:
+
+```typescript
+readonly minDuration = 500; // stays visible at least 500ms
+```
+
+Wall-clock ms. Ignores `timeScale`.
+
+## Transitions
+
+Attach a `SceneTransition` to animate the handoff:
+
+```typescript
+import { crossFade } from "@yagejs/renderer";
+
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly transition = crossFade({ duration: 400 });
+  override onEnter() {
+    this.spawn(LoadingSceneProgressBar);
+    this.startLoading();
+  }
+}
+```
+
+See the [Scene Transitions](/guides/scene-transitions/) guide for
+built-ins and custom transitions.
+
+## Events
+
+`LoadingScene` emits on the engine event bus:
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `scene:loading:progress` | `{ scene, ratio }` | Every `AssetManager` progress update, 0 → 1 |
+| `scene:loading:done` | `{ scene }` | After preload finishes AND `minDuration` elapses, right before handoff |
+
+Use `ev.scene === this.scene` to filter if two loading scenes could
+coexist.
+
+The scene also exposes `progress` as a readonly getter for one-off
+reads (analytics, debug overlays).
+
+## Custom Visuals
+
+A custom spinner, animated text, or anything else is a normal component
+that subscribes to the loading events:
+
+```typescript
+import { Component, EventBusKey } from "@yagejs/core";
+
+class Spinner extends Component {
+  private unsub?: () => void;
+  private ratio = 0;
+
+  override onAdd() {
+    const bus = this.scene.context.resolve(EventBusKey);
+    this.unsub = bus.on("scene:loading:progress", (ev) => {
+      if (ev.scene !== this.scene) return;
+      this.ratio = ev.ratio;
+    });
+  }
+
+  override onDestroy() { this.unsub?.(); }
+
+  update(dt: number) {
+    // rotate a sprite by (dt * speed) — use this.ratio for fill effects
+  }
+}
+```
+
+Same idiom YAGE uses everywhere: per-entity logic lives in a Component.
+
+## "Press any key to continue"
+
+Sometimes the loading scene should not hand off automatically — you want
+a splash that sits until the player presses a key. Set `autoContinue =
+false` and call `continue()` when ready:
+
+```typescript
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  readonly autoContinue = false;
+
+  override onEnter() {
+    this.spawn(LoadingSceneProgressBar);
+    this.spawn(PressAnyKeyPrompt);
+    this.startLoading();
+  }
+}
+
+class PressAnyKeyPrompt extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private ready = false;
+  private unsub?: () => void;
+
+  override onAdd() {
+    const bus = this.scene.context.resolve(EventBusKey);
+    this.unsub = bus.on("scene:loading:done", (ev) => {
+      if (ev.scene !== this.scene) return;
+      this.ready = true;
+      // optionally spawn a "Press space" UI label
+    });
+  }
+
+  override onDestroy() { this.unsub?.(); }
+
+  update() {
+    if (!this.ready) return;
+    if (this.input.isJustPressed("continue")) {
+      (this.scene as LoadingScene).continue();
+    }
+  }
+}
+```
+
+`continue()` is idempotent and can be called before loading finishes —
+in that case the handoff runs as soon as loading completes.
+
+## Error Handling
+
+Loader rejections rethrow by default, propagating to whoever called
+`push`/`replace` on the loading scene. Override `onLoadError` to handle
+them in-place:
+
+```typescript
+class Boot extends LoadingScene {
+  readonly target = new GameScene();
+  override onEnter() {
+    this.spawn(LoadingSceneProgressBar);
+    this.startLoading();
+  }
+
+  onLoadError(err: Error) {
+    // Scene stays mounted — you can draw a retry UI or push an error scene
+  }
+}
+```
+
+## Asset Caching
+
+The `AssetManager` caches handles by key. Consequences:
+
+- Revisiting the loading scene is free — all assets are cache hits.
+- `minDuration` earns its keep — without it, a cached reload shows the
+  bar for a single frame.
+- Custom loaders that return cheap values (small JSON, generated textures)
+  also benefit, since the cache key is the handle path.
+
+## `LoadingSceneProgressBar` options (`@yagejs/ui`)
+
+```typescript
+this.spawn(LoadingSceneProgressBar, {
+  width: 400,                                 // virtual px, default 400
+  height: 16,                                 // virtual px, default 16
+  track: { color: 0x1e293b, alpha: 1 },       // bar background
+  fill:  { color: 0x38bdf8, alpha: 1 },       // bar progress
+  backdrop: { color: 0x0b0f14, alpha: 1 },    // full-viewport bg (default: none)
+  anchor: Anchor.Center,                      // screen position of the bar
+  offset: { x: 0, y: 40 },                    // offset from anchor
+  layer: "ui",                                // UI layer name
+});
+```
+
+All options are optional. The widget throws if spawned outside a
+`LoadingScene`.
+
+Pass `backdrop` whenever the loading scene is transitioned into — without
+it, the scene is transparent and the previous scene shows through the
+fade. A solid color (usually matching your game's dominant palette) is
+the right default.

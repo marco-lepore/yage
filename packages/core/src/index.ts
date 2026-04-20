@@ -87,6 +87,8 @@ export type { GameLoopCallbacks, GameLoopConfig } from "./GameLoop.js";
 
 export { Scene } from "./Scene.js";
 
+export { LoadingScene } from "./LoadingScene.js";
+
 export { SceneManager } from "./SceneManager.js";
 
 export type {

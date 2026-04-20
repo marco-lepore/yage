@@ -96,6 +96,7 @@ export default defineConfig({
             { label: "UI", slug: "guides/ui" },
             { label: "UI (React)", slug: "guides/ui-react" },
             { label: "Save & Load", slug: "guides/save-and-load" },
+            { label: "Loading Scene", slug: "guides/loading-scene" },
             { label: "Debug Tools", slug: "guides/debug" },
           ],
         },

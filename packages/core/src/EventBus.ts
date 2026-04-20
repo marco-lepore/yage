@@ -28,6 +28,8 @@ export interface EngineEvents {
     fromScene: SceneRef | undefined;
     toScene: SceneRef | undefined;
   };
+  "scene:loading:progress": { scene: SceneRef; ratio: number };
+  "scene:loading:done": { scene: SceneRef };
   "engine:started": undefined;
   "engine:stopped": undefined;
 }
