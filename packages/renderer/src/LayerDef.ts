@@ -1,3 +1,6 @@
+/** Coordinate space a layer lives in. See `LayerDef.space`. */
+export type LayerSpace = "world" | "screen";
+
 /**
  * Declarative layer definition attached to a Scene subclass via
  * `readonly layers = [...]`. The renderer augments `Scene` in core (via
@@ -36,7 +39,7 @@ export interface LayerDef {
    *   Use for HUD, menus, dialogs, and other screen-anchored UI. Cameras
    *   can still opt in explicitly by naming the layer in their `bindings`.
    */
-  space?: "world" | "screen";
+  space?: LayerSpace;
   /** Whether children should self-sort by their `zIndex`. Default: false. */
   sortableChildren?: boolean;
 }

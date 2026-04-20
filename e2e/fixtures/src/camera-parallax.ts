@@ -1,5 +1,5 @@
 /**
- * E2E fixture for camera parallax + UI auto-bindable opt-out. Driven by
+ * E2E fixture for camera parallax + screen-space UI layer. Driven by
  * `e2e/specs/camera-parallax.spec.ts`. Uses `manualClock: true` so the
  * spec can deterministically step frames.
  *

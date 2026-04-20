@@ -22,6 +22,13 @@ import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 export interface UIRootOptions {
   anchor?: Anchor;
   offset?: { x: number; y: number };
+  /**
+   * Target layer name. Defaults to the auto-provisioned screen-space
+   * `"ui"` layer. Pass the name of a layer declared on `Scene.layers`
+   * (e.g. a `space: "world"` layer) to host diegetic React UI that
+   * follows the camera.
+   */
+  layer?: string;
 }
 
 /**
@@ -38,6 +45,7 @@ export class UIRoot extends Component {
   private readonly _container: Container;
   private readonly _anchor: Anchor | undefined;
   private readonly _offset: { x: number; y: number };
+  private readonly _layer: string | undefined;
   private _onCommit: (() => void) | null = null;
 
   constructor(opts?: UIRootOptions) {
@@ -45,14 +53,24 @@ export class UIRoot extends Component {
     this._container = new Container();
     this._anchor = opts?.anchor;
     this._offset = opts?.offset ?? { x: 0, y: 0 };
+    this._layer = opts?.layer;
   }
 
   onAdd(): void {
     const tree = this.use(SceneRenderTreeKey);
-    const layer = tree.ensureLayer(
-      { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
-      { space: "screen" },
-    );
+    const layerName = this._layer ?? UI_DEFAULT_LAYER;
+    let layer = tree.tryGet(layerName);
+    if (!layer) {
+      if (this._layer && this._layer !== UI_DEFAULT_LAYER) {
+        throw new Error(
+          `UIRoot: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
+        );
+      }
+      layer = tree.ensureLayer(
+        { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
+        { space: "screen" },
+      );
+    }
     layer.container.eventMode = "static";
     layer.container.addChild(this._container);
 

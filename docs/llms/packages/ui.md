@@ -65,6 +65,27 @@ const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value
 row.addElement(bar);
 ```
 
+## LoadingSceneProgressBar
+
+Drop-in progress bar for a `LoadingScene` (in `@yagejs/core`). Subscribes to `scene:loading:progress` internally and updates a `UIProgressBar`. Spawn inside a `LoadingScene` (throws otherwise). Full contract: `loading-scene.md`.
+
+```ts
+import { LoadingSceneProgressBar } from "@yagejs/ui";
+
+this.spawn(LoadingSceneProgressBar, {
+  width: 400,                               // default 400
+  height: 16,                               // default 16
+  track: { color: 0x1e293b },               // bar background
+  fill: { color: 0x38bdf8 },                // bar fill
+  backdrop: { color: 0x0b0f14 },            // full-viewport bg (default: none)
+  anchor: Anchor.Center,
+  offset: { x: 0, y: 40 },
+  layer: "ui",
+});
+```
+
+Pass `backdrop` when the loading scene is transitioned into — without it the scene is transparent and the previous scene bleeds through the fade.
+
 ## Visibility
 
 ```ts

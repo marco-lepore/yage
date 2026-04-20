@@ -1,9 +1,6 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
-import type { LayerDef } from "./LayerDef.js";
-
-/** Coordinate space a layer lives in. See `LayerDef.space`. */
-export type LayerSpace = "world" | "screen";
+import type { LayerDef, LayerSpace } from "./LayerDef.js";
 
 /** Options for creating a layer. */
 export interface CreateLayerOptions {
@@ -92,7 +89,9 @@ export class RenderLayerManager {
    */
   createFromDef(def: LayerDef, opts?: CreateLayerOptions): RenderLayer {
     const merged: CreateLayerOptions = { ...opts };
-    if (def.sortableChildren) merged.sortableChildren = def.sortableChildren;
+    if (def.sortableChildren !== undefined) {
+      merged.sortableChildren = def.sortableChildren;
+    }
     if (def.space !== undefined) merged.space = def.space;
     return this.create(def.name, def.order, merged);
   }

@@ -356,6 +356,10 @@ describe("UIPanel", () => {
         layer as unknown as { container: { children: unknown[] } }
       ).container;
       expect(container.children.length).toBe(1);
+      // TODO: anchor resolution on world-space layers still centers on
+      // the viewport — revisit when the planned positioning mode
+      // (e.g. `positioning: "anchor" | "transform"`) lands, so diegetic
+      // panels can anchor to their owning entity's Transform instead.
     });
   });
 
