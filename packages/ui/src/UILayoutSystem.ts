@@ -1,4 +1,4 @@
-import { System, Phase, QueryCacheKey } from "@yagejs/core";
+import { System, Phase, QueryCacheKey, Transform } from "@yagejs/core";
 import type { EngineContext, QueryResult } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { Direction } from "yoga-layout";
@@ -43,13 +43,38 @@ export class UILayoutSystem extends System {
       // 2. Apply computed positions to Pixi display objects
       node.applyLayout();
 
-      // 3. Read computed size for anchor resolution
+      // 3. Read computed size
       const pw = node.yogaNode.getComputedWidth();
       const ph = node.yogaNode.getComputedHeight();
 
-      // 4. Resolve anchor position
+      // 4. Position the root container. Two modes:
+      //    - "anchor" (default) resolves `anchor` against the viewport.
+      //    - "transform" reads `entity.get(Transform).worldPosition` in
+      //      the layer's local coord space and uses `anchor` as a pivot
+      //      on the panel itself.
+      //    The layer's `space` is independent: a `"transform"`-positioned
+      //    panel on a world-space layer pins to world coords (diegetic UI
+      //    that scales with the camera); on a screen-space layer it pins
+      //    to screen coords (pair with a `ScreenFollow` component that
+      //    writes projected coords each frame for constant-size
+      //    billboards).
       const anchor = panel._anchor;
-      if (anchor !== undefined) {
+
+      if (panel._positioning === "transform") {
+        const source = entity.get(Transform).worldPosition;
+        if (anchor !== undefined) {
+          const pivot = pivotOffsetFromAnchor(anchor, pw, ph);
+          panel.container.position.set(
+            source.x + pivot.x + panel._offset.x,
+            source.y + pivot.y + panel._offset.y,
+          );
+        } else {
+          panel.container.position.set(
+            source.x + panel._offset.x,
+            source.y + panel._offset.y,
+          );
+        }
+      } else if (anchor !== undefined) {
         const pos = resolveAnchor(
           anchor,
           this.virtualWidth,
@@ -68,7 +93,11 @@ export class UILayoutSystem extends System {
   }
 }
 
-/** Compute the top-left position for a panel of given size at the specified anchor. */
+/**
+ * Screen-space anchor resolution: compute the top-left position for a panel
+ * of size (`pw`, `ph`) within a viewport of size (`vw`, `vh`) such that the
+ * named corner of the panel aligns with the named corner of the viewport.
+ */
 export function resolveAnchor(
   anchor: Anchor,
   vw: number,
@@ -114,6 +143,62 @@ export function resolveAnchor(
     case Anchor.BottomCenter:
     case Anchor.BottomRight:
       y = vh - ph;
+      break;
+  }
+
+  return { x, y };
+}
+
+/**
+ * World-space pivot offset: compute the offset to add to a Transform
+ * position so that the named corner of the panel sits at the Transform.
+ *
+ * `Anchor.Center` returns `(-pw/2, -ph/2)` (panel center at Transform).
+ * `Anchor.BottomCenter` returns `(-pw/2, -ph)` (panel's bottom-center at
+ * Transform — the natural "hovers above this entity" primitive for
+ * health bars / nameplates).
+ */
+export function pivotOffsetFromAnchor(
+  anchor: Anchor,
+  pw: number,
+  ph: number,
+): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+
+  switch (anchor) {
+    case Anchor.TopLeft:
+    case Anchor.CenterLeft:
+    case Anchor.BottomLeft:
+      x = 0;
+      break;
+    case Anchor.TopCenter:
+    case Anchor.Center:
+    case Anchor.BottomCenter:
+      x = -pw / 2;
+      break;
+    case Anchor.TopRight:
+    case Anchor.CenterRight:
+    case Anchor.BottomRight:
+      x = -pw;
+      break;
+  }
+
+  switch (anchor) {
+    case Anchor.TopLeft:
+    case Anchor.TopCenter:
+    case Anchor.TopRight:
+      y = 0;
+      break;
+    case Anchor.CenterLeft:
+    case Anchor.Center:
+    case Anchor.CenterRight:
+      y = -ph / 2;
+      break;
+    case Anchor.BottomLeft:
+    case Anchor.BottomCenter:
+    case Anchor.BottomRight:
+      y = -ph;
       break;
   }
 

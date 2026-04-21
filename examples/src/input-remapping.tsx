@@ -19,6 +19,7 @@ import {
 import type { RebindResult } from "@yagejs/input";
 import { UIPlugin } from "@yagejs/ui";
 import {
+  UIReactPlugin,
   UIRoot,
   Panel,
   Text,
@@ -512,6 +513,7 @@ async function main() {
   );
 
   engine.use(new UIPlugin());
+  engine.use(new UIReactPlugin());
 
   await engine.start();
   await engine.scenes.push(new InputRemappingScene());

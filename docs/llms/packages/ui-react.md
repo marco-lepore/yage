@@ -2,6 +2,18 @@
 
 Depends on `@yagejs/ui`, `react`. React reconciler over the UI system.
 
+## Setup
+
+```ts
+import { UIPlugin } from "@yagejs/ui";
+import { UIReactPlugin } from "@yagejs/ui-react";
+
+engine.use(new UIPlugin());
+engine.use(new UIReactPlugin());
+```
+
+`UIReactPlugin` registers `UIRootLayoutSystem` in `LateUpdate` so `UIRoot` layouts run after Update-phase Transform writers (e.g. `ScreenFollow`). Required alongside `UIPlugin`.
+
 ## UIRoot
 
 ```ts
@@ -11,11 +23,18 @@ import { Anchor } from "@yagejs/ui";
 const root = new UIRoot({
   anchor: Anchor.Center,
   offset: { x: 0, y: 0 },
-  layer: "ui",                   // optional; defaults to auto-provisioned "ui" (screen-space). Pass a world-space layer name for diegetic UI.
+  layer: "ui",                   // optional; defaults to auto-provisioned "ui" (screen-space)
+  positioning: "anchor",          // "anchor" (default) | "transform"
 });
 entity.add(root);
 root.render(<MyComponent />);
 ```
+
+Positioning modes (mirror `@yagejs/ui`'s `UIPanel`):
+- `positioning: "anchor"` (default) — `anchor` resolves against the viewport.
+- `positioning: "transform"` — tree is pinned to `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is the pivot on the rendered tree. Throws at add time if the entity has no `Transform`.
+
+For entity-anchored React UI (nameplates, health bars), pair `positioning: "transform"` with a `ScreenFollow` component (`@yagejs/renderer`) that writes `cam.worldToScreen(target) + offset` to this entity's Transform each frame (offset is in screen pixels, applied post-projection). The UI lives on a screen-space layer, stays axis-aligned and constant-size under any camera zoom/rotation.
 
 ## JSX Components
 

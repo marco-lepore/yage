@@ -69,6 +69,8 @@ export { CameraFollow } from "./CameraFollow.js";
 export { CameraShake } from "./CameraShake.js";
 export { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 export { CameraZoom } from "./CameraZoom.js";
+export { ScreenFollow } from "./ScreenFollow.js";
+export type { ScreenFollowOptions, ScreenFollowTarget } from "./ScreenFollow.js";
 
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";

@@ -31,12 +31,27 @@ export interface CameraShakeOptions {
   decay?: number;
 }
 
-/** Binding that associates a camera with a named render layer. */
+/**
+ * Binding that associates a camera with a named render layer.
+ *
+ * Each ratio is a linear blend from identity (`0`) to full camera effect
+ * (`1`), applied independently per axis. Defaults are all `1`, giving the
+ * classic "this layer follows the camera" behavior.
+ *
+ * Common recipes:
+ * - Parallax: `translateRatio: 0.5` (half the camera's translation).
+ * - Billboard (upright, constant size, follows position): `rotateRatio: 0`, `scaleRatio: 0`.
+ * - Partial-depth billboard (dampened zoom, still upright): `rotateRatio: 0, scaleRatio: 0.3`.
+ */
 export interface CameraBinding {
   /** Layer name to transform. */
   layer: string;
-  /** Position scaling factor. 0 = no translation, 1 = full. Default: 1. */
+  /** Translation follow factor. `0` = stay at world origin, `1` = full. Default: `1`. */
   translateRatio?: number;
+  /** Rotation follow factor. `0` = stay upright, `1` = full camera rotation. Default: `1`. */
+  rotateRatio?: number;
+  /** Zoom follow factor. `0` = constant size, `1` = full camera zoom. Default: `1`. */
+  scaleRatio?: number;
 }
 
 export interface CameraComponentOptions {

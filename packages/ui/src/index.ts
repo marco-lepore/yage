@@ -12,6 +12,7 @@ export type {
   ColorBackground,
   TextureBackground,
   UIPanelOptions,
+  UIPositioning,
   UIElement,
   UIContainerElement,
   LayoutProps,
@@ -74,4 +75,8 @@ export {
 } from "./pixi-ui/index.js";
 
 // System & utilities
-export { UILayoutSystem, resolveAnchor } from "./UILayoutSystem.js";
+export {
+  UILayoutSystem,
+  resolveAnchor,
+  pivotOffsetFromAnchor,
+} from "./UILayoutSystem.js";

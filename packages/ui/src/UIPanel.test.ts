@@ -339,12 +339,11 @@ describe("UIPanel", () => {
       expect(tree.get("ui").container.eventMode).toBe("static");
     });
 
-    it("renders into a pre-declared world-space layer (diegetic UI)", () => {
+    it("renders into a pre-declared world-space layer", () => {
       const { scene } = createUITestContext();
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       // Declared on Scene.layers with no `space` override — defaults to
-      // "world", meaning cameras transform the layer. Legitimate for
-      // entity-anchored prompts, health bars, damage numbers, etc.
+      // "world", meaning cameras transform the layer.
       tree.ensureLayer({ name: "world-ui", order: 500 });
       const entity = spawnEntityInScene(scene);
 
@@ -356,10 +355,15 @@ describe("UIPanel", () => {
         layer as unknown as { container: { children: unknown[] } }
       ).container;
       expect(container.children.length).toBe(1);
-      // TODO: anchor resolution on world-space layers still centers on
-      // the viewport — revisit when the planned positioning mode
-      // (e.g. `positioning: "anchor" | "transform"`) lands, so diegetic
-      // panels can anchor to their owning entity's Transform instead.
+    });
+
+    it("throws when positioning: 'transform' and the entity has no Transform", () => {
+      const { scene } = createUITestContext();
+      const entity = spawnEntityInScene(scene);
+
+      expect(() =>
+        entity.add(new UIPanel({ positioning: "transform" })),
+      ).toThrow(/requires a Transform/);
     });
   });
 

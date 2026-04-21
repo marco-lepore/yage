@@ -15,12 +15,14 @@ Install both `@yagejs/ui` and `@yagejs/ui-react`, plus React:
 npm install @yagejs/ui @yagejs/ui-react react
 ```
 
-The `UIPlugin` must be registered before using React UI:
+Both `UIPlugin` and `UIReactPlugin` must be registered before using React UI. `UIReactPlugin` registers the `LateUpdate`-phase layout pass that positions `UIRoot` trees after any Update-phase Transform writers (e.g. `ScreenFollow`):
 
 ```typescript
 import { UIPlugin } from "@yagejs/ui";
+import { UIReactPlugin } from "@yagejs/ui-react";
 
 engine.use(new UIPlugin());
+engine.use(new UIReactPlugin());
 ```
 
 ## UIRoot
@@ -40,17 +42,59 @@ root.render(<MyMenu />);
 ```
 
 By default the React tree renders into the auto-provisioned screen-space
-`"ui"` layer, positioned by the `anchor` and optional `offset`. Pass
-`layer: "<name>"` to mount on any layer you've declared on
-`Scene.layers` — a `space: "world"` layer is the canonical way to host
-diegetic UI that follows the camera:
+`"ui"` layer, positioned by `anchor` and optional `offset` against the
+viewport. Pass `layer: "<name>"` to mount on any layer declared on
+`Scene.layers`.
 
-```typescript
-const root = new UIRoot({
-  layer: "overlay",              // must be declared on Scene.layers
-  anchor: Anchor.TopCenter,
-});
+### Entity-anchored React UI
+
+For UI that tracks a specific game entity (nameplates, health bars,
+damage numbers), set `positioning: "transform"` on the `UIRoot` and pair
+with [`ScreenFollow`](/guides/rendering/#screenfollow-entity-anchored-ui)
+from `@yagejs/renderer`. `ScreenFollow` writes
+`camera.worldToScreen(target) + offset` to this entity's Transform each
+frame (the offset is in screen pixels, applied after projection), and
+the `UIRoot` reads that Transform instead of the viewport — so the UI
+tracks the target while staying axis-aligned and constant-size under
+any camera zoom or rotation.
+
+```tsx
+import { ScreenFollow } from "@yagejs/renderer";
+import { UIRoot, Panel, Text } from "@yagejs/ui-react";
+import { Anchor } from "@yagejs/ui";
+
+class EnemyNameplate extends Entity {
+  setup(params: {
+    target: Entity; camera: CameraEntity; label: string;
+  }) {
+    this.add(new Transform());
+    this.add(new ScreenFollow({
+      target: params.target,
+      camera: params.camera,
+      offset: new Vec2(0, -40),     // 40 screen px above the target
+    }));
+    const root = this.add(new UIRoot({
+      positioning: "transform",     // read Transform.worldPosition
+      anchor: Anchor.BottomCenter,  // pivot on the rendered tree
+    }));
+    root.render(<NameplateView label={params.label} />);
+  }
+}
+
+function NameplateView({ label }: { label: string }) {
+  return (
+    <Panel padding={4} bg={{ color: 0x000000, alpha: 0.6, radius: 4 }}>
+      <Text style={{ fontSize: 11, fill: 0xffffff }}>{label}</Text>
+    </Panel>
+  );
+}
 ```
+
+`UIRoot` with `positioning: "transform"` requires a `Transform` on the
+entity and throws at add time otherwise. See the
+[imperative UI guide](/guides/ui/#layer-space-and-positioning) for the
+full positioning model (the two modes, the world-space-layer variant
+for genuinely diegetic UI, and when to pick which).
 
 ## JSX Components
 
