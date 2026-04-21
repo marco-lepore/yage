@@ -74,9 +74,11 @@ export class DisplaySystem extends System {
    * highest-priority camera fully overwrites translation, scale, and rotation
    * rather than blending with earlier cameras.
    *
-   * `binding.translateRatio` only affects the translation vector used for
-   * parallax. Scale (`cam.zoom`) and rotation (`-cam.rotation`) are always
-   * applied at full strength for any bound layer.
+   * Each binding's three ratios (`translateRatio`, `rotateRatio`, `scaleRatio`)
+   * independently blend from identity (`0`) to full camera effect (`1`). All
+   * default to `1`, matching the classic "this layer follows the camera"
+   * behavior. Parallax is `translateRatio < 1`; a billboard layer is
+   * `rotateRatio: 0, scaleRatio: 0`.
    */
   private applyCameraTransforms(): void {
     // Reset every live scene's layers to identity. This must cover scenes
@@ -115,13 +117,24 @@ export class DisplaySystem extends System {
           const layer = tree.tryGet(binding.layer);
           if (!layer) continue;
 
+          const translateRatio = binding.translateRatio ?? 1;
+          const rotateRatio = binding.rotateRatio ?? 1;
+          const scaleRatio = binding.scaleRatio ?? 1;
+
+          // Blend each axis from identity toward full camera effect. When
+          // all three ratios are 1 (the default), this reduces to the
+          // classic camera transform exactly.
+          const effScale = 1 + (cam.zoom - 1) * scaleRatio;
+          const effRot = cam.rotation * rotateRatio;
+          const translated = pos
+            .scale(effScale * translateRatio)
+            .rotate(-effRot);
+
           const c = layer.container;
-          const ratio = binding.translateRatio ?? 1;
-          const rotatedPos = pos.scale(cam.zoom * ratio).rotate(-cam.rotation);
-          c.position.x = cam.viewportWidth / 2 - rotatedPos.x;
-          c.position.y = cam.viewportHeight / 2 - rotatedPos.y;
-          c.scale.set(cam.zoom);
-          c.rotation = -cam.rotation;
+          c.position.x = cam.viewportWidth / 2 - translated.x;
+          c.position.y = cam.viewportHeight / 2 - translated.y;
+          c.scale.set(effScale);
+          c.rotation = -effRot;
         }
       }
     }

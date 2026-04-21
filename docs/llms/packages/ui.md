@@ -1,6 +1,6 @@
 # @yagejs/ui
 
-Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based screen-space UI.
+Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based UI. Supports both screen-space (HUD) and world-space (diegetic / entity-anchored) positioning based on the target layer's `space`.
 
 ## Setup
 
@@ -11,23 +11,39 @@ engine.use(new UIPlugin());
 
 ## UIPanel
 
-Root UI component. Add to entity with Transform.
+Root UI component. Positioning is chosen explicitly via the `positioning` option (default `"anchor"`):
+
+- `positioning: "anchor"` — `anchor` resolves against the viewport (`virtualSize`), `offset` is a pixel nudge. Classic HUD. No Transform required.
+- `positioning: "transform"` — panel is positioned at `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is reinterpreted as the pivot on the panel itself (e.g. `Anchor.BottomCenter` → panel's bottom-center sits at the Transform). `offset` is still a pixel nudge. Throws at add time if the entity has no `Transform`.
+
+The positioning mode is independent of the target layer's `space`:
+- **Screen-space layer + `positioning: "transform"`** = billboard pattern. Pair with `ScreenFollow` from `@yagejs/renderer` which writes `cam.worldToScreen(target + offset)` to this entity's Transform each frame. UI stays axis-aligned and constant-size under any camera zoom/rotation.
+- **World-space layer + `positioning: "transform"`** = genuinely diegetic UI. Transform holds a world coord; layer scales/rotates the UI like any other world object.
 
 ```ts
 import { UIPanel, Anchor } from "@yagejs/ui";
 
+// Screen-space HUD (default)
 entity.add(new UIPanel({
-  anchor: Anchor.TopLeft,     // screen-space position
+  anchor: Anchor.TopLeft,
   offset: { x: 16, y: 16 },
-  direction: "column",        // "row" | "column" (default "column")
+  direction: "column",
   gap: 8,
-  padding: 16,                // number or { top, right, bottom, left }
-  alignItems: "center",       // flex-start | center | flex-end | stretch | baseline
+  padding: 16,
+  alignItems: "center",
   justifyContent: "center",
-  overflow: "visible",        // visible | hidden
+  overflow: "visible",
   background: { color: 0x000000, alpha: 0.7, radius: 8 },
   layer: "ui",
   visible: true,
+}));
+
+// Billboard nameplate (paired with ScreenFollow elsewhere)
+entity.add(new Transform());
+entity.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
+entity.add(new UIPanel({
+  positioning: "transform",
+  anchor: Anchor.BottomCenter, // pivot on the panel
 }));
 ```
 

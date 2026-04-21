@@ -200,6 +200,94 @@ Constrain the camera to a region so it never shows areas outside the level:
 camera.bounds = { minX: 0, minY: 0, maxX: 4000, maxY: 2000 };
 ```
 
+### Camera bindings
+
+A `CameraEntity` spawned without `bindings` auto-binds every
+`space: "world"` layer at full strength. For finer control — parallax,
+minimaps, decoupled HUDs — pass an explicit `bindings` array. Each
+binding has three independent ratios:
+
+```typescript
+interface CameraBinding {
+  layer: string;
+  translateRatio?: number; // default 1 — follows the camera position
+  rotateRatio?: number;    // default 1 — rotates with the camera
+  scaleRatio?: number;     // default 1 — zooms with the camera
+}
+```
+
+Each ratio is a linear blend from identity (`0`, ignores that axis of the
+camera) to full effect (`1`, fully follows that axis).
+
+```typescript
+this.spawn(CameraEntity, {
+  bindings: [
+    { layer: "sky", translateRatio: 0.1 },  // slow parallax
+    { layer: "mid", translateRatio: 0.6 },  // medium parallax
+    { layer: "world" },                     // full transform (default)
+    { layer: "minimap",                     // camera-agnostic overlay painted on a world layer
+      translateRatio: 0, rotateRatio: 0, scaleRatio: 0 },
+  ],
+});
+```
+
+These ratios are **layer-level decoupling primitives**: they're the
+right answer for parallax, minimaps, and other content whose position
+already lives in the coord space the layer provides. They are **not**
+the right answer for entity-anchored UI like nameplates or health bars
+— mixing a partial camera transform with the main camera's full
+transform separates the UI from its target under zoom. For that use
+case, see [`ScreenFollow`](#screenfollow-entity-anchored-ui) below.
+
+### ScreenFollow (entity-anchored UI)
+
+`ScreenFollow` projects a world source through a camera and writes the
+resulting screen coord to its entity's `Transform` each frame. Paired
+with a `UIPanel` (or `UIRoot`) on a screen-space layer using
+`positioning: "transform"`, it produces UI that tracks a target entity
+but stays axis-aligned and constant-size regardless of camera zoom or
+rotation — the canonical "billboard" primitive for nameplates, health
+bars, damage numbers, and interaction prompts.
+
+```typescript
+import { ScreenFollow } from "@yagejs/renderer";
+import { UIPanel, Anchor } from "@yagejs/ui";
+
+class EnemyNameplate extends Entity {
+  setup(params: { target: Entity; camera: CameraEntity; label: string }) {
+    this.add(new Transform());
+    this.add(new ScreenFollow({
+      target: params.target,
+      camera: params.camera,
+      offset: new Vec2(0, -40), // 40 screen pixels above the target, at any zoom
+    }));
+    const panel = this.add(new UIPanel({
+      positioning: "transform",  // read Transform.worldPosition
+      anchor: Anchor.BottomCenter, // pivot on the panel
+      padding: 4,
+      background: { color: 0x000000, alpha: 0.6, radius: 4 },
+    }));
+    panel.text(params.label, { fontSize: 11, fill: 0xffffff });
+  }
+}
+```
+
+`offset` is applied in **screen pixels**, *after* projection —
+concretely `cam.worldToScreen(target) + offset`. That keeps the visual
+gap between UI and target fixed under any camera transform: a 40px
+offset above is 40 screen pixels above at any zoom, any rotation. Adding
+the offset in world coords before projection (the intuitive-seeming
+shape) would let the camera transform warp it — the gap would double at
+zoom 2 and rotate off-axis as the camera rotates.
+
+`target` accepts an `Entity`, a static `Vec2Like`, or a function
+returning a `Vec2Like` — you can track anything whose world position
+you can name, including animated paths or the midpoint of two entities.
+
+See the [UI guide](/guides/ui/#entity-anchored-ui-with-screenfollow) for
+the full logical-root + siblings pattern and the `world-ui` example for
+a runnable demo.
+
 ## Render Layers
 
 Render layers control draw order. Entities on higher layers render on top.
@@ -234,8 +322,7 @@ that controls whether cameras transform it:
 
 - **`"world"`** — layers scroll and zoom with the camera. Use for
   gameplay layers (background, tiles, characters, fx), parallax, and
-  *diegetic* UI that should follow an entity (interaction prompts,
-  health bars, damage numbers).
+  entity-anchored UI (interaction prompts, health bars, damage numbers).
 - **`"screen"`** — layers stay fixed to the viewport. Use for HUD,
   menus, dialogs, and any UI you want anchored to the screen. A
   `CameraEntity` spawned without explicit `bindings` skips screen-space
@@ -245,6 +332,10 @@ that controls whether cameras transform it:
 If no `"ui"` layer is declared, `@yagejs/ui` auto-provisions one as
 `space: "screen"` the first time a `UIPanel` is added, so HUDs just
 work without any layer wiring.
+
+See the [UI guide](/guides/ui/#layer-space-and-positioning) for how
+`UIPanel`/`UIRoot` pick between viewport-anchored and Transform-pinned
+positioning.
 
 ## Asset Factories
 

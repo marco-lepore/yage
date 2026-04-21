@@ -348,6 +348,9 @@ export interface PixiRadioGroupProps extends LayoutProps {
 // Component options
 // ---------------------------------------------------------------------------
 
+/** Positioning mode for a root panel. */
+export type UIPositioning = "anchor" | "transform";
+
 /** Options for creating a root UIPanel (attached to an entity as a Component). */
 export interface UIPanelOptions extends PanelProps {
   anchor?: Anchor;
@@ -360,6 +363,22 @@ export interface UIPanelOptions extends PanelProps {
    * `readonly layers` or the panel throws on add.
    */
   layer?: string;
+  /**
+   * How the panel's root container is positioned each frame.
+   *
+   * - `"anchor"` (default) — resolve `anchor` against the viewport
+   *   (`virtualSize`). Classic HUD/menu behavior.
+   * - `"transform"` — read `entity.get(Transform).worldPosition` and
+   *   reinterpret `anchor` as the pivot on the panel itself
+   *   (e.g. `BottomCenter` → panel's bottom-center sits at the
+   *   Transform). Requires a `Transform` on the entity. The panel is
+   *   positioned in the layer's local coords, so this plays with any
+   *   layer type: screen-space layers (paired with a `ScreenFollow`
+   *   component that writes projected screen coords) for constant-size
+   *   billboards, or world-space layers for genuinely diegetic UI that
+   *   scales with the camera.
+   */
+  positioning?: UIPositioning;
 }
 
 

@@ -173,19 +173,73 @@ To override: pass explicit `bindings` on the camera. Explicit bindings
 ignore `space` and target exactly the layers named, which is how you
 bind a screen-space layer to a second camera or build parallax.
 
-```ts
-// All custom world layers follow the camera; UI plugin layer stays put.
-this.spawn(CameraEntity, { follow: player.get(Transform) });
+### CameraBinding — per-axis ratios
 
-// Parallax: named explicitly, background scrolls at half speed.
-this.spawn(CameraEntity, {
-  follow: player.get(Transform),
-  bindings: [
-    { layer: "background", translateRatio: 0.5 },
-    { layer: "world" },
-  ],
-});
+Each binding has three independent ratios, all defaulting to `1` (full
+camera effect). `0` ignores that axis of the camera; values in between
+blend linearly.
+
+```ts
+interface CameraBinding {
+  layer: string;
+  translateRatio?: number; // 1 = follow camera position, 0 = stay at world origin
+  rotateRatio?: number;    // 1 = rotate with camera,      0 = stay upright
+  scaleRatio?: number;     // 1 = zoom with camera,        0 = constant size
+}
 ```
+
+These are **layer-level decoupling primitives** — useful for parallax,
+minimaps, and decoupled HUDs. They are **not** the right answer for
+entity-anchored UI like nameplates or health bars: partially ignoring
+the camera transform on one layer while the main scene takes the full
+transform separates the UI from its target under zoom. For that, see
+`ScreenFollow` below.
+
+Recipes:
+
+```ts
+// Parallax (translate-dampened)
+{ layer: "background", translateRatio: 0.5 }
+
+// Camera-agnostic minimap (ignores every camera axis)
+{ layer: "minimap", translateRatio: 0, rotateRatio: 0, scaleRatio: 0 }
+```
+
+## ScreenFollow
+
+Component. Each frame projects a world source through a camera and writes the resulting screen coord to this entity's `Transform.worldPosition`. The canonical billboard primitive — pair with `UIPanel`/`UIRoot` on a screen-space layer using `positioning: "transform"` and the UI tracks the target while staying axis-aligned and constant-size under any camera zoom or rotation.
+
+```ts
+import { ScreenFollow } from "@yagejs/renderer";
+import { UIPanel, Anchor } from "@yagejs/ui";
+
+class Nameplate extends Entity {
+  constructor(private readonly target: Entity, private readonly camera: CameraEntity) {
+    super();
+  }
+  setup() {
+    this.add(new Transform());
+    this.add(new ScreenFollow({
+      target: this.target,            // Entity | Vec2Like | () => Vec2Like
+      camera: this.camera,             // required — no global "main" camera
+      offset: new Vec2(0, -40),        // screen-pixel offset (applied after projection)
+      trackRotation: false,            // default: don't copy target's rotation
+    }));
+    const panel = this.add(new UIPanel({
+      positioning: "transform",        // reads Transform.worldPosition each frame
+      anchor: Anchor.BottomCenter,     // pivot on the panel
+    }));
+    panel.text("Grunt-42", { fontSize: 11, fill: 0xffffff });
+  }
+}
+```
+
+`target` accepts:
+- `Entity` — reads its current `worldPosition` each frame.
+- `Vec2Like` — a fixed world coord.
+- `() => Vec2Like` — computed each frame (useful for midpoints of two entities, paths, etc.).
+
+`offset` is in **screen pixels**, applied *after* projection: `cam.worldToScreen(target) + offset`. The visual gap between UI and target stays fixed under any camera zoom or rotation. Rotation is optional: set `trackRotation: true` when `target` is an `Entity` to copy its `worldRotation` (useful for UI that should rotate with the target itself, like a vehicle HUD).
 
 ```ts
 import { SceneRenderTreeKey } from "@yagejs/renderer";

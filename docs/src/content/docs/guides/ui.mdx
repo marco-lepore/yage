@@ -74,6 +74,101 @@ new UIPanel({
 })
 ```
 
+## Layer space and positioning
+
+A panel's position comes from two independent choices: which layer it
+lives on (screen-space HUD or world-space overlay) and its
+`positioning` option (viewport-anchored or Transform-driven).
+
+### `positioning: "anchor"` (default)
+
+`anchor` resolves against the viewport (`virtualSize`), `offset` is a
+pixel nudge. This is the classic HUD / menu behavior and the default
+for a reason — it's what HUDs want.
+
+### `positioning: "transform"`
+
+The panel's root container is positioned at `entity.get(Transform).worldPosition`
+in the target layer's local coord space, and `anchor` is reinterpreted as
+the **pivot on the panel itself**:
+
+- `Anchor.Center` → panel's center sits at the Transform.
+- `Anchor.BottomCenter` → panel's bottom-center sits at the Transform
+  (the natural "hovers above this entity" primitive for nameplates and
+  health bars).
+
+`offset` is still a pixel nudge, applied after the pivot. The entity
+must have a `Transform` or the panel throws at add time.
+
+This option is orthogonal to the layer's space:
+
+- **Screen-space layer + `positioning: "transform"`**: pair with
+  [`ScreenFollow`](/guides/rendering/#screenfollow-entity-anchored-ui)
+  from `@yagejs/renderer`. `ScreenFollow` writes
+  `camera.worldToScreen(target + offset)` to the Transform each frame,
+  so the UI tracks a target entity but stays axis-aligned and
+  constant-size regardless of camera zoom or rotation. This is the
+  canonical **billboard** pattern.
+- **World-space layer + `positioning: "transform"`**: the UI is pinned
+  to a real world coordinate and scales / rotates with the camera like
+  any other world object. Useful for genuinely diegetic UI — a sign in
+  the world, an LED on a machine.
+
+### Entity-anchored UI with `ScreenFollow`
+
+The common "nameplate above an enemy" pattern:
+
+```typescript
+import { ScreenFollow } from "@yagejs/renderer";
+
+class Enemy extends Entity {
+  setup(params: {
+    x: number; y: number; label: string; camera: CameraEntity;
+  }) {
+    this.add(new Transform({ position: new Vec2(params.x, params.y) }));
+    this.add(new Health({ max: 100 }));
+
+    // Body, nameplate, and HP bar are all siblings under this entity.
+    // Parenting expresses "these belong to this enemy" structurally —
+    // so when the enemy is destroyed, cascade-destroy cleans the UI
+    // children up automatically. Positioning still flows through
+    // ScreenFollow for the UI siblings so they stay axis-aligned and
+    // constant-size under camera zoom/rotation, regardless of parenting.
+    this.spawnChild("body", EnemyBody, { color: 0xff6b6b });
+    this.spawnChild("nameplate", EnemyNameplate, {
+      target: this,
+      camera: params.camera,
+      label: params.label,
+    });
+  }
+}
+
+class EnemyNameplate extends Entity {
+  setup(params: {
+    target: Entity; camera: CameraEntity; label: string;
+  }) {
+    this.add(new Transform());
+    this.add(new ScreenFollow({
+      target: params.target,
+      camera: params.camera,
+      offset: new Vec2(0, -40), // 40 screen px above the target, at any zoom
+    }));
+    const panel = this.add(new UIPanel({
+      positioning: "transform",
+      anchor: Anchor.BottomCenter,
+      padding: 4,
+      background: { color: 0x000000, alpha: 0.6, radius: 4 },
+    }));
+    panel.text(params.label, { fontSize: 11, fill: 0xffffff });
+  }
+}
+```
+
+The offset is in **screen pixels** — 40 world units above at zoom=1 and
+40 screen pixels above at zoom=2 are different things, and screen-pixel
+offsets are what nameplates almost always want. See the `world-ui`
+example for a runnable demo with zoom and rotation controls.
+
 ## Text
 
 Add text to a panel with the builder API:

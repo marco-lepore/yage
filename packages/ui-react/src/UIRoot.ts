@@ -1,13 +1,15 @@
-import { Component } from "@yagejs/core";
+import { Component, Transform } from "@yagejs/core";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { Container } from "pixi.js";
 import {
   Anchor,
+  pivotOffsetFromAnchor,
   resolveAnchor,
   UI_DEFAULT_LAYER,
   UI_DEFAULT_LAYER_ORDER,
 } from "@yagejs/ui";
+import type { UIPositioning } from "@yagejs/ui";
 import {
   createRoot,
   addOnCommit,
@@ -25,10 +27,23 @@ export interface UIRootOptions {
   /**
    * Target layer name. Defaults to the auto-provisioned screen-space
    * `"ui"` layer. Pass the name of a layer declared on `Scene.layers`
-   * (e.g. a `space: "world"` layer) to host diegetic React UI that
-   * follows the camera.
+   * to target a custom layer (e.g. a world-space layer for diegetic UI
+   * that scales with the camera).
    */
   layer?: string;
+  /**
+   * How the tree's outer container is positioned each frame.
+   *
+   * - `"anchor"` (default) — resolve `anchor` against the viewport
+   *   (`virtualSize`). Classic HUD behavior.
+   * - `"transform"` — read `entity.get(Transform).worldPosition` in the
+   *   target layer's local coord space and use `anchor` as a pivot on the
+   *   rendered tree. Requires a `Transform` on the entity. Pair with
+   *   `ScreenFollow` from `@yagejs/renderer` on a screen-space layer for
+   *   a billboard that stays axis-aligned and constant-size, or place on
+   *   a world-space layer for genuinely diegetic UI.
+   */
+  positioning?: UIPositioning;
 }
 
 /**
@@ -46,6 +61,7 @@ export class UIRoot extends Component {
   private readonly _anchor: Anchor | undefined;
   private readonly _offset: { x: number; y: number };
   private readonly _layer: string | undefined;
+  private readonly _positioning: "anchor" | "transform";
   private _onCommit: (() => void) | null = null;
 
   constructor(opts?: UIRootOptions) {
@@ -54,6 +70,7 @@ export class UIRoot extends Component {
     this._anchor = opts?.anchor;
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
+    this._positioning = opts?.positioning ?? "anchor";
   }
 
   onAdd(): void {
@@ -71,6 +88,13 @@ export class UIRoot extends Component {
         { space: "screen" },
       );
     }
+
+    if (this._positioning === "transform" && !this.entity.tryGet(Transform)) {
+      throw new Error(
+        `UIRoot with positioning: "transform" requires a Transform on the entity.`,
+      );
+    }
+
     layer.container.eventMode = "static";
     layer.container.addChild(this._container);
 
@@ -108,11 +132,6 @@ export class UIRoot extends Component {
     const instances = getRootInstances(this._container);
     if (!instances || instances.length === 0) return;
 
-    // Create a temporary root Yoga node to hold all top-level instances
-    // and compute their layout together
-    const renderer = this.use(RendererKey);
-    const vs = renderer.virtualSize;
-
     // For each root instance that is a PanelNode, run Yoga layout
     let totalHeight = 0;
     let maxWidth = 0;
@@ -135,10 +154,30 @@ export class UIRoot extends Component {
       maxWidth = Math.max(maxWidth, w);
     }
 
-    // Resolve anchor
-    if (this._anchor !== undefined) {
+    // Position the outer container. "anchor" resolves against the
+    // viewport; "transform" pins to the entity's Transform with `anchor`
+    // as a pivot on the rendered tree.
+    const anchor = this._anchor;
+
+    if (this._positioning === "transform") {
+      const source = this.entity.get(Transform).worldPosition;
+      if (anchor !== undefined) {
+        const pivot = pivotOffsetFromAnchor(anchor, maxWidth, totalHeight);
+        this._container.position.set(
+          source.x + pivot.x + this._offset.x,
+          source.y + pivot.y + this._offset.y,
+        );
+      } else {
+        this._container.position.set(
+          source.x + this._offset.x,
+          source.y + this._offset.y,
+        );
+      }
+    } else if (anchor !== undefined) {
+      const renderer = this.use(RendererKey);
+      const vs = renderer.virtualSize;
       const pos = resolveAnchor(
-        this._anchor,
+        anchor,
         vs.width,
         vs.height,
         maxWidth,

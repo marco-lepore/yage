@@ -364,6 +364,133 @@ describe("DisplaySystem", () => {
     expect(world.position.x).toBe(-200);
   });
 
+  it("rotateRatio=0 keeps a bound layer upright while the camera rotates", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "billboards", order: 500 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        rotation: Math.PI / 3,
+        bindings: [
+          { layer: "default" },
+          { layer: "billboards", rotateRatio: 0 },
+        ],
+      }),
+    );
+
+    system.update();
+
+    const billboards = tree.get("billboards")
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
+    expect(billboards.rotation).toBeCloseTo(0);
+    // Default layer still rotates fully.
+    const def = tree.defaultLayer.container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(def.rotation).toBeCloseTo(-Math.PI / 3);
+  });
+
+  it("scaleRatio=0 keeps a bound layer at unit scale while the camera zooms", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "billboards", order: 500 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 3,
+        bindings: [
+          { layer: "default" },
+          { layer: "billboards", scaleRatio: 0 },
+        ],
+      }),
+    );
+
+    system.update();
+
+    const billboards = tree.get("billboards")
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
+    expect(billboards.scale.x).toBe(1);
+    // Translation still tracks the camera at effScale=1:
+    // position.x = 400 - 100*1*1 = 300, position.y = 300 - 50*1*1 = 250
+    expect(billboards.position.x).toBe(300);
+    expect(billboards.position.y).toBe(250);
+  });
+
+  it("billboard binding (rotateRatio=0, scaleRatio=0) follows position only", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "billboards", order: 500 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        rotation: Math.PI / 2,
+        bindings: [
+          { layer: "default" },
+          { layer: "billboards", rotateRatio: 0, scaleRatio: 0 },
+        ],
+      }),
+    );
+
+    system.update();
+
+    const billboards = tree.get("billboards")
+      .container as unknown as InstanceType<typeof mocks.MockContainer>;
+    expect(billboards.scale.x).toBe(1);
+    expect(billboards.rotation).toBeCloseTo(0);
+    // Translation at effScale=1, no rotation: 400 - 100 = 300, 300 - 50 = 250
+    expect(billboards.position.x).toBeCloseTo(300);
+    expect(billboards.position.y).toBeCloseTo(250);
+  });
+
+  it("auto-bound layers still rotate and zoom at full strength (ratios default to 1)", () => {
+    // Auto-bind emits bindings with only `translateRatio: 1`; verifies the
+    // new `rotateRatio`/`scaleRatio` default to 1 through the ?? coalesce.
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "world", order: 0 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        position: new Vec2(100, 50),
+        zoom: 2,
+        rotation: Math.PI / 4,
+      }),
+    );
+
+    system.update();
+
+    const world = tree.get("world").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(world.scale.x).toBe(2);
+    expect(world.rotation).toBeCloseTo(-Math.PI / 4);
+  });
+
+  it("partial scaleRatio dampens zoom linearly", () => {
+    const { scene, tree } = setup();
+    tree.ensureLayer({ name: "depth", order: 10 });
+
+    const camEntity = spawnEntityInScene(scene, "camera");
+    camEntity.add(
+      new CameraComponent({
+        zoom: 3,
+        bindings: [{ layer: "depth", scaleRatio: 0.5 }],
+      }),
+    );
+
+    system.update();
+
+    const depth = tree.get("depth").container as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    // effScale = 1 + (3 - 1) * 0.5 = 2
+    expect(depth.scale.x).toBe(2);
+  });
+
   it("explicit bindings can still target a screen-space layer", () => {
     const { scene, tree } = setup();
     tree.ensureLayer({ name: "ui", order: 1000 }, { space: "screen" });

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — World-space UI</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>World-space UI</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span><kbd>WASD</kbd> move</span>
+      <span><kbd>Q</kbd>/<kbd>E</kbd> zoom</span>
+      <span><kbd>0</kbd> zoom reset</span>
+      <span><kbd>R</kbd> rotate camera</span>
+      <span><kbd>T</kbd> rotation reset</span>
+      <span><kbd>click</kbd> damage enemy</span>
+    </div>
+    <p style="max-width: 680px; color: #999; font-size: 0.85rem; line-height: 1.5; margin: 0 1rem;">
+      Each enemy is a <code>Transform</code>-only root with a <em>body</em> child (rotates to face you, on the world layer). Nameplates and health bars are independent entities tracked via <code>ScreenFollow</code>: each frame it projects the enemy's world position through the camera and writes the screen coord to the UI entity's Transform. A <code>UIPanel</code> with <code>positioning: "transform"</code> on the screen-space UI layer reads that coord — so the UI tracks the enemy while staying axis-aligned and constant-size as the camera zooms and rotates.
+    </p>
+    <script type="module" src="/src/world-ui.ts"></script>
+  </body>
+</html>

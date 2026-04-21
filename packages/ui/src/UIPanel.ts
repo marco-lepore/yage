@@ -1,4 +1,4 @@
-import { Component } from "@yagejs/core";
+import { Component, Transform } from "@yagejs/core";
 import { Container, Graphics } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
@@ -311,6 +311,7 @@ export class UIPanel extends Component {
   /** @internal */ readonly _anchor: Anchor | undefined;
   /** @internal */ readonly _offset: { x: number; y: number };
   /** @internal */ readonly _layer: string | undefined;
+  /** @internal */ readonly _positioning: "anchor" | "transform";
 
   constructor(opts?: UIPanelOptions) {
     super();
@@ -318,6 +319,7 @@ export class UIPanel extends Component {
     this._anchor = opts?.anchor;
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
+    this._positioning = opts?.positioning ?? "anchor";
   }
 
   /** The PixiJS Container for this panel. */
@@ -383,14 +385,21 @@ export class UIPanel extends Component {
       }
       // Auto-provision the default "ui" layer on first use so a bare
       // `new UIPanel()` works without any scene layer wiring. Screen-space
-      // keeps the HUD fixed under the default camera. Authors who want
-      // diegetic (world-following) UI declare their own layer with
-      // `space: "world"` and pass its name via `UIPanelOptions.layer`.
+      // keeps the HUD fixed under the default camera.
       layer = tree.ensureLayer(
         { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
         { space: "screen" },
       );
     }
+
+    // `positioning: "transform"` reads `entity.get(Transform).worldPosition`
+    // each frame — fail fast if the entity doesn't have one.
+    if (this._positioning === "transform" && !this.entity.tryGet(Transform)) {
+      throw new Error(
+        `UIPanel with positioning: "transform" requires a Transform on the entity.`,
+      );
+    }
+
     layer.container.eventMode = "static";
     layer.container.addChild(this._node.container);
   }
