@@ -633,7 +633,7 @@ class EnemyController extends Component {
         this.updateFacing(this.patrolDir);
 
         // Detect player
-        if (playerEntity && playerEntity.scene) {
+        if (playerEntity && playerEntity.tryScene) {
           const playerPos = playerEntity.get(Transform).position;
           const dx = Math.abs(pos.x - playerPos.x);
           const dy = Math.abs(pos.y - playerPos.y);

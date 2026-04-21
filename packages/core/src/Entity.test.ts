@@ -251,6 +251,16 @@ describe("Entity", () => {
       expect(child.tryScene).toBe(scene);
     });
 
+    it("forwards the child name as the entity name when no factory is given", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+
+      const child = parent.spawnChild("ui");
+
+      // Keeps `entity.name` in sync with the child-map key.
+      expect(child.name).toBe("ui");
+    });
+
     it("spawns an Entity subclass with setup params", () => {
       class HpComp extends Component {
         constructor(public max: number) {
@@ -306,6 +316,19 @@ describe("Entity", () => {
       expect(() => parent.spawnChild("ui")).toThrow(
         /already has a child named "ui"/,
       );
+    });
+
+    it("does not leave an orphan in scene.entities on duplicate-name failure", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+      parent.spawnChild("ui");
+      const before = scene.getEntities().size;
+
+      expect(() => parent.spawnChild("ui")).toThrow();
+
+      // The second call must validate before spawning so no entity is
+      // inserted into scene.entities.
+      expect(scene.getEntities().size).toBe(before);
     });
   });
 });

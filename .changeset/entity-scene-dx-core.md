@@ -8,15 +8,18 @@
 
 A new **`Entity.tryScene`** getter preserves the nullable return for the rare case where defensive null-awareness is genuinely needed (systems iterating a query result that may include entities mid-destroy, etc.). Migration for the handful of callsites that relied on the nullable return is a one-liner rename.
 
-**`Entity.spawnChild(name, Class | Blueprint, params?)` collapses** the common two-step "spawn an entity in the scene, then parent it" dance into one call, mirroring `Scene.spawn`'s overload shape:
+**`Entity.spawnChild` collapses** the common two-step "spawn an entity in the scene, then parent it" dance into one call, mirroring `Scene.spawn`'s overload shape. Three forms:
 
 ```ts
-// Before
-const body = this.scene.spawn(EnemyBody, { color: 0xff6b6b });
-this.addChild("body", body);
-
-// After
+// 1. With an Entity subclass (optionally with setup params)
 this.spawnChild("body", EnemyBody, { color: 0xff6b6b });
+
+// 2. With a Blueprint (optionally with params)
+this.spawnChild("tag", Nameplate, { label: "Grunt" });
+
+// 3. Anonymous — no factory, just a named slot
+const ui = parent.spawnChild("ui");
+// ui.name === "ui"  (child-map key doubles as entity name)
 ```
 
-Returns the spawned child for chaining. Throws if the parent is detached (same policy as the new `scene` getter).
+Use the anonymous form when you want an empty child to compose components onto imperatively without declaring an Entity subclass. Returns the spawned child for chaining. Throws if the parent is detached (same policy as the new `scene` getter) and validates name uniqueness before spawning so a duplicate-name error leaves no orphan in `scene.entities`.

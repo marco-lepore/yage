@@ -155,13 +155,27 @@ export class Entity {
     params?: unknown,
   ): Entity {
     const scene = this.scene;
+    // Validate before spawning so we don't leave an orphan entity in the
+    // scene if addChild would reject the name. addChild also throws on
+    // this, but by then the spawn side-effects (scene.entities insert,
+    // `entity:created` emit, setup() / blueprint.build()) have all run.
+    if (this._children?.has(name)) {
+      throw new Error(
+        `Entity "${this.name}" already has a child named "${name}".`,
+      );
+    }
     // The public overloads above keep callsites type-safe. The
     // implementation signature is intentionally loose so it can funnel
     // into `Scene.spawn`'s matching overloads without per-variant
-    // branches.
-    const child = (
-      scene.spawn as (a?: unknown, b?: unknown) => Entity
-    )(classOrBlueprint, params);
+    // branches. When no class/blueprint is provided, forward `name` as
+    // the entity's own name so `child.name` matches the child-map key.
+    const child =
+      classOrBlueprint === undefined
+        ? scene.spawn(name)
+        : (scene.spawn as (a?: unknown, b?: unknown) => Entity)(
+            classOrBlueprint,
+            params,
+          );
     this.addChild(name, child);
     return child;
   }
