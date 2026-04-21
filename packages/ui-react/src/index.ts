@@ -1,5 +1,5 @@
 // Plugin (required — registers UIRootLayoutSystem alongside UIPlugin)
-export { UIReactPlugin } from "./UIReactPlugin.js";
+export { UIReactPlugin, UIReactPluginKey } from "./UIReactPlugin.js";
 
 // Component
 export { UIRoot } from "./UIRoot.js";

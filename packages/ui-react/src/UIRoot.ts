@@ -18,6 +18,7 @@ import {
 } from "./reconciler.js";
 import type { ReconcilerRoot } from "./reconciler.js";
 import { EngineCtx, SceneCtx, notifyFrame } from "./hooks.js";
+import { UIReactPluginKey } from "./UIReactPlugin.js";
 import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 
 /** Options for UIRoot. */
@@ -61,7 +62,7 @@ export class UIRoot extends Component {
   private readonly _anchor: Anchor | undefined;
   private readonly _offset: { x: number; y: number };
   private readonly _layer: string | undefined;
-  private readonly _positioning: "anchor" | "transform";
+  private readonly _positioning: UIPositioning;
   private _onCommit: (() => void) | null = null;
 
   constructor(opts?: UIRootOptions) {
@@ -74,6 +75,12 @@ export class UIRoot extends Component {
   }
 
   onAdd(): void {
+    if (!this.context.tryResolve(UIReactPluginKey)) {
+      throw new Error(
+        `UIRoot requires UIReactPlugin. Register it alongside UIPlugin: engine.use(new UIReactPlugin()).`,
+      );
+    }
+
     const tree = this.use(SceneRenderTreeKey);
     const layerName = this._layer ?? UI_DEFAULT_LAYER;
     let layer = tree.tryGet(layerName);
