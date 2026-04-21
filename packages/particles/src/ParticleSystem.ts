@@ -18,7 +18,7 @@ export class ParticleSystem extends System {
   update(dt: number): void {
     const dtSec = dt / 1000;
     for (const entity of this.query) {
-      const scene = entity.scene;
+      const scene = entity.tryScene;
       if (scene?.isPaused) continue;
       const sceneTimeScale = scene?.timeScale ?? 1;
       const emitter = entity.get(ParticleEmitterComponent);

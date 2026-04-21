@@ -94,7 +94,7 @@ export class DisplaySystem extends System {
     const camerasByScene = new Map<Scene, CameraComponent[]>();
     for (const entity of this.cameraQuery) {
       const cam = entity.get(CameraComponent);
-      const scene = entity.scene;
+      const scene = entity.tryScene;
       if (!scene || !cam.enabled) continue;
       const list = camerasByScene.get(scene);
       if (list) list.push(cam);
