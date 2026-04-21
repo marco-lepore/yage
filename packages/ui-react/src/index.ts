@@ -1,6 +1,12 @@
+// Plugin (required — registers UIRootLayoutSystem alongside UIPlugin)
+export { UIReactPlugin } from "./UIReactPlugin.js";
+
 // Component
 export { UIRoot } from "./UIRoot.js";
 export type { UIRootOptions } from "./UIRoot.js";
+
+// System (registered by UIReactPlugin; exported for tests/advanced uses)
+export { UIRootLayoutSystem } from "./UIRootLayoutSystem.js";
 
 // JSX components
 export {

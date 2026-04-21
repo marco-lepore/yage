@@ -121,14 +121,18 @@ export class UIRoot extends Component {
     this.root.render(wrapped);
   }
 
-  /** Called each frame by ComponentUpdateSystem. Ticks frame-polled hooks then re-layouts. */
+  /**
+   * Called each frame by ComponentUpdateSystem in Phase.Update. Ticks
+   * frame-polled hooks. Actual layout runs in Phase.LateUpdate via
+   * `UIRootLayoutSystem` so Transform writes from Update-phase components
+   * (e.g. `ScreenFollow`) are already visible.
+   */
   update(): void {
     notifyFrame();
-    this._layoutAndAnchor();
   }
 
   /** @internal Run Yoga layout and anchor positioning. */
-  private _layoutAndAnchor(): void {
+  _layoutAndAnchor(): void {
     const instances = getRootInstances(this._container);
     if (!instances || instances.length === 0) return;
 

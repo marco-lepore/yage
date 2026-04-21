@@ -15,12 +15,14 @@ Install both `@yagejs/ui` and `@yagejs/ui-react`, plus React:
 npm install @yagejs/ui @yagejs/ui-react react
 ```
 
-The `UIPlugin` must be registered before using React UI:
+Both `UIPlugin` and `UIReactPlugin` must be registered before using React UI. `UIReactPlugin` registers the `LateUpdate`-phase layout pass that positions `UIRoot` trees after any Update-phase Transform writers (e.g. `ScreenFollow`):
 
 ```typescript
 import { UIPlugin } from "@yagejs/ui";
+import { UIReactPlugin } from "@yagejs/ui-react";
 
 engine.use(new UIPlugin());
+engine.use(new UIReactPlugin());
 ```
 
 ## UIRoot

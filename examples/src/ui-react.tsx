@@ -3,6 +3,7 @@ import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
+  UIReactPlugin,
   UIRoot,
   Panel,
   Text,
@@ -240,6 +241,7 @@ async function main() {
   );
 
   engine.use(new UIPlugin());
+  engine.use(new UIReactPlugin());
 
   await loadFonts();
   await engine.start();

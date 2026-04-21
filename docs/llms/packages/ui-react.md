@@ -2,6 +2,18 @@
 
 Depends on `@yagejs/ui`, `react`. React reconciler over the UI system.
 
+## Setup
+
+```ts
+import { UIPlugin } from "@yagejs/ui";
+import { UIReactPlugin } from "@yagejs/ui-react";
+
+engine.use(new UIPlugin());
+engine.use(new UIReactPlugin());
+```
+
+`UIReactPlugin` registers `UIRootLayoutSystem` in `LateUpdate` so `UIRoot` layouts run after Update-phase Transform writers (e.g. `ScreenFollow`). Required alongside `UIPlugin`.
+
 ## UIRoot
 
 ```ts
