@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/debug",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "FPS counter, entity inspector, and dev overlays for YAGE",
   "keywords": [
     "yage",
@@ -58,8 +58,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.1.0",
-    "@yagejs/renderer": "^0.1.0",
+    "@yagejs/core": "^0.2.0",
+    "@yagejs/renderer": "^0.2.0",
     "pixi.js": "^8.5.0"
   }
 }
