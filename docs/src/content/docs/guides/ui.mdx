@@ -105,10 +105,11 @@ This option is orthogonal to the layer's space:
 - **Screen-space layer + `positioning: "transform"`**: pair with
   [`ScreenFollow`](/guides/rendering/#screenfollow-entity-anchored-ui)
   from `@yagejs/renderer`. `ScreenFollow` writes
-  `camera.worldToScreen(target + offset)` to the Transform each frame,
-  so the UI tracks a target entity but stays axis-aligned and
-  constant-size regardless of camera zoom or rotation. This is the
-  canonical **billboard** pattern.
+  `camera.worldToScreen(target) + offset` to the Transform each frame
+  (the offset is in screen pixels, applied after projection), so the
+  UI tracks a target entity but stays axis-aligned and constant-size
+  regardless of camera zoom or rotation. This is the canonical
+  **billboard** pattern.
 - **World-space layer + `positioning: "transform"`**: the UI is pinned
   to a real world coordinate and scales / rotates with the camera like
   any other world object. Useful for genuinely diegetic UI — a sign in

@@ -34,7 +34,7 @@ Positioning modes (mirror `@yagejs/ui`'s `UIPanel`):
 - `positioning: "anchor"` (default) — `anchor` resolves against the viewport.
 - `positioning: "transform"` — tree is pinned to `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is the pivot on the rendered tree. Throws at add time if the entity has no `Transform`.
 
-For entity-anchored React UI (nameplates, health bars), pair `positioning: "transform"` with a `ScreenFollow` component (`@yagejs/renderer`) that writes `cam.worldToScreen(target + offset)` to this entity's Transform each frame. The UI lives on a screen-space layer, stays axis-aligned and constant-size under any camera zoom/rotation.
+For entity-anchored React UI (nameplates, health bars), pair `positioning: "transform"` with a `ScreenFollow` component (`@yagejs/renderer`) that writes `cam.worldToScreen(target) + offset` to this entity's Transform each frame (offset is in screen pixels, applied post-projection). The UI lives on a screen-space layer, stays axis-aligned and constant-size under any camera zoom/rotation.
 
 ## JSX Components
 

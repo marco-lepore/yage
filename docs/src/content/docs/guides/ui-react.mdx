@@ -52,10 +52,11 @@ For UI that tracks a specific game entity (nameplates, health bars,
 damage numbers), set `positioning: "transform"` on the `UIRoot` and pair
 with [`ScreenFollow`](/guides/rendering/#screenfollow-entity-anchored-ui)
 from `@yagejs/renderer`. `ScreenFollow` writes
-`camera.worldToScreen(target + offset)` to this entity's Transform each
-frame, and the `UIRoot` reads that Transform instead of the viewport —
-so the UI tracks the target while staying axis-aligned and
-constant-size under any camera zoom or rotation.
+`camera.worldToScreen(target) + offset` to this entity's Transform each
+frame (the offset is in screen pixels, applied after projection), and
+the `UIRoot` reads that Transform instead of the viewport — so the UI
+tracks the target while staying axis-aligned and constant-size under
+any camera zoom or rotation.
 
 ```tsx
 import { ScreenFollow } from "@yagejs/renderer";
