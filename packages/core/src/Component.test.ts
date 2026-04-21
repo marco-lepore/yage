@@ -19,7 +19,7 @@ describe("Component", () => {
 
   it("scene getter throws when entity has no scene", () => {
     const c = new TestComponent();
-    c.entity = { scene: null } as never;
+    c.entity = { tryScene: null } as never;
     expect(() => c.scene).toThrow(
       "Cannot access scene: entity is not attached to a scene.",
     );
@@ -27,7 +27,7 @@ describe("Component", () => {
 
   it("context getter throws when entity has no scene", () => {
     const c = new TestComponent();
-    c.entity = { scene: null } as never;
+    c.entity = { tryScene: null } as never;
     expect(() => c.context).toThrow(
       "Cannot access scene: entity is not attached to a scene.",
     );
@@ -36,7 +36,7 @@ describe("Component", () => {
   it("context getter returns scene context", () => {
     const mockContext = { resolve: () => {} };
     const c = new TestComponent();
-    c.entity = { scene: { context: mockContext } } as never;
+    c.entity = { tryScene: { context: mockContext } } as never;
     expect(c.context).toBe(mockContext);
   });
 
@@ -108,8 +108,7 @@ describe("Component", () => {
       }
 
       const c = new UseComponent();
-      c.entity = {
-        scene: { context: ctx, _resolveScoped: () => undefined },
+      c.entity = { tryScene: { context: ctx, _resolveScoped: () => undefined },
       } as never;
       return { c, logger };
     }
@@ -139,8 +138,7 @@ describe("Component", () => {
       }
 
       const c = new ScopedComponent();
-      c.entity = {
-        scene: {
+      c.entity = { tryScene: {
           context: ctx,
           _resolveScoped: (k: ServiceKey<unknown>) =>
             k.id === "svc" ? "scene-value" : undefined,
@@ -162,8 +160,7 @@ describe("Component", () => {
       }
 
       const c = new FallbackComponent();
-      c.entity = {
-        scene: {
+      c.entity = { tryScene: {
           context: ctx,
           _resolveScoped: () => undefined,
         },
@@ -186,8 +183,7 @@ describe("Component", () => {
       }
 
       const c = new LateComponent();
-      c.entity = {
-        scene: {
+      c.entity = { tryScene: {
           context: ctx,
           _resolveScoped: (k: ServiceKey<unknown>) =>
             k.id === "late-scoped" ? state.scoped : undefined,
@@ -221,8 +217,7 @@ describe("Component", () => {
       }
 
       const c = new WarnComponent();
-      c.entity = {
-        scene: {
+      c.entity = { tryScene: {
           context: ctx,
           _resolveScoped: () => undefined,
         },

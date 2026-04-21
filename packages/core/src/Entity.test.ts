@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 import { Component } from "./Component.js";
+import { createMockScene } from "./test-utils.js";
+import { defineBlueprint } from "./Blueprint.js";
 
 class PositionComponent extends Component {
   constructor(
@@ -66,8 +68,12 @@ describe("Entity", () => {
       expect(new Entity().isDestroyed).toBe(false);
     });
 
-    it("has null scene by default", () => {
-      expect(new Entity().scene).toBeNull();
+    it("tryScene is null for a detached entity", () => {
+      expect(new Entity().tryScene).toBeNull();
+    });
+
+    it("scene throws for a detached entity", () => {
+      expect(() => new Entity().scene).toThrow(/not attached to a scene/);
     });
   });
 
@@ -230,6 +236,99 @@ describe("Entity", () => {
       const mockScene = { name: "test-scene" } as never;
       e._setScene(mockScene, null);
       expect(e.scene).toBe(mockScene);
+    });
+  });
+
+  describe("spawnChild", () => {
+    it("spawns an anonymous child entity and parents it", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+
+      const child = parent.spawnChild("ui");
+
+      expect(child.parent).toBe(parent);
+      expect(parent.getChild("ui")).toBe(child);
+      expect(child.tryScene).toBe(scene);
+    });
+
+    it("forwards the child name as the entity name when no factory is given", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+
+      const child = parent.spawnChild("ui");
+
+      // Keeps `entity.name` in sync with the child-map key.
+      expect(child.name).toBe("ui");
+    });
+
+    it("spawns an Entity subclass with setup params", () => {
+      class HpComp extends Component {
+        constructor(public max: number) {
+          super();
+        }
+      }
+      class HealthBar extends Entity {
+        setup(params: { max: number }): void {
+          this.add(new HpComp(params.max));
+        }
+      }
+      const { scene } = createMockScene();
+      const parent = scene.spawn("enemy");
+
+      const bar = parent.spawnChild("hp", HealthBar, { max: 200 });
+
+      expect(bar).toBeInstanceOf(HealthBar);
+      expect(bar.get(HpComp).max).toBe(200);
+      expect(bar.parent).toBe(parent);
+    });
+
+    it("spawns from a blueprint", () => {
+      class NameTag extends Component {
+        constructor(public label: string) {
+          super();
+        }
+      }
+      const Bp = defineBlueprint<{ label: string }>("bp", (entity, params) => {
+        entity.add(new NameTag(params.label));
+      });
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+
+      const child = parent.spawnChild("tag", Bp, { label: "grunt" });
+
+      expect(child.get(NameTag).label).toBe("grunt");
+      expect(child.parent).toBe(parent);
+    });
+
+    it("throws if the parent is detached from a scene", () => {
+      const parent = new Entity("parent");
+
+      expect(() => parent.spawnChild("ui")).toThrow(
+        /not attached to a scene/,
+      );
+    });
+
+    it("throws if the child name is already taken on the parent", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+      parent.spawnChild("ui");
+
+      expect(() => parent.spawnChild("ui")).toThrow(
+        /already has a child named "ui"/,
+      );
+    });
+
+    it("does not leave an orphan in scene.entities on duplicate-name failure", () => {
+      const { scene } = createMockScene();
+      const parent = scene.spawn("parent");
+      parent.spawnChild("ui");
+      const before = scene.getEntities().size;
+
+      expect(() => parent.spawnChild("ui")).toThrow();
+
+      // The second call must validate before spawning so no entity is
+      // inserted into scene.entities.
+      expect(scene.getEntities().size).toBe(before);
     });
   });
 });

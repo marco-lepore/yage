@@ -633,7 +633,7 @@ class EnemyController extends Component {
         this.updateFacing(this.patrolDir);
 
         // Detect player
-        if (playerEntity && playerEntity.scene) {
+        if (playerEntity && playerEntity.tryScene) {
           const playerPos = playerEntity.get(Transform).position;
           const dx = Math.abs(pos.x - playerPos.x);
           const dy = Math.abs(pos.y - playerPos.y);
@@ -805,8 +805,9 @@ class EnemyController extends Component {
     s.position.set(0, 0);
 
     const pos = this.transform.position;
-    if (this.entity.scene) {
-      spawnEnemyDeathParticles(this.entity.scene, pos.x, pos.y, ENEMY_COLOR);
+    const scene = this.entity.tryScene;
+    if (scene) {
+      spawnEnemyDeathParticles(scene, pos.x, pos.y, ENEMY_COLOR);
     }
     this.camera.shake(6, 250, { decay: 0.7 });
 
@@ -993,9 +994,9 @@ const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
 
     // Collision handler
     collider.onCollision((ev) => {
-      if (!ev.started || !entity.scene) return;
+      const scene = entity.tryScene;
+      if (!ev.started || !scene) return;
       if (ev.other.tags.has("dead")) return; // ignore dying enemies
-      const scene = entity.scene;
       const bPos = entity.get(Transform).position;
 
       if (ev.other.tags.has("enemy")) {

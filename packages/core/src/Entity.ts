@@ -1,6 +1,7 @@
 import type { Component } from "./Component.js";
 import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
+import type { Blueprint } from "./Blueprint.js";
 import type { SnapshotResolver } from "./Serializable.js";
 import { TRAITS_KEY, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
@@ -51,8 +52,28 @@ export class Entity {
     this.tags = new Set(tags);
   }
 
-  /** The scene this entity belongs to, or null. */
-  get scene(): import("./Scene.js").Scene | null {
+  /**
+   * The scene this entity belongs to. Throws if the entity is not attached
+   * to a scene — which in practice only happens before `scene.spawn` /
+   * `addChild` wires it up, or after `destroy()` tears it down. Inside
+   * lifecycle methods (`setup`, component `onAdd`, `update`, etc.) this is
+   * always safe to access.
+   *
+   * For the rare case where you genuinely need to inspect whether an
+   * entity has a scene (e.g. defensive code in systems iterating a query
+   * result), use `tryScene` instead.
+   */
+  get scene(): import("./Scene.js").Scene {
+    if (!this._scene) {
+      throw new Error(
+        `Entity "${this.name}" is not attached to a scene. Use \`tryScene\` if you need to check.`,
+      );
+    }
+    return this._scene;
+  }
+
+  /** The scene this entity belongs to, or `null` if detached. */
+  get tryScene(): import("./Scene.js").Scene | null {
     return this._scene;
   }
 
@@ -97,6 +118,66 @@ export class Entity {
     if (this._scene && !child._scene) {
       this._scene._addExistingEntity(child);
     }
+  }
+
+  /**
+   * Spawn a new entity in this entity's scene and add it as a named child.
+   * Combines `scene.spawn(...)` + `this.addChild(name, ...)` in one call —
+   * the idiomatic way to compose entity trees (logical root + visual body
+   * + UI sibling + ...).
+   *
+   * Mirrors the overload shape of `Scene.spawn`: pass an Entity subclass
+   * (with optional setup params), a `Blueprint`, or omit for an anonymous
+   * base Entity.
+   *
+   * ```ts
+   * this.spawnChild("body", EnemyBody, { color: 0xff6b6b });
+   * this.spawnChild("hp", EnemyHealthBar);
+   * ```
+   */
+  spawnChild(name: string): Entity;
+  spawnChild<E extends Entity>(name: string, Class: new () => E): E;
+  spawnChild<E extends Entity, P>(
+    name: string,
+    Class: new () => E & { setup(params: P): void },
+    params: P,
+  ): E;
+  spawnChild<P>(
+    name: string,
+    blueprint: Blueprint<P>,
+    params: P,
+  ): Entity;
+  // eslint-disable-next-line @typescript-eslint/unified-signatures -- preserves Class return-type narrowing on the overload above
+  spawnChild(name: string, blueprint: Blueprint<void>): Entity;
+  spawnChild(
+    name: string,
+    classOrBlueprint?: (new () => Entity) | Blueprint<unknown>,
+    params?: unknown,
+  ): Entity {
+    const scene = this.scene;
+    // Validate before spawning so we don't leave an orphan entity in the
+    // scene if addChild would reject the name. addChild also throws on
+    // this, but by then the spawn side-effects (scene.entities insert,
+    // `entity:created` emit, setup() / blueprint.build()) have all run.
+    if (this._children?.has(name)) {
+      throw new Error(
+        `Entity "${this.name}" already has a child named "${name}".`,
+      );
+    }
+    // The public overloads above keep callsites type-safe. The
+    // implementation signature is intentionally loose so it can funnel
+    // into `Scene.spawn`'s matching overloads without per-variant
+    // branches. When no class/blueprint is provided, forward `name` as
+    // the entity's own name so `child.name` matches the child-map key.
+    const child =
+      classOrBlueprint === undefined
+        ? scene.spawn(name)
+        : (scene.spawn as (a?: unknown, b?: unknown) => Entity)(
+            classOrBlueprint,
+            params,
+          );
+    this.addChild(name, child);
+    return child;
   }
 
   /** Remove a named child. Returns the detached entity. */

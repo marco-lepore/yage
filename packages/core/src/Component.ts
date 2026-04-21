@@ -28,10 +28,11 @@ export abstract class Component {
 
   /**
    * Access the entity's scene. Throws if the entity is not in a scene.
-   * Prefer this over `this.entity.scene!` in component methods.
+   * Prefer this over threading through `this.entity.scene` in component
+   * code.
    */
   get scene(): import("./Scene.js").Scene {
-    const scene = this.entity.scene;
+    const scene = this.entity.tryScene;
     if (!scene) {
       throw new Error(
         "Cannot access scene: entity is not attached to a scene.",
@@ -60,7 +61,7 @@ export abstract class Component {
     const cached = this._serviceCache.get(key.id);
     if (cached !== undefined) return cached as T;
 
-    const scene = this.entity.scene;
+    const scene = this.entity.tryScene;
     const scoped = scene?._resolveScoped(key);
     if (scoped !== undefined) {
       this._serviceCache.set(key.id, scoped);
