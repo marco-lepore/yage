@@ -8,10 +8,14 @@ export const RendererKey = new ServiceKey<
 /**
  * Scale mode for the responsive-fit API.
  * - `letterbox` — preserve aspect, fit inside the host, paint bars with the background color.
+ * - `expand` — same scaling as `letterbox` (virtual rect always fully visible), but
+ *   the bar region is left to the game to draw into. Pair with
+ *   `RendererPlugin.extendedVirtualRects` / `visibleCanvasRect` to render fog, parallax,
+ *   or a decorative backdrop into the extra space.
  * - `cover` — preserve aspect, fill the host; content overflows the virtual rect on the long axis.
  * - `stretch` — non-uniform scale; the virtual rect is squashed/pulled to match the host.
  */
-export type FitMode = "letterbox" | "cover" | "stretch";
+export type FitMode = "letterbox" | "expand" | "cover" | "stretch";
 
 /** Options for the responsive-fit API. */
 export interface RendererFitOptions {

@@ -9,7 +9,7 @@ import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { FitController } from "./Fit.js";
-import type { VirtualRect } from "./Fit.js";
+import type { CanvasRect, VirtualRect } from "./Fit.js";
 import type { GraphicsContext, TextureResource } from "./public-types.js";
 import { RendererKey } from "./types.js";
 import type { RendererConfig, RendererFitOptions } from "./types.js";
@@ -181,11 +181,22 @@ export class RendererPlugin implements Plugin {
   }
 
   /**
+   * Virtual-space pixels → CSS pixels relative to the canvas top-left.
+   * Symmetric with {@link canvasToVirtual}; useful when mapping virtual
+   * coordinates back out to DOM overlays or pointer regions.
+   */
+  virtualToCanvas(x: number, y: number): Vec2 {
+    return this.fitController.virtualToCanvas(x, y);
+  }
+
+  /**
    * Sub-rectangle of the declared virtual space that is actually on-screen.
-   * Use this to anchor HUD / UI; keep gameplay on `virtualSize`.
+   * Use this to anchor HUD / UI that must stay inside the play area; use
+   * {@link visibleCanvasRect} if your HUD is allowed to live in the bars.
+   * Gameplay queries should stay on `virtualSize`.
    *
-   * Under `letterbox` / `stretch` this equals the full virtual rect. Under
-   * `cover` the long axis is cropped by the canvas edges.
+   * Under `letterbox` / `expand` / `stretch` this equals the full virtual
+   * rect. Under `cover` the long axis is cropped by the canvas edges.
    */
   get visibleVirtualRect(): VirtualRect {
     return this.fitController.visibleVirtualRect;
@@ -197,10 +208,47 @@ export class RendererPlugin implements Plugin {
    * these for effects that need to reason about cropped regions (e.g.
    * fog-of-war overlays at the visible boundary).
    *
-   * Empty under `letterbox` / `stretch`. Under `cover`, returns 1–2 strips.
+   * Empty under `letterbox` / `expand` / `stretch`. Under `cover`, returns 1–2 strips.
    */
   get croppedVirtualRects(): readonly VirtualRect[] {
     return this.fitController.croppedVirtualRects;
+  }
+
+  /**
+   * Where the declared virtual rectangle sits on the canvas, in CSS pixels.
+   * Use for DOM overlays positioned over the play area, cropping screenshots
+   * to gameplay, or mapping CSS-coord hit regions. The rect may extend past
+   * the canvas (negative coords, dimensions larger than `canvasSize`) under
+   * `cover`.
+   */
+  get virtualCanvasRect(): CanvasRect {
+    return this.fitController.virtualCanvasRect;
+  }
+
+  /**
+   * Full canvas extent expressed in virtual-space pixels — unlike
+   * {@link visibleVirtualRect}, not clamped to the declared virtual rect.
+   * Under `letterbox` / `expand` on an off-aspect host this extends past
+   * `virtualSize` on the unscaled axis (useful for drawing backdrops that
+   * fill the bars). Under `cover` it equals `visibleVirtualRect`; under
+   * `stretch` it equals the virtual rect.
+   */
+  get visibleCanvasRect(): VirtualRect {
+    return this.fitController.visibleCanvasRect;
+  }
+
+  /**
+   * Rectangles of the visible canvas OUTSIDE the declared virtual rect —
+   * the letterbox/expand "bars" expressed in virtual-space pixels.
+   *
+   * Populated under `letterbox` and `expand` whenever aspect mismatches;
+   * empty under `cover` and `stretch`. Under `expand` these are the
+   * play-adjacent strips the game is expected to draw into (fog, parallax,
+   * HUD). Under `letterbox` they describe where the background-color bars
+   * land — so bar-customization can layer on top of a letterbox render.
+   */
+  get extendedVirtualRects(): readonly VirtualRect[] {
+    return this.fitController.extendedVirtualRects;
   }
 
   /** The per-scene render tree provider. */

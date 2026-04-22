@@ -1,20 +1,25 @@
 /**
- * Responsive UI with a fixed-ratio game area + fog-of-war at the crop edges.
+ * Responsive UI with a fixed-ratio play area + fog beyond it.
  *
- * Demonstrates `cover` fit with `visibleVirtualRect` and `croppedVirtualRects`:
+ * Demonstrates `fit: "expand"` together with `visibleCanvasRect`,
+ * `extendedVirtualRects`, and `virtualCanvasRect`. The play area
+ * (VIRTUAL_WIDTH × VIRTUAL_HEIGHT) is always fully visible — like letterbox.
+ * But instead of black bars, the game draws into the leftover canvas space:
+ * the grid extends across the whole visible canvas, and a fog overlay covers
+ * the bars so the player can see "there's world here, but it's not the play
+ * area." HUD cards anchor to the canvas corners so they land in the bars
+ * whenever aspect mismatches.
  *
- * - Declared virtual area is 800×600 — the play field. Gameplay operates
- *   in the full rectangle regardless of screen aspect.
- * - `fit: { mode: "cover" }` fills the host, cropping the long axis.
- * - HUD cards anchor to `visibleVirtualRect` corners so they stay at
- *   the edges of what the player can see.
- * - A screen-space fog layer reads `croppedVirtualRects` and draws a
- *   half-opacity band along each cropped edge, expanded inward into the
- *   visible area so the fog actually shows. The grid bleeds through at
- *   half alpha; bouncing balls that cross into the fog band get visually
- *   muted as they approach the crop boundary.
- * - Under an exact-aspect host (800×600), `croppedVirtualRects` is empty
- *   and no fog is drawn. Resize the window to see it appear/disappear.
+ * Layers:
+ *   grid  — world-space, draws over `visibleCanvasRect` (extends into bars).
+ *   balls — world-space, bouncing against `visibleCanvasRect` so they roam
+ *           across the entire canvas (through the bars) rather than being
+ *           confined to the declared virtual rect.
+ *   fog   — screen-space, semi-opaque bands over `extendedVirtualRects`. Each
+ *           strip is a solid fog rect plus a short gradient on the edge that
+ *           touches the play area (transitioning to transparent), so the
+ *           boundary softens without blurring the outer canvas edge.
+ *   hud   — screen-space, corner cards tracking `visibleCanvasRect` corners.
  */
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import {
@@ -22,11 +27,11 @@ import {
   RendererKey,
   GraphicsComponent,
 } from "@yagejs/renderer";
-import type { LayerDef, VirtualRect } from "@yagejs/renderer";
+import type { LayerDef } from "@yagejs/renderer";
+import { FillGradient, Text } from "pixi.js";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
-  /* Let the container flex to any aspect so cover mode has something to do. */
   #game-container {
     max-width: 100%;
     height: 70vh;
@@ -46,21 +51,25 @@ injectStyles(`
 
 const readout = document.createElement("div");
 readout.id = "readout";
-readout.textContent = "Resize the browser to see the fog track the cropped edges";
+readout.textContent = "Resize the browser — the grid extends into the bars, fog marks the out-of-bounds area";
 document.body.appendChild(readout);
 
 const VIRTUAL_WIDTH = 800;
 const VIRTUAL_HEIGHT = 600;
-const FOG_INWARD_DEPTH = 60; // virtual pixels the fog extends into visible area
+const FOG_ALPHA = 0.78;
+// Width (in virtual px) of the gradient band on the edge of each fog strip
+// that touches the play area — the rest of the strip is solid fog.
+const FOG_GRADIENT_WIDTH = 40;
 
-// Configure the container for "flex to any size".
 const container = getContainer();
 container.style.maxWidth = "100%";
 container.style.height = "70vh";
 container.style.aspectRatio = "auto";
 
 // ---------------------------------------------------------------------------
-// HudAnchor — repositions its entity to a corner of `visibleVirtualRect`.
+// HudAnchor — places an entity at a corner of `visibleCanvasRect`, i.e. the
+// canvas corners expressed in virtual-space coords. Under `expand`, these
+// corners live in the bars whenever aspect mismatches.
 // ---------------------------------------------------------------------------
 type Corner = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
 
@@ -76,7 +85,7 @@ class HudAnchor extends Component {
   }
 
   update(): void {
-    const { x, y, width, height } = this.renderer.visibleVirtualRect;
+    const { x, y, width, height } = this.renderer.visibleCanvasRect;
     const m = this.margin;
     let px = x + m;
     let py = y + m;
@@ -91,10 +100,12 @@ class HudAnchor extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// BouncingBall — gameplay. Bounces off the full 800×600 virtual bounds,
-// NOT the visible sub-rect. Demonstrates that gameplay continues off-screen.
+// BouncingBall — bounces against `visibleCanvasRect`, i.e. the full canvas
+// expressed in virtual-space coords. Under `expand` this means balls travel
+// through the bars rather than being confined to the declared virtual rect.
 // ---------------------------------------------------------------------------
 class BouncingBall extends Component {
+  private readonly renderer = this.service(RendererKey);
   private readonly transform = this.sibling(Transform);
   private velocity: Vec2;
 
@@ -109,86 +120,171 @@ class BouncingBall extends Component {
 
   update(dt: number): void {
     const dtSec = dt / 1000;
+    const bounds = this.renderer.visibleCanvasRect;
+    const minX = bounds.x + this.radius;
+    const maxX = bounds.x + bounds.width - this.radius;
+    const minY = bounds.y + this.radius;
+    const maxY = bounds.y + bounds.height - this.radius;
+
     const p = this.transform.position;
     let nx = p.x + this.velocity.x * dtSec;
     let ny = p.y + this.velocity.y * dtSec;
-    if (nx - this.radius < 0 || nx + this.radius > VIRTUAL_WIDTH) {
+    if (nx < minX || nx > maxX) {
       this.velocity = new Vec2(-this.velocity.x, this.velocity.y);
-      nx = p.x + this.velocity.x * dtSec;
+      nx = Math.min(Math.max(nx, minX), maxX);
     }
-    if (ny - this.radius < 0 || ny + this.radius > VIRTUAL_HEIGHT) {
+    if (ny < minY || ny > maxY) {
       this.velocity = new Vec2(this.velocity.x, -this.velocity.y);
-      ny = p.y + this.velocity.y * dtSec;
+      ny = Math.min(Math.max(ny, minY), maxY);
     }
     this.transform.setPosition(nx, ny);
   }
 }
 
 // ---------------------------------------------------------------------------
-// FogOverlay — redraws a half-opacity fog band for each cropped edge, each
-// band extended inward by FOG_INWARD_DEPTH so it's visible inside the
-// canvas instead of being fully clipped. Redraws only when the rect set
-// changes (resize events) to avoid per-frame graphics churn.
+// GridRedraw — renders the grid every time the canvas extent changes so it
+// always reaches the canvas edges (not just inside the virtual rect).
 // ---------------------------------------------------------------------------
-function expandInward(
-  cropped: VirtualRect,
-  depth: number,
-  vw: number,
-  vh: number,
-): VirtualRect {
-  // Push the cropped rect edge into the visible area on the axis where
-  // the rect sits against the virtual boundary.
-  if (cropped.y === 0 && cropped.height < vh) {
-    // top strip: extend height downward into visible
-    return { ...cropped, height: cropped.height + depth };
-  }
-  if (cropped.y + cropped.height === vh) {
-    // bottom strip: start earlier, keep end
-    return {
-      x: cropped.x,
-      y: cropped.y - depth,
-      width: cropped.width,
-      height: cropped.height + depth,
-    };
-  }
-  if (cropped.x === 0 && cropped.width < vw) {
-    // left strip
-    return { ...cropped, width: cropped.width + depth };
-  }
-  if (cropped.x + cropped.width === vw) {
-    // right strip
-    return {
-      x: cropped.x - depth,
-      y: cropped.y,
-      width: cropped.width + depth,
-      height: cropped.height,
-    };
-  }
-  return cropped;
-}
-
-class FogOverlay extends Component {
+class GridRedraw extends Component {
   private readonly renderer = this.service(RendererKey);
   private readonly graphics = this.sibling(GraphicsComponent);
   private lastKey = "";
 
   update(): void {
-    const rects = this.renderer.croppedVirtualRects;
-    const key = rects.map((r) => `${r.x},${r.y},${r.width},${r.height}`).join("|");
+    const v = this.renderer.visibleCanvasRect;
+    const key = `${v.x},${v.y},${v.width},${v.height}`;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+
+    // Align gridlines to a 50-px lattice based at the virtual origin, then
+    // extend past the canvas edges on every side so lines reach into the bars.
+    const step = 50;
+    const xStart = Math.floor(v.x / step) * step;
+    const xEnd = Math.ceil((v.x + v.width) / step) * step;
+    const yStart = Math.floor(v.y / step) * step;
+    const yEnd = Math.ceil((v.y + v.height) / step) * step;
+
+    const g = this.graphics.graphics;
+    g.clear();
+    for (let x = xStart; x <= xEnd; x += step) {
+      g.moveTo(x, yStart).lineTo(x, yEnd).stroke({ color: 0x1f2937, width: 1 });
+    }
+    for (let y = yStart; y <= yEnd; y += step) {
+      g.moveTo(xStart, y).lineTo(xEnd, y).stroke({ color: 0x1f2937, width: 1 });
+    }
+    // Center crosshair.
+    g.moveTo(VIRTUAL_WIDTH / 2 - 20, VIRTUAL_HEIGHT / 2)
+      .lineTo(VIRTUAL_WIDTH / 2 + 20, VIRTUAL_HEIGHT / 2)
+      .stroke({ color: 0x64748b, width: 2 });
+    g.moveTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 - 20)
+      .lineTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 + 20)
+      .stroke({ color: 0x64748b, width: 2 });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// FogOverlay — each `extendedVirtualRect` becomes a solid fog rect plus a
+// short gradient band on the edge touching the play area. The gradient
+// transitions from full fog alpha to 0 right at the virtual boundary.
+// ---------------------------------------------------------------------------
+const FOG_OPAQUE = `rgba(0,0,0,${FOG_ALPHA})`;
+const FOG_CLEAR = "rgba(0,0,0,0)";
+
+class FogOverlay extends Component {
+  private readonly renderer = this.service(RendererKey);
+  private readonly graphics = this.sibling(GraphicsComponent);
+  private gradients: FillGradient[] = [];
+  private lastKey = "";
+
+  update(): void {
+    const rects = this.renderer.extendedVirtualRects;
+    const key = rects
+      .map((r) => `${r.x},${r.y},${r.width},${r.height}`)
+      .join("|");
     if (key === this.lastKey) return;
     this.lastKey = key;
 
     const g = this.graphics.graphics;
     g.clear();
-    for (const cropped of rects) {
-      const r = expandInward(cropped, FOG_INWARD_DEPTH, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
-      g.rect(r.x, r.y, r.width, r.height).fill({ color: 0x000000, alpha: 0.55 });
+    this.disposeGradients();
+
+    for (const r of rects) {
+      // Each extended strip is flush to exactly one edge of the virtual rect
+      // (letterbox/expand scales on one axis only, so top+bottom OR left+right
+      // pairs, never corner-mixed).
+      const EPS = 0.5;
+      const atTop = r.y + r.height <= EPS;
+      const atBottom = r.y >= VIRTUAL_HEIGHT - EPS;
+      const atLeft = r.x + r.width <= EPS;
+      const atRight = r.x >= VIRTUAL_WIDTH - EPS;
+
+      const axisSize = atTop || atBottom ? r.height : r.width;
+      const gradW = Math.min(FOG_GRADIENT_WIDTH, axisSize);
+      const bulk = axisSize - gradW;
+
+      if (atTop) {
+        if (bulk > 0) {
+          g.rect(r.x, r.y, r.width, bulk).fill({ color: 0x000000, alpha: FOG_ALPHA });
+        }
+        g.rect(r.x, r.y + bulk, r.width, gradW).fill(
+          this.makeGradient("vertical", FOG_OPAQUE, FOG_CLEAR),
+        );
+      } else if (atBottom) {
+        g.rect(r.x, r.y, r.width, gradW).fill(
+          this.makeGradient("vertical", FOG_CLEAR, FOG_OPAQUE),
+        );
+        if (bulk > 0) {
+          g.rect(r.x, r.y + gradW, r.width, bulk).fill({ color: 0x000000, alpha: FOG_ALPHA });
+        }
+      } else if (atLeft) {
+        if (bulk > 0) {
+          g.rect(r.x, r.y, bulk, r.height).fill({ color: 0x000000, alpha: FOG_ALPHA });
+        }
+        g.rect(r.x + bulk, r.y, gradW, r.height).fill(
+          this.makeGradient("horizontal", FOG_OPAQUE, FOG_CLEAR),
+        );
+      } else if (atRight) {
+        g.rect(r.x, r.y, gradW, r.height).fill(
+          this.makeGradient("horizontal", FOG_CLEAR, FOG_OPAQUE),
+        );
+        if (bulk > 0) {
+          g.rect(r.x + gradW, r.y, bulk, r.height).fill({ color: 0x000000, alpha: FOG_ALPHA });
+        }
+      }
     }
+  }
+
+  onRemove(): void {
+    this.disposeGradients();
+  }
+
+  private makeGradient(
+    axis: "horizontal" | "vertical",
+    startColor: string,
+    endColor: string,
+  ): FillGradient {
+    const gradient = new FillGradient({
+      type: "linear",
+      start: { x: 0, y: 0 },
+      end: axis === "horizontal" ? { x: 1, y: 0 } : { x: 0, y: 1 },
+      colorStops: [
+        { offset: 0, color: startColor },
+        { offset: 1, color: endColor },
+      ],
+      textureSpace: "local",
+    });
+    this.gradients.push(gradient);
+    return gradient;
+  }
+
+  private disposeGradients(): void {
+    for (const g of this.gradients) g.destroy();
+    this.gradients = [];
   }
 }
 
 // ---------------------------------------------------------------------------
-// ReadoutUpdater — prints canvas size + visible + cropped rects below canvas.
+// ReadoutUpdater — prints the current fit state for debugging.
 // ---------------------------------------------------------------------------
 class ReadoutUpdater extends Component {
   private readonly renderer = this.service(RendererKey);
@@ -196,13 +292,16 @@ class ReadoutUpdater extends Component {
 
   update(): void {
     const c = this.renderer.canvasSize;
-    const v = this.renderer.visibleVirtualRect;
-    const cropped = this.renderer.croppedVirtualRects.length;
+    const vc = this.renderer.visibleCanvasRect;
+    const vcr = this.renderer.virtualCanvasRect;
+    const bars = this.renderer.extendedVirtualRects.length;
     const text =
       `canvas ${Math.round(c.width)}×${Math.round(c.height)} CSS  │  ` +
-      `visible { x: ${Math.round(v.x)}, y: ${Math.round(v.y)}, ` +
-      `w: ${Math.round(v.width)}, h: ${Math.round(v.height)} }  │  ` +
-      `cropped rects: ${cropped}`;
+      `play area on canvas ${Math.round(vcr.x)},${Math.round(vcr.y)} ` +
+      `${Math.round(vcr.width)}×${Math.round(vcr.height)}  │  ` +
+      `visible (virtual) { x: ${Math.round(vc.x)}, y: ${Math.round(vc.y)}, ` +
+      `w: ${Math.round(vc.width)}, h: ${Math.round(vc.height)} }  │  ` +
+      `bars: ${bars}`;
     if (text !== this.last) {
       this.last = text;
       readout.textContent = text;
@@ -213,48 +312,33 @@ class ReadoutUpdater extends Component {
 // ---------------------------------------------------------------------------
 // Scene
 // ---------------------------------------------------------------------------
-const HUD_COLORS: Record<Corner, { fill: number; stroke: number }> = {
-  topLeft: { fill: 0x22c55e, stroke: 0x16a34a },
-  topRight: { fill: 0xf97316, stroke: 0xea580c },
-  bottomLeft: { fill: 0x38bdf8, stroke: 0x0ea5e9 },
-  bottomRight: { fill: 0xa78bfa, stroke: 0x7c3aed },
+const HUD_CARDS: Record<
+  Corner,
+  { fill: number; stroke: number; label: string; value: string }
+> = {
+  topLeft: { fill: 0x22c55e, stroke: 0x16a34a, label: "SCORE", value: "12,340" },
+  topRight: { fill: 0xf97316, stroke: 0xea580c, label: "WAVE", value: "03" },
+  bottomLeft: { fill: 0x38bdf8, stroke: 0x0ea5e9, label: "HP", value: "78%" },
+  bottomRight: { fill: 0xa78bfa, stroke: 0x7c3aed, label: "TIME", value: "01:42" },
 };
 
 class ResponsiveUIScene extends Scene {
   readonly name = "responsive-ui";
   readonly layers: readonly LayerDef[] = [
-    { name: "world", order: 0 },
+    { name: "grid", order: 0 },
+    { name: "balls", order: 10 },
     { name: "fog", order: 50, space: "screen" },
     { name: "hud", order: 100, space: "screen" },
   ];
 
   onEnter(): void {
-    // Play-area grid spanning the full declared virtual rect.
-    const playArea = this.spawn("play-area");
-    playArea.add(new Transform());
-    playArea.add(
-      new GraphicsComponent({ layer: "world" }).draw((g) => {
-        for (let x = 0; x <= VIRTUAL_WIDTH; x += 50) {
-          g.moveTo(x, 0).lineTo(x, VIRTUAL_HEIGHT).stroke({ color: 0x1f2937, width: 1 });
-        }
-        for (let y = 0; y <= VIRTUAL_HEIGHT; y += 50) {
-          g.moveTo(0, y).lineTo(VIRTUAL_WIDTH, y).stroke({ color: 0x1f2937, width: 1 });
-        }
-        g.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).stroke({
-          color: 0x475569,
-          width: 3,
-        });
-        g.moveTo(VIRTUAL_WIDTH / 2 - 20, VIRTUAL_HEIGHT / 2)
-          .lineTo(VIRTUAL_WIDTH / 2 + 20, VIRTUAL_HEIGHT / 2)
-          .stroke({ color: 0x64748b, width: 2 });
-        g.moveTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 - 20)
-          .lineTo(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2 + 20)
-          .stroke({ color: 0x64748b, width: 2 });
-      }),
-    );
+    // Grid — drawn dynamically so it reaches the canvas edges on every resize.
+    const grid = this.spawn("grid");
+    grid.add(new Transform());
+    grid.add(new GraphicsComponent({ layer: "grid" }));
+    grid.add(new GridRedraw());
 
-    // Bouncing balls across the full virtual rect. Some positions will be
-    // off-screen on narrow aspects — demonstrates gameplay-continues-in-crop.
+    // Balls — bouncing strictly inside the virtual play area.
     const palette = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0xa855f7];
     for (let i = 0; i < 10; i++) {
       const radius = 12 + Math.random() * 10;
@@ -266,40 +350,64 @@ class ResponsiveUIScene extends Scene {
       const ball = this.spawn(`ball-${i}`);
       ball.add(new Transform({ position: new Vec2(x, y) }));
       ball.add(
-        new GraphicsComponent({ layer: "world" }).draw((g) => {
-          g.circle(0, 0, radius).fill({ color, alpha: 0.85 });
-          g.circle(0, 0, radius).stroke({ color: 0xffffff, width: 1, alpha: 0.4 });
+        new GraphicsComponent({ layer: "balls" }).draw((g) => {
+          g.circle(0, 0, radius).fill({ color, alpha: 0.95 });
+          g.circle(0, 0, radius).stroke({ color: 0xffffff, width: 1, alpha: 0.5 });
         }),
       );
       ball.add(new BouncingBall(vx, vy, radius));
     }
 
-    // Fog layer — redraws when croppedVirtualRects changes.
+    // Fog overlay covering `extendedVirtualRects` (the bars).
     const fog = this.spawn("fog");
     fog.add(new Transform());
     fog.add(new GraphicsComponent({ layer: "fog" }));
     fog.add(new FogOverlay());
 
-    // HUD cards anchored to visibleVirtualRect corners.
-    for (const corner of Object.keys(HUD_COLORS) as Corner[]) {
-      const meta = HUD_COLORS[corner];
+    // HUD corners anchored to the canvas corners (in virtual coords).
+    for (const corner of Object.keys(HUD_CARDS) as Corner[]) {
+      const meta = HUD_CARDS[corner];
       const card = this.spawn(`hud-${corner}`);
       card.add(new Transform());
       card.add(
         new GraphicsComponent({ layer: "hud" }).draw((g) => {
-          const w = 110;
+          const w = 120;
           const h = 44;
           const dx = corner === "topLeft" || corner === "bottomLeft" ? 0 : -w;
           const dy = corner === "topLeft" || corner === "topRight" ? 0 : -h;
           g.rect(dx, dy, w, h).fill({ color: 0x111827, alpha: 0.9 });
           g.rect(dx, dy, w, h).stroke({ color: meta.stroke, width: 2 });
           g.circle(dx + 14, dy + h / 2, 5).fill({ color: meta.fill });
+
+          const label = new Text({
+            text: meta.label,
+            style: {
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 10,
+              fill: 0x94a3b8,
+              letterSpacing: 1,
+            },
+          });
+          label.position.set(dx + 28, dy + 7);
+          g.addChild(label);
+
+          const value = new Text({
+            text: meta.value,
+            style: {
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 14,
+              fill: 0xf8fafc,
+              fontWeight: "bold",
+            },
+          });
+          value.position.set(dx + 28, dy + 21);
+          g.addChild(value);
         }),
       );
       card.add(new HudAnchor(corner));
     }
 
-    // Live readout
+    // Live readout.
     const info = this.spawn("readout");
     info.add(new Transform());
     info.add(new ReadoutUpdater());
@@ -318,7 +426,7 @@ async function main() {
       height: VIRTUAL_HEIGHT,
       backgroundColor: 0x0f172a,
       container,
-      fit: { mode: "cover" },
+      fit: { mode: "expand" },
     }),
   );
 

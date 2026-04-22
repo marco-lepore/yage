@@ -20,6 +20,13 @@ export interface VirtualRect {
 }
 
 /**
+ * A rectangle in canvas CSS pixels (what the DOM sees). Structurally identical
+ * to {@link VirtualRect}; distinguished at the type level so signatures can
+ * signal which coordinate space a rect lives in.
+ */
+export type CanvasRect = VirtualRect;
+
+/**
  * Owns the stage transform + canvas size under responsive fit.
  *
  * On `start()`, observes the target element and re-applies both
@@ -134,6 +141,48 @@ export class FitController {
     return new Vec2((x - offsetX) / scaleX, (y - offsetY) / scaleY);
   }
 
+  /** Virtual-space pixels → CSS pixels relative to the canvas. */
+  virtualToCanvas(x: number, y: number): Vec2 {
+    const { scaleX, scaleY, offsetX, offsetY } = this.transform;
+    return new Vec2(x * scaleX + offsetX, y * scaleY + offsetY);
+  }
+
+  /**
+   * Where the declared virtual rectangle sits on the canvas, in CSS pixels.
+   * Useful for positioning DOM overlays over the play area, cropping
+   * screenshots to gameplay, or mapping CSS-coord picking regions. Derived
+   * from the stage transform: `{ x: offsetX, y: offsetY, width: vW*scaleX,
+   * height: vH*scaleY }`.
+   */
+  get virtualCanvasRect(): CanvasRect {
+    const { scaleX, scaleY, offsetX, offsetY } = this.transform;
+    return {
+      x: offsetX,
+      y: offsetY,
+      width: this.virtualWidth * scaleX,
+      height: this.virtualHeight * scaleY,
+    };
+  }
+
+  /**
+   * Full canvas extent expressed in virtual-space pixels. Unlike
+   * {@link visibleVirtualRect} this is NOT clamped to the declared virtual
+   * bounds — under `letterbox` / `expand` on an off-aspect host it extends
+   * past `virtualSize` on the unscaled axis (negative `x`/`y` or
+   * `width`/`height` greater than the virtual dimension). Under `cover` it
+   * equals `visibleVirtualRect`; under `stretch` it equals the virtual rect.
+   */
+  get visibleCanvasRect(): VirtualRect {
+    const { scaleX, scaleY, offsetX, offsetY } = this.transform;
+    // `+ 0` normalizes `-0` (e.g. when `offsetX === 0`) so consumer
+    // comparisons with strict equality / `Object.is` don't trip up.
+    const x = -offsetX / scaleX + 0;
+    const y = -offsetY / scaleY + 0;
+    const width = this.canvasW / scaleX;
+    const height = this.canvasH / scaleY;
+    return { x, y, width, height };
+  }
+
   /**
    * The sub-rectangle of the declared virtual space (0..virtualWidth,
    * 0..virtualHeight) that is actually on-screen, clamped to the virtual
@@ -212,6 +261,66 @@ export class FitController {
     return out;
   }
 
+  /**
+   * Rectangles of the visible canvas that sit OUTSIDE the declared virtual
+   * rect — the letterbox/expand "bars" expressed in virtual-space pixels.
+   * Geometric complement of `virtualRect` inside {@link visibleCanvasRect}.
+   *
+   * Populated whenever the host aspect doesn't match virtual and there's
+   * canvas area beyond virtual: true under `letterbox` and `expand`, empty
+   * under `cover` (virtual always covers the canvas) and `stretch` (virtual
+   * exactly fills the canvas).
+   *
+   * Under `expand` these are the "play-adjacent" strips the game is expected
+   * to draw into — fog, parallax, decorative backdrop, bar-anchored HUD.
+   * Under `letterbox` they describe where the background-color bars land, so
+   * the same rects can drive optional bar customization on top of a
+   * letterbox render.
+   *
+   * Strips are returned in axis order: top-then-bottom on wide hosts,
+   * left-then-right on tall hosts. Zero-sized strips are omitted.
+   */
+  get extendedVirtualRects(): readonly VirtualRect[] {
+    const vc = this.visibleCanvasRect;
+    const vw = this.virtualWidth;
+    const vh = this.virtualHeight;
+    const out: VirtualRect[] = [];
+    // Top strip
+    if (vc.y < 0) {
+      out.push({ x: vc.x, y: vc.y, width: vc.width, height: -vc.y });
+    }
+    // Bottom strip
+    const vcBottom = vc.y + vc.height;
+    if (vcBottom > vh) {
+      out.push({ x: vc.x, y: vh, width: vc.width, height: vcBottom - vh });
+    }
+    // Left strip (only the portion not already captured by full-width top/bottom).
+    // Full-width strips and full-height strips are mutually exclusive under
+    // letterbox/expand (only one axis of bars exists at a time), so we can
+    // safely emit the side strips keyed to the visible-inside-virtual band.
+    const insideTop = Math.max(0, vc.y);
+    const insideBottom = Math.min(vh, vcBottom);
+    const insideHeight = Math.max(0, insideBottom - insideTop);
+    if (vc.x < 0) {
+      out.push({
+        x: vc.x,
+        y: insideTop,
+        width: -vc.x,
+        height: insideHeight,
+      });
+    }
+    const vcRight = vc.x + vc.width;
+    if (vcRight > vw) {
+      out.push({
+        x: vw,
+        y: insideTop,
+        width: vcRight - vw,
+        height: insideHeight,
+      });
+    }
+    return out;
+  }
+
   private measure(el: HTMLElement): { width: number; height: number } {
     const rect = el.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
@@ -232,6 +341,10 @@ export class FitController {
       offsetX = 0;
       offsetY = 0;
     } else {
+      // letterbox + expand share the same transform (uniform min-scale,
+      // centered). They differ only in rendering convention: letterbox
+      // paints the leftover canvas with the app background color, expand
+      // lets the game draw into it. Exposed via `extendedVirtualRects`.
       const scale =
         this.mode === "cover"
           ? Math.max(hostW / vW, hostH / vH)

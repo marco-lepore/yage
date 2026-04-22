@@ -106,7 +106,7 @@ describe("FitController", () => {
   });
 
   function makeFit(
-    mode: "letterbox" | "cover" | "stretch",
+    mode: "letterbox" | "expand" | "cover" | "stretch",
     vW: number,
     vH: number,
     hostW: number,
@@ -186,6 +186,39 @@ describe("FitController", () => {
       expect(app.stage.scale.y).toBe(2);
       expect(app.stage.position.x).toBe(0);
       expect(app.stage.position.y).toBe(0);
+    });
+  });
+
+  describe("expand", () => {
+    it("uses the same transform as letterbox on a wider host", () => {
+      const { fit, app } = makeFit("expand", 400, 300, 1000, 600);
+      fit.start();
+
+      // scale = min(1000/400, 600/300) = 2 — same as letterbox
+      expect(app.stage.scale.x).toBe(2);
+      expect(app.stage.scale.y).toBe(2);
+      expect(app.stage.position.x).toBe(100);
+      expect(app.stage.position.y).toBe(0);
+    });
+
+    it("uses the same transform as letterbox on a taller host", () => {
+      const { fit, app } = makeFit("expand", 400, 300, 800, 800);
+      fit.start();
+
+      expect(app.stage.scale.x).toBe(2);
+      expect(app.stage.position.x).toBe(0);
+      expect(app.stage.position.y).toBe(100);
+    });
+
+    it("keeps visibleVirtualRect at the full virtual rect regardless of aspect", () => {
+      const { fit } = makeFit("expand", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleVirtualRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      });
     });
   });
 
@@ -319,6 +352,177 @@ describe("FitController", () => {
         { x: 0, y: 0, width: 100, height: 300 },
         { x: 300, y: 0, width: 100, height: 300 },
       ]);
+    });
+  });
+
+  describe("virtualCanvasRect", () => {
+    it("equals the centered virtual footprint under letterbox", () => {
+      // scale=2, offsetX=100, offsetY=0
+      const { fit } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.virtualCanvasRect).toEqual({
+        x: 100,
+        y: 0,
+        width: 800,
+        height: 600,
+      });
+    });
+
+    it("matches letterbox under expand", () => {
+      const { fit: letter } = makeFit("letterbox", 400, 300, 1000, 600);
+      letter.start();
+      const { fit: exp } = makeFit("expand", 400, 300, 1000, 600);
+      exp.start();
+      expect(exp.virtualCanvasRect).toEqual(letter.virtualCanvasRect);
+    });
+
+    it("extends past the canvas under cover", () => {
+      // scale=2.5, offsetY=-75
+      const { fit } = makeFit("cover", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.virtualCanvasRect).toEqual({
+        x: 0,
+        y: -75,
+        width: 1000,
+        height: 750,
+      });
+    });
+
+    it("fills the canvas under stretch (non-uniform scale)", () => {
+      const { fit } = makeFit("stretch", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.virtualCanvasRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 600,
+      });
+    });
+  });
+
+  describe("visibleCanvasRect", () => {
+    it("extends past virtual on the bar axis under letterbox", () => {
+      // scale=2, offsetX=100: canvas in virtual = { -50, 0, 500, 300 }
+      const { fit } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleCanvasRect).toEqual({
+        x: -50,
+        y: 0,
+        width: 500,
+        height: 300,
+      });
+    });
+
+    it("matches letterbox under expand", () => {
+      const { fit: letter } = makeFit("letterbox", 400, 300, 800, 800);
+      letter.start();
+      const { fit: exp } = makeFit("expand", 400, 300, 800, 800);
+      exp.start();
+      expect(exp.visibleCanvasRect).toEqual(letter.visibleCanvasRect);
+    });
+
+    it("equals visibleVirtualRect under cover (canvas fits inside virtual)", () => {
+      const { fit } = makeFit("cover", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleCanvasRect).toEqual(fit.visibleVirtualRect);
+    });
+
+    it("equals the virtual rect under stretch", () => {
+      const { fit } = makeFit("stretch", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleCanvasRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      });
+    });
+
+    it("equals the virtual rect when host aspect matches virtual", () => {
+      const { fit } = makeFit("letterbox", 400, 300, 800, 600);
+      fit.start();
+      expect(fit.visibleCanvasRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      });
+    });
+  });
+
+  describe("extendedVirtualRects", () => {
+    it("is empty under letterbox when host aspect matches virtual", () => {
+      const { fit } = makeFit("letterbox", 400, 300, 800, 600);
+      fit.start();
+      expect(fit.extendedVirtualRects).toEqual([]);
+    });
+
+    it("returns left + right bars under letterbox on a wider host", () => {
+      // scale=2, offsetX=100: canvas in virtual = {-50, 0, 500, 300}
+      const { fit } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.extendedVirtualRects).toEqual([
+        { x: -50, y: 0, width: 50, height: 300 },
+        { x: 400, y: 0, width: 50, height: 300 },
+      ]);
+    });
+
+    it("returns top + bottom bars under letterbox on a taller host", () => {
+      // vW=400, vH=300, host 800×800: scale=2, offsetY=100
+      // canvas in virtual = { 0, -50, 400, 400 }
+      const { fit } = makeFit("letterbox", 400, 300, 800, 800);
+      fit.start();
+      expect(fit.extendedVirtualRects).toEqual([
+        { x: 0, y: -50, width: 400, height: 50 },
+        { x: 0, y: 300, width: 400, height: 50 },
+      ]);
+    });
+
+    it("matches letterbox under expand", () => {
+      const { fit: letter } = makeFit("letterbox", 400, 300, 1000, 600);
+      letter.start();
+      const { fit: exp } = makeFit("expand", 400, 300, 1000, 600);
+      exp.start();
+      expect(exp.extendedVirtualRects).toEqual(letter.extendedVirtualRects);
+    });
+
+    it("is empty under cover (virtual covers canvas entirely)", () => {
+      const { fit } = makeFit("cover", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.extendedVirtualRects).toEqual([]);
+    });
+
+    it("is empty under stretch (virtual exactly fills canvas)", () => {
+      const { fit } = makeFit("stretch", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.extendedVirtualRects).toEqual([]);
+    });
+  });
+
+  describe("virtualToCanvas", () => {
+    it("round-trips with canvasToVirtual under letterbox", () => {
+      const { fit } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+
+      // Virtual (0,0) → canvas (100, 0)
+      expect(fit.virtualToCanvas(0, 0).x).toBe(100);
+      expect(fit.virtualToCanvas(0, 0).y).toBe(0);
+      // Virtual (400, 300) → canvas (900, 600)
+      expect(fit.virtualToCanvas(400, 300).x).toBe(900);
+      expect(fit.virtualToCanvas(400, 300).y).toBe(600);
+      // Round-trip
+      const p = fit.virtualToCanvas(173, 91);
+      const back = fit.canvasToVirtual(p.x, p.y);
+      expect(back.x).toBeCloseTo(173);
+      expect(back.y).toBeCloseTo(91);
+    });
+
+    it("round-trips under stretch (non-uniform)", () => {
+      const { fit } = makeFit("stretch", 400, 300, 1000, 600);
+      fit.start();
+
+      expect(fit.virtualToCanvas(200, 150).x).toBe(500);
+      expect(fit.virtualToCanvas(200, 150).y).toBe(300);
     });
   });
 
