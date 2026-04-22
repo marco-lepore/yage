@@ -11,6 +11,14 @@ export interface FitTransform {
   offsetY: number;
 }
 
+/** A rectangle in virtual-space pixels. */
+export interface VirtualRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Owns the stage transform + canvas size under responsive fit.
  *
@@ -124,6 +132,84 @@ export class FitController {
   canvasToVirtual(x: number, y: number): Vec2 {
     const { scaleX, scaleY, offsetX, offsetY } = this.transform;
     return new Vec2((x - offsetX) / scaleX, (y - offsetY) / scaleY);
+  }
+
+  /**
+   * The sub-rectangle of the declared virtual space (0..virtualWidth,
+   * 0..virtualHeight) that is actually on-screen, clamped to the virtual
+   * bounds. Use this to anchor HUD / UI to what the player can see, while
+   * gameplay continues to use the full `virtualSize` as its play area.
+   *
+   * - `letterbox` / `stretch`: always the full virtual rect (no cropping).
+   * - `cover`: a strict sub-rect — the long axis is cropped by the canvas
+   *   edges. Example: under 1000×600 host with 400×300 virtual, cover
+   *   scales to 2.5 and crops 30 virtual pixels off each of top / bottom,
+   *   so `visibleVirtualRect` is `{ x: 0, y: 30, width: 400, height: 240 }`.
+   */
+  get visibleVirtualRect(): VirtualRect {
+    const { scaleX, scaleY, offsetX, offsetY } = this.transform;
+    // Inverse-transform the canvas corners back into virtual space.
+    const xStart = -offsetX / scaleX;
+    const xEnd = (this.canvasW - offsetX) / scaleX;
+    const yStart = -offsetY / scaleY;
+    const yEnd = (this.canvasH - offsetY) / scaleY;
+    // Clamp to the declared virtual rect — matters for `cover`; no-op
+    // otherwise since letterbox/stretch already stay within bounds.
+    const x = Math.max(0, xStart);
+    const y = Math.max(0, yStart);
+    const width = Math.max(0, Math.min(this.virtualWidth, xEnd) - x);
+    const height = Math.max(0, Math.min(this.virtualHeight, yEnd) - y);
+    return { x, y, width, height };
+  }
+
+  /**
+   * Rectangles of virtual space that are currently off-screen (inside
+   * `virtualSize` but outside `visibleVirtualRect`). Gameplay still runs
+   * in these regions — they are just clipped by the canvas edges.
+   *
+   * - `letterbox` / `stretch`: always `[]` (nothing cropped inside virtual).
+   * - `cover`: 1 or 2 strips on the cropped axis (top + bottom on a wide
+   *   host; left + right on a tall host). Example: under 1000×600 host with
+   *   400×300 virtual, cover crops 30 px off top/bottom, so the rects are
+   *   `[{x:0,y:0,w:400,h:30}, {x:0,y:270,w:400,h:30}]`.
+   *
+   * Strips are returned in axis order: top-then-bottom or left-then-right.
+   * Zero-sized strips are omitted.
+   */
+  get croppedVirtualRects(): readonly VirtualRect[] {
+    const vis = this.visibleVirtualRect;
+    const vw = this.virtualWidth;
+    const vh = this.virtualHeight;
+    const out: VirtualRect[] = [];
+    // Top strip
+    if (vis.y > 0) {
+      out.push({ x: 0, y: 0, width: vw, height: vis.y });
+    }
+    // Bottom strip
+    const bottomStart = vis.y + vis.height;
+    if (bottomStart < vh) {
+      out.push({
+        x: 0,
+        y: bottomStart,
+        width: vw,
+        height: vh - bottomStart,
+      });
+    }
+    // Left strip (only if not already captured by top/bottom which span full width)
+    if (vis.x > 0) {
+      out.push({ x: 0, y: vis.y, width: vis.x, height: vis.height });
+    }
+    // Right strip
+    const rightStart = vis.x + vis.width;
+    if (rightStart < vw) {
+      out.push({
+        x: rightStart,
+        y: vis.y,
+        width: vw - rightStart,
+        height: vis.height,
+      });
+    }
+    return out;
   }
 
   private measure(el: HTMLElement): { width: number; height: number } {

@@ -51,7 +51,25 @@ renderer.setFit({ mode: "cover" });            // swap modes / target
 renderer.fit;                                   // current { mode, target? }
 renderer.canvasSize;                            // current CSS { width, height }
 renderer.canvasToVirtual(cssX, cssY);           // canvas-relative CSS → virtual (Vec2)
+renderer.visibleVirtualRect;                    // { x, y, width, height } — see below
+renderer.croppedVirtualRects;                   // VirtualRect[] — off-screen strips
 ```
+
+### `visibleVirtualRect`
+
+Sub-rectangle of the declared virtual space that's actually on-screen, clamped to virtual bounds. Anchor HUD / UI to this rect; keep gameplay queries on `virtualSize`. Critical under `cover` for competitive games where a wider viewport must not grant a gameplay advantage: the play area stays `virtualSize`, but HUDs align to the visible sub-rect.
+
+| Mode | `visibleVirtualRect` |
+|---|---|
+| `letterbox` | full virtual rect: `{ 0, 0, virtualWidth, virtualHeight }` |
+| `stretch` | full virtual rect (no cropping) |
+| `cover` | cropped sub-rect on the long axis, e.g. `{ 0, 30, 400, 240 }` for 400×300 virtual in a 1000×600 host |
+
+### `croppedVirtualRects`
+
+Rectangles of virtual space that are currently off-screen — the complement of `visibleVirtualRect` inside `virtualSize`. Empty under `letterbox` / `stretch`. Under `cover`, returns 1–2 strips on the cropped axis (top + bottom on a wide host, left + right on a tall host). Gameplay still runs in these regions; they're just clipped by the canvas edge.
+
+Use when an effect needs to reason about what's beyond the visible edge — fog-of-war overlays that fade at the crop boundary, edge-activity indicators, auto-panning cameras that keep action in view, etc. The `responsive-ui` example draws a half-opacity fog band at each cropped edge, expanded inward so it's actually visible inside the canvas.
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means *virtual viewport space*. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 

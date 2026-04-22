@@ -231,6 +231,97 @@ describe("FitController", () => {
     });
   });
 
+  describe("visibleVirtualRect", () => {
+    it("returns the full virtual rect under letterbox", () => {
+      const { fit } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleVirtualRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      });
+    });
+
+    it("returns the full virtual rect under stretch", () => {
+      const { fit } = makeFit("stretch", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleVirtualRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      });
+    });
+
+    it("returns the cropped sub-rect under cover", () => {
+      // scale = max(1000/400, 600/300) = 2.5
+      // offsetY = (600 - 300*2.5) / 2 = -75  ⇒ 30 virtual px cropped top & bottom
+      const { fit } = makeFit("cover", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.visibleVirtualRect).toEqual({
+        x: 0,
+        y: 30,
+        width: 400,
+        height: 240,
+      });
+    });
+
+    it("clamps to the virtual rect when host matches virtual aspect exactly", () => {
+      // Perfect aspect — cover scale = 2, offsets = 0, visible = full virtual
+      const { fit } = makeFit("cover", 400, 300, 800, 600);
+      fit.start();
+      expect(fit.visibleVirtualRect).toEqual({
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      });
+    });
+  });
+
+  describe("croppedVirtualRects", () => {
+    it("is empty under letterbox (full virtual always visible)", () => {
+      const { fit } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.croppedVirtualRects).toEqual([]);
+    });
+
+    it("is empty under stretch", () => {
+      const { fit } = makeFit("stretch", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.croppedVirtualRects).toEqual([]);
+    });
+
+    it("is empty under cover when aspect matches exactly", () => {
+      const { fit } = makeFit("cover", 400, 300, 800, 600);
+      fit.start();
+      expect(fit.croppedVirtualRects).toEqual([]);
+    });
+
+    it("returns top + bottom strips under cover on a wide host", () => {
+      // scale = max(1000/400, 600/300) = 2.5 ⇒ visible y = 30..270
+      const { fit } = makeFit("cover", 400, 300, 1000, 600);
+      fit.start();
+      expect(fit.croppedVirtualRects).toEqual([
+        { x: 0, y: 0, width: 400, height: 30 },
+        { x: 0, y: 270, width: 400, height: 30 },
+      ]);
+    });
+
+    it("returns left + right strips under cover on a tall host", () => {
+      // vW=400, vH=300, host 400×600 ⇒ scale = max(400/400, 600/300) = 2
+      // offsetX = (400 - 400*2)/2 = -200, offsetY = (600 - 300*2)/2 = 0
+      // visibleVirtualRect = { x: 100, y: 0, w: 200, h: 300 }
+      const { fit } = makeFit("cover", 400, 300, 400, 600);
+      fit.start();
+      expect(fit.croppedVirtualRects).toEqual([
+        { x: 0, y: 0, width: 100, height: 300 },
+        { x: 300, y: 0, width: 100, height: 300 },
+      ]);
+    });
+  });
+
   describe("ResizeObserver", () => {
     it("re-applies transform and resizes renderer on host resize", () => {
       const { fit, app } = makeFit("letterbox", 400, 300, 800, 600);

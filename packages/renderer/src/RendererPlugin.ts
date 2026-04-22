@@ -9,6 +9,7 @@ import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { FitController } from "./Fit.js";
+import type { VirtualRect } from "./Fit.js";
 import type { GraphicsContext, TextureResource } from "./public-types.js";
 import { RendererKey } from "./types.js";
 import type { RendererConfig, RendererFitOptions } from "./types.js";
@@ -177,6 +178,29 @@ export class RendererPlugin implements Plugin {
    */
   canvasToVirtual(x: number, y: number): Vec2 {
     return this.fitController.canvasToVirtual(x, y);
+  }
+
+  /**
+   * Sub-rectangle of the declared virtual space that is actually on-screen.
+   * Use this to anchor HUD / UI; keep gameplay on `virtualSize`.
+   *
+   * Under `letterbox` / `stretch` this equals the full virtual rect. Under
+   * `cover` the long axis is cropped by the canvas edges.
+   */
+  get visibleVirtualRect(): VirtualRect {
+    return this.fitController.visibleVirtualRect;
+  }
+
+  /**
+   * Rectangles of virtual space that are currently off-screen — the
+   * complement of {@link visibleVirtualRect} inside `virtualSize`. Use
+   * these for effects that need to reason about cropped regions (e.g.
+   * fog-of-war overlays at the visible boundary).
+   *
+   * Empty under `letterbox` / `stretch`. Under `cover`, returns 1–2 strips.
+   */
+  get croppedVirtualRects(): readonly VirtualRect[] {
+    return this.fitController.croppedVirtualRects;
   }
 
   /** The per-scene render tree provider. */

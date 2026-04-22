@@ -88,7 +88,46 @@ renderer.setFit({ mode: "cover" });      // swap modes / target
 renderer.fit;                              // current { mode, target? }
 renderer.canvasSize;                       // { width, height } in CSS px
 renderer.canvasToVirtual(cssX, cssY);      // invert the stage transform
+renderer.visibleVirtualRect;               // on-screen sub-rect of virtual space
 ```
+
+### HUD anchoring under `cover`
+
+In `letterbox` / `stretch` the full virtual rectangle is always on-screen,
+so HUDs anchored to `virtualSize` corners stay visible. Under `cover` the
+long axis gets cropped — a HUD anchored to virtual `(0, 0)` can end up
+off-screen. `renderer.visibleVirtualRect` returns the currently-visible
+sub-rect of virtual space (clamped to virtual bounds), so HUD code can
+track what the player actually sees while gameplay keeps operating in
+the full declared virtual space:
+
+```typescript
+// Gameplay: always the full declared play area.
+const { width, height } = renderer.virtualSize;
+
+// HUD: follow the visible sub-rect so corner-anchored elements stay on-screen.
+const visible = renderer.visibleVirtualRect;
+scoreLabel.position.set(visible.x + 16, visible.y + 16);
+```
+
+Under `letterbox` and `stretch` `visibleVirtualRect` equals
+`{ x: 0, y: 0, width: virtualWidth, height: virtualHeight }` — no change
+needed for non-cover games. This distinction matters for competitive
+titles where a wider viewport must not let players see more of the play
+area than narrower ones do.
+
+### Reasoning about the cropped region
+
+`renderer.croppedVirtualRects` returns the complement: the 0–2 strips of
+virtual space that are off-screen right now. Empty under `letterbox` /
+`stretch`; under `cover` it's the top+bottom or left+right crop strips.
+
+Use it when an effect needs to know "what's beyond the player's view":
+fog-of-war overlays at the crop boundary, indicators that pulse when
+off-screen enemies are nearby, auto-panning cameras. The built-in
+`responsive-ui` example draws a half-opacity fog band at each cropped
+edge (expanded inward so it shows up inside the canvas) — balls bouncing
+into the crop region fade through the fog as they approach the edge.
 
 Note on terminology: "screen" elsewhere in the engine (UI `LayerSpace:
 "screen"`, `Camera.screenToWorld`) means *virtual viewport space*, not DOM
