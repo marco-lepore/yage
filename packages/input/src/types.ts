@@ -13,6 +13,13 @@ export interface CameraLike {
 /** Minimal renderer surface needed by InputPlugin for canvas access. */
 export interface RendererLike {
   readonly canvas: HTMLCanvasElement;
+  /**
+   * Optional — convert CSS pixels relative to the canvas into virtual-space
+   * pixels. When present, InputPlugin uses it so pointer coordinates stay
+   * correct under `fit` scaling or when `virtualWidth`/`virtualHeight` differ
+   * from the canvas CSS size.
+   */
+  canvasToVirtual?(x: number, y: number): { x: number; y: number };
 }
 
 /** Configuration for the InputPlugin. */

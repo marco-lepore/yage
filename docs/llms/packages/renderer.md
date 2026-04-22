@@ -16,10 +16,46 @@ engine.use(new RendererPlugin({
   virtualWidth: 320,     // virtual resolution (auto-scaled)
   virtualHeight: 240,
   resolution: window.devicePixelRatio,
+  fit: { mode: "cover" }, // override default letterbox (see below)
 }));
 ```
 
 Registers `RendererKey` and `SceneRenderTreeProviderKey` in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
+
+## Responsive fit
+
+The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container` (falling back to `canvas.parentElement`, then `document.body`). Pass `fit` to override the mode or target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
+
+```ts
+new RendererPlugin({
+  width: 800, height: 600,
+  container: host,
+  // fit: { mode: "letterbox" }  // this is the default
+  // fit: { mode: "cover" },     // or override
+  // fit: { mode: "stretch", target: otherElement },
+});
+```
+
+| Mode | Scale | Offset | When to pick |
+|---|---|---|---|
+| `letterbox` | uniform `min(cw/vw, ch/vh)` | centers; bars in `backgroundColor` | default — preserves aspect, full virtual rect visible |
+| `cover` | uniform `max(cw/vw, ch/vh)` | centers; overflow clipped by canvas edge | fills the host; accept clipping on one axis |
+| `stretch` | non-uniform per axis | none | fills the host; virtual rect squashed |
+
+A `ResizeObserver` drives updates; it's disposed in `onDestroy`. In headless environments (no DOM target, no `document`) the plugin applies a one-shot transform against the initial `width × height` and installs no observer.
+
+Runtime API on the plugin:
+
+```ts
+renderer.setFit({ mode: "cover" });            // swap modes / target
+renderer.fit;                                   // current { mode, target? }
+renderer.canvasSize;                            // current CSS { width, height }
+renderer.canvasToVirtual(cssX, cssY);           // canvas-relative CSS → virtual (Vec2)
+```
+
+Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means *virtual viewport space*. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
+
+Pair with `@yagejs/input` — when `InputPlugin` is configured with `rendererKey`, it routes pointer coords through `canvasToVirtual` automatically, so `InputManager.getPointerPosition()` stays correct under fit.
 
 ## Components
 

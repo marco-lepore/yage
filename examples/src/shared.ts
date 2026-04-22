@@ -15,19 +15,18 @@ export function getContainer(): HTMLElement {
   return el;
 }
 
-// Auto-set aspect-ratio on #game-container once a canvas is added.
-// Reads the logical game size from the inline style PixiJS sets.
-{
-  const container = document.getElementById("game-container");
-  if (container) {
-    new MutationObserver((_mutations, observer) => {
-      const canvas = container.querySelector("canvas");
-      if (!canvas) return;
-      observer.disconnect();
-      const w = parseFloat(canvas.style.width) || canvas.width;
-      const h = parseFloat(canvas.style.height) || canvas.height;
-      container.style.aspectRatio = `${w} / ${h}`;
-      container.style.maxWidth = `${w}px`;
-    }).observe(container, { childList: true });
-  }
+/**
+ * Set `aspect-ratio` + `max-width` on `#game-container` so it flexes
+ * responsively on narrow viewports while capping at the game's native size.
+ * `RendererPlugin` defaults to letterbox fit against the container, so the
+ * canvas stays pinned to it at every size.
+ */
+export function setupGameContainer(
+  width: number,
+  height: number,
+): HTMLElement {
+  const container = getContainer();
+  container.style.aspectRatio = `${width} / ${height}`;
+  container.style.maxWidth = `${width}px`;
+  return container;
 }

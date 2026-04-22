@@ -29,7 +29,7 @@ import {
   createStore,
 } from "@yagejs/ui-react";
 import type { Store } from "@yagejs/ui-react";
-import { injectStyles, getContainer } from "./shared";
+import { injectStyles, setupGameContainer } from "./shared";
 
 injectStyles();
 
@@ -493,7 +493,7 @@ async function main() {
       width: 800,
       height: 600,
       backgroundColor: 0x0f172a,
-      container: getContainer(),
+      container: setupGameContainer(800, 600),
     }),
   );
 

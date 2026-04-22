@@ -4,7 +4,7 @@ import "./scene-augmentation.js";
 
 // Service keys & config
 export { RendererKey } from "./types.js";
-export type { RendererConfig } from "./types.js";
+export type { RendererConfig, FitMode, RendererFitOptions } from "./types.js";
 export type {
   ColorValue,
   DisplayContainer,

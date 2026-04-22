@@ -22,11 +22,6 @@ h1 { font-size: 1.2rem; color: #eee; }
 }
 #game-container canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
-  position: absolute;
-  top: 0;
-  left: 0;
 }
 .back-link {
   align-self: flex-start;

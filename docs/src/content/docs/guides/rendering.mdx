@@ -28,6 +28,87 @@ engine.use(
 The plugin creates the PixiJS application, sets up the render loop, and
 registers all rendering systems.
 
+## Responsive Canvas
+
+The canvas is **responsive by default**. `RendererPlugin` tracks a host
+element and re-maps the virtual rectangle on every resize — no extra config
+needed. To pin the canvas at a fixed size, give the container fixed CSS
+dimensions; the canvas will track that constant size.
+
+```typescript
+new RendererPlugin({
+  width: 800,
+  height: 600,
+  container: document.getElementById("game")!,
+  // fit: { mode: "letterbox" }  — this is the default
+});
+```
+
+Pass `fit` to override the mode or the observed element:
+
+```typescript
+new RendererPlugin({
+  width: 800, height: 600,
+  container: host,
+  fit: { mode: "cover" },                    // change mode
+  // fit: { mode: "letterbox", target: other } // observe a different element
+});
+```
+
+Three modes cover the usual web-game needs:
+
+- **`letterbox`** *(default)* — preserves the virtual aspect ratio and
+  centers it inside the host. Leftover space around the game is painted
+  with `backgroundColor` (the "bars"). This is what most games want: no
+  distortion, no cropping.
+- **`cover`** — preserves aspect and fills the host edge-to-edge. Whichever
+  axis has the wider host aspect ratio gets overflow clipped by the canvas
+  boundary. Good for backgrounds or tech demos where coverage matters more
+  than seeing every virtual pixel.
+- **`stretch`** — scales each axis independently to fill the host. Distorts
+  the image; use sparingly (menus, editor panels, deliberate stylistic
+  effects).
+
+`fit.target` defaults to the `container` you passed (or the canvas'
+`parentElement`, or `document.body` as a last resort). You can override it to
+observe a different element.
+
+Under the hood the plugin uses a `ResizeObserver` and calls
+`renderer.resize(hostW, hostH)` on each change, so the backing buffer stays
+hi-DPI-correct via `resolution` + `autoDensity`. Stage scale and position
+are recomputed to map the virtual rectangle into the new canvas per the
+active mode. In headless environments (no DOM target) the plugin applies a
+one-shot transform against the initial `width × height` and installs no
+observer.
+
+At runtime you can switch modes or observe a different element:
+
+```typescript
+renderer.setFit({ mode: "cover" });      // swap modes / target
+renderer.fit;                              // current { mode, target? }
+renderer.canvasSize;                       // { width, height } in CSS px
+renderer.canvasToVirtual(cssX, cssY);      // invert the stage transform
+```
+
+Note on terminology: "screen" elsewhere in the engine (UI `LayerSpace:
+"screen"`, `Camera.screenToWorld`) means *virtual viewport space*, not DOM
+pixels. The `canvasToVirtual` method is named after its actual inputs (CSS
+pixels relative to the canvas top-left) to avoid that collision.
+
+When you use `@yagejs/input` alongside fit, pass `rendererKey: RendererKey`
+in the `InputPlugin` config so pointer events route through
+`canvasToVirtual` automatically — otherwise `InputManager.getPointerPosition`
+sees canvas CSS pixels instead of virtual-space pixels, and clicks land in
+the wrong place once the canvas scales.
+
+```typescript
+import { RendererKey, RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+
+engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
+engine.use(new InputPlugin({ rendererKey: RendererKey, actions: { /* ... */ } }));
+```
+
 ## Sprites
 
 `SpriteComponent` displays a texture on an entity. It automatically syncs with

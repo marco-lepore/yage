@@ -9,7 +9,7 @@ import {
   Anchor,
 } from "@yagejs/ui";
 import { Transform } from "@yagejs/core";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtn, panelBg,
 } from "./ui-theme.js";
@@ -210,7 +210,7 @@ async function main() {
       virtualWidth: 800,
       virtualHeight: 600,
       backgroundColor: 0x0a0a0a,
-      container: getContainer(),
+      container: setupGameContainer(800, 600),
     }),
   );
 

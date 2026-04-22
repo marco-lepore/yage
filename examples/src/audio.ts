@@ -4,7 +4,7 @@ import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   .controls kbd { min-width: 24px; text-align: center; }
@@ -336,7 +336,7 @@ async function main() {
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0a0a0a,
-    container: getContainer(),
+    container: setupGameContainer(WIDTH, HEIGHT),
   }));
   engine.use(new InputPlugin({
     actions: {

@@ -18,7 +18,7 @@ import {
   UIPanel,
   UIPlugin,
 } from "@yagejs/ui";
-import { getContainer, injectStyles } from "./shared.js";
+import { setupGameContainer, injectStyles } from "./shared.js";
 
 injectStyles(`
   .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
@@ -203,7 +203,7 @@ engine.use(
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0b0f14,
-    container: getContainer(),
+    container: setupGameContainer(WIDTH, HEIGHT),
   }),
 );
 engine.use(

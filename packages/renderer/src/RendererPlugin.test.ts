@@ -53,7 +53,14 @@ const { mocks } = vi.hoisted(() => {
     stage = new MockContainer();
     ticker = new MockTicker();
     canvas: unknown = { tagName: "CANVAS" };
-    renderer = { width: 800, height: 600 };
+    renderer = {
+      width: 800,
+      height: 600,
+      resize(this: { width: number; height: number }, w: number, h: number) {
+        this.width = w;
+        this.height = h;
+      },
+    };
     initialized = false;
     destroyCalled = false;
 
@@ -168,7 +175,10 @@ describe("RendererPlugin", () => {
     });
 
     it("appends canvas to container when specified", async () => {
-      const container = { appendChild: vi.fn() } as unknown as HTMLElement;
+      const container = {
+        appendChild: vi.fn(),
+        getBoundingClientRect: () => ({ width: 800, height: 600 }),
+      } as unknown as HTMLElement;
       const { context } = createInstallContext();
       const plugin = new RendererPlugin({ ...defaultConfig, container });
       await plugin.install(context);
@@ -275,9 +285,8 @@ describe("RendererPlugin", () => {
       const stage = app.stage;
       expect(stage.scale.x).toBe(2);
       expect(stage.scale.y).toBe(2);
-      // offsetX = (1000 - 400*2) / 2 = 100
-      // position.x = offsetX / scale = 100 / 2 = 50
-      expect(stage.position.x).toBe(50);
+      // offsetX = (1000 - 400*2) / 2 = 100; position is in screen space
+      expect(stage.position.x).toBe(100);
     });
 
     it("computes correct scale for taller canvas (letterbox)", async () => {
@@ -295,9 +304,8 @@ describe("RendererPlugin", () => {
       const stage = app.stage;
       expect(stage.scale.x).toBe(2);
       expect(stage.scale.y).toBe(2);
-      // offsetY = (800 - 300*2) / 2 = 100
-      // position.y = offsetY / scale = 100 / 2 = 50
-      expect(stage.position.y).toBe(50);
+      // offsetY = (800 - 300*2) / 2 = 100; position is in screen space
+      expect(stage.position.y).toBe(100);
     });
   });
 

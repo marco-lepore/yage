@@ -11,7 +11,7 @@ import { DebugPlugin } from "@yagejs/debug";
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import type { DebugContributor, WorldDebugApi } from "@yagejs/debug/api";
 import type { RectColliderConfig } from "@yagejs/tilemap";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, getContainer, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -161,7 +161,7 @@ async function main() {
       virtualWidth: WIDTH,
       virtualHeight: HEIGHT,
       backgroundColor: 0x0a0a0a,
-      container: getContainer(),
+      container: setupGameContainer(WIDTH, HEIGHT),
     }),
   );
   engine.use(new TilemapPlugin());

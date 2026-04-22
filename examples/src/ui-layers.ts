@@ -2,7 +2,7 @@ import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
 injectStyles();
@@ -181,7 +181,7 @@ async function main() {
     width: WIDTH, height: HEIGHT,
     virtualWidth: WIDTH, virtualHeight: HEIGHT,
     backgroundColor: 0x0a0a0a,
-    container: getContainer(),
+    container: setupGameContainer(WIDTH, HEIGHT),
   }));
   engine.use(new UIPlugin());
 

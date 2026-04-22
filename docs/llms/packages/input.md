@@ -51,11 +51,22 @@ input.getVector("left", "right", "up", "down"); // Vec2 (not normalized)
 
 ```ts
 input.getPointerPosition(); // Vec2 in world coords (if camera set)
-input.getPointerScreenPosition(); // Vec2 in screen coords
+input.getPointerScreenPosition(); // Vec2 in virtual-space coords
 input.isPointerDown(); // any pointer button held
 ```
 
 Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`.
+
+### Pointer coords under responsive fit
+
+Wire `rendererKey: RendererKey` in `InputConfig` so pointer events pick up the canvas target AND so coordinates route through `renderer.canvasToVirtual`. Without it, `InputManager` receives raw canvas-relative CSS pixels — correct only when canvas CSS size equals virtual size. With it, all downstream consumers (`getPointerScreenPosition`, `getPointerPosition` via camera) see virtual-space pixels regardless of `fit` mode or HiDPI scaling.
+
+```ts
+import { RendererKey } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+
+engine.use(new InputPlugin({ rendererKey: RendererKey, actions: { /* … */ } }));
+```
 
 ### Camera wiring for world coordinates
 

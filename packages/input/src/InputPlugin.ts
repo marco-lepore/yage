@@ -51,6 +51,13 @@ export class InputPlugin implements Plugin {
       renderer?.canvas ??
       null;
 
+    // When the renderer exposes canvasToVirtual, route pointer coords through
+    // it so they stay correct under responsive fit or custom virtual sizes.
+    // Without it, raw canvas-relative CSS pixels are passed through unchanged
+    // (works only when canvas CSS size == virtual size — the default).
+    const mapPointer = (cssX: number, cssY: number): { x: number; y: number } =>
+      renderer?.canvasToVirtual?.(cssX, cssY) ?? { x: cssX, y: cssY };
+
     const preventSet = new Set(this.config.preventDefaultKeys ?? []);
 
     // Keyboard listeners
@@ -76,12 +83,18 @@ export class InputPlugin implements Plugin {
     // so releases outside the target element are still captured
     const onPointerMove = (e: Event): void => {
       const pe = e as PointerEvent;
+      let cssX: number;
+      let cssY: number;
       if (pointerElement) {
         const rect = pointerElement.getBoundingClientRect();
-        this.manager._onPointerMove(pe.clientX - rect.left, pe.clientY - rect.top);
+        cssX = pe.clientX - rect.left;
+        cssY = pe.clientY - rect.top;
       } else {
-        this.manager._onPointerMove(pe.clientX, pe.clientY);
+        cssX = pe.clientX;
+        cssY = pe.clientY;
       }
+      const mapped = mapPointer(cssX, cssY);
+      this.manager._onPointerMove(mapped.x, mapped.y);
     };
     const onPointerDown = (e: Event): void => {
       const pe = e as PointerEvent;
