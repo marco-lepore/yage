@@ -45,10 +45,12 @@ export class InputPlugin implements Plugin {
       this.config.target ?? renderer?.canvas ?? document;
 
     // Element used to convert clientX/clientY to element-relative coordinates.
-    // Falls back to null if the target is `document` or another non-element.
-    const pointerElement: Element | null =
-      this.config.target ??
+    // When `canvasToVirtual` is available, it always expects canvas-origin
+    // pixels — so prefer the canvas over a custom `config.target` (which may
+    // be a wrapping element). Falls back to null if neither is available.
+    const coordinateElement: Element | null =
       renderer?.canvas ??
+      this.config.target ??
       null;
 
     // When the renderer exposes canvasToVirtual, route pointer coords through
@@ -85,8 +87,8 @@ export class InputPlugin implements Plugin {
       const pe = e as PointerEvent;
       let cssX: number;
       let cssY: number;
-      if (pointerElement) {
-        const rect = pointerElement.getBoundingClientRect();
+      if (coordinateElement) {
+        const rect = coordinateElement.getBoundingClientRect();
         cssX = pe.clientX - rect.left;
         cssY = pe.clientY - rect.top;
       } else {

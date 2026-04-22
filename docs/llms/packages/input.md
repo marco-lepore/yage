@@ -59,7 +59,7 @@ Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`.
 
 ### Pointer coords under responsive fit
 
-Wire `rendererKey: RendererKey` in `InputConfig` so pointer events pick up the canvas target AND so coordinates route through `renderer.canvasToVirtual`. Without it, `InputManager` receives raw canvas-relative CSS pixels — correct only when canvas CSS size equals virtual size. With it, all downstream consumers (`getPointerScreenPosition`, `getPointerPosition` via camera) see virtual-space pixels regardless of `fit` mode or HiDPI scaling.
+Register `RendererPlugin` **before** `InputPlugin`, then wire `rendererKey: RendererKey` in `InputConfig` so pointer events pick up the canvas target AND so coordinates route through `renderer.canvasToVirtual`. `InputPlugin` resolves the renderer during install; if input installs first the resolve silently returns `undefined` and input falls back to raw canvas-relative CSS pixels — correct only when canvas CSS size equals virtual size. With the renderer resolved, all downstream consumers (`getPointerScreenPosition`, `getPointerPosition` via camera) see virtual-space pixels regardless of `fit` mode or HiDPI scaling.
 
 ```ts
 import { RendererKey } from "@yagejs/renderer";

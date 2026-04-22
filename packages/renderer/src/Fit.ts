@@ -189,7 +189,7 @@ export class FitController {
    * bounds. Use this to anchor HUD / UI to what the player can see, while
    * gameplay continues to use the full `virtualSize` as its play area.
    *
-   * - `letterbox` / `stretch`: always the full virtual rect (no cropping).
+   * - `letterbox` / `expand` / `stretch`: always the full virtual rect (no cropping).
    * - `cover`: a strict sub-rect — the long axis is cropped by the canvas
    *   edges. Example: under 1000×600 host with 400×300 virtual, cover
    *   scales to 2.5 and crops 30 virtual pixels off each of top / bottom,
@@ -216,7 +216,7 @@ export class FitController {
    * `virtualSize` but outside `visibleVirtualRect`). Gameplay still runs
    * in these regions — they are just clipped by the canvas edges.
    *
-   * - `letterbox` / `stretch`: always `[]` (nothing cropped inside virtual).
+   * - `letterbox` / `expand` / `stretch`: always `[]` (nothing cropped inside virtual).
    * - `cover`: 1 or 2 strips on the cropped axis (top + bottom on a wide
    *   host; left + right on a tall host). Example: under 1000×600 host with
    *   400×300 virtual, cover crops 30 px off top/bottom, so the rects are
@@ -277,8 +277,8 @@ export class FitController {
    * the same rects can drive optional bar customization on top of a
    * letterbox render.
    *
-   * Strips are returned in axis order: top-then-bottom on wide hosts,
-   * left-then-right on tall hosts. Zero-sized strips are omitted.
+   * Strips are returned in axis order: top-then-bottom on tall hosts,
+   * left-then-right on wide hosts. Zero-sized strips are omitted.
    */
   get extendedVirtualRects(): readonly VirtualRect[] {
     const vc = this.visibleCanvasRect;

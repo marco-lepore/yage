@@ -338,7 +338,9 @@ class ResponsiveUIScene extends Scene {
     grid.add(new GraphicsComponent({ layer: "grid" }));
     grid.add(new GridRedraw());
 
-    // Balls — bouncing strictly inside the virtual play area.
+    // Balls — bouncing across the full `visibleCanvasRect`, so they roam
+    // through the expand bars; initial spawn stays inside the virtual rect
+    // to guarantee visibility on the first frame.
     const palette = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0xa855f7];
     for (let i = 0; i < 10; i++) {
       const radius = 12 + Math.random() * 10;

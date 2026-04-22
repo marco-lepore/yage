@@ -23,16 +23,19 @@ export interface RendererFitOptions {
   mode: FitMode;
   /**
    * Element whose size the canvas matches. Defaults, in order:
-   * {@link RendererConfig.container}, then `canvas.parentElement`, then `document.body`.
+   * {@link RendererConfig.container}, then `canvas.parentElement`. If neither
+   * is available the controller falls back to a one-shot transform against
+   * the initial `width × height` and installs no `ResizeObserver` — pass
+   * `{ target: document.body }` explicitly for full-page fit.
    */
   target?: HTMLElement;
 }
 
 /** Configuration for the renderer plugin. */
 export interface RendererConfig {
-  /** Canvas width in physical pixels. Also the initial CSS size before `fit` takes over. */
+  /** Initial canvas width in CSS pixels before responsive `fit` takes over. Backing-store size is `width × resolution`. */
   width: number;
-  /** Canvas height in physical pixels. Also the initial CSS size before `fit` takes over. */
+  /** Initial canvas height in CSS pixels before responsive `fit` takes over. Backing-store size is `height × resolution`. */
   height: number;
   /** Game coordinate width (default: width). */
   virtualWidth?: number;
@@ -49,9 +52,10 @@ export interface RendererConfig {
   /** Additional PixiJS Application options. */
   pixi?: Record<string, unknown>;
   /**
-   * Responsive fit. If omitted, the canvas keeps its initial `width × height`.
-   * If set, the canvas tracks the target element and re-maps the virtual
-   * rectangle on every resize. See {@link RendererFitOptions}.
+   * Responsive fit. Defaults to `{ mode: "letterbox" }` against the resolved
+   * target (see {@link RendererFitOptions.target}), so the canvas is
+   * responsive out of the box — override to change mode or pin to a specific
+   * host. See {@link RendererFitOptions}.
    */
   fit?: RendererFitOptions;
 }
