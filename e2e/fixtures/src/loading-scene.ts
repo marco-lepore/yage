@@ -10,12 +10,13 @@ import {
 import type { AssetLoader } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 640;
 const HEIGHT = 360;
+const container = setupContainer(WIDTH, HEIGHT);
 
 // Controllable loader: each asset resolves/rejects when the test explicitly
 // calls resolveAsset() / failAsset(). Lets the spec drive the full load
@@ -82,7 +83,7 @@ engine.use(
     height: HEIGHT,
     backgroundColor: 0x0a0a0a,
     resolution: 1,
-    container: document.getElementById("game-container") ?? document.body,
+    container,
   }),
 );
 engine.use(new DebugPlugin({ manualClock: true }));

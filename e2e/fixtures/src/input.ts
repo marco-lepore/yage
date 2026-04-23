@@ -7,9 +7,10 @@ import {
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
+const container = setupContainer(320, 180);
 
 class InputProbe extends Component {
   private readonly input = this.service(InputManagerKey);
@@ -36,7 +37,7 @@ class InputScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container }));
 engine.use(new InputPlugin({
   actions: {
     jump: ["Space"],

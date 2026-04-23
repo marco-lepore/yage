@@ -8,12 +8,13 @@ import {
   flash,
 } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 640;
 const HEIGHT = 360;
+const container = setupContainer(WIDTH, HEIGHT);
 
 let sceneCounter = 0;
 
@@ -71,7 +72,7 @@ engine.use(
     height: HEIGHT,
     backgroundColor: 0x0a0a0a,
     resolution: 1,
-    container: document.getElementById("game-container") ?? document.body,
+    container,
   }),
 );
 engine.use(new DebugPlugin({ manualClock: true }));

@@ -2,9 +2,10 @@ import { Engine, Component, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
+const container = setupContainer(320, 180);
 
 class ClickTracker extends Component {
   clicks = 0;
@@ -38,7 +39,7 @@ class UIButtonScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container }));
 engine.use(new UIPlugin());
 engine.use(new DebugPlugin({ manualClock: true }));
 await engine.start();

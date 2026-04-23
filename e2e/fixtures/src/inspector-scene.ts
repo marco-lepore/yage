@@ -8,12 +8,13 @@ import {
 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 640;
 const HEIGHT = 360;
+const container = setupContainer(WIDTH, HEIGHT);
 const OVERLAY_PUSH_AFTER_FRAMES = 3;
 
 class DelayedOverlayPush extends Component {
@@ -62,7 +63,7 @@ class BaseScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container }));
 engine.use(new DebugPlugin({ manualClock: true }));
 await engine.start();
 await engine.scenes.push(new BaseScene());

@@ -11,12 +11,13 @@ import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 import type { SaveService, SnapshotResolver } from "@yagejs/save";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 640;
 const HEIGHT = 360;
+const container = setupContainer(WIDTH, HEIGHT);
 
 // ---- Entities ----
 
@@ -124,7 +125,7 @@ class TestScene extends Scene {
 // ---- Boot ----
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container: document.getElementById("game-container") ?? document.body }));
+engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container }));
 engine.use(new DebugPlugin());
 engine.use(new SavePlugin());
 await engine.start();
