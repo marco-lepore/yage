@@ -1,4 +1,9 @@
-# YAGE v2 -- Recipes Plan
+# YAGE — Recipes Plan
+
+> **Status:** Internal planning doc, not user-facing. Snapshot of design intent; some sections are shipped, others deferred. Cross-reference actual package source before quoting any API from here.
+>
+> - **Shipped (0.2.0):** scene transitions (`@yagejs/renderer` transitions + core scene stack hooks), save/load v0 (snapshot-based in `@yagejs/save`), input remapping (`@yagejs/input` action maps + remap APIs).
+> - **Deferred:** save/load contributor-scoped model (current impl is snapshot-based), the Wave-1 recipe catalog (character controller, checkpoints, interaction kit, etc.).
 
 ## Purpose
 
