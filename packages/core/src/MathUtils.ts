@@ -10,6 +10,7 @@ export interface SmoothDampResult {
 
 function normalizeAngle(radians: number): number {
   const wrapped = ((((radians + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+  // Preserve sign at +/-PI so direction survives the half-turn.
   return wrapped === -Math.PI && radians > 0 ? Math.PI : wrapped;
 }
 
