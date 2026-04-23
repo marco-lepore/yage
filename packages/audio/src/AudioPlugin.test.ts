@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+/**
+ * @vitest-environment happy-dom
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockSound = vi.hoisted(() => ({
   play: vi.fn(),
@@ -7,6 +10,10 @@ const mockSound = vi.hoisted(() => ({
   unmuteAll: vi.fn(),
   close: vi.fn(),
   exists: vi.fn(() => true),
+  context: {
+    muted: false,
+    audioContext: { state: "running" as "suspended" | "running" },
+  },
 }));
 
 vi.mock("@pixi/sound", () => ({
@@ -21,6 +28,16 @@ import { AudioManager } from "./AudioManager.js";
 describe("AudioPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSound.context.muted = false;
+    mockSound.context.audioContext.state = "running";
+  });
+
+  afterEach(() => {
+    // Reset hidden between tests in case a case toggled it
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => false,
+    });
   });
 
   it("has name 'audio'", () => {
@@ -40,11 +57,112 @@ describe("AudioPlugin", () => {
 
     const manager = context.resolve(AudioManagerKey);
     expect(manager).toBeInstanceOf(AudioManager);
+    plugin.onDestroy();
   });
 
   it("onDestroy() calls sound.close()", () => {
     const plugin = new AudioPlugin();
+    const context = new EngineContext();
+    plugin.install(context);
     plugin.onDestroy();
     expect(mockSound.close).toHaveBeenCalled();
+  });
+
+  describe("visibility wiring", () => {
+    function setHidden(hidden: boolean): void {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => hidden,
+      });
+    }
+
+    it("mutes on tab hide and restores on tab show", () => {
+      const plugin = new AudioPlugin();
+      const context = new EngineContext();
+      plugin.install(context);
+      expect(mockSound.context.muted).toBe(false);
+
+      setHidden(true);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(mockSound.context.muted).toBe(true);
+
+      setHidden(false);
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(mockSound.context.muted).toBe(false);
+
+      plugin.onDestroy();
+    });
+
+    it("onDestroy removes the visibilitychange listener", () => {
+      const plugin = new AudioPlugin();
+      const context = new EngineContext();
+      plugin.install(context);
+      plugin.onDestroy();
+
+      setHidden(true);
+      document.dispatchEvent(new Event("visibilitychange"));
+      // Still false because listener was removed
+      expect(mockSound.context.muted).toBe(false);
+    });
+  });
+
+  describe("unlock gesture wiring", () => {
+    it("fires onUnlock listeners once the context reports running", () => {
+      mockSound.context.audioContext.state = "suspended";
+      const plugin = new AudioPlugin();
+      const context = new EngineContext();
+      plugin.install(context);
+      const manager = context.resolve(AudioManagerKey);
+
+      const cb = vi.fn();
+      manager.onUnlock(cb);
+      expect(cb).not.toHaveBeenCalled();
+
+      // Simulate @pixi/sound's capture-phase unlock having already run by the
+      // time our bubble-phase handler sees the event.
+      mockSound.context.audioContext.state = "running";
+      document.dispatchEvent(new Event("pointerdown"));
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      plugin.onDestroy();
+    });
+
+    it("skips gesture listeners if already unlocked at install", () => {
+      mockSound.context.audioContext.state = "running";
+      const addSpy = vi.spyOn(document, "addEventListener");
+
+      const plugin = new AudioPlugin();
+      const context = new EngineContext();
+      plugin.install(context);
+
+      const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
+      const attachedGestureCalls = addSpy.mock.calls.filter((args) =>
+        gestureEvents.has(args[0] as string),
+      );
+      expect(attachedGestureCalls).toEqual([]);
+
+      addSpy.mockRestore();
+      plugin.onDestroy();
+    });
+
+    it("removes gesture listeners after first successful unlock", () => {
+      mockSound.context.audioContext.state = "suspended";
+      const plugin = new AudioPlugin();
+      const context = new EngineContext();
+      plugin.install(context);
+      const manager = context.resolve(AudioManagerKey);
+
+      mockSound.context.audioContext.state = "running";
+      document.dispatchEvent(new Event("pointerdown"));
+
+      // Register a new listener after unlock — should fire synchronously,
+      // proving the state is now tracked as unlocked without needing another
+      // gesture.
+      const cb = vi.fn();
+      manager.onUnlock(cb);
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      plugin.onDestroy();
+    });
   });
 });

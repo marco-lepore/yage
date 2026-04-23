@@ -104,6 +104,16 @@ anim.play("bob");
 
 `KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in milliseconds along the track.
 
+### Pause on Tab Blur
+
+```ts
+const scenes = this.context.resolve(SceneManagerKey);
+
+scenes.autoPauseOnBlur = true;  // default: false
+```
+
+When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activeScenes` on `document.hidden === true`, and restores them on `hidden === false`. Only scenes paused by this mechanism are restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow` cascade) are never touched. Toggling the flag off mid-blur unpauses immediately. No-op in non-browser environments.
+
 ### Scene Transitions
 
 | Export | Purpose |

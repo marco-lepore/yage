@@ -12,8 +12,27 @@ engine.use(new AudioPlugin({
     sfx: { volume: 1 },
     music: { volume: 0.7 },
   },
+  autoMuteOnBlur: true, // default: true — master-mute while tab hidden
 }));
 ```
+
+## Unlock & Tab Mute
+
+Browsers suspend the `AudioContext` until the user interacts with the page; `@pixi/sound` already resumes it on the first pointer/touch gesture, so "play on click" works out of the box. That means **music scheduled on page-load stays silent until first click** — not a bug, but surprising. Use `isUnlocked` / `onUnlock` to schedule autoplay that survives the delay:
+
+```ts
+const audio = this.use(AudioManagerKey);
+
+audio.isUnlocked();              // boolean — AudioContext.state === "running"
+audio.onUnlock(() => audio.play("music/title", { channel: "music", loop: true }));
+audio.offUnlock(cb);             // remove a pending listener (disposer from onUnlock also works)
+
+audio.autoMuteOnBlur = true;     // default true — snapshots + restores IMediaContext.muted across blur/focus
+```
+
+- `onUnlock(cb)` fires synchronously if already unlocked; otherwise once on the first gesture that resumes the context. Returns a disposer.
+- `isUnlocked()` is never flipped by `autoMuteOnBlur` — it is strictly the browser capability check.
+- Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one: use `SceneManager.autoPauseOnBlur` (see `core.md`).
 
 ## Asset Factory
 

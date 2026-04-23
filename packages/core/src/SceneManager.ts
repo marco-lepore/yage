@@ -36,6 +36,32 @@ export class SceneManager {
   private _mutationDepth = 0;
   private _destroyed = false;
 
+  private _autoPauseOnBlur = false;
+  private _isBlurred = false;
+  private readonly _visibilityPausedScenes = new Set<Scene>();
+  private _visibilityListenerCleanup: (() => void) | undefined;
+
+  /**
+   * Pause all non-paused scenes when `document.hidden` becomes `true`; restore
+   * them on focus. Default: `false`. Only scenes paused by this mechanism are
+   * restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow`
+   * cascade) are never touched.
+   */
+  get autoPauseOnBlur(): boolean {
+    return this._autoPauseOnBlur;
+  }
+
+  set autoPauseOnBlur(value: boolean) {
+    if (this._autoPauseOnBlur === value) return;
+    this._autoPauseOnBlur = value;
+    if (!this._isBlurred) return;
+    if (value) {
+      this._applyBlurPause();
+    } else if (this._visibilityPausedScenes.size > 0) {
+      this._restoreBlurPause();
+    }
+  }
+
   /**
    * Set the engine context.
    * @internal
@@ -48,6 +74,45 @@ export class SceneManager {
     this.assetManager = context.tryResolve(AssetManagerKey);
     this.hookRegistry = context.tryResolve(SceneHookRegistryKey);
     this.logger = context.tryResolve(LoggerKey);
+
+    if (this._visibilityListenerCleanup || typeof document === "undefined") {
+      return;
+    }
+    const onVisibilityChange = (): void => {
+      this._handleVisibilityChange(document.hidden);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    this._visibilityListenerCleanup = () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+  }
+
+  /**
+   * React to a visibility change. Parameterised on `hidden` so unit tests can
+   * drive it without a real `document`.
+   * @internal
+   */
+  _handleVisibilityChange(hidden: boolean): void {
+    if (hidden && !this._isBlurred) {
+      this._isBlurred = true;
+      if (this._autoPauseOnBlur) this._applyBlurPause();
+    } else if (!hidden && this._isBlurred) {
+      this._isBlurred = false;
+      if (this._visibilityPausedScenes.size > 0) this._restoreBlurPause();
+    }
+  }
+
+  private _applyBlurPause(): void {
+    for (const scene of this.activeScenes) {
+      scene.paused = true;
+      this._visibilityPausedScenes.add(scene);
+    }
+  }
+
+  private _restoreBlurPause(): void {
+    for (const scene of this._visibilityPausedScenes) {
+      scene.paused = false;
+    }
+    this._visibilityPausedScenes.clear();
   }
 
   /** The topmost (active) scene. */
@@ -194,6 +259,10 @@ export class SceneManager {
       this._cleanupRun(this._currentRun);
     }
     this._pendingChain = Promise.resolve();
+
+    this._visibilityListenerCleanup?.();
+    this._visibilityListenerCleanup = undefined;
+    this._visibilityPausedScenes.clear();
 
     this._withMutationSync(() => {
       while (this.stack.length > 0) {
@@ -342,6 +411,7 @@ export class SceneManager {
     scene._destroyAllEntities();
     this.hookRegistry?.runAfterExit(scene);
     scene._clearScopedServices();
+    this._visibilityPausedScenes.delete(scene);
   }
 
   private async _runTransition(
