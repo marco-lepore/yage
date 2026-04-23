@@ -20,6 +20,75 @@ describe("MathUtils", () => {
     });
   });
 
+  describe("inverseLerp", () => {
+    it("returns the interpolation factor for a value in range", () => {
+      expect(MathUtils.inverseLerp(0, 10, 2.5)).toBe(0.25);
+    });
+
+    it("clamps below the range", () => {
+      expect(MathUtils.inverseLerp(0, 10, -5)).toBe(0);
+    });
+
+    it("clamps above the range", () => {
+      expect(MathUtils.inverseLerp(0, 10, 15)).toBe(1);
+    });
+
+    it("works with an inverted range", () => {
+      expect(MathUtils.inverseLerp(10, 0, 2.5)).toBe(0.75);
+    });
+
+    it("returns 0 for a zero-width range", () => {
+      expect(MathUtils.inverseLerp(5, 5, 10)).toBe(0);
+    });
+  });
+
+  describe("lerpAngle / shortestAngleBetween", () => {
+    it("computes the signed shortest angular delta", () => {
+      expect(MathUtils.shortestAngleBetween(0, Math.PI / 2)).toBeCloseTo(
+        Math.PI / 2,
+      );
+      expect(MathUtils.shortestAngleBetween(0, -Math.PI / 2)).toBeCloseTo(
+        -Math.PI / 2,
+      );
+    });
+
+    it("wraps shortest angular deltas around +/-pi", () => {
+      const delta = MathUtils.shortestAngleBetween(
+        (3 * Math.PI) / 4,
+        (-3 * Math.PI) / 4,
+      );
+
+      expect(delta).toBeCloseTo(Math.PI / 2);
+    });
+
+    it("preserves half-turn direction when the shortest path is ambiguous", () => {
+      expect(MathUtils.shortestAngleBetween(0, Math.PI)).toBeCloseTo(Math.PI);
+      expect(MathUtils.shortestAngleBetween(0, -Math.PI)).toBeCloseTo(
+        -Math.PI,
+      );
+    });
+
+    it("interpolates angles along the shortest path through pi", () => {
+      const halfway = MathUtils.lerpAngle(
+        (3 * Math.PI) / 4,
+        (-3 * Math.PI) / 4,
+        0.5,
+      );
+
+      expect(halfway).toBeCloseTo(Math.PI);
+    });
+
+    it("returns a normalized target angle at t=1", () => {
+      const result = MathUtils.lerpAngle(
+        (3 * Math.PI) / 4,
+        (-3 * Math.PI) / 4,
+        1,
+      );
+
+      expect(result).toBeCloseTo((-3 * Math.PI) / 4);
+    });
+  });
+
   describe("clamp", () => {
     it("clamps below min", () => {
       expect(MathUtils.clamp(-5, 0, 10)).toBe(0);
@@ -46,6 +115,33 @@ describe("MathUtils", () => {
     it("handles edge values", () => {
       expect(MathUtils.remap(0, 0, 10, 20, 40)).toBe(20);
       expect(MathUtils.remap(10, 0, 10, 20, 40)).toBe(40);
+    });
+  });
+
+  describe("pingPong", () => {
+    it("returns 0 at t=0", () => {
+      expect(MathUtils.pingPong(0, 10)).toBe(0);
+    });
+
+    it("returns length at t=length", () => {
+      expect(MathUtils.pingPong(10, 10)).toBe(10);
+    });
+
+    it("returns 0 at t=2*length", () => {
+      expect(MathUtils.pingPong(20, 10)).toBe(0);
+    });
+
+    it("bounces back after length", () => {
+      expect(MathUtils.pingPong(15, 10)).toBe(5);
+    });
+
+    it("handles negative t", () => {
+      expect(MathUtils.pingPong(-3, 10)).toBe(3);
+    });
+
+    it("returns 0 for non-positive lengths", () => {
+      expect(MathUtils.pingPong(5, 0)).toBe(0);
+      expect(MathUtils.pingPong(5, -1)).toBe(0);
     });
   });
 
@@ -117,6 +213,51 @@ describe("MathUtils", () => {
 
     it("stays at target", () => {
       expect(MathUtils.approach(5, 5, 1)).toBe(5);
+    });
+  });
+
+  describe("smoothDamp", () => {
+    it("moves toward the target and returns velocity for the next step", () => {
+      const result = MathUtils.smoothDamp(0, 10, 0, 1, 0.5);
+
+      expect(result.value).toBeGreaterThan(0);
+      expect(result.value).toBeLessThan(10);
+      expect(result.velocity).toBeGreaterThan(0);
+    });
+
+    it("threads returned velocity through subsequent calls", () => {
+      const first = MathUtils.smoothDamp(0, 10, 0, 1, 0.5);
+      const second = MathUtils.smoothDamp(
+        first.value,
+        10,
+        first.velocity,
+        1,
+        0.5,
+      );
+
+      expect(second.value).toBeGreaterThan(first.value);
+      expect(second.value).toBeLessThan(10);
+    });
+
+    it("does not overshoot the target", () => {
+      const result = MathUtils.smoothDamp(9, 10, 100, 1, 1);
+
+      expect(result.value).toBe(10);
+      expect(result.velocity).toBe(0);
+    });
+
+    it("limits movement by maxSpeed", () => {
+      const uncapped = MathUtils.smoothDamp(0, 100, 0, 1, 0.5);
+      const capped = MathUtils.smoothDamp(0, 100, 0, 1, 0.5, 10);
+
+      expect(capped.value).toBeLessThan(uncapped.value);
+    });
+
+    it("returns the current value and velocity when deltaTime is zero", () => {
+      expect(MathUtils.smoothDamp(1, 10, 5, 1, 0)).toEqual({
+        value: 1,
+        velocity: 5,
+      });
     });
   });
 

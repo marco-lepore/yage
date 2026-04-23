@@ -113,6 +113,36 @@ describe("Vec2", () => {
     });
   });
 
+  describe("moveTowards", () => {
+    it("moves toward the target by maxDelta", () => {
+      const result = Vec2.moveTowards(new Vec2(0, 0), new Vec2(3, 4), 2);
+
+      expect(result.x).toBeCloseTo(1.2);
+      expect(result.y).toBeCloseTo(1.6);
+    });
+
+    it("does not overshoot when maxDelta exceeds the distance", () => {
+      const result = Vec2.moveTowards(new Vec2(0, 0), new Vec2(3, 4), 10);
+
+      expect(result).toEqual(new Vec2(3, 4));
+    });
+
+    it("returns the target when already at the target", () => {
+      const result = Vec2.moveTowards(new Vec2(3, 4), new Vec2(3, 4), 1);
+
+      expect(result).toEqual(new Vec2(3, 4));
+    });
+
+    it("does not move when maxDelta is zero or negative", () => {
+      expect(Vec2.moveTowards(new Vec2(0, 0), new Vec2(3, 4), 0)).toEqual(
+        new Vec2(0, 0),
+      );
+      expect(Vec2.moveTowards(new Vec2(0, 0), new Vec2(3, 4), -1)).toEqual(
+        new Vec2(0, 0),
+      );
+    });
+  });
+
   describe("angle & rotation", () => {
     it("computes angle", () => {
       expect(new Vec2(1, 0).angle()).toBe(0);

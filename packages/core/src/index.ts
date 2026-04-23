@@ -11,6 +11,7 @@ export { Vec2 } from "./Vec2.js";
 export type { Vec2Like } from "./Vec2.js";
 
 export { MathUtils } from "./MathUtils.js";
+export type { SmoothDampResult } from "./MathUtils.js";
 
 export { EventBus } from "./EventBus.js";
 export type { EventMap, EngineEvents } from "./EventBus.js";
