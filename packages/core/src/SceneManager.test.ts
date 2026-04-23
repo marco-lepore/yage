@@ -873,6 +873,18 @@ describe("SceneManager", () => {
       expect(scene.paused).toBe(false);
     });
 
+    it("toggling on mid-blur pauses immediately", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      manager._handleVisibilityChange(true);
+      expect(scene.paused).toBe(false);
+      manager.autoPauseOnBlur = true;
+      expect(scene.paused).toBe(true);
+      manager._handleVisibilityChange(false);
+      expect(scene.paused).toBe(false);
+    });
+
     it("is a no-op when disabled", async () => {
       const { manager } = setup();
       const scene = new GameScene("a");
@@ -887,8 +899,11 @@ describe("SceneManager", () => {
       const scene = new GameScene("a");
       await manager.push(scene);
       manager._handleVisibilityChange(true);
-      // Flip the user's own pause in between; our spurious second hide must
-      // not re-snapshot and then wipe it on restore.
+      // A spurious second hide (e.g. browser quirks) must be a no-op — if it
+      // re-ran the apply step it would re-add the scene to the tracking set
+      // and nothing else, but more importantly it would let a parallel
+      // implementation that snapshotted external state corrupt it. Guarded
+      // here as the canonical "two hides in a row are idempotent" invariant.
       manager._handleVisibilityChange(true);
       manager._handleVisibilityChange(false);
       expect(scene.paused).toBe(false);

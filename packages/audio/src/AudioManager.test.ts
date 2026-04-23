@@ -367,6 +367,16 @@ describe("AudioManager", () => {
       m._handleGesture();
       expect(after).toHaveBeenCalledTimes(1);
     });
+
+    it("sync-path (already unlocked) also swallows a throwing listener", () => {
+      const s = createMockSoundLibrary({ state: "running" });
+      const m = new AudioManager(s);
+      expect(() =>
+        m.onUnlock(() => {
+          throw new Error("boom");
+        }),
+      ).not.toThrow();
+    });
   });
 
   describe("autoMuteOnBlur", () => {
@@ -406,6 +416,17 @@ describe("AudioManager", () => {
       m._handleVisibilityChange(true);
       expect(s.context.muted).toBe(true);
       m.autoMuteOnBlur = false;
+      expect(s.context.muted).toBe(false);
+    });
+
+    it("toggling on mid-blur mutes immediately", () => {
+      const s = createMockSoundLibrary({ muted: false });
+      const m = new AudioManager(s, { autoMuteOnBlur: false });
+      m._handleVisibilityChange(true);
+      expect(s.context.muted).toBe(false);
+      m.autoMuteOnBlur = true;
+      expect(s.context.muted).toBe(true);
+      m._handleVisibilityChange(false);
       expect(s.context.muted).toBe(false);
     });
 

@@ -202,7 +202,14 @@ export class AudioManager {
    */
   onUnlock(cb: () => void): () => void {
     if (this.isUnlocked()) {
-      cb();
+      try {
+        cb();
+      } catch {
+        // Match the queued path's behavior: a throwing listener must not
+        // propagate back to the registration site. Otherwise the same
+        // callback behaves differently depending on whether it was queued
+        // or fired synchronously.
+      }
       return () => {};
     }
     this._unlockListeners.push(cb);
@@ -223,8 +230,10 @@ export class AudioManager {
   set autoMuteOnBlur(value: boolean) {
     if (this._autoMuteOnBlur === value) return;
     this._autoMuteOnBlur = value;
-    // If disabling mid-blur, restore audio immediately.
-    if (!value && this._isBlurred && this._blurMutedSnapshot !== null) {
+    if (!this._isBlurred) return;
+    if (value && this._blurMutedSnapshot === null) {
+      this._applyBlurMute();
+    } else if (!value && this._blurMutedSnapshot !== null) {
       this._restoreBlurMute();
     }
   }

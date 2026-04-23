@@ -128,15 +128,21 @@ describe("AudioPlugin", () => {
     });
 
     it("skips gesture listeners if already unlocked at install", () => {
-      // Already running (default). Install then dispatch a gesture — if
-      // listeners were wrongly attached, _handleGesture would run; with no
-      // pending listeners the call is harmless, so the assertion here is
-      // weaker: just confirm cleanup does not double-remove and fire issues.
       mockSound.context.audioContext.state = "running";
+      const addSpy = vi.spyOn(document, "addEventListener");
+
       const plugin = new AudioPlugin();
       const context = new EngineContext();
       plugin.install(context);
-      expect(() => plugin.onDestroy()).not.toThrow();
+
+      const gestureEvents = new Set(["pointerdown", "keydown", "touchstart"]);
+      const attachedGestureCalls = addSpy.mock.calls.filter((args) =>
+        gestureEvents.has(args[0] as string),
+      );
+      expect(attachedGestureCalls).toEqual([]);
+
+      addSpy.mockRestore();
+      plugin.onDestroy();
     });
 
     it("removes gesture listeners after first successful unlock", () => {

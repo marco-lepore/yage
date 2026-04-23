@@ -54,7 +54,10 @@ export class SceneManager {
   set autoPauseOnBlur(value: boolean) {
     if (this._autoPauseOnBlur === value) return;
     this._autoPauseOnBlur = value;
-    if (!value && this._isBlurred && this._visibilityPausedScenes.size > 0) {
+    if (!this._isBlurred) return;
+    if (value) {
+      this._applyBlurPause();
+    } else if (this._visibilityPausedScenes.size > 0) {
       this._restoreBlurPause();
     }
   }
