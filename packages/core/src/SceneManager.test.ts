@@ -826,4 +826,91 @@ describe("SceneManager", () => {
       expect(scene.isTransitioning).toBe(false);
     });
   });
+
+  describe("autoPauseOnBlur", () => {
+    it("defaults to false", () => {
+      const { manager } = setup();
+      expect(manager.autoPauseOnBlur).toBe(false);
+    });
+
+    it("pauses active scenes on hide and restores on show", async () => {
+      const { manager } = setup();
+      manager.autoPauseOnBlur = true;
+      const a = new GameScene("a");
+      const b = new GameScene("b");
+      await manager.push(a);
+      await manager.push(b);
+      // 'a' is stack-paused by 'b.pauseBelow`; only 'b' is in activeScenes.
+      manager._handleVisibilityChange(true);
+      expect(b.paused).toBe(true);
+      manager._handleVisibilityChange(false);
+      expect(b.paused).toBe(false);
+    });
+
+    it("leaves user-paused scenes untouched on restore", async () => {
+      const { manager } = setup();
+      manager.autoPauseOnBlur = true;
+      const userPaused = new GameScene("userPaused");
+      userPaused.paused = true;
+      const running = new OverlayScene();
+      await manager.push(userPaused);
+      await manager.push(running);
+      // Only 'running' is active; 'userPaused' has paused=true already.
+      manager._handleVisibilityChange(true);
+      manager._handleVisibilityChange(false);
+      expect(userPaused.paused).toBe(true);
+      expect(running.paused).toBe(false);
+    });
+
+    it("toggling off mid-blur unpauses immediately", async () => {
+      const { manager } = setup();
+      manager.autoPauseOnBlur = true;
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      manager._handleVisibilityChange(true);
+      expect(scene.paused).toBe(true);
+      manager.autoPauseOnBlur = false;
+      expect(scene.paused).toBe(false);
+    });
+
+    it("is a no-op when disabled", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      manager._handleVisibilityChange(true);
+      expect(scene.paused).toBe(false);
+    });
+
+    it("does not double-pause across reentrant hides", async () => {
+      const { manager } = setup();
+      manager.autoPauseOnBlur = true;
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      manager._handleVisibilityChange(true);
+      // Flip the user's own pause in between; our spurious second hide must
+      // not re-snapshot and then wipe it on restore.
+      manager._handleVisibilityChange(true);
+      manager._handleVisibilityChange(false);
+      expect(scene.paused).toBe(false);
+    });
+
+    it("drops popped scenes from the tracking set so teardown cannot leak", async () => {
+      const { manager } = setup();
+      manager.autoPauseOnBlur = true;
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      manager._handleVisibilityChange(true);
+      // Game pops the scene while the tab is still hidden (e.g. return-to-menu).
+      await manager.pop();
+      manager._handleVisibilityChange(false);
+      // The popped scene is torn down; writes to scene.paused at this point
+      // would be meaningless state-change noise on a destroyed Scene.
+      // Exposing the private set through a cast is the only way to assert
+      // the cleanup without adding public surface.
+      const internals = manager as unknown as {
+        _visibilityPausedScenes: Set<Scene>;
+      };
+      expect(internals._visibilityPausedScenes.size).toBe(0);
+    });
+  });
 });

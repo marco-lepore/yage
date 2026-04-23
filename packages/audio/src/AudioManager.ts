@@ -19,6 +19,11 @@ export class AudioManager {
   private readonly _channels = new Map<string, ChannelState>();
   private readonly _handleAliases = new WeakMap<SoundHandle, string>();
 
+  private _autoMuteOnBlur: boolean;
+  private readonly _unlockListeners: Array<() => void> = [];
+  private _blurMutedSnapshot: boolean | null = null;
+  private _isBlurred = false;
+
   constructor(sound: SoundLibrary, config?: AudioConfig) {
     this._sound = sound;
 
@@ -31,6 +36,8 @@ export class AudioManager {
         handles: new Map(),
       });
     }
+
+    this._autoMuteOnBlur = config?.autoMuteOnBlur ?? true;
   }
 
   play(alias: string, options?: AudioPlayOptions): SoundHandle {
@@ -175,6 +182,113 @@ export class AudioManager {
     for (const channel of this._channels.keys()) {
       this.unmuteChannel(channel);
     }
+  }
+
+  /**
+   * Whether the underlying `AudioContext` is running (i.e. audio will play).
+   * Browsers suspend the context on page load until a user gesture; this is
+   * purely a browser-level capability check and is not affected by
+   * `autoMuteOnBlur`.
+   */
+  isUnlocked(): boolean {
+    const ctx = this._getAudioContext();
+    return ctx?.state === "running";
+  }
+
+  /**
+   * Fires `cb` once when audio becomes playable. If already unlocked, fires
+   * synchronously. Returns a disposer that removes the pending listener (no-op
+   * once it has fired).
+   */
+  onUnlock(cb: () => void): () => void {
+    if (this.isUnlocked()) {
+      cb();
+      return () => {};
+    }
+    this._unlockListeners.push(cb);
+    return () => this.offUnlock(cb);
+  }
+
+  /** Remove a listener registered with `onUnlock`. */
+  offUnlock(cb: () => void): void {
+    const idx = this._unlockListeners.indexOf(cb);
+    if (idx !== -1) this._unlockListeners.splice(idx, 1);
+  }
+
+  /** Mute audio when the tab is hidden (default: `true`). */
+  get autoMuteOnBlur(): boolean {
+    return this._autoMuteOnBlur;
+  }
+
+  set autoMuteOnBlur(value: boolean) {
+    if (this._autoMuteOnBlur === value) return;
+    this._autoMuteOnBlur = value;
+    // If disabling mid-blur, restore audio immediately.
+    if (!value && this._isBlurred && this._blurMutedSnapshot !== null) {
+      this._restoreBlurMute();
+    }
+  }
+
+  /**
+   * Called by `AudioPlugin` on `visibilitychange` events. Parameterised on
+   * `hidden` so unit tests can drive it without a real `document`.
+   * @internal
+   */
+  _handleVisibilityChange(hidden: boolean): void {
+    if (hidden && !this._isBlurred) {
+      this._isBlurred = true;
+      if (this._autoMuteOnBlur) this._applyBlurMute();
+    } else if (!hidden && this._isBlurred) {
+      this._isBlurred = false;
+      if (this._blurMutedSnapshot !== null) this._restoreBlurMute();
+    }
+  }
+
+  /**
+   * Called by `AudioPlugin` after a user gesture fires. Fires pending
+   * `onUnlock` listeners if the context has become running.
+   * @internal
+   */
+  _handleGesture(): void {
+    if (!this.isUnlocked()) return;
+    const pending = this._unlockListeners.splice(0);
+    for (const cb of pending) {
+      try {
+        cb();
+      } catch {
+        // Swallow: a throwing listener must not poison the rest of the queue.
+      }
+    }
+  }
+
+  private _applyBlurMute(): void {
+    const ctx = this._getMediaContext();
+    if (!ctx) return;
+    this._blurMutedSnapshot = ctx.muted;
+    ctx.muted = true;
+  }
+
+  private _restoreBlurMute(): void {
+    const ctx = this._getMediaContext();
+    if (ctx && this._blurMutedSnapshot !== null) {
+      ctx.muted = this._blurMutedSnapshot;
+    }
+    this._blurMutedSnapshot = null;
+  }
+
+  private _getMediaContext(): { muted: boolean } | undefined {
+    const ctx = (this._sound as unknown as { context?: { muted: boolean } })
+      .context;
+    return ctx;
+  }
+
+  private _getAudioContext(): { state: string } | undefined {
+    const ctx = (
+      this._sound as unknown as {
+        context?: { audioContext?: { state: string } };
+      }
+    ).context;
+    return ctx?.audioContext;
   }
 
   private _ensureChannel(name: string): ChannelState {

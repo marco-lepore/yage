@@ -127,6 +127,73 @@ audio.unmuteAll();
 audio.stopAll();
 ```
 
+## Audio Unlock
+
+Web browsers suspend the `AudioContext` when a page loads and require a user
+gesture (click, tap, or keypress) before any audio can play. `@pixi/sound`
+attaches a one-shot gesture listener that resumes the context on the first
+interaction, so calling `audio.play(...)` after a click just works.
+
+What this means in practice: **any audio you schedule on page load is silent
+until the user first interacts with the page**. That is expected browser
+behavior, not a YAGE bug — the classic symptom is "my title music doesn't
+play until I click somewhere." To handle the gap cleanly, use `onUnlock`:
+
+```typescript
+const audio = this.use(AudioManagerKey);
+
+audio.onUnlock(() => {
+  audio.play("music/title", { channel: "music", loop: true });
+});
+```
+
+`onUnlock` fires synchronously if the context is already running, or once on
+the next gesture that resumes it. It returns a disposer, so you can cancel a
+pending registration:
+
+```typescript
+const dispose = audio.onUnlock(() => startMusic());
+// …later
+dispose();
+// or: audio.offUnlock(startMusic);
+```
+
+Expose the pending state to the UI if you want a "tap to enable audio" hint:
+
+```typescript
+if (!audio.isUnlocked()) {
+  // render a prompt; it's safe to dismiss on first click —
+  // @pixi/sound will have resumed the context by then
+}
+```
+
+`isUnlocked()` reflects `AudioContext.state === "running"` and is **never**
+flipped by the mute/pause-on-blur flags below — it is strictly the
+browser-capability check.
+
+## Tab Visibility
+
+Most web games go silent when the user backgrounds the tab. `AudioManager`
+mutes master audio when the tab is hidden and restores it on return:
+
+```typescript
+engine.use(new AudioPlugin({
+  autoMuteOnBlur: true, // default: true
+}));
+
+// Or toggle at runtime:
+audio.autoMuteOnBlur = false;
+```
+
+`autoMuteOnBlur` snapshots the current master mute state when the tab hides,
+then force-mutes; on return it restores the snapshot. Per-channel mutes and
+volumes are untouched — muting is layered on top through the underlying
+`IMediaContext`. Toggling the flag to `false` while the tab is hidden
+unmutes immediately.
+
+Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one —
+see [`SceneManager.autoPauseOnBlur`](/patterns/scene-management/#pause-on-tab-blur).
+
 ## SoundComponent
 
 `SoundComponent` binds a sound to an entity. The sound is automatically stopped

@@ -5,6 +5,8 @@ export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
 
 export interface AudioConfig {
   channels?: Record<string, ChannelConfig>;
+  /** Mute audio while the tab is hidden. Default: `true`. */
+  autoMuteOnBlur?: boolean;
 }
 
 export interface ChannelConfig {

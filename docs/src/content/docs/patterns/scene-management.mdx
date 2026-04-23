@@ -180,3 +180,27 @@ this.context.resolve(EventBusKey).on(GamePaused, () => {
   this.statusText.setText("PAUSED");
 });
 ```
+
+## Pause on Tab Blur
+
+`SceneManager` can automatically pause every active scene when the tab is
+hidden, and restore them on return. Opt in per engine instance:
+
+```typescript
+import { SceneManagerKey } from "@yagejs/core";
+
+const scenes = engine.context.resolve(SceneManagerKey);
+scenes.autoPauseOnBlur = true;  // default: false
+```
+
+Default is `false` because freezing simulation mid-combat because someone
+alt-tabbed is surprising — opt in only when the game design wants it.
+
+Only scenes paused by this mechanism are restored on focus. Scenes the user
+had already paused (manual `scene.paused = true` or a `pauseBelow` cascade
+from a modal stacked on top) are never touched, so a game-over modal that
+was paused before the blur stays paused after the return. Toggling the flag
+off mid-blur unpauses the tracked scenes immediately.
+
+Muting audio on blur is a separate concern handled by
+`AudioManager.autoMuteOnBlur` (default `true`) — see the [Audio guide](/guides/audio/#tab-visibility).
