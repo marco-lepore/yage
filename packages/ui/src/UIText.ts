@@ -64,8 +64,7 @@ export class UIText implements UIElement {
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  update(props: Record<string, unknown>): void {
-    const p = props as UITextProps;
+  update(p: Partial<UITextProps>): void {
     const textContent = p.children;
     if (textContent !== this.text.text) {
       this.setText(textContent);

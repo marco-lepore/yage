@@ -68,9 +68,7 @@ export class UIProgressBar implements UIElement {
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  update(props: Record<string, unknown>): void {
-    const p = props as unknown as UIProgressBarProps;
-
+  update(p: Partial<UIProgressBarProps>): void {
     if (p.value !== undefined) {
       this._value = clamp(p.value);
     }

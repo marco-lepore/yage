@@ -209,8 +209,8 @@ export class PanelNode implements UIContainerElement {
   // Props-driven update (for reconciler)
   // ---------------------------------------------------------------------------
 
-  update(props: Record<string, unknown>): void {
-    this._applyProps(props as PanelProps);
+  update(props: Partial<PanelProps>): void {
+    this._applyProps(props);
   }
 
   // ---------------------------------------------------------------------------

@@ -115,9 +115,7 @@ export class UICheckbox implements UIElement {
     this.container.alpha = v ? 0.5 : 1;
   }
 
-  update(props: Record<string, unknown>): void {
-    const p = props as unknown as UICheckboxProps;
-
+  update(p: Partial<UICheckboxProps>): void {
     if (p.checked !== undefined && p.checked !== this._checked) {
       this._checked = p.checked;
       this.drawCheckmark();

@@ -138,9 +138,7 @@ export class UIButton implements UIElement {
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  update(props: Record<string, unknown>): void {
-    const p = props as UIButtonProps;
-
+  update(p: Partial<UIButtonProps>): void {
     if (p.children !== undefined) this.label.text = p.children;
     if (p.onClick !== undefined) this.onClick = p.onClick;
     if (p.disabled !== undefined) this.setDisabled(p.disabled);
