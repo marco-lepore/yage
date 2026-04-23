@@ -9,7 +9,7 @@ import {
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -261,7 +261,7 @@ async function main() {
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0a0a0a,
-    container: getContainer(),
+    container: setupGameContainer(WIDTH, HEIGHT),
   }));
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 0 } }));
   engine.use(new AudioPlugin());

@@ -19,12 +19,13 @@ import {
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;
+const container = setupContainer(WIDTH, HEIGHT);
 
 class BaseScene extends Scene {
   readonly name = "base";
@@ -83,7 +84,7 @@ engine.use(
     height: HEIGHT,
     backgroundColor: 0x0a0a0a,
     resolution: 1,
-    container: document.getElementById("game-container") ?? document.body,
+    container,
   }),
 );
 engine.use(new UIPlugin());

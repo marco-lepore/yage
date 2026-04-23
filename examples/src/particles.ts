@@ -12,7 +12,7 @@ import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 import type { EmitterConfig } from "@yagejs/particles";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -218,7 +218,7 @@ async function main() {
     width: 800,
     height: 600,
     backgroundColor: 0x0a0a0a,
-    container: getContainer(),
+    container: setupGameContainer(800, 600),
   }));
   engine.use(new InputPlugin({
     actions: {

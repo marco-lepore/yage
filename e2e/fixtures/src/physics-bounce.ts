@@ -8,12 +8,13 @@ import {
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;
+const container = setupContainer(WIDTH, HEIGHT);
 
 class BounceCounter extends Component {
   count = 0;
@@ -76,7 +77,14 @@ class PhysicsBounceScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container: document.getElementById("game-container") ?? document.body }));
+engine.use(
+  new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container,
+  }),
+);
 engine.use(new PhysicsPlugin());
 engine.use(new DebugPlugin({ manualClock: true }));
 await engine.start();

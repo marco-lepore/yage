@@ -16,10 +16,92 @@ engine.use(new RendererPlugin({
   virtualWidth: 320,     // virtual resolution (auto-scaled)
   virtualHeight: 240,
   resolution: window.devicePixelRatio,
+  fit: { mode: "cover" }, // override default letterbox (see below)
 }));
 ```
 
 Registers `RendererKey` and `SceneRenderTreeProviderKey` in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
+
+## Responsive fit
+
+The canvas is **responsive by default** — it tracks a host element and re-maps the virtual rectangle on every resize. Without an explicit `fit` config, the renderer defaults to `{ mode: "letterbox" }` against the configured `container` (falling back to `canvas.parentElement`, then `document.body`). Pass `fit` to override the mode or target. Fixed-size canvases are achieved via fixed CSS dimensions on the container.
+
+```ts
+new RendererPlugin({
+  width: 800, height: 600,
+  container: host,
+  // fit: { mode: "letterbox" }  // this is the default
+  // fit: { mode: "cover" },     // or override
+  // fit: { mode: "stretch", target: otherElement },
+});
+```
+
+| Mode | Scale | Offset | When to pick |
+|---|---|---|---|
+| `letterbox` | uniform `min(cw/vw, ch/vh)` | centers; bars in `backgroundColor` | default — preserves aspect, full virtual rect visible |
+| `expand` | same as `letterbox` | same as `letterbox` | virtual always fully visible, but the game draws into the bars instead of leaving them blank (fog, parallax, decorative backdrop, HUD). Matches Godot `expand`, Unity `Expand`, Construct "Scale inner". |
+| `cover` | uniform `max(cw/vw, ch/vh)` | centers; overflow clipped by canvas edge | fills the host; accept CSS-cover-style clipping on one axis. Rare for gameplay — aspect affects what the player sees. |
+| `stretch` | non-uniform per axis | none | fills the host; virtual rect squashed. Use for menus or editor panels, not gameplay. |
+
+`letterbox` and `expand` produce the same stage transform. They differ in convention: letterbox expects bars to be the flat `backgroundColor`; expand expects the game to fill them via `extendedVirtualRects`.
+
+A `ResizeObserver` drives updates; it's disposed in `onDestroy`. In headless environments (no DOM target, no `document`) the plugin applies a one-shot transform against the initial `width × height` and installs no observer.
+
+Runtime API on the plugin:
+
+```ts
+renderer.setFit({ mode: "expand" });            // swap modes / target
+renderer.fit;                                   // current { mode, target? }
+renderer.canvasSize;                            // current CSS { width, height }
+renderer.canvasToVirtual(cssX, cssY);           // canvas CSS px → virtual (Vec2)
+renderer.virtualToCanvas(x, y);                 // virtual → canvas CSS px (Vec2)
+renderer.visibleVirtualRect;                    // on-screen sub-rect of virtual (clamped)
+renderer.croppedVirtualRects;                   // parts of virtual that are off-screen
+renderer.virtualCanvasRect;                     // where virtual sits on the canvas (CSS px)
+renderer.visibleCanvasRect;                     // full canvas extent in virtual px
+renderer.extendedVirtualRects;                  // parts of canvas OUTSIDE virtual (bars)
+```
+
+### `visibleVirtualRect`
+
+Sub-rectangle of the declared virtual space that's actually on-screen, clamped to virtual bounds. Anchor HUD / UI that must stay inside the play area to this rect; keep gameplay queries on `virtualSize`. Critical under `cover` for competitive games where a wider viewport must not grant a gameplay advantage: the play area stays `virtualSize`, but HUDs align to the visible sub-rect.
+
+| Mode | `visibleVirtualRect` |
+|---|---|
+| `letterbox` / `expand` / `stretch` | full virtual rect: `{ 0, 0, virtualWidth, virtualHeight }` |
+| `cover` | cropped sub-rect on the long axis, e.g. `{ 0, 30, 400, 240 }` for 400×300 virtual in a 1000×600 host |
+
+### `croppedVirtualRects`
+
+Rectangles of virtual space that are currently off-screen — the complement of `visibleVirtualRect` inside `virtualSize`. Empty under `letterbox` / `expand` / `stretch`. Under `cover`, returns 1–2 strips on the cropped axis (top + bottom on a wide host, left + right on a tall host). Gameplay still runs in these regions; they're just clipped by the canvas edge.
+
+Use when an effect needs to reason about what's beyond the visible edge under `cover` — fog-of-war overlays that fade at the crop boundary, edge-activity indicators, auto-panning cameras that keep action in view.
+
+### `virtualCanvasRect`
+
+Where the declared virtual rectangle sits on the canvas, in **CSS pixels**. Useful for positioning DOM overlays over the play area, cropping screenshots to gameplay, or mapping CSS-coord hit regions. Derived from the stage transform: `{ x: offsetX, y: offsetY, width: vW*scaleX, height: vH*scaleY }`. Under `cover` this rect extends past the canvas (negative coords, dimensions larger than `canvasSize`).
+
+### `visibleCanvasRect`
+
+Full canvas extent expressed in **virtual-space pixels**. Unlike `visibleVirtualRect`, not clamped to the declared virtual rect — under `letterbox` / `expand` on an off-aspect host this extends past `virtualSize` on the bar axis (negative `x` / `y` or `width` / `height` greater than the virtual dimension). Under `cover` it equals `visibleVirtualRect`; under `stretch` it equals the virtual rect.
+
+Anchor HUD to this rect (not `visibleVirtualRect`) when you want cards to live in the bars under `expand`. Iterate over it for backdrops that should fill the whole visible canvas.
+
+### `extendedVirtualRects`
+
+Rectangles of the visible canvas that sit **outside** the declared virtual rect — the letterbox / expand "bars" expressed in virtual-space pixels. Complement of `virtualSize` inside `visibleCanvasRect`.
+
+| Mode | `extendedVirtualRects` |
+|---|---|
+| `letterbox` / `expand` | 0–2 bar strips when aspect mismatches (top + bottom on tall hosts, left + right on wide hosts) |
+| `cover` | `[]` (virtual covers the entire canvas) |
+| `stretch` | `[]` (virtual exactly fills the canvas) |
+
+Under `expand` these are the play-adjacent strips the game is expected to draw into. The `responsive-ui` example fills each with a solid dark rect plus a short gradient along the inner edge (touching the play area) so the bars read as "not the play area, but still part of the rendered world." Under `letterbox` the same rects tell you where the `backgroundColor` bars are — handy for layering optional bar customization on top of an otherwise-plain letterbox render.
+
+Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means *virtual viewport space*. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
+
+Pair with `@yagejs/input` — when `InputPlugin` is configured with `rendererKey`, it routes pointer coords through `canvasToVirtual` automatically, so `InputManager.getPointerPosition()` stays correct under fit.
 
 ## Components
 

@@ -27,12 +27,13 @@ import {
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles } from "./shared.js";
+import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;
+const container = setupContainer(WIDTH, HEIGHT);
 
 // ---------------------------------------------------------------------------
 // Components that record scoped-DI resolution results as inspectable data
@@ -139,7 +140,7 @@ async function main() {
       width: WIDTH,
       height: HEIGHT,
       backgroundColor: 0x0a0a0a,
-      container: document.getElementById("game-container")!,
+      container,
     }),
   );
   engine.use(new PhysicsPlugin());

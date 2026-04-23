@@ -2,14 +2,17 @@ import {
   AssetManagerKey,
   GameLoopKey,
   SceneHookRegistryKey,
+  Vec2,
 } from "@yagejs/core";
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
+import { FitController } from "./Fit.js";
+import type { CanvasRect, VirtualRect } from "./Fit.js";
 import type { GraphicsContext, TextureResource } from "./public-types.js";
 import { RendererKey } from "./types.js";
-import type { RendererConfig } from "./types.js";
+import type { RendererConfig, RendererFitOptions } from "./types.js";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
 import {
   SceneRenderTreeKey,
@@ -31,6 +34,7 @@ export class RendererPlugin implements Plugin {
   private provider!: SceneRenderTreeProviderImpl;
   private tickerFn: (() => void) | null = null;
   private unregisterHooks: (() => void) | null = null;
+  private fitController!: FitController;
 
   constructor(config: RendererConfig) {
     this.config = config;
@@ -59,15 +63,12 @@ export class RendererPlugin implements Plugin {
       this.config.container.appendChild(this.app.canvas);
     }
 
-    // 3. Apply virtual resolution scaling to app.stage
-    const scale = Math.min(
-      this.config.width / this.virtualWidth,
-      this.config.height / this.virtualHeight,
-    );
-    const offsetX = (this.config.width - this.virtualWidth * scale) / 2;
-    const offsetY = (this.config.height - this.virtualHeight * scale) / 2;
-    this.app.stage.scale.set(scale, scale);
-    this.app.stage.position.set(offsetX / scale, offsetY / scale);
+    // 3. FitController always owns the stage transform. When `fit` is
+    //    configured (or defaulted), it observes a host element and re-maps
+    //    the virtual rectangle on each resize. In environments without a
+    //    DOM target (tests, headless), it applies the transform once against
+    //    the initial `width × height` and installs no observer.
+    this.startFit(this.config.fit ?? { mode: "letterbox" });
 
     // 4. Create the per-scene render tree provider.
     //    Each scene gets one root container as a direct child of app.stage.
@@ -128,6 +129,7 @@ export class RendererPlugin implements Plugin {
   onDestroy(): void {
     this.unregisterHooks?.();
     this.unregisterHooks = null;
+    this.fitController.stop();
     if (this.tickerFn) {
       this.app.ticker.remove(this.tickerFn);
       this.tickerFn = null;
@@ -151,6 +153,104 @@ export class RendererPlugin implements Plugin {
     return { width: this.virtualWidth, height: this.virtualHeight };
   }
 
+  /** Current canvas size in CSS pixels. Changes on host resize under responsive fit. */
+  get canvasSize(): { width: number; height: number } {
+    return this.fitController.canvasSize;
+  }
+
+  /** Current fit configuration. */
+  get fit(): RendererFitOptions {
+    const target = this.fitController.currentTarget;
+    return {
+      mode: this.fitController.currentMode,
+      ...(target ? { target } : {}),
+    };
+  }
+
+  /** Change the fit mode and/or target at runtime. */
+  setFit(options: RendererFitOptions): void {
+    this.startFit(options);
+  }
+
+  /**
+   * Convert CSS pixels relative to the canvas top-left into virtual-space
+   * pixels. Inverts the stage transform currently applied by the fit controller.
+   */
+  canvasToVirtual(x: number, y: number): Vec2 {
+    return this.fitController.canvasToVirtual(x, y);
+  }
+
+  /**
+   * Virtual-space pixels → CSS pixels relative to the canvas top-left.
+   * Symmetric with {@link canvasToVirtual}; useful when mapping virtual
+   * coordinates back out to DOM overlays or pointer regions.
+   */
+  virtualToCanvas(x: number, y: number): Vec2 {
+    return this.fitController.virtualToCanvas(x, y);
+  }
+
+  /**
+   * Sub-rectangle of the declared virtual space that is actually on-screen.
+   * Use this to anchor HUD / UI that must stay inside the play area; use
+   * {@link visibleCanvasRect} if your HUD is allowed to live in the bars.
+   * Gameplay queries should stay on `virtualSize`.
+   *
+   * Under `letterbox` / `expand` / `stretch` this equals the full virtual
+   * rect. Under `cover` the long axis is cropped by the canvas edges.
+   */
+  get visibleVirtualRect(): VirtualRect {
+    return this.fitController.visibleVirtualRect;
+  }
+
+  /**
+   * Rectangles of virtual space that are currently off-screen — the
+   * complement of {@link visibleVirtualRect} inside `virtualSize`. Use
+   * these for effects that need to reason about cropped regions (e.g.
+   * fog-of-war overlays at the visible boundary).
+   *
+   * Empty under `letterbox` / `expand` / `stretch`. Under `cover`, returns 1–2 strips.
+   */
+  get croppedVirtualRects(): readonly VirtualRect[] {
+    return this.fitController.croppedVirtualRects;
+  }
+
+  /**
+   * Where the declared virtual rectangle sits on the canvas, in CSS pixels.
+   * Use for DOM overlays positioned over the play area, cropping screenshots
+   * to gameplay, or mapping CSS-coord hit regions. The rect may extend past
+   * the canvas (negative coords, dimensions larger than `canvasSize`) under
+   * `cover`.
+   */
+  get virtualCanvasRect(): CanvasRect {
+    return this.fitController.virtualCanvasRect;
+  }
+
+  /**
+   * Full canvas extent expressed in virtual-space pixels — unlike
+   * {@link visibleVirtualRect}, not clamped to the declared virtual rect.
+   * Under `letterbox` / `expand` on an off-aspect host this extends past
+   * `virtualSize` on the unscaled axis (useful for drawing backdrops that
+   * fill the bars). Under `cover` it equals `visibleVirtualRect`; under
+   * `stretch` it equals the virtual rect.
+   */
+  get visibleCanvasRect(): VirtualRect {
+    return this.fitController.visibleCanvasRect;
+  }
+
+  /**
+   * Rectangles of the visible canvas OUTSIDE the declared virtual rect —
+   * the letterbox/expand "bars" expressed in virtual-space pixels.
+   *
+   * Populated under `letterbox` and `expand` whenever aspect mismatches;
+   * empty under `cover` and `stretch`. Under `expand` these are the
+   * play-adjacent strips the game is expected to draw into (fog, parallax,
+   * HUD). Under `letterbox` they describe where the background-color bars
+   * land — so bar-customization can layer on top of a letterbox render.
+   */
+  get extendedVirtualRects(): readonly VirtualRect[] {
+    return this.fitController.extendedVirtualRects;
+  }
+
   /** The per-scene render tree provider. */
   get sceneRenderTrees(): SceneRenderTreeProvider {
     return this.provider;
@@ -165,5 +265,39 @@ export class RendererPlugin implements Plugin {
     } finally {
       graphics.destroy();
     }
+  }
+
+  private startFit(options: RendererFitOptions): void {
+    const target = this.resolveFitTarget(options);
+    this.fitController?.stop();
+    this.fitController = new FitController(
+      this.app,
+      this.app.stage,
+      this.virtualWidth,
+      this.virtualHeight,
+      options.mode,
+      target,
+      this.config.width,
+      this.config.height,
+    );
+    this.fitController.start();
+  }
+
+  /**
+   * Resolve the fit target. Returns `null` when no reasonable host can be
+   * inferred — the controller then applies a one-shot transform against
+   * `config.width × config.height` without observing. We intentionally do
+   * NOT fall through to `document.body`: a `ResizeObserver` on `body` fires
+   * on any page layout change (font loads, text reflows, dynamic content),
+   * not just viewport resizes, which would silently re-layout the canvas
+   * every frame. Callers that want full-page fit must opt in explicitly
+   * via `fit: { target: document.body }`.
+   */
+  private resolveFitTarget(options: RendererFitOptions): HTMLElement | null {
+    if (options.target) return options.target;
+    if (this.config.container) return this.config.container;
+    const parent = this.config.canvas?.parentElement;
+    if (parent) return parent;
+    return null;
   }
 }

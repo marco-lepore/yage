@@ -7,7 +7,7 @@ import {
 } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -181,7 +181,7 @@ async function main() {
       virtualWidth: WIDTH,
       virtualHeight: HEIGHT,
       backgroundColor: 0x0a0a0a,
-      container: getContainer(),
+      container: setupGameContainer(WIDTH, HEIGHT),
     }),
   );
   engine.use(new PhysicsPlugin());

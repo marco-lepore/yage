@@ -45,11 +45,20 @@ export class InputPlugin implements Plugin {
       this.config.target ?? renderer?.canvas ?? document;
 
     // Element used to convert clientX/clientY to element-relative coordinates.
-    // Falls back to null if the target is `document` or another non-element.
-    const pointerElement: Element | null =
-      this.config.target ??
+    // When `canvasToVirtual` is available, it always expects canvas-origin
+    // pixels — so prefer the canvas over a custom `config.target` (which may
+    // be a wrapping element). Falls back to null if neither is available.
+    const coordinateElement: Element | null =
       renderer?.canvas ??
+      this.config.target ??
       null;
+
+    // When the renderer exposes canvasToVirtual, route pointer coords through
+    // it so they stay correct under responsive fit or custom virtual sizes.
+    // Without it, raw canvas-relative CSS pixels are passed through unchanged
+    // (works only when canvas CSS size == virtual size — the default).
+    const mapPointer = (cssX: number, cssY: number): { x: number; y: number } =>
+      renderer?.canvasToVirtual?.(cssX, cssY) ?? { x: cssX, y: cssY };
 
     const preventSet = new Set(this.config.preventDefaultKeys ?? []);
 
@@ -76,12 +85,18 @@ export class InputPlugin implements Plugin {
     // so releases outside the target element are still captured
     const onPointerMove = (e: Event): void => {
       const pe = e as PointerEvent;
-      if (pointerElement) {
-        const rect = pointerElement.getBoundingClientRect();
-        this.manager._onPointerMove(pe.clientX - rect.left, pe.clientY - rect.top);
+      let cssX: number;
+      let cssY: number;
+      if (coordinateElement) {
+        const rect = coordinateElement.getBoundingClientRect();
+        cssX = pe.clientX - rect.left;
+        cssY = pe.clientY - rect.top;
       } else {
-        this.manager._onPointerMove(pe.clientX, pe.clientY);
+        cssX = pe.clientX;
+        cssY = pe.clientY;
       }
+      const mapped = mapPointer(cssX, cssY);
+      this.manager._onPointerMove(mapped.x, mapped.y);
     };
     const onPointerDown = (e: Event): void => {
       const pe = e as PointerEvent;

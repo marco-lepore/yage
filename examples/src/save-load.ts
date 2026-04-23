@@ -37,7 +37,7 @@ import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 import type { SaveService } from "@yagejs/save";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 // ---------------------------------------------------------------------------
 // Styles + HUD
@@ -550,7 +550,7 @@ async function main() {
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0f172a,
-    container: getContainer(),
+    container: setupGameContainer(WIDTH, HEIGHT),
   }));
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 800 } }));
   engine.use(new InputPlugin({

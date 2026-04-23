@@ -13,7 +13,7 @@ import {
   Checkbox,
   Anchor,
 } from "@yagejs/ui-react";
-import { injectStyles, getContainer } from "./shared";
+import { injectStyles, setupGameContainer } from "./shared";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtnReact, panelBg,
   sprites as S, nineSlice,
@@ -236,7 +236,7 @@ async function main() {
       virtualWidth: 800,
       virtualHeight: 600,
       backgroundColor: 0x0a0a0a,
-      container: getContainer(),
+      container: setupGameContainer(800, 600),
     }),
   );
 
