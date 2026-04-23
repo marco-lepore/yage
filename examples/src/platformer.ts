@@ -1,4 +1,4 @@
-import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yagejs/core";
+import { Engine, Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -316,52 +316,48 @@ function drawPlayerGraphics(
 }
 
 // ---------------------------------------------------------------------------
-// Blueprints
+// Entities
 // ---------------------------------------------------------------------------
-const PlayerBP = defineBlueprint<{ camera: CameraEntity }>("player", (entity, { camera }) => {
-  entity.add(
-    new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }),
-  );
-  entity.add(
-    new GraphicsComponent({ layer: "player" }).draw((g) => {
-      drawPlayerGraphics(g, false);
-    }),
-  );
-  entity.add(
-    new RigidBodyComponent({
-      type: "dynamic",
-      fixedRotation: true,
-      ccd: true,
-    }),
-  );
-  entity.add(
-    new ColliderComponent({
-      shape: { type: "box", width: 24, height: 36 },
-      friction: 0,
-      layers: LAYER_PLAYER,
-      mask:
-        LAYER_PLATFORM |
-        LAYER_COIN |
-        LAYER_GOAL |
-        LAYER_DEATH,
-    }),
-  );
-  entity.add(new PlayerController(camera));
-});
+class PlayerEntity extends Entity {
+  setup(params: { camera: CameraEntity }): void {
+    this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
+    this.add(
+      new GraphicsComponent({ layer: "player" }).draw((g) => {
+        drawPlayerGraphics(g, false);
+      }),
+    );
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+        ccd: true,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 24, height: 36 },
+        friction: 0,
+        layers: LAYER_PLAYER,
+        mask: LAYER_PLATFORM | LAYER_COIN | LAYER_GOAL | LAYER_DEATH,
+      }),
+    );
+    this.add(new PlayerController(params.camera));
+  }
+}
 
-const PlatformBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>(
-  "platform",
-  (entity, { x, y, w, h }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class PlatformEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x475569 });
         // Top surface highlight
         g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0x64748b });
       }),
     );
-    entity.add(new RigidBodyComponent({ type: "static" }));
-    entity.add(
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
       new ColliderComponent({
         shape: { type: "box", width: w, height: h },
         friction: 0,
@@ -369,20 +365,20 @@ const PlatformBP = defineBlueprint<{ x: number; y: number; w: number; h: number 
         mask: LAYER_PLAYER,
       }),
     );
-  },
-);
+  }
+}
 
-const MovingPlatformBP = defineBlueprint<{
-  start: Vec2;
-  end: Vec2;
-  w: number;
-  h: number;
-  period: number;
-}>(
-  "moving-platform",
-  (entity, { start, end, w, h, period }) => {
-    entity.add(new Transform({ position: new Vec2(start.x, start.y) }));
-    entity.add(
+class MovingPlatformEntity extends Entity {
+  setup(params: {
+    start: Vec2;
+    end: Vec2;
+    w: number;
+    h: number;
+    period: number;
+  }): void {
+    const { start, end, w, h, period } = params;
+    this.add(new Transform({ position: new Vec2(start.x, start.y) }));
+    this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x7c3aed });
         // Top surface highlight
@@ -391,8 +387,8 @@ const MovingPlatformBP = defineBlueprint<{
         g.circle(0, 0, 3).fill({ color: 0xa78bfa, alpha: 0.5 });
       }),
     );
-    entity.add(new RigidBodyComponent({ type: "kinematic" }));
-    entity.add(
+    this.add(new RigidBodyComponent({ type: "kinematic" }));
+    this.add(
       new ColliderComponent({
         shape: { type: "box", width: w, height: h },
         friction: 0,
@@ -400,46 +396,44 @@ const MovingPlatformBP = defineBlueprint<{
         mask: LAYER_PLAYER,
       }),
     );
-    entity.add(new MovingPlatform(start, end, period));
-  },
-);
+    this.add(new MovingPlatform(start, end, period));
+  }
+}
 
-const CoinBP = defineBlueprint<{ x: number; y: number }>(
-  "coin",
-  (entity, { x, y }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class CoinEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    const { x, y } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         g.circle(0, 0, 10).fill({ color: 0xffe66d });
         g.circle(0, 0, 10).stroke({ color: 0xeab308, width: 2 });
         g.circle(0, 0, 4).fill({ color: 0xeab308, alpha: 0.6 });
       }),
     );
-    entity.add(
-      new RigidBodyComponent({ type: "static", fixedRotation: true }),
-    );
+    this.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
     const collider = new ColliderComponent({
       shape: { type: "circle", radius: 10 },
       sensor: true,
       layers: LAYER_COIN,
       mask: LAYER_PLAYER,
     });
-    entity.add(collider);
+    this.add(collider);
 
     collider.onTrigger((ev) => {
       if (ev.entered) {
-        entity.emit(CoinCollected);
-        entity.destroy();
+        this.emit(CoinCollected);
+        this.destroy();
       }
     });
-  },
-);
+  }
+}
 
-const DeathZoneBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>(
-  "death-zone",
-  (entity, { x, y, w, h }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class DeathZoneEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0xef4444, alpha: 0.3 });
         // Hazard stripes
@@ -450,30 +444,28 @@ const DeathZoneBP = defineBlueprint<{ x: number; y: number; w: number; h: number
         }
       }),
     );
-    entity.add(
-      new RigidBodyComponent({ type: "static", fixedRotation: true }),
-    );
+    this.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
     const collider = new ColliderComponent({
       shape: { type: "box", width: w, height: h },
       sensor: true,
       layers: LAYER_DEATH,
       mask: LAYER_PLAYER,
     });
-    entity.add(collider);
+    this.add(collider);
 
     collider.onTrigger((ev) => {
       if (ev.entered) {
-        entity.emit(PlayerDied);
+        this.emit(PlayerDied);
       }
     });
-  },
-);
+  }
+}
 
-const GoalBP = defineBlueprint<{ x: number; y: number }>(
-  "goal",
-  (entity, { x, y }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class GoalEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    const { x, y } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent({ layer: "world" }).draw((g) => {
         // Flag pole
         g.rect(-2, -50, 4, 60).fill({ color: 0x94a3b8 });
@@ -483,24 +475,22 @@ const GoalBP = defineBlueprint<{ x: number; y: number }>(
         g.rect(-10, 8, 20, 4).fill({ color: 0x64748b });
       }),
     );
-    entity.add(
-      new RigidBodyComponent({ type: "static", fixedRotation: true }),
-    );
+    this.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
     const collider = new ColliderComponent({
       shape: { type: "box", width: 30, height: 60 },
       sensor: true,
       layers: LAYER_GOAL,
       mask: LAYER_PLAYER,
     });
-    entity.add(collider);
+    this.add(collider);
 
     collider.onTrigger((ev) => {
       if (ev.entered) {
-        entity.emit(GoalReached);
+        this.emit(GoalReached);
       }
     });
-  },
-);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // PlatformerScene
@@ -532,24 +522,21 @@ class PlatformerScene extends Scene {
       setCoins(coins + 1);
       this.audio.play(CoinSfx.path, { channel: "sfx" });
     });
+    this.drawBackground();
+    this.buildLevel();
+    const player = this.spawn(PlayerEntity, { camera: cam });
+
     this.on(PlayerDied, () => {
       this.audio.play(HurtSfx.path, { channel: "sfx" });
-      const player = this.findEntity("player");
-      if (player) {
-        const rb = player.get(RigidBodyComponent);
-        rb.setVelocity(Vec2.ZERO);
-        rb.setPosition(SPAWN.x, SPAWN.y);
-        player.get(Transform).setPosition(SPAWN.x, SPAWN.y);
-      }
+      const rb = player.get(RigidBodyComponent);
+      rb.setVelocity(Vec2.ZERO);
+      rb.setPosition(SPAWN.x, SPAWN.y);
+      player.get(Transform).setPosition(SPAWN.x, SPAWN.y);
     });
     this.on(GoalReached, () => {
       this.audio.play(WinSfx.path, { channel: "sfx" });
       showWin();
     });
-
-    this.drawBackground();
-    this.buildLevel();
-    this.spawn(PlayerBP, { camera: cam });
   }
 
   // -- Background grid --
@@ -585,27 +572,27 @@ class PlatformerScene extends Scene {
     // ============================================================
     // Section 1 (0–500): Start ground + 2 coins
     // ============================================================
-    this.spawn(PlatformBP, { x: 250, y: 750, w: 500, h: 100 }); // ground
-    this.spawn(CoinBP, { x: 200, y: 680 });
-    this.spawn(CoinBP, { x: 400, y: 650 });
+    this.spawn(PlatformEntity, { x: 250, y: 750, w: 500, h: 100 }); // ground
+    this.spawn(CoinEntity, { x: 200, y: 680 });
+    this.spawn(CoinEntity, { x: 400, y: 650 });
 
     // ============================================================
     // Section 2 (500–900): Gap with stepping stones + 2 coins
     // ============================================================
-    this.spawn(DeathZoneBP, { x: 700, y: 790, w: 400, h: 20 }); // pit death zone
-    this.spawn(PlatformBP, { x: 580, y: 700, w: 80, h: 20 }); // stepping stone 1
-    this.spawn(PlatformBP, { x: 700, y: 660, w: 80, h: 20 }); // stepping stone 2
-    this.spawn(PlatformBP, { x: 820, y: 620, w: 80, h: 20 }); // stepping stone 3
-    this.spawn(CoinBP, { x: 580, y: 670 });
-    this.spawn(CoinBP, { x: 820, y: 590 });
+    this.spawn(DeathZoneEntity, { x: 700, y: 790, w: 400, h: 20 }); // pit death zone
+    this.spawn(PlatformEntity, { x: 580, y: 700, w: 80, h: 20 }); // stepping stone 1
+    this.spawn(PlatformEntity, { x: 700, y: 660, w: 80, h: 20 }); // stepping stone 2
+    this.spawn(PlatformEntity, { x: 820, y: 620, w: 80, h: 20 }); // stepping stone 3
+    this.spawn(CoinEntity, { x: 580, y: 670 });
+    this.spawn(CoinEntity, { x: 820, y: 590 });
 
     // ============================================================
     // Section 3 (900–1400): Moving platforms + 1 coin
     // ============================================================
-    this.spawn(PlatformBP, { x: 950, y: 700, w: 120, h: 20 }); // landing after gap
+    this.spawn(PlatformEntity, { x: 950, y: 700, w: 120, h: 20 }); // landing after gap
 
     // Horizontal mover
-    this.spawn(MovingPlatformBP, {
+    this.spawn(MovingPlatformEntity, {
       start: new Vec2(1100, 650),
       end: new Vec2(1300, 650),
       w: 100,
@@ -614,7 +601,7 @@ class PlatformerScene extends Scene {
     });
 
     // Vertical mover
-    this.spawn(MovingPlatformBP, {
+    this.spawn(MovingPlatformEntity, {
       start: new Vec2(1350, 650),
       end: new Vec2(1350, 500),
       w: 100,
@@ -622,25 +609,25 @@ class PlatformerScene extends Scene {
       period: 2.5,
     });
 
-    this.spawn(CoinBP, { x: 1200, y: 610 });
+    this.spawn(CoinEntity, { x: 1200, y: 610 });
 
     // ============================================================
     // Section 4 (1400–1900): Ascending elevated platforms + 2 coins
     // ============================================================
-    this.spawn(PlatformBP, { x: 1450, y: 600, w: 120, h: 20 });
-    this.spawn(PlatformBP, { x: 1580, y: 540, w: 120, h: 20 });
-    this.spawn(PlatformBP, { x: 1720, y: 480, w: 120, h: 20 });
-    this.spawn(PlatformBP, { x: 1860, y: 420, w: 140, h: 20 });
-    this.spawn(CoinBP, { x: 1580, y: 510 });
-    this.spawn(CoinBP, { x: 1860, y: 390 });
+    this.spawn(PlatformEntity, { x: 1450, y: 600, w: 120, h: 20 });
+    this.spawn(PlatformEntity, { x: 1580, y: 540, w: 120, h: 20 });
+    this.spawn(PlatformEntity, { x: 1720, y: 480, w: 120, h: 20 });
+    this.spawn(PlatformEntity, { x: 1860, y: 420, w: 140, h: 20 });
+    this.spawn(CoinEntity, { x: 1580, y: 510 });
+    this.spawn(CoinEntity, { x: 1860, y: 390 });
 
     // ============================================================
     // Section 5 (1900–2400): Final run + vertical mover + goal
     // ============================================================
-    this.spawn(PlatformBP, { x: 2050, y: 500, w: 200, h: 20 }); // bridge from elevated
+    this.spawn(PlatformEntity, { x: 2050, y: 500, w: 200, h: 20 }); // bridge from elevated
 
     // Vertical mover down to final ground
-    this.spawn(MovingPlatformBP, {
+    this.spawn(MovingPlatformEntity, {
       start: new Vec2(2200, 500),
       end: new Vec2(2200, 700),
       w: 100,
@@ -648,19 +635,19 @@ class PlatformerScene extends Scene {
       period: 3,
     });
 
-    this.spawn(PlatformBP, { x: 2300, y: 750, w: 200, h: 100 }); // final ground
-    this.spawn(CoinBP, { x: 2200, y: 460 });
-    this.spawn(GoalBP, { x: 2350, y: 690 });
+    this.spawn(PlatformEntity, { x: 2300, y: 750, w: 200, h: 100 }); // final ground
+    this.spawn(CoinEntity, { x: 2200, y: 460 });
+    this.spawn(GoalEntity, { x: 2350, y: 690 });
 
     // ============================================================
     // World floor (catches player at very bottom except in pits)
     // ============================================================
-    this.spawn(PlatformBP, { x: WORLD_W / 2, y: 795, w: WORLD_W, h: 10 });
+    this.spawn(PlatformEntity, { x: WORLD_W / 2, y: 795, w: WORLD_W, h: 10 });
 
     // Left wall
-    this.spawn(PlatformBP, { x: -5, y: WORLD_H / 2, w: 10, h: WORLD_H });
+    this.spawn(PlatformEntity, { x: -5, y: WORLD_H / 2, w: 10, h: WORLD_H });
     // Right wall
-    this.spawn(PlatformBP, { x: WORLD_W + 5, y: WORLD_H / 2, w: 10, h: WORLD_H });
+    this.spawn(PlatformEntity, { x: WORLD_W + 5, y: WORLD_H / 2, w: 10, h: WORLD_H });
   }
 }
 

@@ -1,4 +1,4 @@
-import { Engine, Scene, Component, Transform, Vec2, defineBlueprint } from "@yagejs/core";
+import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -91,22 +91,23 @@ class WallDebugContributor implements DebugContributor {
 }
 
 // ---------------------------------------------------------------------------
-// Blueprints
+// Entities
 // ---------------------------------------------------------------------------
 import type { TiledMapData } from "@yagejs/tilemap";
 
-const DungeonMapBP = defineBlueprint<{ map: TiledMapData }>(
-  "dungeon-map",
-  (entity, { map }) => {
-    entity.add(new Transform());
-    entity.add(new TilemapComponent({ map, layer: "map" }));
-  },
-);
+class DungeonMapEntity extends Entity {
+  setup(params: { map: TiledMapData }): void {
+    this.add(new Transform());
+    this.add(new TilemapComponent({ map: params.map, layer: "map" }));
+  }
+}
 
-const CameraCtrlBP = defineBlueprint<{ camera: CameraEntity }>("camera-ctrl", (entity, { camera }) => {
-  entity.add(new Transform());
-  entity.add(new CameraPan(camera));
-});
+class CameraCtrlEntity extends Entity {
+  setup(params: { camera: CameraEntity }): void {
+    this.add(new Transform());
+    this.add(new CameraPan(params.camera));
+  }
+}
 
 // ---------------------------------------------------------------------------
 // TilemapScene
@@ -118,7 +119,7 @@ class TilemapScene extends Scene {
   onEnter(): void {
     // -- Tilemap entity --
     const mapData = this.assets.get(DungeonMap);
-    const mapEntity = this.spawn(DungeonMapBP, { map: mapData });
+    const mapEntity = this.spawn(DungeonMapEntity, { map: mapData });
     const tilemap = mapEntity.get(TilemapComponent);
 
     const mapW = tilemap.widthPx;
@@ -144,7 +145,7 @@ class TilemapScene extends Scene {
     registry?.register(new WallDebugContributor(rectShapes));
 
     // -- Camera controller --
-    this.spawn(CameraCtrlBP, { camera: cam });
+    this.spawn(CameraCtrlEntity, { camera: cam });
   }
 }
 

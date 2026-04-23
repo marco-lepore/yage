@@ -1,4 +1,4 @@
-import { Engine, Scene, Component, Transform, Vec2, defineEvent, defineBlueprint } from "@yagejs/core";
+import { Engine, Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -82,94 +82,96 @@ class PlayerController extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// Blueprints
+// Entities
 // ---------------------------------------------------------------------------
-const PlayerBP = defineBlueprint("player", (entity) => {
-  entity.add(new Transform({ position: new Vec2(START_POS.x, START_POS.y) }));
-  entity.add(
-    new GraphicsComponent().draw((g) => {
-      g.circle(0, 0, 16).fill({ color: 0x22c55e });
-      g.circle(0, 0, 16).stroke({ color: 0x16a34a, width: 2 });
-      // Eyes
-      g.circle(-5, -4, 3).fill({ color: 0xffffff });
-      g.circle(5, -4, 3).fill({ color: 0xffffff });
-      g.circle(-5, -4, 1.5).fill({ color: 0x111111 });
-      g.circle(5, -4, 1.5).fill({ color: 0x111111 });
-    }),
-  );
-  entity.add(
-    new RigidBodyComponent({
-      type: "dynamic",
-      fixedRotation: true,
-      gravityScale: 0,
-      linearDamping: 20,
-    }),
-  );
-  entity.add(
-    new ColliderComponent({
-      shape: { type: "circle", radius: 16 },
-      sensor: false,
-      layers: LAYER_PLAYER,
-      mask: LAYER_WALL | LAYER_COIN | LAYER_DANGER,
-    }),
-  );
-  entity.add(new PlayerController());
-});
+class PlayerEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(START_POS.x, START_POS.y) }));
+    this.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 16).fill({ color: 0x22c55e });
+        g.circle(0, 0, 16).stroke({ color: 0x16a34a, width: 2 });
+        // Eyes
+        g.circle(-5, -4, 3).fill({ color: 0xffffff });
+        g.circle(5, -4, 3).fill({ color: 0xffffff });
+        g.circle(-5, -4, 1.5).fill({ color: 0x111111 });
+        g.circle(5, -4, 1.5).fill({ color: 0x111111 });
+      }),
+    );
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+        gravityScale: 0,
+        linearDamping: 20,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 16 },
+        sensor: false,
+        layers: LAYER_PLAYER,
+        mask: LAYER_WALL | LAYER_COIN | LAYER_DANGER,
+      }),
+    );
+    this.add(new PlayerController());
+  }
+}
 
-const WallBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>(
-  "wall",
-  (entity, { x, y, w, h }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class WallEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent().draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x555555 });
       }),
     );
-    entity.add(new RigidBodyComponent({ type: "static" }));
-    entity.add(
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
       new ColliderComponent({
         shape: { type: "box", width: w, height: h },
         layers: LAYER_WALL,
         mask: LAYER_PLAYER,
       }),
     );
-  },
-);
+  }
+}
 
-const CoinBP = defineBlueprint<{ x: number; y: number }>(
-  "coin",
-  (entity, { x, y }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class CoinEntity extends Entity {
+  setup(params: { x: number; y: number }): void {
+    const { x, y } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent().draw((g) => {
         g.circle(0, 0, 10).fill({ color: 0xffe66d });
         g.circle(0, 0, 10).stroke({ color: 0xeab308, width: 2 });
         g.circle(0, 0, 4).fill({ color: 0xeab308, alpha: 0.6 });
       }),
     );
-    entity.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
+    this.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
     const collider = new ColliderComponent({
       shape: { type: "circle", radius: 10 },
       sensor: true,
       layers: LAYER_COIN,
       mask: LAYER_PLAYER,
     });
-    entity.add(collider);
+    this.add(collider);
 
     collider.onTrigger((ev) => {
       if (ev.entered) {
-        entity.emit(CoinCollected);
-        entity.destroy();
+        this.emit(CoinCollected);
+        this.destroy();
       }
     });
-  },
-);
+  }
+}
 
-const DangerBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>(
-  "danger",
-  (entity, { x, y, w, h }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class DangerEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent().draw((g) => {
         g.rect(-w / 2, -h / 2, w, h).fill({ color: 0xef4444, alpha: 0.4 });
         g.rect(-w / 2, -h / 2, w, h).stroke({ color: 0xef4444, width: 2 });
@@ -181,22 +183,22 @@ const DangerBP = defineBlueprint<{ x: number; y: number; w: number; h: number }>
         }
       }),
     );
-    entity.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
+    this.add(new RigidBodyComponent({ type: "static", fixedRotation: true }));
     const collider = new ColliderComponent({
       shape: { type: "box", width: w, height: h },
       sensor: true,
       layers: LAYER_DANGER,
       mask: LAYER_PLAYER,
     });
-    entity.add(collider);
+    this.add(collider);
 
     collider.onTrigger((ev) => {
       if (ev.entered) {
-        entity.emit(DangerEntered);
+        this.emit(DangerEntered);
       }
     });
-  },
-);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Scene
@@ -215,25 +217,21 @@ class CollisionsScene extends Scene {
       setScore(score + 10);
       this.audio.play(CoinSfx.path, { channel: "sfx" });
     });
+    // Player
+    const player = this.spawn(PlayerEntity);
+
     this.on(DangerEntered, () => {
       this.audio.play(HurtSfx.path, { channel: "sfx" });
       setScore(0);
-      const player = this.findEntity("player");
-      if (player) {
-        const rb = player.get(RigidBodyComponent);
-        rb.setPosition(START_POS.x, START_POS.y);
-        player.get(Transform).setPosition(START_POS.x, START_POS.y);
-      }
+      player.get(RigidBodyComponent).setPosition(START_POS.x, START_POS.y);
+      player.get(Transform).setPosition(START_POS.x, START_POS.y);
     });
 
-    // Player
-    this.spawn(PlayerBP);
-
     // Walls
-    this.spawn(WallBP, { x: WIDTH / 2, y: WALL / 2, w: WIDTH, h: WALL }); // top
-    this.spawn(WallBP, { x: WIDTH / 2, y: HEIGHT - WALL / 2, w: WIDTH, h: WALL }); // bottom
-    this.spawn(WallBP, { x: WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT }); // left
-    this.spawn(WallBP, { x: WIDTH - WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT }); // right
+    this.spawn(WallEntity, { x: WIDTH / 2, y: WALL / 2, w: WIDTH, h: WALL });
+    this.spawn(WallEntity, { x: WIDTH / 2, y: HEIGHT - WALL / 2, w: WIDTH, h: WALL });
+    this.spawn(WallEntity, { x: WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT });
+    this.spawn(WallEntity, { x: WIDTH - WALL / 2, y: HEIGHT / 2, w: WALL, h: HEIGHT });
 
     // Coins
     const coinPositions = [
@@ -241,13 +239,13 @@ class CollisionsScene extends Scene {
       [100, 300], [700, 300], [350, 500], [450, 200], [300, 350],
     ];
     for (const [x, y] of coinPositions) {
-      this.spawn(CoinBP, { x: x!, y: y! });
+      this.spawn(CoinEntity, { x: x!, y: y! });
     }
 
     // Danger zones
-    this.spawn(DangerBP, { x: 200, y: 250, w: 80, h: 60 });
-    this.spawn(DangerBP, { x: 580, y: 380, w: 100, h: 50 });
-    this.spawn(DangerBP, { x: 400, y: 450, w: 60, h: 80 });
+    this.spawn(DangerEntity, { x: 200, y: 250, w: 80, h: 60 });
+    this.spawn(DangerEntity, { x: 580, y: 380, w: 100, h: 50 });
+    this.spawn(DangerEntity, { x: 400, y: 450, w: 60, h: 80 });
   }
 }
 
