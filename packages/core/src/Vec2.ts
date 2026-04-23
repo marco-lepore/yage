@@ -139,4 +139,31 @@ export class Vec2 implements Vec2Like {
   static lerp(a: Vec2Like, b: Vec2Like, t: number): Vec2 {
     return new Vec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
   }
+
+  /** Move current toward target by at most maxDelta without overshooting. */
+  static moveTowards(
+    current: Vec2Like,
+    target: Vec2Like,
+    maxDelta: number,
+  ): Vec2 {
+    const dx = target.x - current.x;
+    const dy = target.y - current.y;
+    const distanceSq = dx * dx + dy * dy;
+
+    if (distanceSq < EPSILON * EPSILON) {
+      return new Vec2(target.x, target.y);
+    }
+
+    if (maxDelta <= 0) {
+      return new Vec2(current.x, current.y);
+    }
+
+    const distance = Math.sqrt(distanceSq);
+    if (distance <= maxDelta) {
+      return new Vec2(target.x, target.y);
+    }
+
+    const scale = maxDelta / distance;
+    return new Vec2(current.x + dx * scale, current.y + dy * scale);
+  }
 }

@@ -30,9 +30,35 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 
 | Export | Purpose |
 |---|---|
-| `Vec2` | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`) |
+| `Vec2` | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`) |
 | `Transform` | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`) |
-| `MathUtils` | `lerp`, `clamp`, `angleLerp`, `randomRange`, etc. |
+| `MathUtils` | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc. |
+| `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()` |
+
+Math signatures:
+
+```ts
+MathUtils.lerp(a: number, b: number, t: number): number
+MathUtils.inverseLerp(a: number, b: number, v: number): number // clamped 0..1
+MathUtils.lerpAngle(a: number, b: number, t: number): number // radians, shortest path around +/-PI
+MathUtils.shortestAngleBetween(a: number, b: number): number // signed delta in [-PI, PI]
+MathUtils.pingPong(t: number, length: number): number // bounces in [0, length]
+MathUtils.smoothDamp(
+  current: number,
+  target: number,
+  velocity: number,
+  smoothTime: number,
+  deltaTime: number,
+  maxSpeed?: number,
+): SmoothDampResult
+
+Vec2.lerp(a: Vec2Like, b: Vec2Like, t: number): Vec2
+Vec2.moveTowards(current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2
+```
+
+For `smoothDamp`, pass the returned `velocity` into the next frame. `smoothTime`
+and `deltaTime` must use the same unit; `maxSpeed` is in units per that same
+time base.
 
 ### Processes
 
