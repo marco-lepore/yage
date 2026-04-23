@@ -1,4 +1,5 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
+import { RendererAdapterKey } from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputManager } from "./InputManager.js";
 import { InputManagerKey, type InputConfig } from "./types.js";
@@ -38,9 +39,11 @@ export class InputPlugin implements Plugin {
       this.manager.setGroups(this.config.groups);
     }
 
-    const renderer = this.config.rendererKey
-      ? context.tryResolve(this.config.rendererKey)
-      : undefined;
+    // Default to the well-known RendererAdapterKey so the canonical renderer
+    // is picked up with no config. `rendererKey` stays as an override for
+    // custom/foreign renderers registered under a different key.
+    const rendererKey = this.config.rendererKey ?? RendererAdapterKey;
+    const renderer = context.tryResolve(rendererKey);
     const pointerTarget: EventTarget =
       this.config.target ?? renderer?.canvas ?? document;
 

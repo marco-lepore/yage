@@ -144,6 +144,9 @@ export type {
 export { Engine } from "./Engine.js";
 export type { EngineConfig } from "./Engine.js";
 
+export { RendererAdapterKey } from "./RendererAdapter.js";
+export type { RendererAdapter } from "./RendererAdapter.js";
+
 export {
   createTestEngine,
   createMockScene,

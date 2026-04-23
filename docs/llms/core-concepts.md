@@ -213,7 +213,7 @@ const svc = context.resolve(MyServiceKey); // throws if missing
 const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 ```
 
-Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`.
+Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `RendererAdapterKey` (cross-package pointer-input contract, registered by `RendererPlugin`, consumed by `InputPlugin`).
 
 Plugin keys: `RendererKey`, `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 

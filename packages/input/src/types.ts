@@ -1,4 +1,5 @@
 import { ServiceKey } from "@yagejs/core";
+import type { RendererAdapter } from "@yagejs/core";
 
 /** Service key for the InputManager. */
 export const InputManagerKey = new ServiceKey<
@@ -10,17 +11,11 @@ export interface CameraLike {
   screenToWorld(screenX: number, screenY: number): { x: number; y: number };
 }
 
-/** Minimal renderer surface needed by InputPlugin for canvas access. */
-export interface RendererLike {
-  readonly canvas: HTMLCanvasElement;
-  /**
-   * Optional — convert CSS pixels relative to the canvas into virtual-space
-   * pixels. When present, InputPlugin uses it so pointer coordinates stay
-   * correct under `fit` scaling or when `virtualWidth`/`virtualHeight` differ
-   * from the canvas CSS size.
-   */
-  canvasToVirtual?(x: number, y: number): { x: number; y: number };
-}
+/**
+ * Minimal renderer surface needed by InputPlugin for canvas access and
+ * coordinate mapping. Alias of the cross-package `RendererAdapter` contract.
+ */
+export type RendererLike = RendererAdapter;
 
 /** Configuration for the InputPlugin. */
 export interface InputConfig {
@@ -32,8 +27,15 @@ export interface InputConfig {
   groups?: Record<string, string[]>;
   /** Key codes to call preventDefault() on (default: none). */
   preventDefaultKeys?: string[];
-  /** Service key for the renderer (used to auto-target pointer events to its canvas). */
-  rendererKey?: ServiceKey<RendererLike>;
+  /**
+   * Optional override for the renderer service key. When omitted, InputPlugin
+   * auto-resolves `RendererAdapterKey` — the canonical `@yagejs/renderer`
+   * plugin registers itself under that key, so pointer events target its
+   * canvas and coordinates route through `canvasToVirtual` out of the box.
+   * Set this only if you ship a custom renderer registered under a different
+   * key.
+   */
+  rendererKey?: ServiceKey<RendererAdapter>;
 }
 
 /** Maps action names to arrays of physical key codes. */

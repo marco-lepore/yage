@@ -1,14 +1,17 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   EngineContext,
+  RendererAdapterKey,
   ServiceKey,
   Vec2,
   SystemScheduler,
 } from "@yagejs/core";
 
-// Local mock key matching the string ID used by the renderer package.
+// Local mock key — matches the string id a custom renderer would use.
 // Tests shouldn't depend on @yagejs/renderer.
-const RendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>("renderer");
+const CustomRendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>(
+  "customRenderer",
+);
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputPlugin } from "./InputPlugin.js";
 import { InputManagerKey } from "./types.js";
@@ -16,13 +19,15 @@ import { InputManager } from "./InputManager.js";
 
 function createContext(options?: {
   withRenderer?: boolean;
+  underKey?: ServiceKey<{ canvas: HTMLCanvasElement }>;
   canvas?: HTMLCanvasElement;
 }): EngineContext {
   const context = new EngineContext();
 
   if (options?.withRenderer) {
     const canvas = options.canvas ?? document.createElement("canvas");
-    context.register(RendererKey, { canvas });
+    const key = options.underKey ?? RendererAdapterKey;
+    context.register(key, { canvas });
   }
   return context;
 }
@@ -79,15 +84,35 @@ describe("InputPlugin", () => {
     expect(manager.isJustPressed("jump")).toBe(false);
   });
 
-  it("attaches pointer listeners to canvas when renderer is available", () => {
+  it("auto-resolves RendererAdapterKey and attaches pointer listeners to its canvas", () => {
     const canvas = document.createElement("canvas");
     context = createContext({ withRenderer: true, canvas });
-    plugin = new InputPlugin({ rendererKey: RendererKey });
+    plugin = new InputPlugin();
     plugin.install(context);
 
     const manager = context.resolve(InputManagerKey);
 
     // pointermove listens on window (so releases outside target are captured)
+    window.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 42, clientY: 84 }),
+    );
+    const pos = manager.getPointerScreenPosition();
+    expect(pos.x).toBe(42);
+    expect(pos.y).toBe(84);
+  });
+
+  it("accepts a custom rendererKey override", () => {
+    const canvas = document.createElement("canvas");
+    context = createContext({
+      withRenderer: true,
+      canvas,
+      underKey: CustomRendererKey,
+    });
+    plugin = new InputPlugin({ rendererKey: CustomRendererKey });
+    plugin.install(context);
+
+    const manager = context.resolve(InputManagerKey);
+
     window.dispatchEvent(
       new PointerEvent("pointermove", { clientX: 42, clientY: 84 }),
     );

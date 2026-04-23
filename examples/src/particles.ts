@@ -229,7 +229,6 @@ async function main() {
       preset_rain: ["Digit4"],
     },
     preventDefaultKeys: ["Space"],
-    rendererKey: RendererKey,
   }));
   engine.use(new ParticlesPlugin());
   engine.use(new DebugPlugin());
