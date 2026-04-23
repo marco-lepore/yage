@@ -86,14 +86,17 @@ export class FitController {
     this.observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      const size = entry.contentBoxSize?.[0];
+      // Use borderBoxSize to match `measure()`'s `getBoundingClientRect()`
+      // (also border-box). Mixing box models here was shipping slight resize
+      // drift on hosts with padding or a border.
+      const size = entry.borderBoxSize?.[0];
       const w = size ? size.inlineSize : entry.contentRect.width;
       const h = size ? size.blockSize : entry.contentRect.height;
       if (w <= 0 || h <= 0) return;
       if (w === this.canvasW && h === this.canvasH) return;
       this.apply(w, h);
     });
-    this.observer.observe(this.target);
+    this.observer.observe(this.target, { box: "border-box" });
   }
 
   /** Stop observing and release the ResizeObserver. Leaves stage transform untouched. */

@@ -39,7 +39,15 @@ class UIButtonScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 320, height: 180, backgroundColor: 0x0a0a0a, resolution: 1, container }));
+engine.use(
+  new RendererPlugin({
+    width: 320,
+    height: 180,
+    backgroundColor: 0x0a0a0a,
+    resolution: 1,
+    container,
+  }),
+);
 engine.use(new UIPlugin());
 engine.use(new DebugPlugin({ manualClock: true }));
 await engine.start();

@@ -62,9 +62,6 @@ const FOG_ALPHA = 0.78;
 const FOG_GRADIENT_WIDTH = 40;
 
 const container = getContainer();
-container.style.maxWidth = "100%";
-container.style.height = "70vh";
-container.style.aspectRatio = "auto";
 
 // ---------------------------------------------------------------------------
 // HudAnchor — places an entity at a corner of `visibleCanvasRect`, i.e. the
@@ -190,10 +187,33 @@ class GridRedraw extends Component {
 const FOG_OPAQUE = `rgba(0,0,0,${FOG_ALPHA})`;
 const FOG_CLEAR = "rgba(0,0,0,0)";
 
+// Pre-built gradient fills, one per direction/orientation pair. `textureSpace:
+// "local"` makes each gradient scale to whatever rect it's applied to, so one
+// instance covers every top/bottom/left/right band regardless of strip size.
+function makeLinearGradient(
+  axis: "horizontal" | "vertical",
+  startColor: string,
+  endColor: string,
+): FillGradient {
+  return new FillGradient({
+    type: "linear",
+    start: { x: 0, y: 0 },
+    end: axis === "horizontal" ? { x: 1, y: 0 } : { x: 0, y: 1 },
+    colorStops: [
+      { offset: 0, color: startColor },
+      { offset: 1, color: endColor },
+    ],
+    textureSpace: "local",
+  });
+}
+
 class FogOverlay extends Component {
   private readonly renderer = this.service(RendererKey);
   private readonly graphics = this.sibling(GraphicsComponent);
-  private gradients: FillGradient[] = [];
+  private readonly gradTopInner = makeLinearGradient("vertical", FOG_OPAQUE, FOG_CLEAR);
+  private readonly gradBottomInner = makeLinearGradient("vertical", FOG_CLEAR, FOG_OPAQUE);
+  private readonly gradLeftInner = makeLinearGradient("horizontal", FOG_OPAQUE, FOG_CLEAR);
+  private readonly gradRightInner = makeLinearGradient("horizontal", FOG_CLEAR, FOG_OPAQUE);
   private lastKey = "";
 
   update(): void {
@@ -206,7 +226,6 @@ class FogOverlay extends Component {
 
     const g = this.graphics.graphics;
     g.clear();
-    this.disposeGradients();
 
     for (const r of rects) {
       // Each extended strip is flush to exactly one edge of the virtual rect
@@ -226,13 +245,9 @@ class FogOverlay extends Component {
         if (bulk > 0) {
           g.rect(r.x, r.y, r.width, bulk).fill({ color: 0x000000, alpha: FOG_ALPHA });
         }
-        g.rect(r.x, r.y + bulk, r.width, gradW).fill(
-          this.makeGradient("vertical", FOG_OPAQUE, FOG_CLEAR),
-        );
+        g.rect(r.x, r.y + bulk, r.width, gradW).fill(this.gradTopInner);
       } else if (atBottom) {
-        g.rect(r.x, r.y, r.width, gradW).fill(
-          this.makeGradient("vertical", FOG_CLEAR, FOG_OPAQUE),
-        );
+        g.rect(r.x, r.y, r.width, gradW).fill(this.gradBottomInner);
         if (bulk > 0) {
           g.rect(r.x, r.y + gradW, r.width, bulk).fill({ color: 0x000000, alpha: FOG_ALPHA });
         }
@@ -240,13 +255,9 @@ class FogOverlay extends Component {
         if (bulk > 0) {
           g.rect(r.x, r.y, bulk, r.height).fill({ color: 0x000000, alpha: FOG_ALPHA });
         }
-        g.rect(r.x + bulk, r.y, gradW, r.height).fill(
-          this.makeGradient("horizontal", FOG_OPAQUE, FOG_CLEAR),
-        );
+        g.rect(r.x + bulk, r.y, gradW, r.height).fill(this.gradLeftInner);
       } else if (atRight) {
-        g.rect(r.x, r.y, gradW, r.height).fill(
-          this.makeGradient("horizontal", FOG_CLEAR, FOG_OPAQUE),
-        );
+        g.rect(r.x, r.y, gradW, r.height).fill(this.gradRightInner);
         if (bulk > 0) {
           g.rect(r.x + gradW, r.y, bulk, r.height).fill({ color: 0x000000, alpha: FOG_ALPHA });
         }
@@ -255,31 +266,10 @@ class FogOverlay extends Component {
   }
 
   onRemove(): void {
-    this.disposeGradients();
-  }
-
-  private makeGradient(
-    axis: "horizontal" | "vertical",
-    startColor: string,
-    endColor: string,
-  ): FillGradient {
-    const gradient = new FillGradient({
-      type: "linear",
-      start: { x: 0, y: 0 },
-      end: axis === "horizontal" ? { x: 1, y: 0 } : { x: 0, y: 1 },
-      colorStops: [
-        { offset: 0, color: startColor },
-        { offset: 1, color: endColor },
-      ],
-      textureSpace: "local",
-    });
-    this.gradients.push(gradient);
-    return gradient;
-  }
-
-  private disposeGradients(): void {
-    for (const g of this.gradients) g.destroy();
-    this.gradients = [];
+    this.gradTopInner.destroy();
+    this.gradBottomInner.destroy();
+    this.gradLeftInner.destroy();
+    this.gradRightInner.destroy();
   }
 }
 

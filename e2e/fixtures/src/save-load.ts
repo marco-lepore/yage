@@ -125,7 +125,14 @@ class TestScene extends Scene {
 // ---- Boot ----
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container }));
+engine.use(
+  new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container,
+  }),
+);
 engine.use(new DebugPlugin());
 engine.use(new SavePlugin());
 await engine.start();

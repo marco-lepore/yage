@@ -77,7 +77,14 @@ class PhysicsBounceScene extends Scene {
 }
 
 const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, backgroundColor: 0x0a0a0a, container }));
+engine.use(
+  new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0a0a0a,
+    container,
+  }),
+);
 engine.use(new PhysicsPlugin());
 engine.use(new DebugPlugin({ manualClock: true }));
 await engine.start();
