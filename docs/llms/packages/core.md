@@ -30,7 +30,7 @@ class Entity {
   spawnChild<E extends Entity>(name: string, Class: new () => E): E;
   spawnChild<E extends Entity, P>(
     name: string,
-    Class: new () => E,
+    Class: new () => E & { setup(params: P): void },
     params: P,
   ): E;
   spawnChild<P>(name: string, blueprint: Blueprint<P>, params: P): Entity;

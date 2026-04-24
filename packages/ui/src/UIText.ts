@@ -65,9 +65,8 @@ export class UIText implements UIElement {
   }
 
   update(p: Partial<UITextProps>): void {
-    const textContent = p.children;
-    if (textContent !== this.text.text) {
-      this.setText(textContent);
+    if (p.children !== undefined && p.children !== this.text.text) {
+      this.setText(p.children);
     }
     if (p.style) {
       this.setStyle(p.style);

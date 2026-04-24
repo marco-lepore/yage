@@ -510,7 +510,7 @@ class PlayerController extends Component {
     this.camera.shake(5, 200, { decay: 0.7 });
   }
 
-  private tryDamageFrom(enemy: import("@yagejs/core").Entity): void {
+  private tryDamageFrom(enemy: Entity): void {
     if (!this.invincibility.completed) return;
     const enemyX = enemy.get(Transform).position.x;
     const playerX = this.transform.position.x;

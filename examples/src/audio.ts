@@ -20,14 +20,15 @@ function setUnlockLabel(unlocked: boolean): void {
   const el = document.getElementById("unlock-state");
   if (!el) return;
   el.textContent = unlocked ? "unlocked (running)" : "locked (press any key)";
-  el.className = unlocked ? "unlocked" : "locked";
+  el.classList.toggle("unlocked", unlocked);
+  el.classList.toggle("locked", !unlocked);
 }
 
 function setBlurLabel(on: boolean): void {
   const el = document.getElementById("blur-state");
   if (!el) return;
   el.textContent = on ? "on" : "off";
-  el.className = on ? "" : "off";
+  el.classList.toggle("off", !on);
 }
 
 // ---------------------------------------------------------------------------

@@ -7,8 +7,10 @@ import {
   SystemScheduler,
 } from "@yagejs/core";
 
-// Local mock key — matches the string id a custom renderer would use.
-// Tests shouldn't depend on @yagejs/renderer.
+// Local mock key — simulates a foreign (non-@yagejs/renderer) renderer
+// registered under its own ServiceKey. ServiceKey lookup is by reference
+// identity, not string id, so the `"customRenderer"` label is purely
+// diagnostic.
 const CustomRendererKey = new ServiceKey<{ canvas: HTMLCanvasElement }>(
   "customRenderer",
 );
@@ -119,6 +121,28 @@ describe("InputPlugin", () => {
     const pos = manager.getPointerScreenPosition();
     expect(pos.x).toBe(42);
     expect(pos.y).toBe(84);
+  });
+
+  it("routes pointer coords through adapter.canvasToVirtual when present", () => {
+    const canvas = document.createElement("canvas");
+    // JSDOM getBoundingClientRect returns zeros by default, so clientX/Y
+    // pass through as canvas-relative CSS pixels unchanged. The adapter's
+    // canvasToVirtual doubles them to prove the branch ran.
+    const context = new EngineContext();
+    context.register(RendererAdapterKey, {
+      canvas,
+      canvasToVirtual: (x, y) => ({ x: x * 2, y: y * 2 }),
+    });
+    plugin = new InputPlugin();
+    plugin.install(context);
+
+    const manager = context.resolve(InputManagerKey);
+    window.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 10, clientY: 20 }),
+    );
+    const pos = manager.getPointerScreenPosition();
+    expect(pos.x).toBe(20);
+    expect(pos.y).toBe(40);
   });
 
   it("attaches pointer listeners to document when no renderer", () => {
