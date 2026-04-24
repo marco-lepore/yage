@@ -52,12 +52,7 @@ export class UICheckbox implements UIElement {
 
     // Optional label
     if (props.label) {
-      this.label = new Text({
-        text: props.label,
-        style: { fontSize: 14, fill: 0xffffff, ...props.labelStyle },
-      });
-      this.label.position.set(this._size + LABEL_GAP, (this._size - this.label.height) / 2);
-      this.container.addChild(this.label);
+      this.createLabel(props.label, props.labelStyle);
     }
 
     // Measure function for intrinsic sizing
@@ -115,9 +110,7 @@ export class UICheckbox implements UIElement {
     this.container.alpha = v ? 0.5 : 1;
   }
 
-  update(props: Record<string, unknown>): void {
-    const p = props as unknown as UICheckboxProps;
-
+  update(p: Partial<UICheckboxProps>): void {
     if (p.checked !== undefined && p.checked !== this._checked) {
       this._checked = p.checked;
       this.drawCheckmark();
@@ -141,8 +134,17 @@ export class UICheckbox implements UIElement {
       this.drawCheckmark();
     }
 
-    if (p.label !== undefined && this.label) {
-      this.label.text = p.label;
+    if (p.label !== undefined) {
+      if (this.label) {
+        this.label.text = p.label;
+      } else {
+        this.createLabel(p.label, p.labelStyle);
+      }
+      this.yogaNode.markDirty();
+    }
+
+    if (p.labelStyle !== undefined && this.label) {
+      this.label.style = { fontSize: 14, fill: 0xffffff, ...p.labelStyle };
       this.yogaNode.markDirty();
     }
 
@@ -159,6 +161,18 @@ export class UICheckbox implements UIElement {
     this.checkmark.destroy();
     this.label?.destroy();
     this.container.destroy();
+  }
+
+  private createLabel(text: string, style?: UICheckboxProps["labelStyle"]): void {
+    this.label = new Text({
+      text,
+      style: { fontSize: 14, fill: 0xffffff, ...style },
+    });
+    this.label.position.set(
+      this._size + LABEL_GAP,
+      (this._size - this.label.height) / 2,
+    );
+    this.container.addChild(this.label);
   }
 
   private drawBox(): void {

@@ -10,6 +10,10 @@
     <a class="back-link" href="/">&larr; All Examples</a>
     <h1>Audio</h1>
     <div id="game-container"></div>
+    <div id="audio-status">
+      <span>AudioContext: <b id="unlock-state">locked</b></span>
+      <span>autoMuteOnBlur: <b id="blur-state">on</b></span>
+    </div>
     <div class="controls">
       <span><kbd>1</kbd> laser shot</span>
       <span><kbd>2</kbd> laser burst</span>
@@ -19,7 +23,18 @@
       <span><kbd>Up/Down</kbd> music vol</span>
       <span><kbd>Left/Right</kbd> sfx vol</span>
       <span><kbd>Space</kbd> mute all</span>
+      <span><kbd>B</kbd> toggle autoMuteOnBlur</span>
     </div>
+    <style>
+      #audio-status {
+        display: flex; gap: 1rem; font-size: 0.8rem; color: #888;
+        font-family: monospace;
+      }
+      #audio-status b { color: #ccc; }
+      #audio-status b.locked { color: #f97316; }
+      #audio-status b.unlocked { color: #22c55e; }
+      #audio-status b.off { color: #888; }
+    </style>
     <script type="module" src="/src/audio.ts"></script>
   </body>
 </html>

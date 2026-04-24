@@ -1,13 +1,13 @@
 import {
   Engine,
   Scene,
+  Entity,
   Component,
   Transform,
   Vec2,
   ProcessComponent,
   Process,
   defineEvent,
-  defineBlueprint,
 } from "@yagejs/core";
 import type { ProcessSlot } from "@yagejs/core";
 import {
@@ -131,7 +131,7 @@ const LAYER_ENEMY = layers.define("enemy");
 // State
 let killCount = 0;
 let won = false;
-let playerEntity: import("@yagejs/core").Entity | null = null;
+let playerEntity: Entity | null = null;
 
 function setKills(n: number): void {
   killCount = n;
@@ -510,7 +510,7 @@ class PlayerController extends Component {
     this.camera.shake(5, 200, { decay: 0.7 });
   }
 
-  private tryDamageFrom(enemy: import("@yagejs/core").Entity): void {
+  private tryDamageFrom(enemy: Entity): void {
     if (!this.invincibility.completed) return;
     const enemyX = enemy.get(Transform).position.x;
     const playerX = this.transform.position.x;
@@ -522,7 +522,7 @@ class PlayerController extends Component {
     const scene = this.scene;
     const pos = this.transform.position;
     const dir = this.facingRight ? 1 : -1;
-    scene.spawn(BulletBP, { x: pos.x + dir * 18, y: pos.y - 6, dir });
+    scene.spawn(BulletEntity, { x: pos.x + dir * 18, y: pos.y - 6, dir });
   }
 }
 
@@ -825,146 +825,149 @@ class EnemyController extends Component {
 }
 
 // ---------------------------------------------------------------------------
-// Blueprints
+// Entities
 // ---------------------------------------------------------------------------
-const PlayerBP = defineBlueprint<{ camera: CameraEntity }>("player", (entity, { camera }) => {
-  entity.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
-  const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
-  const spriteComp = entity.add(
-    new AnimatedSpriteComponent({ source: idleSource, layer: "player" }),
-  );
-  spriteComp.animatedSprite.anchor.set(0.5, 0.5 - 3 / FRAME_SIZE);
-  entity.add(
-    new AnimationController<PlayerAnim>({
-      idle: { source: idleSource, speed: 0.15 },
-      walk: { source: { sheet: PlayerWalkTex.path, frameWidth: FRAME_SIZE }, speed: 0.2 },
-      jump: { source: { sheet: PlayerJumpTex.path, frameWidth: FRAME_SIZE }, speed: 0.12, loop: false },
-      land: { source: { sheet: PlayerLandTex.path, frameWidth: FRAME_SIZE }, speed: 0.5, loop: false },
-      shoot: { source: { sheet: PlayerShootTex.path, frameWidth: FRAME_SIZE }, speed: 0.4, loop: false },
-      hurt: { source: { sheet: PlayerHurtTex.path, frameWidth: FRAME_SIZE }, speed: 0.3, loop: false },
-    }),
-  );
-  entity.add(
-    new RigidBodyComponent({
-      type: "dynamic",
-      fixedRotation: true,
-      ccd: true,
-    }),
-  );
-  entity.add(
-    new ColliderComponent({
-      shape: { type: "box", width: 24, height: 36 },
-      friction: 0,
-      layers: LAYER_PLAYER,
-      mask: LAYER_PLATFORM | LAYER_ENEMY,
-    }),
-  );
-  entity.add(new ProcessComponent());
-  entity.add(new PlayerController(camera));
-});
+class PlayerEntity extends Entity {
+  setup(params: { camera: CameraEntity }): void {
+    this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
+    const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
+    const spriteComp = this.add(
+      new AnimatedSpriteComponent({ source: idleSource, layer: "player" }),
+    );
+    spriteComp.animatedSprite.anchor.set(0.5, 0.5 - 3 / FRAME_SIZE);
+    this.add(
+      new AnimationController<PlayerAnim>({
+        idle: { source: idleSource, speed: 0.15 },
+        walk: { source: { sheet: PlayerWalkTex.path, frameWidth: FRAME_SIZE }, speed: 0.2 },
+        jump: { source: { sheet: PlayerJumpTex.path, frameWidth: FRAME_SIZE }, speed: 0.12, loop: false },
+        land: { source: { sheet: PlayerLandTex.path, frameWidth: FRAME_SIZE }, speed: 0.5, loop: false },
+        shoot: { source: { sheet: PlayerShootTex.path, frameWidth: FRAME_SIZE }, speed: 0.4, loop: false },
+        hurt: { source: { sheet: PlayerHurtTex.path, frameWidth: FRAME_SIZE }, speed: 0.3, loop: false },
+      }),
+    );
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+        ccd: true,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 24, height: 36 },
+        friction: 0,
+        layers: LAYER_PLAYER,
+        mask: LAYER_PLATFORM | LAYER_ENEMY,
+      }),
+    );
+    this.add(new ProcessComponent());
+    this.add(new PlayerController(params.camera));
+  }
+}
 
-const PlatformBP = defineBlueprint<{
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}>("platform", (entity, { x, y, w, h }) => {
-  entity.add(new Transform({ position: new Vec2(x, y) }));
-  entity.add(
-    new GraphicsComponent({ layer: "world" }).draw((g) => {
-      g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x475569 });
-      g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0x64748b });
-    }),
-  );
-  entity.add(new RigidBodyComponent({ type: "static" }));
-  entity.add(
-    new ColliderComponent({
-      shape: { type: "box", width: w, height: h },
-      friction: 0,
-      layers: LAYER_PLATFORM,
-      mask: LAYER_PLAYER | LAYER_BULLET | LAYER_ENEMY,
-    }),
-  );
-});
+class PlatformEntity extends Entity {
+  setup(params: { x: number; y: number; w: number; h: number }): void {
+    const { x, y, w, h } = params;
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.rect(-w / 2, -h / 2, w, h).fill({ color: 0x475569 });
+        g.rect(-w / 2, -h / 2, w, 3).fill({ color: 0x64748b });
+      }),
+    );
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: w, height: h },
+        friction: 0,
+        layers: LAYER_PLATFORM,
+        mask: LAYER_PLAYER | LAYER_BULLET | LAYER_ENEMY,
+      }),
+    );
+  }
+}
 
-const EnemyBP = defineBlueprint<{
-  x: number;
-  y: number;
-  patrolLeft: number;
-  patrolRight: number;
-  camera: CameraEntity;
-}>("enemy", (entity, { x, y, patrolLeft, patrolRight, camera }) => {
-  entity.tags.add("enemy");
-  entity.add(new Transform({ position: new Vec2(x, y) }));
-  const idleSource = { sheet: EnemyIdleTex.path, frameWidth: 24, frameHeight: 32 };
-  entity.add(new AnimatedSpriteComponent({ source: idleSource, layer: "world" }));
-  entity.add(
-    new AnimationController<EnemyAnim>({
-      idle: {
-        source: idleSource,
-        speed: 0.15,
-        anchor: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
-      },
-      walk: {
-        source: { sheet: EnemyWalkTex.path, frameWidth: 22, frameHeight: 33 },
-        speed: 0.15,
-        anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
-      },
-      react: {
-        source: { sheet: EnemyReactTex.path, frameWidth: 22, frameHeight: 32 },
-        speed: 0.2,
-        loop: false,
-        anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
-      },
-      attack: {
-        source: { sheet: EnemyAttackTex.path, frameWidth: 43, frameHeight: 37 },
-        speed: 0.3,
-        loop: false,
-        anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
-      },
-      hit: {
-        source: { sheet: EnemyHitTex.path, frameWidth: 30, frameHeight: 32 },
-        speed: 0.25,
-        loop: false,
-        anchor: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
-      },
-      die: {
-        source: { sheet: EnemyDieTex.path, frameWidth: 33, frameHeight: 32 },
-        speed: 0.2,
-        loop: false,
-        anchor: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },
-      },
-    }),
-  );
-  entity.add(
-    new RigidBodyComponent({
-      type: "dynamic",
-      fixedRotation: true,
-    }),
-  );
-  entity.add(
-    new ColliderComponent({
-      shape: { type: "box", width: 22, height: 32 },
-      friction: 0,
-      layers: LAYER_ENEMY,
-      mask: LAYER_PLATFORM | LAYER_PLAYER | LAYER_BULLET,
-    }),
-  );
-  entity.add(new ProcessComponent());
-  entity.add(new EnemyController(patrolLeft, patrolRight, camera));
-});
+class EnemyEntity extends Entity {
+  setup(params: {
+    x: number;
+    y: number;
+    patrolLeft: number;
+    patrolRight: number;
+    camera: CameraEntity;
+  }): void {
+    const { x, y, patrolLeft, patrolRight, camera } = params;
+    this.tags.add("enemy");
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    const idleSource = { sheet: EnemyIdleTex.path, frameWidth: 24, frameHeight: 32 };
+    this.add(new AnimatedSpriteComponent({ source: idleSource, layer: "world" }));
+    this.add(
+      new AnimationController<EnemyAnim>({
+        idle: {
+          source: idleSource,
+          speed: 0.15,
+          anchor: { x: ENEMY_BODY_CENTER_X / 24, y: 1 - ENEMY_HALF_H / 32 },
+        },
+        walk: {
+          source: { sheet: EnemyWalkTex.path, frameWidth: 22, frameHeight: 33 },
+          speed: 0.15,
+          anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 33 },
+        },
+        react: {
+          source: { sheet: EnemyReactTex.path, frameWidth: 22, frameHeight: 32 },
+          speed: 0.2,
+          loop: false,
+          anchor: { x: ENEMY_BODY_CENTER_X / 22, y: 1 - ENEMY_HALF_H / 32 },
+        },
+        attack: {
+          source: { sheet: EnemyAttackTex.path, frameWidth: 43, frameHeight: 37 },
+          speed: 0.3,
+          loop: false,
+          anchor: { x: ENEMY_BODY_CENTER_X / 43, y: 1 - ENEMY_HALF_H / 37 },
+        },
+        hit: {
+          source: { sheet: EnemyHitTex.path, frameWidth: 30, frameHeight: 32 },
+          speed: 0.25,
+          loop: false,
+          anchor: { x: ENEMY_BODY_CENTER_X / 30, y: 1 - ENEMY_HALF_H / 32 },
+        },
+        die: {
+          source: { sheet: EnemyDieTex.path, frameWidth: 33, frameHeight: 32 },
+          speed: 0.2,
+          loop: false,
+          anchor: { x: ENEMY_BODY_CENTER_X / 33, y: 1 - ENEMY_HALF_H / 32 },
+        },
+      }),
+    );
+    this.add(
+      new RigidBodyComponent({
+        type: "dynamic",
+        fixedRotation: true,
+      }),
+    );
+    this.add(
+      new ColliderComponent({
+        shape: { type: "box", width: 22, height: 32 },
+        friction: 0,
+        layers: LAYER_ENEMY,
+        mask: LAYER_PLATFORM | LAYER_PLAYER | LAYER_BULLET,
+      }),
+    );
+    this.add(new ProcessComponent());
+    this.add(new EnemyController(patrolLeft, patrolRight, camera));
+  }
+}
 
-const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
-  "bullet",
-  (entity, { x, y, dir }) => {
-    entity.tags.add("bullet");
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(
+class BulletEntity extends Entity {
+  setup(params: { x: number; y: number; dir: number }): void {
+    const { x, y, dir } = params;
+    this.tags.add("bullet");
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(
       new GraphicsComponent({ layer: "bullets" }).draw((g) => {
         g.rect(-4, -2, 8, 4).fill({ color: 0x38bdf8 });
       }),
     );
-    entity.add(
+    this.add(
       new RigidBodyComponent({
         type: "dynamic",
         fixedRotation: true,
@@ -979,25 +982,25 @@ const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
       layers: LAYER_BULLET,
       mask: LAYER_PLATFORM | LAYER_ENEMY,
     });
-    entity.add(collider);
+    this.add(collider);
 
     // Self-destruct after 1200ms
-    const pc = entity.add(new ProcessComponent());
+    const pc = this.add(new ProcessComponent());
     pc.run(
       Process.delay(1200, () => {
-        entity.destroy();
+        this.destroy();
       }),
     );
 
     // Set bullet velocity after body is created
-    entity.get(RigidBodyComponent).setVelocity(new Vec2(dir * 600, 0));
+    this.get(RigidBodyComponent).setVelocity(new Vec2(dir * 600, 0));
 
     // Collision handler
     collider.onCollision((ev) => {
-      const scene = entity.tryScene;
+      const scene = this.tryScene;
       if (!ev.started || !scene) return;
       if (ev.other.tags.has("dead")) return; // ignore dying enemies
-      const bPos = entity.get(Transform).position;
+      const bPos = this.get(Transform).position;
 
       if (ev.other.tags.has("enemy")) {
         ev.other.emit(Hurt, { dir });
@@ -1006,10 +1009,10 @@ const BulletBP = defineBlueprint<{ x: number; y: number; dir: number }>(
         const normalAngle = dir > 0 ? Math.PI : 0;
         spawnBulletImpactParticles(scene, bPos.x, bPos.y, normalAngle);
       }
-      entity.destroy();
+      this.destroy();
     });
-  },
-);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // ShooterScene
@@ -1065,7 +1068,7 @@ class ShooterScene extends Scene {
     this.drawBackground();
     this.buildLevel();
     this.spawnEnemies(cam);
-    playerEntity = this.spawn(PlayerBP, { camera: cam });
+    playerEntity = this.spawn(PlayerEntity, { camera: cam });
   }
 
   // -- Background --
@@ -1096,12 +1099,12 @@ class ShooterScene extends Scene {
   // -- Level geometry --
   private buildLevel(): void {
     // Full-width ground floor
-    this.spawn(PlatformBP, { x: WORLD_W / 2, y: 750, w: WORLD_W, h: 100 });
+    this.spawn(PlatformEntity, { x: WORLD_W / 2, y: 750, w: WORLD_W, h: 100 });
 
     // Left wall
-    this.spawn(PlatformBP, { x: -5, y: WORLD_H / 2, w: 10, h: WORLD_H });
+    this.spawn(PlatformEntity, { x: -5, y: WORLD_H / 2, w: 10, h: WORLD_H });
     // Right wall
-    this.spawn(PlatformBP, {
+    this.spawn(PlatformEntity, {
       x: WORLD_W + 5,
       y: WORLD_H / 2,
       w: 10,
@@ -1109,21 +1112,21 @@ class ShooterScene extends Scene {
     });
 
     // Elevated platforms for verticality
-    this.spawn(PlatformBP, { x: 300, y: 620, w: 120, h: 20 }); // lower-left platform
-    this.spawn(PlatformBP, { x: 550, y: 540, w: 100, h: 20 }); // mid-left platform
-    this.spawn(PlatformBP, { x: 800, y: 600, w: 140, h: 20 }); // mid-right platform
-    this.spawn(PlatformBP, { x: 1000, y: 520, w: 120, h: 20 }); // upper-right platform
-    this.spawn(PlatformBP, { x: 700, y: 440, w: 100, h: 20 }); // high central platform
+    this.spawn(PlatformEntity, { x: 300, y: 620, w: 120, h: 20 }); // lower-left platform
+    this.spawn(PlatformEntity, { x: 550, y: 540, w: 100, h: 20 }); // mid-left platform
+    this.spawn(PlatformEntity, { x: 800, y: 600, w: 140, h: 20 }); // mid-right platform
+    this.spawn(PlatformEntity, { x: 1000, y: 520, w: 120, h: 20 }); // upper-right platform
+    this.spawn(PlatformEntity, { x: 700, y: 440, w: 100, h: 20 }); // high central platform
   }
 
   // -- Enemies --
   private spawnEnemies(camera: CameraEntity): void {
-    this.spawn(EnemyBP, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450, camera }); // ground left
-    this.spawn(EnemyBP, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750, camera }); // ground mid
-    this.spawn(EnemyBP, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100, camera }); // ground right
-    this.spawn(EnemyBP, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600, camera }); // on mid-left platform
-    this.spawn(EnemyBP, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940, camera }); // on mid-right platform
-    this.spawn(EnemyBP, {
+    this.spawn(EnemyEntity, { x: 350, y: 680, patrolLeft: 200, patrolRight: 450, camera }); // ground left
+    this.spawn(EnemyEntity, { x: 600, y: 680, patrolLeft: 450, patrolRight: 750, camera }); // ground mid
+    this.spawn(EnemyEntity, { x: 950, y: 680, patrolLeft: 800, patrolRight: 1100, camera }); // ground right
+    this.spawn(EnemyEntity, { x: 550, y: 470, patrolLeft: 500, patrolRight: 600, camera }); // on mid-left platform
+    this.spawn(EnemyEntity, { x: 850, y: 530, patrolLeft: 770, patrolRight: 940, camera }); // on mid-right platform
+    this.spawn(EnemyEntity, {
       x: 1050,
       y: 450,
       patrolLeft: 940,

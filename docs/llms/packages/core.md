@@ -18,6 +18,28 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 | `System` | Base class for engine-level systems |
 | `Phase` | Enum: EarlyUpdate, FixedUpdate, Update, LateUpdate, Render, EndOfFrame |
 
+### Entity
+
+```ts
+class Entity {
+  readonly name: string;
+  get scene(): Scene;                         // throws if detached
+  get tryScene(): Scene | null;               // null if detached
+  addChild(name: string, child: Entity): void;
+  spawnChild(name: string): Entity;
+  spawnChild<E extends Entity>(name: string, Class: new () => E): E;
+  spawnChild<E extends Entity, P>(
+    name: string,
+    Class: new () => E & { setup(params: P): void },
+    params: P,
+  ): E;
+  spawnChild<P>(name: string, blueprint: Blueprint<P>, params: P): Entity;
+}
+```
+
+- `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already removed). Prefer it in user code — failing loud beats a silent `null` propagation. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
+- `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
+
 ### Events
 
 | Export | Purpose |

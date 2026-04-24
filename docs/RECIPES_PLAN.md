@@ -1,4 +1,9 @@
-# YAGE v2 -- Recipes Plan
+# YAGE — Recipes Plan
+
+> **Status:** Internal planning doc, not user-facing. Snapshot of design intent; some sections are shipped, others deferred. Cross-reference actual package source before quoting any API from here.
+>
+> - **Shipped (0.2.0):** scene transitions (fade/flash/crossFade currently live in `@yagejs/renderer` under `src/transitions/`, paired with core scene-stack hooks — the "Section 2" plan below framed this as `@yagejs/transitions`, which remains a possible future extraction but is not a separate package today), save/load v0 (snapshot-based in `@yagejs/save`), input remapping (`@yagejs/input` action maps + remap APIs).
+> - **Deferred:** save/load contributor-scoped model (current impl is snapshot-based), the Wave-1 recipe catalog (character controller, checkpoints, interaction kit, etc.).
 
 ## Purpose
 

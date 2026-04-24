@@ -20,7 +20,7 @@ engine.use(new RendererPlugin({
 }));
 ```
 
-Registers `RendererKey` and `SceneRenderTreeProviderKey` in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
+Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
 
 ## Responsive fit
 
@@ -101,7 +101,7 @@ Under `expand` these are the play-adjacent strips the game is expected to draw i
 
 Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`) means *virtual viewport space*. The `canvasToVirtual` method is named after its inputs (DOM CSS pixels on the canvas) to avoid that collision.
 
-Pair with `@yagejs/input` — when `InputPlugin` is configured with `rendererKey`, it routes pointer coords through `canvasToVirtual` automatically, so `InputManager.getPointerPosition()` stays correct under fit.
+Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `RendererAdapterKey` (core), so pointer events target this canvas and coordinates route through `canvasToVirtual` out of the box. `InputManager.getPointerPosition()` stays correct under fit with no config.
 
 ## Components
 

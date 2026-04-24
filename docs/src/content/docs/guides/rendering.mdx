@@ -205,18 +205,19 @@ Note on terminology: "screen" elsewhere in the engine (UI `LayerSpace:
 pixels. The `canvasToVirtual` method is named after its actual inputs (CSS
 pixels relative to the canvas top-left) to avoid that collision.
 
-When you use `@yagejs/input` alongside fit, pass `rendererKey: RendererKey`
-in the `InputPlugin` config so pointer events route through
-`canvasToVirtual` automatically — otherwise `InputManager.getPointerPosition`
-sees canvas CSS pixels instead of virtual-space pixels, and clicks land in
-the wrong place once the canvas scales.
+When you use `@yagejs/input` alongside fit, pointer events and
+coordinates wire up automatically. `RendererPlugin` registers itself
+under `RendererAdapterKey` (from `@yagejs/core`), and `InputPlugin`
+resolves that key during install — so pointer events target the canvas
+and coordinates route through `canvasToVirtual` with no config. Just
+make sure you register `RendererPlugin` before `InputPlugin`.
 
 ```typescript
-import { RendererKey, RendererPlugin } from "@yagejs/renderer";
+import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 
 engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
-engine.use(new InputPlugin({ rendererKey: RendererKey, actions: { /* ... */ } }));
+engine.use(new InputPlugin({ actions: { /* ... */ } }));
 ```
 
 ## Sprites

@@ -80,9 +80,7 @@ export class UIImage implements UIElement {
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  update(props: Record<string, unknown>): void {
-    const p = props as unknown as UIImageProps;
-
+  update(p: Partial<UIImageProps>): void {
     if (p.texture !== undefined && p.texture !== this.textureHandle) {
       this.textureHandle = p.texture;
       this.container.texture = resolveTexture(p.texture);

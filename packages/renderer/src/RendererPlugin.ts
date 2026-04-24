@@ -1,6 +1,7 @@
 import {
   AssetManagerKey,
   GameLoopKey,
+  RendererAdapterKey,
   SceneHookRegistryKey,
   Vec2,
 } from "@yagejs/core";
@@ -76,6 +77,10 @@ export class RendererPlugin implements Plugin {
 
     // 5. Register services
     context.register(RendererKey, this);
+    // Also register under the cross-package adapter key so @yagejs/input
+    // (and other renderer-agnostic consumers) can auto-wire to the canvas
+    // and canvasToVirtual transform without importing @yagejs/renderer.
+    context.register(RendererAdapterKey, this);
     context.register(SceneRenderTreeProviderKey, this.provider);
 
     // 6. Register scene hooks: materialize a tree per scene on enter,

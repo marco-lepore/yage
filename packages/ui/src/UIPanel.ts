@@ -209,15 +209,15 @@ export class PanelNode implements UIContainerElement {
   // Props-driven update (for reconciler)
   // ---------------------------------------------------------------------------
 
-  update(props: Record<string, unknown>): void {
-    this._applyProps(props as PanelProps);
+  update(props: Partial<PanelProps>): void {
+    this._applyProps(props);
   }
 
   // ---------------------------------------------------------------------------
   // Shared prop application (used by constructor and update)
   // ---------------------------------------------------------------------------
 
-  private _applyProps(p: PanelProps): void {
+  private _applyProps(p: Partial<PanelProps>): void {
     if (p.direction !== undefined) {
       this.yogaNode.setFlexDirection(
         p.direction === "row"

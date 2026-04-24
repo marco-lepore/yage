@@ -59,13 +59,23 @@ Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`.
 
 ### Pointer coords under responsive fit
 
-Register `RendererPlugin` **before** `InputPlugin`, then wire `rendererKey: RendererKey` in `InputConfig` so pointer events pick up the canvas target AND so coordinates route through `renderer.canvasToVirtual`. `InputPlugin` resolves the renderer during install; if input installs first the resolve silently returns `undefined` and input falls back to raw canvas-relative CSS pixels — correct only when canvas CSS size equals virtual size. With the renderer resolved, all downstream consumers (`getPointerScreenPosition`, `getPointerPosition` via camera) see virtual-space pixels regardless of `fit` mode or HiDPI scaling.
+Register `RendererPlugin` **before** `InputPlugin`. `InputPlugin` auto-resolves `RendererAdapterKey` (exported from `@yagejs/core`) — the canonical renderer registers itself under that key, so pointer events target its canvas and coordinates route through `canvasToVirtual` with zero config. All downstream consumers (`getPointerScreenPosition`, `getPointerPosition` via camera) see virtual-space pixels regardless of `fit` mode or HiDPI scaling.
 
 ```ts
-import { RendererKey } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 
-engine.use(new InputPlugin({ rendererKey: RendererKey, actions: { /* … */ } }));
+engine.use(new InputPlugin({ actions: { /* … */ } }));
+```
+
+If input installs before a renderer registers, the resolve silently returns `undefined` and input falls back to raw canvas-relative CSS pixels — correct only when canvas CSS size equals virtual size. Order matters; make sure `RendererPlugin` is used first.
+
+Override `rendererKey` only when you ship a custom renderer registered under a different `ServiceKey<RendererAdapter>`:
+
+```ts
+import { InputPlugin } from "@yagejs/input";
+import { MyCustomRendererKey } from "./my-renderer.js";
+
+engine.use(new InputPlugin({ rendererKey: MyCustomRendererKey, actions: { /* … */ } }));
 ```
 
 ### Camera wiring for world coordinates

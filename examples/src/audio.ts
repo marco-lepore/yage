@@ -14,6 +14,24 @@ const WIDTH = 800;
 const HEIGHT = 600;
 
 // ---------------------------------------------------------------------------
+// DOM status labels — wired up by AudioController.onAdd() to the unlock API.
+// ---------------------------------------------------------------------------
+function setUnlockLabel(unlocked: boolean): void {
+  const el = document.getElementById("unlock-state");
+  if (!el) return;
+  el.textContent = unlocked ? "unlocked (running)" : "locked (press any key)";
+  el.classList.toggle("unlocked", unlocked);
+  el.classList.toggle("locked", !unlocked);
+}
+
+function setBlurLabel(on: boolean): void {
+  const el = document.getElementById("blur-state");
+  if (!el) return;
+  el.textContent = on ? "on" : "off";
+  el.classList.toggle("off", !on);
+}
+
+// ---------------------------------------------------------------------------
 // Sound asset handles (loaded via scene preload)
 // ---------------------------------------------------------------------------
 const SFX_HANDLES = {
@@ -122,6 +140,15 @@ class AudioController extends Component {
     this._musicIndicator = indicator;
   }
 
+  onAdd(): void {
+    // Surface the AudioContext lock state to the page. Browsers suspend the
+    // context until the first user gesture — onUnlock fires exactly once when
+    // the context flips to "running" (or synchronously if already unlocked).
+    setUnlockLabel(this._audio.isUnlocked());
+    this._audio.onUnlock(() => setUnlockLabel(true));
+    setBlurLabel(this._audio.autoMuteOnBlur);
+  }
+
   update(): void {
     // SFX triggers
     if (this._input.isJustPressed("sfx1")) this._playSfx("laser_shot");
@@ -153,6 +180,12 @@ class AudioController extends Component {
       } else {
         this._audio.unmuteAll();
       }
+    }
+
+    // Toggle autoMuteOnBlur — tab-away to hear the effect.
+    if (this._input.isJustPressed("toggleBlurMute")) {
+      this._audio.autoMuteOnBlur = !this._audio.autoMuteOnBlur;
+      setBlurLabel(this._audio.autoMuteOnBlur);
     }
   }
 
@@ -350,6 +383,7 @@ async function main() {
       sfxUp: ["ArrowRight"],
       sfxDown: ["ArrowLeft"],
       muteAll: ["Space"],
+      toggleBlurMute: ["KeyB"],
     },
     preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
   }));
