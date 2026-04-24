@@ -21,8 +21,6 @@ export class AudioManager {
 
   private _autoMuteOnBlur: boolean;
   private readonly _unlockListeners: Array<() => void> = [];
-  private _blurMutedSnapshot: boolean | null = null;
-  private _isBlurred = false;
 
   constructor(sound: SoundLibrary, config?: AudioConfig) {
     this._sound = sound;
@@ -38,6 +36,12 @@ export class AudioManager {
     }
 
     this._autoMuteOnBlur = config?.autoMuteOnBlur ?? true;
+
+    // Delegate pause-on-blur to pixi-sound's built-in autoPause. It listens to
+    // `window.blur`/`focus` itself and suspends/resumes the AudioContext —
+    // saves us from owning a parallel visibility listener.
+    const ctx = this._getBlurContext();
+    if (ctx) ctx.autoPause = this._autoMuteOnBlur;
   }
 
   play(alias: string, options?: AudioPlayOptions): SoundHandle {
@@ -222,7 +226,7 @@ export class AudioManager {
     if (idx !== -1) this._unlockListeners.splice(idx, 1);
   }
 
-  /** Mute audio when the tab is hidden (default: `true`). */
+  /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
   get autoMuteOnBlur(): boolean {
     return this._autoMuteOnBlur;
   }
@@ -230,26 +234,13 @@ export class AudioManager {
   set autoMuteOnBlur(value: boolean) {
     if (this._autoMuteOnBlur === value) return;
     this._autoMuteOnBlur = value;
-    if (!this._isBlurred) return;
-    if (value && this._blurMutedSnapshot === null) {
-      this._applyBlurMute();
-    } else if (!value && this._blurMutedSnapshot !== null) {
-      this._restoreBlurMute();
-    }
-  }
-
-  /**
-   * Called by `AudioPlugin` on `visibilitychange` events. Parameterised on
-   * `hidden` so unit tests can drive it without a real `document`.
-   * @internal
-   */
-  _handleVisibilityChange(hidden: boolean): void {
-    if (hidden && !this._isBlurred) {
-      this._isBlurred = true;
-      if (this._autoMuteOnBlur) this._applyBlurMute();
-    } else if (!hidden && this._isBlurred) {
-      this._isBlurred = false;
-      if (this._blurMutedSnapshot !== null) this._restoreBlurMute();
+    const ctx = this._getBlurContext();
+    if (!ctx) return;
+    ctx.autoPause = value;
+    // Pixi only acts on the next blur event. If the toggle happens while the
+    // window is already blurred, sync `paused` so the change takes effect now.
+    if (typeof document !== "undefined" && !document.hasFocus()) {
+      ctx.paused = value;
     }
   }
 
@@ -270,25 +261,14 @@ export class AudioManager {
     }
   }
 
-  private _applyBlurMute(): void {
-    const ctx = this._getMediaContext();
-    if (!ctx) return;
-    this._blurMutedSnapshot = ctx.muted;
-    ctx.muted = true;
-  }
-
-  private _restoreBlurMute(): void {
-    const ctx = this._getMediaContext();
-    if (ctx && this._blurMutedSnapshot !== null) {
-      ctx.muted = this._blurMutedSnapshot;
-    }
-    this._blurMutedSnapshot = null;
-  }
-
-  private _getMediaContext(): { muted: boolean } | undefined {
-    const ctx = (this._sound as unknown as { context?: { muted: boolean } })
-      .context;
-    return ctx;
+  private _getBlurContext():
+    | { autoPause: boolean; paused: boolean }
+    | undefined {
+    return (
+      this._sound as unknown as {
+        context?: { autoPause: boolean; paused: boolean };
+      }
+    ).context;
   }
 
   private _getAudioContext(): { state: string } | undefined {

@@ -5,7 +5,7 @@ export const AudioManagerKey = new ServiceKey<AudioManager>("audioManager");
 
 export interface AudioConfig {
   channels?: Record<string, ChannelConfig>;
-  /** Mute audio while the tab is hidden. Default: `true`. */
+  /** Pause audio when the window loses focus or the tab is hidden. Default: `true`. */
   autoMuteOnBlur?: boolean;
 }
 

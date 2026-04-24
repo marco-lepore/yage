@@ -53,12 +53,16 @@ function setAudioContextState(
 function createMockSoundLibrary(options?: {
   state?: "suspended" | "running";
   muted?: boolean;
+  autoPause?: boolean;
+  paused?: boolean;
 }): MockSoundLibrary {
   const instances = new Map<string, MockMediaInstance>();
   let nextId = 1;
 
   const context = {
     muted: options?.muted ?? false,
+    autoPause: options?.autoPause ?? true,
+    paused: options?.paused ?? false,
     audioContext: { state: options?.state ?? "running" },
   };
 
@@ -380,66 +384,30 @@ describe("AudioManager", () => {
   });
 
   describe("autoMuteOnBlur", () => {
+    function getAutoPause(s: MockSoundLibrary): boolean {
+      return (s.context as unknown as { autoPause: boolean }).autoPause;
+    }
+
     it("defaults to true", () => {
       const s = createMockSoundLibrary();
       const m = new AudioManager(s);
       expect(m.autoMuteOnBlur).toBe(true);
     });
 
-    it("mutes on hide and restores on show", () => {
-      const s = createMockSoundLibrary({ muted: false });
-      const m = new AudioManager(s);
-      m._handleVisibilityChange(true);
-      expect(s.context.muted).toBe(true);
-      m._handleVisibilityChange(false);
-      expect(s.context.muted).toBe(false);
+    it("propagates the initial value to context.autoPause", () => {
+      const s = createMockSoundLibrary({ autoPause: true });
+      new AudioManager(s, { autoMuteOnBlur: false });
+      expect(getAutoPause(s)).toBe(false);
     });
 
-    it("restores the prior muted state, not a hard-unmute", () => {
-      const s = createMockSoundLibrary({ muted: true });
+    it("setter writes through to context.autoPause", () => {
+      const s = createMockSoundLibrary();
       const m = new AudioManager(s);
-      m._handleVisibilityChange(true);
-      m._handleVisibilityChange(false);
-      expect(s.context.muted).toBe(true);
-    });
-
-    it("no-op when disabled", () => {
-      const s = createMockSoundLibrary({ muted: false });
-      const m = new AudioManager(s, { autoMuteOnBlur: false });
-      m._handleVisibilityChange(true);
-      expect(s.context.muted).toBe(false);
-    });
-
-    it("toggling off mid-blur restores audio immediately", () => {
-      const s = createMockSoundLibrary({ muted: false });
-      const m = new AudioManager(s);
-      m._handleVisibilityChange(true);
-      expect(s.context.muted).toBe(true);
+      expect(getAutoPause(s)).toBe(true);
       m.autoMuteOnBlur = false;
-      expect(s.context.muted).toBe(false);
-    });
-
-    it("toggling on mid-blur mutes immediately", () => {
-      const s = createMockSoundLibrary({ muted: false });
-      const m = new AudioManager(s, { autoMuteOnBlur: false });
-      m._handleVisibilityChange(true);
-      expect(s.context.muted).toBe(false);
+      expect(getAutoPause(s)).toBe(false);
       m.autoMuteOnBlur = true;
-      expect(s.context.muted).toBe(true);
-      m._handleVisibilityChange(false);
-      expect(s.context.muted).toBe(false);
-    });
-
-    it("does not double-snapshot across reentrant hides", () => {
-      const s = createMockSoundLibrary({ muted: false });
-      const m = new AudioManager(s);
-      m._handleVisibilityChange(true);
-      // Spurious second hide (e.g. browser quirks) should not clobber the
-      // snapshot with the now-muted state, otherwise the restore would leave
-      // audio muted on show.
-      m._handleVisibilityChange(true);
-      m._handleVisibilityChange(false);
-      expect(s.context.muted).toBe(false);
+      expect(getAutoPause(s)).toBe(true);
     });
   });
 

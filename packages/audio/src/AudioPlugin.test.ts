@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockSound = vi.hoisted(() => ({
   play: vi.fn(),
@@ -12,6 +12,8 @@ const mockSound = vi.hoisted(() => ({
   exists: vi.fn(() => true),
   context: {
     muted: false,
+    autoPause: true,
+    paused: false,
     audioContext: { state: "running" as "suspended" | "running" },
   },
 }));
@@ -29,15 +31,9 @@ describe("AudioPlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSound.context.muted = false;
+    mockSound.context.autoPause = true;
+    mockSound.context.paused = false;
     mockSound.context.audioContext.state = "running";
-  });
-
-  afterEach(() => {
-    // Reset hidden between tests in case a case toggled it
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      get: () => false,
-    });
   });
 
   it("has name 'audio'", () => {
@@ -68,41 +64,56 @@ describe("AudioPlugin", () => {
     expect(mockSound.close).toHaveBeenCalled();
   });
 
-  describe("visibility wiring", () => {
-    function setHidden(hidden: boolean): void {
-      Object.defineProperty(document, "hidden", {
+  describe("autoMuteOnBlur runtime toggle", () => {
+    function setHasFocus(value: boolean): void {
+      Object.defineProperty(document, "hasFocus", {
         configurable: true,
-        get: () => hidden,
+        value: () => value,
       });
     }
 
-    it("mutes on tab hide and restores on tab show", () => {
+    it("toggling off while window is unfocused resumes immediately", () => {
+      mockSound.context.paused = true;
       const plugin = new AudioPlugin();
       const context = new EngineContext();
       plugin.install(context);
-      expect(mockSound.context.muted).toBe(false);
+      const manager = context.resolve(AudioManagerKey);
 
-      setHidden(true);
-      document.dispatchEvent(new Event("visibilitychange"));
-      expect(mockSound.context.muted).toBe(true);
+      setHasFocus(false);
+      manager.autoMuteOnBlur = false;
+      expect(mockSound.context.autoPause).toBe(false);
+      expect(mockSound.context.paused).toBe(false);
 
-      setHidden(false);
-      document.dispatchEvent(new Event("visibilitychange"));
-      expect(mockSound.context.muted).toBe(false);
-
+      setHasFocus(true);
       plugin.onDestroy();
     });
 
-    it("onDestroy removes the visibilitychange listener", () => {
+    it("toggling on while window is unfocused pauses immediately", () => {
+      const plugin = new AudioPlugin({ autoMuteOnBlur: false });
+      const context = new EngineContext();
+      plugin.install(context);
+      const manager = context.resolve(AudioManagerKey);
+
+      setHasFocus(false);
+      manager.autoMuteOnBlur = true;
+      expect(mockSound.context.autoPause).toBe(true);
+      expect(mockSound.context.paused).toBe(true);
+
+      setHasFocus(true);
+      plugin.onDestroy();
+    });
+
+    it("toggling while focused does not touch paused state", () => {
       const plugin = new AudioPlugin();
       const context = new EngineContext();
       plugin.install(context);
-      plugin.onDestroy();
+      const manager = context.resolve(AudioManagerKey);
 
-      setHidden(true);
-      document.dispatchEvent(new Event("visibilitychange"));
-      // Still false because listener was removed
-      expect(mockSound.context.muted).toBe(false);
+      setHasFocus(true);
+      manager.autoMuteOnBlur = false;
+      expect(mockSound.context.paused).toBe(false);
+
+      plugin.onDestroy();
     });
   });
 
