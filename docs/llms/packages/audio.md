@@ -12,7 +12,7 @@ engine.use(new AudioPlugin({
     sfx: { volume: 1 },
     music: { volume: 0.7 },
   },
-  autoMuteOnBlur: true, // default: true — master-mute while tab hidden
+  autoMuteOnBlur: true, // default: true — pause AudioContext on window blur
 }));
 ```
 
@@ -27,7 +27,7 @@ audio.isUnlocked();              // boolean — AudioContext.state === "running"
 audio.onUnlock(() => audio.play("music/title", { channel: "music", loop: true }));
 audio.offUnlock(cb);             // remove a pending listener (disposer from onUnlock also works)
 
-audio.autoMuteOnBlur = true;     // default true — snapshots + restores IMediaContext.muted across blur/focus
+audio.autoMuteOnBlur = true;     // default true — toggles @pixi/sound's WebAudioContext.autoPause (suspends context on window blur)
 ```
 
 - `onUnlock(cb)` fires synchronously if already unlocked; otherwise once on the first gesture that resumes the context. Returns a disposer.

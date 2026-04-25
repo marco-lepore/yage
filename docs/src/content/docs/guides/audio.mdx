@@ -174,7 +174,8 @@ browser-capability check.
 ## Tab Visibility
 
 Most web games go silent when the user backgrounds the tab. `AudioManager`
-mutes master audio when the tab is hidden and restores it on return:
+suspends the underlying `AudioContext` when the window loses focus and
+resumes it on return:
 
 ```typescript
 engine.use(new AudioPlugin({
@@ -185,11 +186,12 @@ engine.use(new AudioPlugin({
 audio.autoMuteOnBlur = false;
 ```
 
-`autoMuteOnBlur` snapshots the current master mute state when the tab hides,
-then force-mutes; on return it restores the snapshot. Per-channel mutes and
-volumes are untouched — muting is layered on top through the underlying
-`IMediaContext`. Toggling the flag to `false` while the tab is hidden
-unmutes immediately.
+`autoMuteOnBlur` is delegated to `@pixi/sound`'s built-in
+`WebAudioContext.autoPause`, which listens for `window.blur`/`focus` events
+and pauses/resumes the entire `AudioContext`. Per-channel mutes and volumes
+are untouched. Toggling the flag while the window is currently unfocused
+takes effect immediately (the manager reconciles `paused` for you);
+otherwise the new policy applies on the next blur event.
 
 Pausing scenes on tab blur is a scene-lifecycle concern, not an audio one —
 see [`SceneManager.autoPauseOnBlur`](/patterns/scene-management/#pause-on-tab-blur).

@@ -43,13 +43,8 @@ export class AudioPlugin implements Plugin {
 
     if (typeof document === "undefined") return;
 
-    const onVisibilityChange = (): void => {
-      manager._handleVisibilityChange(document.hidden);
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    this._cleanupFns.push(() =>
-      document.removeEventListener("visibilitychange", onVisibilityChange),
-    );
+    // Pause-on-blur is delegated to pixi-sound's WebAudioContext.autoPause
+    // (configured by AudioManager from `autoMuteOnBlur`). No listener here.
 
     // Attach gesture listeners only if audio is not already unlocked. These
     // run in bubble phase so @pixi/sound's capture-phase `_unlock()` has
