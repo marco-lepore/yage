@@ -1,5 +1,26 @@
 # @yagejs/core
 
+## 0.3.0
+
+### Minor Changes
+
+- [#35](https://github.com/marco-lepore/yage/pull/35) [`69f8449`](https://github.com/marco-lepore/yage/commit/69f844942d1596228a6ed50a37ec8e6f1d821353) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `SceneManager.autoPauseOnBlur` — opt-in automatic scene pause on tab hide/show.
+  - New flag on `SceneManager` (default `false`). When enabled, pauses every scene in `activeScenes` on `document.hidden === true` and restores only those scenes on return — user-paused scenes (manual `scene.paused = true` or `pauseBelow` cascade) are never touched. Toggling the flag off mid-blur unpauses immediately.
+  - `SceneManager` attaches its own `visibilitychange` listener in `_setContext` and tears it down in `_destroy`. Guarded for non-browser environments.
+
+- [#33](https://github.com/marco-lepore/yage/pull/33) [`60d2067`](https://github.com/marco-lepore/yage/commit/60d20671e31230f5fcef127203efb127bdfedf92) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add common math and vector helpers: angle interpolation, inverse lerp, ping-pong, smooth damp, and `Vec2.moveTowards`.
+
+- [#36](https://github.com/marco-lepore/yage/pull/36) [`b3ed554`](https://github.com/marco-lepore/yage/commit/b3ed554e7cc60c1583a5379311fbf9e47ec373cb) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `RendererAdapterKey` — a cross-package contract for "something that owns
+  a canvas and can map canvas-relative CSS pixels into virtual-space pixels".
+  The canonical `@yagejs/renderer` plugin registers itself under this key, and
+  `@yagejs/input` resolves it automatically so pointer events target the
+  correct canvas and coordinates route through `canvasToVirtual` out of the
+  box. Foreign renderers can implement `RendererAdapter` and register under
+  the same key to integrate with `@yagejs/input` without pulling in
+  `@yagejs/renderer`.
+
+  New exports: `RendererAdapterKey`, `RendererAdapter`.
+
 ## 0.2.0
 
 ### Minor Changes

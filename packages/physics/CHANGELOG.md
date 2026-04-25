@@ -1,5 +1,13 @@
 # @yagejs/physics
 
+## 0.3.0
+
+### Patch Changes
+
+- Updated dependencies [[`69f8449`](https://github.com/marco-lepore/yage/commit/69f844942d1596228a6ed50a37ec8e6f1d821353), [`60d2067`](https://github.com/marco-lepore/yage/commit/60d20671e31230f5fcef127203efb127bdfedf92), [`b3ed554`](https://github.com/marco-lepore/yage/commit/b3ed554e7cc60c1583a5379311fbf9e47ec373cb)]:
+  - @yagejs/core@0.3.0
+  - @yagejs/debug@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
