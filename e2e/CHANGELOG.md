@@ -1,5 +1,18 @@
 # @yagejs/e2e
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [[`69f8449`](https://github.com/marco-lepore/yage/commit/69f844942d1596228a6ed50a37ec8e6f1d821353), [`c5e2656`](https://github.com/marco-lepore/yage/commit/c5e2656bd3dab4020a303e34dd77ccbd60ef4ca4), [`60d2067`](https://github.com/marco-lepore/yage/commit/60d20671e31230f5fcef127203efb127bdfedf92), [`b3ed554`](https://github.com/marco-lepore/yage/commit/b3ed554e7cc60c1583a5379311fbf9e47ec373cb), [`b3ed554`](https://github.com/marco-lepore/yage/commit/b3ed554e7cc60c1583a5379311fbf9e47ec373cb), [`b3ed554`](https://github.com/marco-lepore/yage/commit/b3ed554e7cc60c1583a5379311fbf9e47ec373cb), [`c5e2656`](https://github.com/marco-lepore/yage/commit/c5e2656bd3dab4020a303e34dd77ccbd60ef4ca4), [`c5e2656`](https://github.com/marco-lepore/yage/commit/c5e2656bd3dab4020a303e34dd77ccbd60ef4ca4)]:
+  - @yagejs/core@0.3.0
+  - @yagejs/renderer@0.3.0
+  - @yagejs/input@0.3.0
+  - @yagejs/debug@0.3.0
+  - @yagejs/physics@0.3.0
+  - @yagejs/save@0.3.0
+  - @yagejs/ui@0.3.0
+
 ## 0.0.1
 
 ### Patch Changes
