@@ -120,4 +120,42 @@ describe("radialGradient", () => {
       textureSpace: "global",
     });
   });
+
+  it("defaults outerCenter to center and forwards an explicit value", () => {
+    captured.calls.length = 0;
+    radialGradient({
+      center: { x: 50, y: 50 },
+      stops: [{ offset: 0, color: 0xffffff }],
+    });
+    expect(captured.calls[0]).toMatchObject({
+      outerCenter: { x: 50, y: 50 },
+    });
+
+    captured.calls.length = 0;
+    radialGradient({
+      center: { x: 0.5, y: 0.5 },
+      outerCenter: { x: 0.7, y: 0.3 },
+      stops: [{ offset: 0, color: 0xffffff }],
+    });
+    expect(captured.calls[0]).toMatchObject({
+      outerCenter: { x: 0.7, y: 0.3 },
+    });
+  });
+
+  it("converts numeric color + alpha to rgba strings per stop (radial)", () => {
+    captured.calls.length = 0;
+    radialGradient({
+      stops: [
+        { offset: 0, color: 0xff8040, alpha: 0.5 },
+        { offset: 1, color: 0x102030 },
+      ],
+    });
+    const opts = captured.calls[0] as {
+      colorStops: { offset: number; color: string }[];
+    };
+    expect(opts.colorStops).toEqual([
+      { offset: 0, color: "rgba(255,128,64,0.5)" },
+      { offset: 1, color: "rgba(16,32,48,1)" },
+    ]);
+  });
 });

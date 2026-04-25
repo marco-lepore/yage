@@ -27,7 +27,7 @@ export interface LinearGradientOptions {
   stops: readonly GradientStop[];
   /**
    * Shorthand for common orientations. Ignored if {@link start} / {@link end}
-   * are provided.
+   * are provided. Default: `"vertical"`.
    */
   axis?: "horizontal" | "vertical";
   /** Explicit start point. Overrides `axis`. */
@@ -43,6 +43,12 @@ export interface RadialGradientOptions {
   stops: readonly GradientStop[];
   /** Center of the gradient. Default: `{ x: 0.5, y: 0.5 }` in local space. */
   center?: { x: number; y: number };
+  /**
+   * Center of the outer (end) circle. Default: same as {@link center}.
+   * Set to a different point for offset / non-concentric radial gradients
+   * (rim lighting, directional glows).
+   */
+  outerCenter?: { x: number; y: number };
   /** Radius of the inner (start) circle. Default: `0`. */
   innerRadius?: number;
   /** Radius of the outer (end) circle. Default: `0.5` in local space. */
@@ -94,6 +100,7 @@ export function radialGradient(options: RadialGradientOptions): GradientFill {
   return new FillGradient({
     type: "radial",
     center,
+    outerCenter: options.outerCenter ?? center,
     innerRadius: options.innerRadius ?? 0,
     outerRadius: options.outerRadius ?? 0.5,
     colorStops: options.stops.map(stopToCss),

@@ -241,4 +241,27 @@ describe("TextComponent", () => {
     const data = comp.serialize();
     expect(data.style).toBeUndefined();
   });
+
+  it("decouples the cached style from the caller's options object", () => {
+    const style: { fontSize: number; fill?: number } = { fontSize: 14 };
+    const comp = new TextComponent({ text: "x", style });
+
+    // Caller mutates their original options object after construction.
+    style.fontSize = 99;
+    style.fill = 0xff0000;
+
+    const data = comp.serialize();
+    expect(data.style).toEqual({ fontSize: 14 });
+  });
+
+  it("returns a fresh style object on each serialize() call", () => {
+    const comp = new TextComponent({
+      text: "x",
+      style: { fontSize: 14 },
+    });
+    const a = comp.serialize();
+    const b = comp.serialize();
+    expect(a.style).not.toBe(b.style);
+    expect(a.style).toEqual(b.style);
+  });
 });

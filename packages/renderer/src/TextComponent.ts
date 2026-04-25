@@ -49,7 +49,9 @@ export class TextComponent extends Component {
       ...(options.style ? { style: options.style } : {}),
     });
     this.layerName = options.layer ?? "default";
-    if (options.style) this._styleOptions = options.style;
+    // Shallow-clone so external mutation of the caller's options object
+    // doesn't drift our cached snapshot away from the live pixi state.
+    if (options.style) this._styleOptions = { ...options.style };
 
     if (options.anchor) {
       this.text.anchor.set(options.anchor.x, options.anchor.y);
@@ -73,7 +75,7 @@ export class TextComponent extends Component {
   /** Replace the text style. */
   setStyle(style: TextStyle): void {
     this.text.style = style;
-    this._styleOptions = style;
+    this._styleOptions = { ...style };
   }
 
   /** Tint color applied to the rendered text. */
@@ -101,7 +103,7 @@ export class TextComponent extends Component {
       anchor: { x: this.text.anchor.x, y: this.text.anchor.y },
       visible: this.text.visible,
     };
-    if (this._styleOptions) data.style = this._styleOptions;
+    if (this._styleOptions) data.style = { ...this._styleOptions };
     return data;
   }
 
