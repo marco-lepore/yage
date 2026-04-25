@@ -1,9 +1,8 @@
 import { ServiceKey } from "@yagejs/core";
+import type { RendererPlugin } from "./RendererPlugin.js";
 
 /** Service key for the RendererPlugin. */
-export const RendererKey = new ServiceKey<
-  import("./RendererPlugin.js").RendererPlugin
->("renderer");
+export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
 
 /**
  * Scale mode for the responsive-fit API.

@@ -1,3 +1,15 @@
+import type { AssetManager } from "./AssetManager.js";
+import type { Engine } from "./Engine.js";
+import type { ErrorBoundary } from "./ErrorBoundary.js";
+import type { EngineEvents, EventBus } from "./EventBus.js";
+import type { GameLoop } from "./GameLoop.js";
+import type { Inspector } from "./Inspector.js";
+import type { Logger } from "./Logger.js";
+import type { ProcessSystem } from "./ProcessSystem.js";
+import type { QueryCache } from "./QueryCache.js";
+import type { SceneManager } from "./SceneManager.js";
+import type { SystemScheduler } from "./SystemScheduler.js";
+
 /** The resolution scope for a service. */
 export type ServiceScope = "engine" | "scene";
 
@@ -66,58 +78,41 @@ export class EngineContext {
 }
 
 // ---- Well-known service keys ----
-// We use lazy types to avoid circular imports. The generic parameter documents
-// the expected service type. Consumers import both the key and the type.
+// We use type-only imports to avoid circular imports. The generic parameter
+// documents the expected service type. Consumers import both the key and the
+// type.
 
 /** Key for the Engine instance. */
-export const EngineKey = new ServiceKey<
-  import("./Engine.js").Engine
->("engine");
+export const EngineKey = new ServiceKey<Engine>("engine");
 
 /** Key for the EventBus instance. */
-export const EventBusKey = new ServiceKey<
-  import("./EventBus.js").EventBus<import("./EventBus.js").EngineEvents>
->("eventBus");
+export const EventBusKey = new ServiceKey<EventBus<EngineEvents>>("eventBus");
 
 /** Key for the SceneManager instance. */
-export const SceneManagerKey = new ServiceKey<
-  import("./SceneManager.js").SceneManager
->("sceneManager");
+export const SceneManagerKey = new ServiceKey<SceneManager>("sceneManager");
 
 /** Key for the Logger instance. */
-export const LoggerKey = new ServiceKey<import("./Logger.js").Logger>("logger");
+export const LoggerKey = new ServiceKey<Logger>("logger");
 
 /** Key for the Inspector instance. */
-export const InspectorKey = new ServiceKey<
-  import("./Inspector.js").Inspector
->("inspector");
+export const InspectorKey = new ServiceKey<Inspector>("inspector");
 
 /** Key for the QueryCache instance. */
-export const QueryCacheKey = new ServiceKey<
-  import("./QueryCache.js").QueryCache
->("queryCache");
+export const QueryCacheKey = new ServiceKey<QueryCache>("queryCache");
 
 /** Key for the ErrorBoundary instance. */
-export const ErrorBoundaryKey = new ServiceKey<
-  import("./ErrorBoundary.js").ErrorBoundary
->("errorBoundary");
+export const ErrorBoundaryKey = new ServiceKey<ErrorBoundary>("errorBoundary");
 
 /** Key for the GameLoop instance. */
-export const GameLoopKey = new ServiceKey<
-  import("./GameLoop.js").GameLoop
->("gameLoop");
+export const GameLoopKey = new ServiceKey<GameLoop>("gameLoop");
 
 /** Key for the SystemScheduler instance. */
-export const SystemSchedulerKey = new ServiceKey<
-  import("./SystemScheduler.js").SystemScheduler
->("systemScheduler");
+export const SystemSchedulerKey = new ServiceKey<SystemScheduler>(
+  "systemScheduler",
+);
 
 /** Key for the ProcessSystem instance. */
-export const ProcessSystemKey = new ServiceKey<
-  import("./ProcessSystem.js").ProcessSystem
->("processSystem");
+export const ProcessSystemKey = new ServiceKey<ProcessSystem>("processSystem");
 
 /** Key for the AssetManager instance. */
-export const AssetManagerKey = new ServiceKey<
-  import("./AssetManager.js").AssetManager
->("assetManager");
+export const AssetManagerKey = new ServiceKey<AssetManager>("assetManager");

@@ -1,9 +1,10 @@
 import type { EngineContext, ServiceKey } from "./EngineContext.js";
 import type { Entity } from "./Entity.js";
 import type { EventToken } from "./EventToken.js";
-import type { ComponentClass } from "./types.js";
-import type { SnapshotResolver } from "./Serializable.js";
 import type { Logger } from "./Logger.js";
+import type { Scene } from "./Scene.js";
+import type { SnapshotResolver } from "./Serializable.js";
+import type { ComponentClass } from "./types.js";
 import { LoggerKey } from "./EngineContext.js";
 
 /**
@@ -18,7 +19,7 @@ export abstract class Component {
    * Back-reference to the owning entity. Set by the engine when the component
    * is added to an entity. Do not set manually.
    */
-  entity!: import("./Entity.js").Entity;
+  entity!: Entity;
 
   /** Whether this component is active. Disabled components are skipped by ComponentUpdateSystem. */
   enabled = true;
@@ -31,7 +32,7 @@ export abstract class Component {
    * Prefer this over threading through `this.entity.scene` in component
    * code.
    */
-  get scene(): import("./Scene.js").Scene {
+  get scene(): Scene {
     const scene = this.entity.tryScene;
     if (!scene) {
       throw new Error(
