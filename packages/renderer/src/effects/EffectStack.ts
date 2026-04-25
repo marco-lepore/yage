@@ -63,6 +63,13 @@ export class EffectStack {
         set = new Set();
         this.effectProcesses.set(effect, set);
       }
+      // Lazy-prune completed fades for this effect on each new fade — the
+      // host's pruning only spans its own bookkeeping; this set lives until
+      // the effect is removed, so without pruning a long-lived screen/layer
+      // handle would accumulate Process refs over the app's lifetime.
+      for (const old of set) {
+        if (old.completed) set.delete(old);
+      }
       set.add(p);
       return this.processHost.run(p);
     };

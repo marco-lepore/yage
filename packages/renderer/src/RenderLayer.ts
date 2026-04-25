@@ -1,6 +1,18 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
 import type { LayerDef, LayerSpace } from "./LayerDef.js";
+import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type {
+  EffectHandle,
+  EffectProcessHost,
+} from "./effects/EffectHandle.js";
+
+/**
+ * Factory that produces a fresh `EffectProcessHost` instance — called once
+ * per `EffectStack` so each stack's cancellation scope stays isolated.
+ */
+export type EffectHostFactory = () => EffectProcessHost;
 
 /** Options for creating a layer. */
 export interface CreateLayerOptions {
@@ -24,17 +36,58 @@ export class RenderLayer {
   readonly container: Container;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
+  private _effects: EffectStack | undefined;
+  private readonly _hostFactory: EffectHostFactory | undefined;
 
   constructor(
     name: string,
     order: number,
     container: Container,
     space: LayerSpace = "world",
+    hostFactory?: EffectHostFactory,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
+    this._hostFactory = hostFactory;
+  }
+
+  /**
+   * Attach a layer-scope effect — the filter is applied to every entity
+   * rendered through this layer. Cost: one full-screen render pass per
+   * layer-scope effect, regardless of how many entities are in the layer.
+   *
+   * Fades pause with the owning scene and are scaled by its `timeScale`,
+   * matching component-scope behavior. Effects survive until the scene
+   * exits or the handle is `.remove()`d.
+   */
+  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
+    if (!this._effects) {
+      if (!this._hostFactory) {
+        throw new Error(
+          `RenderLayer "${this.name}": addEffect requires an EffectHostFactory. ` +
+            `This layer was constructed outside a fully-wired renderer plugin.`,
+        );
+      }
+      this._effects = new EffectStack(
+        this.container,
+        this._hostFactory(),
+        "layer",
+      );
+    }
+    return this._effects.add(factory);
+  }
+
+  /**
+   * Tear down any layer-scope effect stack. Called by `RenderLayerManager`
+   * before the layer's container is destroyed so external user-assigned
+   * filters survive the teardown intact.
+   * @internal
+   */
+  _destroyEffects(): void {
+    this._effects?.destroy();
+    this._effects = undefined;
   }
 }
 
@@ -48,10 +101,16 @@ export class RenderLayerManager {
   private readonly rootContainer: Container;
   private readonly _defaultLayer: RenderLayer;
   private readonly _defaultEventMode: EventMode | undefined;
+  private readonly _hostFactory: EffectHostFactory | undefined;
 
-  constructor(root: Container, defaultEventMode?: EventMode) {
+  constructor(
+    root: Container,
+    defaultEventMode?: EventMode,
+    hostFactory?: EffectHostFactory,
+  ) {
     this.rootContainer = root;
     this._defaultEventMode = defaultEventMode;
+    this._hostFactory = hostFactory;
     this._defaultLayer = this.create("default", 0);
   }
 
@@ -71,7 +130,13 @@ export class RenderLayerManager {
     if (eventMode) container.eventMode = eventMode;
     if (opts?.sortableChildren) container.sortableChildren = true;
 
-    const layer = new RenderLayer(name, order, container, opts?.space ?? "world");
+    const layer = new RenderLayer(
+      name,
+      order,
+      container,
+      opts?.space ?? "world",
+      this._hostFactory,
+    );
     this.layers.set(name, layer);
 
     this.rootContainer.addChild(container);
@@ -132,6 +197,18 @@ export class RenderLayerManager {
   /** The root container holding all layers. */
   get root(): Container {
     return this.rootContainer;
+  }
+
+  /**
+   * Tear down every layer's effect stack. Call BEFORE the root container is
+   * destroyed so external (user-assigned) filters get preserved by each
+   * stack's destroy logic instead of being clobbered by the container
+   * teardown.
+   */
+  destroyEffects(): void {
+    for (const layer of this.layers.values()) {
+      layer._destroyEffects();
+    }
   }
 
   /** Clear internal state. Call after the root container has been destroyed. */

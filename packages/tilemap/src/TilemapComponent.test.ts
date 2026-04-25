@@ -169,6 +169,9 @@ function createTestContext() {
     },
     ensureLayer: (def, opts) =>
       layerManager.tryGet(def.name) ?? layerManager.createFromDef(def, opts),
+    addEffect: () => {
+      throw new Error("Tilemap test tree does not support addEffect.");
+    },
   };
 
   const scene = new TestScene();

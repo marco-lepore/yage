@@ -1,6 +1,7 @@
 import { System } from "./System.js";
 import { Phase } from "./types.js";
 import type { EngineContext } from "./EngineContext.js";
+import type { Scene } from "./Scene.js";
 import type { SceneManager } from "./SceneManager.js";
 import type { Process } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
@@ -22,18 +23,40 @@ export class ProcessSystem extends System {
 
   private sceneManager!: SceneManager;
   private sceneProcesses = new Set<Process>();
+  private scenePools = new Map<Scene, Set<Process>>();
 
   override onRegister(context: EngineContext): void {
     this.sceneManager = context.resolve(SceneManagerKey);
   }
 
-  /** Add a scene-level process (not tied to any entity). */
+  /**
+   * Add an engine-global process. Ticked under the global timeScale only;
+   * NOT gated by per-scene pause or scaled by per-scene timeScale. Use this
+   * for cross-scene effects (e.g. screen-scope filter fades on `app.stage`)
+   * or processes that have no owning scene.
+   */
   add(process: Process): Process {
     this.sceneProcesses.add(process);
     return process;
   }
 
-  /** Cancel scene-level processes, optionally by tag. */
+  /**
+   * Add a process bound to a specific scene's lifecycle. Ticked only while
+   * the scene is active (not paused) and scaled by the scene's `timeScale`,
+   * exactly like an entity-owned `ProcessComponent`. Use this for layer or
+   * scene-scope effect fades that should pause with the scene.
+   */
+  addForScene(scene: Scene, process: Process): Process {
+    let pool = this.scenePools.get(scene);
+    if (!pool) {
+      pool = new Set();
+      this.scenePools.set(scene, pool);
+    }
+    pool.add(process);
+    return process;
+  }
+
+  /** Cancel engine-global processes, optionally by tag. */
   cancel(tag?: string): void {
     for (const p of this.sceneProcesses) {
       if (tag === undefined || p.tags.includes(tag)) {
@@ -45,10 +68,23 @@ export class ProcessSystem extends System {
     }
   }
 
+  /** Cancel every scene-bound process for `scene`, optionally by tag. */
+  cancelForScene(scene: Scene, tag?: string): void {
+    const pool = this.scenePools.get(scene);
+    if (!pool) return;
+    for (const p of pool) {
+      if (tag === undefined || p.tags.includes(tag)) {
+        p.cancel();
+        pool.delete(p);
+      }
+    }
+    if (pool.size === 0) this.scenePools.delete(scene);
+  }
+
   update(dt: number): void {
     const globalScaledDt = dt * this.timeScale;
 
-    // Tick scene-level processes (global timeScale only, not scene-bound)
+    // Engine-global processes — global timeScale only, not scene-bound.
     for (const p of this.sceneProcesses) {
       p._update(globalScaledDt);
       if (p.completed) {
@@ -56,9 +92,21 @@ export class ProcessSystem extends System {
       }
     }
 
-    // Tick entity ProcessComponents in all non-paused scenes
+    // Per-scene work: entity ProcessComponents AND scene-scoped processes.
+    // Both share the same activeScenes gating + per-scene timeScale, so a
+    // layer-scope fade pauses with the scene exactly like an entity fade.
     for (const scene of this.sceneManager.activeScenes) {
       const effectiveDt = globalScaledDt * scene.timeScale;
+
+      const pool = this.scenePools.get(scene);
+      if (pool) {
+        for (const p of pool) {
+          p._update(effectiveDt);
+          if (p.completed) pool.delete(p);
+        }
+        if (pool.size === 0) this.scenePools.delete(scene);
+      }
+
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed) continue;
         const pc = entity.tryGet(ProcessComponent);

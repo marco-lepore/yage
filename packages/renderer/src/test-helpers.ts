@@ -4,6 +4,8 @@ import {
   ErrorBoundaryKey,
   GameLoop,
   GameLoopKey,
+  ProcessSystem,
+  ProcessSystemKey,
   SystemScheduler,
   SystemSchedulerKey,
   Scene,
@@ -21,6 +23,10 @@ import {
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
+import { EffectStack } from "./effects/EffectStack.js";
+import { makeSceneScopedProcessHost } from "./effects/hosts/ProcessSystemHost.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -51,6 +57,7 @@ export class MockContainer {
   label = "";
   destroyed = false;
   eventMode = "passive";
+  filters: unknown = null;
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -101,10 +108,18 @@ export interface RendererTestContext {
 export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
   private trees = new Map<
     Scene,
-    { manager: RenderLayerManager; tree: SceneRenderTree; root: MockContainer }
+    {
+      manager: RenderLayerManager;
+      tree: SceneRenderTree;
+      root: MockContainer;
+      destroyEffects: () => void;
+    }
   >();
 
-  constructor(private readonly stage: MockContainer) {}
+  constructor(
+    private readonly stage: MockContainer,
+    private readonly processSystem?: ProcessSystem,
+  ) {}
 
   createForScene(scene: Scene): SceneRenderTree {
     if (this.trees.has(scene)) {
@@ -117,7 +132,18 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     root.label = `scene:${scene.name}`;
     this.stage.addChild(root);
 
-    const manager = new RenderLayerManager(root as never);
+    const ps = this.processSystem;
+    const hostFactory = ps
+      ? () => makeSceneScopedProcessHost(ps, scene)
+      : undefined;
+
+    const manager = new RenderLayerManager(
+      root as never,
+      undefined,
+      hostFactory,
+    );
+
+    let sceneStack: EffectStack | undefined;
     const tree: SceneRenderTree = {
       root: root as never,
       get: (name) => manager.get(name),
@@ -128,14 +154,37 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       },
       ensureLayer: (def, opts) =>
         manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
+      addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
+        if (!sceneStack) {
+          if (!hostFactory) {
+            throw new Error(
+              "MockSceneRenderTreeProvider was constructed without a ProcessSystem.",
+            );
+          }
+          sceneStack = new EffectStack(
+            root as never,
+            hostFactory(),
+            "scene",
+          );
+        }
+        return sceneStack.add(factory);
+      },
     };
-    this.trees.set(scene, { manager, tree, root });
+
+    const destroyEffects = (): void => {
+      sceneStack?.destroy();
+      sceneStack = undefined;
+      manager.destroyEffects();
+    };
+
+    this.trees.set(scene, { manager, tree, root, destroyEffects });
     return tree;
   }
 
   destroyForScene(scene: Scene): void {
     const entry = this.trees.get(scene);
     if (!entry) return;
+    entry.destroyEffects();
     entry.root.destroy();
     entry.manager.destroy();
     this.trees.delete(scene);
@@ -180,9 +229,11 @@ export function createRendererTestContext(options?: {
   const gameLoop = new GameLoop();
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
+  const processSystem = new ProcessSystem();
 
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
+  ctx.register(ProcessSystemKey, processSystem);
 
   const vw = options?.viewportWidth ?? 800;
   const vh = options?.viewportHeight ?? 600;
@@ -190,7 +241,7 @@ export function createRendererTestContext(options?: {
   ctx.register(RendererKey, mockRenderer as never);
 
   const stage = new MockContainer();
-  const provider = new MockSceneRenderTreeProvider(stage);
+  const provider = new MockSceneRenderTreeProvider(stage, processSystem);
   ctx.register(SceneRenderTreeProviderKey, provider);
 
   const tree = provider.createForScene(scene);

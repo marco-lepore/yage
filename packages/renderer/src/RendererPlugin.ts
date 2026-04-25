@@ -1,13 +1,23 @@
 import {
   AssetManagerKey,
   GameLoopKey,
+  ProcessSystemKey,
   RendererAdapterKey,
   SceneHookRegistryKey,
   Vec2,
 } from "@yagejs/core";
-import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
+import type {
+  EngineContext,
+  Plugin,
+  ProcessSystem,
+  SystemScheduler,
+} from "@yagejs/core";
 import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
+import { EffectStack } from "./effects/EffectStack.js";
+import { makeProcessSystemHost } from "./effects/hosts/ProcessSystemHost.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
@@ -36,6 +46,8 @@ export class RendererPlugin implements Plugin {
   private tickerFn: (() => void) | null = null;
   private unregisterHooks: (() => void) | null = null;
   private fitController!: FitController;
+  private _processSystem: ProcessSystem | undefined;
+  private _effects: EffectStack | undefined;
 
   constructor(config: RendererConfig) {
     this.config = config;
@@ -71,11 +83,19 @@ export class RendererPlugin implements Plugin {
     //    the initial `width × height` and installs no observer.
     this.startFit(this.config.fit ?? { mode: "letterbox" });
 
-    // 4. Create the per-scene render tree provider.
-    //    Each scene gets one root container as a direct child of app.stage.
-    this.provider = new SceneRenderTreeProviderImpl(this.app.stage);
+    // 4. Resolve ProcessSystem so layer/scene/screen-scope effects can
+    //    schedule fade tweens. Already registered by Engine before plugin
+    //    install runs.
+    this._processSystem = context.resolve(ProcessSystemKey);
 
-    // 5. Register services
+    // 5. Create the per-scene render tree provider.
+    //    Each scene gets one root container as a direct child of app.stage.
+    this.provider = new SceneRenderTreeProviderImpl(
+      this.app.stage,
+      this._processSystem,
+    );
+
+    // 6. Register services
     context.register(RendererKey, this);
     // Also register under the cross-package adapter key so @yagejs/input
     // (and other renderer-agnostic consumers) can auto-wire to the canvas
@@ -83,7 +103,7 @@ export class RendererPlugin implements Plugin {
     context.register(RendererAdapterKey, this);
     context.register(SceneRenderTreeProviderKey, this.provider);
 
-    // 6. Register scene hooks: materialize a tree per scene on enter,
+    // 7. Register scene hooks: materialize a tree per scene on enter,
     //    tear it down on exit.
     const hookRegistry = context.resolve(SceneHookRegistryKey);
     this.unregisterHooks = hookRegistry.register({
@@ -96,7 +116,7 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 7. Attach PixiJS ticker to GameLoop
+    // 8. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
     gameLoop.attachTicker((callback) => {
       const fn = () => callback(this.app.ticker.deltaMS);
@@ -105,7 +125,7 @@ export class RendererPlugin implements Plugin {
       return () => this.app.ticker.remove(fn);
     });
 
-    // 8. Register asset loaders (if AssetManager is available)
+    // 9. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
       load: (path: string) => Assets.load<TextureResource>(path),
@@ -131,6 +151,31 @@ export class RendererPlugin implements Plugin {
     scheduler.add(new DisplaySystem());
   }
 
+  /**
+   * Attach a screen-scope effect — the filter is applied to `app.stage`,
+   * so it persists across scene transitions and composites everything the
+   * renderer draws (every scene, every layer). Common use: screen-wide
+   * post-process like vignette or chromatic aberration.
+   *
+   * The handle survives scene changes; remove it explicitly when no longer
+   * wanted, or it lives until the renderer plugin is destroyed.
+   */
+  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
+    if (!this._effects) {
+      if (!this._processSystem) {
+        throw new Error(
+          "RendererPlugin.addEffect called before plugin install — no ProcessSystem available.",
+        );
+      }
+      this._effects = new EffectStack(
+        this.app.stage,
+        makeProcessSystemHost(this._processSystem),
+        "screen",
+      );
+    }
+    return this._effects.add(factory);
+  }
+
   onDestroy(): void {
     this.unregisterHooks?.();
     this.unregisterHooks = null;
@@ -139,6 +184,10 @@ export class RendererPlugin implements Plugin {
       this.app.ticker.remove(this.tickerFn);
       this.tickerFn = null;
     }
+    // Strip stage-level effects before destroying the app — preserves any
+    // user-assigned filters on app.stage outside our addEffect calls.
+    this._effects?.destroy();
+    this._effects = undefined;
     this.provider.destroyAll();
     this.app.destroy();
   }

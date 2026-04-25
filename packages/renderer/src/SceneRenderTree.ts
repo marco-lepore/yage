@@ -3,6 +3,8 @@ import type { Scene } from "@yagejs/core";
 import type { Container } from "pixi.js";
 import type { LayerDef } from "./LayerDef.js";
 import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 
 /**
  * Options for `ensureLayer` beyond the declarative `LayerDef`. Used by
@@ -36,6 +38,13 @@ export interface SceneRenderTree {
    * the layer fixed to the viewport (e.g. screen-space HUD).
    */
   ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer;
+  /**
+   * Attach a scene-scope effect — applied to the entire per-scene root
+   * container, after layer-scope effects have composited. Common use:
+   * scene-wide CRT, color grade, vignette. Survives until the scene exits
+   * or the handle is `.remove()`d.
+   */
+  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H;
 }
 
 /**
