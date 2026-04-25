@@ -1,0 +1,60 @@
+---
+title: "Text"
+description: "TextComponent for free-positioned strings on a layer"
+---
+
+`TextComponent` is for **free-positioned text on a render layer** — a debug
+HUD overlay, a diegetic floor label, a one-off world-space string that
+should zoom and rotate with the camera. It's Transform-synced like a
+sprite, serializable, and takes a style object that mirrors CSS font
+properties.
+
+```typescript
+import { TextComponent } from "@yagejs/renderer";
+
+entity.add(new Transform());
+entity.add(
+  new TextComponent({
+    text: "DEBUG",
+    layer: "debug",
+    anchor: { x: 0.5, y: 0 },
+    style: {
+      fontFamily: "ui-monospace, monospace",
+      fontSize: 14,
+      fill: 0xf8fafc,
+      fontWeight: "bold",
+    },
+  }),
+);
+```
+
+Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
+`alpha` directly.
+
+## When to reach for UI instead
+
+For most "text on screen" cases — HUD cards, score readouts with a
+backdrop, dialog boxes, nameplates above an enemy, floating damage numbers
+that should stay axis-aligned at any zoom — `UIPanel` + `UIText` from
+`@yagejs/ui` is the right answer. You get flexbox layout (padding, gap,
+alignment), a styled background fill, and child stacking, all of which
+`TextComponent` deliberately doesn't try to provide.
+
+Specifically:
+
+- **Text widget with layout / padding / backdrop** → [`UIPanel` + `UIText`](/guides/ui/).
+- **Entity-tracked text that stays constant-size at any zoom** (nameplates,
+  damage numbers, interaction prompts) → [`ScreenFollow` + `UIPanel({ positioning: "transform" })`](/guides/rendering/camera/#screenfollow-entity-anchored-ui).
+- **Free string with no layout, that should follow camera transforms**
+  (diegetic floor label, debug overlay, world-pinned billboard text) →
+  `TextComponent`.
+
+## Wrapper
+
+**Thin wrapper:** the `style` option forwards as-is to pixi's
+`TextStyleOptions` — full set of CSS-style font properties available
+(`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`,
+`letterSpacing`, `lineHeight`, `dropShadow`, etc.). `.text` is the
+underlying pixi `Text` instance. See the [pixi Text guide](https://pixijs.com/8.x/guides/components/scene-objects/text/)
+and [TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style)
+for every available option.

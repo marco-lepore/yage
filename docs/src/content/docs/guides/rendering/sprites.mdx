@@ -1,0 +1,94 @@
+---
+title: "Sprites & Animation"
+description: "SpriteComponent, AnimatedSpriteComponent, AnimationController, asset factories"
+---
+
+For most game art — characters, props, tiles, backgrounds — you'll be
+displaying a texture. `SpriteComponent` is the right primitive; reach for
+`AnimatedSpriteComponent` + `AnimationController` when frames change over
+time.
+
+## Sprites
+
+`SpriteComponent` displays a texture on an entity. It automatically syncs with
+the entity's `Transform`.
+
+```typescript
+import { SpriteComponent } from "@yagejs/renderer";
+
+entity.add(
+  new SpriteComponent({
+    texture: playerTexture,
+    anchor: { x: 0.5, y: 0.5 },
+    layer: "characters",
+    tint: 0xffffff,
+    alpha: 1,
+  }),
+);
+```
+
+All properties are optional except `texture`. The `layer` property controls
+z-ordering — see [Camera & Layers](/guides/rendering/camera/#render-layers).
+
+**Escape hatch:** `.sprite` is the underlying pixi `Sprite`. Reach for it
+when you need a pixi feature `SpriteComponent` doesn't surface — full pixi
+API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+
+## Animated Sprites
+
+For frame-based sprite animations, use `AnimatedSpriteComponent` together with
+an `AnimationController`.
+
+```typescript
+import {
+  AnimatedSpriteComponent,
+  AnimationController,
+} from "@yagejs/renderer";
+
+entity.add(
+  new AnimatedSpriteComponent({
+    spritesheet: heroSheet,
+    defaultAnimation: "idle",
+  }),
+);
+
+entity.add(
+  new AnimationController({
+    animations: {
+      idle: { frames: [0, 1, 2, 3], speed: 0.1 },
+      run: { frames: [4, 5, 6, 7, 8, 9], speed: 0.15 },
+      jump: { frames: [10, 11, 12], speed: 0.12, loop: false },
+    },
+  }),
+);
+```
+
+Switch animations at runtime:
+
+```typescript
+const anim = entity.get(AnimationController);
+anim.play("run");
+anim.play("jump", { onComplete: () => anim.play("idle") });
+```
+
+**Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
+
+## Asset Factories
+
+YAGE provides helper functions to load and define render assets:
+
+```typescript
+import { texture, spritesheet, renderAsset } from "@yagejs/renderer";
+
+// Load a single texture
+const bg = texture("assets/background.png");
+
+// Load a spritesheet with atlas data
+const heroSheet = spritesheet("assets/hero.png", "assets/hero.json");
+
+// Generic render asset (auto-detects type)
+const asset = renderAsset("assets/tileset.png");
+```
+
+These return handles that are resolved during scene loading, so textures are
+available by the time `setup()` runs.

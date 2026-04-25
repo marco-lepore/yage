@@ -1,0 +1,72 @@
+---
+title: "Graphics"
+description: "GraphicsComponent for procedural shapes, plus linear and radial gradient fills"
+---
+
+`GraphicsComponent` is the right primitive when you need to draw shapes
+procedurally — debug overlays, prototype art, gradient bars, custom UI
+chrome that doesn't fit a flexbox model. For laid-out widgets with text and
+backgrounds, prefer [`UIPanel`](/guides/ui/) instead.
+
+```typescript
+import { GraphicsComponent } from "@yagejs/renderer";
+
+entity.add(
+  new GraphicsComponent().draw((g) => {
+    g.circle(0, 0, 50).fill({ color: 0x38bdf8 });
+  }),
+);
+```
+
+Call `.draw()` again at any time to redraw. The callback receives a PixiJS
+`Graphics` object, so all standard drawing methods are available — `rect`,
+`roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
+
+**Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw
+pixi `Graphics` instance. The fluent API mirrors Canvas 2D vocabulary —
+`moveTo`, `lineTo`, `arc`, `bezierCurveTo`, plus shape shortcuts like
+`rect` and `circle`. Fill and stroke take options bags (`{ color, alpha,
+width, ... }`). See the [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
+
+## Gradient fills
+
+For linear and radial gradients, use `linearGradient` / `radialGradient`
+instead of importing `FillGradient` from `pixi.js`. Stops use yage's
+numeric color + alpha pairs (no CSS color strings), and the result plugs
+straight into `.fill()`:
+
+```typescript
+import {
+  GraphicsComponent,
+  linearGradient,
+  radialGradient,
+} from "@yagejs/renderer";
+
+const fade = linearGradient({
+  axis: "vertical", // or "horizontal", or explicit start/end points
+  stops: [
+    { offset: 0, color: 0x000000, alpha: 0.8 },
+    { offset: 1, color: 0x000000, alpha: 0 },
+  ],
+});
+
+entity.add(
+  new GraphicsComponent({ layer: "fog" }).draw((g) => {
+    g.rect(0, 0, 200, 40).fill(fade);
+  }),
+);
+```
+
+By default, coordinates and radii are in **local** space (the 0-1 range of
+the filled shape), so one gradient instance scales to any rect you apply it
+to. Pass `space: "global"` to treat them as absolute pixels instead.
+
+`radialGradient` additionally accepts an `outerCenter` for non-concentric
+radial effects (rim lighting, directional glows).
+
+Gradients own a GPU texture — call `.destroy()` in a component's
+`onRemove()` when you're done with them.
+
+**Re-export:** `GradientFill` IS pixi `FillGradient`. The factories convert
+yage's numeric stops to pixi color stops and forward the rest as-is. See
+the [pixi FillGradient docs](https://pixijs.download/release/docs/scene.FillGradient.html).

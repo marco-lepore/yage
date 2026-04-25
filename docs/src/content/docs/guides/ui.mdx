@@ -103,7 +103,7 @@ must have a `Transform` or the panel throws at add time.
 This option is orthogonal to the layer's space:
 
 - **Screen-space layer + `positioning: "transform"`**: pair with
-  [`ScreenFollow`](/guides/rendering/#screenfollow-entity-anchored-ui)
+  [`ScreenFollow`](/guides/rendering/camera/#screenfollow-entity-anchored-ui)
   from `@yagejs/renderer`. `ScreenFollow` writes
   `camera.worldToScreen(target) + offset` to the Transform each frame
   (the offset is in screen pixels, applied after projection), so the
