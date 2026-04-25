@@ -113,3 +113,19 @@ export {
   spritesheet,
   texture,
 } from "./assets.js";
+
+// Effects
+export type {
+  EffectHandle,
+  EffectProcessHost,
+} from "./effects/EffectHandle.js";
+export type {
+  Effect,
+  EffectFactory,
+  EffectScope,
+  EffectTarget,
+} from "./effects/Effect.js";
+export { EffectStack } from "./effects/EffectStack.js";
+export { rawFilter } from "./effects/rawFilter.js";
+export type { RawFilterOptions } from "./effects/rawFilter.js";
+export { withFade } from "./effects/withFade.js";

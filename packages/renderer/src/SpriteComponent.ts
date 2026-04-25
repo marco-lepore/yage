@@ -2,6 +2,10 @@ import { AssetHandle, Component, serializable } from "@yagejs/core";
 import { Sprite } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveTextureInput } from "./assets.js";
+import { EffectStack } from "./effects/EffectStack.js";
+import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 import type { DisplaySprite, TextureInput } from "./public-types.js";
 
 /** Options for creating a SpriteComponent. */
@@ -36,6 +40,7 @@ export class SpriteComponent extends Component {
   readonly sprite: DisplaySprite;
   readonly layerName: string;
   private _textureKey: string | null;
+  private _effects?: EffectStack;
 
   constructor(options: SpriteComponentOptions) {
     super();
@@ -125,12 +130,28 @@ export class SpriteComponent extends Component {
     return this.sprite.alpha;
   }
 
+  /**
+   * Attach a visual effect to this sprite. Returns a handle for later
+   * removal, fading, or per-effect tweaking. The handle's lifetime is bound
+   * to the component — when the entity or component is destroyed, the
+   * effect is torn down automatically.
+   */
+  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
+    this._effects ??= new EffectStack(
+      this.sprite,
+      makeEntityProcessHost(this.entity),
+      "component",
+    );
+    return this._effects.add(factory);
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.sprite);
   }
 
   onDestroy(): void {
+    this._effects?.destroy();
     this.sprite.removeFromParent();
     this.sprite.destroy();
   }

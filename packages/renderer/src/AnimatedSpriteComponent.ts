@@ -5,6 +5,10 @@ import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { EffectStack } from "./effects/EffectStack.js";
+import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
+import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectHandle } from "./effects/EffectHandle.js";
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions {
@@ -28,6 +32,7 @@ export class AnimatedSpriteComponent extends Component {
   readonly animatedSprite: AnimatedSprite;
   readonly layerName: string;
   private readonly _source: FrameSource | null;
+  private _effects?: EffectStack;
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super();
@@ -95,12 +100,23 @@ export class AnimatedSpriteComponent extends Component {
     return new AnimatedSpriteComponent(data);
   }
 
+  /** Attach a visual effect to this animated sprite. See {@link SpriteComponent.addEffect}. */
+  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
+    this._effects ??= new EffectStack(
+      this.animatedSprite,
+      makeEntityProcessHost(this.entity),
+      "component",
+    );
+    return this._effects.add(factory);
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.animatedSprite);
   }
 
   onDestroy(): void {
+    this._effects?.destroy();
     this.animatedSprite.removeFromParent();
     this.animatedSprite.destroy();
   }
