@@ -1,0 +1,194 @@
+---
+title: "Responsive Canvas"
+description: "Fit modes, drawing into bars, HUD anchoring, DOM overlays"
+---
+
+The canvas is **responsive by default**. `RendererPlugin` tracks a host
+element and re-maps the virtual rectangle on every resize — no extra config
+needed. To pin the canvas at a fixed size, give the container fixed CSS
+dimensions; the canvas will track that constant size.
+
+```typescript
+new RendererPlugin({
+  width: 800,
+  height: 600,
+  container: document.getElementById("game")!,
+  // fit: { mode: "letterbox" }  — this is the default
+});
+```
+
+Pass `fit` to override the mode or the observed element:
+
+```typescript
+new RendererPlugin({
+  width: 800, height: 600,
+  container: host,
+  fit: { mode: "cover" },                    // change mode
+  // fit: { mode: "letterbox", target: other } // observe a different element
+});
+```
+
+Four modes cover the usual web-game needs:
+
+- **`letterbox`** *(default)* — preserves the virtual aspect ratio and
+  centers it inside the host. Leftover space around the game is painted
+  with `backgroundColor` (the "bars"). This is what most games want: no
+  distortion, no cropping.
+- **`expand`** — same scaling as `letterbox` (virtual is always fully
+  visible), but the game draws into the bars instead of leaving them blank.
+  Pair with `extendedVirtualRects` to render fog, parallax, or a decorative
+  backdrop into the play-adjacent space. Matches Godot's `expand`, Unity's
+  `Expand` match mode, and Construct 3's "Scale inner."
+- **`cover`** — preserves aspect and fills the host edge-to-edge, CSS-cover
+  style. Whichever axis has the wider host aspect ratio gets overflow
+  clipped by the canvas boundary. Rarely the right choice for gameplay —
+  aspect ratio changes what the player can see. Good for full-bleed
+  backgrounds or splash screens.
+- **`stretch`** — scales each axis independently to fill the host. Distorts
+  the image; use sparingly (menus, editor panels, deliberate stylistic
+  effects).
+
+`letterbox` and `expand` apply the exact same stage transform. The
+difference is a rendering convention: under `letterbox` the bars are the
+flat background color, under `expand` the game is expected to fill them.
+
+`fit.target` defaults to the `container` you passed (or the canvas'
+`parentElement`, or `document.body` as a last resort). You can override it to
+observe a different element.
+
+Under the hood the plugin uses a `ResizeObserver` and calls
+`renderer.resize(hostW, hostH)` on each change, so the backing buffer stays
+hi-DPI-correct via `resolution` + `autoDensity`. Stage scale and position
+are recomputed to map the virtual rectangle into the new canvas per the
+active mode. In headless environments (no DOM target) the plugin applies a
+one-shot transform against the initial `width × height` and installs no
+observer.
+
+At runtime you can switch modes or observe a different element:
+
+```typescript
+renderer.setFit({ mode: "expand" });     // swap modes / target
+renderer.fit;                              // current { mode, target? }
+renderer.canvasSize;                       // { width, height } in CSS px
+renderer.canvasToVirtual(cssX, cssY);      // invert the stage transform
+renderer.virtualToCanvas(x, y);            // forward transform (virtual → CSS px)
+renderer.visibleVirtualRect;               // on-screen sub-rect of virtual space
+renderer.croppedVirtualRects;              // virtual regions off-screen under cover
+renderer.virtualCanvasRect;                // where virtual sits on canvas (CSS px)
+renderer.visibleCanvasRect;                // full canvas extent in virtual px
+renderer.extendedVirtualRects;             // bars outside virtual (letterbox/expand)
+```
+
+## HUD anchoring under `cover`
+
+In `letterbox` / `expand` / `stretch` the full virtual rectangle is always
+on-screen, so HUDs anchored to `virtualSize` corners stay visible. Under
+`cover` the long axis gets cropped — a HUD anchored to virtual `(0, 0)`
+can end up off-screen. `renderer.visibleVirtualRect` returns the
+currently-visible sub-rect of virtual space (clamped to virtual bounds),
+so HUD code can track what the player actually sees while gameplay keeps
+operating in the full declared virtual space:
+
+```typescript
+// Gameplay: always the full declared play area.
+const { width, height } = renderer.virtualSize;
+
+// HUD: follow the visible sub-rect so corner-anchored elements stay on-screen.
+const visible = renderer.visibleVirtualRect;
+scoreLabel.position.set(visible.x + 16, visible.y + 16);
+```
+
+Under `letterbox` / `expand` / `stretch` `visibleVirtualRect` equals
+`{ x: 0, y: 0, width: virtualWidth, height: virtualHeight }` — no change
+needed for non-cover games. This distinction matters for competitive
+titles where a wider viewport must not let players see more of the play
+area than narrower ones do.
+
+## Drawing into the bars under `expand`
+
+Under `expand` the game is expected to render into the extra canvas area
+around the virtual rect. Two getters describe that space:
+
+- `renderer.visibleCanvasRect` — full canvas extent in virtual-space
+  pixels. Extends past `virtualSize` on the bar axis (negative `x`/`y`,
+  dimensions larger than the virtual rect) whenever aspect mismatches.
+  Iterate gridlines or backdrops against this rect so they cover every
+  on-screen pixel, not just the play area.
+- `renderer.extendedVirtualRects` — 0–2 rectangles of the visible canvas
+  that sit outside virtual, in virtual-space pixels. Exactly the bars.
+  Empty on aspect-matched hosts, under `cover`, and under `stretch`.
+
+```typescript
+// Backdrop that fills the whole canvas, extending into bars under expand:
+const canvas = renderer.visibleCanvasRect;
+bgGraphics.rect(canvas.x, canvas.y, canvas.width, canvas.height)
+          .fill({ color: 0x0f172a });
+
+// Fog-of-war over the bars:
+for (const bar of renderer.extendedVirtualRects) {
+  fogGraphics.rect(bar.x, bar.y, bar.width, bar.height)
+             .fill({ color: 0x000000, alpha: 0.78 });
+}
+
+// HUD that follows the canvas corners (so cards live in the bars):
+const cornerTL = renderer.visibleCanvasRect;
+hud.position.set(cornerTL.x + 16, cornerTL.y + 16);
+```
+
+`extendedVirtualRects` is populated under `letterbox` too — geometrically
+identical to `expand` — so the same primitive drives optional bar
+customization on top of a letterbox render (scoreboards, branding, etc.).
+
+## Reasoning about the cropped region under `cover`
+
+`renderer.croppedVirtualRects` returns the complement of
+`visibleVirtualRect` inside `virtualSize` — the 0–2 strips of virtual
+space that are off-screen. Empty under `letterbox` / `expand` / `stretch`;
+under `cover` it's the top+bottom or left+right crop strips.
+
+Use it when an effect needs to know "what's beyond the player's view"
+specifically under `cover`: fog-of-war overlays that fade at the crop
+boundary, indicators that pulse when off-screen enemies are nearby,
+auto-panning cameras.
+
+## Positioning DOM overlays
+
+`renderer.virtualCanvasRect` tells you where the play area lives on the
+canvas in **CSS pixels** — useful for absolutely-positioned HTML overlays
+(menus, tooltips, inspector panels) that should track the virtual rect
+rather than the canvas:
+
+```typescript
+const r = renderer.virtualCanvasRect;
+menuEl.style.left = `${r.x}px`;
+menuEl.style.top = `${r.y}px`;
+menuEl.style.width = `${r.width}px`;
+menuEl.style.height = `${r.height}px`;
+```
+
+Pair with `virtualToCanvas(x, y)` for single-point DOM mapping.
+
+The built-in `responsive-ui` example demonstrates `expand`: the grid
+extends across the whole canvas, fog covers the bars, and HUD cards
+anchor to `visibleCanvasRect` corners — landing in the bars whenever
+aspect mismatches.
+
+Note on terminology: "screen" elsewhere in the engine (UI `LayerSpace:
+"screen"`, `Camera.screenToWorld`) means *virtual viewport space*, not DOM
+pixels. The `canvasToVirtual` method is named after its actual inputs (CSS
+pixels relative to the canvas top-left) to avoid that collision.
+
+When you use `@yagejs/input` alongside fit, pointer events and
+coordinates wire up automatically. `RendererPlugin` registers itself
+under `RendererAdapterKey` (from `@yagejs/core`), and `InputPlugin`
+resolves that key during install — so pointer events target the canvas
+and coordinates route through `canvasToVirtual` with no config. Just
+make sure you register `RendererPlugin` before `InputPlugin`.
+
+```typescript
+import { RendererPlugin } from "@yagejs/renderer";
+import { InputPlugin } from "@yagejs/input";
+
+engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
+engine.use(new InputPlugin({ actions: { /* ... */ } }));
+```

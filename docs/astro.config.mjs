@@ -83,7 +83,27 @@ export default defineConfig({
         {
           label: "Guides",
           items: [
-            { label: "Rendering", slug: "guides/rendering" },
+            {
+              label: "Rendering",
+              collapsed: true,
+              items: [
+                { label: "Overview", slug: "guides/rendering" },
+                {
+                  label: "Responsive Canvas",
+                  slug: "guides/rendering/responsive",
+                },
+                {
+                  label: "Sprites & Animation",
+                  slug: "guides/rendering/sprites",
+                },
+                { label: "Graphics", slug: "guides/rendering/graphics" },
+                { label: "Text", slug: "guides/rendering/text" },
+                {
+                  label: "Camera & Layers",
+                  slug: "guides/rendering/camera",
+                },
+              ],
+            },
             { label: "Input", slug: "guides/input" },
             {
               label: "Processes & Tweens",

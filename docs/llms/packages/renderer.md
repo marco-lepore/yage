@@ -105,6 +105,21 @@ Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `Rend
 
 ## Components
 
+### Pick a component
+
+| Need | Use |
+|---|---|
+| Render an asset / texture | `SpriteComponent` |
+| Frame-based animation | `AnimatedSpriteComponent` (+ `AnimationController`) |
+| Procedural shapes (debug, prototypes, gradient overlays, custom drawing) | `GraphicsComponent` |
+| Text with layout, padding, backdrop, "card" widget | `UIText` + `UIPanel` from `@yagejs/ui` |
+| Entity-tracked text that stays axis-aligned at any zoom (nameplates, damage numbers) | `ScreenFollow` + `UIPanel({ positioning: "transform" })` from `@yagejs/ui` |
+| Free-positioned single string (debug HUD, diegetic world-space label) | `TextComponent` |
+
+Default to `@yagejs/ui` for any text that lives inside a widget, has padding, or stacks with other rows. `TextComponent` is the narrow case where the text is its own world-space primitive with no layout.
+
+For procedural shapes plus a label, use a parent entity with `GraphicsComponent` + a child entity with `TextComponent` — pixi v8 has no `g.text(...)` method; text is always a separate display object.
+
 ### SpriteComponent
 
 ```ts
@@ -116,6 +131,8 @@ entity.add(new SpriteComponent({
   anchor: { x: 0.5, y: 0.5 },
 }));
 ```
+
+**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
 
 ### GraphicsComponent
 
@@ -131,6 +148,32 @@ entity.add(new GraphicsComponent({ layer: "world" }).draw((g) => {
 
 Not fully serializable -- only layer is saved. Redo drawing in `afterRestore()`.
 
+**Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `fill` / `stroke`. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
+
+Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
+
+### TextComponent
+
+Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UIPanel` + `UIText` from `@yagejs/ui` (see decision tree above).
+
+```ts
+import { TextComponent } from "@yagejs/renderer";
+
+entity.add(new TextComponent({
+  text: "DEBUG",
+  layer: "debug",
+  anchor: { x: 0.5, y: 0 },
+  style: {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 14,
+    fill: 0xf8fafc,
+    fontWeight: "bold",
+  },
+}));
+```
+
+Serializable. **Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `.text` is the underlying pixi `Text`. See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
+
 ### AnimatedSpriteComponent
 
 ```ts
@@ -143,6 +186,8 @@ entity.add(new AnimatedSpriteComponent({
   autoPlay: true,
 }));
 ```
+
+**Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
 ### AnimationController
 
@@ -162,6 +207,42 @@ const anim = entity.get(AnimationController);
 anim.play("walk");
 anim.playOneShot("attack"); // locks until complete, then reverts
 ```
+
+## Gradient fills
+
+`linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` under the hood) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.
+
+```ts
+import { linearGradient, radialGradient, GraphicsComponent } from "@yagejs/renderer";
+
+const fade = linearGradient({
+  axis: "vertical", // or "horizontal", or explicit start/end points
+  stops: [
+    { offset: 0, color: 0x000000, alpha: 0.8 },
+    { offset: 1, color: 0x000000, alpha: 0 },
+  ],
+  // space: "local" (default) scales stops across the filled shape.
+  // "global" treats them as world/screen pixels.
+});
+
+entity.add(new GraphicsComponent({ layer: "fog" }).draw((g) => {
+  g.rect(0, 0, 200, 40).fill(fade);
+}));
+
+const spotlight = radialGradient({
+  center: { x: 0.5, y: 0.5 },
+  innerRadius: 0,
+  outerRadius: 0.5,
+  stops: [
+    { offset: 0, color: 0xffffff, alpha: 1 },
+    { offset: 1, color: 0xffffff, alpha: 0 },
+  ],
+});
+```
+
+`GradientFill` owns a GPU texture; call `.destroy()` in `onRemove()` when the owning component tears down. Components can safely build gradients in field initializers — just destroy them in `onRemove()`.
+
+**Re-export:** `GradientFill` IS pixi `FillGradient`. The factories convert yage's numeric stops to pixi color stops and forward the rest as-is. See [pixi FillGradient docs](https://pixijs.download/release/docs/scene.FillGradient.html).
 
 ## Camera
 

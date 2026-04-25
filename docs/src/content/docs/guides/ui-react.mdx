@@ -50,7 +50,7 @@ viewport. Pass `layer: "<name>"` to mount on any layer declared on
 
 For UI that tracks a specific game entity (nameplates, health bars,
 damage numbers), set `positioning: "transform"` on the `UIRoot` and pair
-with [`ScreenFollow`](/guides/rendering/#screenfollow-entity-anchored-ui)
+with [`ScreenFollow`](/guides/rendering/camera/#screenfollow-entity-anchored-ui)
 from `@yagejs/renderer`. `ScreenFollow` writes
 `camera.worldToScreen(target) + offset` to this entity's Transform each
 frame (the offset is in screen pixels, applied after projection), and

@@ -2,11 +2,13 @@ import type { AssetHandle } from "@yagejs/core";
 import type {
   ColorSource,
   Container,
+  FillGradient,
   Graphics,
   PointData,
   Sprite,
-  TextStyleOptions,
+  Text,
   Texture,
+  TextStyleOptions,
 } from "pixi.js";
 
 /** A loaded texture resource managed by the renderer. */
@@ -30,8 +32,14 @@ export type DisplayContainer = Container;
 /** A sprite display object. */
 export type DisplaySprite = Sprite;
 
+/** A text display object. */
+export type DisplayText = Text;
+
 /** Text styling accepted by UI and text APIs. */
 export type TextStyle = TextStyleOptions;
+
+/** A gradient fill usable anywhere a PixiJS fill style is accepted. */
+export type GradientFill = FillGradient;
 
 /** Generic color input accepted by UI helpers. */
 export type ColorValue = ColorSource;
