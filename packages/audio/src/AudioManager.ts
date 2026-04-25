@@ -264,11 +264,21 @@ export class AudioManager {
   private _getBlurContext():
     | { autoPause: boolean; paused: boolean }
     | undefined {
-    return (
-      this._sound as unknown as {
-        context?: { autoPause: boolean; paused: boolean };
-      }
-    ).context;
+    // `autoPause` only exists on pixi-sound's WebAudioContext. The HTMLAudio
+    // fallback (no WebAudio support, or `useLegacy=true`) lacks it — return
+    // undefined there so callers no-op rather than silently writing a dead
+    // property. `paused` is on IMediaContext, but we guard it together since
+    // reconciliation only makes sense when autoPause is also writable.
+    const ctx = (this._sound as unknown as { context?: unknown }).context;
+    if (
+      ctx !== null &&
+      typeof ctx === "object" &&
+      "autoPause" in ctx &&
+      "paused" in ctx
+    ) {
+      return ctx as { autoPause: boolean; paused: boolean };
+    }
+    return undefined;
   }
 
   private _getAudioContext(): { state: string } | undefined {
