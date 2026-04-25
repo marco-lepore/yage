@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ECS, math, events, and scheduling for the YAGE 2D game engine",
   "keywords": [
     "yage",

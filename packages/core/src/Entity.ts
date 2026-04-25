@@ -3,6 +3,7 @@ import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import type { Blueprint } from "./Blueprint.js";
 import type { SnapshotResolver } from "./Serializable.js";
+import type { Scene } from "./Scene.js";
 import { TRAITS_KEY, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 
@@ -40,7 +41,7 @@ export class Entity {
 
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
-  private _scene: import("./Scene.js").Scene | null = null;
+  private _scene: Scene | null = null;
   private callbacks: EntityCallbacks | null = null;
   private _eventHandlers?: Map<string, Set<(data: never) => void>>;
   private _parent: Entity | null = null;
@@ -63,7 +64,7 @@ export class Entity {
    * entity has a scene (e.g. defensive code in systems iterating a query
    * result), use `tryScene` instead.
    */
-  get scene(): import("./Scene.js").Scene {
+  get scene(): Scene {
     if (!this._scene) {
       throw new Error(
         `Entity "${this.name}" is not attached to a scene. Use \`tryScene\` if you need to check.`,
@@ -73,7 +74,7 @@ export class Entity {
   }
 
   /** The scene this entity belongs to, or `null` if detached. */
-  get tryScene(): import("./Scene.js").Scene | null {
+  get tryScene(): Scene | null {
     return this._scene;
   }
 
@@ -369,7 +370,7 @@ export class Entity {
    * @internal
    */
   _setScene(
-    scene: import("./Scene.js").Scene | null,
+    scene: Scene | null,
     callbacks: EntityCallbacks | null,
   ): void {
     this._scene = scene;
