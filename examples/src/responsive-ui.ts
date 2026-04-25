@@ -26,9 +26,10 @@ import {
   RendererPlugin,
   RendererKey,
   GraphicsComponent,
+  TextComponent,
+  linearGradient,
 } from "@yagejs/renderer";
-import type { LayerDef } from "@yagejs/renderer";
-import { FillGradient, Text } from "pixi.js";
+import type { GradientFill, LayerDef } from "@yagejs/renderer";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
@@ -184,36 +185,31 @@ class GridRedraw extends Component {
 // short gradient band on the edge touching the play area. The gradient
 // transitions from full fog alpha to 0 right at the virtual boundary.
 // ---------------------------------------------------------------------------
-const FOG_OPAQUE = `rgba(0,0,0,${FOG_ALPHA})`;
-const FOG_CLEAR = "rgba(0,0,0,0)";
-
-// Pre-built gradient fills, one per direction/orientation pair. `textureSpace:
+// Pre-built gradient fills, one per direction/orientation pair. `space:
 // "local"` makes each gradient scale to whatever rect it's applied to, so one
 // instance covers every top/bottom/left/right band regardless of strip size.
-function makeLinearGradient(
+function makeFogGradient(
   axis: "horizontal" | "vertical",
-  startColor: string,
-  endColor: string,
-): FillGradient {
-  return new FillGradient({
-    type: "linear",
-    start: { x: 0, y: 0 },
-    end: axis === "horizontal" ? { x: 1, y: 0 } : { x: 0, y: 1 },
-    colorStops: [
-      { offset: 0, color: startColor },
-      { offset: 1, color: endColor },
+  direction: "opaqueToClear" | "clearToOpaque",
+): GradientFill {
+  const opaque = { color: 0x000000, alpha: FOG_ALPHA };
+  const clear = { color: 0x000000, alpha: 0 };
+  return linearGradient({
+    axis,
+    stops: [
+      { offset: 0, ...(direction === "opaqueToClear" ? opaque : clear) },
+      { offset: 1, ...(direction === "opaqueToClear" ? clear : opaque) },
     ],
-    textureSpace: "local",
   });
 }
 
 class FogOverlay extends Component {
   private readonly renderer = this.service(RendererKey);
   private readonly graphics = this.sibling(GraphicsComponent);
-  private readonly gradTopInner = makeLinearGradient("vertical", FOG_OPAQUE, FOG_CLEAR);
-  private readonly gradBottomInner = makeLinearGradient("vertical", FOG_CLEAR, FOG_OPAQUE);
-  private readonly gradLeftInner = makeLinearGradient("horizontal", FOG_OPAQUE, FOG_CLEAR);
-  private readonly gradRightInner = makeLinearGradient("horizontal", FOG_CLEAR, FOG_OPAQUE);
+  private readonly gradTopInner = makeFogGradient("vertical", "opaqueToClear");
+  private readonly gradBottomInner = makeFogGradient("vertical", "clearToOpaque");
+  private readonly gradLeftInner = makeFogGradient("horizontal", "opaqueToClear");
+  private readonly gradRightInner = makeFogGradient("horizontal", "clearToOpaque");
   private lastKey = "";
 
   update(): void {
@@ -356,47 +352,56 @@ class ResponsiveUIScene extends Scene {
     fog.add(new GraphicsComponent({ layer: "fog" }));
     fog.add(new FogOverlay());
 
-    // HUD corners anchored to the canvas corners (in virtual coords).
+    // HUD corners anchored to the canvas corners (in virtual coords). Each
+    // card is a parent entity holding the backdrop graphics; the label/value
+    // text ride as child entities, so their Transform auto-tracks the anchor.
+    const CARD_W = 120;
+    const CARD_H = 44;
     for (const corner of Object.keys(HUD_CARDS) as Corner[]) {
       const meta = HUD_CARDS[corner];
+      const dx = corner === "topLeft" || corner === "bottomLeft" ? 0 : -CARD_W;
+      const dy = corner === "topLeft" || corner === "topRight" ? 0 : -CARD_H;
+
       const card = this.spawn(`hud-${corner}`);
       card.add(new Transform());
       card.add(
         new GraphicsComponent({ layer: "hud" }).draw((g) => {
-          const w = 120;
-          const h = 44;
-          const dx = corner === "topLeft" || corner === "bottomLeft" ? 0 : -w;
-          const dy = corner === "topLeft" || corner === "topRight" ? 0 : -h;
-          g.rect(dx, dy, w, h).fill({ color: 0x111827, alpha: 0.9 });
-          g.rect(dx, dy, w, h).stroke({ color: meta.stroke, width: 2 });
-          g.circle(dx + 14, dy + h / 2, 5).fill({ color: meta.fill });
-
-          const label = new Text({
-            text: meta.label,
-            style: {
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 10,
-              fill: 0x94a3b8,
-              letterSpacing: 1,
-            },
-          });
-          label.position.set(dx + 28, dy + 7);
-          g.addChild(label);
-
-          const value = new Text({
-            text: meta.value,
-            style: {
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 14,
-              fill: 0xf8fafc,
-              fontWeight: "bold",
-            },
-          });
-          value.position.set(dx + 28, dy + 21);
-          g.addChild(value);
+          g.rect(dx, dy, CARD_W, CARD_H).fill({ color: 0x111827, alpha: 0.9 });
+          g.rect(dx, dy, CARD_W, CARD_H).stroke({ color: meta.stroke, width: 2 });
+          g.circle(dx + 14, dy + CARD_H / 2, 5).fill({ color: meta.fill });
         }),
       );
       card.add(new HudAnchor(corner));
+
+      const label = card.spawnChild("label");
+      label.add(new Transform({ position: new Vec2(dx + 28, dy + 7) }));
+      label.add(
+        new TextComponent({
+          text: meta.label,
+          layer: "hud",
+          style: {
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 10,
+            fill: 0x94a3b8,
+            letterSpacing: 1,
+          },
+        }),
+      );
+
+      const value = card.spawnChild("value");
+      value.add(new Transform({ position: new Vec2(dx + 28, dy + 21) }));
+      value.add(
+        new TextComponent({
+          text: meta.value,
+          layer: "hud",
+          style: {
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 14,
+            fill: 0xf8fafc,
+            fontWeight: "bold",
+          },
+        }),
+      );
     }
 
     // Live readout.

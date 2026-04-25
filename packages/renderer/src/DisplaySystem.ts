@@ -6,6 +6,7 @@ import { CameraComponent } from "./CameraComponent.js";
 import { SpriteComponent } from "./SpriteComponent.js";
 import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
+import { TextComponent } from "./TextComponent.js";
 import type { Container } from "pixi.js";
 
 /**
@@ -21,6 +22,7 @@ export class DisplaySystem extends System {
   private spriteQuery!: QueryResult;
   private graphicsQuery!: QueryResult;
   private animatedSpriteQuery!: QueryResult;
+  private textQuery!: QueryResult;
   private cameraQuery!: QueryResult;
   private treeProvider!: SceneRenderTreeProvider;
 
@@ -32,6 +34,7 @@ export class DisplaySystem extends System {
       Transform,
       AnimatedSpriteComponent,
     ]);
+    this.textQuery = queryCache.register([Transform, TextComponent]);
     this.cameraQuery = queryCache.register([CameraComponent]);
     this.treeProvider = context.resolve(SceneRenderTreeProviderKey);
   }
@@ -57,6 +60,13 @@ export class DisplaySystem extends System {
       const anim = entity.get(AnimatedSpriteComponent);
       if (!anim.enabled) continue;
       this.syncDisplayObject(transform, anim.animatedSprite);
+    }
+
+    for (const entity of this.textQuery) {
+      const transform = entity.get(Transform);
+      const text = entity.get(TextComponent);
+      if (!text.enabled) continue;
+      this.syncDisplayObject(transform, text.text);
     }
 
     // 2. Apply camera transforms to layers

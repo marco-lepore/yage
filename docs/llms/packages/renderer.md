@@ -131,6 +131,30 @@ entity.add(new GraphicsComponent({ layer: "world" }).draw((g) => {
 
 Not fully serializable -- only layer is saved. Redo drawing in `afterRestore()`.
 
+Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of reaching into `pixi.js` for `FillGradient`.
+
+### TextComponent
+
+Renders text on a layer, Transform-synced like sprites. Style forwards to PixiJS `TextStyle` (CSS-like font properties).
+
+```ts
+import { TextComponent } from "@yagejs/renderer";
+
+entity.add(new TextComponent({
+  text: "SCORE 12,340",
+  layer: "hud",
+  anchor: { x: 0.5, y: 0 },
+  style: {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: 14,
+    fill: 0xf8fafc,
+    fontWeight: "bold",
+  },
+}));
+```
+
+Serializable. Use for world-space labels, floating damage numbers, and HUD text. For flexbox-laid-out UI, use `UIText` from `@yagejs/ui` instead.
+
 ### AnimatedSpriteComponent
 
 ```ts
@@ -162,6 +186,40 @@ const anim = entity.get(AnimationController);
 anim.play("walk");
 anim.playOneShot("attack"); // locks until complete, then reverts
 ```
+
+## Gradient fills
+
+`linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` under the hood) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.
+
+```ts
+import { linearGradient, radialGradient, GraphicsComponent } from "@yagejs/renderer";
+
+const fade = linearGradient({
+  axis: "vertical", // or "horizontal", or explicit start/end points
+  stops: [
+    { offset: 0, color: 0x000000, alpha: 0.8 },
+    { offset: 1, color: 0x000000, alpha: 0 },
+  ],
+  // space: "local" (default) scales stops across the filled shape.
+  // "global" treats them as world/screen pixels.
+});
+
+entity.add(new GraphicsComponent({ layer: "fog" }).draw((g) => {
+  g.rect(0, 0, 200, 40).fill(fade);
+}));
+
+const spotlight = radialGradient({
+  center: { x: 0.5, y: 0.5 },
+  innerRadius: 0,
+  outerRadius: 0.5,
+  stops: [
+    { offset: 0, color: 0xffffff, alpha: 1 },
+    { offset: 1, color: 0xffffff, alpha: 0 },
+  ],
+});
+```
+
+`GradientFill` owns a GPU texture; call `.destroy()` in `onRemove()` when the owning component tears down. Components can safely build gradients in field initializers — just destroy them in `onRemove()`.
 
 ## Camera
 

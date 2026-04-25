@@ -261,6 +261,69 @@ Call `.draw()` again at any time to redraw. The callback receives a PixiJS
 `Graphics` object, so all standard drawing methods are available — `rect`,
 `roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
 
+### Gradient fills
+
+For linear and radial gradients, use `linearGradient` / `radialGradient` instead
+of importing `FillGradient` from `pixi.js`. Stops use yage's numeric color +
+alpha pairs (no CSS color strings), and the result plugs straight into `.fill()`:
+
+```typescript
+import {
+  GraphicsComponent,
+  linearGradient,
+  radialGradient,
+} from "@yagejs/renderer";
+
+const fade = linearGradient({
+  axis: "vertical", // or "horizontal", or explicit start/end points
+  stops: [
+    { offset: 0, color: 0x000000, alpha: 0.8 },
+    { offset: 1, color: 0x000000, alpha: 0 },
+  ],
+});
+
+entity.add(
+  new GraphicsComponent({ layer: "fog" }).draw((g) => {
+    g.rect(0, 0, 200, 40).fill(fade);
+  }),
+);
+```
+
+By default, coordinates and radii are in **local** space (the 0-1 range of the
+filled shape), so one gradient instance scales to any rect you apply it to. Pass
+`space: "global"` to treat them as absolute pixels instead.
+
+Gradients own a GPU texture — call `.destroy()` in a component's `onRemove()`
+when you're done with them.
+
+## Text
+
+For world-space and HUD text, use `TextComponent`. It's Transform-synced like a
+sprite, serializable, and takes a style object that mirrors CSS font properties.
+
+```typescript
+import { TextComponent } from "@yagejs/renderer";
+
+entity.add(new Transform());
+entity.add(
+  new TextComponent({
+    text: "SCORE 12,340",
+    layer: "hud",
+    anchor: { x: 0.5, y: 0 },
+    style: {
+      fontFamily: "ui-monospace, monospace",
+      fontSize: 14,
+      fill: 0xf8fafc,
+      fontWeight: "bold",
+    },
+  }),
+);
+```
+
+Update the text at runtime with `setText()` / `setStyle()`, or tweak `tint` and
+`alpha` directly. For flexbox-laid-out UI rather than free-positioned text, use
+`UIText` from `@yagejs/ui` instead.
+
 ## Animated Sprites
 
 For frame-based sprite animations, use `AnimatedSpriteComponent` together with

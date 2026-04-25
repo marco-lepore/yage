@@ -10,6 +10,8 @@ export type {
   ColorValue,
   DisplayContainer,
   DisplaySprite,
+  DisplayText,
+  GradientFill,
   GraphicsContext,
   PointLike,
   RendererAsset,
@@ -31,6 +33,15 @@ export type {
   GraphicsComponentOptions,
   GraphicsData,
 } from "./GraphicsComponent.js";
+export { TextComponent } from "./TextComponent.js";
+export type { TextComponentOptions, TextData } from "./TextComponent.js";
+export { linearGradient, radialGradient } from "./gradient.js";
+export type {
+  GradientStop,
+  GradientSpace,
+  LinearGradientOptions,
+  RadialGradientOptions,
+} from "./gradient.js";
 export { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 export type {
   AnimatedSpriteComponentOptions,

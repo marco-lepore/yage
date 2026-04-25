@@ -105,8 +105,24 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  class MockText extends MockContainer {
+    text: string;
+    style: Record<string, unknown>;
+    constructor(init: { text: string; style?: Record<string, unknown> }) {
+      super();
+      this.text = init.text;
+      this.style = init.style ?? {};
+    }
+  }
+
   return {
-    mocks: { MockContainer, MockSprite, MockGraphics, MockAnimatedSprite },
+    mocks: {
+      MockContainer,
+      MockSprite,
+      MockGraphics,
+      MockAnimatedSprite,
+      MockText,
+    },
   };
 });
 
@@ -115,6 +131,7 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
   Graphics: mocks.MockGraphics,
   AnimatedSprite: mocks.MockAnimatedSprite,
+  Text: mocks.MockText,
 }));
 
 import { Transform, Vec2 } from "@yagejs/core";
@@ -123,6 +140,7 @@ import { CameraComponent } from "./CameraComponent.js";
 import { SpriteComponent } from "./SpriteComponent.js";
 import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
+import { TextComponent } from "./TextComponent.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
@@ -225,6 +243,21 @@ describe("DisplaySystem", () => {
     >;
     expect(anim.position.x).toBe(30);
     expect(anim.position.y).toBe(40);
+  });
+
+  it("syncs Transform to text display object", () => {
+    const { scene } = setup();
+    const entity = spawnEntityInScene(scene);
+    entity.add(new Transform({ position: new Vec2(12, 34) }));
+    const textComp = entity.add(new TextComponent({ text: "hello" }));
+
+    system.update();
+
+    const txt = textComp.text as unknown as InstanceType<
+      typeof mocks.MockContainer
+    >;
+    expect(txt.position.x).toBe(12);
+    expect(txt.position.y).toBe(34);
   });
 
   it("skips disabled components", () => {
