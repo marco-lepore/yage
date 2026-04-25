@@ -26,10 +26,10 @@ import {
   RendererPlugin,
   RendererKey,
   GraphicsComponent,
-  TextComponent,
   linearGradient,
 } from "@yagejs/renderer";
 import type { GradientFill, LayerDef } from "@yagejs/renderer";
+import { Anchor, UIPanel, UIPlugin } from "@yagejs/ui";
 import { injectStyles, getContainer } from "./shared.js";
 
 injectStyles(`
@@ -353,55 +353,59 @@ class ResponsiveUIScene extends Scene {
     fog.add(new FogOverlay());
 
     // HUD corners anchored to the canvas corners (in virtual coords). Each
-    // card is a parent entity holding the backdrop graphics; the label/value
-    // text ride as child entities, so their Transform auto-tracks the anchor.
-    const CARD_W = 120;
-    const CARD_H = 44;
+    // card is a UIPanel with `positioning: "transform"` — `HudAnchor` writes
+    // the canvas-corner position to the entity's Transform each frame, and
+    // the panel's `anchor` reinterprets as a pivot on the panel itself, so
+    // a card anchored TopRight grows down-and-to-the-left from the corner.
+    // The wrapping panel acts as the colored frame (1:1 with the old stroke);
+    // the inner panel is the dark backdrop, with a colored dot + two text
+    // rows laid out via Yoga flexbox.
+    const CORNER_TO_ANCHOR: Record<Corner, Anchor> = {
+      topLeft: Anchor.TopLeft,
+      topRight: Anchor.TopRight,
+      bottomLeft: Anchor.BottomLeft,
+      bottomRight: Anchor.BottomRight,
+    };
     for (const corner of Object.keys(HUD_CARDS) as Corner[]) {
       const meta = HUD_CARDS[corner];
-      const dx = corner === "topLeft" || corner === "bottomLeft" ? 0 : -CARD_W;
-      const dy = corner === "topLeft" || corner === "topRight" ? 0 : -CARD_H;
-
       const card = this.spawn(`hud-${corner}`);
       card.add(new Transform());
-      card.add(
-        new GraphicsComponent({ layer: "hud" }).draw((g) => {
-          g.rect(dx, dy, CARD_W, CARD_H).fill({ color: 0x111827, alpha: 0.9 });
-          g.rect(dx, dy, CARD_W, CARD_H).stroke({ color: meta.stroke, width: 2 });
-          g.circle(dx + 14, dy + CARD_H / 2, 5).fill({ color: meta.fill });
-        }),
-      );
       card.add(new HudAnchor(corner));
 
-      const label = card.spawnChild("label");
-      label.add(new Transform({ position: new Vec2(dx + 28, dy + 7) }));
-      label.add(
-        new TextComponent({
-          text: meta.label,
+      const panel = card.add(
+        new UIPanel({
           layer: "hud",
-          style: {
-            fontFamily: "ui-monospace, monospace",
-            fontSize: 10,
-            fill: 0x94a3b8,
-            letterSpacing: 1,
-          },
+          positioning: "transform",
+          anchor: CORNER_TO_ANCHOR[corner],
+          padding: 2,
+          background: { color: meta.stroke, alpha: 1, radius: 5 },
         }),
       );
-
-      const value = card.spawnChild("value");
-      value.add(new Transform({ position: new Vec2(dx + 28, dy + 21) }));
-      value.add(
-        new TextComponent({
-          text: meta.value,
-          layer: "hud",
-          style: {
-            fontFamily: "ui-monospace, monospace",
-            fontSize: 14,
-            fill: 0xf8fafc,
-            fontWeight: "bold",
-          },
-        }),
-      );
+      const inner = panel.panel({
+        direction: "row",
+        gap: 10,
+        alignItems: "center",
+        padding: { top: 6, right: 14, bottom: 6, left: 12 },
+        background: { color: 0x111827, alpha: 0.9, radius: 3 },
+      });
+      inner.panel({
+        width: 10,
+        height: 10,
+        background: { color: meta.fill, radius: 5 },
+      });
+      const textCol = inner.panel({ direction: "column", gap: 2 });
+      textCol.text(meta.label, {
+        fontFamily: "ui-monospace, monospace",
+        fontSize: 10,
+        fill: 0x94a3b8,
+        letterSpacing: 1,
+      });
+      textCol.text(meta.value, {
+        fontFamily: "ui-monospace, monospace",
+        fontSize: 14,
+        fill: 0xf8fafc,
+        fontWeight: "bold",
+      });
     }
 
     // Live readout.
@@ -426,6 +430,7 @@ async function main() {
       fit: { mode: "expand" },
     }),
   );
+  engine.use(new UIPlugin());
 
   await engine.start();
   await engine.scenes.push(new ResponsiveUIScene());
