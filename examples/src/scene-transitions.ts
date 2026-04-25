@@ -23,6 +23,7 @@ import {
   UIPanel,
   UIPlugin,
 } from "@yagejs/ui";
+import type { Container } from "pixi.js";
 import { setupGameContainer, injectStyles } from "./shared.js";
 
 injectStyles(`
@@ -59,7 +60,7 @@ const HEIGHT = 360;
 // ----- Custom slideIn transition --------------------------------------------
 // Slides the incoming scene's root container in from the right.
 function slideIn(duration: number): SceneTransition {
-  let toRoot: import("pixi.js").Container | undefined;
+  let toRoot: Container | undefined;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {

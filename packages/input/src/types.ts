@@ -1,10 +1,9 @@
 import { ServiceKey } from "@yagejs/core";
 import type { RendererAdapter } from "@yagejs/core";
+import type { InputManager } from "./InputManager.js";
 
 /** Service key for the InputManager. */
-export const InputManagerKey = new ServiceKey<
-  import("./InputManager.js").InputManager
->("inputManager");
+export const InputManagerKey = new ServiceKey<InputManager>("inputManager");
 
 /** Minimal camera surface needed by InputManager for pointer world-coord conversion. */
 export interface CameraLike {

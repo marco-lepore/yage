@@ -1,5 +1,6 @@
 import { Process, easeLinear } from "./Process.js";
 import { interpolate } from "./interpolate.js";
+import type { ProcessOptions } from "./Process.js";
 import type { Interpolatable } from "./interpolate.js";
 import type { EasingFunction } from "./types.js";
 
@@ -57,7 +58,7 @@ export function createKeyframeTrack<T extends Interpolatable>(
   let internalElapsed = 0;
   const firedEvents = new Set<number>();
 
-  const processOpts: import("./Process.js").ProcessOptions = {
+  const processOpts: ProcessOptions = {
     update(dt) {
       internalElapsed += dt * speed;
 

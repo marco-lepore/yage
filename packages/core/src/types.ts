@@ -1,4 +1,6 @@
 import type { Component } from "./Component.js";
+import type { EngineContext } from "./EngineContext.js";
+import type { SystemScheduler } from "./SystemScheduler.js";
 
 /** Constructor type for components. */
 export type ComponentClass<C extends Component = Component> = new (
@@ -24,9 +26,9 @@ export interface Plugin {
   /** Names of plugins this plugin depends on. */
   readonly dependencies?: readonly string[];
   /** Install services into the engine context. Called in topological order. */
-  install?(context: import("./EngineContext.js").EngineContext): void | Promise<void>;
+  install?(context: EngineContext): void | Promise<void>;
   /** Register systems with the scheduler. Called after install. */
-  registerSystems?(scheduler: import("./SystemScheduler.js").SystemScheduler): void;
+  registerSystems?(scheduler: SystemScheduler): void;
   /** Called after all plugins are installed and the engine has started. */
   onStart?(): void | Promise<void>;
   /** Called when the engine is destroyed. */

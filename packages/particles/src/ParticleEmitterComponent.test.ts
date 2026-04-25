@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { EmitterConfig } from "./types.js";
 
 const { mocks } = vi.hoisted(() => {
   class MockParticle {
@@ -112,7 +113,7 @@ import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
 const tex = { label: "test" } as never;
 
 function createEmitter(
-  overrides: Partial<import("./types.js").EmitterConfig> = {},
+  overrides: Partial<EmitterConfig> = {},
 ) {
   return new ParticleEmitterComponent({
     texture: tex,
