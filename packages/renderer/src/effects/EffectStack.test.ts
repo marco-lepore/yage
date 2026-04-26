@@ -357,3 +357,105 @@ describe("EffectStack", () => {
     expect(stack.size).toBe(0);
   });
 });
+
+describe("EffectStack serialize/restoreFrom", () => {
+  let target: InstanceType<typeof mocks.MockContainer>;
+  let host: ReturnType<typeof makeMockHost>;
+  let stack: EffectStack;
+
+  beforeEach(() => {
+    target = new mocks.MockContainer();
+    host = makeMockHost();
+    stack = new EffectStack(target as never, host, "component");
+  });
+
+  it("captures intensity + enabled for defineEffect-built entries", async () => {
+    const { defineEffect } = await import("./defineEffect.js");
+    interface DemoOptions {
+      strength: number;
+    }
+    const filter = new mocks.MockFilter("demo");
+    let intensity = 0;
+    const demo = defineEffect<EffectHandle, DemoOptions>({
+      name: "test:demo",
+      factory: (opts) => ({
+        filter: filter as never,
+        getIntensity: () => intensity,
+        setIntensity: (v) => {
+          intensity = v;
+        },
+        buildExtras: () => ({ _strength: opts.strength }) as never,
+      }),
+    });
+    const handle = stack.add(demo({ strength: 1.5 }));
+    handle.setEnabled(false);
+    intensity = 0.42;
+
+    const snap = stack.serialize();
+    expect(snap.entries).toHaveLength(1);
+    expect(snap.entries[0]).toMatchObject({
+      name: "test:demo",
+      options: { strength: 1.5 },
+      intensity: 0.42,
+      enabled: false,
+    });
+  });
+
+  it("skips effects without registry metadata with a warning", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const a = makeEffect("untagged");
+    stack.add(a.factory);
+    const snap = stack.serialize();
+    expect(snap.entries).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("restoreFrom rebuilds entries via the registered factory", async () => {
+    const { defineEffect, _resetEffectRegistry } = await import(
+      "./defineEffect.js"
+    );
+    _resetEffectRegistry();
+    interface BarOptions {
+      bar: number;
+    }
+    let lastBuilt: BarOptions | null = null;
+    const bar = defineEffect<EffectHandle, BarOptions>({
+      name: "test:bar",
+      factory: (opts) => {
+        lastBuilt = opts;
+        let i = 0;
+        return {
+          filter: new mocks.MockFilter("bar") as never,
+          getIntensity: () => i,
+          setIntensity: (v) => {
+            i = v;
+          },
+        };
+      },
+    });
+    stack.add(bar({ bar: 7 }));
+    const snap = stack.serialize();
+
+    const target2 = new mocks.MockContainer();
+    const host2 = makeMockHost();
+    const fresh = new EffectStack(target2 as never, host2, "component");
+    fresh.restoreFrom(snap);
+
+    expect(lastBuilt).toEqual({ bar: 7 });
+    expect(fresh.size).toBe(1);
+    // Restored entry can serialize again — meta survives the round-trip.
+    const reSnap = fresh.serialize();
+    expect(reSnap.entries[0]?.name).toBe("test:bar");
+  });
+
+  it("restoreFrom warns and skips entries with unknown names", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stack.restoreFrom({
+      entries: [{ name: "test:never-registered", options: {}, intensity: 1, enabled: true }],
+    });
+    expect(stack.size).toBe(0);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});

@@ -403,7 +403,7 @@ describe("RendererPlugin", () => {
           getIntensity: () => 0,
           setIntensity: () => {},
         })),
-      ).toThrow(/install/);
+      ).toThrow(/ProcessSystem/);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { Graphics } from "pixi.js";
-import type { MaskFactory } from "./MaskFactory.js";
+import { defineMask } from "./defineMask.js";
 
 /** Options for {@link rectMask}. */
 export interface RectMaskOptions {
@@ -19,8 +19,9 @@ export interface RectMaskOptions {
  * layout-driven panel), use {@link graphicsMask} so you can call
  * `handle.redraw()` after each layout pass.
  */
-export function rectMask(opts: RectMaskOptions): MaskFactory {
-  return () => {
+export const rectMask = defineMask<RectMaskOptions>({
+  name: "yage:rectMask",
+  factory: (opts) => {
     const g = new Graphics();
     if (opts.rounded && opts.rounded > 0) {
       g.roundRect(opts.x, opts.y, opts.width, opts.height, opts.rounded);
@@ -34,5 +35,5 @@ export function rectMask(opts: RectMaskOptions): MaskFactory {
       attachToTarget: true,
       inverse: false,
     };
-  };
-}
+  },
+});

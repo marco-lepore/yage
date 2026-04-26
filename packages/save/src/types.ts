@@ -15,6 +15,24 @@ export interface GameSnapshot {
   version: number;
   timestamp: number;
   scenes: SceneSnapshotEntry[];
+  /**
+   * Extension data contributed by plugins outside the entity/component model
+   * — e.g. layer/scene/screen-scope effects from the renderer. Keyed by the
+   * string passed to `SaveService.registerSnapshotExtra`.
+   */
+  extras?: Record<string, unknown>;
+}
+
+/**
+ * Plugin-supplied snapshot data that doesn't fit the per-entity/component
+ * model. The renderer registers one of these for layer/scene/screen-scope
+ * effects.
+ */
+export interface SnapshotContributor {
+  /** Build the snapshot fragment. Return `undefined` to omit the extra. */
+  serialize(): unknown;
+  /** Apply the snapshot fragment back onto live state. */
+  restore(data: unknown): void | Promise<void>;
 }
 
 /** Serialized state for a single scene in the stack. */

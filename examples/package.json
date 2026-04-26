@@ -17,6 +17,7 @@
     "@yagejs/audio": "^0.3.0",
     "@yagejs/core": "^0.3.0",
     "@yagejs/debug": "^0.3.0",
+    "@yagejs/effects": "^0.3.0",
     "@yagejs/input": "^0.3.0",
     "@yagejs/particles": "^0.3.0",
     "@yagejs/physics": "^0.3.0",

@@ -2,12 +2,13 @@ import { Component, serializable } from "@yagejs/core";
 import { Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { DisplayText, TextStyle } from "./public-types.js";
 
 /** Options for creating a TextComponent. */
@@ -37,6 +38,8 @@ export interface TextData {
   alpha?: number;
   anchor?: { x: number; y: number };
   visible?: boolean;
+  effects?: EffectStackSnapshot;
+  mask?: MaskSnapshot;
 }
 
 /** Component that displays text on a render layer. */
@@ -113,7 +116,28 @@ export class TextComponent extends Component {
       visible: this.text.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
+    const effects = this._effects?.serialize();
+    if (effects && effects.entries.length > 0) data.effects = effects;
+    const mask = this._mask?.serialize();
+    if (mask) data.mask = mask;
     return data;
+  }
+
+  /** Restore effects and mask after the text node is parented. */
+  afterRestore(data: TextData): void {
+    if (data.effects) {
+      this._effects ??= new EffectStack(
+        this.text,
+        makeEntityProcessHost(this.entity),
+        "component",
+      );
+      this._effects.restoreFrom(data.effects);
+    }
+    if (data.mask) {
+      this._mask?.remove();
+      const handle = restoreMask(this.text, data.mask);
+      if (handle) this._mask = handle;
+    }
   }
 
   static fromSnapshot(data: TextData): TextComponent {

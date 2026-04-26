@@ -3,12 +3,13 @@ import { Sprite } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveTextureInput } from "./assets.js";
 import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { DisplaySprite, TextureInput } from "./public-types.js";
 
 /** Options for creating a SpriteComponent. */
@@ -35,6 +36,8 @@ export interface SpriteData {
   alpha?: number;
   anchor?: { x: number; y: number };
   visible?: boolean;
+  effects?: EffectStackSnapshot;
+  mask?: MaskSnapshot;
 }
 
 /** Component that displays a PixiJS Sprite. */
@@ -91,7 +94,7 @@ export class SpriteComponent extends Component {
       );
       return null;
     }
-    return {
+    const data: SpriteData = {
       textureKey: this._textureKey,
       layer: this.layerName,
       tint: this.sprite.tint,
@@ -99,6 +102,28 @@ export class SpriteComponent extends Component {
       anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
       visible: this.sprite.visible,
     };
+    const effects = this._effects?.serialize();
+    if (effects && effects.entries.length > 0) data.effects = effects;
+    const mask = this._mask?.serialize();
+    if (mask) data.mask = mask;
+    return data;
+  }
+
+  /** Restore effects and mask after the sprite is parented in the scene tree. */
+  afterRestore(data: SpriteData): void {
+    if (data.effects) {
+      this._effects ??= new EffectStack(
+        this.sprite,
+        makeEntityProcessHost(this.entity),
+        "component",
+      );
+      this._effects.restoreFrom(data.effects);
+    }
+    if (data.mask) {
+      this._mask?.remove();
+      const handle = restoreMask(this.sprite, data.mask);
+      if (handle) this._mask = handle;
+    }
   }
 
   /** Create a SpriteComponent from a serialised snapshot. */

@@ -2,14 +2,15 @@ import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
 import type { LayerDef, LayerSpace } from "./LayerDef.js";
 import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type {
   EffectHandle,
   EffectProcessHost,
 } from "./effects/EffectHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 
 /**
  * Factory that produces a fresh `EffectProcessHost` instance — called once
@@ -120,6 +121,42 @@ export class RenderLayer {
   _destroyMask(): void {
     this._mask?.remove();
     this._mask = undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _serializeEffects(): EffectStackSnapshot | undefined {
+    if (!this._effects || this._effects.size === 0) return undefined;
+    const snap = this._effects.serialize();
+    return snap.entries.length > 0 ? snap : undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _restoreEffects(snap: EffectStackSnapshot): void {
+    if (!this._effects) {
+      if (!this._hostFactory) {
+        throw new Error(
+          `RenderLayer "${this.name}": cannot restore effects without an EffectHostFactory.`,
+        );
+      }
+      this._effects = new EffectStack(
+        this.container,
+        this._hostFactory(),
+        "layer",
+      );
+    }
+    this._effects.restoreFrom(snap);
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _serializeMask(): MaskSnapshot | undefined {
+    return this._mask?.serialize() ?? undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _restoreMask(snap: MaskSnapshot): void {
+    this._mask?.remove();
+    const handle = restoreMask(this.container, snap);
+    if (handle) this._mask = handle;
   }
 }
 

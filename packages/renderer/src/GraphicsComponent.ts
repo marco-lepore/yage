@@ -2,12 +2,13 @@ import { Component, serializable } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { GraphicsContext } from "./public-types.js";
 
 /** Options for creating a GraphicsComponent. */
@@ -19,6 +20,8 @@ export interface GraphicsComponentOptions {
 /** Serialisable snapshot of a GraphicsComponent. */
 export interface GraphicsData {
   layer: string;
+  effects?: EffectStackSnapshot;
+  mask?: MaskSnapshot;
 }
 
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
@@ -43,12 +46,34 @@ export class GraphicsComponent extends Component {
 
   /** Serialise to a plain object for save/load. */
   serialize(): GraphicsData {
-    return { layer: this.layerName };
+    const data: GraphicsData = { layer: this.layerName };
+    const effects = this._effects?.serialize();
+    if (effects && effects.entries.length > 0) data.effects = effects;
+    const mask = this._mask?.serialize();
+    if (mask) data.mask = mask;
+    return data;
   }
 
   /** Create a GraphicsComponent from a serialised snapshot. */
   static fromSnapshot(data: GraphicsData): GraphicsComponent {
     return new GraphicsComponent({ layer: data.layer });
+  }
+
+  /** Restore effects and mask after the graphics object is parented. */
+  afterRestore(data: GraphicsData): void {
+    if (data.effects) {
+      this._effects ??= new EffectStack(
+        this.graphics,
+        makeEntityProcessHost(this.entity),
+        "component",
+      );
+      this._effects.restoreFrom(data.effects);
+    }
+    if (data.mask) {
+      this._mask?.remove();
+      const handle = restoreMask(this.graphics, data.mask);
+      if (handle) this._mask = handle;
+    }
   }
 
   /** Attach a visual effect to this graphics object. See {@link SpriteComponent.addEffect}. */

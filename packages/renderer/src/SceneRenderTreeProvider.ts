@@ -9,12 +9,13 @@ import type {
 import { RenderLayerManager } from "./RenderLayer.js";
 import type { EffectHostFactory, RenderLayer } from "./RenderLayer.js";
 import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeSceneScopedProcessHost } from "./effects/hosts/ProcessSystemHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 
 interface SceneEntry {
   root: Container;
@@ -94,6 +95,38 @@ class SceneRenderTreeImpl implements SceneRenderTree {
   _destroyMask(): void {
     this._mask?.remove();
     this._mask = undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _serializeEffects(): EffectStackSnapshot | undefined {
+    if (!this._effects || this._effects.size === 0) return undefined;
+    const snap = this._effects.serialize();
+    return snap.entries.length > 0 ? snap : undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _restoreEffects(snap: EffectStackSnapshot): void {
+    if (!this._effects) {
+      if (!this.hostFactory) {
+        throw new Error(
+          "SceneRenderTree: cannot restore effects without an EffectHostFactory.",
+        );
+      }
+      this._effects = new EffectStack(this.root, this.hostFactory(), "scene");
+    }
+    this._effects.restoreFrom(snap);
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _serializeMask(): MaskSnapshot | undefined {
+    return this._mask?.serialize() ?? undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _restoreMask(snap: MaskSnapshot): void {
+    this._mask?.remove();
+    const handle = restoreMask(this.root, snap);
+    if (handle) this._mask = handle;
   }
 }
 
@@ -194,4 +227,111 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       this.destroyForScene(scene);
     }
   }
+
+  /**
+   * Capture the layer/scene-scope effect + mask state across every live
+   * scene. Each entry records its scene's `name` so restore matches by
+   * name (insensitive to push order or extra scenes pushed at runtime).
+   * @internal
+   */
+  serializeAll(): SceneTreesSnapshot {
+    const out: SceneTreeSnapshot[] = [];
+    for (const [scene, entry] of this.entries) {
+      const tree = entry.tree;
+      const treeSnap = tree._serializeEffects();
+      const sceneMask = tree._serializeMask();
+      const layers: Record<string, EffectStackSnapshot> = {};
+      const layerMasks: Record<string, MaskSnapshot> = {};
+      let hasLayers = false;
+      let hasLayerMasks = false;
+      for (const layer of tree.getAll()) {
+        const layerSnap = layer._serializeEffects();
+        if (layerSnap) {
+          layers[layer.name] = layerSnap;
+          hasLayers = true;
+        }
+        const maskSnap = layer._serializeMask();
+        if (maskSnap) {
+          layerMasks[layer.name] = maskSnap;
+          hasLayerMasks = true;
+        }
+      }
+      out.push({
+        scene: scene.name,
+        ...(treeSnap ? { tree: treeSnap } : {}),
+        ...(hasLayers ? { layers } : {}),
+        ...(sceneMask ? { mask: sceneMask } : {}),
+        ...(hasLayerMasks ? { layerMasks } : {}),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Apply a `serializeAll()` snapshot onto the live trees. Matches each
+   * entry to its live tree by `Scene.name`, which is stable across
+   * push/pop (entries with no matching scene live are skipped with a
+   * warning). Multiple scenes sharing a name match to the first.
+   * @internal
+   */
+  restoreAll(snap: SceneTreesSnapshot): void {
+    const treesByName = new Map<string, SceneRenderTreeImpl>();
+    for (const [scene, entry] of this.entries) {
+      // First write wins so duplicate-name scenes resolve consistently.
+      if (!treesByName.has(scene.name)) {
+        treesByName.set(scene.name, entry.tree);
+      }
+    }
+    for (const entry of snap) {
+      const tree = treesByName.get(entry.scene);
+      if (!tree) {
+        console.warn(
+          `SceneRenderTreeProvider.restoreAll: no live scene named ` +
+            `"${entry.scene}" — its effects + mask state will be skipped.`,
+        );
+        continue;
+      }
+      if (entry.tree) tree._restoreEffects(entry.tree);
+      if (entry.mask) tree._restoreMask(entry.mask);
+      if (entry.layers) {
+        for (const [layerName, layerSnap] of Object.entries(entry.layers)) {
+          const layer = tree.tryGet(layerName);
+          if (!layer) {
+            console.warn(
+              `SceneRenderTreeProvider.restoreAll: layer "${layerName}" ` +
+                `not found on live tree "${entry.scene}" — skipping its effects.`,
+            );
+            continue;
+          }
+          layer._restoreEffects(layerSnap);
+        }
+      }
+      if (entry.layerMasks) {
+        for (const [layerName, maskSnap] of Object.entries(entry.layerMasks)) {
+          const layer = tree.tryGet(layerName);
+          if (!layer) {
+            console.warn(
+              `SceneRenderTreeProvider.restoreAll: layer "${layerName}" ` +
+                `not found on live tree "${entry.scene}" — skipping its mask.`,
+            );
+            continue;
+          }
+          layer._restoreMask(maskSnap);
+        }
+      }
+    }
+  }
+}
+
+/** @internal — emitted by `SceneRenderTreeProviderImpl.serializeAll`. */
+export type SceneTreesSnapshot = SceneTreeSnapshot[];
+
+/** @internal — one element of {@link SceneTreesSnapshot}. */
+export interface SceneTreeSnapshot {
+  /** `Scene.name` at save time — used to match the entry on restore. */
+  scene: string;
+  tree?: EffectStackSnapshot;
+  layers?: Record<string, EffectStackSnapshot>;
+  mask?: MaskSnapshot;
+  layerMasks?: Record<string, MaskSnapshot>;
 }

@@ -126,14 +126,23 @@ export type {
   EffectTarget,
 } from "./effects/Effect.js";
 export { EffectStack } from "./effects/EffectStack.js";
+export type {
+  EffectStackSnapshot,
+  EffectStackEntry,
+} from "./effects/EffectStack.js";
+export { defineEffect } from "./effects/defineEffect.js";
+export type { EffectDefinition } from "./effects/defineEffect.js";
 export { rawFilter } from "./effects/rawFilter.js";
 export type { RawFilterOptions } from "./effects/rawFilter.js";
 export { withFade } from "./effects/withFade.js";
+export type { RendererSnapshotData } from "./effects/RendererSnapshotContributor.js";
 
 // Masks
-export type { MaskHandle } from "./masks/MaskHandle.js";
+export type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 export type { Mask, MaskFactory } from "./masks/MaskFactory.js";
-export { attachMask } from "./masks/attachMask.js";
+export { attachMask, restoreMask } from "./masks/attachMask.js";
+export { defineMask } from "./masks/defineMask.js";
+export type { MaskDefinition } from "./masks/defineMask.js";
 export { rectMask } from "./masks/rectMask.js";
 export type { RectMaskOptions } from "./masks/rectMask.js";
 export { spriteMask } from "./masks/spriteMask.js";

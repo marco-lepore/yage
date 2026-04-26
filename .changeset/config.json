@@ -17,7 +17,8 @@
       "@yagejs/ui",
       "@yagejs/ui-react",
       "@yagejs/debug",
-      "@yagejs/save"
+      "@yagejs/save",
+      "@yagejs/effects"
     ]
   ],
   "linked": [],

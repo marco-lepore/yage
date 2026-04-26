@@ -187,3 +187,23 @@ const name = save.loadData("playerName");     // string | null
 ```
 
 Untyped usage falls back to `SaveService<UntypedSlots>` (`Record<string, any>`), which is what `this.use(SaveServiceKey)` gives you by default.
+
+## Snapshot Contributors
+
+Plugins that own state outside the entity/component model can register a `SnapshotContributor` to extend the snapshot:
+
+```ts
+import { SaveServiceKey, type SnapshotContributor } from "@yagejs/save";
+
+const save = context.tryResolve(SaveServiceKey);
+save?.registerSnapshotExtra("myPlugin", {
+  serialize: () => ({ ... }) ,           // or undefined to omit
+  restore: (data) => { /* apply data */ },
+});
+```
+
+Contributors are invoked during `saveSnapshot` (their data lands under `GameSnapshot.extras[key]`) and during `loadSnapshot` *after* every scene + entity has been restored — so contributors can rely on live `SceneRenderTree`s and other restored state existing.
+
+The renderer plugin (`@yagejs/renderer`) auto-registers a contributor under the key `"renderer"` for layer/scene/screen-scope effects + masks. Component-scope effects are saved through their owning component's `serialize()` and don't go through this channel.
+
+`GameSnapshot.version` is `4` — older saves error out at load with a version-mismatch message.

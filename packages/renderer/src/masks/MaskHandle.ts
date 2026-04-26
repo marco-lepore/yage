@@ -27,4 +27,22 @@ export interface MaskHandle {
    * depends on changes (e.g. after a layout pass updates dimensions).
    */
   redraw(): void;
+
+  /**
+   * Serialize this mask's definition + state for save/load. Returns `null`
+   * for masks that can't be reproduced from a snapshot — `spriteMask` (holds
+   * a Sprite reference) and `graphicsMask` (holds a draw closure). Only
+   * masks built from `defineMask`-registered factories return a snapshot.
+   */
+  serialize(): MaskSnapshot | null;
+}
+
+/**
+ * Serialized state for a mask. Re-attached via `target.setMask` using the
+ * registered `MaskDefinition` matching `name`.
+ */
+export interface MaskSnapshot {
+  readonly name: string;
+  readonly options: unknown;
+  readonly inverse: boolean;
 }

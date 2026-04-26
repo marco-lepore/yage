@@ -13,10 +13,11 @@ import type {
   SceneSnapshotEntry,
   EntitySnapshotEntry,
   ComponentSnapshot,
+  SnapshotContributor,
 } from "./types.js";
 
 /** Current snapshot format version. */
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 4;
 
 /**
  * Component restoration priority. Components listed here are added first
@@ -40,12 +41,31 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
   private readonly storage: SaveStorage;
   private readonly context: EngineContext;
   private readonly namespace: string;
+  private readonly contributors = new Map<string, SnapshotContributor>();
   private _loading = false;
 
   constructor(storage: SaveStorage, context: EngineContext, namespace = "yage") {
     this.storage = storage;
     this.context = context;
     this.namespace = namespace;
+  }
+
+  // ---- Extension API ----
+
+  /**
+   * Register a plugin to contribute extra data to every snapshot under
+   * `key`. The contributor's `serialize()` is invoked during `saveSnapshot`,
+   * and its `restore(data)` runs after every scene + entity in the snapshot
+   * has been hydrated. Re-registering an existing key replaces the previous
+   * contributor.
+   */
+  registerSnapshotExtra(key: string, contributor: SnapshotContributor): void {
+    this.contributors.set(key, contributor);
+  }
+
+  /** Remove a previously registered contributor. */
+  unregisterSnapshotExtra(key: string): void {
+    this.contributors.delete(key);
   }
 
   // ---- Snapshot API ----
@@ -183,10 +203,21 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       });
     }
 
+    const extras: Record<string, unknown> = {};
+    let hasExtras = false;
+    for (const [key, contributor] of this.contributors) {
+      const data = contributor.serialize();
+      if (data !== undefined) {
+        extras[key] = data;
+        hasExtras = true;
+      }
+    }
+
     return {
       version: SNAPSHOT_VERSION,
       timestamp: Date.now(),
       scenes,
+      ...(hasExtras ? { extras } : {}),
     };
   }
 
@@ -227,6 +258,24 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
 
         if (entry.paused) {
           scene.paused = true;
+        }
+      }
+
+      // Run snapshot contributors after every scene is pushed and entities
+      // restored. By this point any layer/scene render trees the renderer
+      // contributor needs to find by name are live, and component-scope
+      // afterRestore hooks have run, so contributors see consistent state.
+      if (snapshot.extras) {
+        for (const [key, data] of Object.entries(snapshot.extras)) {
+          const contributor = this.contributors.get(key);
+          if (!contributor) {
+            console.warn(
+              `SaveService: snapshot contains extras for "${key}" but no ` +
+                `contributor is registered — skipping.`,
+            );
+            continue;
+          }
+          await contributor.restore(data);
         }
       }
     } finally {

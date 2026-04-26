@@ -21,6 +21,7 @@
 - [ui-react](llms/packages/ui-react.md): React reconciler, hooks, reactive stores
 - [save](llms/packages/save.md): Save/load, @serializable, snapshots
 - [debug](llms/packages/debug.md): Debug overlay, custom contributors, stats
+- [effects](llms/packages/effects.md): Visual-effect presets — bloom, outline, CRT, vignette, color grade, etc.
 
 ## Optional
 

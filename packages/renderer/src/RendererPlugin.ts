@@ -10,14 +10,22 @@ import type {
   EngineContext,
   Plugin,
   ProcessSystem,
+  ServiceKey,
   SystemScheduler,
 } from "@yagejs/core";
+import type { SnapshotContributor } from "@yagejs/save";
+
+interface SaveServiceLike {
+  registerSnapshotExtra(key: string, contributor: SnapshotContributor): void;
+  unregisterSnapshotExtra(key: string): void;
+}
 import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import { EffectStack } from "./effects/EffectStack.js";
 import { makeProcessSystemHost } from "./effects/hosts/ProcessSystemHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
@@ -48,6 +56,7 @@ export class RendererPlugin implements Plugin {
   private fitController!: FitController;
   private _processSystem: ProcessSystem | undefined;
   private _effects: EffectStack | undefined;
+  private _unregisterSaveContributor: (() => void) | null = null;
 
   constructor(config: RendererConfig) {
     this.config = config;
@@ -145,6 +154,57 @@ export class RendererPlugin implements Plugin {
         Assets.unload(path);
       },
     });
+
+    // 10. Optional: bridge layer/scene/screen-scope effects + masks into the
+    //     save system. `@yagejs/save` is an optional peer dep — the dynamic
+    //     import + try/catch lets the renderer keep working when it's not
+    //     installed (the contributor simply doesn't register).
+    await this.tryRegisterSaveContributor(context);
+  }
+
+  private async tryRegisterSaveContributor(
+    context: EngineContext,
+  ): Promise<void> {
+    let save: typeof import("@yagejs/save");
+    try {
+      save = await import("@yagejs/save");
+    } catch {
+      // @yagejs/save not installed — save support for renderer-scope effects
+      // is unavailable. Component-scope effects still serialize through the
+      // visual components' own snapshot path.
+      return;
+    }
+    const key = save.SaveServiceKey as
+      | ServiceKey<SaveServiceLike>
+      | undefined;
+    if (!key) return;
+    const service = context.tryResolve(key);
+    if (!service) return;
+    const contributor: SnapshotContributor = new RendererSnapshotContributor(
+      this.provider,
+      () => this._effects,
+      () => this.ensureScreenStack(),
+    );
+    service.registerSnapshotExtra("renderer", contributor);
+    this._unregisterSaveContributor = () => {
+      service.unregisterSnapshotExtra("renderer");
+    };
+  }
+
+  private ensureScreenStack(): EffectStack {
+    if (!this._effects) {
+      if (!this._processSystem) {
+        throw new Error(
+          "RendererPlugin: cannot create screen-scope EffectStack — ProcessSystem not resolved.",
+        );
+      }
+      this._effects = new EffectStack(
+        this.app.stage,
+        makeProcessSystemHost(this._processSystem),
+        "screen",
+      );
+    }
+    return this._effects;
   }
 
   registerSystems(scheduler: SystemScheduler): void {
@@ -161,22 +221,12 @@ export class RendererPlugin implements Plugin {
    * wanted, or it lives until the renderer plugin is destroyed.
    */
   addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    if (!this._effects) {
-      if (!this._processSystem) {
-        throw new Error(
-          "RendererPlugin.addEffect called before plugin install — no ProcessSystem available.",
-        );
-      }
-      this._effects = new EffectStack(
-        this.app.stage,
-        makeProcessSystemHost(this._processSystem),
-        "screen",
-      );
-    }
-    return this._effects.add(factory);
+    return this.ensureScreenStack().add(factory);
   }
 
   onDestroy(): void {
+    this._unregisterSaveContributor?.();
+    this._unregisterSaveContributor = null;
     this.unregisterHooks?.();
     this.unregisterHooks = null;
     this.fitController.stop();

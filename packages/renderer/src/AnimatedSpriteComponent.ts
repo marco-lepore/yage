@@ -6,12 +6,13 @@ import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { EffectStack } from "./effects/EffectStack.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
-import { attachMask } from "./masks/attachMask.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions {
@@ -27,6 +28,8 @@ export interface AnimatedSpriteComponentOptions {
 export interface AnimatedSpriteData {
   source: FrameSource;
   layer: string;
+  effects?: EffectStackSnapshot;
+  mask?: MaskSnapshot;
 }
 
 /** Component that displays a PixiJS AnimatedSprite. */
@@ -97,11 +100,36 @@ export class AnimatedSpriteComponent extends Component {
       );
       return null;
     }
-    return { source: this._source, layer: this.layerName };
+    const data: AnimatedSpriteData = {
+      source: this._source,
+      layer: this.layerName,
+    };
+    const effects = this._effects?.serialize();
+    if (effects && effects.entries.length > 0) data.effects = effects;
+    const mask = this._mask?.serialize();
+    if (mask) data.mask = mask;
+    return data;
   }
 
   static fromSnapshot(data: AnimatedSpriteData): AnimatedSpriteComponent {
     return new AnimatedSpriteComponent(data);
+  }
+
+  /** Restore effects and mask after the animated sprite is parented. */
+  afterRestore(data: AnimatedSpriteData): void {
+    if (data.effects) {
+      this._effects ??= new EffectStack(
+        this.animatedSprite,
+        makeEntityProcessHost(this.entity),
+        "component",
+      );
+      this._effects.restoreFrom(data.effects);
+    }
+    if (data.mask) {
+      this._mask?.remove();
+      const handle = restoreMask(this.animatedSprite, data.mask);
+      if (handle) this._mask = handle;
+    }
   }
 
   /** Attach a visual effect to this animated sprite. See {@link SpriteComponent.addEffect}. */
