@@ -539,7 +539,7 @@ class ShowcaseScene extends Scene {
       let gemHandle: MaskHandle | null = null;
       let gemInverse = false;
       const maskGem = document.createElement("button");
-      maskGem.textContent = "Mask gem (rounded rect)";
+      maskGem.textContent = "Mask gem (top half)";
       maskGem.onclick = () => {
         if (gemHandle) {
           gemHandle.remove();
@@ -551,9 +551,13 @@ class ShowcaseScene extends Scene {
         }
         const g = this.gem?.tryGet(GraphicsComponent);
         if (!g) throw new Error("gem graphics missing");
+        // Plain rect (no `rounded`) so the cut reads as an unambiguous
+        // horizontal slice. The diamond's silhouette tapers to a point at
+        // the bbox corners, so a `rounded` rect on this shape is invisible
+        // — its rounded corners fall outside the diamond. The `rounded`
+        // option is well-suited to masking actually-rectangular targets.
         gemHandle = g.setMask(
-          // Clip to the top half of the diamond polygon.
-          rectMask({ x: -55, y: -55, width: 110, height: 55, rounded: 8 }),
+          rectMask({ x: -55, y: -55, width: 110, height: 55 }),
         );
         maskGem.classList.add("on");
       };
