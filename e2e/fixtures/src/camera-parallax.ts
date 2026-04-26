@@ -1,7 +1,7 @@
 /**
  * E2E fixture for camera parallax + screen-space UI layer. Driven by
- * `e2e/specs/camera-parallax.spec.ts`. Uses `manualClock: true` so the
- * spec can deterministically step frames.
+ * `e2e/specs/camera-parallax.spec.ts`. The fixture freezes the inspector
+ * clock on boot so the spec can deterministically step frames.
  *
  * Exposes `window.__cameraTest__` with helpers to drive the camera.
  */
@@ -74,8 +74,9 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-engine.use(new DebugPlugin({ manualClock: true }));
+engine.use(new DebugPlugin());
 await engine.start();
+engine.inspector.time.freeze();
 
 const scene = new ParallaxScene();
 await engine.scenes.push(scene);

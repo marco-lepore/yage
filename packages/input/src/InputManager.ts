@@ -12,6 +12,8 @@ export class InputManager {
   private justPressedKeys = new Set<string>();
   private justReleasedKeys = new Set<string>();
   private holdStart = new Map<string, number>();
+  private syntheticPressedActions = new Set<string>();
+  private syntheticActionStarts = new Map<string, number>();
   private actionMap = new Map<string, string[]>();
   private defaultBindings = new Map<string, string[]>();
   private groups = new Map<string, Set<string>>();
@@ -19,6 +21,9 @@ export class InputManager {
   private disabledGroups = new Set<string>();
   private pointerScreenPos = Vec2.ZERO;
   private pointerDownState = false;
+  private pressedMouseButtons = new Set<number>();
+  private gamepadButtons = new Map<number, boolean>();
+  private gamepadAxes = new Map<number, number>();
   private camera: CameraLike | null = null;
   private elapsedMs = 0;
   private listenResolve: ((key: string | null) => void) | null = null;
@@ -28,13 +33,15 @@ export class InputManager {
   /** Whether any key mapped to this action is currently held. */
   isPressed(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
-    return this.anyKeyInSet(action, this.pressedKeys);
+    return this.syntheticPressedActions.has(action) ||
+      this.anyKeyInSet(action, this.pressedKeys);
   }
 
   /** Whether any key mapped to this action was pressed this frame. */
   isJustPressed(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
-    return this.anyKeyInSet(action, this.justPressedKeys);
+    return this.syntheticPressedActions.has(action) ||
+      this.anyKeyInSet(action, this.justPressedKeys);
   }
 
   /** Whether any key mapped to this action was released this frame. */
@@ -57,13 +64,17 @@ export class InputManager {
   getHoldDuration(action: string): number {
     if (!this.isActionEnabled(action)) return 0;
     const keys = this.actionMap.get(action);
-    if (!keys) return 0;
+    if (!keys && !this.syntheticPressedActions.has(action)) return 0;
     let maxDuration = 0;
-    for (const key of keys) {
+    for (const key of keys ?? []) {
       const start = this.holdStart.get(key);
       if (start !== undefined) {
         maxDuration = Math.max(maxDuration, this.elapsedMs - start);
       }
+    }
+    const syntheticStart = this.syntheticActionStarts.get(action);
+    if (syntheticStart !== undefined) {
+      maxDuration = Math.max(maxDuration, this.elapsedMs - syntheticStart);
     }
     return maxDuration;
   }
@@ -349,6 +360,130 @@ export class InputManager {
     }
   }
 
+  /** Public wrapper for synthetic key-down injection. */
+  fireKeyDown(code: string): void {
+    this._onKeyDown(code);
+  }
+
+  /** Public wrapper for synthetic key-up injection. */
+  fireKeyUp(code: string): void {
+    this._onKeyUp(code);
+  }
+
+  /** Public wrapper for synthetic pointer movement. */
+  firePointerMove(screenX: number, screenY: number): void {
+    this._onPointerMove(screenX, screenY);
+  }
+
+  /** Public wrapper for synthetic pointer-button presses. */
+  firePointerDown(button: 0 | 1 | 2 = 0): void {
+    this._onPointerDown();
+    this.pressedMouseButtons.add(button);
+
+    if (button === 0) this._onKeyDown("MouseLeft");
+    if (button === 1) this._onKeyDown("MouseMiddle");
+    if (button === 2) this._onKeyDown("MouseRight");
+  }
+
+  /** Public wrapper for synthetic pointer-button releases. */
+  firePointerUp(button: 0 | 1 | 2 = 0): void {
+    this.pressedMouseButtons.delete(button);
+    this.pointerDownState = this.pressedMouseButtons.size > 0;
+    if (!this.pointerDownState) {
+      this._onPointerUp();
+    }
+
+    if (button === 0) this._onKeyUp("MouseLeft");
+    if (button === 1) this._onKeyUp("MouseMiddle");
+    if (button === 2) this._onKeyUp("MouseRight");
+  }
+
+  /** Store synthetic gamepad button state. */
+  fireGamepadButton(idx: number, pressed: boolean): void {
+    this.gamepadButtons.set(idx, pressed);
+  }
+
+  /** Store synthetic gamepad axis state. */
+  fireGamepadAxis(idx: number, value: number): void {
+    this.gamepadAxes.set(idx, value);
+  }
+
+  /** Inject a one-frame synthetic action pulse. */
+  fireAction(name: string): void {
+    if (!this.actionMap.has(name)) {
+      throw new Error(`InputManager.fireAction(): unknown action "${name}".`);
+    }
+    this.syntheticPressedActions.add(name);
+    this.syntheticActionStarts.set(name, this.elapsedMs);
+  }
+
+  /** Release all synthetic and physical input state. */
+  clearAll(): void {
+    for (const code of [...this.pressedKeys]) {
+      this._onKeyUp(code);
+    }
+    this.justPressedKeys.clear();
+    this.justReleasedKeys.clear();
+    this.holdStart.clear();
+    this.syntheticPressedActions.clear();
+    this.syntheticActionStarts.clear();
+    this.pressedMouseButtons.clear();
+    this.pointerDownState = false;
+    this.gamepadButtons.clear();
+    this.gamepadAxes.clear();
+  }
+
+  /** Release any pressed pointer buttons without touching keyboard state. */
+  clearPointerButtons(): void {
+    for (const button of [...this.pressedMouseButtons]) {
+      if (button === 0) this._onKeyUp("MouseLeft");
+      if (button === 1) this._onKeyUp("MouseMiddle");
+      if (button === 2) this._onKeyUp("MouseRight");
+    }
+    this.pressedMouseButtons.clear();
+    this.pointerDownState = false;
+  }
+
+  /** Snapshot of current held input state for inspector tooling. */
+  snapshotState(): {
+    keys: string[];
+    actions: string[];
+    mouse: { x: number; y: number; buttons: number[]; down: boolean };
+    gamepad: {
+      buttons: number[];
+      axes: Array<{ index: number; value: number }>;
+    };
+  } {
+    const keys = [...this.pressedKeys].sort((a, b) => a.localeCompare(b));
+    const actions = this.getActionNames()
+      .filter((action) => this.isPressed(action))
+      .sort((a, b) => a.localeCompare(b));
+    const buttons = [...this.pressedMouseButtons].sort((a, b) => a - b);
+    const pressedButtons = [...this.gamepadButtons.entries()]
+      .filter(([, pressed]) => pressed)
+      .map(([idx]) => idx)
+      .sort((a, b) => a - b);
+    const axes = [...this.gamepadAxes.entries()]
+      .filter(([, value]) => value !== 0)
+      .sort(([a], [b]) => a - b)
+      .map(([index, value]) => ({ index, value }));
+
+    return {
+      keys,
+      actions,
+      mouse: {
+        x: this.pointerScreenPos.x,
+        y: this.pointerScreenPos.y,
+        buttons,
+        down: this.pointerDownState,
+      },
+      gamepad: {
+        buttons: pressedButtons,
+        axes,
+      },
+    };
+  }
+
   // -- Internal methods (called by InputPlugin / Systems) --
 
   /** @internal */
@@ -394,6 +529,8 @@ export class InputManager {
   _clearFrameState(): void {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
+    this.syntheticPressedActions.clear();
+    this.syntheticActionStarts.clear();
   }
 
   /** Set camera for pointer world-coord conversion. */

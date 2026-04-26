@@ -8,7 +8,6 @@ import type {
   EngineContext,
   EventBus,
   EngineEvents,
-  Inspector,
   Plugin,
   SceneManager,
   System,
@@ -37,9 +36,7 @@ import { SystemTimingContributor } from "./contributors/SystemTimingContributor.
 export interface DebugConfig {
   /** Key code to toggle debug overlay. Default: "Backquote" */
   toggleKey?: string;
-  /** When true, stop the renderer ticker and advance simulation manually via `window.__yage__.clock`. */
-  manualClock?: boolean;
-  /** Key code to advance one fixed-timestep frame while manual clock mode is active. Default: "Period" */
+  /** Key code to advance one fixed-timestep frame while the debug clock is frozen. Default: "Period" */
   stepKey?: string;
   /** Max pooled Graphics objects. Default: 256 */
   maxGraphics?: number;
@@ -49,9 +46,15 @@ export interface DebugConfig {
   startEnabled?: boolean;
   /** Initial flag overrides, keyed by "contributorName.flagName". */
   flags?: Record<string, boolean>;
+  /**
+   * If set, every scene's RNG is initialized with this seed instead of an
+   * unspecified default. Use for deterministic E2E runs. Leave undefined for
+   * normal debug builds so randomness behaves the same as in production.
+   */
+  deterministicSeed?: number;
 }
 
-interface LayerTransformSnapshot {
+export interface LayerTransformSnapshot {
   x: number;
   y: number;
   scaleX: number;
@@ -59,14 +62,20 @@ interface LayerTransformSnapshot {
   rotation: number;
 }
 
-interface CameraStackSnapshot {
+export interface CameraStackSnapshot {
   scene: string;
   name: string | undefined;
   priority: number;
   enabled: boolean;
 }
 
-interface InspectorDiagnostics {
+/**
+ * Renderer-aware diagnostics exposed through the inspector extension
+ * namespace `debug`. Kept out of the core Inspector surface so the core
+ * package stays renderer-agnostic while plugins can still publish optional
+ * runtime helpers in a uniform way.
+ */
+export interface DebugDiagnostics {
   getLayerTransform(
     sceneName: string,
     layerName: string,
@@ -112,6 +121,11 @@ export class DebugPlugin implements Plugin {
   install(context: EngineContext): void {
     this.context = context;
     this.renderer = context.resolve(RendererKey);
+    if (this.config.deterministicSeed !== undefined) {
+      context
+        .resolve(InspectorKey)
+        .setDefaultSceneSeed(this.config.deterministicSeed);
+    }
 
     this.registry = new DebugRegistryImpl();
     this.registry.enabled = this.config.startEnabled ?? false;
@@ -186,16 +200,15 @@ export class DebugPlugin implements Plugin {
       () => app.start(),
       () => app.render(),
     );
-    if (this.config.manualClock) {
-      this.clock.setManual(true);
-    }
+    inspector.attachTimeController(this.clock);
+    inspector.setEventLogEnabled(true);
     this.attachToGlobal(this.clock);
 
     // Materialize the debug scene off-stack. `_mountDetached` routes through
     // the same beforeEnter hooks as `push`, so the renderer materializes the
     // debug scene's tree and registers SceneRenderTreeKey on its scope.
     this.provider = this.context.tryResolve(SceneRenderTreeProviderKey) ?? null;
-    this.attachInspectorDiagnostics(inspector);
+    this.registerInspectorDiagnostics();
     await this.materializeDebugScene();
 
     // Keep the debug scene visually on top of the user stack after any
@@ -227,6 +240,11 @@ export class DebugPlugin implements Plugin {
     }
 
     this.detachFromGlobal();
+    this.unregisterInspectorDiagnostics();
+    this.context
+      .resolve(InspectorKey)
+      .detachTimeController(this.clock ?? undefined);
+    this.context.resolve(InspectorKey).setEventLogEnabled(false);
     this.clock = null;
 
     for (const contributor of this.registry.contributors.values()) {
@@ -323,49 +341,48 @@ export class DebugPlugin implements Plugin {
     this.hudApi = null;
   }
 
-  private attachInspectorDiagnostics(inspector: Inspector): void {
-    const g = (globalThis as Record<string, unknown>)["__yage__"];
-    if (!g || typeof g !== "object") return;
+  private registerInspectorDiagnostics(): void {
+    const diagnostics: DebugDiagnostics = {
+      getLayerTransform: (sceneName, layerName) => {
+        const scene = this.sceneManager.all.find(
+          (candidate) => candidate.name === sceneName,
+        );
+        if (!scene) return undefined;
 
-    const debugSurface = g as Record<string, unknown>;
-    const diagnostics = inspector as Inspector & InspectorDiagnostics;
-    debugSurface["inspector"] = inspector;
+        const layer = this.provider?.getTree(scene)?.tryGet(layerName);
+        if (!layer) return undefined;
 
-    diagnostics.getLayerTransform = (sceneName, layerName) => {
-      const scene = this.sceneManager.all.find(
-        (candidate) => candidate.name === sceneName,
-      );
-      if (!scene) return undefined;
-
-      const layer = this.provider?.getTree(scene)?.tryGet(layerName);
-      if (!layer) return undefined;
-
-      const container = layer.container;
-      return {
-        x: container.position.x,
-        y: container.position.y,
-        scaleX: container.scale.x,
-        scaleY: container.scale.y,
-        rotation: container.rotation,
-      };
-    };
-
-    diagnostics.getCameraStack = () => {
-      const cameras: CameraStackSnapshot[] = [];
-      for (const scene of this.sceneManager.all) {
-        for (const entity of scene.getEntities()) {
-          const cam = entity.tryGet(CameraComponent);
-          if (!cam) continue;
-          cameras.push({
-            scene: scene.name,
-            name: cam.cameraName,
-            priority: cam.priority,
-            enabled: cam.enabled,
-          });
+        const container = layer.container;
+        return {
+          x: container.position.x,
+          y: container.position.y,
+          scaleX: container.scale.x,
+          scaleY: container.scale.y,
+          rotation: container.rotation,
+        };
+      },
+      getCameraStack: () => {
+        const cameras: CameraStackSnapshot[] = [];
+        for (const scene of this.sceneManager.all) {
+          for (const entity of scene.getEntities()) {
+            const cam = entity.tryGet(CameraComponent);
+            if (!cam) continue;
+            cameras.push({
+              scene: scene.name,
+              name: cam.cameraName,
+              priority: cam.priority,
+              enabled: cam.enabled,
+            });
+          }
         }
-      }
-      return cameras;
+        return cameras;
+      },
     };
+    this.context.resolve(InspectorKey).addExtension("debug", diagnostics);
+  }
+
+  private unregisterInspectorDiagnostics(): void {
+    this.context.resolve(InspectorKey).removeExtension("debug");
   }
 
   private attachToGlobal(clock: IDebugClock): void {

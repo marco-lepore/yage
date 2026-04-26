@@ -7,6 +7,7 @@ import type {
   RigidBodyConfig,
   ColliderConfig,
   ColliderShape,
+  BodyType,
   RaycastHit,
 } from "./types.js";
 import type { ColliderComponent } from "./ColliderComponent.js";
@@ -288,6 +289,84 @@ export class PhysicsWorld {
     return result;
   }
 
+  /** Inspector-facing snapshot of the current rigid bodies and active contacts. */
+  snapshot(): {
+    bodies: Array<{
+      entityId: string;
+      type: BodyType;
+      position: { x: number; y: number };
+      rotation: number;
+      linvel: { x: number; y: number };
+      angvel: number;
+    }>;
+    contacts: Array<{ a: string; b: string }>;
+  } {
+    const bodies = [...this.bodyMap.entries()]
+      .map(([handle, entity]) => {
+        const body = this.getBody(handle);
+        if (!body) return null;
+
+        const position = body.translation();
+        const linvel = body.linvel();
+        return {
+          entityId: String(entity.id),
+          type: this.bodyTypeToSnapshot(body.bodyType()),
+          position: {
+            x: this.toPixels(position.x),
+            y: this.toPixels(position.y),
+          },
+          rotation: body.rotation(),
+          linvel: {
+            x: this.toPixels(linvel.x),
+            y: this.toPixels(linvel.y),
+          },
+          angvel: body.angvel(),
+        };
+      })
+      .filter((body): body is NonNullable<typeof body> => body !== null)
+      .sort((a, b) => a.entityId.localeCompare(b.entityId));
+
+    const contactPairs = new Set<string>();
+    for (const handle of this.colliderMap.keys()) {
+      const collider = this.getCollider(handle);
+      if (!collider) continue;
+
+      this.world.contactPairsWith(collider, (other) => {
+        const first = this.colliderMap.get(handle);
+        const second = this.colliderMap.get(other.handle);
+        if (!first || !second) return;
+        const [a, b] = [String(first.id), String(second.id)].sort((x, y) =>
+          x.localeCompare(y),
+        );
+        contactPairs.add(`${a}:${b}`);
+      });
+
+      this.world.intersectionPairsWith(collider, (other) => {
+        const first = this.colliderMap.get(handle);
+        const second = this.colliderMap.get(other.handle);
+        if (!first || !second) return true;
+        const [a, b] = [String(first.id), String(second.id)].sort((x, y) =>
+          x.localeCompare(y),
+        );
+        contactPairs.add(`${a}:${b}`);
+        return true;
+      });
+    }
+
+    const contacts = [...contactPairs]
+      .map((pair) => {
+        const [a, b] = pair.split(":");
+        return { a: a!, b: b! };
+      })
+      .sort((left, right) =>
+        left.a === right.a
+          ? left.b.localeCompare(right.b)
+          : left.a.localeCompare(right.a),
+      );
+
+    return { bodies, contacts };
+  }
+
   /** Destroy the physics world and free resources. */
   destroy(): void {
     this.eventQueue.free();
@@ -327,5 +406,13 @@ export class PhysicsWorld {
         return desc;
       }
     }
+  }
+
+  private bodyTypeToSnapshot(type: RAPIER.RigidBodyType): BodyType {
+    if (type === RAPIER.RigidBodyType.Fixed) return "static";
+    if (type === RAPIER.RigidBodyType.KinematicPositionBased) {
+      return "kinematic";
+    }
+    return "dynamic";
   }
 }

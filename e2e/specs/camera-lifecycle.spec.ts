@@ -30,8 +30,7 @@ interface CameraStackSnapshot {
   enabled: boolean;
 }
 
-interface InspectorDiagnostics {
-  getSceneStack(): Array<{ name: string }>;
+interface DebugDiagnostics {
   getLayerTransform(
     sceneName: string,
     layerName: string,
@@ -39,9 +38,14 @@ interface InspectorDiagnostics {
   getCameraStack(): CameraStackSnapshot[];
 }
 
+interface InspectorAPI {
+  getSceneStack(): Array<{ name: string }>;
+  getExtension<T extends object>(namespace: string): T | undefined;
+}
+
 type LifecycleWin = Window & {
   __cameraTest__?: LifecycleAPI;
-  __yage__?: { inspector: InspectorDiagnostics };
+  __yage__?: { inspector: InspectorAPI };
 };
 
 async function waitForControls(page: Page): Promise<void> {
@@ -67,7 +71,7 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     let world = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "world",
       ),
@@ -85,7 +89,7 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     world = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "world",
       ),
@@ -104,7 +108,7 @@ test.describe("Camera lifecycle", () => {
     });
     await stepFrames(page, 1);
     world = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "world",
       ),
@@ -128,7 +132,7 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     const ui = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "ui",
       ),
@@ -159,7 +163,7 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     const before = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "world",
       ),
@@ -185,7 +189,8 @@ test.describe("Camera lifecycle", () => {
     // Both scenes are in the stack; each has its own camera.
     const camScenes = await page.evaluate(() =>
       (window as LifecycleWin).__yage__?.inspector
-        .getCameraStack()
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getCameraStack()
         .map((camera) => camera.scene),
     );
     expect(camScenes).toEqual(["base", "overlay"]);
@@ -193,7 +198,7 @@ test.describe("Camera lifecycle", () => {
     // The base scene's world layer keeps its transform — separate render
     // trees per scene means the overlay camera cannot disturb it.
     const baseAfter = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "world",
       ),
@@ -202,7 +207,7 @@ test.describe("Camera lifecycle", () => {
 
     // The overlay's own camera (position 0,0) centers its own layer.
     const overlayLayer = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "overlay",
         "overlay-content",
       ),
@@ -219,7 +224,7 @@ test.describe("Camera lifecycle", () => {
     await stepFrames(page, 1);
 
     const baseFinal = await page.evaluate(() =>
-      (window as LifecycleWin).__yage__?.inspector.getLayerTransform(
+      (window as LifecycleWin).__yage__?.inspector.getExtension<DebugDiagnostics>("debug")?.getLayerTransform(
         "base",
         "world",
       ),

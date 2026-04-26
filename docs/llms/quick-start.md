@@ -94,6 +94,26 @@ window.__yage__.inspector.getEntityByName("player");        // single entity
 window.__yage__.inspector.getComponentData("player", "SpriteComponent");
 window.__yage__.inspector.getSceneStack();                  // scenes + pause state
 window.__yage__.inspector.getErrors();                      // anything disabled by ErrorBoundary
+window.__yage__.inspector.time.freeze();                    // stop auto-advance
+window.__yage__.inspector.time.step(1);                     // advance one frame (sync)
+window.__yage__.inspector.input.keyDown("ArrowRight");      // synthetic input
+window.__yage__.inspector.input.hold("ArrowRight", 30);     // press, run N frames, release
+window.__yage__.inspector.snapshotJSON();                   // stable JSON snapshot
+window.__yage__.inspector.setSeed(42);                      // pin every scene RNG (for replays)
+window.__yage__.inspector.events.getLog();                  // recorded engine + entity events
+await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
+```
+
+Diagnostics that need optional plugins live under inspector extension
+namespaces. For example, `DebugPlugin` registers `debug` while installed.
+Pass the extension's interface as the type parameter so calls type-check:
+
+```ts
+import type { DebugDiagnostics } from "@yagejs/debug";
+
+const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
+debug?.getCameraStack();
+debug?.getLayerTransform("game", "world");
 ```
 
 `getEntities()` returns an array of `EntitySnapshot` objects with `id`, `name`, `tags`, `components` (class-name strings), and `position`, so filtering by tag or component name is a one-liner:

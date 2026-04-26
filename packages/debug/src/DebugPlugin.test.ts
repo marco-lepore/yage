@@ -135,13 +135,26 @@ function createContext() {
     fixedTimestep: 20,
     tick: vi.fn(),
   };
+  const inspectorExtensions = new Map<string, object>();
   const inspector = {
     snapshot: () => ({
-      frameCount: 0,
+      frame: 0,
       sceneStack: [],
       entityCount: 0,
       systemCount: 0,
       errors: { disabledSystems: [], disabledComponents: [] },
+    }),
+    attachTimeController: vi.fn(),
+    detachTimeController: vi.fn(),
+    setEventLogEnabled: vi.fn(),
+    setDefaultSceneSeed: vi.fn(),
+    addExtension: vi.fn((namespace: string, api: object) => {
+      inspectorExtensions.set(namespace, api);
+      return api;
+    }),
+    getExtension: vi.fn((namespace: string) => inspectorExtensions.get(namespace)),
+    removeExtension: vi.fn((namespace: string) => {
+      inspectorExtensions.delete(namespace);
     }),
   };
 
@@ -204,7 +217,7 @@ function createContext() {
 
   sceneManager._setContext(context);
 
-  return { context, scheduler, app, loop, sceneManager };
+  return { context, scheduler, app, loop, sceneManager, inspector };
 }
 
 function getExposedClock(): IDebugClock {
@@ -230,30 +243,47 @@ afterEach(() => {
 });
 
 describe("DebugPlugin", () => {
-  it("exposes a clock on the debug global and enters manual mode on start when configured", async () => {
-    const { context, scheduler, app } = createContext();
-    const plugin = new DebugPlugin({ manualClock: true });
+  it("exposes a clock on the debug global in auto mode", async () => {
+    const { context, scheduler, app, inspector } = createContext();
+    const plugin = new DebugPlugin();
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
     const clock = getExposedClock();
-    expect(app.stop).toHaveBeenCalledOnce();
-    expect(clock.isManual).toBe(true);
+    expect(clock.isManual).toBe(false);
+    expect(app.stop).not.toHaveBeenCalled();
+    expect(inspector.setDefaultSceneSeed).not.toHaveBeenCalled();
+    expect(inspector.attachTimeController).toHaveBeenCalledOnce();
+    expect(inspector.setEventLogEnabled).toHaveBeenCalledWith(true);
+
+    plugin.onDestroy();
+  });
+
+  it("forwards a deterministic seed to the inspector when configured", async () => {
+    const { context, scheduler, inspector } = createContext();
+    const plugin = new DebugPlugin({ deterministicSeed: 0x00c0ffee });
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    expect(inspector.setDefaultSceneSeed).toHaveBeenCalledWith(0x00c0ffee);
 
     plugin.onDestroy();
   });
 
   it("steps exact frames and renders once per frame in manual mode", async () => {
     const { context, scheduler, app, loop } = createContext();
-    const plugin = new DebugPlugin({ manualClock: true });
+    const plugin = new DebugPlugin();
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
     const clock = getExposedClock();
+    clock.freeze();
     clock.stepFrames(3);
 
     expect(loop.tick).toHaveBeenCalledTimes(3);
@@ -265,7 +295,7 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("can toggle between auto and manual clock control", async () => {
+  it("can toggle between auto mode and a frozen clock", async () => {
     const { context, scheduler, app, loop } = createContext();
     const plugin = new DebugPlugin();
 
@@ -293,13 +323,16 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("advances one frame from the step hotkey while manual clock mode is active", async () => {
+  it("advances one frame from the step hotkey while the clock is frozen", async () => {
     const { context, scheduler, app, loop } = createContext();
-    const plugin = new DebugPlugin({ manualClock: true });
+    const plugin = new DebugPlugin();
 
     plugin.install(context);
     plugin.registerSystems(scheduler);
     await plugin.onStart();
+
+    const clock = getExposedClock();
+    clock.freeze();
 
     const event = new Event("keydown", { cancelable: true });
     const preventDefault = vi.spyOn(event, "preventDefault");
@@ -314,7 +347,7 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
-  it("augments the debug inspector with renderer diagnostics", async () => {
+  it("publishes renderer diagnostics on the inspector debug extension while installed", async () => {
     const { context, scheduler } = createContext();
     const plugin = new DebugPlugin();
 
@@ -322,18 +355,18 @@ describe("DebugPlugin", () => {
     plugin.registerSystems(scheduler);
     await plugin.onStart();
 
-    const inspector = (
-      (globalThis as Record<string, unknown>)["__yage__"] as {
-        inspector: {
-          getLayerTransform?: unknown;
-          getCameraStack?: unknown;
-        };
-      }
-    ).inspector;
+    const inspector = context.resolve(InspectorKey) as {
+      getExtension(namespace: string): unknown;
+    };
+    const diagnostics = inspector.getExtension("debug") as
+      | { getLayerTransform?: unknown; getCameraStack?: unknown }
+      | undefined;
 
-    expect(typeof inspector.getLayerTransform).toBe("function");
-    expect(typeof inspector.getCameraStack).toBe("function");
+    expect(typeof diagnostics?.getLayerTransform).toBe("function");
+    expect(typeof diagnostics?.getCameraStack).toBe("function");
 
     plugin.onDestroy();
+
+    expect(inspector.getExtension("debug")).toBeUndefined();
   });
 });

@@ -8,6 +8,7 @@ import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
 import { ErrorBoundary } from "./ErrorBoundary.js";
 import { Logger, LogLevel } from "./Logger.js";
+import { RandomKey, createRandomService } from "./Random.js";
 
 class _TestScene extends Scene {
   readonly name: string;
@@ -45,6 +46,7 @@ export function createMockScene(name = "mock-scene"): {
 
   const scene = new _TestScene(name);
   scene._setContext(ctx);
+  scene._registerScoped(RandomKey, createRandomService(1234));
 
   return { scene, context: ctx };
 }

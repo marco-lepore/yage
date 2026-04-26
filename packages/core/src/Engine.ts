@@ -32,6 +32,7 @@ import { Phase } from "./types.js";
 import type { Plugin } from "./types.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
 import type { SceneHooks } from "./SceneHooks.js";
+import { RandomKey } from "./Random.js";
 
 /** Engine configuration. */
 export interface EngineConfig {
@@ -106,6 +107,16 @@ export class Engine {
     this.context.register(SystemSchedulerKey, this.scheduler);
     this.context.register(AssetManagerKey, this.assets);
     this.context.register(SceneHookRegistryKey, this.sceneHooks);
+
+    this.sceneHooks.register({
+      beforeEnter: (scene) => {
+        scene._registerScoped(RandomKey, this.inspector.createSceneRandom());
+        this.inspector.attachSceneEventObserver(scene);
+      },
+      afterExit: (scene) => {
+        this.inspector.detachSceneEventObserver(scene);
+      },
+    });
 
     // Wire scene manager with context
     this.scenes._setContext(this.context);
@@ -232,6 +243,7 @@ export class Engine {
       delete (globalThis as Record<string, unknown>)["__yage__"];
     }
 
+    this.inspector.dispose();
     this.events.clear();
     this.started = false;
   }

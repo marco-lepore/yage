@@ -673,9 +673,24 @@ async function main() {
     },
     preventDefaultKeys: ["Space"],
   }));
-  engine.use(new DebugPlugin());
+  // Test fixtures opt into a fixed RNG seed so playback snapshots are
+  // bit-identical across runs. Production builds leave it unset.
+  const deterministicSeed = (
+    globalThis as { __YAGE_DETERMINISTIC_SEED__?: number }
+  ).__YAGE_DETERMINISTIC_SEED__;
+  engine.use(
+    new DebugPlugin(
+      deterministicSeed !== undefined ? { deterministicSeed } : undefined,
+    ),
+  );
 
   await engine.start();
+  const shouldStartFrozen = (
+    globalThis as { __YAGE_START_FROZEN__?: boolean }
+  ).__YAGE_START_FROZEN__;
+  if (shouldStartFrozen) {
+    engine.inspector.time.freeze();
+  }
   await engine.scenes.push(new PlatformerScene());
 }
 

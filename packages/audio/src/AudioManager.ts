@@ -1,4 +1,5 @@
 import type { SoundLibrary } from "@pixi/sound";
+import { globalRandom, type RandomService } from "@yagejs/core";
 import { SoundHandle } from "./SoundHandle.js";
 import type { AudioConfig, AudioPlayOptions } from "./types.js";
 
@@ -16,14 +17,20 @@ const DEFAULT_CHANNELS: Record<string, { volume: number }> = {
 
 export class AudioManager {
   private readonly _sound: SoundLibrary;
+  private readonly _random: RandomService;
   private readonly _channels = new Map<string, ChannelState>();
   private readonly _handleAliases = new WeakMap<SoundHandle, string>();
 
   private _autoMuteOnBlur: boolean;
   private readonly _unlockListeners: Array<() => void> = [];
 
-  constructor(sound: SoundLibrary, config?: AudioConfig) {
+  constructor(
+    sound: SoundLibrary,
+    config?: AudioConfig,
+    random?: RandomService,
+  ) {
     this._sound = sound;
+    this._random = random ?? globalRandom;
 
     const channelDefs = config?.channels ?? DEFAULT_CHANNELS;
     for (const [name, cfg] of Object.entries(channelDefs)) {
@@ -110,7 +117,7 @@ export class AudioManager {
     if (aliases.length === 0) {
       throw new Error("playRandom: aliases array must not be empty.");
     }
-    const alias = aliases[Math.floor(Math.random() * aliases.length)]!;
+    const alias = this._random.pick(aliases);
     return this.play(alias, options);
   }
 

@@ -13,6 +13,15 @@ export type { Vec2Like } from "./Vec2.js";
 export { MathUtils } from "./MathUtils.js";
 export type { SmoothDampResult } from "./MathUtils.js";
 
+export {
+  RandomKey,
+  createRandomService,
+  createDefaultRandomSeed,
+  globalRandom,
+  normalizeSeed,
+} from "./Random.js";
+export type { RandomService } from "./Random.js";
+
 export { EventBus } from "./EventBus.js";
 export type { EventMap, EngineEvents } from "./EventBus.js";
 
@@ -86,6 +95,25 @@ export { ErrorBoundary } from "./ErrorBoundary.js";
 export { GameLoop } from "./GameLoop.js";
 export type { GameLoopCallbacks, GameLoopConfig } from "./GameLoop.js";
 
+export { Inspector } from "./Inspector.js";
+export type {
+  EntitySnapshot,
+  SceneSnapshot,
+  SystemSnapshot,
+  ErrorSnapshot,
+  ComponentStateSnapshot,
+  WorldEntitySnapshot,
+  UINodeSnapshot,
+  UITreeSnapshot,
+  PhysicsSnapshot,
+  EventLogEntry,
+  WorldSceneSnapshot,
+  CameraSnapshot,
+  InputStateSnapshot,
+  EngineSnapshot,
+  InspectorTimeController,
+} from "./Inspector.js";
+
 export { Scene } from "./Scene.js";
 
 export { LoadingScene } from "./LoadingScene.js";
@@ -138,15 +166,6 @@ export {
   makeSceneScopedQueue,
 } from "./ProcessQueue.js";
 export type { ScopedProcessQueue } from "./ProcessQueue.js";
-
-export { Inspector } from "./Inspector.js";
-export type {
-  EngineSnapshot,
-  EntitySnapshot,
-  SceneSnapshot,
-  SystemSnapshot,
-  ErrorSnapshot,
-} from "./Inspector.js";
 
 export { Engine } from "./Engine.js";
 export type { EngineConfig } from "./Engine.js";

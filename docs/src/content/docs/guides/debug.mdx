@@ -27,8 +27,7 @@ runtime.
 |---|---|---|---|
 | `startEnabled` | `boolean` | `false` | Show overlay on launch |
 | `toggleKey` | `string` | `"Backquote"` | Key code to toggle overlay |
-| `manualClock` | `boolean` | `false` | Enable frame-step mode |
-| `stepKey` | `string` | `"Period"` | Key to advance one frame (manual clock) |
+| `stepKey` | `string` | `"Period"` | Key to advance one frozen frame |
 | `maxGraphics` | `number` | `256` | Graphics object pool size |
 | `maxHudLines` | `number` | `32` | Max HUD text lines |
 | `flags` | `Record<string, boolean>` | — | Initial flag overrides |
@@ -133,6 +132,47 @@ Set flags programmatically:
 registry.setFlag("my-debug", "show-paths", true);
 ```
 
+## Inspector Extensions
+
+Visual debug overlays and programmatic debug helpers are separate concerns.
+Use `DebugRegistry` contributors for drawing, and register inspector
+extensions when a plugin wants to expose imperative helpers to tests or the
+browser console.
+
+```typescript
+import type { EngineContext } from "@yagejs/core";
+import { InspectorKey } from "@yagejs/core";
+
+install(context: EngineContext): void {
+  const inspector = context.resolve(InspectorKey);
+
+  inspector.addExtension("inventory", {
+    listItems: () => this.inventory.snapshot(),
+    grantItem: (id: string) => this.inventory.grant(id),
+  });
+}
+```
+
+Consume that extension from test code or the browser console:
+
+```typescript
+const inventory = window.__yage__.inspector.getExtension<{
+  listItems(): string[];
+  grantItem(id: string): void;
+}>("inventory");
+
+inventory?.grantItem("rocket-boots");
+inventory?.listItems();
+```
+
+`DebugPlugin` uses the same pattern for renderer-aware helpers:
+
+```typescript
+const debug = window.__yage__.inspector.getExtension("debug");
+debug?.getCameraStack?.();
+debug?.getLayerTransform?.("game", "world");
+```
+
 ## StatsStore
 
 `StatsStore` provides rolling-window statistics for performance monitoring:
@@ -152,13 +192,19 @@ stats.latest("updateTime");   // most recent sample
 
 ## Frame-Step Mode
 
-Enable `manualClock` in the config to pause the game loop and step one frame
-at a time using the step key. This is useful for debugging physics, animations,
-or frame-specific logic.
+`DebugPlugin` always installs the frozen-clock implementation. To step exact
+frames, freeze through the Inspector and then advance from code or with the
+step key:
 
 ```typescript
-new DebugPlugin({ manualClock: true, stepKey: "Period" })
+window.__yage__.inspector.time.freeze();
+await window.__yage__.inspector.time.step(1);
+window.__yage__.inspector.time.thaw();
 ```
+
+The configured `stepKey` only advances frames while the inspector clock is
+frozen. This is useful for debugging physics, animations, or frame-specific
+logic.
 
 ## Logging
 

@@ -61,16 +61,6 @@ export const MathUtils = {
     return length - Math.abs(wrapped - length);
   },
 
-  /** Random float in [min, max). */
-  randomRange(min: number, max: number): number {
-    return min + Math.random() * (max - min);
-  },
-
-  /** Random integer in [min, max] (inclusive). */
-  randomInt(min: number, max: number): number {
-    return Math.floor(min + Math.random() * (max - min + 1));
-  },
-
   /** Convert degrees to radians. */
   degToRad(degrees: number): number {
     return (degrees * Math.PI) / 180;

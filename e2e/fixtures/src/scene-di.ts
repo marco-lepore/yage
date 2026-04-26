@@ -144,9 +144,10 @@ async function main() {
     }),
   );
   engine.use(new PhysicsPlugin());
-  engine.use(new DebugPlugin({ manualClock: true }));
+  engine.use(new DebugPlugin());
 
   await engine.start();
+  engine.inspector.time.freeze();
   await engine.scenes.push(new SceneA());
 }
 

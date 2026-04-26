@@ -1,11 +1,20 @@
-import { Component, Vec2 } from "@yagejs/core";
+import { Component, Vec2, serializable } from "@yagejs/core";
 import type { CameraShakeOptions } from "./CameraComponent.js";
+
+export interface CameraShakeData {
+  intensity: number;
+  duration: number;
+  elapsed: number;
+  decay: number;
+  offset: { x: number; y: number };
+}
 
 /**
  * Camera shake behavior. Produces a `shakeOffset` that
  * `CameraComponent.effectivePosition` reads each frame.
  * Does NOT modify `CameraComponent.position` directly.
  */
+@serializable
 export class CameraShake extends Component {
   private intensity = 0;
   private duration = 0;
@@ -60,5 +69,25 @@ export class CameraShake extends Component {
       Math.sin(phase * 7.3) * currentIntensity,
       Math.cos(phase * 13.7) * currentIntensity,
     );
+  }
+
+  serialize(): CameraShakeData {
+    return {
+      intensity: this.intensity,
+      duration: this.duration,
+      elapsed: this.elapsed,
+      decay: this.decay,
+      offset: { x: this.offset.x, y: this.offset.y },
+    };
+  }
+
+  static fromSnapshot(data: CameraShakeData): CameraShake {
+    const shake = new CameraShake();
+    shake.intensity = data.intensity;
+    shake.duration = data.duration;
+    shake.elapsed = data.elapsed;
+    shake.decay = data.decay;
+    shake.offset = new Vec2(data.offset.x, data.offset.y);
+    return shake;
   }
 }

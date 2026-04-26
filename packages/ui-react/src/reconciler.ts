@@ -44,8 +44,52 @@ function stripInternal(props: Record<string, unknown>): Record<string, unknown> 
 
 // Track current update priority (required by react-reconciler 0.31+)
 let currentUpdatePriority = 0;
+let nextTimeoutHandle = 1;
+const scheduledTimeouts = new Map<number, { cancelled: boolean }>();
 
 const noop = (): void => { /* noop */ };
+
+/**
+ * React's host config still asks renderers to provide timeout hooks even
+ * though this renderer currently drives updates synchronously.
+ *
+ * We intentionally do NOT use wall-clock timers here. Runtime `setTimeout`
+ * would reintroduce nondeterministic scheduling into the UI layer, which
+ * conflicts with frozen-step inspector tests.
+ *
+ * This shim therefore degrades "timeout" to "defer until the current turn
+ * finishes" by using a microtask and ignoring the requested delay.
+ *
+ * Limitation:
+ * this is only correct for our current usage because roots are `LegacyRoot`
+ * and all public renders flush synchronously. If we ever rely on real delayed
+ * scheduling semantics (for example true concurrent work, Suspense-driven
+ * retries, or any feature that expects an actual millisecond delay), this
+ * needs to be replaced with a real scheduler rather than a microtask shim.
+ */
+function scheduleDeferredCallback(
+  callback: (...args: unknown[]) => void,
+  _delay?: number,
+  ...args: unknown[]
+): number {
+  const handle = nextTimeoutHandle++;
+  const entry = { cancelled: false };
+  scheduledTimeouts.set(handle, entry);
+  queueMicrotask(() => {
+    const current = scheduledTimeouts.get(handle);
+    if (!current || current.cancelled) return;
+    scheduledTimeouts.delete(handle);
+    callback(...args);
+  });
+  return handle;
+}
+
+function cancelDeferredCallback(handle: number): void {
+  const entry = scheduledTimeouts.get(handle);
+  if (!entry) return;
+  entry.cancelled = true;
+  scheduledTimeouts.delete(handle);
+}
 
 // ---------------------------------------------------------------------------
 // Reconciler host config — GENERIC, zero per-type logic
@@ -226,8 +270,10 @@ const hostConfig = {
 
   unhideTextInstance: noop,
 
-  scheduleTimeout: setTimeout,
-  cancelTimeout: clearTimeout,
+  // See `scheduleDeferredCallback()` above. This satisfies the host-config
+  // contract without reintroducing wall-clock timers into runtime code.
+  scheduleTimeout: scheduleDeferredCallback,
+  cancelTimeout: cancelDeferredCallback,
   noTimeout: -1,
   getCurrentEventPriority: () => 32,
   getInstanceFromNode: () => null,

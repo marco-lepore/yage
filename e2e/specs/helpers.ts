@@ -15,7 +15,7 @@ export interface SceneSnapshot {
 }
 
 export interface EngineSnapshot {
-  frameCount: number;
+  frame: number;
   sceneStack: SceneSnapshot[];
   entityCount: number;
   systemCount: number;
@@ -39,14 +39,28 @@ export async function waitForInspector(page: Page): Promise<void> {
 }
 
 export async function waitForClock(page: Page): Promise<void> {
-  await page.waitForFunction(() => window.__yage__?.clock !== undefined);
+  await page.waitForFunction(() => window.__yage__?.inspector?.time !== undefined);
+  await page.evaluate(() => {
+    const inspector = window.__yage__?.inspector;
+    if (!inspector) {
+      throw new Error("__yage__.inspector is not available.");
+    }
+    if (!inspector.time.isFrozen()) {
+      inspector.time.freeze();
+    }
+  });
 }
 
 export async function stepFrame(page: Page, dtMs?: number): Promise<void> {
-  await page.evaluate((dt) => {
-    const clock = window.__yage__?.clock;
-    if (!clock) throw new Error("__yage__.clock is not available — did the fixture set manualClock: true?");
-    clock.step(dt);
+  await page.evaluate(async (dt) => {
+    const inspector = window.__yage__?.inspector;
+    if (!inspector) {
+      throw new Error("__yage__.inspector is not available.");
+    }
+    if (dt !== undefined) {
+      inspector.time.setDelta(dt);
+    }
+    await inspector.time.step(1);
   }, dtMs);
 }
 
@@ -56,10 +70,15 @@ export async function stepFrames(
   dtMs?: number,
 ): Promise<void> {
   await page.evaluate(
-    ({ frames, dt }) => {
-      const clock = window.__yage__?.clock;
-      if (!clock) throw new Error("__yage__.clock is not available — did the fixture set manualClock: true?");
-      clock.stepFrames(frames, dt);
+    async ({ frames, dt }) => {
+      const inspector = window.__yage__?.inspector;
+      if (!inspector) {
+        throw new Error("__yage__.inspector is not available.");
+      }
+      if (dt !== undefined) {
+        inspector.time.setDelta(dt);
+      }
+      await inspector.time.step(frames);
     },
     { frames: count, dt: dtMs },
   );

@@ -1,4 +1,4 @@
-import { Entity, Vec2 } from "@yagejs/core";
+import { Entity, Vec2, serializable } from "@yagejs/core";
 import type { Vec2Like, EasingFunction } from "@yagejs/core";
 import { CameraComponent } from "./CameraComponent.js";
 import type {
@@ -54,6 +54,7 @@ export interface CameraEntityParams {
  * cam.follow(otherTarget, { smoothing: 0.1 });
  * ```
  */
+@serializable
 export class CameraEntity extends Entity {
   private cam!: CameraComponent;
 

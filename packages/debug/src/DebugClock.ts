@@ -5,6 +5,10 @@ export interface IDebugClock {
   stopAuto(): void;
   step(dtMs?: number): void;
   stepFrames(count: number, dtMs?: number): void;
+  freeze(): void;
+  thaw(): void;
+  setDelta(ms: number): void;
+  getFrame(): number;
 }
 
 /** Minimal view of a game loop needed by the debug clock. */
@@ -21,13 +25,17 @@ interface GameLoopLike {
  */
 export class DebugClock implements IDebugClock {
   private _isManual = false;
+  private deltaMs: number;
+  private frame = 0;
 
   constructor(
     private readonly gameLoop: GameLoopLike,
     private readonly stopTicker: () => void,
     private readonly startTicker: () => void,
     private readonly render: () => void,
-  ) {}
+  ) {
+    this.deltaMs = gameLoop.fixedTimestep;
+  }
 
   get isManual(): boolean {
     return this._isManual;
@@ -45,13 +53,33 @@ export class DebugClock implements IDebugClock {
     this._isManual = true;
   }
 
+  freeze(): void {
+    this.stopAuto();
+  }
+
+  thaw(): void {
+    this.startAuto();
+  }
+
+  setDelta(ms: number): void {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      throw new Error("DebugClock.setDelta(ms) requires a positive number.");
+    }
+    this.deltaMs = ms;
+  }
+
+  getFrame(): number {
+    return this.frame;
+  }
+
   step(dtMs?: number): void {
     if (!this._isManual) {
       throw new Error(
         "Manual clock is not active. Call clock.stopAuto() first.",
       );
     }
-    const dt = dtMs ?? this.gameLoop.fixedTimestep;
+    const dt = dtMs ?? this.deltaMs;
+    this.frame++;
     this.gameLoop.tick(dt);
     this.render();
   }

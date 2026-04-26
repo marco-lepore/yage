@@ -287,7 +287,7 @@ npx turbo test && npx turbo typecheck && npx turbo build && npx playwright test
 - **E2E tests**: Place specs in `e2e/specs/` and fixture apps in `e2e/fixtures/`
 - **Use test utilities**: Import `createMockScene`, `createMockEntity`, `advanceFrames` from `@yagejs/core/test-utils`
 - **E2E assertions**: Use Inspector API (`window.__yage__.inspector`) for state assertions, not screenshots
-- **Deterministic browser timing**: Prefer `window.__yage__.clock.step()` / `stepFrames()` over `waitForTimeout()` when a fixture enables manual clock mode
+- **Deterministic browser timing**: Prefer `window.__yage__.inspector.time.freeze()` + `step()` over `waitForTimeout()` when a fixture needs exact frame control
 
 ---
 

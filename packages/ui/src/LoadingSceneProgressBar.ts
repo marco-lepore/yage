@@ -3,6 +3,7 @@ import {
   Entity,
   EventBusKey,
   LoadingScene,
+  serializable,
 } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { UIPanel } from "./UIPanel.js";
@@ -58,8 +59,12 @@ export interface LoadingSceneProgressBarOptions {
  * `UIProgressBar`. For spinners, animated text, or other custom visuals,
  * write your own component that subscribes to the same event.
  */
+@serializable
 export class LoadingSceneProgressBar extends Entity {
+  private _restoreOptions: LoadingSceneProgressBarOptions = {};
+
   setup(opts: LoadingSceneProgressBarOptions = {}): void {
+    this._restoreOptions = cloneLoadingSceneProgressBarOptions(opts);
     const scene = this.scene;
     if (!(scene instanceof LoadingScene)) {
       throw new Error(
@@ -108,12 +113,29 @@ export class LoadingSceneProgressBar extends Entity {
 
     this.add(new LoadingProgressSync(bar, backdropEntity));
   }
+
+  serialize(): LoadingSceneProgressBarOptions {
+    return cloneLoadingSceneProgressBarOptions(this._restoreOptions);
+  }
+
+  static fromSnapshot(
+    data: LoadingSceneProgressBarOptions,
+  ): LoadingSceneProgressBar {
+    const bar = new LoadingSceneProgressBar();
+    bar._restoreOptions = cloneLoadingSceneProgressBarOptions(data);
+    return bar;
+  }
+
+  afterRestore(): void {
+    this.setup(this._restoreOptions);
+  }
 }
 
 /**
  * Internal — syncs a UIProgressBar's value to the current LoadingScene's
  * progress by subscribing to `scene:loading:progress` on the event bus.
  */
+@serializable
 class LoadingProgressSync extends Component {
   private unsub?: () => void;
 
@@ -138,4 +160,19 @@ class LoadingProgressSync extends Component {
     this.unsub?.();
     this.backdrop?.destroy();
   }
+
+  serialize(): null {
+    return null;
+  }
+}
+
+function cloneLoadingSceneProgressBarOptions(
+  opts: LoadingSceneProgressBarOptions,
+): LoadingSceneProgressBarOptions {
+  const clone: LoadingSceneProgressBarOptions = { ...opts };
+  if (opts.track) clone.track = { ...opts.track };
+  if (opts.fill) clone.fill = { ...opts.fill };
+  if (opts.backdrop) clone.backdrop = { ...opts.backdrop };
+  if (opts.offset) clone.offset = { ...opts.offset };
+  return clone;
 }

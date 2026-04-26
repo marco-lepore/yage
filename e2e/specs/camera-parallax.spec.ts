@@ -14,16 +14,20 @@ interface ParallaxAPI {
   setCameraZoom(z: number): void;
 }
 
-interface InspectorDiagnostics {
+interface DebugDiagnostics {
   getLayerTransform(
     sceneName: string,
     layerName: string,
   ): LayerXform | undefined;
 }
 
+interface InspectorAPI {
+  getExtension<T extends object>(namespace: string): T | undefined;
+}
+
 type ParallaxWin = Window & {
   __cameraTest__?: ParallaxAPI;
-  __yage__?: { inspector: InspectorDiagnostics };
+  __yage__?: { inspector: InspectorAPI };
 };
 
 async function waitForControls(page: Page): Promise<void> {
@@ -53,10 +57,9 @@ async function setCamera(
 async function getLayer(page: Page, name: string): Promise<LayerXform | null> {
   return page.evaluate(
     (n) =>
-      (window as ParallaxWin).__yage__?.inspector.getLayerTransform(
-        "parallax",
-        n,
-      ) ?? null,
+      (window as ParallaxWin).__yage__?.inspector
+        .getExtension<DebugDiagnostics>("debug")
+        ?.getLayerTransform("parallax", n) ?? null,
     name,
   );
 }

@@ -2,9 +2,11 @@ import { Scene } from "./Scene.js";
 import {
   EventBusKey,
   LoggerKey,
+  ProcessSystemKey,
   SceneManagerKey,
 } from "./EngineContext.js";
 import type { SceneTransition } from "./SceneTransition.js";
+import { Process } from "./Process.js";
 
 /**
  * Base class for a progress-bar style loading screen.
@@ -87,6 +89,7 @@ export abstract class LoadingScene extends Scene {
   private _active = true;
   private _continueRequested = false;
   private _continueGate?: () => void;
+  private _pendingWaits = new Set<Process>();
   // Bumped on every `_run` attempt. `AssetManager.loadAll` uses `Promise.all`
   // under the hood, so individual loaders from a failed attempt can still
   // resolve and fire `onProgress` after the attempt rejects. Without this
@@ -155,6 +158,10 @@ export abstract class LoadingScene extends Scene {
     // so the promise resolves and the async function can terminate.
     this._active = false;
     this._continueGate?.();
+    for (const wait of this._pendingWaits) {
+      wait.cancel();
+    }
+    this._pendingWaits.clear();
   }
 
   private async _run(): Promise<void> {
@@ -162,14 +169,14 @@ export abstract class LoadingScene extends Scene {
     // this, a target with empty or cached preload resumes the handoff
     // while SceneManager is still mid-mutation, and scenes.replace
     // would reject as reentrant.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
     if (!this._active) return;
 
     const attempt = ++this._attempt;
     const target =
       typeof this.target === "function" ? this.target() : this.target;
-    const startedAt = performance.now();
     const bus = this.context.resolve(EventBusKey);
+    const minDuration = this._createEngineTimeDelay(this.minDuration);
 
     // `onLoadError` is specifically for asset-load failures. Narrow the
     // try/catch to the load phase so target-factory errors and
@@ -180,15 +187,14 @@ export abstract class LoadingScene extends Scene {
         this._progress = ratio;
         bus.emit("scene:loading:progress", { scene: this, ratio });
       });
-      if (!this._active || attempt !== this._attempt) return;
-
-      const elapsed = performance.now() - startedAt;
-      const remaining = this.minDuration - elapsed;
-      if (remaining > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-        if (!this._active || attempt !== this._attempt) return;
+      if (!this._active || attempt !== this._attempt) {
+        minDuration.cancel();
+        return;
       }
+      await minDuration.promise;
+      if (!this._active || attempt !== this._attempt) return;
     } catch (err) {
+      minDuration.cancel();
       // Scene exited mid-await → thrown error is incidental. Swallow.
       if (!this._active || attempt !== this._attempt) return;
       const error = err instanceof Error ? err : new Error(String(err));
@@ -219,5 +225,29 @@ export abstract class LoadingScene extends Scene {
       target,
       this.transition ? { transition: this.transition } : undefined,
     );
+  }
+
+  private _createEngineTimeDelay(ms: number): {
+    promise: Promise<void>;
+    cancel: () => void;
+  } {
+    if (ms <= 0) {
+      return {
+        promise: Promise.resolve(),
+        cancel: () => {},
+      };
+    }
+
+    const wait = Process.delay(ms);
+    this._pendingWaits.add(wait);
+    this.context.resolve(ProcessSystemKey).add(wait);
+    return {
+      promise: wait.toPromise().finally(() => {
+        this._pendingWaits.delete(wait);
+      }),
+      cancel: () => {
+        wait.cancel();
+      },
+    };
   }
 }

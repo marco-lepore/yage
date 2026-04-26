@@ -56,6 +56,9 @@ export abstract class Scene {
     string,
     Set<(data: never, entity: Entity) => void>
   >;
+  private _entityEventObserver?:
+    | ((eventName: string, data: unknown, entity: Entity) => void)
+    | undefined;
   private _scopedServices?: Map<string, unknown>;
 
   /** Access the EngineContext. */
@@ -254,6 +257,15 @@ export abstract class Scene {
     }
   }
 
+  /**
+   * Observe entity-scoped event emissions after they dispatch locally and
+   * bubble to the scene. Tooling only; game code should keep using `on()`.
+   * @internal
+   */
+  _observeEntityEvent(eventName: string, data: unknown, entity: Entity): void {
+    this._entityEventObserver?.(eventName, data, entity);
+  }
+
   // ---- Lifecycle hooks (override in subclasses) ----
 
   /** Called during asset preloading with progress ratio (0→1). */
@@ -288,6 +300,16 @@ export abstract class Scene {
   _registerScoped<T>(key: ServiceKey<T>, value: T): void {
     this._scopedServices ??= new Map();
     this._scopedServices.set(key.id, value);
+  }
+
+  /**
+   * Install or clear a tooling-only observer for bubbled entity events.
+   * @internal
+   */
+  _setEntityEventObserver(
+    observer?: (eventName: string, data: unknown, entity: Entity) => void,
+  ): void {
+    this._entityEventObserver = observer;
   }
 
   /**

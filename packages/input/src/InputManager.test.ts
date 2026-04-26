@@ -554,6 +554,60 @@ describe("InputManager", () => {
     });
   });
 
+  // -- Synthetic input --
+
+  describe("synthetic input", () => {
+    it("fireAction reports a one-frame action press", () => {
+      input.fireAction("jump");
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustPressed("jump")).toBe(true);
+
+      input._clearFrameState();
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.isJustPressed("jump")).toBe(false);
+    });
+
+    it("fireAction throws for unknown actions", () => {
+      expect(() => input.fireAction("unknown")).toThrow('unknown action "unknown"');
+    });
+
+    it("snapshotState includes synthetic keyboard, mouse, and gamepad state", () => {
+      input.fireKeyDown("ArrowRight");
+      input.firePointerMove(120, 240);
+      input.firePointerDown(0);
+      input.fireGamepadButton(1, true);
+      input.fireGamepadAxis(0, 0.5);
+
+      expect(input.snapshotState()).toEqual({
+        keys: ["ArrowRight", "MouseLeft"],
+        actions: ["fire", "moveRight"],
+        mouse: { x: 120, y: 240, buttons: [0], down: true },
+        gamepad: {
+          buttons: [1],
+          axes: [{ index: 0, value: 0.5 }],
+        },
+      });
+    });
+
+    it("clearAll releases synthetic state", () => {
+      input.fireKeyDown("Space");
+      input.fireAction("jump");
+      input.firePointerDown(2);
+      input.fireGamepadButton(0, true);
+
+      input.clearAll();
+
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.isPointerDown()).toBe(false);
+      expect(input.snapshotState()).toEqual({
+        keys: [],
+        actions: [],
+        mouse: { x: 0, y: 0, buttons: [], down: false },
+        gamepad: { buttons: [], axes: [] },
+      });
+    });
+  });
+
   // -- Key listening --
 
   describe("listenForNextKey", () => {

@@ -31,7 +31,7 @@ type Win = Window & { __sceneTransitionTest__: SceneTransitionTestApi };
 /**
  * Synchronous API call — returns whatever the method returns (primitives or
  * arrays). Does NOT await returned Promises — critical for transition
- * methods, which only resolve once the manual clock has stepped past the
+ * methods, which only resolve once the frozen inspector clock has stepped past the
  * transition duration.
  */
 function call<K extends keyof SceneTransitionTestApi>(
@@ -47,7 +47,7 @@ function call<K extends keyof SceneTransitionTestApi>(
       ) => unknown;
       const result = fn(...(a as unknown[]));
       // Fire-and-forget any returned Promise so page.evaluate doesn't wait
-      // for transitions that require manual clock steps to complete.
+      // for transitions that require explicit inspector time steps to complete.
       if (result && typeof (result as Promise<unknown>).then === "function") {
         (result as Promise<unknown>).catch(() => {});
         return undefined;

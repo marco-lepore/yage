@@ -62,6 +62,14 @@ describe("DebugClock", () => {
     expect(gameLoop.tick).toHaveBeenCalledWith(10);
   });
 
+  it("tracks manual logical frames", () => {
+    const { clock } = createClock({ manual: true });
+    expect(clock.getFrame()).toBe(0);
+    clock.step();
+    clock.step();
+    expect(clock.getFrame()).toBe(2);
+  });
+
   it("stepFrames calls tick and render n times", () => {
     const { clock, gameLoop, render } = createClock({ manual: true });
     clock.stepFrames(3);
