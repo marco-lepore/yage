@@ -22,11 +22,14 @@ export const pixelate = defineEffect<PixelateHandle, PixelateOptions>({
     const filter = new PixelateFilter(baseSize);
     const effect: Effect<PixelateHandle> = {
       filter,
-      getIntensity: () => {
-        const s = filter.size;
-        const v = typeof s === "number" ? s : Array.isArray(s) ? s[0] ?? 0 : s.x;
-        return v / Math.max(baseSize, 1);
-      },
+      // PixelateFilter.size returns a `Float32Array(2)` — `Array.isArray`
+      // is false on typed arrays, so a generic union-narrowing read here
+      // would fall through to `s.x` and yield `undefined → NaN`. NaN
+      // round-trips through `JSON.stringify` as `null`, so saving silently
+      // loses the intensity and restoring with `setIntensity(null)` ends
+      // up at `size = 1` (effectively no pixelation). Read `sizeX`
+      // directly — it's a number-typed getter on the filter.
+      getIntensity: () => filter.sizeX / Math.max(baseSize, 1),
       setIntensity: (v) => {
         filter.size = Math.max(1, Math.round(baseSize * v));
       },
