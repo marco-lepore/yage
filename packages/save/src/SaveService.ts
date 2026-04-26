@@ -265,17 +265,22 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       // restored. By this point any layer/scene render trees the renderer
       // contributor needs to find by name are live, and component-scope
       // afterRestore hooks have run, so contributors see consistent state.
-      if (snapshot.extras) {
-        for (const [key, data] of Object.entries(snapshot.extras)) {
-          const contributor = this.contributors.get(key);
-          if (!contributor) {
-            console.warn(
-              `SaveService: snapshot contains extras for "${key}" but no ` +
-                `contributor is registered — skipping.`,
-            );
-            continue;
-          }
-          await contributor.restore(data);
+      //
+      // Iterate every REGISTERED contributor — not just keys present in
+      // `extras` — so contributors get a chance to clear stale baseline
+      // state (e.g. a screen-scope vignette enabled after the save) when
+      // the snapshot has no entry for them. Contributors must treat
+      // `data === undefined` as "reset to empty".
+      const extras = snapshot.extras ?? {};
+      for (const [key, contributor] of this.contributors) {
+        await contributor.restore(extras[key]);
+      }
+      for (const key of Object.keys(extras)) {
+        if (!this.contributors.has(key)) {
+          console.warn(
+            `SaveService: snapshot contains extras for "${key}" but no ` +
+              `contributor is registered — skipping.`,
+          );
         }
       }
     } finally {

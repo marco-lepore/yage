@@ -162,10 +162,22 @@ sprite.clearMask();
 
 // Layer + scene scope share the same shape.
 tree.get("hud").setMask(graphicsMask((g) => {
-  g.circle(layout.x, layout.y, 100).fill(0xffffff);
+  g.clear();                                    // pixi commands accumulate
+  g.circle(layout.x, layout.y, 100).fill(0xffffff); // read live state, don't snapshot
 }));
 // After layout changes, call .redraw() to re-run the closure.
 ```
+
+Two gotchas inside a `graphicsMask` closure:
+
+1. **`g.clear()` first.** Pixi `Graphics` commands accumulate; without
+   `clear()`, every `redraw()` layers another shape on top of the previous
+   one.
+2. **Read live state, don't snapshot it.** JS closures capture variable
+   bindings, not values. `const w = panel.width` followed by
+   `g.rect(0, 0, w, ...)` will keep using the original `w` after `redraw()`.
+   Reference the live source (`panel.width`, `this.layout.width`, a getter)
+   inside the closure so each call picks up the current value.
 
 Three factories ship today: `rectMask` (savable), `spriteMask` (caller owns
 the sprite — not savable), `graphicsMask` (custom drawn — closure can't be

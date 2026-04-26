@@ -6,6 +6,7 @@ import type { SceneManager } from "./SceneManager.js";
 import type { Process } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { SceneManagerKey } from "./EngineContext.js";
+import { SceneHookRegistryKey } from "./SceneHooks.js";
 
 /**
  * Built-in system that ticks all ProcessComponents on entities in non-paused
@@ -27,6 +28,13 @@ export class ProcessSystem extends System {
 
   override onRegister(context: EngineContext): void {
     this.sceneManager = context.resolve(SceneManagerKey);
+    // Drop the scene's pool on exit so cancelled processes (e.g. effect
+    // fades torn down with the scene) don't keep the dead Scene key
+    // alive in the pool map.
+    const hooks = context.tryResolve(SceneHookRegistryKey);
+    hooks?.register({
+      afterExit: (scene) => this.cancelForScene(scene),
+    });
   }
 
   /**

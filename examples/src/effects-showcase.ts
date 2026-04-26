@@ -180,11 +180,6 @@ class BackgroundEntity extends Entity {
         ctx.circle(x, y, r).fill({ color, alpha: 0.65 });
       }
 
-      // A few translucent panels behind the heroes so dropShadow and outline
-      // have something to push against without relying on the background colour.
-      ctx.rect(150, 220, 200, 200).fill({ color: 0xffffff, alpha: 0.04 });
-      ctx.rect(370, 220, 200, 200).fill({ color: 0xffffff, alpha: 0.04 });
-      ctx.rect(590, 220, 160, 200).fill({ color: 0xffffff, alpha: 0.04 });
     });
   }
 }
@@ -458,7 +453,7 @@ class ShowcaseScene extends Scene {
 
     section("Layer (world)");
     toggle("bloom", "bloom", () =>
-      tree.get("world").addEffect(bloom({ threshold: 0.5, bloomScale: 1.4 })),
+      tree.get("world").addEffect(bloom({ threshold: 0.3, bloomScale: 1.4 })),
     );
     toggle("pixelate", "pixelate", () =>
       tree.get("world").addEffect(pixelate({ size: 6 })),

@@ -276,21 +276,28 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
 
   /**
    * Apply a `serializeAll()` snapshot onto the live trees. Matches each
-   * entry to its live tree by `Scene.name`, which is stable across
-   * push/pop (entries with no matching scene live are skipped with a
-   * warning). Multiple scenes sharing a name match to the first.
+   * entry to a live tree by `Scene.name` in stack order, so two snapshot
+   * entries with the same name map to two same-named live trees in the
+   * order they were pushed (snapshots are also serialized in stack order).
+   * Entries with no matching scene live are skipped with a warning.
    * @internal
    */
   restoreAll(snap: SceneTreesSnapshot): void {
-    const treesByName = new Map<string, SceneRenderTreeImpl>();
+    // Group live trees by scene name, preserving insertion (push) order
+    // within each group. `Scene.name` is documented as debug-only / not
+    // unique, so we cannot rely on first-write-wins.
+    const treesByName = new Map<string, SceneRenderTreeImpl[]>();
     for (const [scene, entry] of this.entries) {
-      // First write wins so duplicate-name scenes resolve consistently.
-      if (!treesByName.has(scene.name)) {
-        treesByName.set(scene.name, entry.tree);
-      }
+      const list = treesByName.get(scene.name);
+      if (list) list.push(entry.tree);
+      else treesByName.set(scene.name, [entry.tree]);
     }
+    const consumed = new Map<string, number>();
     for (const entry of snap) {
-      const tree = treesByName.get(entry.scene);
+      const list = treesByName.get(entry.scene);
+      const idx = consumed.get(entry.scene) ?? 0;
+      const tree = list?.[idx];
+      consumed.set(entry.scene, idx + 1);
       if (!tree) {
         console.warn(
           `SceneRenderTreeProvider.restoreAll: no live scene named ` +

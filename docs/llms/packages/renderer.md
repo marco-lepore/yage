@@ -508,7 +508,7 @@ tree.setMask(graphicsMask((g) => { g.circle(0, 0, 100).fill(0xffffff); }));
 | `MaskHandle` | interface | `remove()` / `setInverse(on)` / `inverse` / `redraw()` / `serialize(): MaskSnapshot \| null`. |
 | `rectMask` | `(opts: RectMaskOptions) => MaskFactory` | Static rectangle, optional `rounded` corners. Serializable. |
 | `spriteMask` | `(sprite: Sprite) => MaskFactory` | User-owned sprite as mask. NOT serializable (no string identity for the sprite). |
-| `graphicsMask` | `(draw: (g: Graphics) => void) => MaskFactory` | Custom drawn mask; call `handle.redraw()` after dependencies change. NOT serializable (closure can't be saved). |
+| `graphicsMask` | `(draw: (g: Graphics) => void) => MaskFactory` | Custom drawn mask; call `handle.redraw()` after dependencies change. NOT serializable (closure can't be saved). The closure must `g.clear()` first (pixi commands accumulate) and read live state from a captured object/getter — `const` snapshots stay stale across `redraw()`. |
 | `defineMask` | `<O>({ name, factory: (opts: O) => Mask }) => (opts: O) => MaskFactory` | Register a savable mask preset. Only `rectMask` uses this today. |
 | `attachMask` / `restoreMask` | low-level helpers | `attachMask(target, factory)` returns a `MaskHandle`; `restoreMask(target, snap)` reattaches from a snapshot. |
 

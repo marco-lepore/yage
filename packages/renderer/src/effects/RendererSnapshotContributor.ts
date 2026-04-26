@@ -48,12 +48,29 @@ export class RendererSnapshotContributor implements SnapshotContributor {
   }
 
   restore(data: unknown): void {
-    if (!isRendererSnapshot(data)) return;
-    if (data.screen) {
-      const stack = this.ensureScreenStack();
-      stack.restoreFrom(data.screen);
+    // `data === undefined` means "no renderer extras in this snapshot" —
+    // we still need to clear any baseline state (e.g. a screen-scope
+    // effect enabled after the save was taken) so Load returns to the
+    // saved configuration rather than overlaying it on the live state.
+    const snap: RendererSnapshotData =
+      data === undefined
+        ? { scenes: [] }
+        : isRendererSnapshot(data)
+          ? data
+          : { scenes: [] };
+
+    // Always reset the screen stack to match the snapshot. If the
+    // snapshot has no screen entry, restoreFrom an empty list clears
+    // every screen-scope effect; we only allocate a stack here if one
+    // already exists — otherwise there's nothing to clear.
+    const existingScreen = this.screenStack();
+    if (snap.screen) {
+      this.ensureScreenStack().restoreFrom(snap.screen);
+    } else if (existingScreen) {
+      existingScreen.restoreFrom({ entries: [] });
     }
-    this.provider.restoreAll(data.scenes ?? []);
+
+    this.provider.restoreAll(snap.scenes ?? []);
   }
 }
 

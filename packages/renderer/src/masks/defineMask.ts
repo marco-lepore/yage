@@ -60,7 +60,12 @@ export function defineMask<O>(spec: {
   const definition = ((options: O): MaskFactory => {
     return () => {
       const mask = spec.factory(options);
-      const meta: MaskMeta = { definitionName: spec.name, options };
+      // Snapshot the options at attach time so a caller who later mutates
+      // the same POJO doesn't poison the metadata used by save/restore.
+      const meta: MaskMeta = {
+        definitionName: spec.name,
+        options: structuredClone(options),
+      };
       Object.defineProperty(mask, MASK_META, {
         value: meta,
         enumerable: false,

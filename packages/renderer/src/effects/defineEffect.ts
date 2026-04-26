@@ -64,7 +64,14 @@ export function defineEffect<H extends EffectHandle, O>(spec: {
   const definition = ((options: O): EffectFactory<H> => {
     return () => {
       const effect = spec.factory(options);
-      const meta: EffectMeta = { definitionName: spec.name, options };
+      // Snapshot the options at attach time. Without the clone, a caller
+      // who reuses and later mutates the options object would see those
+      // mutations in the saved metadata — restore would then rebuild the
+      // wrong configuration.
+      const meta: EffectMeta = {
+        definitionName: spec.name,
+        options: structuredClone(options),
+      };
       Object.defineProperty(effect, EFFECT_META, {
         value: meta,
         enumerable: false,
