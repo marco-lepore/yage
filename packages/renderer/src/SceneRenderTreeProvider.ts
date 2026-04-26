@@ -12,6 +12,9 @@ import { EffectStack } from "./effects/EffectStack.js";
 import { makeSceneScopedProcessHost } from "./effects/hosts/ProcessSystemHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 
 interface SceneEntry {
   root: Container;
@@ -23,6 +26,7 @@ interface SceneEntry {
 
 class SceneRenderTreeImpl implements SceneRenderTree {
   private _effects: EffectStack | undefined;
+  private _mask: MaskHandle | undefined;
 
   constructor(
     readonly root: Container,
@@ -69,10 +73,27 @@ class SceneRenderTreeImpl implements SceneRenderTree {
     return this._effects.add(factory);
   }
 
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.root, factory);
+    return this._mask;
+  }
+
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
   /** @internal — called by the provider before container teardown. */
   _destroyEffects(): void {
     this._effects?.destroy();
     this._effects = undefined;
+  }
+
+  /** @internal — called by the provider before container teardown. */
+  _destroyMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
   }
 }
 
@@ -133,10 +154,14 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   destroyForScene(scene: Scene): void {
     const entry = this.entries.get(scene);
     if (!entry) return;
-    // Tear down effect stacks while containers are still alive so any
-    // user-assigned external filters get preserved by EffectStack.destroy.
+    // Tear down effect stacks AND masks while containers are still alive so
+    // user-assigned external filters survive the EffectStack teardown and
+    // owned mask Graphics aren't destroyed twice (once via remove(), once
+    // via root.destroy({ children: true })).
     entry.tree._destroyEffects();
+    entry.tree._destroyMask();
     entry.manager.destroyEffects();
+    entry.manager.destroyMasks();
     entry.root.removeFromParent();
     entry.root.destroy({ children: true });
     entry.manager.destroy();

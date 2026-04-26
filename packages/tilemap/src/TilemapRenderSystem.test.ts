@@ -143,6 +143,10 @@ function createTestContext() {
     addEffect: () => {
       throw new Error("Tilemap test tree does not support addEffect.");
     },
+    setMask: () => {
+      throw new Error("Tilemap test tree does not support setMask.");
+    },
+    clearMask: () => undefined,
   };
 
   const scene = new TestScene();

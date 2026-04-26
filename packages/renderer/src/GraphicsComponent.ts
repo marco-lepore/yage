@@ -5,6 +5,9 @@ import { EffectStack } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { GraphicsContext } from "./public-types.js";
 
 /** Options for creating a GraphicsComponent. */
@@ -24,6 +27,7 @@ export class GraphicsComponent extends Component {
   readonly graphics: GraphicsContext;
   readonly layerName: string;
   private _effects?: EffectStack;
+  private _mask: MaskHandle | undefined;
 
   constructor(options?: GraphicsComponentOptions) {
     super();
@@ -57,6 +61,19 @@ export class GraphicsComponent extends Component {
     return this._effects.add(factory);
   }
 
+  /** Attach a mask to this graphics object. See {@link SpriteComponent.setMask}. */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.graphics, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the current mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.graphics);
@@ -64,6 +81,7 @@ export class GraphicsComponent extends Component {
 
   onDestroy(): void {
     this._effects?.destroy();
+    this._mask?.remove();
     this.graphics.removeFromParent();
     this.graphics.destroy();
   }

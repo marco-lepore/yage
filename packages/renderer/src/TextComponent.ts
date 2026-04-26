@@ -5,6 +5,9 @@ import { EffectStack } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplayText, TextStyle } from "./public-types.js";
 
 /** Options for creating a TextComponent. */
@@ -46,6 +49,7 @@ export class TextComponent extends Component {
   // would not round-trip through JSON).
   private _styleOptions?: TextStyle;
   private _effects?: EffectStack;
+  private _mask: MaskHandle | undefined;
 
   constructor(options: TextComponentOptions) {
     super();
@@ -135,6 +139,19 @@ export class TextComponent extends Component {
     return this._effects.add(factory);
   }
 
+  /** Attach a mask to this text node. See {@link SpriteComponent.setMask}. */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.text, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the current mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.text);
@@ -142,6 +159,7 @@ export class TextComponent extends Component {
 
   onDestroy(): void {
     this._effects?.destroy();
+    this._mask?.remove();
     this.text.removeFromParent();
     this.text.destroy();
   }

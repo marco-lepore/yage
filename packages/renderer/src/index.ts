@@ -129,3 +129,12 @@ export { EffectStack } from "./effects/EffectStack.js";
 export { rawFilter } from "./effects/rawFilter.js";
 export type { RawFilterOptions } from "./effects/rawFilter.js";
 export { withFade } from "./effects/withFade.js";
+
+// Masks
+export type { MaskHandle } from "./masks/MaskHandle.js";
+export type { Mask, MaskFactory } from "./masks/MaskFactory.js";
+export { attachMask } from "./masks/attachMask.js";
+export { rectMask } from "./masks/rectMask.js";
+export type { RectMaskOptions } from "./masks/rectMask.js";
+export { spriteMask } from "./masks/spriteMask.js";
+export { graphicsMask } from "./masks/graphicsMask.js";

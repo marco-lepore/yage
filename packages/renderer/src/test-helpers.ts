@@ -27,6 +27,9 @@ import { EffectStack } from "./effects/EffectStack.js";
 import { makeSceneScopedProcessHost } from "./effects/hosts/ProcessSystemHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -58,6 +61,13 @@ export class MockContainer {
   destroyed = false;
   eventMode = "passive";
   filters: unknown = null;
+  mask: MockContainer | null = null;
+  maskInverse = false;
+
+  setMask(opts: { mask: MockContainer | null; inverse?: boolean }): void {
+    this.mask = opts.mask;
+    this.maskInverse = opts.inverse ?? false;
+  }
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -113,6 +123,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       tree: SceneRenderTree;
       root: MockContainer;
       destroyEffects: () => void;
+      destroyMasks: () => void;
     }
   >();
 
@@ -144,6 +155,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     );
 
     let sceneStack: EffectStack | undefined;
+    let sceneMask: MaskHandle | undefined;
     const tree: SceneRenderTree = {
       root: root as never,
       get: (name) => manager.get(name),
@@ -169,6 +181,15 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
         }
         return sceneStack.add(factory);
       },
+      setMask(factory: MaskFactory): MaskHandle {
+        sceneMask?.remove();
+        sceneMask = attachMask(root as never, factory);
+        return sceneMask;
+      },
+      clearMask(): void {
+        sceneMask?.remove();
+        sceneMask = undefined;
+      },
     };
 
     const destroyEffects = (): void => {
@@ -177,7 +198,19 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       manager.destroyEffects();
     };
 
-    this.trees.set(scene, { manager, tree, root, destroyEffects });
+    const destroyMasks = (): void => {
+      sceneMask?.remove();
+      sceneMask = undefined;
+      manager.destroyMasks();
+    };
+
+    this.trees.set(scene, {
+      manager,
+      tree,
+      root,
+      destroyEffects,
+      destroyMasks,
+    });
     return tree;
   }
 
@@ -185,6 +218,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     const entry = this.trees.get(scene);
     if (!entry) return;
     entry.destroyEffects();
+    entry.destroyMasks();
     entry.root.destroy();
     entry.manager.destroy();
     this.trees.delete(scene);

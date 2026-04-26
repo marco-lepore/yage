@@ -9,6 +9,9 @@ import { EffectStack } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions {
@@ -33,6 +36,7 @@ export class AnimatedSpriteComponent extends Component {
   readonly layerName: string;
   private readonly _source: FrameSource | null;
   private _effects?: EffectStack;
+  private _mask: MaskHandle | undefined;
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super();
@@ -110,6 +114,19 @@ export class AnimatedSpriteComponent extends Component {
     return this._effects.add(factory);
   }
 
+  /** Attach a mask to this animated sprite. See {@link SpriteComponent.setMask}. */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.animatedSprite, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the current mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.animatedSprite);
@@ -117,6 +134,7 @@ export class AnimatedSpriteComponent extends Component {
 
   onDestroy(): void {
     this._effects?.destroy();
+    this._mask?.remove();
     this.animatedSprite.removeFromParent();
     this.animatedSprite.destroy();
   }

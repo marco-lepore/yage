@@ -7,6 +7,9 @@ import type {
   EffectHandle,
   EffectProcessHost,
 } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 
 /**
  * Factory that produces a fresh `EffectProcessHost` instance — called once
@@ -37,6 +40,7 @@ export class RenderLayer {
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
   private _effects: EffectStack | undefined;
+  private _mask: MaskHandle | undefined;
   private readonly _hostFactory: EffectHostFactory | undefined;
 
   constructor(
@@ -80,6 +84,23 @@ export class RenderLayer {
   }
 
   /**
+   * Attach a mask to this layer's container, replacing any existing mask.
+   * Returns a handle for inverse toggling, redraw (graphicsMask), or
+   * removal. Torn down on scene exit.
+   */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.container, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the layer-scope mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
+  /**
    * Tear down any layer-scope effect stack. Called by `RenderLayerManager`
    * before the layer's container is destroyed so external user-assigned
    * filters survive the teardown intact.
@@ -88,6 +109,17 @@ export class RenderLayer {
   _destroyEffects(): void {
     this._effects?.destroy();
     this._effects = undefined;
+  }
+
+  /**
+   * Tear down any layer-scope mask. Called by `RenderLayerManager` before
+   * the layer's container is destroyed so the owned mask Graphics gets
+   * cleaned up exactly once.
+   * @internal
+   */
+  _destroyMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
   }
 }
 
@@ -208,6 +240,16 @@ export class RenderLayerManager {
   destroyEffects(): void {
     for (const layer of this.layers.values()) {
       layer._destroyEffects();
+    }
+  }
+
+  /**
+   * Tear down every layer's mask. Call BEFORE the root container is
+   * destroyed so owned mask Graphics get destroyed exactly once.
+   */
+  destroyMasks(): void {
+    for (const layer of this.layers.values()) {
+      layer._destroyMask();
     }
   }
 

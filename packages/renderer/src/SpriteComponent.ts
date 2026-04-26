@@ -6,6 +6,9 @@ import { EffectStack } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 import type { DisplaySprite, TextureInput } from "./public-types.js";
 
 /** Options for creating a SpriteComponent. */
@@ -41,6 +44,7 @@ export class SpriteComponent extends Component {
   readonly layerName: string;
   private _textureKey: string | null;
   private _effects?: EffectStack;
+  private _mask: MaskHandle | undefined;
 
   constructor(options: SpriteComponentOptions) {
     super();
@@ -145,6 +149,23 @@ export class SpriteComponent extends Component {
     return this._effects.add(factory);
   }
 
+  /**
+   * Attach a mask to this sprite, replacing any existing mask. Returns a
+   * handle for inverse toggling, redraw (graphicsMask), or removal. The
+   * mask is torn down automatically when the component is destroyed.
+   */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.sprite, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the current mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.sprite);
@@ -152,6 +173,7 @@ export class SpriteComponent extends Component {
 
   onDestroy(): void {
     this._effects?.destroy();
+    this._mask?.remove();
     this.sprite.removeFromParent();
     this.sprite.destroy();
   }

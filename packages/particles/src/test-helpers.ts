@@ -119,6 +119,10 @@ export function createParticlesTestContext(): ParticlesTestContext {
     addEffect: () => {
       throw new Error("Particles test-helpers tree does not support addEffect.");
     },
+    setMask: () => {
+      throw new Error("Particles test-helpers tree does not support setMask.");
+    },
+    clearMask: () => undefined,
   };
 
   const scene = new _TestScene("test-scene");
