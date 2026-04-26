@@ -155,6 +155,14 @@ export class AnimatedSpriteComponent extends Component {
     this._mask = undefined;
   }
 
+  /**
+   * The currently attached mask handle, if any. Useful after save/load to
+   * recover a handle whose caller-side reference went stale.
+   */
+  get mask(): MaskHandle | undefined {
+    return this._mask;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.animatedSprite);

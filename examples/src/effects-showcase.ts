@@ -529,17 +529,26 @@ class ShowcaseScene extends Scene {
     // ---- Masks ----
     //
     // Masks are exclusive (one per container) so they use a separate API
-    // from addEffect: setMask / clearMask. Mask handles aren't tracked in
-    // the long-lived effectHandles map — they're closure-local here and
-    // the panel doesn't try to re-light their toggles after a load.
-    // (`rectMask` survives the save round-trip; `graphicsMask` does not,
-    // because its draw closure can't be serialized.)
+    // from addEffect: setMask / clearMask. The component's `mask` getter
+    // exposes the currently-attached handle, which we re-acquire here on
+    // every buildPanel — important after save/load, where the stored
+    // handle reference is stale but the underlying mask was rebuilt by
+    // GraphicsComponent.afterRestore.
+    //
+    // `rectMask` survives the save round-trip; `graphicsMask` does not
+    // (its draw closure has no string identity), so its panel button
+    // correctly stays "off" on load — the mask is genuinely gone.
     section("Masks");
     {
-      let gemHandle: MaskHandle | null = null;
-      let gemInverse = false;
+      const gemGfx = this.gem?.tryGet(GraphicsComponent);
+      const blockGfx = this.block?.tryGet(GraphicsComponent);
+      let gemHandle: MaskHandle | null = gemGfx?.mask ?? null;
+      let gemInverse = gemHandle?.inverse ?? false;
+      let blockHandle: MaskHandle | null = blockGfx?.mask ?? null;
+
       const maskGem = document.createElement("button");
       maskGem.textContent = "Mask gem (top half)";
+      if (gemHandle) maskGem.classList.add("on");
       maskGem.onclick = () => {
         if (gemHandle) {
           gemHandle.remove();
@@ -549,14 +558,13 @@ class ShowcaseScene extends Scene {
           inverseGem.classList.remove("on");
           return;
         }
-        const g = this.gem?.tryGet(GraphicsComponent);
-        if (!g) throw new Error("gem graphics missing");
+        if (!gemGfx) throw new Error("gem graphics missing");
         // Plain rect (no `rounded`) so the cut reads as an unambiguous
         // horizontal slice. The diamond's silhouette tapers to a point at
         // the bbox corners, so a `rounded` rect on this shape is invisible
         // — its rounded corners fall outside the diamond. The `rounded`
         // option is well-suited to masking actually-rectangular targets.
-        gemHandle = g.setMask(
+        gemHandle = gemGfx.setMask(
           rectMask({ x: -55, y: -55, width: 110, height: 55 }),
         );
         maskGem.classList.add("on");
@@ -565,6 +573,7 @@ class ShowcaseScene extends Scene {
 
       const inverseGem = document.createElement("button");
       inverseGem.textContent = "Toggle gem mask inverse";
+      if (gemInverse) inverseGem.classList.add("on");
       inverseGem.onclick = () => {
         if (!gemHandle) {
           showToast("Mask gem first");
@@ -576,9 +585,9 @@ class ShowcaseScene extends Scene {
       };
       panel.appendChild(inverseGem);
 
-      let blockHandle: MaskHandle | null = null;
       const maskBlock = document.createElement("button");
       maskBlock.textContent = "Mask block (graphicsMask circle)";
+      if (blockHandle) maskBlock.classList.add("on");
       maskBlock.onclick = () => {
         if (blockHandle) {
           blockHandle.remove();
@@ -586,8 +595,7 @@ class ShowcaseScene extends Scene {
           maskBlock.classList.remove("on");
           return;
         }
-        const g = this.block?.tryGet(GraphicsComponent);
-        if (!g) throw new Error("block graphics missing");
+        if (!blockGfx) throw new Error("block graphics missing");
         // graphicsMask gotchas:
         //   1. Always g.clear() first — pixi commands accumulate, so each
         //      redraw() would otherwise stack another shape on top.
@@ -597,7 +605,7 @@ class ShowcaseScene extends Scene {
         //   the literal radius is fine here. For dynamic dimensions
         //   (e.g. a UIPanel), reach through to the live source on each
         //   call — see UIPanel's own setMask call site.
-        blockHandle = g.setMask(
+        blockHandle = blockGfx.setMask(
           graphicsMask((mg) => {
             mg.clear();
             mg.circle(0, 0, 55);
