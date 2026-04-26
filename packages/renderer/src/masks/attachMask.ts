@@ -40,9 +40,23 @@ export function attachMask(
     remove(): void {
       if (removed) return;
       removed = true;
-      target.setMask({ mask: null, inverse: false });
-      // Container.destroy() handles removeFromParent itself in pixi v8.
-      if (mask.owned) mask.node.destroy();
+      // Pixi v8 quirk: `setMask({ mask: null, inverse: false })` only
+      // updates the cached `_maskOptions`; it leaves the live mask effect
+      // pointing at our (about-to-be-destroyed) node, so the next render
+      // dereferences a freed `_gpuData` and crashes. Direct
+      // `target.mask = null` runs the proper teardown — `removeEffect()`
+      // + `MaskEffectManager.returnMaskEffect()` — which is what we want.
+      target.mask = null;
+      if (mask.owned) {
+        // Detach BEFORE destroy so the previous parent (could be the
+        // target, the target's parent, or a layer container) drops its
+        // children-list reference before pixi tears down GPU resources.
+        // `Container.destroy()` does call `removeFromParent`, but doing
+        // it explicitly first avoids any lingering structure-changed
+        // refs in the render group from the same frame.
+        mask.node.removeFromParent();
+        mask.node.destroy();
+      }
     },
     setInverse(on: boolean): void {
       if (removed) return;

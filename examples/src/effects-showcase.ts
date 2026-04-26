@@ -22,11 +22,13 @@ import {
   GraphicsComponent,
   RendererKey,
   SceneRenderTreeProviderKey,
+  graphicsMask,
   linearGradient,
   radialGradient,
+  rectMask,
   type LayerDef,
 } from "@yagejs/renderer";
-import type { EffectHandle } from "@yagejs/renderer";
+import type { EffectHandle, MaskHandle } from "@yagejs/renderer";
 import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 import {
   hitFlash,
@@ -492,6 +494,116 @@ class ShowcaseScene extends Scene {
     toggle("vignette", "vignette", () =>
       renderer.addEffect(vignette({ alpha: 0.6 })),
     );
+
+    // ---- Fades (intensity tweens) ----
+    //
+    // Every effect handle has fadeIn(ms) / fadeOut(ms) that tween the
+    // effect's primary intensity uniform. The fade is scheduled through
+    // the same scope-bound process host that backs the rest of the
+    // engine, so layer/scene-scope fades pause with the scene; the
+    // screen-scope vignette fade keeps running across scene transitions.
+    //
+    // For a button-driven demo we operate on whichever handle is already
+    // attached via the toggles above — toggle bloom or vignette on, then
+    // fade it.
+    section("Fades");
+    const fadeBtn = (label: string, key: string, ms: number, dir: "in" | "out"): void => {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.onclick = () => {
+        const h = this.effectHandles.get(key);
+        if (!h) {
+          showToast(`Toggle ${key} on first`);
+          return;
+        }
+        if (dir === "in") h.fadeIn(ms);
+        else h.fadeOut(ms);
+      };
+      panel.appendChild(btn);
+    };
+    fadeBtn("bloom: fade out 1s", "bloom", 1000, "out");
+    fadeBtn("bloom: fade in 1s", "bloom", 1000, "in");
+    fadeBtn("vignette: fade out 1s", "vignette", 1000, "out");
+    fadeBtn("vignette: fade in 1s", "vignette", 1000, "in");
+
+    // ---- Masks ----
+    //
+    // Masks are exclusive (one per container) so they use a separate API
+    // from addEffect: setMask / clearMask. Mask handles aren't tracked in
+    // the long-lived effectHandles map — they're closure-local here and
+    // the panel doesn't try to re-light their toggles after a load.
+    // (`rectMask` survives the save round-trip; `graphicsMask` does not,
+    // because its draw closure can't be serialized.)
+    section("Masks");
+    {
+      let gemHandle: MaskHandle | null = null;
+      let gemInverse = false;
+      const maskGem = document.createElement("button");
+      maskGem.textContent = "Mask gem (rounded rect)";
+      maskGem.onclick = () => {
+        if (gemHandle) {
+          gemHandle.remove();
+          gemHandle = null;
+          gemInverse = false;
+          maskGem.classList.remove("on");
+          inverseGem.classList.remove("on");
+          return;
+        }
+        const g = this.gem?.tryGet(GraphicsComponent);
+        if (!g) throw new Error("gem graphics missing");
+        gemHandle = g.setMask(
+          // Clip to the top half of the diamond polygon.
+          rectMask({ x: -55, y: -55, width: 110, height: 55, rounded: 8 }),
+        );
+        maskGem.classList.add("on");
+      };
+      panel.appendChild(maskGem);
+
+      const inverseGem = document.createElement("button");
+      inverseGem.textContent = "Toggle gem mask inverse";
+      inverseGem.onclick = () => {
+        if (!gemHandle) {
+          showToast("Mask gem first");
+          return;
+        }
+        gemInverse = !gemInverse;
+        gemHandle.setInverse(gemInverse);
+        inverseGem.classList.toggle("on", gemInverse);
+      };
+      panel.appendChild(inverseGem);
+
+      let blockHandle: MaskHandle | null = null;
+      const maskBlock = document.createElement("button");
+      maskBlock.textContent = "Mask block (graphicsMask circle)";
+      maskBlock.onclick = () => {
+        if (blockHandle) {
+          blockHandle.remove();
+          blockHandle = null;
+          maskBlock.classList.remove("on");
+          return;
+        }
+        const g = this.block?.tryGet(GraphicsComponent);
+        if (!g) throw new Error("block graphics missing");
+        // graphicsMask gotchas:
+        //   1. Always g.clear() first — pixi commands accumulate, so each
+        //      redraw() would otherwise stack another shape on top.
+        //   2. Read live state inside the closure; never snapshot a
+        //      `const` outside, or redraw() keeps using the original.
+        //   The block's drawn extent is static (-60..60), so capturing
+        //   the literal radius is fine here. For dynamic dimensions
+        //   (e.g. a UIPanel), reach through to the live source on each
+        //   call — see UIPanel's own setMask call site.
+        blockHandle = g.setMask(
+          graphicsMask((mg) => {
+            mg.clear();
+            mg.circle(0, 0, 55);
+            mg.fill({ color: 0xffffff });
+          }),
+        );
+        maskBlock.classList.add("on");
+      };
+      panel.appendChild(maskBlock);
+    }
 
     section("Save / Load");
     {
