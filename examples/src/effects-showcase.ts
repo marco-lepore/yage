@@ -2,10 +2,15 @@
  * Effects showcase — exercises every preset in `@yagejs/effects` at each
  * scope (component, layer, scene, screen) and demonstrates that the state
  * survives a save/load round-trip.
+ *
+ * Geometry is procedural (`GraphicsComponent.draw`) and the engine doesn't
+ * persist drawing commands across save/load, so each shape lives on its
+ * own `@serializable` entity that re-runs its draw in `afterRestore()`.
  */
 
 import {
   Component,
+  Entity,
   Engine,
   Scene,
   Transform,
@@ -17,11 +22,11 @@ import {
   GraphicsComponent,
   RendererKey,
   SceneRenderTreeProviderKey,
+  linearGradient,
+  radialGradient,
   type LayerDef,
 } from "@yagejs/renderer";
-import type {
-  EffectHandle,
-} from "@yagejs/renderer";
+import type { EffectHandle } from "@yagejs/renderer";
 import { SavePlugin, SaveServiceKey } from "@yagejs/save";
 import {
   hitFlash,
@@ -37,6 +42,9 @@ import {
 } from "@yagejs/effects";
 import type { CRTHandle, HitFlashHandle } from "@yagejs/effects";
 import { injectStyles, setupGameContainer } from "./shared.js";
+
+const STAGE_WIDTH = 800;
+const STAGE_HEIGHT = 600;
 
 injectStyles(`
   #panel {
@@ -85,6 +93,7 @@ function showToast(msg: string): void {
 }
 
 const layers: LayerDef[] = [
+  { name: "background", order: -10 },
   { name: "world", order: 0 },
   { name: "hud", order: 100 },
 ];
@@ -98,93 +107,327 @@ class EffectTicker extends Component {
   }
 }
 
+/** Colourful, detailed backdrop so subtle effects stay visible. Lives on
+ * the "background" layer below the world. */
+@serializable
+class BackgroundEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(0, 0) }));
+    this.add(new GraphicsComponent({ layer: "background" }));
+    this.redraw();
+  }
+
+  afterRestore(): void {
+    this.redraw();
+  }
+
+  private redraw(): void {
+    const g = this.tryGet(GraphicsComponent);
+    if (!g) return;
+    g.draw((ctx) => {
+      ctx.clear();
+      // Deep gradient sky — purple → teal — anchored to the canvas.
+      const sky = linearGradient({
+        axis: "vertical",
+        stops: [
+          { offset: 0, color: 0x1e1b4b },
+          { offset: 0.5, color: 0x312e81 },
+          { offset: 1, color: 0x065f46 },
+        ],
+      });
+      ctx.rect(0, 0, STAGE_WIDTH, STAGE_HEIGHT).fill(sky);
+
+      // Subtle radial highlight in the upper-left to break up the flat fill.
+      const sun = radialGradient({
+        center: { x: 0.25, y: 0.25 },
+        outerRadius: 0.7,
+        stops: [
+          { offset: 0, color: 0xfde68a, alpha: 0.4 },
+          { offset: 1, color: 0xfde68a, alpha: 0 },
+        ],
+        space: "local",
+      });
+      ctx.rect(0, 0, STAGE_WIDTH, STAGE_HEIGHT).fill(sun);
+
+      // Grid lines so pixelate / chromaticAberration / CRT have geometry to chew on.
+      const gridStep = 40;
+      for (let x = 0; x <= STAGE_WIDTH; x += gridStep) {
+        ctx
+          .moveTo(x, 0)
+          .lineTo(x, STAGE_HEIGHT)
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
+      }
+      for (let y = 0; y <= STAGE_HEIGHT; y += gridStep) {
+        ctx
+          .moveTo(0, y)
+          .lineTo(STAGE_WIDTH, y)
+          .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
+      }
+
+      // Scattered glowing dots — predictable positions so the visual
+      // doesn't shift across saves.
+      const palette = [0xfacc15, 0xf472b6, 0x60a5fa, 0x34d399, 0xfb923c];
+      let seed = 1;
+      const rand = (): number => {
+        seed = (seed * 9301 + 49297) % 233280;
+        return seed / 233280;
+      };
+      for (let i = 0; i < 60; i++) {
+        const x = rand() * STAGE_WIDTH;
+        const y = rand() * STAGE_HEIGHT;
+        const r = 1 + rand() * 2.5;
+        const color = palette[Math.floor(rand() * palette.length)] ?? 0xffffff;
+        ctx.circle(x, y, r).fill({ color, alpha: 0.65 });
+      }
+
+      // A few translucent panels behind the heroes so dropShadow and outline
+      // have something to push against without relying on the background colour.
+      ctx.rect(150, 220, 200, 200).fill({ color: 0xffffff, alpha: 0.04 });
+      ctx.rect(370, 220, 200, 200).fill({ color: 0xffffff, alpha: 0.04 });
+      ctx.rect(590, 220, 160, 200).fill({ color: 0xffffff, alpha: 0.04 });
+    });
+  }
+}
+
+/** Blue circle with the demo's pre-attached hitFlash effect. */
+@serializable
+class HeroEntity extends Entity {
+  flashHandle: HitFlashHandle | null = null;
+
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(250, 320) }));
+    this.add(new GraphicsComponent({ layer: "world" }));
+    this.redraw();
+    this.attachHitFlash();
+  }
+
+  afterRestore(): void {
+    this.redraw();
+    // GraphicsComponent.afterRestore already rebuilt the saved hitFlash;
+    // recover its handle so the trigger button keeps working.
+    const g = this.tryGet(GraphicsComponent);
+    this.flashHandle = g?.findEffect(hitFlash) ?? null;
+    if (!this.flashHandle) this.attachHitFlash();
+  }
+
+  private attachHitFlash(): void {
+    const g = this.tryGet(GraphicsComponent);
+    if (!g) return;
+    this.flashHandle = g.addEffect(
+      hitFlash({ color: 0xffffff, duration: 200 }),
+    );
+  }
+
+  private redraw(): void {
+    const g = this.tryGet(GraphicsComponent);
+    if (!g) return;
+    g.draw((ctx) => {
+      ctx.clear();
+      ctx.circle(0, 0, 60).fill({ color: 0x38bdf8 });
+      ctx.circle(0, 0, 60).stroke({ color: 0x0ea5e9, width: 4 });
+    });
+  }
+}
+
+/** Orange square — outline / dropShadow target. */
+@serializable
+class BlockEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(470, 320) }));
+    this.add(new GraphicsComponent({ layer: "world" }));
+    this.redraw();
+  }
+
+  afterRestore(): void {
+    this.redraw();
+  }
+
+  private redraw(): void {
+    const g = this.tryGet(GraphicsComponent);
+    if (!g) return;
+    g.draw((ctx) => {
+      ctx.clear();
+      ctx.rect(-60, -60, 120, 120).fill({ color: 0xf97316 });
+      ctx.rect(-60, -60, 120, 120).stroke({ color: 0xfb923c, width: 2 });
+    });
+  }
+}
+
+/** Green diamond — glow target. */
+@serializable
+class GemEntity extends Entity {
+  setup(): void {
+    this.add(new Transform({ position: new Vec2(670, 320) }));
+    this.add(new GraphicsComponent({ layer: "world" }));
+    this.redraw();
+  }
+
+  afterRestore(): void {
+    this.redraw();
+  }
+
+  private redraw(): void {
+    const g = this.tryGet(GraphicsComponent);
+    if (!g) return;
+    g.draw((ctx) => {
+      ctx.clear();
+      ctx.poly([0, -55, 50, 0, 0, 55, -50, 0]).fill({ color: 0x22c55e });
+      ctx.poly([0, -55, 50, 0, 0, 55, -50, 0]).stroke({
+        color: 0x16a34a,
+        width: 3,
+      });
+    });
+  }
+}
+
+/** Hosts the per-frame ticker component used to advance step(dt) effects.
+ * `EffectTicker` is stateless and has no @serializable wiring, so the
+ * entity rebuilds it from scratch in `afterRestore`. */
+@serializable
+class TickerEntity extends Entity {
+  ticker: EffectTicker | null = null;
+
+  setup(): void {
+    this.ticker = new EffectTicker();
+    this.add(this.ticker);
+  }
+
+  afterRestore(): void {
+    this.ticker = new EffectTicker();
+    this.add(this.ticker);
+  }
+}
+
 @serializable
 class ShowcaseScene extends Scene {
   readonly name = "effects-showcase";
   readonly layers = layers;
 
-  // Stored handles so toggle UI can flip them on/off and so trigger() is reachable.
-  private flashHandle: HitFlashHandle | null = null;
-  private crtHandle: CRTHandle | null = null;
-  private ticker: EffectTicker | null = null;
   private effectHandles = new Map<string, EffectHandle | null>();
+  private crtHandle: CRTHandle | null = null;
+  private background: BackgroundEntity | null = null;
+  private hero: HeroEntity | null = null;
+  private block: BlockEntity | null = null;
+  private gem: GemEntity | null = null;
+  private tickerEntity: TickerEntity | null = null;
 
   onEnter(): void {
-    // Blue circle — gets the per-component hitFlash trigger.
-    const hero = this.spawn("hero");
-    hero.add(new Transform({ position: new Vec2(220, 320) }));
-    const heroG = new GraphicsComponent({ layer: "world" }).draw((g) => {
-      g.circle(0, 0, 60).fill({ color: 0x38bdf8 });
-      g.circle(0, 0, 60).stroke({ color: 0x0ea5e9, width: 4 });
-    });
-    hero.add(heroG);
+    this.background = this.spawn(BackgroundEntity);
+    this.hero = this.spawn(HeroEntity);
+    this.block = this.spawn(BlockEntity);
+    this.gem = this.spawn(GemEntity);
+    this.tickerEntity = this.spawn(TickerEntity);
 
-    // Orange square — for outline / drop shadow.
-    const block = this.spawn("block");
-    block.add(new Transform({ position: new Vec2(440, 320) }));
-    const blockG = new GraphicsComponent({ layer: "world" }).draw((g) => {
-      g.rect(-60, -60, 120, 120).fill({ color: 0xf97316 });
-    });
-    block.add(blockG);
-
-    // Green diamond — empty slot, will get glow.
-    const gem = this.spawn("gem");
-    gem.add(new Transform({ position: new Vec2(640, 320) }));
-    const gemG = new GraphicsComponent({ layer: "world" }).draw((g) => {
-      g.poly([0, -55, 50, 0, 0, 55, -50, 0]).fill({ color: 0x22c55e });
-    });
-    gem.add(gemG);
-
-    // Pre-attach the hitFlash so the `Hit Flash trigger` button has a handle.
-    this.flashHandle = heroG.addEffect(
-      hitFlash({ color: 0xffffff, duration: 200 }),
-    );
-
-    // Tick component drives step()-based effects every frame.
-    const tickerEntity = this.spawn("ticker");
-    const ticker = new EffectTicker();
-    tickerEntity.add(ticker);
-    ticker.tickers.push((dt) => this.flashHandle?.step(dt));
-    this.ticker = ticker;
-
-    // Build the toggle UI now that scene state exists.
-    this.buildPanel(blockG, gemG);
+    this.bindFlashTicker();
+    this.buildPanel();
   }
 
-  private buildPanel(
-    block: GraphicsComponent,
-    gem: GraphicsComponent,
-  ): void {
+  afterRestore(): void {
+    // Recover entity references by walking the restored entity list. Order
+    // is determined by save-time spawn order, but each is a single instance
+    // here so a per-class find is safe.
+    for (const e of this.getEntities()) {
+      if (e instanceof BackgroundEntity) this.background = e;
+      else if (e instanceof HeroEntity) this.hero = e;
+      else if (e instanceof BlockEntity) this.block = e;
+      else if (e instanceof GemEntity) this.gem = e;
+      else if (e instanceof TickerEntity) this.tickerEntity = e;
+    }
+
+    this.effectHandles.clear();
+    this.bindFlashTicker();
+    this.buildPanel();
+
+    // The renderer's snapshot contributor runs AFTER scene.afterRestore,
+    // so the layer/scene/screen effects we want to reflect in the panel
+    // don't exist yet. Defer the sync to the next macrotask, which fires
+    // after `loadSnapshot()` (and its contributor pass) has resolved.
+    setTimeout(() => this.syncPanelToRestoredEffects(), 0);
+  }
+
+  /** After load, the renderer has rebuilt every saved effect at every
+   * scope, but the panel's `effectHandles` map is empty. Walk each scope
+   * for the presets we expose buttons for, recover their handles, and
+   * mark the corresponding buttons as "on". */
+  private syncPanelToRestoredEffects(): void {
+    const tree = this.context.resolve(SceneRenderTreeProviderKey).getTree(this);
+    if (!tree) return;
+    const renderer = this.context.resolve(RendererKey);
+    const world = tree.tryGet("world");
+
+    const sync = (key: string, handle: EffectHandle | null): void => {
+      if (!handle) return;
+      this.effectHandles.set(key, handle);
+      const btn = panel.querySelector<HTMLButtonElement>(
+        `button[data-toggle-key="${key}"]`,
+      );
+      btn?.classList.add("on");
+    };
+
+    sync("outline", this.block?.tryGet(GraphicsComponent)?.findEffect(outline) ?? null);
+    sync("dropShadow", this.block?.tryGet(GraphicsComponent)?.findEffect(dropShadow) ?? null);
+    sync("glow", this.gem?.tryGet(GraphicsComponent)?.findEffect(glow) ?? null);
+    sync("bloom", world?.findEffect(bloom) ?? null);
+    sync("pixelate", world?.findEffect(pixelate) ?? null);
+
+    const restoredCrt = tree.findEffect(crt);
+    if (restoredCrt) {
+      this.crtHandle = restoredCrt;
+      this.tickerEntity?.ticker?.tickers.push((dt) => restoredCrt.step(dt));
+      sync("crt", restoredCrt);
+    }
+    sync("colorGrade", tree.findEffect(colorGrade));
+    sync("ca", tree.findEffect(chromaticAberration));
+    sync("vignette", renderer.findEffect(vignette));
+  }
+
+  /** Wire the per-frame tickers for hitFlash + (if active) CRT. */
+  private bindFlashTicker(): void {
+    const ticker = this.tickerEntity?.ticker;
+    if (!ticker) return;
+    ticker.tickers.length = 0;
+    ticker.tickers.push((dt) => this.hero?.flashHandle?.step(dt));
+    if (this.crtHandle) {
+      const crtRef = this.crtHandle;
+      ticker.tickers.push((dt) => crtRef.step(dt));
+    }
+  }
+
+  private buildPanel(): void {
     const tree = this.context.resolve(SceneRenderTreeProviderKey).getTree(this);
     if (!tree) throw new Error("scene render tree not yet attached");
     const renderer = this.context.resolve(RendererKey);
 
     panel.innerHTML = "";
 
-    const section = (title: string): HTMLElement => {
+    const section = (title: string): void => {
       const h = document.createElement("h3");
       h.textContent = title;
       panel.appendChild(h);
-      return h;
     };
 
     const toggle = (
       label: string,
       key: string,
       attach: () => EffectHandle,
+      onActivate?: (h: EffectHandle) => void,
+      onDeactivate?: () => void,
     ): void => {
       const btn = document.createElement("button");
       btn.textContent = label;
+      btn.dataset.toggleKey = key;
       btn.onclick = () => {
         const existing = this.effectHandles.get(key);
         if (existing) {
           existing.remove();
           this.effectHandles.set(key, null);
           btn.classList.remove("on");
+          onDeactivate?.();
         } else {
           const handle = attach();
           this.effectHandles.set(key, handle);
           btn.classList.add("on");
+          onActivate?.(handle);
         }
       };
       panel.appendChild(btn);
@@ -194,18 +437,24 @@ class ShowcaseScene extends Scene {
     {
       const btn = document.createElement("button");
       btn.textContent = "Hit Flash trigger";
-      btn.onclick = () => this.flashHandle?.trigger();
+      btn.onclick = () => this.hero?.flashHandle?.trigger();
       panel.appendChild(btn);
     }
-    toggle("outline (block)", "outline", () =>
-      block.addEffect(outline({ thickness: 4, color: 0x000000 })),
-    );
-    toggle("dropShadow (block)", "dropShadow", () =>
-      block.addEffect(dropShadow({ offset: { x: 6, y: 6 }, alpha: 0.6 })),
-    );
-    toggle("glow (gem)", "glow", () =>
-      gem.addEffect(glow({ color: 0xffff00, outerStrength: 3 })),
-    );
+    toggle("outline (block)", "outline", () => {
+      const g = this.block?.tryGet(GraphicsComponent);
+      if (!g) throw new Error("block graphics missing");
+      return g.addEffect(outline({ thickness: 4, color: 0x000000 }));
+    });
+    toggle("dropShadow (block)", "dropShadow", () => {
+      const g = this.block?.tryGet(GraphicsComponent);
+      if (!g) throw new Error("block graphics missing");
+      return g.addEffect(dropShadow({ offset: { x: 8, y: 8 }, alpha: 0.7 }));
+    });
+    toggle("glow (gem)", "glow", () => {
+      const g = this.gem?.tryGet(GraphicsComponent);
+      if (!g) throw new Error("gem graphics missing");
+      return g.addEffect(glow({ color: 0xffff00, outerStrength: 3 }));
+    });
 
     section("Layer (world)");
     toggle("bloom", "bloom", () =>
@@ -216,13 +465,27 @@ class ShowcaseScene extends Scene {
     );
 
     section("Scene");
-    toggle("crt", "crt", () => {
-      const h = tree.addEffect(crt({ lineContrast: 0.3 }));
-      this.crtHandle = h;
-      const stepFn = (dt: number) => h.step(dt);
-      this.ticker?.tickers.push(stepFn);
-      return h;
-    });
+    toggle(
+      "crt",
+      "crt",
+      () => {
+        const h = tree.addEffect(crt({ lineContrast: 0.3 }));
+        this.crtHandle = h;
+        return h;
+      },
+      (h) => {
+        const crtRef = h as CRTHandle;
+        this.tickerEntity?.ticker?.tickers.push((dt) => crtRef.step(dt));
+      },
+      () => {
+        this.crtHandle = null;
+        const ticker = this.tickerEntity?.ticker;
+        if (!ticker) return;
+        // Drop everything and re-bind the persistent tickers (hitFlash).
+        // Cheaper than tracking individual fn refs through closures.
+        this.bindFlashTicker();
+      },
+    );
     toggle("colorGrade: sepia", "colorGrade", () =>
       tree.addEffect(colorGrade({ preset: "sepia" })),
     );
@@ -270,10 +533,10 @@ async function main(): Promise<void> {
 
   engine.use(
     new RendererPlugin({
-      width: 800,
-      height: 600,
-      backgroundColor: 0x0a0a0a,
-      container: setupGameContainer(800, 600),
+      width: STAGE_WIDTH,
+      height: STAGE_HEIGHT,
+      backgroundColor: 0x000000,
+      container: setupGameContainer(STAGE_WIDTH, STAGE_HEIGHT),
     }),
   );
   engine.use(new SavePlugin());

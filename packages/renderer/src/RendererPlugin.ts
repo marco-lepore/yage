@@ -24,6 +24,7 @@ import type { Spritesheet } from "pixi.js";
 import { EffectStack } from "./effects/EffectStack.js";
 import { makeProcessSystemHost } from "./effects/hosts/ProcessSystemHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectDefinition } from "./effects/defineEffect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -56,6 +57,7 @@ export class RendererPlugin implements Plugin {
   private fitController!: FitController;
   private _processSystem: ProcessSystem | undefined;
   private _effects: EffectStack | undefined;
+  private _engineContext: EngineContext | null = null;
   private _unregisterSaveContributor: (() => void) | null = null;
 
   constructor(config: RendererConfig) {
@@ -155,11 +157,20 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 10. Optional: bridge layer/scene/screen-scope effects + masks into the
-    //     save system. `@yagejs/save` is an optional peer dep — the dynamic
-    //     import + try/catch lets the renderer keep working when it's not
-    //     installed (the contributor simply doesn't register).
-    await this.tryRegisterSaveContributor(context);
+    // 10. Stash the context for use in onStart, where the save bridge is
+    //     wired up — we need to wait for every plugin to install before
+    //     resolving SaveServiceKey, otherwise registration order matters.
+    this._engineContext = context;
+  }
+
+  async onStart(): Promise<void> {
+    // Bridge layer/scene/screen-scope effects + masks into the save system.
+    // `@yagejs/save` is an optional peer dep — the dynamic import + try/catch
+    // lets the renderer keep working when it's not installed (the contributor
+    // simply doesn't register). Done in onStart, not install, so RendererPlugin
+    // and SavePlugin can be registered in any order.
+    if (!this._engineContext) return;
+    await this.tryRegisterSaveContributor(this._engineContext);
   }
 
   private async tryRegisterSaveContributor(
@@ -222,6 +233,17 @@ export class RendererPlugin implements Plugin {
    */
   addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
     return this.ensureScreenStack().add(factory);
+  }
+
+  /**
+   * Recover the handle for the first attached screen-scope effect built
+   * from `definition`. Useful after save/load to re-acquire a handle
+   * whose caller-side reference went stale during restoration.
+   */
+  findEffect<H extends EffectHandle, O>(
+    definition: EffectDefinition<H, O>,
+  ): H | null {
+    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
   }
 
   onDestroy(): void {

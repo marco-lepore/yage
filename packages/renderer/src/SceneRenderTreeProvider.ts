@@ -12,6 +12,7 @@ import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeSceneScopedProcessHost } from "./effects/hosts/ProcessSystemHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectDefinition } from "./effects/defineEffect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
@@ -72,6 +73,12 @@ class SceneRenderTreeImpl implements SceneRenderTree {
       );
     }
     return this._effects.add(factory);
+  }
+
+  findEffect<H extends EffectHandle, O>(
+    definition: EffectDefinition<H, O>,
+  ): H | null {
+    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
   }
 
   setMask(factory: MaskFactory): MaskHandle {

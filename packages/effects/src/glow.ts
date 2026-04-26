@@ -29,15 +29,18 @@ export const glow = defineEffect<GlowHandle, GlowOptions>({
   name: "yage:glow",
   factory: (options) => {
     let baseOuter = options.outerStrength ?? 4;
+    const distance = options.distance ?? 10;
     const filter = new GlowFilter({
       color: options.color ?? 0xffffff,
-      distance: options.distance ?? 10,
+      distance,
       outerStrength: baseOuter,
       innerStrength: options.innerStrength ?? 0,
       alpha: options.alpha ?? 1,
       quality: options.quality ?? 0.1,
       knockout: options.knockout ?? false,
     });
+    // GlowFilter's outer halo extends `distance` pixels past the source.
+    filter.padding = distance + 4;
     const effect: Effect<GlowHandle> = {
       filter,
       getIntensity: () => filter.outerStrength / Math.max(baseOuter, 1e-6),

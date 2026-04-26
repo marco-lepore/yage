@@ -181,6 +181,9 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
         }
         return sceneStack.add(factory);
       },
+      findEffect(definition) {
+        return (sceneStack?.findHandle(definition.name) as never) ?? null;
+      },
       setMask(factory: MaskFactory): MaskHandle {
         sceneMask?.remove();
         sceneMask = attachMask(root as never, factory);

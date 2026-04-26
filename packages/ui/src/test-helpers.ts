@@ -125,6 +125,7 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       addEffect: () => {
         throw new Error("UI test-helpers tree does not support addEffect.");
       },
+      findEffect: () => null,
       setMask: () => {
         throw new Error("UI test-helpers tree does not support setMask.");
       },

@@ -119,6 +119,7 @@ export function createParticlesTestContext(): ParticlesTestContext {
     addEffect: () => {
       throw new Error("Particles test-helpers tree does not support addEffect.");
     },
+    findEffect: () => null,
     setMask: () => {
       throw new Error("Particles test-helpers tree does not support setMask.");
     },

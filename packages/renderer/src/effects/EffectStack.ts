@@ -145,6 +145,26 @@ export class EffectStack {
   }
 
   /**
+   * Find the handle for the first effect in the stack built from a
+   * `defineEffect`-registered definition with the given `name`. Useful
+   * after `restoreFrom` to recover a handle to a saved effect (e.g. a
+   * `hitFlash` whose `trigger()` button needs to keep working).
+   *
+   * Returns `undefined` if no matching entry exists. If the stack holds
+   * multiple entries with the same definition name, the first one
+   * encountered (insertion order) is returned.
+   */
+  findHandle(definitionName: string): EffectHandle | undefined {
+    for (const effect of this.entries) {
+      const meta = getEffectMeta(effect);
+      if (meta?.definitionName === definitionName) {
+        return this.handles.get(effect);
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Capture the steady-state of every effect in the stack. Effects built
    * from `defineEffect`-registered factories are included; entries without
    * registry metadata (e.g. `rawFilter`, hand-built `Effect`s) are skipped

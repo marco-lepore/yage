@@ -4,6 +4,7 @@ import type { LayerDef, LayerSpace } from "./LayerDef.js";
 import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectDefinition } from "./effects/defineEffect.js";
 import type {
   EffectHandle,
   EffectProcessHost,
@@ -82,6 +83,17 @@ export class RenderLayer {
       );
     }
     return this._effects.add(factory);
+  }
+
+  /**
+   * Recover the handle for the first attached effect built from `definition`.
+   * Useful after save/load to re-acquire a layer-scope handle whose
+   * caller-side reference went stale during restoration.
+   */
+  findEffect<H extends EffectHandle, O>(
+    definition: EffectDefinition<H, O>,
+  ): H | null {
+    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
   }
 
   /**

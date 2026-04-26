@@ -27,13 +27,17 @@ export const bloom = defineEffect<BloomHandle, BloomOptions>({
   name: "yage:bloom",
   factory: (options) => {
     let baseBloomScale = options.bloomScale ?? 1;
+    const baseBlur = options.blur ?? 8;
     const filter = new AdvancedBloomFilter({
       threshold: options.threshold ?? 0.5,
       bloomScale: baseBloomScale,
       brightness: options.brightness ?? 1,
-      blur: options.blur ?? 8,
+      blur: baseBlur,
       quality: options.quality ?? 4,
     });
+    // Bloom blur extends past the source bounds — pad so the halo isn't
+    // clipped at the display object's bounding box.
+    filter.padding = baseBlur * 2 + 8;
     const effect: Effect<BloomHandle> = {
       filter,
       getIntensity: () => filter.bloomScale / Math.max(baseBloomScale, 1e-6),

@@ -27,14 +27,21 @@ export const dropShadow = defineEffect<DropShadowHandle, DropShadowOptions>({
   name: "yage:dropShadow",
   factory: (options) => {
     let baseAlpha = options.alpha ?? 0.5;
+    const baseOffset = options.offset ?? { x: 4, y: 4 };
+    const baseBlur = options.blur ?? 4;
     const filter = new DropShadowFilter({
-      offset: options.offset ?? { x: 4, y: 4 },
+      offset: baseOffset,
       color: options.color ?? 0x000000,
       alpha: baseAlpha,
-      blur: options.blur ?? 4,
+      blur: baseBlur,
       quality: options.quality ?? 3,
       shadowOnly: options.shadowOnly ?? false,
     });
+    // The shadow extends beyond the source's bounds by offset + blur radius;
+    // pad accordingly so the trailing edge isn't clipped.
+    const padFor = (offX: number, offY: number, blur: number): number =>
+      Math.max(Math.abs(offX), Math.abs(offY)) + blur * 2 + 4;
+    filter.padding = padFor(baseOffset.x, baseOffset.y, baseBlur);
     const effect: Effect<DropShadowHandle> = {
       filter,
       getIntensity: () => filter.alpha / Math.max(baseAlpha, 1e-6),
@@ -44,6 +51,7 @@ export const dropShadow = defineEffect<DropShadowHandle, DropShadowOptions>({
       buildExtras: () => ({
         setOffset: (x: number, y: number) => {
           filter.offset = { x, y };
+          filter.padding = padFor(x, y, baseBlur);
         },
         setColor: (color: number) => {
           filter.color = color;

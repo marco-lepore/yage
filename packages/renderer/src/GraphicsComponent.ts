@@ -5,6 +5,7 @@ import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectDefinition } from "./effects/defineEffect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
@@ -84,6 +85,18 @@ export class GraphicsComponent extends Component {
       "component",
     );
     return this._effects.add(factory);
+  }
+
+  /**
+   * Recover the handle for the first attached effect built from `definition`.
+   * Primarily useful after save/load: `afterRestore` rebuilds the stack but
+   * the original handle reference becomes stale, so `findEffect(hitFlash)`
+   * gives you the new handle to call `trigger()` on.
+   */
+  findEffect<H extends EffectHandle, O>(
+    definition: EffectDefinition<H, O>,
+  ): H | null {
+    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
   }
 
   /** Attach a mask to this graphics object. See {@link SpriteComponent.setMask}. */

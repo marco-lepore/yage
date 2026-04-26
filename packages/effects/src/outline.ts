@@ -33,6 +33,10 @@ export const outline = defineEffect<OutlineHandle, OutlineOptions>({
       quality: options.quality ?? 0.1,
       knockout: options.knockout ?? false,
     });
+    // Outline draws OUTSIDE the source bounds, so without explicit padding
+    // it gets clipped at the display object's bounding box.
+    const padFor = (t: number): number => Math.max(t * 2 + 2, 4);
+    filter.padding = padFor(baseThickness);
     const effect: Effect<OutlineHandle> = {
       filter,
       getIntensity: () => filter.thickness / Math.max(baseThickness, 1e-6),
@@ -43,6 +47,7 @@ export const outline = defineEffect<OutlineHandle, OutlineOptions>({
         setThickness: (value: number) => {
           baseThickness = value;
           filter.thickness = value;
+          filter.padding = padFor(value);
         },
         setColor: (color: number) => {
           filter.color = color;

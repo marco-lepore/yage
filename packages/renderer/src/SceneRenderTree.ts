@@ -4,6 +4,7 @@ import type { Container } from "pixi.js";
 import type { LayerDef } from "./LayerDef.js";
 import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
 import type { EffectFactory } from "./effects/Effect.js";
+import type { EffectDefinition } from "./effects/defineEffect.js";
 import type { EffectHandle } from "./effects/EffectHandle.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
@@ -47,6 +48,14 @@ export interface SceneRenderTree {
    * or the handle is `.remove()`d.
    */
   addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H;
+  /**
+   * Recover the handle for the first scene-scope effect built from
+   * `definition`. Useful after save/load to re-acquire a handle whose
+   * caller-side reference went stale during restoration.
+   */
+  findEffect<H extends EffectHandle, O>(
+    definition: EffectDefinition<H, O>,
+  ): H | null;
   /**
    * Attach a scene-scope mask, replacing any existing one. Clips the entire
    * per-scene root. Torn down on scene exit.
