@@ -144,6 +144,83 @@ describe("ProcessSystem", () => {
     });
   });
 
+  describe("scene-scoped processes (addForScene)", () => {
+    it("ticks the process under the scene's timeScale", () => {
+      const { sys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 0.5;
+      sceneManager.activeScene = scene;
+      const spy = vi.fn();
+      sys.addForScene(scene as never, new Process({ update: spy }));
+      sys.update(20);
+      expect(spy).toHaveBeenCalledWith(10, 10);
+    });
+
+    it("does NOT tick when the scene is not active (paused)", () => {
+      const { sys, sceneManager } = setup();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      const spy = vi.fn();
+      sys.addForScene(scene as never, new Process({ update: spy }));
+      // Mark scene inactive — sceneManager.activeScenes returns []
+      sceneManager.activeScene = undefined;
+      sys.update(16);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("cancelForScene cancels every scene-bound process", () => {
+      const { sys } = setup();
+      const scene = new MockScene();
+      const p1 = new Process({ update: () => {} });
+      const p2 = new Process({ update: () => {} });
+      sys.addForScene(scene as never, p1);
+      sys.addForScene(scene as never, p2);
+      sys.cancelForScene(scene as never);
+      expect(p1.completed).toBe(true);
+      expect(p2.completed).toBe(true);
+    });
+
+    it("cancelForScene with tag filters", () => {
+      const { sys } = setup();
+      const scene = new MockScene();
+      const fade = new Process({ update: () => {}, tags: ["fade"] });
+      const sfx = new Process({ update: () => {}, tags: ["sfx"] });
+      sys.addForScene(scene as never, fade);
+      sys.addForScene(scene as never, sfx);
+      sys.cancelForScene(scene as never, "fade");
+      expect(fade.completed).toBe(true);
+      expect(sfx.completed).toBe(false);
+    });
+
+    it("completed scene-bound processes are pruned", () => {
+      const { sys, sceneManager } = setup();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      const p = new Process({ update: () => true }); // completes immediately
+      sys.addForScene(scene as never, p);
+      sys.update(16);
+      // Second tick must not throw — process was removed.
+      sys.update(16);
+      expect(p.completed).toBe(true);
+    });
+
+    it("scene-scoped pool is independent of engine-global pool", () => {
+      const { sys, sceneManager } = setup();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      const globalSpy = vi.fn();
+      const sceneSpy = vi.fn();
+      sys.add(new Process({ update: globalSpy }));
+      sys.addForScene(scene as never, new Process({ update: sceneSpy }));
+      // Pause the scene.
+      sceneManager.activeScene = undefined;
+      sys.update(16);
+      // Global pool keeps ticking; scene pool is gated by activeScenes.
+      expect(globalSpy).toHaveBeenCalledWith(16, 16);
+      expect(sceneSpy).not.toHaveBeenCalled();
+    });
+  });
+
   describe("timeScale", () => {
     it("defaults to 1", () => {
       const sys = new ProcessSystem();

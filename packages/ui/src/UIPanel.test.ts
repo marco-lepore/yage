@@ -24,7 +24,13 @@ const { mocks } = vi.hoisted(() => {
     eventMode = "auto";
     cursor = "default";
     mask: MockContainer | null = null;
+    maskInverse = false;
     private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+
+    setMask(opts: { mask: MockContainer | null; inverse?: boolean }): void {
+      this.mask = opts.mask;
+      this.maskInverse = opts.inverse ?? false;
+    }
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);

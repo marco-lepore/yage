@@ -1,6 +1,15 @@
-import { Component, serializable } from "@yagejs/core";
+import {
+  Component,
+  makeEntityScopedQueue,
+  serializable,
+} from "@yagejs/core";
 import { Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { DisplayText, TextStyle } from "./public-types.js";
 
 /** Options for creating a TextComponent. */
@@ -30,6 +39,8 @@ export interface TextData {
   alpha?: number;
   anchor?: { x: number; y: number };
   visible?: boolean;
+  effects?: EffectStackSnapshot;
+  mask?: MaskSnapshot;
 }
 
 /** Component that displays text on a render layer. */
@@ -41,6 +52,13 @@ export class TextComponent extends Component {
   // the live pixi `TextStyle` instance (which has non-enumerable getters and
   // would not round-trip through JSON).
   private _styleOptions?: TextStyle;
+  /** See {@link SpriteComponent.fx}. */
+  readonly fx = new EffectsHost(
+    () => this.text,
+    "component",
+    () => makeEntityScopedQueue(this.entity),
+  );
+  private _mask: MaskHandle | undefined;
 
   constructor(options: TextComponentOptions) {
     super();
@@ -104,7 +122,25 @@ export class TextComponent extends Component {
       visible: this.text.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
+    const effects = this.fx.serialize();
+    if (effects) data.effects = effects;
+    const mask = this._mask?.serialize();
+    if (mask) data.mask = mask;
     return data;
+  }
+
+  /** Restore effects and mask after the text node is parented. */
+  afterRestore(data: TextData): void {
+    if (data.effects) this.fx.restore(data.effects);
+    if (data.mask) {
+      this._mask?.remove();
+      // Clear before restore so an unsavable snapshot (restoreMask returns
+      // null) leaves the field genuinely empty instead of holding a torn-down
+      // handle for serialize/clearMask to operate on.
+      this._mask = undefined;
+      const handle = restoreMask(this.text, data.mask);
+      if (handle) this._mask = handle;
+    }
   }
 
   static fromSnapshot(data: TextData): TextComponent {
@@ -120,12 +156,35 @@ export class TextComponent extends Component {
     return new TextComponent(opts);
   }
 
+  /** Attach a mask to this text node. See {@link SpriteComponent.setMask}. */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.text, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the current mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
+  /**
+   * The currently attached mask handle, if any. Useful after save/load to
+   * recover a handle whose caller-side reference went stale.
+   */
+  get mask(): MaskHandle | undefined {
+    return this._mask;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.text);
   }
 
   onDestroy(): void {
+    this.fx.destroy();
+    this._mask?.remove();
     this.text.removeFromParent();
     this.text.destroy();
   }

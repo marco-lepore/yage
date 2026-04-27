@@ -8,6 +8,7 @@ export type {
   SceneSnapshotEntry,
   EntitySnapshotEntry,
   ComponentSnapshot,
+  SnapshotContributor,
 } from "./types.js";
 export type { SnapshotResolver } from "@yagejs/core";
 

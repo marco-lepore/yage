@@ -4,6 +4,9 @@ import {
   ErrorBoundaryKey,
   GameLoop,
   GameLoopKey,
+  makeSceneScopedQueue,
+  ProcessSystem,
+  ProcessSystemKey,
   SystemScheduler,
   SystemSchedulerKey,
   Scene,
@@ -21,6 +24,10 @@ import {
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
+import { attachMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle } from "./masks/MaskHandle.js";
 
 // ---- Minimal mock container for test context ----
 
@@ -51,6 +58,14 @@ export class MockContainer {
   label = "";
   destroyed = false;
   eventMode = "passive";
+  filters: unknown = null;
+  mask: MockContainer | null = null;
+  maskInverse = false;
+
+  setMask(opts: { mask: MockContainer | null; inverse?: boolean }): void {
+    this.mask = opts.mask;
+    this.maskInverse = opts.inverse ?? false;
+  }
 
   addChild(child: MockContainer): MockContainer {
     this.children.push(child);
@@ -81,6 +96,17 @@ export class MockContainer {
   }
 }
 
+/**
+ * Minimal SceneManager shape that `ProcessSystem` reads. Tests that drive the
+ * engine without a real SceneManager can plug in this shim via
+ * {@link RendererTestContext.setSceneManager} to control which scenes count
+ * as "active" for per-scene process pools.
+ */
+export interface MockSceneManagerLike {
+  activeScenes: Scene[];
+  readonly active?: Scene | undefined;
+}
+
 export interface RendererTestContext {
   context: EngineContext;
   scene: Scene;
@@ -91,6 +117,13 @@ export interface RendererTestContext {
   layerManager: RenderLayerManager;
   tree: SceneRenderTree;
   provider: MockSceneRenderTreeProvider;
+  /**
+   * Inject a SceneManager-like object into the context's `ProcessSystem` so
+   * tests can drive `activeScenes` directly without standing up a real
+   * `SceneManager`. Replaces the cast-and-poke pattern; if `ProcessSystem`'s
+   * sceneManager field is ever renamed, only this shim updates.
+   */
+  setSceneManager(sm: MockSceneManagerLike): void;
 }
 
 /**
@@ -101,10 +134,19 @@ export interface RendererTestContext {
 export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
   private trees = new Map<
     Scene,
-    { manager: RenderLayerManager; tree: SceneRenderTree; root: MockContainer }
+    {
+      manager: RenderLayerManager;
+      tree: SceneRenderTree;
+      root: MockContainer;
+      destroyEffects: () => void;
+      destroyMasks: () => void;
+    }
   >();
 
-  constructor(private readonly stage: MockContainer) {}
+  constructor(
+    private readonly stage: MockContainer,
+    private readonly processSystem?: ProcessSystem,
+  ) {}
 
   createForScene(scene: Scene): SceneRenderTree {
     if (this.trees.has(scene)) {
@@ -117,7 +159,23 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     root.label = `scene:${scene.name}`;
     this.stage.addChild(root);
 
-    const manager = new RenderLayerManager(root as never);
+    const ps = this.processSystem;
+    const queueFactory = ps
+      ? () => makeSceneScopedQueue(ps, scene)
+      : undefined;
+
+    const manager = new RenderLayerManager(
+      root as never,
+      undefined,
+      queueFactory,
+    );
+
+    const sceneFx = new EffectsHost(
+      () => root as never,
+      "scene",
+      queueFactory,
+    );
+    let sceneMask: MaskHandle | undefined;
     const tree: SceneRenderTree = {
       root: root as never,
       get: (name) => manager.get(name),
@@ -128,14 +186,44 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       },
       ensureLayer: (def, opts) =>
         manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
+      fx: sceneFx,
+      setMask(factory: MaskFactory): MaskHandle {
+        sceneMask?.remove();
+        sceneMask = attachMask(root as never, factory);
+        return sceneMask;
+      },
+      clearMask(): void {
+        sceneMask?.remove();
+        sceneMask = undefined;
+      },
     };
-    this.trees.set(scene, { manager, tree, root });
+
+    const destroyEffects = (): void => {
+      sceneFx.destroy();
+      manager.destroyEffects();
+    };
+
+    const destroyMasks = (): void => {
+      sceneMask?.remove();
+      sceneMask = undefined;
+      manager.destroyMasks();
+    };
+
+    this.trees.set(scene, {
+      manager,
+      tree,
+      root,
+      destroyEffects,
+      destroyMasks,
+    });
     return tree;
   }
 
   destroyForScene(scene: Scene): void {
     const entry = this.trees.get(scene);
     if (!entry) return;
+    entry.destroyEffects();
+    entry.destroyMasks();
     entry.root.destroy();
     entry.manager.destroy();
     this.trees.delete(scene);
@@ -180,9 +268,11 @@ export function createRendererTestContext(options?: {
   const gameLoop = new GameLoop();
   const scheduler = new SystemScheduler();
   scheduler.setErrorBoundary(boundary);
+  const processSystem = new ProcessSystem();
 
   ctx.register(GameLoopKey, gameLoop);
   ctx.register(SystemSchedulerKey, scheduler);
+  ctx.register(ProcessSystemKey, processSystem);
 
   const vw = options?.viewportWidth ?? 800;
   const vh = options?.viewportHeight ?? 600;
@@ -190,7 +280,7 @@ export function createRendererTestContext(options?: {
   ctx.register(RendererKey, mockRenderer as never);
 
   const stage = new MockContainer();
-  const provider = new MockSceneRenderTreeProvider(stage);
+  const provider = new MockSceneRenderTreeProvider(stage, processSystem);
   ctx.register(SceneRenderTreeProviderKey, provider);
 
   const tree = provider.createForScene(scene);
@@ -208,6 +298,13 @@ export function createRendererTestContext(options?: {
     layerManager,
     tree,
     provider,
+    setSceneManager(sm) {
+      // Cast-and-poke is contained here so tests don't reach into
+      // ProcessSystem internals directly. If `sceneManager` is renamed,
+      // only this line needs updating.
+      (processSystem as unknown as { sceneManager: MockSceneManagerLike }).sceneManager =
+        sm;
+    },
   };
 }
 

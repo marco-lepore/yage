@@ -113,3 +113,34 @@ export {
   spritesheet,
   texture,
 } from "./assets.js";
+
+// Effects
+export type { EffectHandle } from "./effects/EffectHandle.js";
+export type {
+  Effect,
+  EffectFactory,
+  EffectScope,
+  EffectTarget,
+} from "./effects/Effect.js";
+export { EffectStack } from "./effects/EffectStack.js";
+export type {
+  EffectStackSnapshot,
+  EffectStackEntry,
+} from "./effects/EffectStack.js";
+export { EffectsHost } from "./effects/EffectsHost.js";
+export { defineEffect } from "./effects/defineEffect.js";
+export type { EffectDefinition } from "./effects/defineEffect.js";
+export { rawFilter } from "./effects/rawFilter.js";
+export type { RawFilterOptions } from "./effects/rawFilter.js";
+export type { RendererSnapshotData } from "./effects/RendererSnapshotContributor.js";
+
+// Masks
+export type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+export type { Mask, MaskFactory } from "./masks/MaskFactory.js";
+export { attachMask, restoreMask } from "./masks/attachMask.js";
+export { defineMask } from "./masks/defineMask.js";
+export type { MaskDefinition } from "./masks/defineMask.js";
+export { rectMask } from "./masks/rectMask.js";
+export type { RectMaskOptions } from "./masks/rectMask.js";
+export { spriteMask } from "./masks/spriteMask.js";
+export { graphicsMask } from "./masks/graphicsMask.js";

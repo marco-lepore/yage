@@ -12,6 +12,7 @@ const { mocks } = vi.hoisted(() => {
     sortableChildren = false;
     zIndex = 0;
     label = "";
+    filters: unknown = null;
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -76,15 +77,31 @@ const { mocks } = vi.hoisted(() => {
   return { mocks: { MockContainer, MockTicker, MockApplication } };
 });
 
-vi.mock("pixi.js", () => ({
-  Application: mocks.MockApplication,
-  Container: mocks.MockContainer,
-}));
+vi.mock("pixi.js", () => {
+  class MockFilter {
+    enabled = true;
+    constructor(public label = "filter") {}
+  }
+  return {
+    Application: mocks.MockApplication,
+    Container: mocks.MockContainer,
+    Filter: MockFilter,
+    AlphaFilter: class extends MockFilter {
+      alpha: number;
+      constructor(opts?: { alpha?: number }) {
+        super("alpha");
+        this.alpha = opts?.alpha ?? 1;
+      }
+    },
+  };
+});
 
 import {
   EngineContext,
   GameLoop,
   GameLoopKey,
+  ProcessSystem,
+  ProcessSystemKey,
   SystemScheduler,
   SystemSchedulerKey,
   QueryCache,
@@ -119,6 +136,7 @@ function createInstallContext(): {
 
   context.register(GameLoopKey, gameLoop);
   context.register(SystemSchedulerKey, scheduler);
+  context.register(ProcessSystemKey, new ProcessSystem());
   context.register(QueryCacheKey, queryCache);
   context.register(EventBusKey, bus);
   context.register(ErrorBoundaryKey, boundary);
@@ -336,6 +354,53 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       expect(plugin.sceneRenderTrees).toBeDefined();
+    });
+  });
+
+  describe("screen-scope fx.addEffect", () => {
+    it("attaches the filter to app.stage", async () => {
+      const { rawFilter } = await import("./effects/rawFilter.js");
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      const f = { enabled: true, label: "screen-vignette" };
+      plugin.fx.addEffect(rawFilter(f as never));
+
+      const stage = plugin.application.stage as unknown as {
+        filters: unknown;
+      };
+      expect(stage.filters).toEqual([f]);
+    });
+
+    it("strips owned filters but preserves user-assigned filters on destroy", async () => {
+      const { rawFilter } = await import("./effects/rawFilter.js");
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      const userFilter = { enabled: true, label: "user" };
+      const ownedFilter = { enabled: true, label: "screen-vignette" };
+      plugin.fx.addEffect(rawFilter(ownedFilter as never));
+
+      const stage = plugin.application.stage as unknown as {
+        filters: unknown[] | null;
+      };
+      // Simulate a caller appending their own filter alongside the host's
+      // owned one (real callers would do `stage.filters = [...stage.filters,
+      // userFilter]`). The overwrite makes the post-onDestroy assertion
+      // independent of any prior state EffectsHost may have left behind.
+      stage.filters = [userFilter, ownedFilter];
+
+      plugin.onDestroy();
+      expect(stage.filters).toEqual([userFilter]);
+    });
+
+    it("fx is undefined before install (no ProcessSystem yet)", () => {
+      const plugin = new RendererPlugin(defaultConfig);
+      // Plugin must be installed before its screen-scope EffectsHost exists;
+      // accessing `.fx` before that is a programmer error.
+      expect(plugin.fx).toBeUndefined();
     });
   });
 });

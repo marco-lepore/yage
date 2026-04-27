@@ -122,6 +122,16 @@ class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       },
       ensureLayer: (def, opts) =>
         manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
+      fx: {
+        addEffect: () => {
+          throw new Error("UI test-helpers tree does not support fx.addEffect.");
+        },
+        findEffect: () => null,
+      } as never,
+      setMask: () => {
+        throw new Error("UI test-helpers tree does not support setMask.");
+      },
+      clearMask: () => undefined,
     };
     this.entries.set(scene, { manager, tree, root });
     return tree;

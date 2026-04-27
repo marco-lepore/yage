@@ -1,0 +1,57 @@
+{
+  "name": "@yagejs/effects",
+  "version": "0.3.0",
+  "description": "Built-in visual-effect presets for YAGE — bloom, outline, drop shadow, CRT, vignette, and more",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "filters",
+    "effects",
+    "post-processing",
+    "pixi-filters"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/effects"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "pixi-filters": "^6.1.5"
+  },
+  "peerDependencies": {
+    "@yagejs/renderer": "^0.3.0",
+    "pixi.js": "^8.5.0"
+  }
+}

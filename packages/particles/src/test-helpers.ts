@@ -116,6 +116,18 @@ export function createParticlesTestContext(): ParticlesTestContext {
     },
     ensureLayer: (def, opts) =>
       layerManager.tryGet(def.name) ?? layerManager.createFromDef(def, opts),
+    fx: {
+      addEffect: () => {
+        throw new Error(
+          "Particles test-helpers tree does not support fx.addEffect.",
+        );
+      },
+      findEffect: () => null,
+    } as never,
+    setMask: () => {
+      throw new Error("Particles test-helpers tree does not support setMask.");
+    },
+    clearMask: () => undefined,
   };
 
   const scene = new _TestScene("test-scene");

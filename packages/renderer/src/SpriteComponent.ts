@@ -1,7 +1,17 @@
-import { AssetHandle, Component, serializable } from "@yagejs/core";
+import {
+  AssetHandle,
+  Component,
+  makeEntityScopedQueue,
+  serializable,
+} from "@yagejs/core";
 import { Sprite } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveTextureInput } from "./assets.js";
+import type { EffectStackSnapshot } from "./effects/EffectStack.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { DisplaySprite, TextureInput } from "./public-types.js";
 
 /** Options for creating a SpriteComponent. */
@@ -28,6 +38,8 @@ export interface SpriteData {
   alpha?: number;
   anchor?: { x: number; y: number };
   visible?: boolean;
+  effects?: EffectStackSnapshot;
+  mask?: MaskSnapshot;
 }
 
 /** Component that displays a PixiJS Sprite. */
@@ -35,7 +47,19 @@ export interface SpriteData {
 export class SpriteComponent extends Component {
   readonly sprite: DisplaySprite;
   readonly layerName: string;
+  /**
+   * Component-scope effects host. `.fx.addEffect(...)` attaches a filter to
+   * this sprite; the effect is torn down automatically when the entity or
+   * component is destroyed. `.fx.findEffect(definition)` recovers the
+   * handle for the first matching effect after save/load.
+   */
+  readonly fx = new EffectsHost(
+    () => this.sprite,
+    "component",
+    () => makeEntityScopedQueue(this.entity),
+  );
   private _textureKey: string | null;
+  private _mask: MaskHandle | undefined;
 
   constructor(options: SpriteComponentOptions) {
     super();
@@ -82,7 +106,7 @@ export class SpriteComponent extends Component {
       );
       return null;
     }
-    return {
+    const data: SpriteData = {
       textureKey: this._textureKey,
       layer: this.layerName,
       tint: this.sprite.tint,
@@ -90,6 +114,25 @@ export class SpriteComponent extends Component {
       anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
       visible: this.sprite.visible,
     };
+    const effects = this.fx.serialize();
+    if (effects) data.effects = effects;
+    const mask = this._mask?.serialize();
+    if (mask) data.mask = mask;
+    return data;
+  }
+
+  /** Restore effects and mask after the sprite is parented in the scene tree. */
+  afterRestore(data: SpriteData): void {
+    if (data.effects) this.fx.restore(data.effects);
+    if (data.mask) {
+      this._mask?.remove();
+      // Clear before restore so an unsavable snapshot (restoreMask returns
+      // null) leaves the field genuinely empty instead of holding a torn-down
+      // handle for serialize/clearMask to operate on.
+      this._mask = undefined;
+      const handle = restoreMask(this.sprite, data.mask);
+      if (handle) this._mask = handle;
+    }
   }
 
   /** Create a SpriteComponent from a serialised snapshot. */
@@ -125,12 +168,39 @@ export class SpriteComponent extends Component {
     return this.sprite.alpha;
   }
 
+  /**
+   * Attach a mask to this sprite, replacing any existing mask. Returns a
+   * handle for inverse toggling, redraw (graphicsMask), or removal. The
+   * mask is torn down automatically when the component is destroyed.
+   */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.sprite, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the current mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
+  /**
+   * The currently attached mask handle, if any. Useful after save/load to
+   * recover a handle whose caller-side reference went stale.
+   */
+  get mask(): MaskHandle | undefined {
+    return this._mask;
+  }
+
   onAdd(): void {
     const layer = this.use(SceneRenderTreeKey).get(this.layerName);
     layer.container.addChild(this.sprite);
   }
 
   onDestroy(): void {
+    this.fx.destroy();
+    this._mask?.remove();
     this.sprite.removeFromParent();
     this.sprite.destroy();
   }

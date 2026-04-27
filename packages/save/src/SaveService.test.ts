@@ -202,7 +202,7 @@ describe("SaveService", () => {
       storage.save(
         "yage:snapshot:slot1",
         JSON.stringify({
-          version: 3,
+          version: 4,
           timestamp: Date.now(),
           scenes: [{ type: "UnknownScene", paused: false, entities: [] }],
         }),
@@ -334,7 +334,7 @@ describe("SaveService", () => {
       storage.save(
         "yage:snapshot:slot1",
         JSON.stringify({
-          version: 3,
+          version: 4,
           timestamp: Date.now(),
           scenes: [
             {
@@ -544,7 +544,7 @@ describe("SaveService", () => {
       const exported = service.exportSnapshot("slot1");
 
       expect(exported).not.toBeNull();
-      expect(exported!.version).toBe(3);
+      expect(exported!.version).toBe(4);
       expect(exported!.scenes).toHaveLength(1);
     });
 
@@ -582,6 +582,71 @@ describe("SaveService", () => {
 
       service.importData("copy", exported!);
       expect(service.loadData("copy")).toEqual(data);
+    });
+  });
+
+  describe("snapshot contributors (extras)", () => {
+    it("registered contributors round-trip through extras", async () => {
+      const { service, sceneManager } = createTestContext();
+      await sceneManager.push(new MockScene());
+
+      const captured: unknown[] = [];
+      service.registerSnapshotExtra("demo", {
+        serialize: () => ({ payload: "hello", n: 42 }),
+        restore: (data) => {
+          captured.push(data);
+        },
+      });
+
+      service.saveSnapshot("slot1");
+      const exported = service.exportSnapshot("slot1");
+      expect(exported?.extras).toEqual({ demo: { payload: "hello", n: 42 } });
+
+      await service.loadSnapshot("slot1");
+      expect(captured).toEqual([{ payload: "hello", n: 42 }]);
+    });
+
+    it("contributors that return undefined are omitted from extras", async () => {
+      const { service, sceneManager } = createTestContext();
+      await sceneManager.push(new MockScene());
+      service.registerSnapshotExtra("nothing", {
+        serialize: () => undefined,
+        restore: () => {},
+      });
+      service.saveSnapshot("slot1");
+      const exported = service.exportSnapshot("slot1");
+      expect(exported?.extras).toBeUndefined();
+    });
+
+    it("warns when a snapshot has extras for an unregistered contributor", async () => {
+      const { service, sceneManager, storage } = createTestContext();
+      await sceneManager.push(new MockScene());
+      storage.save(
+        "yage:snapshot:slot1",
+        JSON.stringify({
+          version: 4,
+          timestamp: Date.now(),
+          scenes: [{ type: "MockScene", paused: false, entities: [] }],
+          extras: { ghost: { unused: true } },
+        }),
+      );
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await service.loadSnapshot("slot1");
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`"ghost"`));
+      warn.mockRestore();
+    });
+
+    it("unregisterSnapshotExtra stops a contributor from running", async () => {
+      const { service, sceneManager } = createTestContext();
+      await sceneManager.push(new MockScene());
+      const serialize = vi.fn(() => ({ a: 1 }));
+      service.registerSnapshotExtra("dropme", {
+        serialize,
+        restore: () => {},
+      });
+      service.unregisterSnapshotExtra("dropme");
+      service.saveSnapshot("slot1");
+      expect(serialize).not.toHaveBeenCalled();
     });
   });
 });

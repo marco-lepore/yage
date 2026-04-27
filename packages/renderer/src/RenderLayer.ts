@@ -1,6 +1,17 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
+import type { ScopedProcessQueue } from "@yagejs/core";
 import type { LayerDef, LayerSpace } from "./LayerDef.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
+import { attachMask, restoreMask } from "./masks/attachMask.js";
+import type { MaskFactory } from "./masks/MaskFactory.js";
+import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+
+/**
+ * Factory that produces a fresh `ScopedProcessQueue` instance — called once
+ * per `EffectStack` so each stack's cancellation scope stays isolated.
+ */
+export type EffectQueueFactory = () => ScopedProcessQueue;
 
 /** Options for creating a layer. */
 export interface CreateLayerOptions {
@@ -24,17 +35,73 @@ export class RenderLayer {
   readonly container: Container;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
+  /**
+   * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
+   * entity rendered through this layer (one full-screen render pass per
+   * layer-scope effect, regardless of how many entities are in the layer).
+   * Fades pause with the owning scene and are scaled by its `timeScale`,
+   * matching component-scope behavior. Effects survive until the scene
+   * exits or the handle is `.remove()`d.
+   */
+  readonly fx: EffectsHost;
+  private _mask: MaskHandle | undefined;
 
   constructor(
     name: string,
     order: number,
     container: Container,
     space: LayerSpace = "world",
+    queueFactory?: EffectQueueFactory,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
+    this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
+  }
+
+  /**
+   * Attach a mask to this layer's container, replacing any existing mask.
+   * Returns a handle for inverse toggling, redraw (graphicsMask), or
+   * removal. Torn down on scene exit.
+   */
+  setMask(factory: MaskFactory): MaskHandle {
+    this._mask?.remove();
+    this._mask = attachMask(this.container, factory);
+    return this._mask;
+  }
+
+  /** Detach and destroy the layer-scope mask, if any. */
+  clearMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
+  /**
+   * Tear down any layer-scope mask. Called by `RenderLayerManager` before
+   * the layer's container is destroyed so the owned mask Graphics gets
+   * cleaned up exactly once.
+   * @internal
+   */
+  _destroyMask(): void {
+    this._mask?.remove();
+    this._mask = undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _serializeMask(): MaskSnapshot | undefined {
+    return this._mask?.serialize() ?? undefined;
+  }
+
+  /** @internal — used by the renderer's snapshot contributor. */
+  _restoreMask(snap: MaskSnapshot): void {
+    this._mask?.remove();
+    // Clear before restore so an unsavable snapshot (restoreMask returns
+    // null) leaves the field genuinely empty instead of holding a torn-down
+    // handle for serialize/clearMask to operate on.
+    this._mask = undefined;
+    const handle = restoreMask(this.container, snap);
+    if (handle) this._mask = handle;
   }
 }
 
@@ -48,10 +115,16 @@ export class RenderLayerManager {
   private readonly rootContainer: Container;
   private readonly _defaultLayer: RenderLayer;
   private readonly _defaultEventMode: EventMode | undefined;
+  private readonly _queueFactory: EffectQueueFactory | undefined;
 
-  constructor(root: Container, defaultEventMode?: EventMode) {
+  constructor(
+    root: Container,
+    defaultEventMode?: EventMode,
+    queueFactory?: EffectQueueFactory,
+  ) {
     this.rootContainer = root;
     this._defaultEventMode = defaultEventMode;
+    this._queueFactory = queueFactory;
     this._defaultLayer = this.create("default", 0);
   }
 
@@ -71,7 +144,13 @@ export class RenderLayerManager {
     if (eventMode) container.eventMode = eventMode;
     if (opts?.sortableChildren) container.sortableChildren = true;
 
-    const layer = new RenderLayer(name, order, container, opts?.space ?? "world");
+    const layer = new RenderLayer(
+      name,
+      order,
+      container,
+      opts?.space ?? "world",
+      this._queueFactory,
+    );
     this.layers.set(name, layer);
 
     this.rootContainer.addChild(container);
@@ -132,6 +211,28 @@ export class RenderLayerManager {
   /** The root container holding all layers. */
   get root(): Container {
     return this.rootContainer;
+  }
+
+  /**
+   * Tear down every layer's effect stack. Call BEFORE the root container is
+   * destroyed so external (user-assigned) filters get preserved by each
+   * stack's destroy logic instead of being clobbered by the container
+   * teardown.
+   */
+  destroyEffects(): void {
+    for (const layer of this.layers.values()) {
+      layer.fx.destroy();
+    }
+  }
+
+  /**
+   * Tear down every layer's mask. Call BEFORE the root container is
+   * destroyed so owned mask Graphics get destroyed exactly once.
+   */
+  destroyMasks(): void {
+    for (const layer of this.layers.values()) {
+      layer._destroyMask();
+    }
   }
 
   /** Clear internal state. Call after the root container has been destroyed. */

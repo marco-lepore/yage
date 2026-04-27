@@ -13,10 +13,11 @@ import type {
   SceneSnapshotEntry,
   EntitySnapshotEntry,
   ComponentSnapshot,
+  SnapshotContributor,
 } from "./types.js";
 
 /** Current snapshot format version. */
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 4;
 
 /**
  * Component restoration priority. Components listed here are added first
@@ -40,12 +41,31 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
   private readonly storage: SaveStorage;
   private readonly context: EngineContext;
   private readonly namespace: string;
+  private readonly contributors = new Map<string, SnapshotContributor>();
   private _loading = false;
 
   constructor(storage: SaveStorage, context: EngineContext, namespace = "yage") {
     this.storage = storage;
     this.context = context;
     this.namespace = namespace;
+  }
+
+  // ---- Extension API ----
+
+  /**
+   * Register a plugin to contribute extra data to every snapshot under
+   * `key`. The contributor's `serialize()` is invoked during `saveSnapshot`,
+   * and its `restore(data)` runs after every scene + entity in the snapshot
+   * has been hydrated. Re-registering an existing key replaces the previous
+   * contributor.
+   */
+  registerSnapshotExtra(key: string, contributor: SnapshotContributor): void {
+    this.contributors.set(key, contributor);
+  }
+
+  /** Remove a previously registered contributor. */
+  unregisterSnapshotExtra(key: string): void {
+    this.contributors.delete(key);
   }
 
   // ---- Snapshot API ----
@@ -183,10 +203,32 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       });
     }
 
+    const extras: Record<string, unknown> = {};
+    let hasExtras = false;
+    for (const [key, contributor] of this.contributors) {
+      // Isolate each contributor — a single failing one (e.g. a third-party
+      // plugin throwing during serialize) shouldn't poison the rest of the
+      // snapshot. Log and continue.
+      try {
+        const data = contributor.serialize();
+        if (data !== undefined) {
+          extras[key] = data;
+          hasExtras = true;
+        }
+      } catch (err) {
+        console.error(
+          `SaveService: contributor "${key}" serialize failed; ` +
+            `omitting its extras from this snapshot.`,
+          err,
+        );
+      }
+    }
+
     return {
       version: SNAPSHOT_VERSION,
       timestamp: Date.now(),
       scenes,
+      ...(hasExtras ? { extras } : {}),
     };
   }
 
@@ -227,6 +269,39 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
 
         if (entry.paused) {
           scene.paused = true;
+        }
+      }
+
+      // Run snapshot contributors after every scene is pushed and entities
+      // restored. By this point any layer/scene render trees the renderer
+      // contributor needs to find by name are live, and component-scope
+      // afterRestore hooks have run, so contributors see consistent state.
+      //
+      // Iterate every REGISTERED contributor — not just keys present in
+      // `extras` — so contributors get a chance to clear stale baseline
+      // state (e.g. a screen-scope vignette enabled after the save) when
+      // the snapshot has no entry for them. Contributors must treat
+      // `data === undefined` as "reset to empty".
+      const extras = snapshot.extras ?? {};
+      for (const [key, contributor] of this.contributors) {
+        // Isolate each contributor — one bad restore (e.g. a third-party
+        // plugin choking on a partially-compatible payload) shouldn't abort
+        // the whole load and leave the engine in a half-restored state.
+        try {
+          await contributor.restore(extras[key]);
+        } catch (err) {
+          console.error(
+            `SaveService: contributor "${key}" restore failed; continuing.`,
+            err,
+          );
+        }
+      }
+      for (const key of Object.keys(extras)) {
+        if (!this.contributors.has(key)) {
+          console.warn(
+            `SaveService: snapshot contains extras for "${key}" but no ` +
+              `contributor is registered — skipping.`,
+          );
         }
       }
     } finally {

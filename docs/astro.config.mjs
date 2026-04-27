@@ -32,6 +32,7 @@ export default defineConfig({
             "../packages/ui",
             "../packages/save",
             "../packages/debug",
+            "../packages/effects",
           ],
           tsconfig: "./tsconfig.typedoc.json",
           typeDoc: {
@@ -101,6 +102,10 @@ export default defineConfig({
                 {
                   label: "Camera & Layers",
                   slug: "guides/rendering/camera",
+                },
+                {
+                  label: "Effects & Masks",
+                  slug: "guides/rendering/effects",
                 },
               ],
             },

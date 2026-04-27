@@ -170,6 +170,12 @@ function createContext() {
         order: 0,
       } as never,
       ensureLayer: () => ({ name: "default", order: 0 }) as never,
+      fx: {
+        addEffect: vi.fn(() => ({}) as never),
+        findEffect: vi.fn(() => null),
+      } as never,
+      setMask: vi.fn(() => ({}) as never),
+      clearMask: vi.fn(),
     }),
     destroyForScene: vi.fn(),
     getTree: vi.fn(),

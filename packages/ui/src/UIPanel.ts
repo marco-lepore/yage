@@ -1,5 +1,5 @@
 import { Component, Transform } from "@yagejs/core";
-import { Container, Graphics } from "pixi.js";
+import { Container } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import {
@@ -10,7 +10,12 @@ import {
   Display,
 } from "yoga-layout";
 import { Align, Justify } from "yoga-layout";
-import { SceneRenderTreeKey } from "@yagejs/renderer";
+import {
+  SceneRenderTreeKey,
+  attachMask,
+  graphicsMask,
+} from "@yagejs/renderer";
+import type { MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
 import {
@@ -69,10 +74,9 @@ export class PanelNode implements UIContainerElement {
   }
 
   private bgRenderer: BackgroundRenderer | undefined;
-  private mask: Graphics | undefined;
+  private maskHandle: MaskHandle | undefined;
   private _children: UIElement[] = [];
   private bgOpts: BackgroundOptions | undefined;
-  private _overflow: "visible" | "hidden" = "visible";
 
   constructor(opts: PanelProps) {
     this.container = new Container();
@@ -184,25 +188,8 @@ export class PanelNode implements UIContainerElement {
       this.bgRenderer.resize(w, h);
     }
 
-    // Update overflow mask
-    if (this._overflow === "hidden") {
-      this.updateMask();
-    }
-  }
-
-  private updateMask(): void {
-    const w = this.yogaNode.getComputedWidth();
-    const h = this.yogaNode.getComputedHeight();
-
-    if (!this.mask) {
-      this.mask = new Graphics();
-      this.container.addChild(this.mask);
-      this.container.mask = this.mask;
-    }
-
-    this.mask.clear();
-    this.mask.rect(0, 0, w, h);
-    this.mask.fill({ color: 0xffffff });
+    // Re-run the overflow mask draw closure with the latest dimensions.
+    this.maskHandle?.redraw();
   }
 
   // ---------------------------------------------------------------------------
@@ -250,14 +237,23 @@ export class PanelNode implements UIContainerElement {
     }
 
     if (p.overflow !== undefined) {
-      this._overflow = p.overflow;
       this.yogaNode.setOverflow(
         p.overflow === "hidden" ? Overflow.Hidden : Overflow.Visible,
       );
-      if (p.overflow === "visible" && this.mask) {
-        this.container.mask = null;
-        this.mask.destroy();
-        this.mask = undefined;
+      if (p.overflow === "hidden" && !this.maskHandle) {
+        this.maskHandle = attachMask(
+          this.container,
+          graphicsMask((g) => {
+            const w = this.yogaNode.getComputedWidth();
+            const h = this.yogaNode.getComputedHeight();
+            g.clear();
+            g.rect(0, 0, w, h);
+            g.fill({ color: 0xffffff });
+          }),
+        );
+      } else if (p.overflow === "visible" && this.maskHandle) {
+        this.maskHandle.remove();
+        this.maskHandle = undefined;
       }
     }
 
@@ -291,7 +287,7 @@ export class PanelNode implements UIContainerElement {
     }
     this._children.length = 0;
     this.bgRenderer?.destroy();
-    this.mask?.destroy();
+    this.maskHandle?.remove();
     this.yogaNode.free();
     this.container.destroy();
   }

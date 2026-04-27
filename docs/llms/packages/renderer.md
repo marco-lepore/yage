@@ -444,6 +444,89 @@ await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 })
 
 `fade` and `flash` add a stage-level `Graphics` overlay during the transition and clean up on `end()`. `crossFade` manipulates per-scene containers directly via `getSceneContainer`.
 
+## Effects
+
+Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — exposed uniformly as `.fx` on every attach site. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
+
+```ts
+import { rawFilter } from "@yagejs/renderer";
+import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
+
+// Component scope (Sprite / Graphics / Text / AnimatedSprite)
+const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
+flash.trigger();
+flash.fadeOut(200);                   // returns a Process
+
+// Layer scope
+this.use(SceneRenderTreeKey).get("world").fx.addEffect(bloom({ threshold: 0.8 }));
+
+// Scene scope (the per-scene root)
+this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+
+// Screen scope (cross-scene; on app.stage)
+this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.4 }));
+
+// Recover a handle by registered definition after save/load
+const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
+```
+
+| Export | Signature | Description |
+|---|---|---|
+| `.fx` (on every scope) | `EffectsHost` | Per-attach-site holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
+| `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
+| `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. The `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
+| `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to wire `step(dt)` (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
+| `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |
+| `rawFilter` | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory` | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once. NOT serializable. |
+| `EffectStack` | class | Internal — `EffectsHost` owns one. `serialize() / restoreFrom(snap)` for save/load. |
+| `EffectStackSnapshot` | type | `{ entries: { name, options, intensity, enabled }[] }`. Emitted by `serialize`. |
+
+**Filter ordering:** pixi processes filters bottom-up the display tree — component → layer → scene → screen. Each outer scope sees the previous scope's rasterized output, so screen-scope `pixelate` will pixelate already-bloomed gameplay.
+
+**Layer-scope coordinate space:** layer / scene / screen filters operate on screen-space pixels post-camera-transform. A bloom radius is in screen pixels, not world units.
+
+**Lifecycle:**
+- Component effects: torn down in the visual component's `onDestroy`. Fades pause + time-scale with the entity's scene.
+- Layer / scene effects: torn down on scene exit. Fades pause + time-scale with that scene.
+- Screen effects: torn down on `RendererPlugin.onDestroy` (engine teardown). Fades run in engine time, do NOT pause across scenes.
+
+## Masks
+
+```ts
+import { rectMask, spriteMask, graphicsMask } from "@yagejs/renderer";
+
+// Component scope (4 visual components)
+const handle = sprite.setMask(rectMask({ x: 0, y: 0, width: 200, height: 200 }));
+handle.setInverse(true);
+sprite.clearMask();
+
+// Layer + scene scope share the same setMask / clearMask shape.
+tree.get("hud").setMask(rectMask({ ... }));
+tree.setMask(graphicsMask((g) => { g.circle(0, 0, 100).fill(0xffffff); }));
+```
+
+| Export | Signature | Description |
+|---|---|---|
+| `setMask` (component / layer / scene) | `(factory: MaskFactory) => MaskHandle` | Replace any existing mask. Handle owns the new mask's lifecycle. |
+| `clearMask` (component / layer / scene) | `() => void` | Detach + destroy the current mask. |
+| `MaskHandle` | interface | `remove()` / `setInverse(on)` / `inverse` / `redraw()` / `serialize(): MaskSnapshot \| null`. |
+| `rectMask` | `(opts: RectMaskOptions) => MaskFactory` | Static rectangle, optional `rounded` corners. Serializable. |
+| `spriteMask` | `(sprite: Sprite) => MaskFactory` | User-owned sprite as mask. NOT serializable (no string identity for the sprite). |
+| `graphicsMask` | `(draw: (g: Graphics) => void) => MaskFactory` | Custom drawn mask; call `handle.redraw()` after dependencies change. NOT serializable (closure can't be saved). The closure must `g.clear()` first (pixi commands accumulate) and read live state from a captured object/getter — `const` snapshots stay stale across `redraw()`. |
+| `defineMask` | `<O>({ name, factory: (opts: O) => Mask }) => (opts: O) => MaskFactory` | Register a savable mask preset. Only `rectMask` uses this today. |
+| `attachMask` / `restoreMask` | low-level helpers | `attachMask(target, factory)` returns a `MaskHandle`; `restoreMask(target, snap)` reattaches from a snapshot. |
+
+## Save/load (effects + masks)
+
+Effects and masks survive `SaveService.saveSnapshot` / `loadSnapshot` round-trips when built from `defineEffect` / `defineMask` registered factories.
+
+- **Component scope** — each visual component's `serialize()` includes `effects` + `mask` fields and restores them in `afterRestore` (after `onAdd`).
+- **Layer / Scene / Screen scope** — the renderer registers a `SnapshotContributor` with `SaveService` (key `"renderer"`) on plugin install. The contributor walks every live `SceneRenderTree`, captures its scene-scope + per-layer effects + masks, plus the screen-scope stack on `app.stage`. Restored after every scene + entity is hydrated.
+- **Unsavable entries** — `rawFilter`, `spriteMask`, and `graphicsMask` skip the snapshot with a one-shot warning. Use `defineEffect` / `defineMask` for anything you want to round-trip.
+- **In-flight fades** are NOT preserved — only steady-state intensity + enabled.
+
+`@yagejs/save` is an *optional* peer dep of `@yagejs/renderer`; without it, component-scope effects still serialize (through the visual components' own snapshot path), but the layer/scene/screen-scope contributor is skipped.
+
 ## Asset Factories
 
 ```ts

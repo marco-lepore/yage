@@ -61,5 +61,16 @@
   "dependencies": {
     "@yagejs/core": "^0.3.0",
     "pixi.js": "^8.5.0"
+  },
+  "peerDependencies": {
+    "@yagejs/save": "^0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/save": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@yagejs/save": "^0.3.0"
   }
 }
