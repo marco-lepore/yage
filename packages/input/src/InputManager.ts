@@ -457,10 +457,11 @@ export class InputManager {
       axes: Array<{ index: number; value: number }>;
     };
   } {
-    const keys = [...this.pressedKeys].sort((a, b) => a.localeCompare(b));
+    const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const keys = [...this.pressedKeys].sort(cmp);
     const actions = this.getActionNames()
       .filter((action) => this.isPressed(action))
-      .sort((a, b) => a.localeCompare(b));
+      .sort(cmp);
     const buttons = [...this.pressedMouseButtons].sort((a, b) => a - b);
     const pressedButtons = [...this.gamepadButtons.entries()]
       .filter(([, pressed]) => pressed)

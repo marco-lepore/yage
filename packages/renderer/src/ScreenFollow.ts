@@ -95,7 +95,7 @@ export interface ScreenFollowData {
  */
 @serializable
 export class ScreenFollow extends Component {
-  private _target: ScreenFollowTarget;
+  private _target: ScreenFollowTarget | null;
   private _camera: CameraEntity | null;
   private _offset: Vec2;
   private _trackRotation: boolean;
@@ -104,7 +104,7 @@ export class ScreenFollow extends Component {
 
   constructor(opts?: ScreenFollowOptions) {
     super();
-    this._target = opts?.target ?? Vec2.ZERO;
+    this._target = opts?.target ?? null;
     this._camera = opts?.camera ?? null;
     this._offset = opts?.offset
       ? new Vec2(opts.offset.x, opts.offset.y)
@@ -113,7 +113,7 @@ export class ScreenFollow extends Component {
   }
 
   override update(): void {
-    if (!this._camera) return;
+    if (!this._camera || this._target === null) return;
     const world = this.resolveTargetPosition();
     if (!world) return;
 
@@ -137,6 +137,7 @@ export class ScreenFollow extends Component {
 
   private resolveTargetPosition(): Vec2Like | undefined {
     const target = this._target;
+    if (target === null) return undefined;
     if (typeof target === "function") return target();
     if (target instanceof Entity) {
       const t = target.tryGet(Transform);
@@ -147,6 +148,7 @@ export class ScreenFollow extends Component {
 
   serialize(): ScreenFollowData | null {
     if (!this._camera) return null;
+    if (this._target === null) return null;
     if (typeof this._target === "function") return null;
 
     const data: ScreenFollowData = {
@@ -183,6 +185,10 @@ export class ScreenFollow extends Component {
       if (target) {
         this._target = target;
       } else {
+        // Leave _target null so update() short-circuits — without this, a
+        // ScreenFollow whose target failed to resolve would track world
+        // origin (the previous Vec2.ZERO default).
+        this._target = null;
         console.warn(
           `ScreenFollow.afterRestore: cannot resolve target entity ${this._restoreTargetEntityId}; follow target lost.`,
         );
@@ -195,6 +201,7 @@ export class ScreenFollow extends Component {
       if (camera) {
         this._camera = camera as CameraEntity;
       } else {
+        this._camera = null;
         console.warn(
           `ScreenFollow.afterRestore: cannot resolve camera entity ${this._restoreCameraEntityId}; ScreenFollow will be inert.`,
         );

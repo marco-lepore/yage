@@ -864,7 +864,7 @@ export class Inspector {
     const worldScale = transform?.worldScale;
     const components = [...entity.getAll()]
       .map((component) => this.componentToSnapshot(component))
-      .sort((a, b) => a.type.localeCompare(b.type));
+      .sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
 
     return {
       id: String(entity.id),
@@ -1060,10 +1060,10 @@ export class Inspector {
     const snapshot: EntitySnapshot = {
       id: entity.id,
       name: entity.name,
-      tags: [...entity.tags].sort((a, b) => a.localeCompare(b)),
+      tags: [...entity.tags].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
       components: [...entity.getAll()]
         .map((component) => component.constructor.name)
-        .sort((a, b) => a.localeCompare(b)),
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     };
     if (transform) {
       snapshot.position = {
@@ -1171,7 +1171,7 @@ function sortJsonValue(value: unknown): unknown {
 
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>).sort(
-      ([left], [right]) => left.localeCompare(right),
+      ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
     );
     const result: Record<string, unknown> = {};
     for (const [key, child] of entries) {

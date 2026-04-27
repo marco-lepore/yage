@@ -249,6 +249,9 @@ export class DebugPlugin implements Plugin {
       inspector.detachTimeController(this.clock);
     }
     inspector.setEventLogEnabled(false);
+    if (this.config.deterministicSeed !== undefined) {
+      inspector.setDefaultSceneSeed(undefined);
+    }
     this.clock = null;
 
     for (const contributor of this.registry.contributors.values()) {
