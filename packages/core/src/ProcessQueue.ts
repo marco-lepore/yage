@@ -21,29 +21,23 @@ export interface ScopedProcessQueue {
 }
 
 /**
- * Scoped queue that routes through the entity's `ProcessComponent`. Auto-adds
- * one if the entity doesn't already have it. `cancelAll()` only cancels the
- * processes this queue enqueued, so sharing the underlying ProcessComponent
- * with user code stays safe.
+ * Build a `ScopedProcessQueue` over a routing function. The three public
+ * factories below differ only in WHERE they route the process (entity
+ * ProcessComponent / scene-bound pool / engine-global pool); the tracking,
+ * lazy-prune-on-run, and isolated-cancelAll behavior is identical.
  *
- * Completed processes are pruned lazily on each `run()` so the tracking set
- * doesn't grow unbounded on long-lived entities.
+ * Lazy O(n) sweep on each `run()` is bounded by how many processes the
+ * queue has accumulated; cheap and avoids holding refs to completed Process
+ * instances for the queue's lifetime.
  */
-export function makeEntityScopedQueue(entity: Entity): ScopedProcessQueue {
+function makeQueue(route: (p: Process) => void): ScopedProcessQueue {
   const ours = new Set<Process>();
   return {
     run(p) {
-      // Lazy O(n) sweep — bounded by how many processes one entity has
-      // accumulated. Cheap and avoids holding refs to completed Process
-      // instances for the entity's lifetime.
       for (const old of ours) {
         if (old.completed) ours.delete(old);
       }
-      let pc = entity.tryGet(ProcessComponent);
-      if (!pc) {
-        pc = entity.add(new ProcessComponent());
-      }
-      pc.run(p);
+      route(p);
       ours.add(p);
       return p;
     },
@@ -54,6 +48,22 @@ export function makeEntityScopedQueue(entity: Entity): ScopedProcessQueue {
       ours.clear();
     },
   };
+}
+
+/**
+ * Scoped queue that routes through the entity's `ProcessComponent`. Auto-adds
+ * one if the entity doesn't already have it. `cancelAll()` only cancels the
+ * processes this queue enqueued, so sharing the underlying ProcessComponent
+ * with user code stays safe.
+ */
+export function makeEntityScopedQueue(entity: Entity): ScopedProcessQueue {
+  return makeQueue((p) => {
+    let pc = entity.tryGet(ProcessComponent);
+    if (!pc) {
+      pc = entity.add(new ProcessComponent());
+    }
+    pc.run(p);
+  });
 }
 
 /**
@@ -66,23 +76,7 @@ export function makeSceneScopedQueue(
   processSystem: ProcessSystem,
   scene: Scene,
 ): ScopedProcessQueue {
-  const ours = new Set<Process>();
-  return {
-    run(p) {
-      for (const old of ours) {
-        if (old.completed) ours.delete(old);
-      }
-      processSystem.addForScene(scene, p);
-      ours.add(p);
-      return p;
-    },
-    cancelAll() {
-      for (const p of ours) {
-        if (!p.completed) p.cancel();
-      }
-      ours.clear();
-    },
-  };
+  return makeQueue((p) => processSystem.addForScene(scene, p));
 }
 
 /**
@@ -94,21 +88,5 @@ export function makeSceneScopedQueue(
 export function makeGlobalScopedQueue(
   processSystem: ProcessSystem,
 ): ScopedProcessQueue {
-  const ours = new Set<Process>();
-  return {
-    run(p) {
-      for (const old of ours) {
-        if (old.completed) ours.delete(old);
-      }
-      processSystem.add(p);
-      ours.add(p);
-      return p;
-    },
-    cancelAll() {
-      for (const p of ours) {
-        if (!p.completed) p.cancel();
-      }
-      ours.clear();
-    },
-  };
+  return makeQueue((p) => processSystem.add(p));
 }

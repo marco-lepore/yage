@@ -449,7 +449,7 @@ await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 })
 Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — exposed uniformly as `.fx` on every attach site. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
 
 ```ts
-import { rawFilter, withFade } from "@yagejs/renderer";
+import { rawFilter } from "@yagejs/renderer";
 import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
 
 // Component scope (Sprite / Graphics / Text / AnimatedSprite)
@@ -474,10 +474,10 @@ const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
 |---|---|---|
 | `.fx` (on every scope) | `EffectsHost` | Per-attach-site holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
 | `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
-| `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `fadeIn(duration): Process` / `fadeOut(duration): Process`. |
+| `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `fadeIn(duration): Process` / `fadeOut(duration): Process` / `run(p: Process): Process`. The `run` schedules a `Process` scoped to the effect's lifetime — pauses with the owning scene, time-scales with it, auto-cancels when the effect is removed. |
+| `Effect.onActivate?(base)` | optional factory hook | Runs once after `buildExtras` has merged its keys onto the handle. Use to self-schedule per-effect tickers via `base.run(...)` so callers don't have to wire `step(dt)` (e.g. CRT noise animator). `buildExtras` itself stays pure — no side effects there. |
 | `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |
 | `rawFilter` | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory` | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once. NOT serializable. |
-| `withFade` | `<H>(inner: EffectFactory<H>) => EffectFactory<H>` | Wrap an effect in an `AlphaFilter` so `fadeIn`/`fadeOut` work for filters without a meaningful intensity uniform. One extra render pass. |
 | `EffectStack` | class | Internal — `EffectsHost` owns one. `serialize() / restoreFrom(snap)` for save/load. |
 | `EffectStackSnapshot` | type | `{ entries: { name, options, intensity, enabled }[] }`. Emitted by `serialize`. |
 
@@ -522,7 +522,7 @@ Effects and masks survive `SaveService.saveSnapshot` / `loadSnapshot` round-trip
 
 - **Component scope** — each visual component's `serialize()` includes `effects` + `mask` fields and restores them in `afterRestore` (after `onAdd`).
 - **Layer / Scene / Screen scope** — the renderer registers a `SnapshotContributor` with `SaveService` (key `"renderer"`) on plugin install. The contributor walks every live `SceneRenderTree`, captures its scene-scope + per-layer effects + masks, plus the screen-scope stack on `app.stage`. Restored after every scene + entity is hydrated.
-- **Unsavable entries** — `rawFilter`, `spriteMask`, and `graphicsMask` skip the snapshot with a one-shot warning. `withFade(...)` wraps a tagged factory and saves correctly.
+- **Unsavable entries** — `rawFilter`, `spriteMask`, and `graphicsMask` skip the snapshot with a one-shot warning. Use `defineEffect` / `defineMask` for anything you want to round-trip.
 - **In-flight fades** are NOT preserved — only steady-state intensity + enabled.
 
 `@yagejs/save` is an *optional* peer dep of `@yagejs/renderer`; without it, component-scope effects still serialize (through the visual components' own snapshot path), but the layer/scene/screen-scope contributor is skipped.

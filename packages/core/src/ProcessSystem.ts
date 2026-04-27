@@ -25,16 +25,36 @@ export class ProcessSystem extends System {
   private sceneManager!: SceneManager;
   private globalProcesses = new Set<Process>();
   private scenePools = new Map<Scene, Set<Process>>();
+  private _unregisterSceneHook: (() => void) | null = null;
 
   override onRegister(context: EngineContext): void {
     this.sceneManager = context.resolve(SceneManagerKey);
     // Drop the scene's pool on exit so cancelled processes (e.g. effect
     // fades torn down with the scene) don't keep the dead Scene key
-    // alive in the pool map.
+    // alive in the pool map. Hold onto the unregister callback so engine
+    // teardown releases the hook — without this, a re-created Engine
+    // sharing a SceneHookRegistry would accumulate dead callbacks.
     const hooks = context.tryResolve(SceneHookRegistryKey);
-    hooks?.register({
-      afterExit: (scene) => this.cancelForScene(scene),
-    });
+    this._unregisterSceneHook =
+      hooks?.register({
+        afterExit: (scene) => this.cancelForScene(scene),
+      }) ?? null;
+  }
+
+  override onUnregister(): void {
+    this._unregisterSceneHook?.();
+    this._unregisterSceneHook = null;
+    // Drain pools so cancelled processes don't keep Scene refs alive.
+    for (const p of this.globalProcesses) {
+      if (!p.completed) p.cancel();
+    }
+    this.globalProcesses.clear();
+    for (const pool of this.scenePools.values()) {
+      for (const p of pool) {
+        if (!p.completed) p.cancel();
+      }
+    }
+    this.scenePools.clear();
   }
 
   /**

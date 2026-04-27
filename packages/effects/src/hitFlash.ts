@@ -1,3 +1,4 @@
+import { Process } from "@yagejs/core";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { ColorMatrixFilter } from "pixi.js";
@@ -14,12 +15,10 @@ export interface HitFlashOptions {
 }
 
 /**
- * White (or any color) flash overlay — common damage-impact polish.
- * `trigger()` arms a one-shot ramp; the caller drives it forward by
- * calling `step(dt)` from their update loop. Driving the ramp through
- * `step` (rather than `requestAnimationFrame`) keeps the flash subject
- * to `scene.timeScale` and `scene.paused`, matching every other engine
- * timer.
+ * White (or any color) flash overlay — common damage-impact polish. The
+ * `trigger()` ramp drives itself through the engine's process scheduler:
+ * pauses with the owning scene, time-scales with it, auto-cancels on
+ * `remove()`. No caller-side `step(dt)` wiring required.
  *
  * The flash is implemented via a `ColorMatrixFilter` whose tint additive
  * is animated through `setIntensity`, so `fadeIn`/`fadeOut` work too —
@@ -34,8 +33,6 @@ export const hitFlash = defineEffect<HitFlashHandle, HitFlashOptions>({
       peak: options.peak ?? 1,
     };
     let intensity = 0;
-    let triggerElapsed = 0;
-    let triggerActive = false;
     let activeColor = opts.color;
     const filter = new ColorMatrixFilter();
     const apply = (): void => {
@@ -58,30 +55,35 @@ export const hitFlash = defineEffect<HitFlashHandle, HitFlashOptions>({
         intensity = v;
         apply();
       },
-      buildExtras: () => ({
-        trigger: () => {
-          triggerElapsed = 0;
-          triggerActive = true;
-        },
-        step: (dt: number) => {
-          if (!triggerActive) return;
-          triggerElapsed += dt;
-          const t = triggerElapsed / opts.duration;
-          if (t >= 1) {
-            triggerActive = false;
-            intensity = 0;
+      buildExtras: (base) => {
+        let inFlight: Process | undefined;
+        return {
+          trigger: () => {
+            // Cancel any in-flight trigger before arming a new one so
+            // overlapping triggers don't compound.
+            inFlight?.cancel();
+            inFlight = base.run(
+              new Process({
+                duration: opts.duration,
+                update: (_dt, elapsed) => {
+                  const t = elapsed / opts.duration;
+                  // Triangle wave: up over first half, down over second.
+                  intensity = (t < 0.5 ? t * 2 : (1 - t) * 2) * opts.peak;
+                  apply();
+                },
+                onComplete: () => {
+                  intensity = 0;
+                  apply();
+                },
+              }),
+            );
+          },
+          setColor: (color: number) => {
+            activeColor = color;
             apply();
-            return;
-          }
-          // Triangle wave: ramp up over first half, down over second.
-          intensity = (t < 0.5 ? t * 2 : (1 - t) * 2) * opts.peak;
-          apply();
-        },
-        setColor: (color: number) => {
-          activeColor = color;
-          apply();
-        },
-      }),
+          },
+        };
+      },
     };
     return effect;
   },

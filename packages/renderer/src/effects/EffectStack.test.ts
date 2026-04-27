@@ -356,6 +356,80 @@ describe("EffectStack", () => {
     handle.teardown();
     expect(stack.size).toBe(0);
   });
+
+  it("handle.run schedules a process on the same per-effect tracking the fades use", async () => {
+    const { Process } = await import("@yagejs/core");
+    const factory = makeEffect("r").factory;
+    const handle = stack.add(factory);
+    const proc = new Process({ duration: 1000 });
+    const cancel = vi.spyOn(proc, "cancel");
+    handle.run(proc);
+    expect(host.runs).toContain(proc);
+    handle.remove();
+    // remove() cancels every process the effect ever scheduled (fades AND run).
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("onActivate runs after buildExtras with the fully-built handle", () => {
+    const seen: string[] = [];
+    const factory: EffectFactory<EffectHandle & { tag: string }> = () => ({
+      filter: new mocks.MockFilter() as never,
+      getIntensity: () => 0,
+      setIntensity: () => {},
+      buildExtras: () => {
+        seen.push("buildExtras");
+        return { tag: "extra" };
+      },
+      onActivate: (base) => {
+        seen.push("onActivate");
+        // The handle has the extras merged on by this point.
+        expect((base as unknown as { tag?: string }).tag).toBe("extra");
+      },
+    });
+    stack.add(factory);
+    expect(seen).toEqual(["buildExtras", "onActivate"]);
+  });
+
+  it("onActivate can self-schedule a process via base.run; auto-cancels on remove", async () => {
+    const { Process } = await import("@yagejs/core");
+    let scheduled: Process | undefined;
+    const factory: EffectFactory = () => ({
+      filter: new mocks.MockFilter() as never,
+      getIntensity: () => 0,
+      setIntensity: () => {},
+      onActivate: (base) => {
+        scheduled = new Process({ update: () => {} });
+        base.run(scheduled);
+      },
+    });
+    const handle = stack.add(factory);
+    expect(scheduled).toBeDefined();
+    expect(host.runs).toContain(scheduled);
+    const cancel = vi.spyOn(scheduled!, "cancel");
+    handle.remove();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("onActivate throw rolls back the entry, cancels partial schedules, and rethrows", async () => {
+    const { Process } = await import("@yagejs/core");
+    let partial: Process | undefined;
+    const factory: EffectFactory = () => ({
+      filter: new mocks.MockFilter() as never,
+      getIntensity: () => 0,
+      setIntensity: () => {},
+      onActivate: (base) => {
+        partial = new Process({ update: () => {} });
+        base.run(partial);
+        throw new Error("boom");
+      },
+    });
+    expect(() => stack.add(factory)).toThrow(/boom/);
+    // Stack is clean — no entry, no filters left on the target.
+    expect(stack.size).toBe(0);
+    expect(target.filters).toBeNull();
+    // The half-scheduled Process was cancelled by the rollback.
+    expect(partial?.completed).toBe(true);
+  });
 });
 
 describe("EffectStack serialize/restoreFrom", () => {

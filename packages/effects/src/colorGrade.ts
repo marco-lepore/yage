@@ -54,8 +54,7 @@ const applyPreset = (
  *
  * `setIntensity` cross-fades the matrix toward identity by lerping the
  * filter's `alpha` uniform — at 0 the filter passes the original through,
- * at 1 the preset is fully applied. This lets `fadeIn` / `fadeOut` work
- * without `withFade`.
+ * at 1 the preset is fully applied.
  */
 export const colorGrade = defineEffect<ColorGradeHandle, ColorGradeOptions>({
   name: "yage:colorGrade",

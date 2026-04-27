@@ -96,6 +96,17 @@ export class MockContainer {
   }
 }
 
+/**
+ * Minimal SceneManager shape that `ProcessSystem` reads. Tests that drive the
+ * engine without a real SceneManager can plug in this shim via
+ * {@link RendererTestContext.setSceneManager} to control which scenes count
+ * as "active" for per-scene process pools.
+ */
+export interface MockSceneManagerLike {
+  activeScenes: Scene[];
+  readonly active?: Scene | undefined;
+}
+
 export interface RendererTestContext {
   context: EngineContext;
   scene: Scene;
@@ -106,6 +117,13 @@ export interface RendererTestContext {
   layerManager: RenderLayerManager;
   tree: SceneRenderTree;
   provider: MockSceneRenderTreeProvider;
+  /**
+   * Inject a SceneManager-like object into the context's `ProcessSystem` so
+   * tests can drive `activeScenes` directly without standing up a real
+   * `SceneManager`. Replaces the cast-and-poke pattern; if `ProcessSystem`'s
+   * sceneManager field is ever renamed, only this shim updates.
+   */
+  setSceneManager(sm: MockSceneManagerLike): void;
 }
 
 /**
@@ -280,6 +298,13 @@ export function createRendererTestContext(options?: {
     layerManager,
     tree,
     provider,
+    setSceneManager(sm) {
+      // Cast-and-poke is contained here so tests don't reach into
+      // ProcessSystem internals directly. If `sceneManager` is renamed,
+      // only this line needs updating.
+      (processSystem as unknown as { sceneManager: MockSceneManagerLike }).sceneManager =
+        sm;
+    },
   };
 }
 

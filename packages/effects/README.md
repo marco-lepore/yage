@@ -2,21 +2,21 @@
 
 Built-in visual-effect presets for [YAGE](https://yage.dev) — wraps
 [`pixi-filters`](https://pixijs.io/filters/) and the built-in
-`ColorMatrixFilter` behind the engine's handle-based `addEffect` API.
+`ColorMatrixFilter` behind the engine's handle-based `.fx.addEffect` API.
 
 ```ts
 import { hitFlash, bloom, crt } from "@yagejs/effects";
 
 // Component scope — flashes when the entity takes damage.
-const flash = sprite.addEffect(hitFlash({ color: 0xffffff, duration: 100 }));
+const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff, duration: 100 }));
 flash.trigger();
 
 // Layer scope — bloom on the gameplay layer only.
 const tree = this.use(SceneRenderTreeKey);
-tree.get("world").addEffect(bloom({ threshold: 0.8, bloomScale: 1.4 }));
+tree.get("world").fx.addEffect(bloom({ threshold: 0.8, bloomScale: 1.4 }));
 
 // Scene scope — CRT scanlines for the whole scene.
-tree.addEffect(crt({ scanlines: true }));
+tree.fx.addEffect(crt({ scanlines: true }));
 ```
 
 Every preset is registered through `defineEffect` (see

@@ -189,23 +189,20 @@ describe("Phase 1b — broader scopes", () => {
     });
 
     it("layer-scope fade pauses with the owning scene", () => {
-      // Drives the new makeSceneScopedProcessHost path: layer fades route
-      // through ProcessSystem.addForScene, so they must respect activeScenes.
+      // Drives the new makeSceneScopedQueue path: layer fades route through
+      // ProcessSystem.addForScene, so they must respect activeScenes. Plug
+      // in a SceneManager-like shim via the test context's setSceneManager
+      // helper so ProcessSystem.update walks the scene's pool.
       const ctx = createRendererTestContext();
       const ps = ctx.context.resolve(ProcessSystemKey) as ProcessSystem;
-      // Plug in a SceneManager-like shim so ProcessSystem.update walks the
-      // scene's pool. The renderer test-helpers don't wire SceneManager, so
-      // we set it up directly.
       const scene = ctx.scene;
       const sceneManager = {
-        activeScenes: [] as Scene[],
+        activeScenes: [scene] as Scene[],
         get active() {
           return this.activeScenes[0];
         },
       };
-      (ps as unknown as { sceneManager: typeof sceneManager }).sceneManager =
-        sceneManager;
-      sceneManager.activeScenes = [scene];
+      ctx.setSceneManager(sceneManager);
 
       let intensity = 0;
       const f = { enabled: true, label: "layer-bloom" };

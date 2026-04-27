@@ -134,6 +134,10 @@ export class TextComponent extends Component {
     if (data.effects) this.fx.restore(data.effects);
     if (data.mask) {
       this._mask?.remove();
+      // Clear before restore so an unsavable snapshot (restoreMask returns
+      // null) leaves the field genuinely empty instead of holding a torn-down
+      // handle for serialize/clearMask to operate on.
+      this._mask = undefined;
       const handle = restoreMask(this.text, data.mask);
       if (handle) this._mask = handle;
     }

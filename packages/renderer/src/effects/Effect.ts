@@ -27,9 +27,9 @@ export interface EffectTarget {
  *
  * `getIntensity` / `setIntensity` should target the effect's most natural
  * "strength" axis (BloomFilter `strength`, OutlineFilter `thickness`, etc).
- * If the effect has no scalar that maps cleanly, return a constant from
- * `getIntensity` and no-op `setIntensity` — users who want fade can opt into
- * an `AlphaFilter` wrapper via the renderer's `withFade` helper.
+ * For shader-style effects with no clean scalar, route through the filter's
+ * built-in `alpha` uniform — every pixi `Filter` carries one and it scales
+ * the filter's whole contribution.
  */
 export interface Effect<H extends EffectHandle = EffectHandle> {
   /**
@@ -51,9 +51,24 @@ export interface Effect<H extends EffectHandle = EffectHandle> {
   /**
    * Optional factory for typed extras spread onto the final handle. Receives
    * the base `EffectHandle` so extras can compose against `remove` / `setEnabled` /
-   * `fadeIn` / `fadeOut` if needed.
+   * `fadeIn` / `fadeOut` / `run` if needed.
+   *
+   * **Pure at call time.** Return closures freely — they're invoked by user
+   * code later and may have side effects then (e.g. `hitFlash.trigger()`
+   * calls `base.run(...)` from inside the closure). What this hook should
+   * NOT do is invoke side effects *eagerly* during the `buildExtras` call
+   * itself — no `base.run(...)`, no scheduling, no external-state mutation
+   * at build time. Use `onActivate` for attach-time side effects.
    */
   buildExtras?(base: EffectHandle): Omit<H, keyof EffectHandle>;
+  /**
+   * Optional activation callback fired once the handle is fully built (after
+   * `buildExtras` has merged its keys onto the handle). Use this to schedule
+   * per-effect `Process`es via `base.run(...)` — they are auto-cancelled when
+   * the effect is removed. The right place for self-scheduled tickers (e.g.
+   * a shader-uniform animator) so callers don't have to wire `step(dt)`.
+   */
+  onActivate?(base: EffectHandle): void;
 }
 
 /**

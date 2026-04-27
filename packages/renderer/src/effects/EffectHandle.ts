@@ -19,4 +19,16 @@ export interface EffectHandle {
   fadeIn(duration: number): Process;
   /** Tween the effect's primary intensity → 0 over `duration` ms. */
   fadeOut(duration: number): Process;
+  /**
+   * Schedule a `Process` scoped to this effect's lifetime. The process is
+   * routed through the same `ScopedProcessQueue` the effect's fades use —
+   * pauses with the owning scene, time-scales with it, and is cancelled
+   * automatically when the effect is removed.
+   *
+   * Useful for factories that need timed work (e.g. a one-shot trigger ramp,
+   * a uniform animator) without asking the caller to wire `step(dt)`. The
+   * returned `Process` can be cancelled early; otherwise it tears down with
+   * the effect.
+   */
+  run(p: Process): Process;
 }

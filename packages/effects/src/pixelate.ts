@@ -10,10 +10,11 @@ export interface PixelateOptions {
 }
 
 /**
- * Pixelation. `setIntensity` linearly scales the configured `size` from 0
- * (smooth) to the original value, so `fadeIn`/`fadeOut` work without
- * `withFade` — though the visual at intensity 0 is the same as removing the
- * filter, since `size: 0` would be a divide-by-zero. We clamp to 1 minimum.
+ * Pixelation. `setIntensity` linearly scales the configured `size` from 1
+ * (effectively smooth) to the original value. The live `size` is clamped to
+ * a minimum of 1 — `size: 0` would divide-by-zero in the shader — so a
+ * fade-out doesn't quite reach a visually unfiltered state; remove the
+ * effect rather than fading to 0 if you want the filter cost gone.
  */
 export const pixelate = defineEffect<PixelateHandle, PixelateOptions>({
   name: "yage:pixelate",

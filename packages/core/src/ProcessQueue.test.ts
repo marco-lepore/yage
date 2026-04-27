@@ -7,56 +7,27 @@ import {
   makeGlobalScopedQueue,
   makeSceneScopedQueue,
 } from "./ProcessQueue.js";
-import type { Entity } from "./Entity.js";
-
-function fakeEntity(): Entity & {
-  added: ProcessComponent[];
-  hasProcessComponent: boolean;
-} {
-  let pc: ProcessComponent | undefined;
-  const added: ProcessComponent[] = [];
-  const stub = {
-    added,
-    get hasProcessComponent() {
-      return pc !== undefined;
-    },
-    tryGet(cls: unknown): unknown {
-      if (cls === ProcessComponent) return pc;
-      return undefined;
-    },
-    add(comp: unknown): unknown {
-      if (comp instanceof ProcessComponent) {
-        pc = comp;
-        added.push(comp);
-      }
-      return comp;
-    },
-  };
-  return stub as unknown as Entity & {
-    added: ProcessComponent[];
-    hasProcessComponent: boolean;
-  };
-}
+import { createMockEntity, createMockScene } from "./test-utils.js";
 
 describe("makeEntityScopedQueue", () => {
   it("auto-adds a ProcessComponent if the entity doesn't have one", () => {
-    const entity = fakeEntity();
+    const { entity } = createMockEntity();
     const queue = makeEntityScopedQueue(entity);
     queue.run(new Process({ duration: 100 }));
-    expect(entity.added).toHaveLength(1);
-    expect(entity.hasProcessComponent).toBe(true);
+    expect(entity.tryGet(ProcessComponent)).toBeDefined();
   });
 
   it("re-uses an existing ProcessComponent on subsequent runs", () => {
-    const entity = fakeEntity();
+    const { entity } = createMockEntity();
     const queue = makeEntityScopedQueue(entity);
     queue.run(new Process({ duration: 100 }));
+    const pc = entity.tryGet(ProcessComponent);
     queue.run(new Process({ duration: 100 }));
-    expect(entity.added).toHaveLength(1);
+    expect(entity.tryGet(ProcessComponent)).toBe(pc);
   });
 
   it("cancelAll cancels only processes the queue enqueued", () => {
-    const entity = fakeEntity();
+    const { entity } = createMockEntity();
     const queue = makeEntityScopedQueue(entity);
     const ours = new Process({ duration: 100 });
     const theirs = new Process({ duration: 100 });
@@ -66,7 +37,7 @@ describe("makeEntityScopedQueue", () => {
     queue.run(ours);
     // Simulate a user-owned process going through the SAME ProcessComponent
     // but NOT the queue. Queue must not touch it.
-    const pc = entity.tryGet(ProcessComponent) as ProcessComponent;
+    const pc = entity.tryGet(ProcessComponent)!;
     pc.run(theirs);
 
     queue.cancelAll();
@@ -75,7 +46,7 @@ describe("makeEntityScopedQueue", () => {
   });
 
   it("cancelAll skips already-completed processes", () => {
-    const entity = fakeEntity();
+    const { entity } = createMockEntity();
     const queue = makeEntityScopedQueue(entity);
     const p = new Process({ duration: 100 });
     queue.run(p);
@@ -86,7 +57,7 @@ describe("makeEntityScopedQueue", () => {
   });
 
   it("prunes completed processes lazily on each run", () => {
-    const entity = fakeEntity();
+    const { entity } = createMockEntity();
     const queue = makeEntityScopedQueue(entity);
 
     const a = new Process({ duration: 100 });
@@ -163,8 +134,8 @@ describe("makeGlobalScopedQueue", () => {
 
 describe("makeSceneScopedQueue", () => {
   it("forwards run() to ProcessSystem.addForScene with the bound scene", () => {
+    const { scene } = createMockScene();
     const ps = new ProcessSystem();
-    const scene = { name: "test" } as never;
     const addForScene = vi.spyOn(ps, "addForScene");
     const queue = makeSceneScopedQueue(ps, scene);
     const p = new Process({ duration: 100 });
@@ -173,8 +144,8 @@ describe("makeSceneScopedQueue", () => {
   });
 
   it("cancelAll cancels only processes this queue enqueued", () => {
+    const { scene } = createMockScene();
     const ps = new ProcessSystem();
-    const scene = { name: "test" } as never;
     const queueA = makeSceneScopedQueue(ps, scene);
     const queueB = makeSceneScopedQueue(ps, scene);
     const a = new Process({ duration: 100 });

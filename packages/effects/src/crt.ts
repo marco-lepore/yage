@@ -1,3 +1,4 @@
+import { Process } from "@yagejs/core";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { CRTFilter } from "pixi-filters";
@@ -23,8 +24,9 @@ export interface CRTOptions {
 
 /**
  * Authentic CRT-monitor look: scanlines, screen curvature, noise, and a
- * subtle vignette. The handle's `step(dt)` advances the noise time so the
- * grain animates frame-to-frame; without it the noise stays static.
+ * subtle vignette. The handle's noise animator self-schedules through the
+ * engine's process scheduler on attach — no caller-side `step(dt)` wiring
+ * required, the noise pauses with the owning scene and time-scales with it.
  *
  * `setIntensity` scales the filter's overall contribution via `filter.alpha`
  * so all four CRT knobs (scanlines, curvature, noise, vignette) breathe
@@ -54,15 +56,19 @@ export const crt = defineEffect<CRTHandle, CRTOptions>({
       setIntensity: (v) => {
         f.alpha = Math.max(0, Math.min(1, v));
       },
-      buildExtras: () => ({
-        step: (dt: number) => {
-          // YAGE dt is in ms; CRTFilter.time is unitless and conventionally
-          // advanced as seconds (so a value of 1 ≈ one second of animation).
-          // Adding raw ms makes the noise scroll ~1000× too fast.
-          filter.time += dt / 1000;
-          filter.seed = Math.random();
-        },
-      }),
+      onActivate: (base) => {
+        // Self-schedule the noise animator. Auto-cancels on `base.remove()`,
+        // pauses with scene, time-scales with scene. YAGE dt is in ms;
+        // CRTFilter.time is unitless and conventionally advanced as seconds.
+        base.run(
+          new Process({
+            update: (dt) => {
+              filter.time += dt / 1000;
+              filter.seed = Math.random();
+            },
+          }),
+        );
+      },
     };
     return effect;
   },

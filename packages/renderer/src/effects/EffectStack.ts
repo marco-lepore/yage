@@ -81,15 +81,18 @@ export class EffectStack {
     effect.onAttach?.({ displayObject: this.displayObject, scope: this.scope });
     this.syncFilters();
 
-    const trackFade = (p: Process): Process => {
+    // Per-effect process tracking — fades, hitFlash trigger ramps, CRT
+    // uniform tickers, and any user-scheduled `handle.run(p)` all flow
+    // through here so `removeEffect` can cancel them in one shot.
+    const trackProcess = (p: Process): Process => {
       let set = this.effectProcesses.get(effect);
       if (!set) {
         set = new Set();
         this.effectProcesses.set(effect, set);
       }
-      // Lazy-prune completed fades for this effect on each new fade — the
-      // host's pruning only spans its own bookkeeping; this set lives until
-      // the effect is removed, so without pruning a long-lived screen/layer
+      // Lazy-prune completed entries on each new schedule — the host's
+      // pruning only spans its own bookkeeping; this set lives until the
+      // effect is removed, so without pruning a long-lived screen/layer
       // handle would accumulate Process refs over the app's lifetime.
       for (const old of set) {
         if (old.completed) set.delete(old);
@@ -108,7 +111,7 @@ export class EffectStack {
       },
       enabled: true,
       fadeIn: (duration: number) =>
-        trackFade(
+        trackProcess(
           Tween.custom(
             (v) => effect.setIntensity(v),
             effect.getIntensity(),
@@ -117,7 +120,7 @@ export class EffectStack {
           ),
         ),
       fadeOut: (duration: number) =>
-        trackFade(
+        trackProcess(
           Tween.custom(
             (v) => effect.setIntensity(v),
             effect.getIntensity(),
@@ -125,6 +128,7 @@ export class EffectStack {
             duration,
           ),
         ),
+      run: (p) => trackProcess(p),
     };
     Object.defineProperty(handle, "enabled", {
       get: () => effectFilters(effect).every((f) => f.enabled),
@@ -136,6 +140,24 @@ export class EffectStack {
       Object.assign(handle, effect.buildExtras(handle));
     }
     this.handles.set(effect, handle);
+    // Activation runs AFTER buildExtras so onActivate sees the fully-built
+    // handle (including any extras the factory just merged on). The right
+    // place for self-scheduled tickers like CRT's noise animator.
+    //
+    // Roll back on throw — the factory might have already pushed processes
+    // into `effectProcesses` via `base.run(...)` before throwing, and the
+    // filter is already on the container. Without rollback the caller would
+    // get an exception while the stack still tracks an "effect" they have
+    // no handle to remove. `removeEffect` cleans both the entry and any
+    // partially-scheduled processes, then we rethrow so the caller knows.
+    if (effect.onActivate) {
+      try {
+        effect.onActivate(handle);
+      } catch (err) {
+        this.removeEffect(effect);
+        throw err;
+      }
+    }
     return handle as H;
   }
 
@@ -255,6 +277,11 @@ export class EffectStack {
     }
     this.entries.clear();
     this.handles.clear();
+    // `effectProcesses` is the per-effect index used by `removeEffect` to
+    // find and cancel a single effect's processes. On destroy we cancel
+    // EVERY process at once via `this.queue.cancelAll()` below, so clearing
+    // the index without iterating it is correct — the queue's own tracking
+    // is the source of truth for the bulk cancellation.
     this.effectProcesses.clear();
 
     // Strip our owned filters from the target while leaving any externally-

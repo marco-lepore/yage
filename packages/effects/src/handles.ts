@@ -1,15 +1,14 @@
 import type { EffectHandle } from "@yagejs/renderer";
 
 /**
- * Handle returned by `hitFlash`. `trigger()` arms a one-shot ramp; drive
- * it forward by calling `step(dt)` from your update loop so the flash
- * obeys `scene.timeScale` and `scene.paused`.
+ * Handle returned by `hitFlash`. `trigger()` arms a one-shot ramp that
+ * drives itself through the engine's process scheduler — pauses with the
+ * owning scene, time-scales with it, auto-cancels on `remove()`. No
+ * caller-side `step(dt)` wiring required.
  */
 export interface HitFlashHandle extends EffectHandle {
   /** Arm a one-shot flash. Cancels any in-flight trigger. */
   trigger(): void;
-  /** Advance an in-flight trigger by `dt` ms. Call from your update loop. */
-  step(dt: number): void;
   /** Update the flash color at runtime. */
   setColor(color: number): void;
 }
@@ -45,11 +44,13 @@ export interface GlowHandle extends EffectHandle {
   setColor(color: number): void;
 }
 
-/** Handle returned by `crt`. */
-export interface CRTHandle extends EffectHandle {
-  /** Animate the scanline noise — call from your update loop with `dt`. */
-  step(dt: number): void;
-}
+/**
+ * Handle returned by `crt`. The scanline noise animates itself through the
+ * engine's process scheduler — no caller-side `step(dt)` required. The
+ * handle exposes only the base `EffectHandle` surface
+ * (`fadeIn`/`fadeOut`/`run`/`remove`/`setEnabled`).
+ */
+export type CRTHandle = EffectHandle;
 
 /** Handle returned by `chromaticAberration`. */
 export interface ChromaticAberrationHandle extends EffectHandle {

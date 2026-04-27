@@ -132,7 +132,6 @@ export { defineEffect } from "./effects/defineEffect.js";
 export type { EffectDefinition } from "./effects/defineEffect.js";
 export { rawFilter } from "./effects/rawFilter.js";
 export type { RawFilterOptions } from "./effects/rawFilter.js";
-export { withFade } from "./effects/withFade.js";
 export type { RendererSnapshotData } from "./effects/RendererSnapshotContributor.js";
 
 // Masks

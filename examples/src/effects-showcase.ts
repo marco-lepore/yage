@@ -9,7 +9,6 @@
  */
 
 import {
-  Component,
   Entity,
   Engine,
   Scene,
@@ -42,7 +41,7 @@ import {
   vignette,
   colorGrade,
 } from "@yagejs/effects";
-import type { CRTHandle, HitFlashHandle } from "@yagejs/effects";
+import type { HitFlashHandle } from "@yagejs/effects";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
 const STAGE_WIDTH = 800;
@@ -99,15 +98,6 @@ const layers: LayerDef[] = [
   { name: "world", order: 0 },
   { name: "hud", order: 100 },
 ];
-
-/** Drives a list of step(dt) callbacks every frame so we can animate
- * effects (CRT noise, hit-flash trigger) under engine time. */
-class EffectTicker extends Component {
-  readonly tickers: Array<(dt: number) => void> = [];
-  update(dt: number): void {
-    for (const fn of this.tickers) fn(dt);
-  }
-}
 
 /** Colourful, detailed backdrop so subtle effects stay visible. Lives on
  * the "background" layer below the world. */
@@ -277,45 +267,23 @@ class GemEntity extends Entity {
   }
 }
 
-/** Hosts the per-frame ticker component used to advance step(dt) effects.
- * `EffectTicker` is stateless and has no @serializable wiring, so the
- * entity rebuilds it from scratch in `afterRestore`. */
-@serializable
-class TickerEntity extends Entity {
-  ticker: EffectTicker | null = null;
-
-  setup(): void {
-    this.ticker = new EffectTicker();
-    this.add(this.ticker);
-  }
-
-  afterRestore(): void {
-    this.ticker = new EffectTicker();
-    this.add(this.ticker);
-  }
-}
-
 @serializable
 class ShowcaseScene extends Scene {
   readonly name = "effects-showcase";
   readonly layers = layers;
 
   private effectHandles = new Map<string, EffectHandle | null>();
-  private crtHandle: CRTHandle | null = null;
   private background: BackgroundEntity | null = null;
   private hero: HeroEntity | null = null;
   private block: BlockEntity | null = null;
   private gem: GemEntity | null = null;
-  private tickerEntity: TickerEntity | null = null;
 
   onEnter(): void {
     this.background = this.spawn(BackgroundEntity);
     this.hero = this.spawn(HeroEntity);
     this.block = this.spawn(BlockEntity);
     this.gem = this.spawn(GemEntity);
-    this.tickerEntity = this.spawn(TickerEntity);
 
-    this.bindFlashTicker();
     this.buildPanel();
   }
 
@@ -328,11 +296,9 @@ class ShowcaseScene extends Scene {
       else if (e instanceof HeroEntity) this.hero = e;
       else if (e instanceof BlockEntity) this.block = e;
       else if (e instanceof GemEntity) this.gem = e;
-      else if (e instanceof TickerEntity) this.tickerEntity = e;
     }
 
     this.effectHandles.clear();
-    this.bindFlashTicker();
     this.buildPanel();
     // Layer/scene/screen-scope effects are restored by the renderer's
     // snapshot contributor AFTER scene.afterRestore returns. doLoad calls
@@ -373,28 +339,10 @@ class ShowcaseScene extends Scene {
     );
     sync("bloom", world?.fx.findEffect(bloom) ?? null);
     sync("pixelate", world?.fx.findEffect(pixelate) ?? null);
-
-    const restoredCrt = tree.fx.findEffect(crt);
-    if (restoredCrt) {
-      this.crtHandle = restoredCrt;
-      this.tickerEntity?.ticker?.tickers.push((dt) => restoredCrt.step(dt));
-      sync("crt", restoredCrt);
-    }
+    sync("crt", tree.fx.findEffect(crt));
     sync("colorGrade", tree.fx.findEffect(colorGrade));
     sync("ca", tree.fx.findEffect(chromaticAberration));
     sync("vignette", renderer.fx.findEffect(vignette));
-  }
-
-  /** Wire the per-frame tickers for hitFlash + (if active) CRT. */
-  private bindFlashTicker(): void {
-    const ticker = this.tickerEntity?.ticker;
-    if (!ticker) return;
-    ticker.tickers.length = 0;
-    ticker.tickers.push((dt) => this.hero?.flashHandle?.step(dt));
-    if (this.crtHandle) {
-      const crtRef = this.crtHandle;
-      ticker.tickers.push((dt) => crtRef.step(dt));
-    }
   }
 
   private buildPanel(): void {
@@ -414,8 +362,6 @@ class ShowcaseScene extends Scene {
       label: string,
       key: string,
       attach: () => EffectHandle,
-      onActivate?: (h: EffectHandle) => void,
-      onDeactivate?: () => void,
     ): void => {
       const btn = document.createElement("button");
       btn.textContent = label;
@@ -426,12 +372,9 @@ class ShowcaseScene extends Scene {
           existing.remove();
           this.effectHandles.set(key, null);
           btn.classList.remove("on");
-          onDeactivate?.();
         } else {
-          const handle = attach();
-          this.effectHandles.set(key, handle);
+          this.effectHandles.set(key, attach());
           btn.classList.add("on");
-          onActivate?.(handle);
         }
       };
       panel.appendChild(btn);
@@ -469,26 +412,8 @@ class ShowcaseScene extends Scene {
     );
 
     section("Scene");
-    toggle(
-      "crt",
-      "crt",
-      () => {
-        const h = tree.fx.addEffect(crt({ lineContrast: 0.3 }));
-        this.crtHandle = h;
-        return h;
-      },
-      (h) => {
-        const crtRef = h as CRTHandle;
-        this.tickerEntity?.ticker?.tickers.push((dt) => crtRef.step(dt));
-      },
-      () => {
-        this.crtHandle = null;
-        const ticker = this.tickerEntity?.ticker;
-        if (!ticker) return;
-        // Drop everything and re-bind the persistent tickers (hitFlash).
-        // Cheaper than tracking individual fn refs through closures.
-        this.bindFlashTicker();
-      },
+    toggle("crt", "crt", () =>
+      tree.fx.addEffect(crt({ lineContrast: 0.3 })),
     );
     toggle("colorGrade: sepia", "colorGrade", () =>
       tree.fx.addEffect(colorGrade({ preset: "sepia" })),

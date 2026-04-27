@@ -386,6 +386,10 @@ describe("RendererPlugin", () => {
       const stage = plugin.application.stage as unknown as {
         filters: unknown[] | null;
       };
+      // Simulate a caller appending their own filter alongside the host's
+      // owned one (real callers would do `stage.filters = [...stage.filters,
+      // userFilter]`). The overwrite makes the post-onDestroy assertion
+      // independent of any prior state EffectsHost may have left behind.
       stage.filters = [userFilter, ownedFilter];
 
       plugin.onDestroy();

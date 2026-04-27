@@ -33,6 +33,7 @@ The base handle is shared across every preset:
 | `enabled` | Current enabled state (live). |
 | `fadeIn(ms)` | Tween primary intensity 0 → 1. Returns a `Process`. |
 | `fadeOut(ms)` | Tween primary intensity → 0. Returns a `Process`. |
+| `run(p)` | Schedule a `Process` scoped to this effect — pauses with the owning scene, time-scales with it, auto-cancels on `remove()`. Use for custom uniform tweens. |
 
 Each preset extends the base with its own knobs — `OutlineHandle.setThickness(n)`,
 `HitFlashHandle.trigger()`, `ColorGradeHandle.setPreset("sepia")`, etc.
