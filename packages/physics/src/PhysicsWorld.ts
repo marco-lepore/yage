@@ -410,7 +410,10 @@ export class PhysicsWorld {
 
   private bodyTypeToSnapshot(type: RAPIER.RigidBodyType): BodyType {
     if (type === RAPIER.RigidBodyType.Fixed) return "static";
-    if (type === RAPIER.RigidBodyType.KinematicPositionBased) {
+    if (
+      type === RAPIER.RigidBodyType.KinematicPositionBased ||
+      type === RAPIER.RigidBodyType.KinematicVelocityBased
+    ) {
       return "kinematic";
     }
     return "dynamic";

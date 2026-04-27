@@ -156,4 +156,10 @@ export class CameraEntity extends Entity {
   worldToScreen(worldX: number, worldY: number): Vec2 {
     return this.cam.worldToScreen(worldX, worldY);
   }
+
+  afterRestore(): void {
+    // setup() doesn't run on restore — rebind the cached CameraComponent that
+    // every delegate getter / method on this class reads through.
+    this.cam = this.get(CameraComponent);
+  }
 }

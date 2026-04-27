@@ -429,6 +429,17 @@ function cloneUIPanelOptions(opts?: UIPanelOptions): UIPanelOptions {
     clone.margin =
       typeof opts.margin === "number" ? opts.margin : { ...opts.margin };
   }
-  if (opts.background) clone.background = { ...opts.background };
+  if (opts.background) {
+    const bg = { ...opts.background };
+    // TextureBackground.nineSlice / tileScale can be objects; deep-copy them
+    // so mutations to the clone don't leak back into the original options.
+    if ("nineSlice" in bg && bg.nineSlice && typeof bg.nineSlice === "object") {
+      bg.nineSlice = { ...bg.nineSlice };
+    }
+    if ("tileScale" in bg && bg.tileScale && typeof bg.tileScale === "object") {
+      bg.tileScale = { ...bg.tileScale };
+    }
+    clone.background = bg;
+  }
   return clone;
 }

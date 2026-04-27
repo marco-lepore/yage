@@ -381,7 +381,9 @@ export class Inspector {
         n,
         "Inspector.events.setCapacity(capacity)",
       );
-      const ordered = this.iterateLog().slice(-n);
+      // `slice(-0)` is `slice(0)` (returns the whole array), so guard zero
+      // explicitly — otherwise setCapacity(0) would leave stale entries.
+      const ordered = n === 0 ? [] : this.iterateLog().slice(-n);
       this.eventCapacity = n;
       this.eventLog = ordered;
       this.eventLogHead = 0;

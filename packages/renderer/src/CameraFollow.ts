@@ -135,6 +135,12 @@ export class CameraFollow extends Component {
     const transform = entity?.tryGet(Transform);
     if (transform) {
       this.target = transform;
+    } else {
+      // Snapshot referenced an entity that didn't make it through restore.
+      // Surface so a missing follow target doesn't get silently dropped.
+      console.warn(
+        `CameraFollow.afterRestore: cannot resolve target entity ${this.restoreTargetEntityId}; camera will not follow.`,
+      );
     }
     this.restoreTargetEntityId = null;
   }

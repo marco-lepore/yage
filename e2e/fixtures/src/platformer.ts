@@ -5,4 +5,6 @@ type Globals = typeof globalThis & {
 (globalThis as Globals).__YAGE_START_FROZEN__ = true;
 (globalThis as Globals).__YAGE_DETERMINISTIC_SEED__ = 0x00c0ffee;
 
-import "../../../examples/src/platformer.ts";
+// Dynamic import — a static import would be hoisted above the assignments,
+// so the example's `main()` would read the globals before they're set.
+await import("../../../examples/src/platformer.ts");

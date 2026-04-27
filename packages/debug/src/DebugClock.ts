@@ -79,8 +79,10 @@ export class DebugClock implements IDebugClock {
       );
     }
     const dt = dtMs ?? this.deltaMs;
-    this.frame++;
+    // Increment after a successful tick — if tick throws (system exception,
+    // render failure) the frame counter shouldn't advance ahead of state.
     this.gameLoop.tick(dt);
+    this.frame++;
     this.render();
   }
 
