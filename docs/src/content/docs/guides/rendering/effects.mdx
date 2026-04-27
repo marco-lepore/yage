@@ -10,13 +10,14 @@ per-scene, per-screen. Pre-built effect presets ship in
 
 ## The handle pattern
 
-Every `addEffect(...)` call returns a typed `EffectHandle` you keep around
-to control the effect later:
+Every `fx.addEffect(...)` call returns a typed `EffectHandle` you keep around
+to control the effect later. Components, layers, scenes, and the renderer
+all expose effects through the same `.fx` property:
 
 ```ts
 import { hitFlash } from "@yagejs/effects";
 
-const flash = sprite.addEffect(hitFlash({ color: 0xffffff, duration: 100 }));
+const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff, duration: 100 }));
 flash.trigger();         // one-shot ramp up + down
 flash.fadeOut(200);      // returns a Process
 flash.setEnabled(false); // toggle without removing
@@ -40,16 +41,16 @@ Each preset extends the base with its own knobs — `OutlineHandle.setThickness(
 
 ```ts
 // 1. Component scope — sprite / graphics / text / animatedSprite.
-sprite.addEffect(hitFlash({ ... }));
+sprite.fx.addEffect(hitFlash({ ... }));
 
 // 2. Layer scope — every entity in this layer.
-this.use(SceneRenderTreeKey).get("world").addEffect(bloom({ ... }));
+this.use(SceneRenderTreeKey).get("world").fx.addEffect(bloom({ ... }));
 
 // 3. Scene scope — the entire per-scene root.
-this.use(SceneRenderTreeKey).addEffect(crt({ ... }));
+this.use(SceneRenderTreeKey).fx.addEffect(crt({ ... }));
 
 // 4. Screen scope — cross-scene, on app.stage.
-this.use(RendererKey).addEffect(vignette({ ... }));
+this.use(RendererKey).fx.addEffect(vignette({ ... }));
 ```
 
 Pixi processes filters bottom-up the display tree, so an outer scope
@@ -90,12 +91,20 @@ import {
 | `bloom` | Soft glow on bright pixels | bloom scale |
 | `outline` | Hard-edge outline | thickness |
 | `dropShadow` | Drop shadow with offset + blur | shadow alpha |
-| `pixelate` | Block pixelation | pixel size |
-| `glow` | Outer + inner glow halo | outer strength |
-| `crt` | Scanlines, curvature, noise | line contrast |
+| `pixelate` | Block pixelation | pixel size (clamped to ≥1) |
+| `glow` | Outer + inner glow halo | scales BOTH strengths together |
+| `crt` | Scanlines, curvature, noise | filter alpha (whole effect) |
 | `chromaticAberration` | RGB channel separation | symmetric separation |
 | `vignette` | Edge darkening | vignette alpha |
 | `colorGrade` | Sepia / grayscale / negative / night / warm / cool | filter alpha |
+
+`setIntensity` doubles as the "how strong is this effect right now" dial —
+use it for fades AND for gameplay-driven scaling (HP-linked tinting,
+heartbeat glow, breathing vignette). The `set*` setters that change a
+preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`,
+`outline.setThickness`, etc.) preserve the current intensity ratio, so
+adjusting the ceiling mid-pulse raises the pulse height instead of
+snapping the visible effect back to 1.
 
 Each preset wraps either a built-in `ColorMatrixFilter` or a `pixi-filters`
 filter and exposes typed extras specific to it.
@@ -110,7 +119,7 @@ import { BlurFilter } from "pixi.js";
 import { rawFilter } from "@yagejs/renderer";
 
 const blur = new BlurFilter({ strength: 8 });
-const handle = sprite.addEffect(
+const handle = sprite.fx.addEffect(
   rawFilter(blur, {
     intensity: {
       get: () => blur.strength,
@@ -130,6 +139,7 @@ effect you want save/load support on.
 
 ```ts
 import { defineEffect } from "@yagejs/renderer";
+import type { EffectHandle } from "@yagejs/renderer";
 import { ShockwaveFilter } from "pixi-filters";
 
 interface ShockOptions { strength: number; }
@@ -147,7 +157,7 @@ export const shock = defineEffect<EffectHandle, ShockOptions>({
 });
 ```
 
-The returned `shock` is callable like any preset: `sprite.addEffect(shock({ strength: 30 }))`.
+The returned `shock` is callable like any preset: `sprite.fx.addEffect(shock({ strength: 30 }))`.
 
 ## Masks
 

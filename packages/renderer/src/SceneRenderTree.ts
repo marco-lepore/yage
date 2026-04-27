@@ -3,9 +3,7 @@ import type { Scene } from "@yagejs/core";
 import type { Container } from "pixi.js";
 import type { LayerDef } from "./LayerDef.js";
 import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectDefinition } from "./effects/defineEffect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import type { EffectsHost } from "./effects/EffectsHost.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
 
@@ -42,20 +40,16 @@ export interface SceneRenderTree {
    */
   ensureLayer(def: LayerDef, opts?: EnsureLayerOptions): RenderLayer;
   /**
-   * Attach a scene-scope effect — applied to the entire per-scene root
-   * container, after layer-scope effects have composited. Common use:
-   * scene-wide CRT, color grade, vignette. Survives until the scene exits
-   * or the handle is `.remove()`d.
+   * Scene-scope effects host — `.fx.addEffect(...)` attaches a filter to the
+   * entire per-scene root container, after layer-scope effects have composited.
+   * Common use: scene-wide CRT, color grade, vignette. Survives until the
+   * scene exits or the handle is `.remove()`d.
+   *
+   * `.fx.findEffect(definition)` recovers a handle by registered definition
+   * after save/load, when the caller-side reference went stale during
+   * restoration.
    */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H;
-  /**
-   * Recover the handle for the first scene-scope effect built from
-   * `definition`. Useful after save/load to re-acquire a handle whose
-   * caller-side reference went stale during restoration.
-   */
-  findEffect<H extends EffectHandle, O>(
-    definition: EffectDefinition<H, O>,
-  ): H | null;
+  readonly fx: EffectsHost;
   /**
    * Attach a scene-scope mask, replacing any existing one. Clips the entire
    * per-scene root. Torn down on scene exit.

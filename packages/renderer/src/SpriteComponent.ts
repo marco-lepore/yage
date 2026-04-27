@@ -1,12 +1,14 @@
-import { AssetHandle, Component, serializable } from "@yagejs/core";
+import {
+  AssetHandle,
+  Component,
+  makeEntityScopedQueue,
+  serializable,
+} from "@yagejs/core";
 import { Sprite } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveTextureInput } from "./assets.js";
-import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -45,8 +47,18 @@ export interface SpriteData {
 export class SpriteComponent extends Component {
   readonly sprite: DisplaySprite;
   readonly layerName: string;
+  /**
+   * Component-scope effects host. `.fx.addEffect(...)` attaches a filter to
+   * this sprite; the effect is torn down automatically when the entity or
+   * component is destroyed. `.fx.findEffect(definition)` recovers the
+   * handle for the first matching effect after save/load.
+   */
+  readonly fx = new EffectsHost(
+    () => this.sprite,
+    "component",
+    () => makeEntityScopedQueue(this.entity),
+  );
   private _textureKey: string | null;
-  private _effects?: EffectStack;
   private _mask: MaskHandle | undefined;
 
   constructor(options: SpriteComponentOptions) {
@@ -102,8 +114,8 @@ export class SpriteComponent extends Component {
       anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
       visible: this.sprite.visible,
     };
-    const effects = this._effects?.serialize();
-    if (effects && effects.entries.length > 0) data.effects = effects;
+    const effects = this.fx.serialize();
+    if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
     if (mask) data.mask = mask;
     return data;
@@ -111,14 +123,7 @@ export class SpriteComponent extends Component {
 
   /** Restore effects and mask after the sprite is parented in the scene tree. */
   afterRestore(data: SpriteData): void {
-    if (data.effects) {
-      this._effects ??= new EffectStack(
-        this.sprite,
-        makeEntityProcessHost(this.entity),
-        "component",
-      );
-      this._effects.restoreFrom(data.effects);
-    }
+    if (data.effects) this.fx.restore(data.effects);
     if (data.mask) {
       this._mask?.remove();
       const handle = restoreMask(this.sprite, data.mask);
@@ -160,21 +165,6 @@ export class SpriteComponent extends Component {
   }
 
   /**
-   * Attach a visual effect to this sprite. Returns a handle for later
-   * removal, fading, or per-effect tweaking. The handle's lifetime is bound
-   * to the component — when the entity or component is destroyed, the
-   * effect is torn down automatically.
-   */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    this._effects ??= new EffectStack(
-      this.sprite,
-      makeEntityProcessHost(this.entity),
-      "component",
-    );
-    return this._effects.add(factory);
-  }
-
-  /**
    * Attach a mask to this sprite, replacing any existing mask. Returns a
    * handle for inverse toggling, redraw (graphicsMask), or removal. The
    * mask is torn down automatically when the component is destroyed.
@@ -205,7 +195,7 @@ export class SpriteComponent extends Component {
   }
 
   onDestroy(): void {
-    this._effects?.destroy();
+    this.fx.destroy();
     this._mask?.remove();
     this.sprite.removeFromParent();
     this.sprite.destroy();

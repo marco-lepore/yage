@@ -1,23 +1,17 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
+import type { ScopedProcessQueue } from "@yagejs/core";
 import type { LayerDef, LayerSpace } from "./LayerDef.js";
-import { EffectStack } from "./effects/EffectStack.js";
-import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectDefinition } from "./effects/defineEffect.js";
-import type {
-  EffectHandle,
-  EffectProcessHost,
-} from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 
 /**
- * Factory that produces a fresh `EffectProcessHost` instance — called once
+ * Factory that produces a fresh `ScopedProcessQueue` instance — called once
  * per `EffectStack` so each stack's cancellation scope stays isolated.
  */
-export type EffectHostFactory = () => EffectProcessHost;
+export type EffectQueueFactory = () => ScopedProcessQueue;
 
 /** Options for creating a layer. */
 export interface CreateLayerOptions {
@@ -41,59 +35,29 @@ export class RenderLayer {
   readonly container: Container;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
-  private _effects: EffectStack | undefined;
+  /**
+   * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
+   * entity rendered through this layer (one full-screen render pass per
+   * layer-scope effect, regardless of how many entities are in the layer).
+   * Fades pause with the owning scene and are scaled by its `timeScale`,
+   * matching component-scope behavior. Effects survive until the scene
+   * exits or the handle is `.remove()`d.
+   */
+  readonly fx: EffectsHost;
   private _mask: MaskHandle | undefined;
-  private readonly _hostFactory: EffectHostFactory | undefined;
 
   constructor(
     name: string,
     order: number,
     container: Container,
     space: LayerSpace = "world",
-    hostFactory?: EffectHostFactory,
+    queueFactory?: EffectQueueFactory,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
-    this._hostFactory = hostFactory;
-  }
-
-  /**
-   * Attach a layer-scope effect — the filter is applied to every entity
-   * rendered through this layer. Cost: one full-screen render pass per
-   * layer-scope effect, regardless of how many entities are in the layer.
-   *
-   * Fades pause with the owning scene and are scaled by its `timeScale`,
-   * matching component-scope behavior. Effects survive until the scene
-   * exits or the handle is `.remove()`d.
-   */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    if (!this._effects) {
-      if (!this._hostFactory) {
-        throw new Error(
-          `RenderLayer "${this.name}": addEffect requires an EffectHostFactory. ` +
-            `This layer was constructed outside a fully-wired renderer plugin.`,
-        );
-      }
-      this._effects = new EffectStack(
-        this.container,
-        this._hostFactory(),
-        "layer",
-      );
-    }
-    return this._effects.add(factory);
-  }
-
-  /**
-   * Recover the handle for the first attached effect built from `definition`.
-   * Useful after save/load to re-acquire a layer-scope handle whose
-   * caller-side reference went stale during restoration.
-   */
-  findEffect<H extends EffectHandle, O>(
-    definition: EffectDefinition<H, O>,
-  ): H | null {
-    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
+    this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
   }
 
   /**
@@ -114,17 +78,6 @@ export class RenderLayer {
   }
 
   /**
-   * Tear down any layer-scope effect stack. Called by `RenderLayerManager`
-   * before the layer's container is destroyed so external user-assigned
-   * filters survive the teardown intact.
-   * @internal
-   */
-  _destroyEffects(): void {
-    this._effects?.destroy();
-    this._effects = undefined;
-  }
-
-  /**
    * Tear down any layer-scope mask. Called by `RenderLayerManager` before
    * the layer's container is destroyed so the owned mask Graphics gets
    * cleaned up exactly once.
@@ -136,30 +89,6 @@ export class RenderLayer {
   }
 
   /** @internal — used by the renderer's snapshot contributor. */
-  _serializeEffects(): EffectStackSnapshot | undefined {
-    if (!this._effects || this._effects.size === 0) return undefined;
-    const snap = this._effects.serialize();
-    return snap.entries.length > 0 ? snap : undefined;
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
-  _restoreEffects(snap: EffectStackSnapshot): void {
-    if (!this._effects) {
-      if (!this._hostFactory) {
-        throw new Error(
-          `RenderLayer "${this.name}": cannot restore effects without an EffectHostFactory.`,
-        );
-      }
-      this._effects = new EffectStack(
-        this.container,
-        this._hostFactory(),
-        "layer",
-      );
-    }
-    this._effects.restoreFrom(snap);
-  }
-
-  /** @internal — used by the renderer's snapshot contributor. */
   _serializeMask(): MaskSnapshot | undefined {
     return this._mask?.serialize() ?? undefined;
   }
@@ -167,6 +96,10 @@ export class RenderLayer {
   /** @internal — used by the renderer's snapshot contributor. */
   _restoreMask(snap: MaskSnapshot): void {
     this._mask?.remove();
+    // Clear before restore so an unsavable snapshot (restoreMask returns
+    // null) leaves the field genuinely empty instead of holding a torn-down
+    // handle for serialize/clearMask to operate on.
+    this._mask = undefined;
     const handle = restoreMask(this.container, snap);
     if (handle) this._mask = handle;
   }
@@ -182,16 +115,16 @@ export class RenderLayerManager {
   private readonly rootContainer: Container;
   private readonly _defaultLayer: RenderLayer;
   private readonly _defaultEventMode: EventMode | undefined;
-  private readonly _hostFactory: EffectHostFactory | undefined;
+  private readonly _queueFactory: EffectQueueFactory | undefined;
 
   constructor(
     root: Container,
     defaultEventMode?: EventMode,
-    hostFactory?: EffectHostFactory,
+    queueFactory?: EffectQueueFactory,
   ) {
     this.rootContainer = root;
     this._defaultEventMode = defaultEventMode;
-    this._hostFactory = hostFactory;
+    this._queueFactory = queueFactory;
     this._defaultLayer = this.create("default", 0);
   }
 
@@ -216,7 +149,7 @@ export class RenderLayerManager {
       order,
       container,
       opts?.space ?? "world",
-      this._hostFactory,
+      this._queueFactory,
     );
     this.layers.set(name, layer);
 
@@ -288,7 +221,7 @@ export class RenderLayerManager {
    */
   destroyEffects(): void {
     for (const layer of this.layers.values()) {
-      layer._destroyEffects();
+      layer.fx.destroy();
     }
   }
 

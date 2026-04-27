@@ -132,6 +132,13 @@ export { TimerEntity } from "./TimerEntity.js";
 
 export { ProcessSystem } from "./ProcessSystem.js";
 
+export {
+  makeEntityScopedQueue,
+  makeGlobalScopedQueue,
+  makeSceneScopedQueue,
+} from "./ProcessQueue.js";
+export type { ScopedProcessQueue } from "./ProcessQueue.js";
+
 export { Inspector } from "./Inspector.js";
 export type {
   EngineSnapshot,

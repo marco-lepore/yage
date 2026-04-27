@@ -204,6 +204,10 @@ save?.registerSnapshotExtra("myPlugin", {
 
 Contributors are invoked during `saveSnapshot` (their data lands under `GameSnapshot.extras[key]`) and during `loadSnapshot` *after* every scene + entity has been restored — so contributors can rely on live `SceneRenderTree`s and other restored state existing.
 
+**Asymmetric registration on restore.** Every registered contributor is invoked on `loadSnapshot`, even if the snapshot has no matching entry — `restore(undefined)` is called, and the contributor is expected to reset its state to the empty/baseline configuration so a Load returns to the saved state instead of overlaying it on whatever was live. Conversely, if a snapshot's `extras` contains a key with no currently-registered contributor (e.g. a snapshot saved while a plugin was installed, loaded after the plugin was removed), the entry is skipped with a `console.warn` and load continues. Plugin authors writing migrations should account for both paths.
+
+A single contributor's `serialize()` or `restore(...)` throwing is logged via `console.error` and the rest of the contributors run unaffected — one bad plugin can't poison the whole save/load.
+
 The renderer plugin (`@yagejs/renderer`) auto-registers a contributor under the key `"renderer"` for layer/scene/screen-scope effects + masks. Component-scope effects are saved through their owning component's `serialize()` and don't go through this channel.
 
 `GameSnapshot.version` is `4` — older saves error out at load with a version-mismatch message.

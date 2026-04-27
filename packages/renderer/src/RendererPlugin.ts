@@ -1,6 +1,7 @@
 import {
   AssetManagerKey,
   GameLoopKey,
+  makeGlobalScopedQueue,
   ProcessSystemKey,
   RendererAdapterKey,
   SceneHookRegistryKey,
@@ -14,18 +15,14 @@ import type {
   SystemScheduler,
 } from "@yagejs/core";
 import type { SnapshotContributor } from "@yagejs/save";
-
-interface SaveServiceLike {
-  registerSnapshotExtra(key: string, contributor: SnapshotContributor): void;
-  unregisterSnapshotExtra(key: string): void;
-}
+// `@yagejs/save` is an optional peer dep — type-only import via top-level
+// `import type * as` keeps the runtime free of a hard dependency on the
+// save package while letting us reference `typeof SaveModule` for the
+// dynamic-import variable below.
+import type * as SaveModule from "@yagejs/save";
 import { Application, Assets, Graphics } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
-import { EffectStack } from "./effects/EffectStack.js";
-import { makeProcessSystemHost } from "./effects/hosts/ProcessSystemHost.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectDefinition } from "./effects/defineEffect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { FitController } from "./Fit.js";
@@ -42,6 +39,11 @@ import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 
 import "./scene-augmentation.js";
 
+interface SaveServiceLike {
+  registerSnapshotExtra(key: string, contributor: SnapshotContributor): void;
+  unregisterSnapshotExtra(key: string): void;
+}
+
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
 export class RendererPlugin implements Plugin {
   readonly name = "renderer";
@@ -56,7 +58,16 @@ export class RendererPlugin implements Plugin {
   private unregisterHooks: (() => void) | null = null;
   private fitController!: FitController;
   private _processSystem: ProcessSystem | undefined;
-  private _effects: EffectStack | undefined;
+  /**
+   * Screen-scope effects host — `.fx.addEffect(...)` attaches a filter to
+   * `app.stage`, so it persists across scene transitions and composites
+   * everything the renderer draws (every scene, every layer). Common use:
+   * screen-wide post-process like vignette or chromatic aberration.
+   *
+   * The handle survives scene changes; remove it explicitly when no longer
+   * wanted, or it lives until the renderer plugin is destroyed.
+   */
+  fx!: EffectsHost;
   private _engineContext: EngineContext | null = null;
   private _unregisterSaveContributor: (() => void) | null = null;
 
@@ -98,6 +109,16 @@ export class RendererPlugin implements Plugin {
     //    schedule fade tweens. Already registered by Engine before plugin
     //    install runs.
     this._processSystem = context.resolve(ProcessSystemKey);
+
+    // 4b. Build the screen-scope EffectsHost over `app.stage`. The underlying
+    //     EffectStack is created lazily on first `addEffect`/`restore` so a
+    //     game with no screen-scope filters pays nothing.
+    const ps = this._processSystem;
+    this.fx = new EffectsHost(
+      () => this.app.stage,
+      "screen",
+      () => makeGlobalScopedQueue(ps),
+    );
 
     // 5. Create the per-scene render tree provider.
     //    Each scene gets one root container as a direct child of app.stage.
@@ -176,7 +197,7 @@ export class RendererPlugin implements Plugin {
   private async tryRegisterSaveContributor(
     context: EngineContext,
   ): Promise<void> {
-    let save: typeof import("@yagejs/save");
+    let save: typeof SaveModule;
     try {
       save = await import("@yagejs/save");
     } catch {
@@ -193,8 +214,7 @@ export class RendererPlugin implements Plugin {
     if (!service) return;
     const contributor: SnapshotContributor = new RendererSnapshotContributor(
       this.provider,
-      () => this._effects,
-      () => this.ensureScreenStack(),
+      () => this.fx,
     );
     service.registerSnapshotExtra("renderer", contributor);
     this._unregisterSaveContributor = () => {
@@ -202,48 +222,8 @@ export class RendererPlugin implements Plugin {
     };
   }
 
-  private ensureScreenStack(): EffectStack {
-    if (!this._effects) {
-      if (!this._processSystem) {
-        throw new Error(
-          "RendererPlugin: cannot create screen-scope EffectStack — ProcessSystem not resolved.",
-        );
-      }
-      this._effects = new EffectStack(
-        this.app.stage,
-        makeProcessSystemHost(this._processSystem),
-        "screen",
-      );
-    }
-    return this._effects;
-  }
-
   registerSystems(scheduler: SystemScheduler): void {
     scheduler.add(new DisplaySystem());
-  }
-
-  /**
-   * Attach a screen-scope effect — the filter is applied to `app.stage`,
-   * so it persists across scene transitions and composites everything the
-   * renderer draws (every scene, every layer). Common use: screen-wide
-   * post-process like vignette or chromatic aberration.
-   *
-   * The handle survives scene changes; remove it explicitly when no longer
-   * wanted, or it lives until the renderer plugin is destroyed.
-   */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    return this.ensureScreenStack().add(factory);
-  }
-
-  /**
-   * Recover the handle for the first attached screen-scope effect built
-   * from `definition`. Useful after save/load to re-acquire a handle
-   * whose caller-side reference went stale during restoration.
-   */
-  findEffect<H extends EffectHandle, O>(
-    definition: EffectDefinition<H, O>,
-  ): H | null {
-    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
   }
 
   onDestroy(): void {
@@ -258,8 +238,7 @@ export class RendererPlugin implements Plugin {
     }
     // Strip stage-level effects before destroying the app — preserves any
     // user-assigned filters on app.stage outside our addEffect calls.
-    this._effects?.destroy();
-    this._effects = undefined;
+    this.fx?.destroy();
     this.provider.destroyAll();
     this.app.destroy();
   }

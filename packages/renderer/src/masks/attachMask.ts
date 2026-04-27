@@ -128,7 +128,9 @@ export function restoreMask(
     });
     return mask;
   });
-  if (snapshot.inverse) handle.setInverse(true);
+  // Snapshot is authoritative — reapply unconditionally so masks whose
+  // factory defaults to `inverse: true` correctly restore an explicit `false`.
+  if (handle.inverse !== snapshot.inverse) handle.setInverse(snapshot.inverse);
   return handle;
 }
 

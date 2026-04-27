@@ -1,6 +1,6 @@
 import type { SnapshotContributor } from "@yagejs/save";
-import type { EffectStack } from "./EffectStack.js";
 import type { EffectStackSnapshot } from "./EffectStack.js";
+import type { EffectsHost } from "./EffectsHost.js";
 import type { SceneRenderTreeProviderImpl } from "../SceneRenderTreeProvider.js";
 import type { SceneTreesSnapshot } from "../SceneRenderTreeProvider.js";
 
@@ -29,14 +29,12 @@ export interface RendererSnapshotData {
 export class RendererSnapshotContributor implements SnapshotContributor {
   constructor(
     private readonly provider: SceneRenderTreeProviderImpl,
-    private readonly screenStack: () => EffectStack | undefined,
-    private readonly ensureScreenStack: () => EffectStack,
+    private readonly screenFx: () => EffectsHost,
   ) {}
 
   serialize(): RendererSnapshotData | undefined {
     const scenes = this.provider.serializeAll();
-    const stack = this.screenStack();
-    const screen = stack && stack.size > 0 ? stack.serialize() : undefined;
+    const screen = this.screenFx().serialize();
     const hasScene = scenes.some(
       (s) => s.tree || s.layers || s.mask || s.layerMasks,
     );
@@ -52,25 +50,33 @@ export class RendererSnapshotContributor implements SnapshotContributor {
     // we still need to clear any baseline state (e.g. a screen-scope
     // effect enabled after the save was taken) so Load returns to the
     // saved configuration rather than overlaying it on the live state.
-    const snap: RendererSnapshotData =
-      data === undefined
-        ? { scenes: [] }
-        : isRendererSnapshot(data)
-          ? data
-          : { scenes: [] };
+    let snap: RendererSnapshotData;
+    if (data === undefined) {
+      snap = { scenes: [] };
+    } else if (isRendererSnapshot(data)) {
+      snap = data;
+    } else {
+      // A non-undefined payload that fails the type guard is a corrupt or
+      // older renderer extras blob. Leaving it to the empty-snapshot path
+      // would silently wipe live state with no diagnostic — warn and bail.
+      console.warn(
+        "RendererSnapshotContributor: ignoring malformed renderer snapshot payload.",
+      );
+      return;
+    }
 
     // Always reset the screen stack to match the snapshot. If the
     // snapshot has no screen entry, restoreFrom an empty list clears
     // every screen-scope effect; we only allocate a stack here if one
     // already exists — otherwise there's nothing to clear.
-    const existingScreen = this.screenStack();
+    const screenFx = this.screenFx();
     if (snap.screen) {
-      this.ensureScreenStack().restoreFrom(snap.screen);
-    } else if (existingScreen) {
-      existingScreen.restoreFrom({ entries: [] });
+      screenFx.restore(snap.screen);
+    } else if (screenFx.size > 0) {
+      screenFx.restore({ entries: [] });
     }
 
-    this.provider.restoreAll(snap.scenes ?? []);
+    this.provider.restoreAll(snap.scenes);
   }
 }
 

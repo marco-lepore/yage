@@ -21,7 +21,9 @@ export interface BloomOptions {
  * Soft glow bloom from `pixi-filters`' AdvancedBloomFilter. The configured
  * `bloomScale` becomes the "full" value at `setIntensity(1)` — so
  * `fadeIn(ms)` ramps from 0 to that value and `fadeOut(ms)` back to 0.
- * `setBloomScale(...)` updates the full value (and re-applies it).
+ * `setBloomScale(...)` rebases the full value while preserving the current
+ * intensity ratio so an in-flight fade or rhythmic pulse keeps animating
+ * against the new ceiling instead of snapping back to 1.
  */
 export const bloom = defineEffect<BloomHandle, BloomOptions>({
   name: "yage:bloom",
@@ -49,8 +51,9 @@ export const bloom = defineEffect<BloomHandle, BloomOptions>({
           filter.threshold = value;
         },
         setBloomScale: (value: number) => {
+          const ratio = filter.bloomScale / Math.max(baseBloomScale, 1e-6);
           baseBloomScale = value;
-          filter.bloomScale = value;
+          filter.bloomScale = value * ratio;
         },
       }),
     };

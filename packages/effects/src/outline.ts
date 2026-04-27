@@ -45,8 +45,11 @@ export const outline = defineEffect<OutlineHandle, OutlineOptions>({
       },
       buildExtras: () => ({
         setThickness: (value: number) => {
+          // Preserve the current intensity ratio so a fade or pulse keeps
+          // animating against the new ceiling.
+          const ratio = filter.thickness / Math.max(baseThickness, 1e-6);
           baseThickness = value;
-          filter.thickness = value;
+          filter.thickness = value * ratio;
           filter.padding = padFor(value);
         },
         setColor: (color: number) => {

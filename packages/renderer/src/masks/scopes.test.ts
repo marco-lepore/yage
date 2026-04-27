@@ -319,10 +319,14 @@ describe("Mask scopes — end-to-end", () => {
       );
       tree.setMask(rectMask({ x: 0, y: 0, width: 800, height: 600 }));
 
+      const spriteAsContainer = sprite.sprite as never as InstanceType<
+        typeof mocks.MockContainer
+      >;
       const layerContainer = layerManager.defaultLayer
         .container as never as InstanceType<typeof mocks.MockContainer>;
 
       sprite.onDestroy?.();
+      expect(spriteAsContainer.mask).toBeNull();
       expect(layerContainer.mask).not.toBeNull();
       expect(root.mask).not.toBeNull();
     });

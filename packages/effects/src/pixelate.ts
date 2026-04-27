@@ -18,7 +18,7 @@ export interface PixelateOptions {
 export const pixelate = defineEffect<PixelateHandle, PixelateOptions>({
   name: "yage:pixelate",
   factory: (options) => {
-    const baseSize = options.size ?? 8;
+    let baseSize = options.size ?? 8;
     const filter = new PixelateFilter(baseSize);
     const effect: Effect<PixelateHandle> = {
       filter,
@@ -35,7 +35,12 @@ export const pixelate = defineEffect<PixelateHandle, PixelateOptions>({
       },
       buildExtras: () => ({
         setSize: (value: number) => {
-          filter.size = Math.max(1, Math.round(value));
+          // Preserve the current intensity ratio so a fade or pulse keeps
+          // animating against the new ceiling. PixelateFilter.size still
+          // clamps to ≥ 1 (a value of 0 would divide-by-zero in the shader).
+          const ratio = filter.sizeX / Math.max(baseSize, 1);
+          baseSize = value;
+          filter.size = Math.max(1, Math.round(value * ratio));
         },
       }),
     };

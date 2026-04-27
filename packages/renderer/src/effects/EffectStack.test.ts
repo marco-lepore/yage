@@ -48,20 +48,20 @@ vi.mock("pixi.js", () => ({
   },
 }));
 
-import type { Process } from "@yagejs/core";
+import type { Process, ScopedProcessQueue } from "@yagejs/core";
 import { EffectStack } from "./EffectStack.js";
 import type { Effect, EffectFactory } from "./Effect.js";
-import type {
-  EffectHandle,
-  EffectProcessHost,
-} from "./EffectHandle.js";
+import type { EffectHandle } from "./EffectHandle.js";
 
-function makeMockHost(): EffectProcessHost & { runs: Process[]; cancelled: number } {
+function makeMockHost(): ScopedProcessQueue & {
+  runs: Process[];
+  cancelled: number;
+} {
   const runs: Process[] = [];
   return {
     runs,
     cancelled: 0,
-    run(p) {
+    run(p: Process) {
       runs.push(p);
       return p;
     },
@@ -72,7 +72,7 @@ function makeMockHost(): EffectProcessHost & { runs: Process[]; cancelled: numbe
       this.cancelled += runs.length;
       runs.length = 0;
     },
-  } as EffectProcessHost & { runs: Process[]; cancelled: number };
+  } as ScopedProcessQueue & { runs: Process[]; cancelled: number };
 }
 
 function makeEffect(
@@ -363,7 +363,11 @@ describe("EffectStack serialize/restoreFrom", () => {
   let host: ReturnType<typeof makeMockHost>;
   let stack: EffectStack;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Reset the global effect registry between tests so name reuse across
+    // suites (or accidental repeats within this one) doesn't leak state.
+    const { _resetEffectRegistry } = await import("./defineEffect.js");
+    _resetEffectRegistry();
     target = new mocks.MockContainer();
     host = makeMockHost();
     stack = new EffectStack(target as never, host, "component");

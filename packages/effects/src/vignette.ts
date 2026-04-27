@@ -41,8 +41,12 @@ export const vignette = defineEffect<VignetteHandle, VignetteOptions>({
       },
       buildExtras: () => ({
         setStrength: (value: number) => {
+          // Preserve the current intensity ratio so a fade or pulse in
+          // flight keeps animating against the new ceiling instead of
+          // snapping the visible vignette back to 1.
+          const ratio = filter.vignettingAlpha / Math.max(baseAlpha, 1e-6);
           baseAlpha = value;
-          filter.vignettingAlpha = value;
+          filter.vignettingAlpha = value * ratio;
         },
       }),
     };

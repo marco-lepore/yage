@@ -101,7 +101,7 @@ describe("Phase 1b — broader scopes", () => {
       const { tree } = createRendererTestContext();
       const layer = tree.defaultLayer;
       const f = makeTestFilter("layer-bloom");
-      layer.addEffect(rawFilter(f as never));
+      layer.fx.addEffect(rawFilter(f as never));
 
       expect(layer.container.filters).toEqual([f]);
     });
@@ -114,7 +114,7 @@ describe("Phase 1b — broader scopes", () => {
         typeof mocks.MockContainer
       >;
       const f = makeTestFilter("layer-bloom");
-      layer.addEffect(rawFilter(f as never));
+      layer.fx.addEffect(rawFilter(f as never));
       expect(layerContainer.filters).toEqual([f]);
 
       provider.destroyForScene(scene);
@@ -132,7 +132,7 @@ describe("Phase 1b — broader scopes", () => {
 
       const userFilter = makeTestFilter("user");
       const ownedFilter = makeTestFilter("owned");
-      layer.addEffect(rawFilter(ownedFilter as never));
+      layer.fx.addEffect(rawFilter(ownedFilter as never));
       layerContainer.filters = [userFilter, ownedFilter];
 
       provider.destroyForScene(scene);
@@ -144,7 +144,7 @@ describe("Phase 1b — broader scopes", () => {
     it("applies addEffect filter to the per-scene root container", () => {
       const { tree, root } = createRendererTestContext();
       const f = makeTestFilter("scene-crt");
-      tree.addEffect(rawFilter(f as never));
+      tree.fx.addEffect(rawFilter(f as never));
       expect(root.filters).toEqual([f]);
     });
 
@@ -152,7 +152,7 @@ describe("Phase 1b — broader scopes", () => {
       const { scene, provider, root } = createRendererTestContext();
       const tree = provider.getTree(scene)!;
       const f = makeTestFilter("scene-crt");
-      tree.addEffect(rawFilter(f as never));
+      tree.fx.addEffect(rawFilter(f as never));
       expect(root.filters).toEqual([f]);
 
       provider.destroyForScene(scene);
@@ -171,9 +171,9 @@ describe("Phase 1b — broader scopes", () => {
       const lFilter = makeTestFilter("layer-bloom");
       const sFilter = makeTestFilter("scene-crt");
 
-      sprite.addEffect(rawFilter(cFilter as never));
-      tree.defaultLayer.addEffect(rawFilter(lFilter as never));
-      tree.addEffect(rawFilter(sFilter as never));
+      sprite.fx.addEffect(rawFilter(cFilter as never));
+      tree.defaultLayer.fx.addEffect(rawFilter(lFilter as never));
+      tree.fx.addEffect(rawFilter(sFilter as never));
 
       const spriteAsContainer = sprite.sprite as never as InstanceType<
         typeof mocks.MockContainer
@@ -196,7 +196,7 @@ describe("Phase 1b — broader scopes", () => {
       // Plug in a SceneManager-like shim so ProcessSystem.update walks the
       // scene's pool. The renderer test-helpers don't wire SceneManager, so
       // we set it up directly.
-      const scene = ctx.scene as Scene & { isPaused?: boolean };
+      const scene = ctx.scene;
       const sceneManager = {
         activeScenes: [] as Scene[],
         get active() {
@@ -209,7 +209,7 @@ describe("Phase 1b — broader scopes", () => {
 
       let intensity = 0;
       const f = { enabled: true, label: "layer-bloom" };
-      const handle = ctx.tree.defaultLayer.addEffect(
+      const handle = ctx.tree.defaultLayer.fx.addEffect(
         rawFilter(f as never, {
           intensity: {
             get: () => intensity,
@@ -244,16 +244,22 @@ describe("Phase 1b — broader scopes", () => {
       const cFilter = makeTestFilter("c");
       const lFilter = makeTestFilter("l");
       const sFilter = makeTestFilter("s");
-      sprite.addEffect(rawFilter(cFilter as never));
-      tree.defaultLayer.addEffect(rawFilter(lFilter as never));
-      tree.addEffect(rawFilter(sFilter as never));
+      sprite.fx.addEffect(rawFilter(cFilter as never));
+      tree.defaultLayer.fx.addEffect(rawFilter(lFilter as never));
+      tree.fx.addEffect(rawFilter(sFilter as never));
 
+      const spriteAsContainer = sprite.sprite as never as InstanceType<
+        typeof mocks.MockContainer
+      >;
       const layerContainer = layerManager.defaultLayer
         .container as never as InstanceType<typeof mocks.MockContainer>;
+
+      expect(spriteAsContainer.filters).toEqual([cFilter]);
 
       // Simulate entity destroy ordering used in production
       sprite.onDestroy?.();
 
+      expect(spriteAsContainer.filters).toBeNull();
       expect(layerContainer.filters).toEqual([lFilter]);
       expect(root.filters).toEqual([sFilter]);
     });

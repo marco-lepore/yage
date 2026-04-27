@@ -9,7 +9,7 @@ export interface CRTOptions {
   curvature?: number;
   /** Width of the scanlines. Default: 1. */
   lineWidth?: number;
-  /** Scanline contrast. Drives `getIntensity`. Default: 0.25. */
+  /** Scanline contrast. Default: 0.25. */
   lineContrast?: number;
   /** Vertical scanlines instead of horizontal. Default: false. */
   verticalLine?: boolean;
@@ -26,32 +26,40 @@ export interface CRTOptions {
  * subtle vignette. The handle's `step(dt)` advances the noise time so the
  * grain animates frame-to-frame; without it the noise stays static.
  *
- * `getIntensity` reads `lineContrast` so the configured scanline contrast
- * is what fades — at 0 you see no scanlines, at 1 you see them at full
- * configured strength.
+ * `setIntensity` scales the filter's overall contribution via `filter.alpha`
+ * so all four CRT knobs (scanlines, curvature, noise, vignette) breathe
+ * together — pulsing or fading touches the whole look, not just one
+ * uniform. `setIntensity(0)` makes the filter invisible (the underlying
+ * pass still runs; remove the effect to drop the cost).
  */
 export const crt = defineEffect<CRTHandle, CRTOptions>({
   name: "yage:crt",
   factory: (options) => {
-    const baseContrast = options.lineContrast ?? 0.25;
     const filter = new CRTFilter({
       curvature: options.curvature ?? 1,
       lineWidth: options.lineWidth ?? 1,
-      lineContrast: baseContrast,
+      lineContrast: options.lineContrast ?? 0.25,
       verticalLine: options.verticalLine ?? false,
       noise: options.noise ?? 0.3,
       vignetting: options.vignetting ?? 0.3,
       vignettingAlpha: options.vignettingAlpha ?? 1,
     });
+    // CRTFilter's TypeScript declarations omit the inherited Filter.alpha
+    // uniform; cast to unblock the assignment. At runtime every pixi Filter
+    // carries `.alpha`.
+    const f = filter as unknown as { alpha: number };
     const effect: Effect<CRTHandle> = {
       filter,
-      getIntensity: () => filter.lineContrast / Math.max(baseContrast, 1e-6),
+      getIntensity: () => f.alpha,
       setIntensity: (v) => {
-        filter.lineContrast = baseContrast * v;
+        f.alpha = Math.max(0, Math.min(1, v));
       },
       buildExtras: () => ({
         step: (dt: number) => {
-          filter.time += dt;
+          // YAGE dt is in ms; CRTFilter.time is unitless and conventionally
+          // advanced as seconds (so a value of 1 ≈ one second of animation).
+          // Adding raw ms makes the noise scroll ~1000× too fast.
+          filter.time += dt / 1000;
           filter.seed = Math.random();
         },
       }),

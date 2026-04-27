@@ -20,17 +20,3 @@ export interface EffectHandle {
   /** Tween the effect's primary intensity → 0 over `duration` ms. */
   fadeOut(duration: number): Process;
 }
-
-/**
- * Internal: a process host owns the lifecycle of fade tweens for one
- * `EffectStack`. Different scopes wrap different process targets
- * (entity ProcessComponent, scene-level ProcessSystem, engine-level).
- *
- * @internal
- */
-export interface EffectProcessHost {
-  /** Enqueue a process; the host promises to tick it until completion. */
-  run(p: Process): Process;
-  /** Cancel every process this host enqueued. Called on stack teardown. */
-  cancelAll(): void;
-}

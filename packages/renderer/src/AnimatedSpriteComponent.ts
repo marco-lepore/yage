@@ -1,15 +1,17 @@
-import { AssetHandle, Component, serializable } from "@yagejs/core";
+import {
+  AssetHandle,
+  Component,
+  makeEntityScopedQueue,
+  serializable,
+} from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -37,8 +39,13 @@ export interface AnimatedSpriteData {
 export class AnimatedSpriteComponent extends Component {
   readonly animatedSprite: AnimatedSprite;
   readonly layerName: string;
+  /** See {@link SpriteComponent.fx}. */
+  readonly fx = new EffectsHost(
+    () => this.animatedSprite,
+    "component",
+    () => makeEntityScopedQueue(this.entity),
+  );
   private readonly _source: FrameSource | null;
-  private _effects?: EffectStack;
   private _mask: MaskHandle | undefined;
 
   constructor(options: AnimatedSpriteComponentOptions) {
@@ -96,7 +103,8 @@ export class AnimatedSpriteComponent extends Component {
     if (!this._source) {
       console.warn(
         `AnimatedSpriteComponent on "${this.entity?.name}": created with raw textures. ` +
-          `Use { source } for save/load support.`,
+          `Use { source } for save/load support. Any attached effects/mask ` +
+          `on this component will not be persisted.`,
       );
       return null;
     }
@@ -104,8 +112,8 @@ export class AnimatedSpriteComponent extends Component {
       source: this._source,
       layer: this.layerName,
     };
-    const effects = this._effects?.serialize();
-    if (effects && effects.entries.length > 0) data.effects = effects;
+    const effects = this.fx.serialize();
+    if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
     if (mask) data.mask = mask;
     return data;
@@ -117,29 +125,12 @@ export class AnimatedSpriteComponent extends Component {
 
   /** Restore effects and mask after the animated sprite is parented. */
   afterRestore(data: AnimatedSpriteData): void {
-    if (data.effects) {
-      this._effects ??= new EffectStack(
-        this.animatedSprite,
-        makeEntityProcessHost(this.entity),
-        "component",
-      );
-      this._effects.restoreFrom(data.effects);
-    }
+    if (data.effects) this.fx.restore(data.effects);
     if (data.mask) {
       this._mask?.remove();
       const handle = restoreMask(this.animatedSprite, data.mask);
       if (handle) this._mask = handle;
     }
-  }
-
-  /** Attach a visual effect to this animated sprite. See {@link SpriteComponent.addEffect}. */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    this._effects ??= new EffectStack(
-      this.animatedSprite,
-      makeEntityProcessHost(this.entity),
-      "component",
-    );
-    return this._effects.add(factory);
   }
 
   /** Attach a mask to this animated sprite. See {@link SpriteComponent.setMask}. */
@@ -169,7 +160,7 @@ export class AnimatedSpriteComponent extends Component {
   }
 
   onDestroy(): void {
-    this._effects?.destroy();
+    this.fx.destroy();
     this._mask?.remove();
     this.animatedSprite.removeFromParent();
     this.animatedSprite.destroy();

@@ -1,12 +1,12 @@
-import { Component, serializable } from "@yagejs/core";
+import {
+  Component,
+  makeEntityScopedQueue,
+  serializable,
+} from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectDefinition } from "./effects/defineEffect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -30,7 +30,12 @@ export interface GraphicsData {
 export class GraphicsComponent extends Component {
   readonly graphics: GraphicsContext;
   readonly layerName: string;
-  private _effects?: EffectStack;
+  /** See {@link SpriteComponent.fx}. */
+  readonly fx = new EffectsHost(
+    () => this.graphics,
+    "component",
+    () => makeEntityScopedQueue(this.entity),
+  );
   private _mask: MaskHandle | undefined;
 
   constructor(options?: GraphicsComponentOptions) {
@@ -48,8 +53,8 @@ export class GraphicsComponent extends Component {
   /** Serialise to a plain object for save/load. */
   serialize(): GraphicsData {
     const data: GraphicsData = { layer: this.layerName };
-    const effects = this._effects?.serialize();
-    if (effects && effects.entries.length > 0) data.effects = effects;
+    const effects = this.fx.serialize();
+    if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
     if (mask) data.mask = mask;
     return data;
@@ -62,41 +67,12 @@ export class GraphicsComponent extends Component {
 
   /** Restore effects and mask after the graphics object is parented. */
   afterRestore(data: GraphicsData): void {
-    if (data.effects) {
-      this._effects ??= new EffectStack(
-        this.graphics,
-        makeEntityProcessHost(this.entity),
-        "component",
-      );
-      this._effects.restoreFrom(data.effects);
-    }
+    if (data.effects) this.fx.restore(data.effects);
     if (data.mask) {
       this._mask?.remove();
       const handle = restoreMask(this.graphics, data.mask);
       if (handle) this._mask = handle;
     }
-  }
-
-  /** Attach a visual effect to this graphics object. See {@link SpriteComponent.addEffect}. */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    this._effects ??= new EffectStack(
-      this.graphics,
-      makeEntityProcessHost(this.entity),
-      "component",
-    );
-    return this._effects.add(factory);
-  }
-
-  /**
-   * Recover the handle for the first attached effect built from `definition`.
-   * Primarily useful after save/load: `afterRestore` rebuilds the stack but
-   * the original handle reference becomes stale, so `findEffect(hitFlash)`
-   * gives you the new handle to call `trigger()` on.
-   */
-  findEffect<H extends EffectHandle, O>(
-    definition: EffectDefinition<H, O>,
-  ): H | null {
-    return (this._effects?.findHandle(definition.name) as H | undefined) ?? null;
   }
 
   /** Attach a mask to this graphics object. See {@link SpriteComponent.setMask}. */
@@ -128,7 +104,7 @@ export class GraphicsComponent extends Component {
   }
 
   onDestroy(): void {
-    this._effects?.destroy();
+    this.fx.destroy();
     this._mask?.remove();
     this.graphics.removeFromParent();
     this.graphics.destroy();

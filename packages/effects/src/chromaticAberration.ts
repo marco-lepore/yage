@@ -24,7 +24,7 @@ export const chromaticAberration = defineEffect<
 >({
   name: "yage:chromaticAberration",
   factory: (options) => {
-    const baseSeparation = options.separation ?? 4;
+    let baseSeparation = options.separation ?? 4;
     const filter = new RGBSplitFilter({
       red: { x: -baseSeparation, y: 0 },
       green: { x: 0, y: 0 },
@@ -42,7 +42,16 @@ export const chromaticAberration = defineEffect<
       },
       setIntensity: (v) => apply(baseSeparation * v),
       buildExtras: () => ({
-        setSeparation: (value: number) => apply(value),
+        // Mirror sibling presets (bloom.setBloomScale, outline.setThickness,
+        // glow.setOuterStrength): rebase to the new full value AND preserve
+        // the current intensity ratio so a fade or pulse in flight keeps
+        // animating against the new ceiling.
+        setSeparation: (value: number) => {
+          const r = filter.red as { x: number };
+          const ratio = -r.x / Math.max(baseSeparation, 1e-6);
+          baseSeparation = value;
+          apply(value * ratio);
+        },
       }),
     };
     return effect;

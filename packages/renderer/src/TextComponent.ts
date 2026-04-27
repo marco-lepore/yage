@@ -1,11 +1,12 @@
-import { Component, serializable } from "@yagejs/core";
+import {
+  Component,
+  makeEntityScopedQueue,
+  serializable,
+} from "@yagejs/core";
 import { Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { EffectStack } from "./effects/EffectStack.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { makeEntityProcessHost } from "./effects/hosts/EntityProcessHost.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -51,7 +52,12 @@ export class TextComponent extends Component {
   // the live pixi `TextStyle` instance (which has non-enumerable getters and
   // would not round-trip through JSON).
   private _styleOptions?: TextStyle;
-  private _effects?: EffectStack;
+  /** See {@link SpriteComponent.fx}. */
+  readonly fx = new EffectsHost(
+    () => this.text,
+    "component",
+    () => makeEntityScopedQueue(this.entity),
+  );
   private _mask: MaskHandle | undefined;
 
   constructor(options: TextComponentOptions) {
@@ -116,8 +122,8 @@ export class TextComponent extends Component {
       visible: this.text.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
-    const effects = this._effects?.serialize();
-    if (effects && effects.entries.length > 0) data.effects = effects;
+    const effects = this.fx.serialize();
+    if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
     if (mask) data.mask = mask;
     return data;
@@ -125,14 +131,7 @@ export class TextComponent extends Component {
 
   /** Restore effects and mask after the text node is parented. */
   afterRestore(data: TextData): void {
-    if (data.effects) {
-      this._effects ??= new EffectStack(
-        this.text,
-        makeEntityProcessHost(this.entity),
-        "component",
-      );
-      this._effects.restoreFrom(data.effects);
-    }
+    if (data.effects) this.fx.restore(data.effects);
     if (data.mask) {
       this._mask?.remove();
       const handle = restoreMask(this.text, data.mask);
@@ -151,16 +150,6 @@ export class TextComponent extends Component {
     if (data.anchor) opts.anchor = data.anchor;
     if (data.visible !== undefined) opts.visible = data.visible;
     return new TextComponent(opts);
-  }
-
-  /** Attach a visual effect to this text node. See {@link SpriteComponent.addEffect}. */
-  addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-    this._effects ??= new EffectStack(
-      this.text,
-      makeEntityProcessHost(this.entity),
-      "component",
-    );
-    return this._effects.add(factory);
   }
 
   /** Attach a mask to this text node. See {@link SpriteComponent.setMask}. */
@@ -190,7 +179,7 @@ export class TextComponent extends Component {
   }
 
   onDestroy(): void {
-    this._effects?.destroy();
+    this.fx.destroy();
     this._mask?.remove();
     this.text.removeFromParent();
     this.text.destroy();

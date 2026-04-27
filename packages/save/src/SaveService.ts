@@ -206,10 +206,21 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
     const extras: Record<string, unknown> = {};
     let hasExtras = false;
     for (const [key, contributor] of this.contributors) {
-      const data = contributor.serialize();
-      if (data !== undefined) {
-        extras[key] = data;
-        hasExtras = true;
+      // Isolate each contributor — a single failing one (e.g. a third-party
+      // plugin throwing during serialize) shouldn't poison the rest of the
+      // snapshot. Log and continue.
+      try {
+        const data = contributor.serialize();
+        if (data !== undefined) {
+          extras[key] = data;
+          hasExtras = true;
+        }
+      } catch (err) {
+        console.error(
+          `SaveService: contributor "${key}" serialize failed; ` +
+            `omitting its extras from this snapshot.`,
+          err,
+        );
       }
     }
 
@@ -273,7 +284,17 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       // `data === undefined` as "reset to empty".
       const extras = snapshot.extras ?? {};
       for (const [key, contributor] of this.contributors) {
-        await contributor.restore(extras[key]);
+        // Isolate each contributor — one bad restore (e.g. a third-party
+        // plugin choking on a partially-compatible payload) shouldn't abort
+        // the whole load and leave the engine in a half-restored state.
+        try {
+          await contributor.restore(extras[key]);
+        } catch (err) {
+          console.error(
+            `SaveService: contributor "${key}" restore failed; continuing.`,
+            err,
+          );
+        }
       }
       for (const key of Object.keys(extras)) {
         if (!this.contributors.has(key)) {

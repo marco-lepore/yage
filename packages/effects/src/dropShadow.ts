@@ -57,8 +57,11 @@ export const dropShadow = defineEffect<DropShadowHandle, DropShadowOptions>({
           filter.color = color;
         },
         setAlpha: (value: number) => {
+          // Preserve the current intensity ratio so a fade in flight keeps
+          // animating against the new ceiling.
+          const ratio = filter.alpha / Math.max(baseAlpha, 1e-6);
           baseAlpha = value;
-          filter.alpha = value;
+          filter.alpha = value * ratio;
         },
       }),
     };

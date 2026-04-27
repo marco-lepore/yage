@@ -446,35 +446,39 @@ await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 })
 
 ## Effects
 
-Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — with one `EffectStack` per attach point. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
+Handle-based filter API. Same shape at four scopes — component, layer, scene, screen — exposed uniformly as `.fx` on every attach site. The renderer ships only the primitives; pre-built presets live in `@yagejs/effects`.
 
 ```ts
 import { rawFilter, withFade } from "@yagejs/renderer";
 import { hitFlash, bloom, crt, vignette } from "@yagejs/effects";
 
 // Component scope (Sprite / Graphics / Text / AnimatedSprite)
-const flash = sprite.addEffect(hitFlash({ color: 0xffffff }));
+const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff }));
 flash.trigger();
 flash.fadeOut(200);                   // returns a Process
 
 // Layer scope
-this.use(SceneRenderTreeKey).get("world").addEffect(bloom({ threshold: 0.8 }));
+this.use(SceneRenderTreeKey).get("world").fx.addEffect(bloom({ threshold: 0.8 }));
 
 // Scene scope (the per-scene root)
-this.use(SceneRenderTreeKey).addEffect(crt({ scanlines: true }));
+this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
 
 // Screen scope (cross-scene; on app.stage)
-this.use(RendererKey).addEffect(vignette({ alpha: 0.4 }));
+this.use(RendererKey).fx.addEffect(vignette({ alpha: 0.4 }));
+
+// Recover a handle by registered definition after save/load
+const restored = sprite.fx.findEffect(hitFlash);  // EffectHandle | null
 ```
 
 | Export | Signature | Description |
 |---|---|---|
-| `addEffect` (component / layer / scene / screen) | `<H extends EffectHandle>(factory: EffectFactory<H>) => H` | Attach an effect at the call site's scope. Same handle shape everywhere. |
+| `.fx` (on every scope) | `EffectsHost` | Per-attach-site holder. `addEffect(factory)`, `findEffect(definition)`, `serialize()`, `restore(snap)`, `destroy()`, `size`. The underlying `EffectStack` is built lazily on first attach. |
+| `EffectsHost` | class | Constructor: `(getContainer: () => Container, scope: EffectScope, makeQueue: (() => ScopedProcessQueue) \| undefined)`. Auto-built on each scope's host object — components, layers, scenes, the renderer. |
 | `EffectHandle` | interface | `remove()` / `setEnabled(on)` / `enabled` / `fadeIn(duration): Process` / `fadeOut(duration): Process`. |
 | `defineEffect` | `<H, O>({ name, factory: (opts: O) => Effect<H> }) => (opts: O) => EffectFactory<H>` | Register a preset under a stable string name. The returned callable produces save-aware factories — built effects are tagged with `{ name, options }` for snapshot round-trip. |
 | `rawFilter` | `(filter: Filter, opts?: { intensity?: { get, set } }) => EffectFactory` | Escape hatch for any pixi `Filter`. Without `intensity`, fade calls no-op + warn once. NOT serializable. |
 | `withFade` | `<H>(inner: EffectFactory<H>) => EffectFactory<H>` | Wrap an effect in an `AlphaFilter` so `fadeIn`/`fadeOut` work for filters without a meaningful intensity uniform. One extra render pass. |
-| `EffectStack` | class | `serialize() / restoreFrom(snap)` for save/load. `add(factory)`, `destroy()`. Per-attach-point. |
+| `EffectStack` | class | Internal — `EffectsHost` owns one. `serialize() / restoreFrom(snap)` for save/load. |
 | `EffectStackSnapshot` | type | `{ entries: { name, options, intensity, enabled }[] }`. Emitted by `serialize`. |
 
 **Filter ordering:** pixi processes filters bottom-up the display tree — component → layer → scene → screen. Each outer scope sees the previous scope's rasterized output, so screen-scope `pixelate` will pixelate already-bloomed gameplay.

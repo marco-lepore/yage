@@ -1,8 +1,8 @@
 import { Tween } from "@yagejs/core";
-import type { Process } from "@yagejs/core";
+import type { Process, ScopedProcessQueue } from "@yagejs/core";
 import type { Container, Filter } from "pixi.js";
 import type { Effect, EffectFactory, EffectScope } from "./Effect.js";
-import type { EffectHandle, EffectProcessHost } from "./EffectHandle.js";
+import type { EffectHandle } from "./EffectHandle.js";
 import {
   EFFECT_META,
   getEffectMeta,
@@ -49,7 +49,7 @@ export interface EffectStackEntry {
  *   the stack's owned filters in the chain, so user filters render first
  *   and stack effects composite on top).
  * - `fadeIn` / `fadeOut` are implemented via `Tween.custom`, scheduled on
- *   the supplied `EffectProcessHost`. Per-effect processes are tracked so
+ *   the supplied `ScopedProcessQueue`. Per-effect processes are tracked so
  *   `handle.remove()` cancels in-flight fades for that effect rather than
  *   letting them keep firing `setIntensity` after detach.
  *
@@ -65,7 +65,7 @@ export class EffectStack {
 
   constructor(
     private readonly displayObject: Container,
-    private readonly processHost: EffectProcessHost,
+    private readonly queue: ScopedProcessQueue,
     private readonly scope: EffectScope,
   ) {}
 
@@ -95,7 +95,7 @@ export class EffectStack {
         if (old.completed) set.delete(old);
       }
       set.add(p);
-      return this.processHost.run(p);
+      return this.queue.run(p);
     };
 
     // Built directly (not via spread) so the `enabled` getter survives —
@@ -221,13 +221,18 @@ export class EffectStack {
         );
         continue;
       }
+      // Clone options so external mutation of the snapshot can't poison the
+      // live filter or its meta — mirrors the attach-time clone in
+      // `defineEffect`. Done once outside the factory closure so the same
+      // isolated clone is shared by `def.factory` and the EFFECT_META tag.
+      const optionsClone = structuredClone(entry.options);
       // Build the effect inside a closure so we can capture it for setIntensity
       // afterward and re-tag it (subsequent saves must round-trip).
       let built: Effect | undefined;
       const factory: EffectFactory = () => {
-        const effect = def.factory(entry.options);
+        const effect = def.factory(optionsClone);
         Object.defineProperty(effect, EFFECT_META, {
-          value: { definitionName: entry.name, options: entry.options },
+          value: { definitionName: entry.name, options: optionsClone },
           enumerable: false,
           writable: false,
           configurable: false,
@@ -260,7 +265,7 @@ export class EffectStack {
     this.ownedFilters.clear();
     this.displayObject.filters = external.length === 0 ? null : external;
 
-    this.processHost.cancelAll();
+    this.queue.cancelAll();
   }
 
   private removeEffect(effect: Effect): void {

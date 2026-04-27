@@ -203,14 +203,14 @@ class HeroEntity extends Entity {
     // GraphicsComponent.afterRestore already rebuilt the saved hitFlash;
     // recover its handle so the trigger button keeps working.
     const g = this.tryGet(GraphicsComponent);
-    this.flashHandle = g?.findEffect(hitFlash) ?? null;
+    this.flashHandle = g?.fx.findEffect(hitFlash) ?? null;
     if (!this.flashHandle) this.attachHitFlash();
   }
 
   private attachHitFlash(): void {
     const g = this.tryGet(GraphicsComponent);
     if (!g) return;
-    this.flashHandle = g.addEffect(
+    this.flashHandle = g.fx.addEffect(
       hitFlash({ color: 0xffffff, duration: 200 }),
     );
   }
@@ -334,19 +334,17 @@ class ShowcaseScene extends Scene {
     this.effectHandles.clear();
     this.bindFlashTicker();
     this.buildPanel();
-
-    // The renderer's snapshot contributor runs AFTER scene.afterRestore,
-    // so the layer/scene/screen effects we want to reflect in the panel
-    // don't exist yet. Defer the sync to the next macrotask, which fires
-    // after `loadSnapshot()` (and its contributor pass) has resolved.
-    setTimeout(() => this.syncPanelToRestoredEffects(), 0);
+    // Layer/scene/screen-scope effects are restored by the renderer's
+    // snapshot contributor AFTER scene.afterRestore returns. doLoad calls
+    // syncPanelToRestoredEffects() once the load promise resolves so the
+    // sync runs against the fully-restored render trees.
   }
 
   /** After load, the renderer has rebuilt every saved effect at every
    * scope, but the panel's `effectHandles` map is empty. Walk each scope
    * for the presets we expose buttons for, recover their handles, and
    * mark the corresponding buttons as "on". */
-  private syncPanelToRestoredEffects(): void {
+  syncPanelToRestoredEffects(): void {
     const tree = this.context.resolve(SceneRenderTreeProviderKey).getTree(this);
     if (!tree) return;
     const renderer = this.context.resolve(RendererKey);
@@ -361,21 +359,30 @@ class ShowcaseScene extends Scene {
       btn?.classList.add("on");
     };
 
-    sync("outline", this.block?.tryGet(GraphicsComponent)?.findEffect(outline) ?? null);
-    sync("dropShadow", this.block?.tryGet(GraphicsComponent)?.findEffect(dropShadow) ?? null);
-    sync("glow", this.gem?.tryGet(GraphicsComponent)?.findEffect(glow) ?? null);
-    sync("bloom", world?.findEffect(bloom) ?? null);
-    sync("pixelate", world?.findEffect(pixelate) ?? null);
+    sync(
+      "outline",
+      this.block?.tryGet(GraphicsComponent)?.fx.findEffect(outline) ?? null,
+    );
+    sync(
+      "dropShadow",
+      this.block?.tryGet(GraphicsComponent)?.fx.findEffect(dropShadow) ?? null,
+    );
+    sync(
+      "glow",
+      this.gem?.tryGet(GraphicsComponent)?.fx.findEffect(glow) ?? null,
+    );
+    sync("bloom", world?.fx.findEffect(bloom) ?? null);
+    sync("pixelate", world?.fx.findEffect(pixelate) ?? null);
 
-    const restoredCrt = tree.findEffect(crt);
+    const restoredCrt = tree.fx.findEffect(crt);
     if (restoredCrt) {
       this.crtHandle = restoredCrt;
       this.tickerEntity?.ticker?.tickers.push((dt) => restoredCrt.step(dt));
       sync("crt", restoredCrt);
     }
-    sync("colorGrade", tree.findEffect(colorGrade));
-    sync("ca", tree.findEffect(chromaticAberration));
-    sync("vignette", renderer.findEffect(vignette));
+    sync("colorGrade", tree.fx.findEffect(colorGrade));
+    sync("ca", tree.fx.findEffect(chromaticAberration));
+    sync("vignette", renderer.fx.findEffect(vignette));
   }
 
   /** Wire the per-frame tickers for hitFlash + (if active) CRT. */
@@ -440,25 +447,25 @@ class ShowcaseScene extends Scene {
     toggle("outline (block)", "outline", () => {
       const g = this.block?.tryGet(GraphicsComponent);
       if (!g) throw new Error("block graphics missing");
-      return g.addEffect(outline({ thickness: 4, color: 0x000000 }));
+      return g.fx.addEffect(outline({ thickness: 4, color: 0x000000 }));
     });
     toggle("dropShadow (block)", "dropShadow", () => {
       const g = this.block?.tryGet(GraphicsComponent);
       if (!g) throw new Error("block graphics missing");
-      return g.addEffect(dropShadow({ offset: { x: 8, y: 8 }, alpha: 0.7 }));
+      return g.fx.addEffect(dropShadow({ offset: { x: 8, y: 8 }, alpha: 0.7 }));
     });
     toggle("glow (gem)", "glow", () => {
       const g = this.gem?.tryGet(GraphicsComponent);
       if (!g) throw new Error("gem graphics missing");
-      return g.addEffect(glow({ color: 0xffff00, outerStrength: 3 }));
+      return g.fx.addEffect(glow({ color: 0xffff00, outerStrength: 3 }));
     });
 
     section("Layer (world)");
     toggle("bloom", "bloom", () =>
-      tree.get("world").addEffect(bloom({ threshold: 0.3, bloomScale: 1.4 })),
+      tree.get("world").fx.addEffect(bloom({ threshold: 0.3, bloomScale: 1.4 })),
     );
     toggle("pixelate", "pixelate", () =>
-      tree.get("world").addEffect(pixelate({ size: 6 })),
+      tree.get("world").fx.addEffect(pixelate({ size: 6 })),
     );
 
     section("Scene");
@@ -466,7 +473,7 @@ class ShowcaseScene extends Scene {
       "crt",
       "crt",
       () => {
-        const h = tree.addEffect(crt({ lineContrast: 0.3 }));
+        const h = tree.fx.addEffect(crt({ lineContrast: 0.3 }));
         this.crtHandle = h;
         return h;
       },
@@ -484,15 +491,15 @@ class ShowcaseScene extends Scene {
       },
     );
     toggle("colorGrade: sepia", "colorGrade", () =>
-      tree.addEffect(colorGrade({ preset: "sepia" })),
+      tree.fx.addEffect(colorGrade({ preset: "sepia" })),
     );
     toggle("chromaticAberration", "ca", () =>
-      tree.addEffect(chromaticAberration({ separation: 4 })),
+      tree.fx.addEffect(chromaticAberration({ separation: 4 })),
     );
 
     section("Screen (cross-scene)");
     toggle("vignette", "vignette", () =>
-      renderer.addEffect(vignette({ alpha: 0.6 })),
+      renderer.fx.addEffect(vignette({ alpha: 0.6 })),
     );
 
     // ---- Fades (intensity tweens) ----
@@ -643,6 +650,10 @@ class ShowcaseScene extends Scene {
       return;
     }
     await save.loadSnapshot("showcase");
+    // Sync after the load resolves — by this point the renderer's snapshot
+    // contributor has rebuilt every layer/scene/screen-scope effect and we
+    // can recover their handles for the panel UI.
+    this.syncPanelToRestoredEffects();
     showToast("Loaded");
   }
 }

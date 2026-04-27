@@ -23,7 +23,7 @@ export class ProcessSystem extends System {
   timeScale = 1;
 
   private sceneManager!: SceneManager;
-  private sceneProcesses = new Set<Process>();
+  private globalProcesses = new Set<Process>();
   private scenePools = new Map<Scene, Set<Process>>();
 
   override onRegister(context: EngineContext): void {
@@ -44,7 +44,7 @@ export class ProcessSystem extends System {
    * or processes that have no owning scene.
    */
   add(process: Process): Process {
-    this.sceneProcesses.add(process);
+    this.globalProcesses.add(process);
     return process;
   }
 
@@ -66,13 +66,11 @@ export class ProcessSystem extends System {
 
   /** Cancel engine-global processes, optionally by tag. */
   cancel(tag?: string): void {
-    for (const p of this.sceneProcesses) {
+    for (const p of this.globalProcesses) {
       if (tag === undefined || p.tags.includes(tag)) {
         p.cancel();
+        this.globalProcesses.delete(p);
       }
-    }
-    if (tag === undefined) {
-      this.sceneProcesses.clear();
     }
   }
 
@@ -93,10 +91,10 @@ export class ProcessSystem extends System {
     const globalScaledDt = dt * this.timeScale;
 
     // Engine-global processes — global timeScale only, not scene-bound.
-    for (const p of this.sceneProcesses) {
+    for (const p of this.globalProcesses) {
       p._update(globalScaledDt);
       if (p.completed) {
-        this.sceneProcesses.delete(p);
+        this.globalProcesses.delete(p);
       }
     }
 

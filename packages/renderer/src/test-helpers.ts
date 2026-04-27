@@ -4,6 +4,7 @@ import {
   ErrorBoundaryKey,
   GameLoop,
   GameLoopKey,
+  makeSceneScopedQueue,
   ProcessSystem,
   ProcessSystemKey,
   SystemScheduler,
@@ -23,10 +24,7 @@ import {
   SceneRenderTreeKey,
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
-import { EffectStack } from "./effects/EffectStack.js";
-import { makeSceneScopedProcessHost } from "./effects/hosts/ProcessSystemHost.js";
-import type { EffectFactory } from "./effects/Effect.js";
-import type { EffectHandle } from "./effects/EffectHandle.js";
+import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
@@ -144,17 +142,21 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     this.stage.addChild(root);
 
     const ps = this.processSystem;
-    const hostFactory = ps
-      ? () => makeSceneScopedProcessHost(ps, scene)
+    const queueFactory = ps
+      ? () => makeSceneScopedQueue(ps, scene)
       : undefined;
 
     const manager = new RenderLayerManager(
       root as never,
       undefined,
-      hostFactory,
+      queueFactory,
     );
 
-    let sceneStack: EffectStack | undefined;
+    const sceneFx = new EffectsHost(
+      () => root as never,
+      "scene",
+      queueFactory,
+    );
     let sceneMask: MaskHandle | undefined;
     const tree: SceneRenderTree = {
       root: root as never,
@@ -166,24 +168,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
       },
       ensureLayer: (def, opts) =>
         manager.tryGet(def.name) ?? manager.createFromDef(def, opts),
-      addEffect<H extends EffectHandle>(factory: EffectFactory<H>): H {
-        if (!sceneStack) {
-          if (!hostFactory) {
-            throw new Error(
-              "MockSceneRenderTreeProvider was constructed without a ProcessSystem.",
-            );
-          }
-          sceneStack = new EffectStack(
-            root as never,
-            hostFactory(),
-            "scene",
-          );
-        }
-        return sceneStack.add(factory);
-      },
-      findEffect(definition) {
-        return (sceneStack?.findHandle(definition.name) as never) ?? null;
-      },
+      fx: sceneFx,
       setMask(factory: MaskFactory): MaskHandle {
         sceneMask?.remove();
         sceneMask = attachMask(root as never, factory);
@@ -196,8 +181,7 @@ export class MockSceneRenderTreeProvider implements SceneRenderTreeProvider {
     };
 
     const destroyEffects = (): void => {
-      sceneStack?.destroy();
-      sceneStack = undefined;
+      sceneFx.destroy();
       manager.destroyEffects();
     };
 

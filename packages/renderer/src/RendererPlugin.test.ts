@@ -357,7 +357,7 @@ describe("RendererPlugin", () => {
     });
   });
 
-  describe("screen-scope addEffect", () => {
+  describe("screen-scope fx.addEffect", () => {
     it("attaches the filter to app.stage", async () => {
       const { rawFilter } = await import("./effects/rawFilter.js");
       const { context } = createInstallContext();
@@ -365,7 +365,7 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       const f = { enabled: true, label: "screen-vignette" };
-      plugin.addEffect(rawFilter(f as never));
+      plugin.fx.addEffect(rawFilter(f as never));
 
       const stage = plugin.application.stage as unknown as {
         filters: unknown;
@@ -381,7 +381,7 @@ describe("RendererPlugin", () => {
 
       const userFilter = { enabled: true, label: "user" };
       const ownedFilter = { enabled: true, label: "screen-vignette" };
-      plugin.addEffect(rawFilter(ownedFilter as never));
+      plugin.fx.addEffect(rawFilter(ownedFilter as never));
 
       const stage = plugin.application.stage as unknown as {
         filters: unknown[] | null;
@@ -392,18 +392,11 @@ describe("RendererPlugin", () => {
       expect(stage.filters).toEqual([userFilter]);
     });
 
-    it("throws if called before install (no ProcessSystem yet)", () => {
+    it("fx is undefined before install (no ProcessSystem yet)", () => {
       const plugin = new RendererPlugin(defaultConfig);
-      const f = { enabled: true, label: "x" };
-      // Use rawFilter via require-at-runtime to bypass top-level await; this
-      // factory needs no install state, just exercises the guard.
-      expect(() =>
-        plugin.addEffect(() => ({
-          filter: f as never,
-          getIntensity: () => 0,
-          setIntensity: () => {},
-        })),
-      ).toThrow(/ProcessSystem/);
+      // Plugin must be installed before its screen-scope EffectsHost exists;
+      // accessing `.fx` before that is a programmer error.
+      expect(plugin.fx).toBeUndefined();
     });
   });
 });

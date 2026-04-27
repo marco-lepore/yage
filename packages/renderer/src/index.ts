@@ -115,10 +115,7 @@ export {
 } from "./assets.js";
 
 // Effects
-export type {
-  EffectHandle,
-  EffectProcessHost,
-} from "./effects/EffectHandle.js";
+export type { EffectHandle } from "./effects/EffectHandle.js";
 export type {
   Effect,
   EffectFactory,
@@ -130,6 +127,7 @@ export type {
   EffectStackSnapshot,
   EffectStackEntry,
 } from "./effects/EffectStack.js";
+export { EffectsHost } from "./effects/EffectsHost.js";
 export { defineEffect } from "./effects/defineEffect.js";
 export type { EffectDefinition } from "./effects/defineEffect.js";
 export { rawFilter } from "./effects/rawFilter.js";
