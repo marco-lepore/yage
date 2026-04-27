@@ -2,7 +2,7 @@ import type { Inspector, Logger } from "@yagejs/core";
 
 /** Mirrors IDebugClock from @yagejs/debug (kept inline to avoid ambient import issues). */
 interface IDebugClock {
-  readonly isManual: boolean;
+  readonly isFrozen: boolean;
   startAuto(): void;
   stopAuto(): void;
   step(dtMs?: number): void;

@@ -382,7 +382,7 @@ describe("Inspector", () => {
     await scenes.push(new TestScene("game"));
 
     inspector.attachTimeController({
-      isManual: true,
+      isFrozen: true,
       freeze() {},
       thaw() {},
       stepFrames() {},
@@ -401,7 +401,7 @@ describe("Inspector", () => {
     expect(inspector.events.getLog()).toEqual([]);
 
     inspector.attachTimeController({
-      isManual: true,
+      isFrozen: true,
       freeze() {},
       thaw() {},
       stepFrames() {},

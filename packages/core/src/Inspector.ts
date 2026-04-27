@@ -217,7 +217,7 @@ export interface EngineSnapshot {
 }
 
 export interface InspectorTimeController {
-  readonly isManual: boolean;
+  readonly isFrozen: boolean;
   freeze(): void;
   thaw(): void;
   stepFrames(count: number): void;
@@ -306,7 +306,7 @@ export class Inspector {
       }
       this.requireTimeController().setDelta(ms);
     },
-    isFrozen: (): boolean => this.timeController?.isManual ?? false,
+    isFrozen: (): boolean => this.timeController?.isFrozen ?? false,
     getFrame: (): number =>
       this.timeController?.getFrame() ?? this.engine.loop.frameCount,
   };

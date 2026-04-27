@@ -162,7 +162,7 @@ export class DebugPlugin implements Plugin {
         this.registry.toggle();
         return;
       }
-      if (e.code === stepKey && this.clock?.isManual) {
+      if (e.code === stepKey && this.clock?.isFrozen) {
         e.preventDefault();
         this.clock.step();
       }

@@ -252,7 +252,7 @@ describe("DebugPlugin", () => {
     await plugin.onStart();
 
     const clock = getExposedClock();
-    expect(clock.isManual).toBe(false);
+    expect(clock.isFrozen).toBe(false);
     expect(app.stop).not.toHaveBeenCalled();
     expect(inspector.setDefaultSceneSeed).not.toHaveBeenCalled();
     expect(inspector.attachTimeController).toHaveBeenCalledOnce();
@@ -305,12 +305,12 @@ describe("DebugPlugin", () => {
 
     const clock = getExposedClock();
 
-    expect(clock.isManual).toBe(false);
-    expect(() => clock.step()).toThrow("Manual clock is not active.");
+    expect(clock.isFrozen).toBe(false);
+    expect(() => clock.step()).toThrow("DebugClock is not frozen.");
 
     clock.stopAuto();
     expect(app.stop).toHaveBeenCalledOnce();
-    expect(clock.isManual).toBe(true);
+    expect(clock.isFrozen).toBe(true);
 
     clock.step(10);
     expect(loop.tick).toHaveBeenCalledWith(10);
@@ -318,7 +318,7 @@ describe("DebugPlugin", () => {
 
     clock.startAuto();
     expect(app.start).toHaveBeenCalledOnce();
-    expect(clock.isManual).toBe(false);
+    expect(clock.isFrozen).toBe(false);
 
     plugin.onDestroy();
   });
