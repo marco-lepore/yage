@@ -49,6 +49,11 @@ export class RendererPlugin implements Plugin {
   readonly name = "renderer";
   readonly version = "4.0.0";
 
+  // `_app`, `_provider`, `_fitController` use definite-assignment (`!`)
+  // since every method/getter past install assumes they're set; `onDestroy`
+  // explicitly guards each one so a partial-install failure (e.g. `await
+  // app.init()` rejecting before `_provider` is assigned) is safe to tear
+  // down. The `_installed` flag tracks how far install got.
   private _app!: Application;
   private readonly _config: RendererConfig;
   private readonly _virtualWidth: number;
@@ -57,6 +62,11 @@ export class RendererPlugin implements Plugin {
   private _tickerFn: (() => void) | null = null;
   private _unregisterHooks: (() => void) | null = null;
   private _fitController!: FitController;
+  private _installed = {
+    app: false,
+    fit: false,
+    provider: false,
+  };
   private _processSystem: ProcessSystem | undefined;
   /**
    * Screen-scope effects host — `.fx.addEffect(...)` attaches a filter to
@@ -92,6 +102,7 @@ export class RendererPlugin implements Plugin {
       ...this._config.pixi,
       ...(this._config.canvas ? { canvas: this._config.canvas } : undefined),
     });
+    this._installed.app = true;
 
     // 2. Append canvas to container if specified
     if (this._config.container) {
@@ -104,6 +115,7 @@ export class RendererPlugin implements Plugin {
     //    DOM target (tests, headless), it applies the transform once against
     //    the initial `width × height` and installs no observer.
     this.startFit(this._config.fit ?? { mode: "letterbox" });
+    this._installed.fit = true;
 
     // 4. Resolve ProcessSystem so layer/scene/screen-scope effects can
     //    schedule fade tweens. Already registered by Engine before plugin
@@ -126,6 +138,7 @@ export class RendererPlugin implements Plugin {
       this._app.stage,
       this._processSystem,
     );
+    this._installed.provider = true;
 
     // 6. Register services
     context.register(RendererKey, this);
@@ -231,20 +244,24 @@ export class RendererPlugin implements Plugin {
   }
 
   onDestroy(): void {
+    // Tear down only the steps install actually completed — `_installed`
+    // tracks how far we got. If install rejected mid-way (e.g.
+    // `await app.init()` failed), the unset fields stay untouched here
+    // instead of throwing on access.
     this._unregisterSaveContributor?.();
     this._unregisterSaveContributor = null;
     this._unregisterHooks?.();
     this._unregisterHooks = null;
-    this._fitController.stop();
-    if (this._tickerFn) {
+    if (this._installed.fit) this._fitController.stop();
+    if (this._installed.app && this._tickerFn) {
       this._app.ticker.remove(this._tickerFn);
       this._tickerFn = null;
     }
     // Strip stage-level effects before destroying the app — preserves any
     // user-assigned filters on app.stage outside our addEffect calls.
     this.fx?.destroy();
-    this._provider.destroyAll();
-    this._app.destroy();
+    if (this._installed.provider) this._provider.destroyAll();
+    if (this._installed.app) this._app.destroy();
   }
 
   /** The PixiJS Application instance. */

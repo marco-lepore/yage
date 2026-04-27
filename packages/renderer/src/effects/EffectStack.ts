@@ -77,8 +77,12 @@ export class EffectStack {
       );
     }
     const effect = factory() as Effect<H>;
-    this.entries.add(effect);
+    // Run onAttach BEFORE registering the effect with the stack so a thrown
+    // onAttach can't leave an orphan entry that `serialize()` / `destroy()`
+    // would later see. (`onDetach` won't fire for a never-attached effect,
+    // which is the right pairing.)
     effect.onAttach?.({ displayObject: this.displayObject, scope: this.scope });
+    this.entries.add(effect);
     this.syncFilters();
 
     // Per-effect process tracking — fades, hitFlash trigger ramps, CRT
@@ -136,27 +140,23 @@ export class EffectStack {
       configurable: false,
     });
 
-    if (effect.buildExtras) {
-      Object.assign(handle, effect.buildExtras(handle));
-    }
-    this.handles.set(effect, handle);
-    // Activation runs AFTER buildExtras so onActivate sees the fully-built
-    // handle (including any extras the factory just merged on). The right
-    // place for self-scheduled tickers like CRT's noise animator.
-    //
-    // Roll back on throw — the factory might have already pushed processes
-    // into `effectProcesses` via `base.run(...)` before throwing, and the
-    // filter is already on the container. Without rollback the caller would
-    // get an exception while the stack still tracks an "effect" they have
-    // no handle to remove. `removeEffect` cleans both the entry and any
-    // partially-scheduled processes, then we rethrow so the caller knows.
-    if (effect.onActivate) {
-      try {
-        effect.onActivate(handle);
-      } catch (err) {
-        this.removeEffect(effect);
-        throw err;
+    // Both buildExtras and onActivate could throw (e.g. a custom factory
+    // mutating something invalid, or onActivate's `base.run(...)` rejecting
+    // before scheduling). Wrap together so partial state — half-merged
+    // extras, half-scheduled processes — gets rolled back via removeEffect
+    // and the caller sees the real exception instead of an inconsistent
+    // stack. Activation runs AFTER buildExtras so onActivate sees the
+    // fully-built handle (the right place for self-scheduled tickers like
+    // CRT's noise animator).
+    try {
+      if (effect.buildExtras) {
+        Object.assign(handle, effect.buildExtras(handle));
       }
+      this.handles.set(effect, handle);
+      effect.onActivate?.(handle);
+    } catch (err) {
+      this.removeEffect(effect);
+      throw err;
     }
     return handle as H;
   }

@@ -574,12 +574,17 @@ class ShowcaseScene extends Scene {
       showToast("No save");
       return;
     }
-    await save.loadSnapshot("showcase");
-    // Sync after the load resolves — by this point the renderer's snapshot
-    // contributor has rebuilt every layer/scene/screen-scope effect and we
-    // can recover their handles for the panel UI.
-    this.syncPanelToRestoredEffects();
-    showToast("Loaded");
+    try {
+      await save.loadSnapshot("showcase");
+      // Sync after the load resolves — by this point the renderer's
+      // snapshot contributor has rebuilt every layer/scene/screen-scope
+      // effect and we can recover their handles for the panel UI.
+      this.syncPanelToRestoredEffects();
+      showToast("Loaded");
+    } catch (err) {
+      console.error("Load failed:", err);
+      showToast("Load failed");
+    }
   }
 }
 
@@ -596,8 +601,10 @@ async function main(): Promise<void> {
   );
   engine.use(new SavePlugin());
 
-  // Hotkeys.
+  // Hotkeys — bare S/L only, so Cmd/Ctrl+S (browser save) and Cmd/Ctrl+L
+  // (focus address bar) keep their default behavior.
   window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const scene = engine.scenes.active as ShowcaseScene | null;
     if (!scene) return;
     if (e.key.toLowerCase() === "s") scene.doSave();

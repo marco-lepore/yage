@@ -48,7 +48,8 @@ vi.mock("pixi.js", () => ({
   },
 }));
 
-import type { Process, ScopedProcessQueue } from "@yagejs/core";
+import { Process } from "@yagejs/core";
+import type { ScopedProcessQueue } from "@yagejs/core";
 import { EffectStack } from "./EffectStack.js";
 import type { Effect, EffectFactory } from "./Effect.js";
 import type { EffectHandle } from "./EffectHandle.js";
@@ -357,8 +358,7 @@ describe("EffectStack", () => {
     expect(stack.size).toBe(0);
   });
 
-  it("handle.run schedules a process on the same per-effect tracking the fades use", async () => {
-    const { Process } = await import("@yagejs/core");
+  it("handle.run schedules a process on the same per-effect tracking the fades use", () => {
     const factory = makeEffect("r").factory;
     const handle = stack.add(factory);
     const proc = new Process({ duration: 1000 });
@@ -390,8 +390,7 @@ describe("EffectStack", () => {
     expect(seen).toEqual(["buildExtras", "onActivate"]);
   });
 
-  it("onActivate can self-schedule a process via base.run; auto-cancels on remove", async () => {
-    const { Process } = await import("@yagejs/core");
+  it("onActivate can self-schedule a process via base.run; auto-cancels on remove", () => {
     let scheduled: Process | undefined;
     const factory: EffectFactory = () => ({
       filter: new mocks.MockFilter() as never,
@@ -410,8 +409,7 @@ describe("EffectStack", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
-  it("onActivate throw rolls back the entry, cancels partial schedules, and rethrows", async () => {
-    const { Process } = await import("@yagejs/core");
+  it("onActivate throw rolls back the entry, cancels partial schedules, and rethrows", () => {
     let partial: Process | undefined;
     const factory: EffectFactory = () => ({
       filter: new mocks.MockFilter() as never,
@@ -429,6 +427,35 @@ describe("EffectStack", () => {
     expect(target.filters).toBeNull();
     // The half-scheduled Process was cancelled by the rollback.
     expect(partial?.completed).toBe(true);
+  });
+
+  it("buildExtras throw rolls back the entry and rethrows", () => {
+    const factory: EffectFactory = () => ({
+      filter: new mocks.MockFilter() as never,
+      getIntensity: () => 0,
+      setIntensity: () => {},
+      buildExtras: () => {
+        throw new Error("extras-boom");
+      },
+    });
+    expect(() => stack.add(factory)).toThrow(/extras-boom/);
+    // Stack is clean — entry removed, filter stripped from target.
+    expect(stack.size).toBe(0);
+    expect(target.filters).toBeNull();
+  });
+
+  it("onAttach throw leaves no orphan entry (runs before entry registration)", () => {
+    const factory: EffectFactory = () => ({
+      filter: new mocks.MockFilter() as never,
+      getIntensity: () => 0,
+      setIntensity: () => {},
+      onAttach: () => {
+        throw new Error("attach-boom");
+      },
+    });
+    expect(() => stack.add(factory)).toThrow(/attach-boom/);
+    expect(stack.size).toBe(0);
+    expect(target.filters).toBeNull();
   });
 });
 

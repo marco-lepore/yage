@@ -42,7 +42,6 @@ const applyPreset = (
       break;
     case "cool":
       filter.reset();
-      filter.brightness(1.0, true);
       filter.tint(0xb0d8ff, true);
       break;
   }
