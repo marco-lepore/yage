@@ -22,9 +22,12 @@ engine.use(new DebugPlugin({
 
 ```ts
 window.__yage__.inspector.time.freeze();
-window.__yage__.inspector.time.step(1);
+window.__yage__.inspector.time.step();          // advance one frame at the configured dt
+window.__yage__.inspector.time.step(30);        // ⚠ ONE frame with dt=30ms, NOT 30 frames
 window.__yage__.inspector.time.thaw();
 ```
+
+Use `step(dt)` for one frame at a custom delta (single SystemScheduler pass + variable-update at that dt). Use the corresponding `clock.stepFrames(count, dt?)` on `window.__yage__.clock` to advance multiple frames — it loops `step()` `count` times, so each frame runs the full game loop and physics steps tick faithfully one at a time. Calling `step(bigDt)` once collapses everything into a single fat frame: physics still runs the right number of fixed sub-steps, but `Component.update(dt)`, tweens, and AI logic only see one update at the full `bigDt` — diverges from real gameplay. Always prefer `stepFrames(N)` when simulating gameplay sequences.
 
 ## Inspector test surface
 

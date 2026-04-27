@@ -422,6 +422,9 @@ export class InputManager {
     for (const code of [...this.pressedKeys]) {
       this._onKeyUp(code);
     }
+    // Hard reset: synthetic releases generated above are intentionally
+    // discarded. Callers want a clean slate, not a flurry of justReleased
+    // pulses for downstream listeners.
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
     this.holdStart.clear();

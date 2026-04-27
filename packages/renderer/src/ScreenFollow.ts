@@ -182,6 +182,10 @@ export class ScreenFollow extends Component {
       const target = resolve.entity(this._restoreTargetEntityId);
       if (target) {
         this._target = target;
+      } else {
+        console.warn(
+          `ScreenFollow.afterRestore: cannot resolve target entity ${this._restoreTargetEntityId}; follow target lost.`,
+        );
       }
       this._restoreTargetEntityId = null;
     }
@@ -190,6 +194,10 @@ export class ScreenFollow extends Component {
       const camera = resolve.entity(this._restoreCameraEntityId);
       if (camera) {
         this._camera = camera as CameraEntity;
+      } else {
+        console.warn(
+          `ScreenFollow.afterRestore: cannot resolve camera entity ${this._restoreCameraEntityId}; ScreenFollow will be inert.`,
+        );
       }
       this._restoreCameraEntityId = null;
     }

@@ -324,7 +324,9 @@ export class PhysicsWorld {
         };
       })
       .filter((body): body is NonNullable<typeof body> => body !== null)
-      .sort((a, b) => a.entityId.localeCompare(b.entityId));
+      .sort((a, b) =>
+        a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0,
+      );
 
     const contactPairs = new Set<string>();
     for (const handle of this.colliderMap.keys()) {
@@ -336,7 +338,7 @@ export class PhysicsWorld {
         const second = this.colliderMap.get(other.handle);
         if (!first || !second) return;
         const [a, b] = [String(first.id), String(second.id)].sort((x, y) =>
-          x.localeCompare(y),
+          x < y ? -1 : x > y ? 1 : 0,
         );
         contactPairs.add(`${a}:${b}`);
       });
@@ -346,7 +348,7 @@ export class PhysicsWorld {
         const second = this.colliderMap.get(other.handle);
         if (!first || !second) return true;
         const [a, b] = [String(first.id), String(second.id)].sort((x, y) =>
-          x.localeCompare(y),
+          x < y ? -1 : x > y ? 1 : 0,
         );
         contactPairs.add(`${a}:${b}`);
         return true;
@@ -358,11 +360,12 @@ export class PhysicsWorld {
         const [a, b] = pair.split(":");
         return { a: a!, b: b! };
       })
-      .sort((left, right) =>
-        left.a === right.a
-          ? left.b.localeCompare(right.b)
-          : left.a.localeCompare(right.a),
-      );
+      .sort((left, right) => {
+        if (left.a !== right.a) {
+          return left.a < right.a ? -1 : 1;
+        }
+        return left.b < right.b ? -1 : left.b > right.b ? 1 : 0;
+      });
 
     return { bodies, contacts };
   }

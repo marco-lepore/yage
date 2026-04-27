@@ -240,11 +240,15 @@ export class DebugPlugin implements Plugin {
     }
 
     this.detachFromGlobal();
-    this.unregisterInspectorDiagnostics();
-    this.context
-      .resolve(InspectorKey)
-      .detachTimeController(this.clock ?? undefined);
-    this.context.resolve(InspectorKey).setEventLogEnabled(false);
+    const inspector = this.context.resolve(InspectorKey);
+    inspector.removeExtension("debug");
+    // Only detach our own clock — passing undefined would clear whatever
+    // controller is registered, which could belong to another plugin if
+    // onDestroy runs after a failed onStart.
+    if (this.clock) {
+      inspector.detachTimeController(this.clock);
+    }
+    inspector.setEventLogEnabled(false);
     this.clock = null;
 
     for (const contributor of this.registry.contributors.values()) {
@@ -379,10 +383,6 @@ export class DebugPlugin implements Plugin {
       },
     };
     this.context.resolve(InspectorKey).addExtension("debug", diagnostics);
-  }
-
-  private unregisterInspectorDiagnostics(): void {
-    this.context.resolve(InspectorKey).removeExtension("debug");
   }
 
   private attachToGlobal(clock: IDebugClock): void {
