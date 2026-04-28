@@ -58,6 +58,49 @@ decorators on your own classes will work immediately. You'll also want to
 add `build.rollupOptions.output.keepNames: true` at that point so the save
 system can match classes by name after minification.
 
+## Agent-driven debugging — throwaway Inspector specs
+
+Once you've added `@yagejs/debug` and constructed the engine with
+`debug: true`, the Inspector + frozen clock + scripted input combine
+into a tight short-loop for LLM-assisted gameplay validation. The
+pattern is a **throwaway Playwright spec** — write it, run it, delete
+it. Not a CI fixture.
+
+Add Playwright when you need it:
+
+```bash
+npm install -D @playwright/test
+npx playwright install chromium
+```
+
+Then a one-off spec:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("scratch — does the thing happen?", async ({ page }) => {
+  await page.goto("http://localhost:5173/");
+  await page.waitForFunction(() => window.__yage__?.inspector);
+
+  const result = await page.evaluate(async () => {
+    const i = window.__yage__.inspector;
+    i.setSeed(42);
+    i.time.freeze();
+    await i.input.hold("ArrowRight", 30);
+    i.time.step(45);
+    return i.snapshotJSON();
+  });
+
+  expect(result).toContain('"name":"player"');
+});
+```
+
+**Don't commit these specs** — frame counts are brittle against balance
+changes; they exist for one debugging session, then delete.
+
+Full discipline (when to use, when not to, honest limits about visuals
+and audio): https://yage.dev/guides/debug
+
 ## Full YAGE documentation
 
 - Short index: https://yage.dev/llms.txt
