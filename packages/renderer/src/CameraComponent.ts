@@ -1,4 +1,4 @@
-import { Component, Vec2 } from "@yagejs/core";
+import { Component, Vec2, serializable } from "@yagejs/core";
 import type { Vec2Like, EasingFunction } from "@yagejs/core";
 import { RendererKey } from "./types.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
@@ -63,6 +63,15 @@ export interface CameraComponentOptions {
   name?: string;
 }
 
+export interface CameraComponentData {
+  position: { x: number; y: number };
+  zoom: number;
+  rotation: number;
+  bindings: CameraBinding[] | null;
+  priority: number;
+  name?: string;
+}
+
 /** Frame-rate-independent reference timestep (ms). */
 export const CAMERA_REFERENCE_DT = 16.67;
 
@@ -74,6 +83,7 @@ export const CAMERA_REFERENCE_DT = 16.67;
  * Added by `CameraEntity`; access via direct reference from `spawn()`
  * or by querying entities with this component.
  */
+@serializable
 export class CameraComponent extends Component {
   position: Vec2;
   zoom: number;
@@ -180,5 +190,33 @@ export class CameraComponent extends Component {
       .getAll()
       .filter((layer) => layer.space === "world")
       .map((layer) => ({ layer: layer.name, translateRatio: 1 }));
+  }
+
+  serialize(): CameraComponentData {
+    const data: CameraComponentData = {
+      position: { x: this.position.x, y: this.position.y },
+      zoom: this.zoom,
+      rotation: this.rotation,
+      bindings: this.bindings
+        ? this.bindings.map((binding) => ({ ...binding }))
+        : null,
+      priority: this.priority,
+    };
+    if (this.cameraName !== undefined) data.name = this.cameraName;
+    return data;
+  }
+
+  static fromSnapshot(data: CameraComponentData): CameraComponent {
+    const options: CameraComponentOptions = {
+      position: new Vec2(data.position.x, data.position.y),
+      zoom: data.zoom,
+      rotation: data.rotation,
+      priority: data.priority,
+    };
+    if (data.bindings) {
+      options.bindings = data.bindings.map((binding) => ({ ...binding }));
+    }
+    if (data.name !== undefined) options.name = data.name;
+    return new CameraComponent(options);
   }
 }

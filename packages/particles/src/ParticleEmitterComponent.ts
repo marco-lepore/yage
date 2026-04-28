@@ -1,4 +1,10 @@
-import { AssetHandle, Component, serializable } from "@yagejs/core";
+import {
+  AssetHandle,
+  Component,
+  RandomKey,
+  serializable,
+  type RandomService,
+} from "@yagejs/core";
 import {
   SceneRenderTreeKey,
   resolveTextureInput,
@@ -56,6 +62,7 @@ export class ParticleEmitterComponent extends Component {
   private readonly _textureKey: string | null;
 
   private _isEmitting = false;
+  private _random = this.service(RandomKey);
 
   constructor(config: EmitterConfig) {
     super();
@@ -267,36 +274,46 @@ export class ParticleEmitterComponent extends Component {
     let x = worldX;
     let y = worldY;
     if (cfg.spawnOffset) {
-      if (cfg.spawnOffset.x !== undefined) x += resolveRange(cfg.spawnOffset.x);
-      if (cfg.spawnOffset.y !== undefined) y += resolveRange(cfg.spawnOffset.y);
+      if (cfg.spawnOffset.x !== undefined) {
+        x += resolveRange(cfg.spawnOffset.x, this._random);
+      }
+      if (cfg.spawnOffset.y !== undefined) {
+        y += resolveRange(cfg.spawnOffset.y, this._random);
+      }
     }
     particle.x = x;
     particle.y = y;
 
     // Velocity from speed + angle
-    const speed = resolveRange(cfg.speed);
-    const angle = resolveRange(cfg.angle);
+    const speed = resolveRange(cfg.speed, this._random);
+    const angle = resolveRange(cfg.angle, this._random);
     const vx = Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
 
     // Rotation
-    particle.rotation = resolveRange(cfg.rotation);
-    const rotationSpeed = resolveRange(cfg.rotationSpeed);
+    particle.rotation = resolveRange(cfg.rotation, this._random);
+    const rotationSpeed = resolveRange(cfg.rotationSpeed, this._random);
 
     // Scale
-    const { start: scaleStart, end: scaleEnd } = resolveLerped(cfg.scale ?? 1);
+    const { start: scaleStart, end: scaleEnd } = resolveLerped(
+      cfg.scale ?? 1,
+      this._random,
+    );
     particle.scaleX = scaleStart;
     particle.scaleY = scaleStart;
 
     // Alpha
-    const { start: alphaStart, end: alphaEnd } = resolveLerped(cfg.alpha ?? 1);
+    const { start: alphaStart, end: alphaEnd } = resolveLerped(
+      cfg.alpha ?? 1,
+      this._random,
+    );
     particle.alpha = alphaStart;
 
     // Tint
     particle.tint = cfg.tint;
 
     // Lifetime
-    const lifetime = resolveRange(cfg.lifetime);
+    const lifetime = resolveRange(cfg.lifetime, this._random);
 
     this._active.push({
       particle,
@@ -315,10 +332,16 @@ export class ParticleEmitterComponent extends Component {
   }
 }
 
-function resolveLerped(v: NumberRange | Lerped): { start: number; end: number } {
+function resolveLerped(
+  v: NumberRange | Lerped,
+  random: RandomService,
+): { start: number; end: number } {
   if (isLerped(v)) {
-    return { start: resolveRange(v.start), end: resolveRange(v.end) };
+    return {
+      start: resolveRange(v.start, random),
+      end: resolveRange(v.end, random),
+    };
   }
-  const val = resolveRange(v);
+  const val = resolveRange(v, random);
   return { start: val, end: val };
 }

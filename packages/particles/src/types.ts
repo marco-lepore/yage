@@ -1,3 +1,4 @@
+import type { RandomService } from "@yagejs/core";
 import type { TextureInput } from "@yagejs/renderer";
 
 /** A value or [min, max] range to randomize from. */
@@ -68,10 +69,10 @@ export interface ParticleEmitterData {
 }
 
 /** Resolve a NumberRange to a concrete value. */
-export function resolveRange(v: NumberRange): number {
+export function resolveRange(v: NumberRange, random: RandomService): number {
   if (typeof v === "number") return v;
   const [min, max] = v;
-  return min + Math.random() * (max - min);
+  return random.range(min, max);
 }
 
 /** Check if a value is a Lerped config. */

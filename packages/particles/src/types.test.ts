@@ -1,33 +1,36 @@
 import { describe, it, expect } from "vitest";
+import { createRandomService } from "@yagejs/core";
 import { resolveRange, isLerped } from "./types.js";
+
+const random = createRandomService(42);
 
 describe("resolveRange", () => {
   it("returns a number as-is", () => {
-    expect(resolveRange(42)).toBe(42);
+    expect(resolveRange(42, random)).toBe(42);
   });
 
   it("returns a value within [min, max] for a range", () => {
     for (let i = 0; i < 50; i++) {
-      const v = resolveRange([10, 20]);
+      const v = resolveRange([10, 20], random);
       expect(v).toBeGreaterThanOrEqual(10);
       expect(v).toBeLessThanOrEqual(20);
     }
   });
 
   it("returns min when min === max", () => {
-    expect(resolveRange([5, 5])).toBe(5);
+    expect(resolveRange([5, 5], random)).toBe(5);
   });
 
   it("handles negative ranges", () => {
     for (let i = 0; i < 50; i++) {
-      const v = resolveRange([-10, -5]);
+      const v = resolveRange([-10, -5], random);
       expect(v).toBeGreaterThanOrEqual(-10);
       expect(v).toBeLessThanOrEqual(-5);
     }
   });
 
   it("handles zero", () => {
-    expect(resolveRange(0)).toBe(0);
+    expect(resolveRange(0, random)).toBe(0);
   });
 });
 

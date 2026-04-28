@@ -41,6 +41,7 @@ export interface EngineEvents {
 /** Typed publish/subscribe event bus. */
 export class EventBus<E = EventMap> {
   private handlers = new Map<keyof E, Array<(data: never) => void>>();
+  private observers = new Set<(event: keyof E, data: E[keyof E]) => void>();
 
   /** Subscribe to an event. Returns an unsubscribe function. */
   on<K extends keyof E>(event: K, handler: (data: E[K]) => void): () => void {
@@ -70,6 +71,13 @@ export class EventBus<E = EventMap> {
 
   /** Emit an event. Handlers are called synchronously in registration order. */
   emit<K extends keyof E>(event: K, data: E[K]): void {
+    if (this.observers.size > 0) {
+      const observers = [...this.observers];
+      for (const observer of observers) {
+        observer(event, data);
+      }
+    }
+
     const list = this.handlers.get(event);
     if (!list) return;
     // Iterate a copy so handlers can unsubscribe during emission
@@ -77,6 +85,17 @@ export class EventBus<E = EventMap> {
     for (const handler of snapshot) {
       handler(data as never);
     }
+  }
+
+  /**
+   * Observe every emitted event without affecting handler order or control
+   * flow. Used by tooling such as the Inspector event log.
+   */
+  tap(observer: (event: keyof E, data: E[keyof E]) => void): () => void {
+    this.observers.add(observer);
+    return () => {
+      this.observers.delete(observer);
+    };
   }
 
   /** Remove all handlers for an event, or all handlers if no event specified. */

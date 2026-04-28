@@ -1,4 +1,4 @@
-import { Component, Transform } from "@yagejs/core";
+import { Component, Transform, serializable } from "@yagejs/core";
 import { Container } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
@@ -302,12 +302,14 @@ export class PanelNode implements UIContainerElement {
  * Provides builder methods (.text(), .button(), .panel()) for constructing UI trees.
  * Layout is driven by UILayoutSystem each frame.
  */
+@serializable
 export class UIPanel extends Component {
   /** @internal */ readonly _node: PanelNode;
   /** @internal */ readonly _anchor: Anchor | undefined;
   /** @internal */ readonly _offset: { x: number; y: number };
   /** @internal */ readonly _layer: string | undefined;
   /** @internal */ readonly _positioning: "anchor" | "transform";
+  private readonly _snapshot: UIPanelOptions;
 
   constructor(opts?: UIPanelOptions) {
     super();
@@ -316,6 +318,7 @@ export class UIPanel extends Component {
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
     this._positioning = opts?.positioning ?? "anchor";
+    this._snapshot = cloneUIPanelOptions(opts);
   }
 
   /** The PixiJS Container for this panel. */
@@ -404,4 +407,39 @@ export class UIPanel extends Component {
     this._node.container.removeFromParent();
     this._node.destroy();
   }
+
+  serialize(): UIPanelOptions {
+    return cloneUIPanelOptions(this._snapshot);
+  }
+
+  static fromSnapshot(data: UIPanelOptions): UIPanel {
+    return new UIPanel(cloneUIPanelOptions(data));
+  }
+}
+
+function cloneUIPanelOptions(opts?: UIPanelOptions): UIPanelOptions {
+  if (!opts) return {};
+  const clone: UIPanelOptions = { ...opts };
+  if (opts.offset) clone.offset = { ...opts.offset };
+  if (opts.padding !== undefined) {
+    clone.padding =
+      typeof opts.padding === "number" ? opts.padding : { ...opts.padding };
+  }
+  if (opts.margin !== undefined) {
+    clone.margin =
+      typeof opts.margin === "number" ? opts.margin : { ...opts.margin };
+  }
+  if (opts.background) {
+    const bg = { ...opts.background };
+    // TextureBackground.nineSlice / tileScale can be objects; deep-copy them
+    // so mutations to the clone don't leak back into the original options.
+    if ("nineSlice" in bg && bg.nineSlice && typeof bg.nineSlice === "object") {
+      bg.nineSlice = { ...bg.nineSlice };
+    }
+    if ("tileScale" in bg && bg.tileScale && typeof bg.tileScale === "object") {
+      bg.tileScale = { ...bg.tileScale };
+    }
+    clone.background = bg;
+  }
+  return clone;
 }

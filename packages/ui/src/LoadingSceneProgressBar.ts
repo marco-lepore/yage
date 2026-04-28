@@ -3,6 +3,7 @@ import {
   Entity,
   EventBusKey,
   LoadingScene,
+  serializable,
 } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { UIPanel } from "./UIPanel.js";
@@ -57,6 +58,11 @@ export interface LoadingSceneProgressBarOptions {
  * Subscribes to `scene:loading:progress` internally and updates a
  * `UIProgressBar`. For spinners, animated text, or other custom visuals,
  * write your own component that subscribes to the same event.
+ */
+/**
+ * Not `@serializable`: the loading bar is a transient UI for a transient
+ * scene. Mid-load save/restore is not a supported flow — by the time the
+ * snapshot is loaded, the destination scene should be active.
  */
 export class LoadingSceneProgressBar extends Entity {
   setup(opts: LoadingSceneProgressBarOptions = {}): void {
@@ -113,7 +119,11 @@ export class LoadingSceneProgressBar extends Entity {
 /**
  * Internal — syncs a UIProgressBar's value to the current LoadingScene's
  * progress by subscribing to `scene:loading:progress` on the event bus.
+ *
+ * `serialize()` returns null because the component holds a runtime closure
+ * (event-bus unsubscribe) that can't round-trip through a snapshot.
  */
+@serializable
 class LoadingProgressSync extends Component {
   private unsub?: () => void;
 
@@ -137,5 +147,9 @@ class LoadingProgressSync extends Component {
   override onDestroy(): void {
     this.unsub?.();
     this.backdrop?.destroy();
+  }
+
+  serialize(): null {
+    return null;
   }
 }

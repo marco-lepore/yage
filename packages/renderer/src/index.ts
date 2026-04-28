@@ -76,13 +76,22 @@ export type {
   CameraShakeOptions,
   CameraBinding,
   CameraComponentOptions,
+  CameraComponentData,
 } from "./CameraComponent.js";
 export { CameraFollow } from "./CameraFollow.js";
+export type { CameraFollowData } from "./CameraFollow.js";
 export { CameraShake } from "./CameraShake.js";
+export type { CameraShakeData } from "./CameraShake.js";
 export { CameraBoundsComponent } from "./CameraBoundsComponent.js";
+export type { CameraBoundsComponentData } from "./CameraBoundsComponent.js";
 export { CameraZoom } from "./CameraZoom.js";
+export type { CameraZoomData } from "./CameraZoom.js";
 export { ScreenFollow } from "./ScreenFollow.js";
-export type { ScreenFollowOptions, ScreenFollowTarget } from "./ScreenFollow.js";
+export type {
+  ScreenFollowOptions,
+  ScreenFollowTarget,
+  ScreenFollowData,
+} from "./ScreenFollow.js";
 
 // Display
 export { DisplaySystem } from "./DisplaySystem.js";

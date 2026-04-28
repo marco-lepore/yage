@@ -86,8 +86,9 @@ engine.use(
     container,
   }),
 );
-engine.use(new DebugPlugin({ manualClock: true }));
+engine.use(new DebugPlugin());
 await engine.start();
+engine.inspector.time.freeze();
 
 engine.assets.registerLoader("ctrl", controllable);
 

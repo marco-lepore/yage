@@ -103,21 +103,24 @@ export class InputPlugin implements Plugin {
     };
     const onPointerDown = (e: Event): void => {
       const pe = e as PointerEvent;
-      this.manager._onPointerDown();
-      const mouseKey = MOUSE_BUTTON_MAP[pe.button];
-      if (mouseKey) this.manager._onKeyDown(mouseKey);
+      const button = pe.button as 0 | 1 | 2;
+      if (button in MOUSE_BUTTON_MAP) {
+        this.manager.firePointerDown(button);
+      } else {
+        this.manager._onPointerDown();
+      }
     };
     const onPointerUp = (e: Event): void => {
       const pe = e as PointerEvent;
-      this.manager._onPointerUp();
-      const mouseKey = MOUSE_BUTTON_MAP[pe.button];
-      if (mouseKey) this.manager._onKeyUp(mouseKey);
+      const button = pe.button as 0 | 1 | 2;
+      if (button in MOUSE_BUTTON_MAP) {
+        this.manager.firePointerUp(button);
+      } else {
+        this.manager._onPointerUp();
+      }
     };
     const onPointerCancel = (): void => {
-      this.manager._onPointerUp();
-      this.manager._onKeyUp("MouseLeft");
-      this.manager._onKeyUp("MouseMiddle");
-      this.manager._onKeyUp("MouseRight");
+      this.manager.clearPointerButtons();
     };
 
     pointerTarget.addEventListener("pointerdown", onPointerDown);

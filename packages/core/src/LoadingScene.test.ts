@@ -8,6 +8,7 @@ import {
   QueryCacheKey,
   EventBusKey,
   AssetManagerKey,
+  ProcessSystemKey,
   SceneManagerKey,
   ErrorBoundaryKey,
   LoggerKey,
@@ -19,6 +20,7 @@ import { ErrorBoundary } from "./ErrorBoundary.js";
 import { Logger, LogLevel } from "./Logger.js";
 import { _resetEntityIdCounter } from "./Entity.js";
 import { LoadingScene } from "./LoadingScene.js";
+import { ProcessSystem } from "./ProcessSystem.js";
 
 class TargetScene extends Scene {
   readonly name = "target";
@@ -51,7 +53,31 @@ function setup() {
   ctx.register(SceneManagerKey, manager);
   manager._setContext(ctx);
 
-  return { ctx, manager, assets, bus: ctx.resolve(EventBusKey) };
+  const processSystem = new ProcessSystem();
+  processSystem.onRegister(ctx);
+  ctx.register(ProcessSystemKey, processSystem);
+
+  return {
+    ctx,
+    manager,
+    assets,
+    bus: ctx.resolve(EventBusKey),
+    processSystem,
+  };
+}
+
+async function advanceProcessTime(
+  processSystem: ProcessSystem,
+  ms: number,
+  dt = 16,
+): Promise<void> {
+  let remaining = ms;
+  while (remaining > 0) {
+    const step = Math.min(dt, remaining);
+    processSystem.update(step);
+    remaining -= step;
+    await Promise.resolve();
+  }
 }
 
 /** Test-only LoadingScene subclass that kicks off loading from onEnter. */
@@ -201,7 +227,7 @@ describe("LoadingScene", () => {
   });
 
   it("emits scene:loading:done once after preload + minDuration", async () => {
-    const { manager, bus } = setup();
+    const { manager, bus, processSystem } = setup();
     const target = new TargetScene();
     const boot = new AutoBoot(target, { minDuration: 80 });
 
@@ -211,6 +237,8 @@ describe("LoadingScene", () => {
     });
 
     await manager.push(boot);
+    await Promise.resolve();
+    await advanceProcessTime(processSystem, 80);
     await vi.waitFor(() => expect(manager.active).toBe(target));
     expect(done).toHaveBeenCalledTimes(1);
   });
@@ -223,17 +251,17 @@ describe("LoadingScene", () => {
   });
 
   it("enforces minDuration on fast loads", async () => {
-    const { manager } = setup();
+    const { manager, processSystem } = setup();
     const target = new TargetScene();
 
-    const start = performance.now();
     await manager.push(new AutoBoot(target, { minDuration: 120 }));
-    await vi.waitFor(
-      () => expect(manager.active).toBe(target),
-      { timeout: 500 },
-    );
-    const elapsed = performance.now() - start;
-    expect(elapsed).toBeGreaterThanOrEqual(110);
+    await Promise.resolve();
+
+    await advanceProcessTime(processSystem, 100);
+    expect(manager.active).not.toBe(target);
+
+    await advanceProcessTime(processSystem, 20);
+    await vi.waitFor(() => expect(manager.active).toBe(target));
   });
 
   it("allows retry from onLoadError by calling startLoading() again", async () => {

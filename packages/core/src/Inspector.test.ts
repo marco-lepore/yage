@@ -66,10 +66,10 @@ function setup() {
   scenes._setContext(ctx);
   const loop = new GameLoop();
 
-  const engine = { context: ctx, scenes, loop, logger };
+  const engine = { context: ctx, scenes, loop, logger, events: bus };
   const inspector = new Inspector(engine);
 
-  return { inspector, engine, scenes, scheduler, boundary, ctx };
+  return { inspector, engine, scenes, scheduler, boundary, ctx, bus };
 }
 
 describe("Inspector", () => {
@@ -81,10 +81,40 @@ describe("Inspector", () => {
     scheduler.add(new TestSystem());
 
     const snap = inspector.snapshot();
-    expect(snap.frameCount).toBe(0);
+    expect(snap.frame).toBe(0);
     expect(snap.sceneStack).toHaveLength(1);
     expect(snap.entityCount).toBe(1);
     expect(snap.systemCount).toBe(1);
+  });
+
+  it("registers and resolves inspector extensions by namespace", () => {
+    const { inspector } = setup();
+    const inventory = {
+      listItems: () => ["boots", "key"],
+    };
+
+    inspector.addExtension("inventory", inventory);
+
+    expect(inspector.getExtension("inventory")).toBe(inventory);
+  });
+
+  it("removes inspector extensions", () => {
+    const { inspector } = setup();
+
+    inspector.addExtension("inventory", { listItems: () => [] });
+    inspector.removeExtension("inventory");
+
+    expect(inspector.getExtension("inventory")).toBeUndefined();
+  });
+
+  it("rejects duplicate inspector extension namespaces", () => {
+    const { inspector } = setup();
+
+    inspector.addExtension("inventory", { listItems: () => [] });
+
+    expect(() =>
+      inspector.addExtension("inventory", { grantItem: () => {} }),
+    ).toThrow('Inspector.addExtension(): namespace "inventory" is already registered.');
   });
 
   it("getEntityByName finds entity", async () => {
@@ -345,5 +375,50 @@ describe("Inspector", () => {
     const errors = inspector.getErrors();
     expect(errors.disabledSystems).toEqual([]);
     expect(errors.disabledComponents).toEqual([]);
+  });
+
+  it("snapshot uses the attached logical frame controller", async () => {
+    const { inspector, scenes } = setup();
+    await scenes.push(new TestScene("game"));
+
+    inspector.attachTimeController({
+      isFrozen: true,
+      freeze() {},
+      thaw() {},
+      stepFrames() {},
+      setDelta() {},
+      getFrame: () => 42,
+    });
+
+    const snap = inspector.snapshot();
+    expect(snap.frame).toBe(42);
+  });
+
+  it("records bus events only while the event log is enabled", () => {
+    const { inspector, bus } = setup();
+
+    bus.emit("engine:started", undefined);
+    expect(inspector.events.getLog()).toEqual([]);
+
+    inspector.attachTimeController({
+      isFrozen: true,
+      freeze() {},
+      thaw() {},
+      stepFrames() {},
+      setDelta() {},
+      getFrame: () => 7,
+    });
+    inspector.setEventLogEnabled(true);
+
+    bus.emit("engine:started", undefined);
+
+    expect(inspector.events.getLog()).toEqual([
+      {
+        frame: 7,
+        source: "bus",
+        type: "engine:started",
+        payload: null,
+      },
+    ]);
   });
 });

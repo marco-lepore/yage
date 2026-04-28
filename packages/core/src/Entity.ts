@@ -287,6 +287,7 @@ export class Entity {
     }
 
     this._scene?._onEntityEvent(token.name, data, this);
+    this._scene?._observeEntityEvent(token.name, data, this);
   }
 
   /** Get all components as an iterable. */

@@ -203,7 +203,7 @@ from the browser console, verifying that a full scene wires up correctly in
 the renderer, or letting an AI coding agent confirm the shape of a scene it
 just generated. For those, reach for the **Inspector**.
 
-The Inspector is a read-only introspection API that auto-attaches to
+The Inspector is a runtime introspection and control API that auto-attaches to
 `window.__yage__` whenever the engine is constructed with `debug: true`. It
 sees the same ECS state your tests see, but against a live running game.
 
@@ -280,8 +280,9 @@ minutes.
 - **Names are not unique keys.** If two entities share a name,
   `getEntityByName` returns the first match it encounters. For robust lookups
   either use unique names or iterate `getEntities()` and filter by `id`.
-- **Read-only.** The Inspector cannot mutate entity state, trigger events, or
-  advance frames. For those, use the test utilities above.
+- **Mutation is scoped to debug tooling.** The Inspector can freeze time,
+  inject input, and step frames, but it is not a general-purpose world editor.
+  Use normal engine APIs for structural scene changes.
 - **`debug: true` only.** The Inspector is a development tool — production
   builds should construct `Engine` without `debug: true` to avoid exposing
   `window.__yage__`.

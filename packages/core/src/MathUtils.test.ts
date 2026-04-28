@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { MathUtils } from "./MathUtils.js";
 
 describe("MathUtils", () => {
@@ -142,37 +142,6 @@ describe("MathUtils", () => {
     it("returns 0 for non-positive lengths", () => {
       expect(MathUtils.pingPong(5, 0)).toBe(0);
       expect(MathUtils.pingPong(5, -1)).toBe(0);
-    });
-  });
-
-  describe("randomRange", () => {
-    it("returns values within range", () => {
-      vi.spyOn(Math, "random").mockReturnValue(0.5);
-      expect(MathUtils.randomRange(0, 10)).toBe(5);
-      vi.restoreAllMocks();
-    });
-
-    it("returns min at random=0", () => {
-      vi.spyOn(Math, "random").mockReturnValue(0);
-      expect(MathUtils.randomRange(5, 10)).toBe(5);
-      vi.restoreAllMocks();
-    });
-  });
-
-  describe("randomInt", () => {
-    it("returns integer within range", () => {
-      vi.spyOn(Math, "random").mockReturnValue(0.5);
-      const result = MathUtils.randomInt(0, 10);
-      expect(Number.isInteger(result)).toBe(true);
-      expect(result).toBeGreaterThanOrEqual(0);
-      expect(result).toBeLessThanOrEqual(10);
-      vi.restoreAllMocks();
-    });
-
-    it("returns min at random=0", () => {
-      vi.spyOn(Math, "random").mockReturnValue(0);
-      expect(MathUtils.randomInt(5, 10)).toBe(5);
-      vi.restoreAllMocks();
     });
   });
 

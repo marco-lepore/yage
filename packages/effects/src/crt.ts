@@ -1,4 +1,4 @@
-import { Process } from "@yagejs/core";
+import { Process, globalRandom } from "@yagejs/core";
 import { defineEffect } from "@yagejs/renderer";
 import type { Effect } from "@yagejs/renderer";
 import { CRTFilter } from "pixi-filters";
@@ -64,7 +64,7 @@ export const crt = defineEffect<CRTHandle, CRTOptions>({
           new Process({
             update: (dt) => {
               filter.time += dt / 1000;
-              filter.seed = Math.random();
+              filter.seed = globalRandom.float();
             },
           }),
         );

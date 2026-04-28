@@ -2,12 +2,14 @@ import { Component } from "./Component.js";
 import type { Process } from "./Process.js";
 import { ProcessSlot } from "./ProcessSlot.js";
 import type { ProcessSlotConfig } from "./ProcessSlot.js";
+import { serializable } from "./Serializable.js";
 
 /**
  * A component that holds a set of processes on an entity.
  * Processes are ticked automatically by ProcessSystem each frame.
  * All processes are cancelled when the entity is destroyed.
  */
+@serializable
 export class ProcessComponent extends Component {
   private processes = new Set<Process>();
   private slots = new Set<ProcessSlot>();
@@ -83,5 +85,9 @@ export class ProcessComponent extends Component {
   /** Cancel all processes and slots on entity destroy. */
   override onDestroy(): void {
     this.cancel();
+  }
+
+  serialize(): null {
+    return null;
   }
 }

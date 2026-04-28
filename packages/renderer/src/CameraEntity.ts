@@ -1,4 +1,4 @@
-import { Entity, Vec2 } from "@yagejs/core";
+import { Entity, Vec2, serializable } from "@yagejs/core";
 import type { Vec2Like, EasingFunction } from "@yagejs/core";
 import { CameraComponent } from "./CameraComponent.js";
 import type {
@@ -54,6 +54,7 @@ export interface CameraEntityParams {
  * cam.follow(otherTarget, { smoothing: 0.1 });
  * ```
  */
+@serializable
 export class CameraEntity extends Entity {
   private cam!: CameraComponent;
 
@@ -154,5 +155,11 @@ export class CameraEntity extends Entity {
 
   worldToScreen(worldX: number, worldY: number): Vec2 {
     return this.cam.worldToScreen(worldX, worldY);
+  }
+
+  afterRestore(): void {
+    // setup() doesn't run on restore — rebind the cached CameraComponent that
+    // every delegate getter / method on this class reads through.
+    this.cam = this.get(CameraComponent);
   }
 }

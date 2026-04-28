@@ -10,8 +10,10 @@ import {
   LogLevel,
   GameLoop,
   GameLoopKey,
+  RandomKey,
   SystemScheduler,
   SystemSchedulerKey,
+  createRandomService,
   Scene,
   Entity,
   _resetEntityIdCounter,
@@ -140,6 +142,7 @@ export function createParticlesTestContext(): ParticlesTestContext {
     },
   });
   scene._setContext(ctx);
+  scene._registerScoped(RandomKey, createRandomService(1234));
   scene._registerScoped(SceneRenderTreeKey, tree);
 
   return {

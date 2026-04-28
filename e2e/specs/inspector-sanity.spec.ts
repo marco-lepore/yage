@@ -44,6 +44,6 @@ test.describe("Inspector scene sanity", () => {
     const snapshot = await getSnapshot(page);
     expect(snapshot.sceneStack).toHaveLength(2);
     expect(snapshot.entityCount).toBeGreaterThanOrEqual(2);
-    expect(snapshot.frameCount).toBeGreaterThan(0);
+    expect(snapshot.frame).toBeGreaterThan(0);
   });
 });

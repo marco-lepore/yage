@@ -88,8 +88,9 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-engine.use(new DebugPlugin({ manualClock: true }));
+engine.use(new DebugPlugin());
 await engine.start();
+engine.inspector.time.freeze();
 
 const baseScene = new BaseScene();
 await engine.scenes.push(baseScene);
