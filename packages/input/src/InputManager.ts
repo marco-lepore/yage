@@ -620,12 +620,23 @@ export class InputManager {
 
   // -- Internal: polling and connect/disconnect plumbing --
 
-  /** @internal Force-release any held gamepad codes. Used on tab-hide. */
-  _releaseAllGamepadButtons(): void {
+  /**
+   * @internal Force-release held gamepad buttons and clear real-pad analog
+   * snapshots. Used on tab-hide (where `navigator.getGamepads()` returns
+   * stale data) and on disconnect when polling is paused. Synthetic axes
+   * under `SYNTHETIC_PAD_INDEX` are preserved so test fixtures survive.
+   */
+  _releaseAllGamepadState(): void {
     for (const code of [...this.lastButtonState.keys()]) {
       this._onKeyUp(code);
     }
     this.lastButtonState.clear();
+    const syntheticPrefix = `${SYNTHETIC_PAD_INDEX}:`;
+    for (const key of [...this.gamepadAxisState.keys()]) {
+      if (!key.startsWith(syntheticPrefix)) {
+        this.gamepadAxisState.delete(key);
+      }
+    }
   }
 
   /** @internal Called by InputPlugin from `gamepadconnected` event. */
@@ -647,7 +658,7 @@ export class InputManager {
     if (this.pollingEnabled) {
       this._pollGamepads();
     } else {
-      this._releaseAllGamepadButtons();
+      this._releaseAllGamepadState();
     }
     for (const fn of this.gamepadDisconnectListeners) fn(info);
   }

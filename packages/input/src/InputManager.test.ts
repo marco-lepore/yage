@@ -921,14 +921,34 @@ describe("InputManager", () => {
       expect(seen).toEqual([]);
     });
 
-    it("_releaseAllGamepadButtons clears pressed gamepad keys but keeps keyboard state", () => {
+    it("_releaseAllGamepadState clears pressed gamepad keys but keeps keyboard state", () => {
       input.setActionMap({ jump: ["GamepadA"], left: ["KeyA"] });
       input.fireGamepadButton("GamepadA", true);
       input._onKeyDown("KeyA");
 
-      input._releaseAllGamepadButtons();
+      input._releaseAllGamepadState();
       expect(input.isPressed("jump")).toBe(false);
       expect(input.isPressed("left")).toBe(true);
+    });
+
+    it("_releaseAllGamepadState clears real-pad axis values but preserves synthetic ones", () => {
+      // Real pad axis stored under a non-synthetic index
+      setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+
+      // Synthetic axis injected directly
+      input.fireGamepadAxis("rightX", 0.5);
+      expect(input.getStick("right").x).toBeGreaterThan(0);
+
+      // Real pad disconnects from polling cycle
+      setPads([]);
+      input._releaseAllGamepadState();
+
+      // Real-pad axis is gone
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+      // Synthetic axis survives
+      expect(input.getStick("right").x).toBeGreaterThan(0);
     });
 
     it("snapshotState splits keyboard and gamepad keys", () => {

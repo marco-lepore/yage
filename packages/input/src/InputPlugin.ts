@@ -177,7 +177,7 @@ export class InputPlugin implements Plugin {
     if (typeof document !== "undefined") {
       const onVisibilityChange = (): void => {
         if (document.visibilityState === "hidden") {
-          this.manager._releaseAllGamepadButtons();
+          this.manager._releaseAllGamepadState();
         }
       };
       document.addEventListener("visibilitychange", onVisibilityChange);

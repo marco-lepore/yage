@@ -11,4 +11,5 @@ export type {
   CameraLike,
   RendererLike,
   GamepadInfo,
+  GamepadAxisKey,
 } from "./types.js";
