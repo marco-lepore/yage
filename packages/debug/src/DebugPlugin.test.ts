@@ -117,12 +117,60 @@ import type {
 } from "@yagejs/renderer";
 import { DebugPlugin } from "./DebugPlugin.js";
 
+type TickerListener = () => void;
+
+interface FakeTicker {
+  lastTime: number;
+  deltaMS: number;
+  minFPS: number;
+  add: (fn: TickerListener) => void;
+  remove: (fn: TickerListener) => void;
+  update: (currentTime: number) => void;
+  start: () => void;
+  stop: () => void;
+}
+
+function createFakeTicker(): FakeTicker {
+  const listeners: TickerListener[] = [];
+  const ticker: FakeTicker = {
+    lastTime: 0,
+    deltaMS: 0,
+    minFPS: 10,
+    add: vi.fn((fn: TickerListener) => {
+      listeners.push(fn);
+    }),
+    remove: vi.fn((fn: TickerListener) => {
+      const idx = listeners.indexOf(fn);
+      if (idx !== -1) listeners.splice(idx, 1);
+    }),
+    update: vi.fn((currentTime: number) => {
+      // Mirrors Pixi v8 Ticker.update — listener emission gated on
+      // `currentTime > lastTime`, listeners get a deltaMS clamped only by
+      // the configured minFPS (we honor `minFPS = 0` → no clamp, which the
+      // host sets while frozen).
+      if (currentTime > ticker.lastTime) {
+        const elapsed = currentTime - ticker.lastTime;
+        const maxElapsed =
+          ticker.minFPS === 0 ? Infinity : 1000 / ticker.minFPS;
+        ticker.deltaMS = Math.min(elapsed, maxElapsed);
+        for (const fn of listeners) fn();
+      }
+      ticker.lastTime = currentTime;
+    }),
+    start: vi.fn(),
+    stop: vi.fn(),
+  };
+  return ticker;
+}
+
 function createContext() {
   const context = new EngineContext();
   const scheduler = new SystemScheduler();
   const appStage = new mocks.MockContainer();
+  const ticker = createFakeTicker();
   const app = {
     stage: appStage,
+    ticker,
     stop: vi.fn(),
     start: vi.fn(),
     render: vi.fn(),
@@ -135,6 +183,15 @@ function createContext() {
     fixedTimestep: 20,
     tick: vi.fn(),
   };
+
+  // Mirror what runs in production: `RendererPlugin` subscribes the GameLoop
+  // tick via `app.ticker.add`, and Pixi v8's `TickerPlugin.init` auto-adds
+  // `app.render` as a low-priority listener. The DebugClock tests need both
+  // wired so a manual `host.advance` reaches the same subscribers a real
+  // game has. If `RendererPlugin.ts` ever changes how it subscribes the
+  // GameLoop (e.g. fixed dt instead of `app.ticker.deltaMS`), update both.
+  ticker.add(() => loop.tick(ticker.deltaMS));
+  ticker.add(() => app.render());
   const inspectorExtensions = new Map<string, object>();
   const inspector = {
     snapshot: () => ({
@@ -343,6 +400,32 @@ describe("DebugPlugin", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(loop.tick).toHaveBeenCalledWith(20);
     expect(app.render).toHaveBeenCalledOnce();
+
+    plugin.onDestroy();
+  });
+
+  it("step fires custom ticker subscribers (AnimatedSprite, pixi-filters, etc.)", async () => {
+    // Regression: prior to the Pixi-ticker refactor, `clock.step()` called
+    // `gameLoop.tick(dt)` and `app.render()` directly, bypassing the ticker.
+    // That left AnimatedSprite, pixi-filters, and any user `app.ticker.add`
+    // subscriber frozen during step mode — silently breaking visual probes.
+    const { context, scheduler, app } = createContext();
+
+    const plugin = new DebugPlugin();
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    // Subscriber registered after onStart, just like a user adding an
+    // AnimatedSprite to a scene at runtime.
+    const animatedSpriteAdvance = vi.fn();
+    app.ticker.add(animatedSpriteAdvance);
+
+    const clock = getExposedClock();
+    clock.freeze();
+    clock.step();
+
+    expect(animatedSpriteAdvance).toHaveBeenCalledOnce();
 
     plugin.onDestroy();
   });

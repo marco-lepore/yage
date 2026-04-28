@@ -11,10 +11,21 @@ export interface IDebugClock {
   getFrame(): number;
 }
 
-/** Minimal view of a game loop needed by the debug clock. */
-interface GameLoopLike {
-  tick(dtMs: number): void;
+/**
+ * Hooks the clock uses to drive the host. The host owns the synthetic-time
+ * bookkeeping and the ticker plumbing — `DebugClock` stays a pure state
+ * machine. Production wires this against Pixi's `app.ticker` so a manual
+ * `step()` fires every ticker subscriber (GameLoop, AnimatedSprite,
+ * pixi-filters, render) with the same synthetic dt.
+ */
+export interface DebugClockHost {
   readonly fixedTimestep: number;
+  /** Advance one synthetic frame of `dtMs`. Fires every ticker subscriber. */
+  advance(dtMs: number): void;
+  /** Stop auto-advance. Capture state needed to make `advance` deterministic. */
+  freeze(): void;
+  /** Resume auto-advance. Restore captured state so the next rAF is sane. */
+  thaw(): void;
 }
 
 /**
@@ -29,13 +40,8 @@ export class DebugClock implements IDebugClock {
   private deltaMs: number;
   private frame = 0;
 
-  constructor(
-    private readonly gameLoop: GameLoopLike,
-    private readonly stopTicker: () => void,
-    private readonly startTicker: () => void,
-    private readonly render: () => void,
-  ) {
-    this.deltaMs = gameLoop.fixedTimestep;
+  constructor(private readonly host: DebugClockHost) {
+    this.deltaMs = host.fixedTimestep;
   }
 
   get isFrozen(): boolean {
@@ -44,13 +50,13 @@ export class DebugClock implements IDebugClock {
 
   startAuto(): void {
     if (!this._isFrozen) return;
-    this.startTicker();
+    this.host.thaw();
     this._isFrozen = false;
   }
 
   stopAuto(): void {
     if (this._isFrozen) return;
-    this.stopTicker();
+    this.host.freeze();
     this._isFrozen = true;
   }
 
@@ -78,11 +84,14 @@ export class DebugClock implements IDebugClock {
       throw new Error("DebugClock is not frozen. Call clock.freeze() first.");
     }
     const dt = dtMs ?? this.deltaMs;
-    // Increment after a successful tick — if tick throws (system exception,
-    // render failure) the frame counter shouldn't advance ahead of state.
-    this.gameLoop.tick(dt);
+    if (!Number.isFinite(dt) || dt <= 0) {
+      throw new Error("DebugClock.step(dtMs) requires a positive number.");
+    }
+    // Increment after a successful advance — if a ticker subscriber throws
+    // (system exception, render failure) the frame counter shouldn't advance
+    // ahead of state.
+    this.host.advance(dt);
     this.frame++;
-    this.render();
   }
 
   stepFrames(count: number, dtMs?: number): void {
@@ -94,16 +103,5 @@ export class DebugClock implements IDebugClock {
     for (let i = 0; i < count; i++) {
       this.step(dtMs);
     }
-  }
-
-  /** Set the frozen state directly. Used by DebugPlugin for config-driven init. */
-  setFrozen(frozen: boolean): void {
-    if (frozen === this._isFrozen) return;
-    if (frozen) {
-      this.stopTicker();
-    } else {
-      this.startTicker();
-    }
-    this._isFrozen = frozen;
   }
 }

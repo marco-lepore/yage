@@ -124,6 +124,8 @@ const enemies = window.__yage__.inspector
   .filter((e) => e.tags.includes("enemy"));
 ```
 
+For agent-driven debugging — write a throwaway Playwright spec, boot the game, freeze the clock, drive scripted input, snapshot — see `packages/debug.md` → *Agent-driven debugging: throwaway Inspector specs*.
+
 ### Unit tests (deterministic frame stepping)
 
 `@yagejs/core` ships headless test utilities. `createTestEngine()` spins up a fully-wired engine with no renderer/physics/input plugins by default — add whatever you need with `engine.use(...)`. `advanceFrames()` ticks the game loop N times so assertions run against deterministic state:

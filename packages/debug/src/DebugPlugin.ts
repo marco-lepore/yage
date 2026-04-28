@@ -17,9 +17,9 @@ import { DebugRegistryKey } from "./types.js";
 import { CameraComponent, RendererKey } from "@yagejs/renderer";
 import type { RendererPlugin, SceneRenderTreeProvider } from "@yagejs/renderer";
 import { SceneRenderTreeProviderKey } from "@yagejs/renderer";
-import type { Container } from "pixi.js";
+import type { Application, Container } from "pixi.js";
 import { DebugClock } from "./DebugClock.js";
-import type { IDebugClock } from "./DebugClock.js";
+import type { DebugClockHost, IDebugClock } from "./DebugClock.js";
 import { DebugRegistryImpl } from "./DebugRegistryImpl.js";
 import { DebugScene } from "./DebugScene.js";
 import { StatsStore } from "./StatsStore.js";
@@ -191,15 +191,13 @@ export class DebugPlugin implements Plugin {
     this.registry.register(new EntityCountContributor(inspector));
     this.registry.register(new SystemTimingContributor(this.systemTimings));
 
-    // Manual clock for deterministic stepping
+    // Manual clock for deterministic stepping. The host drives `app.ticker`
+    // directly so a manual `step()` fires every ticker subscriber
+    // (AnimatedSprite, pixi-filters, render, user `app.ticker.add` callbacks)
+    // with the same synthetic dt as gameplay state.
     const gameLoop = this.context.resolve(GameLoopKey);
     const app = this.renderer.application;
-    this.clock = new DebugClock(
-      gameLoop,
-      () => app.stop(),
-      () => app.start(),
-      () => app.render(),
-    );
+    this.clock = new DebugClock(createPixiTickerHost(app, gameLoop.fixedTimestep));
     inspector.attachTimeController(this.clock);
     inspector.setEventLogEnabled(true);
     this.attachToGlobal(this.clock);
@@ -405,6 +403,53 @@ export class DebugPlugin implements Plugin {
       delete (g as Record<string, unknown>)["clock"];
     }
   }
+}
+
+/**
+ * Wire a `DebugClockHost` against a Pixi v8 `Application`. Driving
+ * `app.ticker.update(syntheticTime)` while the ticker is stopped fires every
+ * subscriber — Pixi's `Ticker.update` doesn't gate on `started`, only the
+ * rAF-driven `_tick` does — so a single advance replaces the old
+ * `gameLoop.tick(dt)` + `app.render()` quad and along the way fixes the
+ * AnimatedSprite / pixi-filters / `app.ticker.add` subscriber freeze.
+ */
+function createPixiTickerHost(
+  app: Application,
+  fixedTimestep: number,
+): DebugClockHost {
+  let syntheticTime = 0;
+  let savedMinFPS: number | null = null;
+  return {
+    fixedTimestep,
+    freeze(): void {
+      app.stop();
+      // Reset both to zero so synthetic time starts from a clean origin
+      // and `(syntheticTime + dt) - syntheticTime` stays an exact `dt`
+      // — keeps deltaMS deterministic regardless of how long the page
+      // ran in auto mode before the freeze.
+      syntheticTime = 0;
+      app.ticker.lastTime = 0;
+      // Default minFPS=10 clamps deltaMS at 100ms — `step(200)` would
+      // silently see deltaMS=100. Disable for the duration of the freeze.
+      savedMinFPS = app.ticker.minFPS;
+      app.ticker.minFPS = 0;
+    },
+    thaw(): void {
+      if (savedMinFPS !== null) {
+        app.ticker.minFPS = savedMinFPS;
+        savedMinFPS = null;
+      }
+      // `app.start()` calls `Ticker._requestIfNeeded` which resets
+      // `lastTime` to `performance.now()` itself, so the next rAF
+      // doesn't see `realNow - 0` as a giant first-frame delta. No
+      // need to set it manually here.
+      app.start();
+    },
+    advance(dtMs: number): void {
+      syntheticTime += dtMs;
+      app.ticker.update(syntheticTime);
+    },
+  };
 }
 
 /**

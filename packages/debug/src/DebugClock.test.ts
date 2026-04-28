@@ -2,13 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { DebugClock } from "./DebugClock.js";
 
 function createClock(options?: { frozen?: boolean }) {
-  const gameLoop = { tick: vi.fn(), fixedTimestep: 20 };
-  const stopTicker = vi.fn();
-  const startTicker = vi.fn();
-  const render = vi.fn();
-  const clock = new DebugClock(gameLoop, stopTicker, startTicker, render);
-  if (options?.frozen) clock.setFrozen(true);
-  return { clock, gameLoop, stopTicker, startTicker, render };
+  const host = {
+    fixedTimestep: 20,
+    advance: vi.fn(),
+    freeze: vi.fn(),
+    thaw: vi.fn(),
+  };
+  const clock = new DebugClock(host);
+  if (options?.frozen) {
+    clock.freeze();
+    // Reset the host mocks so tests start with a clean call-count slate
+    // regardless of how the clock was put into the frozen state.
+    host.freeze.mockClear();
+    host.thaw.mockClear();
+  }
+  return { clock, host };
 }
 
 describe("DebugClock", () => {
@@ -17,31 +25,32 @@ describe("DebugClock", () => {
     expect(clock.isFrozen).toBe(false);
   });
 
-  it("stopAuto freezes and stops the ticker", () => {
-    const { clock, stopTicker } = createClock();
+  it("stopAuto freezes and freezes the host", () => {
+    const { clock, host } = createClock();
     clock.stopAuto();
     expect(clock.isFrozen).toBe(true);
-    expect(stopTicker).toHaveBeenCalledOnce();
+    expect(host.freeze).toHaveBeenCalledOnce();
   });
 
-  it("startAuto thaws and starts the ticker", () => {
-    const { clock, startTicker } = createClock({ frozen: true });
+  it("startAuto thaws the host", () => {
+    const { clock, host } = createClock({ frozen: true });
+    host.thaw.mockClear();
     clock.startAuto();
     expect(clock.isFrozen).toBe(false);
-    expect(startTicker).toHaveBeenCalledOnce();
+    expect(host.thaw).toHaveBeenCalledOnce();
   });
 
   it("stopAuto is idempotent when already frozen", () => {
-    const { clock, stopTicker } = createClock({ frozen: true });
-    stopTicker.mockClear();
+    const { clock, host } = createClock({ frozen: true });
+    host.freeze.mockClear();
     clock.stopAuto();
-    expect(stopTicker).not.toHaveBeenCalled();
+    expect(host.freeze).not.toHaveBeenCalled();
   });
 
   it("startAuto is idempotent when already auto", () => {
-    const { clock, startTicker } = createClock();
+    const { clock, host } = createClock();
     clock.startAuto();
-    expect(startTicker).not.toHaveBeenCalled();
+    expect(host.thaw).not.toHaveBeenCalled();
   });
 
   it("step throws when not frozen", () => {
@@ -50,17 +59,25 @@ describe("DebugClock", () => {
   });
 
   it("step uses fixedTimestep as default dt", () => {
-    const { clock, gameLoop, render } = createClock({ frozen: true });
+    const { clock, host } = createClock({ frozen: true });
     clock.step();
-    expect(gameLoop.tick).toHaveBeenCalledWith(20);
-    expect(render).toHaveBeenCalledOnce();
+    expect(host.advance).toHaveBeenCalledWith(20);
   });
 
   it("step passes custom dt", () => {
-    const { clock, gameLoop } = createClock({ frozen: true });
+    const { clock, host } = createClock({ frozen: true });
     clock.step(10);
-    expect(gameLoop.tick).toHaveBeenCalledWith(10);
+    expect(host.advance).toHaveBeenCalledWith(10);
   });
+
+  it.each([0, -1, NaN, Infinity])(
+    "step rejects invalid explicit dt: %p",
+    (dt) => {
+      const { clock, host } = createClock({ frozen: true });
+      expect(() => clock.step(dt)).toThrow("positive number");
+      expect(host.advance).not.toHaveBeenCalled();
+    },
+  );
 
   it("tracks frame count while frozen", () => {
     const { clock } = createClock({ frozen: true });
@@ -70,21 +87,29 @@ describe("DebugClock", () => {
     expect(clock.getFrame()).toBe(2);
   });
 
-  it("stepFrames calls tick and render n times", () => {
-    const { clock, gameLoop, render } = createClock({ frozen: true });
+  it("does not advance the frame counter if advance throws", () => {
+    const { clock, host } = createClock({ frozen: true });
+    host.advance.mockImplementationOnce(() => {
+      throw new Error("listener boom");
+    });
+    expect(() => clock.step()).toThrow("listener boom");
+    expect(clock.getFrame()).toBe(0);
+  });
+
+  it("stepFrames advances the host n times", () => {
+    const { clock, host } = createClock({ frozen: true });
     clock.stepFrames(3);
-    expect(gameLoop.tick).toHaveBeenCalledTimes(3);
-    expect(render).toHaveBeenCalledTimes(3);
-    expect(gameLoop.tick).toHaveBeenNthCalledWith(1, 20);
-    expect(gameLoop.tick).toHaveBeenNthCalledWith(2, 20);
-    expect(gameLoop.tick).toHaveBeenNthCalledWith(3, 20);
+    expect(host.advance).toHaveBeenCalledTimes(3);
+    expect(host.advance).toHaveBeenNthCalledWith(1, 20);
+    expect(host.advance).toHaveBeenNthCalledWith(2, 20);
+    expect(host.advance).toHaveBeenNthCalledWith(3, 20);
   });
 
   it("stepFrames with custom dt passes it to each step", () => {
-    const { clock, gameLoop } = createClock({ frozen: true });
+    const { clock, host } = createClock({ frozen: true });
     clock.stepFrames(2, 8);
-    expect(gameLoop.tick).toHaveBeenNthCalledWith(1, 8);
-    expect(gameLoop.tick).toHaveBeenNthCalledWith(2, 8);
+    expect(host.advance).toHaveBeenNthCalledWith(1, 8);
+    expect(host.advance).toHaveBeenNthCalledWith(2, 8);
   });
 
   it("stepFrames rejects non-integer count", () => {
@@ -95,23 +120,5 @@ describe("DebugClock", () => {
   it("stepFrames rejects negative count", () => {
     const { clock } = createClock({ frozen: true });
     expect(() => clock.stepFrames(-1)).toThrow("non-negative integer");
-  });
-
-  it("setFrozen round-trips correctly", () => {
-    const { clock, stopTicker, startTicker } = createClock();
-    clock.setFrozen(true);
-    expect(clock.isFrozen).toBe(true);
-    expect(stopTicker).toHaveBeenCalledOnce();
-
-    clock.setFrozen(false);
-    expect(clock.isFrozen).toBe(false);
-    expect(startTicker).toHaveBeenCalledOnce();
-  });
-
-  it("setFrozen with same value is a no-op", () => {
-    const { clock, stopTicker, startTicker } = createClock();
-    clock.setFrozen(false);
-    expect(stopTicker).not.toHaveBeenCalled();
-    expect(startTicker).not.toHaveBeenCalled();
   });
 });

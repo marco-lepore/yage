@@ -190,7 +190,7 @@ stats.average("updateTime");  // rolling average
 stats.latest("updateTime");   // most recent sample
 ```
 
-## Frame-Step Mode
+## Frame-step mode and agent-driven debugging
 
 `DebugPlugin` always installs the frozen-clock implementation. To step exact
 frames, freeze through the Inspector and then advance from code or with the
@@ -198,13 +198,74 @@ step key:
 
 ```typescript
 window.__yage__.inspector.time.freeze();
-await window.__yage__.inspector.time.step(1);
+window.__yage__.inspector.time.step(1);
 window.__yage__.inspector.time.thaw();
 ```
 
 The configured `stepKey` only advances frames while the inspector clock is
 frozen. This is useful for debugging physics, animations, or frame-specific
 logic.
+
+### Throwaway Inspector specs
+
+The Inspector + frozen clock + scripted input together make a tight short-loop
+for LLM-assisted debugging and gameplay validation. The intended workflow is a
+**throwaway Playwright spec** — write it, run it, delete it. Not a CI fixture,
+not a permanent regression suite. A scratch session.
+
+Suppose you just changed the jump arc. Drop a spec that boots the platformer,
+holds Right for 30 frames, fires the jump action, steps 45 frames, and asserts
+the player landed on a specific ledge entity. Run it. If it passes, delete it.
+If it fails, iterate.
+
+```typescript
+import { test, expect } from "@playwright/test";
+
+test("can the player jump onto the ledge?", async ({ page }) => {
+  await page.goto("/platformer.html");
+  await page.waitForFunction(() => window.__yage__?.inspector);
+
+  const result = await page.evaluate(async () => {
+    const i = window.__yage__.inspector;
+    i.setSeed(42);            // pin RNG for reproducible runs
+    i.time.freeze();           // stop auto-advance
+    await i.input.hold("ArrowRight", 30);
+    await i.input.fireAction("jump", 1);
+    i.time.step(45);           // advance 45 fixed-timestep frames
+    return i.snapshotJSON();
+  });
+
+  // Optional: capture a frame for visual inspection.
+  // await page.screenshot({ path: "/tmp/probe.png" });
+
+  expect(result).toContain('"name":"player"');
+});
+```
+
+The two spec styles serve very different purposes:
+
+| | Permanent Inspector tests in CI | Throwaway agent-vision specs |
+|---|---|---|
+| Frequency | Rare | Common |
+| Lifetime | Lives with the repo | Deleted after one session |
+| What's asserted | Reproducibility ("snapshots match across reruns") | Gameplay outcome ("player landed at x>200") |
+| Brittleness to balance changes | Stable by design | Brittle on purpose — that's why they're throwaway |
+| Example | `e2e/specs/inspector-determinism.spec.ts` | "did my jump-arc change still let the player reach the ledge?" |
+
+Always advance via `inspector.time.step(N)` (loops one fixed-timestep frame at
+a time) over `clock.step(bigDt)` (collapses the interval into one fat frame).
+`Component.update`, tweens, and AI logic only see one update at the full
+`bigDt` under the latter, which diverges from real gameplay even though
+physics still substeps correctly.
+
+#### Honest limits
+
+These are truths, not bugs to fix — keep them in mind when interpreting probe results:
+
+- **Visuals**: `snapshotJSON()` covers structural state — positions, components, scene stack — not pixel output. `page.screenshot()` helps but agent-grade interpretation of pixels is imperfect. Combine both for confidence.
+- **Audio**: no introspection surface, and WebAudio doesn't pause in step mode. Probes can't tell you whether a sound effect played at the right frame.
+- **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. No callers in core YAGE today, but custom plugins might.
+- **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic. Always prefer the latter in probes.
 
 ## Logging
 

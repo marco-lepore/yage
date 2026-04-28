@@ -78,6 +78,60 @@ const inventory = window.__yage__.inspector.getExtension<{
 }>("inventory");
 ```
 
+## Agent-driven debugging: throwaway Inspector specs
+
+The Inspector + frozen clock + scripted input together make a tight short-loop
+for LLM-assisted debugging and gameplay validation. The intended workflow is a
+**throwaway Playwright spec**: write it, run it, delete it. Not a CI fixture.
+
+Minimal template:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+test("can the player jump onto the ledge?", async ({ page }) => {
+  await page.goto("/platformer.html");
+  await page.waitForFunction(() => window.__yage__?.inspector);
+
+  const result = await page.evaluate(async () => {
+    const i = window.__yage__.inspector;
+    i.setSeed(42);
+    i.time.freeze();
+    await i.input.hold("ArrowRight", 30);
+    await i.input.fireAction("jump", 1);
+    i.time.step(45);
+    return i.snapshotJSON();
+  });
+
+  // Optionally also: await page.screenshot({ path: "/tmp/probe.png" });
+  expect(result).toContain('"name":"player"');
+});
+```
+
+Reach for it when:
+
+- Validating a gameplay change you just made.
+- Troubleshooting a reported bug ("does the door open after 30 frames of holding the lever?").
+- Spot-checking emergent behavior in a scratch session.
+
+Do **not** commit these to a CI suite. Magic frame counts tied to balance
+constants are a brittleness trap — when the player accelerates 5% faster, every
+spec with `step(45)` breaks. Keep the spec for the duration of one debugging
+session, then delete it.
+
+Always advance via `inspector.time.step(N)` — it loops one fixed-timestep
+frame at a time (see the `clock.step(bigDt)` guidance above). `step(bigDt)`
+collapses the whole interval into one fat frame, so `Component.update`,
+tweens, and AI logic only see one update at the full `bigDt` and diverge from
+real gameplay.
+
+Honest limits — these are truths, not bugs to fix:
+
+- **Visuals**: `snapshotJSON()` covers structural state (positions, components, scene stack), not pixel output. `page.screenshot()` helps but agent-grade interpretation of pixels is imperfect — combine both for confidence.
+- **Audio**: no introspection surface, and WebAudio doesn't pause in step mode.
+- **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. None in core YAGE today, but custom plugins might.
+- **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic — always prefer the latter in probes.
+
 ## Built-In Debug Views
 
 - Physics collider outlines (green=dynamic, gray=static, blue=kinematic, yellow=sensor)
