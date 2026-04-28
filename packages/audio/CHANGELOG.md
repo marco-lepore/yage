@@ -1,5 +1,17 @@
 # @yagejs/audio
 
+## 0.4.0
+
+### Minor Changes
+
+- [#45](https://github.com/marco-lepore/yage/pull/45) [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Inspector deterministic test mode and per-package serialization plumbing for `Inspector.snapshot()`.
+  - `AudioManager` accepts a `RandomService` so `playRandom(...)` is reproducible under inspector-driven seeds; `AudioPlugin` wires `globalRandom` by default.
+
+### Patch Changes
+
+- Updated dependencies [[`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805)]:
+  - @yagejs/core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
