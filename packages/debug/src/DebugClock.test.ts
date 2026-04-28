@@ -70,6 +70,15 @@ describe("DebugClock", () => {
     expect(host.advance).toHaveBeenCalledWith(10);
   });
 
+  it.each([0, -1, NaN, Infinity])(
+    "step rejects invalid explicit dt: %p",
+    (dt) => {
+      const { clock, host } = createClock({ frozen: true });
+      expect(() => clock.step(dt)).toThrow("positive number");
+      expect(host.advance).not.toHaveBeenCalled();
+    },
+  );
+
   it("tracks frame count while frozen", () => {
     const { clock } = createClock({ frozen: true });
     expect(clock.getFrame()).toBe(0);

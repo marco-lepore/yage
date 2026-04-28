@@ -84,6 +84,9 @@ export class DebugClock implements IDebugClock {
       throw new Error("DebugClock is not frozen. Call clock.freeze() first.");
     }
     const dt = dtMs ?? this.deltaMs;
+    if (!Number.isFinite(dt) || dt <= 0) {
+      throw new Error("DebugClock.step(dtMs) requires a positive number.");
+    }
     // Increment after a successful advance — if a ticker subscriber throws
     // (system exception, render failure) the frame counter shouldn't advance
     // ahead of state.
