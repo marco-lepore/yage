@@ -15,22 +15,28 @@ import { InputPlugin } from "@yagejs/input";
 
 engine.use(
   new InputPlugin({
-    actions: [
-      { name: "jump", keys: ["Space", "KeyW"], group: "movement" },
-      { name: "left", keys: ["KeyA", "ArrowLeft"], group: "movement" },
-      { name: "right", keys: ["KeyD", "ArrowRight"], group: "movement" },
-      { name: "up", keys: ["KeyW", "ArrowUp"], group: "movement" },
-      { name: "down", keys: ["KeyS", "ArrowDown"], group: "movement" },
-      { name: "attack", keys: ["KeyJ", "Mouse0"], group: "combat" },
-      { name: "interact", keys: ["KeyE"], group: "gameplay" },
-    ],
+    actions: {
+      jump: ["Space", "GamepadA"],
+      left: ["KeyA", "ArrowLeft", "GamepadDPadLeft"],
+      right: ["KeyD", "ArrowRight", "GamepadDPadRight"],
+      up: ["KeyW", "ArrowUp"],
+      down: ["KeyS", "ArrowDown"],
+      attack: ["KeyJ", "MouseLeft", "GamepadX"],
+      interact: ["KeyE"],
+    },
+    groups: {
+      movement: ["jump", "left", "right", "up", "down"],
+      combat: ["attack"],
+      gameplay: ["interact"],
+    },
   }),
 );
 ```
 
-Each action definition is an `ActionMapDefinition` with a `name`, an array of
-`keys` (using the standard `KeyboardEvent.code` values), and an optional
-`group` for batch enable/disable.
+The action map is a record of action name → array of physical input codes.
+Codes can be `KeyboardEvent.code` values (e.g. `"KeyA"`, `"Space"`),
+synthetic mouse codes (`"MouseLeft"`, `"MouseMiddle"`, `"MouseRight"`), or
+gamepad codes (see [Gamepad](#gamepad) below).
 
 ## Querying Input
 
@@ -88,26 +94,145 @@ if (input.isPointerDown()) {
 }
 ```
 
-`getPointerPosition()` returns world coordinates by transforming through the
-active camera. If you need screen coordinates, use the camera's
-`worldToScreen()` method.
+`getPointerPosition()` returns world coordinates after wiring the camera with
+`input.setCamera(camera)`. If no camera is set, screen coordinates are
+returned.
 
-## Rebinding Actions
+## Gamepad
 
-Allow players to remap controls at runtime:
+Gamepads are polled each frame from `navigator.getGamepads()` and routed
+through the same key pipeline as keyboard and mouse — so `isPressed`,
+`isJustPressed`, hold-duration, and `listenForNextKey` all work uniformly
+across devices.
+
+### Standard-mapping codes
+
+| Code | Description |
+|------|-------------|
+| `GamepadA`, `GamepadB`, `GamepadX`, `GamepadY` | Face buttons (Xbox naming) |
+| `GamepadLB`, `GamepadRB` | Shoulder bumpers |
+| `GamepadLT`, `GamepadRT` | Trigger buttons (fire when analog value crosses `triggerThreshold`) |
+| `GamepadSelect`, `GamepadStart` | Select / Start |
+| `GamepadLeftStick`, `GamepadRightStick` | Stick clicks (L3 / R3) |
+| `GamepadDPadUp/Down/Left/Right` | D-pad |
+| `GamepadHome` | Home / Guide button |
+| `GamepadButton{0..15}` | Numeric fallback for non-standard mappings |
+
+PlayStation users see ✕/○/△/□ on hardware that maps to `GamepadA/B/X/Y`
+in code — code names are layout-canonical (Xbox), not glyph-specific.
+
+### Analog sticks and triggers
 
 ```typescript
-input.rebind("jump", "KeyK", {
-  onConflict: "swap", // swap bindings if the key is already used
+const move = input.getStick("left");      // Vec2, deadzoned, magnitude ≤ 1
+const aim = input.getStick("right");
+const charge = input.getTrigger("right"); // 0..1
+```
+
+Default deadzones: 0.15 for sticks (radial), 0.05 for triggers. Override per
+plugin:
+
+```typescript
+new InputPlugin({
+  deadzones: { stick: 0.2, trigger: 0.1 },
+  triggerThreshold: 0.6,
 });
 ```
 
-The `onConflict` option determines what happens when the new key is already
-bound to a different action:
+### Multi-input movement
 
-- `"swap"` — the other action takes the old key
-- `"unbind"` — the other action loses its binding
-- `"reject"` — the rebind is cancelled
+The platformer example accepts both keyboard and stick input on the same
+action — let analog stick win when it has signal, fall back to digital
+otherwise:
+
+```typescript
+const stickX = input.getStick("left").x;
+const dx = stickX !== 0 ? stickX : input.getAxis("left", "right");
+```
+
+### Connect / disconnect events
+
+```typescript
+const dispose = input.onGamepadConnected((info) => {
+  // Replays currently-known pads on subscribe — you don't need a separate
+  // gamepads() call to discover existing controllers.
+  showPlayerPrompt(`Pad ${info.index}: ${info.id}`);
+});
+
+input.onGamepadDisconnected((info) => pauseGame());
+
+// Synchronous query — useful when you need ground truth right now.
+const pads = input.gamepads(); // { index, id }[]
+```
+
+:::caution[Browser quirk]
+Browsers gate the `gamepadconnected` event behind a first user input on the
+controller (security mitigation). A pad plugged in but never used won't
+trigger your `onGamepadConnected` callback until the user presses a button.
+For "Press any button to start" prompts, that delay is exactly what you want;
+for "show me what pads are plugged in right now", call `gamepads()`.
+:::
+
+### Press-any-button recipe
+
+```typescript
+const dispose = input.onGamepadConnected((info) => {
+  showHud(`Player ready! (${info.id})`);
+  dispose();
+});
+```
+
+Replay-on-subscribe means this also fires for pads that were already known —
+you handle "current and future" pads with one callback.
+
+### Synthetic injection (testing)
+
+```typescript
+input.fireGamepadButton("GamepadA", true);  // routes through the real path
+input.fireGamepadAxis("leftX", 0.7);
+```
+
+For deterministic inspector probes with a real controller plugged in, set
+`pollGamepads: false` so polling can't clobber the injected state — pair
+this with `DebugPlugin`'s `deterministicSeed` for fully deterministic test
+runs:
+
+```typescript
+new InputPlugin({ pollGamepads: false, /* ... */ });
+new DebugPlugin({ deterministicSeed: 42 });
+```
+
+## Rebinding Actions
+
+Allow players to remap controls at runtime — works uniformly for keyboard,
+mouse, and gamepad codes:
+
+```typescript
+const result = input.rebind("jump", "GamepadY", { conflict: "replace" });
+if (!result.ok) {
+  console.warn("Rebind conflict with", result.conflict?.action);
+}
+```
+
+The `conflict` option determines what happens when the new code is already
+bound to a different action *in the same group*:
+
+- `"replace"` — the other action loses the binding
+- `"keep-both"` — the new binding is added without unbinding the conflict
+- `"reject"` (default) — the rebind is cancelled and `ok` is `false`
+
+## Listen for Next Input
+
+Capture the next physical input — for "Press a key to bind" UI:
+
+```typescript
+const code = await input.listenForNextKey();
+// code is "KeyZ" | "MouseLeft" | "GamepadA" | ... | null (cancelled)
+```
+
+This intercepts the key (it does not register as a press) so the user
+mashing a button to set a binding doesn't accidentally trigger the action
+they're trying to rebind.
 
 ## Action Groups
 
@@ -133,8 +258,10 @@ key codes into human-readable labels:
 ```typescript
 import { getKeyDisplayName } from "@yagejs/input";
 
-getKeyDisplayName("Space");      // "Space"
-getKeyDisplayName("KeyA");       // "A"
-getKeyDisplayName("ArrowLeft");  // "←"
-getKeyDisplayName("Mouse0");     // "LMB"
+getKeyDisplayName("Space");           // "Space"
+getKeyDisplayName("KeyA");            // "A"
+getKeyDisplayName("ArrowLeft");       // "Left"
+getKeyDisplayName("MouseLeft");       // "Left Click"
+getKeyDisplayName("GamepadA");        // "A"
+getKeyDisplayName("GamepadDPadUp");   // "D-Pad Up"
 ```

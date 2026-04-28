@@ -123,6 +123,25 @@ const KEY_DISPLAY_NAMES: Record<string, string> = {
   MouseLeft: "Left Click",
   MouseMiddle: "Middle Click",
   MouseRight: "Right Click",
+
+  // Gamepad buttons (synthetic codes from InputPollSystem; standard mapping)
+  GamepadA: "A",
+  GamepadB: "B",
+  GamepadX: "X",
+  GamepadY: "Y",
+  GamepadLB: "LB",
+  GamepadRB: "RB",
+  GamepadLT: "LT",
+  GamepadRT: "RT",
+  GamepadSelect: "Select",
+  GamepadStart: "Start",
+  GamepadLeftStick: "Left Stick",
+  GamepadRightStick: "Right Stick",
+  GamepadDPadUp: "D-Pad Up",
+  GamepadDPadDown: "D-Pad Down",
+  GamepadDPadLeft: "D-Pad Left",
+  GamepadDPadRight: "D-Pad Right",
+  GamepadHome: "Home",
 };
 
 /** Returns a human-readable display name for a `KeyboardEvent.code` or mouse key string. */

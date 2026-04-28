@@ -1,6 +1,6 @@
 # @yagejs/input
 
-Depends on `@yagejs/core`. Keyboard, mouse, and pointer input with action maps.
+Depends on `@yagejs/core`. Keyboard, mouse, gamepad, and pointer input with action maps.
 
 ## Setup
 
@@ -145,9 +145,89 @@ Always use `InputManagerKey` for all game input. Do not use raw DOM event listen
 
 ## Key Listening
 
-For rebinding UI -- intercept the next physical key:
+For rebinding UI -- intercept the next physical key. Works for keyboard, mouse,
+**and gamepad buttons** (polling routes through the same interception path):
 
 ```ts
-const key = await input.listenForNextKey(); // "KeyZ", or null if cancelled
+const key = await input.listenForNextKey(); // "KeyZ" / "MouseLeft" / "GamepadA"
 input.cancelListen();
 ```
+
+## Gamepad
+
+Gamepads are polled each frame from `navigator.getGamepads()` and routed
+through the same key pipeline as keyboard/mouse, so `isPressed`,
+`isJustPressed`, hold-duration, and `listenForNextKey` all work uniformly
+across devices. Bind gamepad codes alongside keys in the action map:
+
+```ts
+new InputPlugin({
+  actions: {
+    jump: ["Space", "GamepadA"],
+    left: ["ArrowLeft", "GamepadDPadLeft"],
+    fire: ["MouseLeft", "GamepadRT"],
+  },
+});
+```
+
+### Standard-mapping codes
+
+`GamepadA/B/X/Y`, `GamepadLB/RB/LT/RT`, `GamepadSelect/Start`,
+`GamepadLeftStick/RightStick` (clicking the stick),
+`GamepadDPadUp/Down/Left/Right`, `GamepadHome`. Non-standard pads
+(`mapping === ""`) only expose `GamepadButton{0..15}`.
+
+`GamepadLT`/`GamepadRT` fire as button edges when their analog value crosses
+`triggerThreshold` (default 0.5). The analog value is independently available
+via `getTrigger`.
+
+### Analog API
+
+```ts
+input.getStick("left"): Vec2;     // radial deadzone, magnitude clamped to 1.0
+input.getStick("right"): Vec2;
+input.getTrigger("left"): number; // 0..1
+input.getTrigger("right"): number;
+```
+
+Across multiple connected pads, `getStick` returns the largest-magnitude
+vector and `getTrigger` returns the maximum value (single-player default).
+
+### Connect / disconnect
+
+```ts
+const dispose = input.onGamepadConnected((info) => {
+  // Replays currently-known pads on subscribe.
+  console.log("Pad", info.index, info.id);
+});
+
+input.onGamepadDisconnected((info) => /* pause game / show prompt */);
+
+input.gamepads(); // synchronous: { index, id }[] from navigator.getGamepads()
+```
+
+Browsers gate `gamepadconnected` behind a first button press for security —
+freshly-plugged pads won't fire until the user acts. Use `gamepads()` (or a
+"press any button" UI hint) when you need ground truth.
+
+### Config
+
+```ts
+new InputPlugin({
+  deadzones: { stick: 0.15, trigger: 0.05 }, // defaults shown
+  triggerThreshold: 0.5,
+  pollGamepads: true,
+});
+```
+
+### Synthetic injection (testing)
+
+```ts
+input.fireGamepadButton("GamepadA", true);   // routes through real path
+input.fireGamepadAxis("leftX", 0.7);         // stored under synthetic pad
+```
+
+For deterministic inspector probes with a real controller plugged in, pair
+`new InputPlugin({ pollGamepads: false })` with
+`new DebugPlugin({ deterministicSeed: 42 })` so polling can't clobber injected
+state. `setPollingEnabled(false)` flips the same flag at runtime.

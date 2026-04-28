@@ -39,6 +39,14 @@ describe("getKeyDisplayName", () => {
     expect(getKeyDisplayName("MouseRight")).toBe("Right Click");
   });
 
+  it("maps gamepad buttons", () => {
+    expect(getKeyDisplayName("GamepadA")).toBe("A");
+    expect(getKeyDisplayName("GamepadLT")).toBe("LT");
+    expect(getKeyDisplayName("GamepadLeftStick")).toBe("Left Stick");
+    expect(getKeyDisplayName("GamepadDPadUp")).toBe("D-Pad Up");
+    expect(getKeyDisplayName("GamepadStart")).toBe("Start");
+  });
+
   it("maps numpad keys", () => {
     expect(getKeyDisplayName("Numpad0")).toBe("Numpad 0");
     expect(getKeyDisplayName("NumpadAdd")).toBe("Numpad +");

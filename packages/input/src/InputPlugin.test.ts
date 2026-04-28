@@ -419,4 +419,77 @@ describe("InputPlugin", () => {
 
     expect(() => plugin.onStart()).not.toThrow();
   });
+
+  it("forwards gamepadconnected events to the manager", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    const seen: number[] = [];
+    manager.onGamepadConnected((info) => seen.push(info.index));
+
+    const event = new Event("gamepadconnected") as Event & { gamepad: Gamepad };
+    (event as { gamepad: Gamepad }).gamepad = {
+      index: 0,
+      id: "test-pad",
+    } as Gamepad;
+    window.dispatchEvent(event);
+    expect(seen).toEqual([0]);
+  });
+
+  it("forwards gamepaddisconnected events to the manager", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    const seen: number[] = [];
+    manager.onGamepadDisconnected((info) => seen.push(info.index));
+
+    const event = new Event("gamepaddisconnected") as Event & {
+      gamepad: Gamepad;
+    };
+    (event as { gamepad: Gamepad }).gamepad = {
+      index: 1,
+      id: "test-pad",
+    } as Gamepad;
+    window.dispatchEvent(event);
+    expect(seen).toEqual([1]);
+  });
+
+  it("releases held gamepad codes when tab visibility goes hidden", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { jump: ["GamepadA"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    manager.fireGamepadButton("GamepadA", true);
+    expect(manager.isPressed("jump")).toBe(true);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(manager.isPressed("jump")).toBe(false);
+  });
+
+  it("applies deadzones, triggerThreshold, and pollGamepads from config", () => {
+    context = createContext();
+    plugin = new InputPlugin({
+      deadzones: { stick: 0.4, trigger: 0.2 },
+      triggerThreshold: 0.7,
+      pollGamepads: false,
+    });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    expect(manager.isPollingEnabled()).toBe(false);
+
+    manager.fireGamepadAxis("leftX", 0.3);
+    expect(manager.getStick("left")).toEqual(Vec2.ZERO);
+    manager.fireGamepadAxis("leftX", 0.5);
+    expect(manager.getStick("left").x).toBeGreaterThan(0);
+  });
 });

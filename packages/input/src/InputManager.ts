@@ -2,9 +2,59 @@ import { Vec2 } from "@yagejs/core";
 import type {
   ActionMapDefinition,
   CameraLike,
+  GamepadAxisKey,
+  GamepadInfo,
   RebindOptions,
   RebindResult,
 } from "./types.js";
+
+/** Standard-mapping button codes, indexed by W3C button position. */
+const STANDARD_BUTTON_CODES = [
+  "GamepadA",
+  "GamepadB",
+  "GamepadX",
+  "GamepadY",
+  "GamepadLB",
+  "GamepadRB",
+  "GamepadLT",
+  "GamepadRT",
+  "GamepadSelect",
+  "GamepadStart",
+  "GamepadLeftStick",
+  "GamepadRightStick",
+  "GamepadDPadUp",
+  "GamepadDPadDown",
+  "GamepadDPadLeft",
+  "GamepadDPadRight",
+  "GamepadHome",
+] as const;
+
+const TRIGGER_LEFT_INDEX = 6;
+const TRIGGER_RIGHT_INDEX = 7;
+
+/** Synthetic pad index used by `fireGamepadAxis` injection. */
+const SYNTHETIC_PAD_INDEX = -1;
+
+const STICK_AXIS_KEYS: Record<
+  "left" | "right",
+  { x: GamepadAxisKey; y: GamepadAxisKey }
+> = {
+  left: { x: "leftX", y: "leftY" },
+  right: { x: "rightX", y: "rightY" },
+};
+
+const TRIGGER_AXIS_KEYS: Record<"left" | "right", GamepadAxisKey> = {
+  left: "leftTrigger",
+  right: "rightTrigger",
+};
+
+/** Standard-mapping axis indices map to semantic axis keys. */
+const STANDARD_AXIS_KEYS: readonly GamepadAxisKey[] = [
+  "leftX",
+  "leftY",
+  "rightX",
+  "rightY",
+];
 
 /** Central input state manager. Resolved via DI with InputManagerKey. */
 export class InputManager {
@@ -22,8 +72,18 @@ export class InputManager {
   private pointerScreenPos = Vec2.ZERO;
   private pointerDownState = false;
   private pressedMouseButtons = new Set<number>();
-  private gamepadButtons = new Map<number, boolean>();
-  private gamepadAxes = new Map<number, number>();
+  /** Per-pad axis values keyed by `${padIndex}:${axisKey}`. */
+  private gamepadAxisState = new Map<string, number>();
+  /** "Any pad" aggregate of currently-pressed gamepad codes. */
+  private lastButtonState = new Map<string, boolean>();
+  /** Pads we've seen via gamepadconnected events. */
+  private connectedPads = new Map<number, GamepadInfo>();
+  private gamepadConnectListeners: Array<(info: GamepadInfo) => void> = [];
+  private gamepadDisconnectListeners: Array<(info: GamepadInfo) => void> = [];
+  private stickDeadzone = 0.15;
+  private triggerDeadzone = 0.05;
+  private triggerThreshold = 0.5;
+  private pollingEnabled = true;
   private camera: CameraLike | null = null;
   private elapsedMs = 0;
   private listenResolve: ((key: string | null) => void) | null = null;
@@ -398,14 +458,262 @@ export class InputManager {
     if (button === 2) this._onKeyUp("MouseRight");
   }
 
-  /** Store synthetic gamepad button state. */
-  fireGamepadButton(idx: number, pressed: boolean): void {
-    this.gamepadButtons.set(idx, pressed);
+  /**
+   * Inject a synthetic gamepad button edge. Routes through the same internal
+   * path as real polling, so action queries (`isPressed`, `isJustPressed`),
+   * `listenForNextKey`, and rebinding all see the synthetic input.
+   *
+   * `code` should be a gamepad code string (e.g. `"GamepadA"`, `"GamepadLT"`).
+   * Used by inspector probes / deterministic tests in lieu of real polling.
+   */
+  fireGamepadButton(code: string, pressed: boolean): void {
+    const wasPressed = this.lastButtonState.get(code) ?? false;
+    if (pressed && !wasPressed) {
+      this._onKeyDown(code);
+      this.lastButtonState.set(code, true);
+    } else if (!pressed && wasPressed) {
+      this._onKeyUp(code);
+      this.lastButtonState.delete(code);
+    }
   }
 
-  /** Store synthetic gamepad axis state. */
-  fireGamepadAxis(idx: number, value: number): void {
-    this.gamepadAxes.set(idx, value);
+  /**
+   * Inject a synthetic gamepad axis value. Stored under a synthetic pad index
+   * and aggregated by `getStick` / `getTrigger` alongside real pads.
+   */
+  fireGamepadAxis(side: GamepadAxisKey, value: number): void {
+    this.gamepadAxisState.set(`${SYNTHETIC_PAD_INDEX}:${side}`, value);
+  }
+
+  // -- Gamepad analog API --
+
+  /**
+   * Returns the deadzoned, magnitude-clamped stick vector for the given side.
+   * Across multiple connected pads, the largest-magnitude vector wins.
+   */
+  getStick(side: "left" | "right"): Vec2 {
+    const { x: xKey, y: yKey } = STICK_AXIS_KEYS[side];
+    let bestX = 0;
+    let bestY = 0;
+    let bestMag = 0;
+    for (const padIdx of this.collectPadIndices()) {
+      const x = this.gamepadAxisState.get(`${padIdx}:${xKey}`) ?? 0;
+      const y = this.gamepadAxisState.get(`${padIdx}:${yKey}`) ?? 0;
+      const mag = Math.hypot(x, y);
+      if (mag > bestMag) {
+        bestMag = mag;
+        bestX = x;
+        bestY = y;
+      }
+    }
+    if (bestMag < this.stickDeadzone) return Vec2.ZERO;
+    const adjustedMag = Math.min(
+      1,
+      (bestMag - this.stickDeadzone) / (1 - this.stickDeadzone),
+    );
+    return new Vec2((bestX / bestMag) * adjustedMag, (bestY / bestMag) * adjustedMag);
+  }
+
+  /**
+   * Returns the deadzoned trigger value (0..1) for the given side.
+   * Across multiple connected pads, the maximum value wins.
+   */
+  getTrigger(side: "left" | "right"): number {
+    const key = TRIGGER_AXIS_KEYS[side];
+    let best = 0;
+    for (const padIdx of this.collectPadIndices()) {
+      const v = this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0;
+      if (v > best) best = v;
+    }
+    if (best < this.triggerDeadzone) return 0;
+    return Math.min(1, (best - this.triggerDeadzone) / (1 - this.triggerDeadzone));
+  }
+
+  private collectPadIndices(): Set<number> {
+    const indices = new Set<number>();
+    for (const key of this.gamepadAxisState.keys()) {
+      const colon = key.indexOf(":");
+      if (colon === -1) continue;
+      indices.add(Number.parseInt(key.slice(0, colon), 10));
+    }
+    return indices;
+  }
+
+  // -- Gamepad enumeration / events --
+
+  /**
+   * Synchronously poll `navigator.getGamepads()` for currently-connected pads.
+   * Use this rather than the cached event-driven list when you need ground
+   * truth — `gamepadconnected` doesn't fire until the user presses a button.
+   */
+  gamepads(): readonly GamepadInfo[] {
+    if (
+      typeof navigator === "undefined" ||
+      typeof navigator.getGamepads !== "function"
+    ) {
+      return [];
+    }
+    const result: GamepadInfo[] = [];
+    for (const pad of navigator.getGamepads()) {
+      if (pad) result.push({ index: pad.index, id: pad.id });
+    }
+    return result;
+  }
+
+  /**
+   * Subscribe to gamepad-connected events. Replays currently-known pads
+   * synchronously so callers don't need a separate `gamepads()` call.
+   * Returns a disposer.
+   */
+  onGamepadConnected(fn: (info: GamepadInfo) => void): () => void {
+    this.gamepadConnectListeners.push(fn);
+    for (const info of this.connectedPads.values()) fn(info);
+    return () => {
+      const idx = this.gamepadConnectListeners.indexOf(fn);
+      if (idx !== -1) this.gamepadConnectListeners.splice(idx, 1);
+    };
+  }
+
+  /** Subscribe to gamepad-disconnected events. Returns a disposer. */
+  onGamepadDisconnected(fn: (info: GamepadInfo) => void): () => void {
+    this.gamepadDisconnectListeners.push(fn);
+    return () => {
+      const idx = this.gamepadDisconnectListeners.indexOf(fn);
+      if (idx !== -1) this.gamepadDisconnectListeners.splice(idx, 1);
+    };
+  }
+
+  // -- Gamepad runtime config --
+
+  /** Enable or disable real gamepad polling. Synthetic injection still works when disabled. */
+  setPollingEnabled(enabled: boolean): void {
+    this.pollingEnabled = enabled;
+  }
+
+  /** Whether real gamepad polling is currently enabled. */
+  isPollingEnabled(): boolean {
+    return this.pollingEnabled;
+  }
+
+  /** Update analog deadzones at runtime. Either field may be omitted. */
+  setDeadzones(opts: { stick?: number; trigger?: number }): void {
+    if (opts.stick !== undefined) this.stickDeadzone = opts.stick;
+    if (opts.trigger !== undefined) this.triggerDeadzone = opts.trigger;
+  }
+
+  /** Set the trigger button-edge threshold (default 0.5). */
+  setTriggerThreshold(value: number): void {
+    this.triggerThreshold = value;
+  }
+
+  // -- Internal: polling and connect/disconnect plumbing --
+
+  /** @internal Force-release any held gamepad codes. Used on tab-hide. */
+  _releaseAllGamepadButtons(): void {
+    for (const code of [...this.lastButtonState.keys()]) {
+      this._onKeyUp(code);
+    }
+    this.lastButtonState.clear();
+  }
+
+  /** @internal Called by InputPlugin from `gamepadconnected` event. */
+  _onGamepadConnected(info: GamepadInfo): void {
+    this.connectedPads.set(info.index, info);
+    for (const fn of this.gamepadConnectListeners) fn(info);
+  }
+
+  /** @internal Called by InputPlugin from `gamepaddisconnected` event. */
+  _onGamepadDisconnected(info: GamepadInfo): void {
+    this.connectedPads.delete(info.index);
+    // Drop axis state for the departed pad
+    for (const key of [...this.gamepadAxisState.keys()]) {
+      if (key.startsWith(`${info.index}:`)) this.gamepadAxisState.delete(key);
+    }
+    // Re-aggregate held buttons against remaining pads. If polling is
+    // disabled (test mode), conservatively release all gamepad buttons —
+    // synthetic injection callers can re-press anything they still want held.
+    if (this.pollingEnabled) {
+      this._pollGamepads();
+    } else {
+      this._releaseAllGamepadButtons();
+    }
+    for (const fn of this.gamepadDisconnectListeners) fn(info);
+  }
+
+  /**
+   * @internal Poll real gamepads via `navigator.getGamepads()` and emit
+   * key-down/key-up edges for any aggregate state changes. Called by
+   * `InputPollSystem` once per frame.
+   */
+  _pollGamepads(): void {
+    if (
+      typeof navigator === "undefined" ||
+      typeof navigator.getGamepads !== "function"
+    ) {
+      return;
+    }
+    const pads = navigator.getGamepads();
+
+    // Collect "any pad pressed" per code, plus refresh axis state.
+    const codePressed = new Map<string, boolean>();
+    for (const pad of pads) {
+      if (!pad) continue;
+      const standard = pad.mapping === "standard";
+      const buttons = pad.buttons;
+      for (let btnIdx = 0; btnIdx < buttons.length; btnIdx++) {
+        const btn = buttons[btnIdx];
+        if (!btn) continue;
+        const standardCode =
+          standard && btnIdx < STANDARD_BUTTON_CODES.length
+            ? STANDARD_BUTTON_CODES[btnIdx]
+            : undefined;
+        const code = standardCode ?? `GamepadButton${btnIdx}`;
+        const isTrigger =
+          standard && (btnIdx === TRIGGER_LEFT_INDEX || btnIdx === TRIGGER_RIGHT_INDEX);
+        const isDown = isTrigger ? btn.value >= this.triggerThreshold : btn.pressed;
+        if (isDown) codePressed.set(code, true);
+      }
+
+      // Stick axes
+      if (standard) {
+        for (let axIdx = 0; axIdx < STANDARD_AXIS_KEYS.length; axIdx++) {
+          const axisKey = STANDARD_AXIS_KEYS[axIdx];
+          if (!axisKey) continue;
+          this.gamepadAxisState.set(
+            `${pad.index}:${axisKey}`,
+            pad.axes[axIdx] ?? 0,
+          );
+        }
+        // Trigger analog values from buttons 6/7
+        const lt = pad.buttons[TRIGGER_LEFT_INDEX];
+        const rt = pad.buttons[TRIGGER_RIGHT_INDEX];
+        this.gamepadAxisState.set(`${pad.index}:leftTrigger`, lt?.value ?? 0);
+        this.gamepadAxisState.set(`${pad.index}:rightTrigger`, rt?.value ?? 0);
+      }
+    }
+
+    // Edge detection: union of last-frame and this-frame codes
+    const allCodes = new Set<string>([
+      ...this.lastButtonState.keys(),
+      ...codePressed.keys(),
+    ]);
+    for (const code of allCodes) {
+      const wasPressed = this.lastButtonState.get(code) ?? false;
+      const isPressed = codePressed.get(code) ?? false;
+      if (isPressed && !wasPressed) {
+        this._onKeyDown(code);
+      } else if (!isPressed && wasPressed) {
+        this._onKeyUp(code);
+      }
+      // Update lastButtonState unconditionally — fixes listen-mode held-button:
+      // when _onKeyDown intercepts (listen resolves and short-circuits), the
+      // diff next frame is `true → true` (no edge), preventing infinite re-fire.
+      if (isPressed) {
+        this.lastButtonState.set(code, true);
+      } else {
+        this.lastButtonState.delete(code);
+      }
+    }
   }
 
   /** Inject a one-frame synthetic action pulse. */
@@ -432,8 +740,8 @@ export class InputManager {
     this.syntheticActionStarts.clear();
     this.pressedMouseButtons.clear();
     this.pointerDownState = false;
-    this.gamepadButtons.clear();
-    this.gamepadAxes.clear();
+    this.lastButtonState.clear();
+    this.gamepadAxisState.clear();
   }
 
   /** Release any pressed pointer buttons without touching keyboard state. */
@@ -453,27 +761,25 @@ export class InputManager {
     actions: string[];
     mouse: { x: number; y: number; buttons: number[]; down: boolean };
     gamepad: {
-      buttons: number[];
-      axes: Array<{ index: number; value: number }>;
+      buttons: string[];
+      axes: Array<{ key: string; value: number }>;
     };
   } {
     const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
     const keys = [...this.pressedKeys].sort(cmp);
+    const nonGamepadKeys = keys.filter((k) => !k.startsWith("Gamepad"));
+    const gamepadButtons = keys.filter((k) => k.startsWith("Gamepad"));
     const actions = this.getActionNames()
       .filter((action) => this.isPressed(action))
       .sort(cmp);
     const buttons = [...this.pressedMouseButtons].sort((a, b) => a - b);
-    const pressedButtons = [...this.gamepadButtons.entries()]
-      .filter(([, pressed]) => pressed)
-      .map(([idx]) => idx)
-      .sort((a, b) => a - b);
-    const axes = [...this.gamepadAxes.entries()]
-      .filter(([, value]) => value !== 0)
-      .sort(([a], [b]) => a - b)
-      .map(([index, value]) => ({ index, value }));
+    const axes = [...this.gamepadAxisState.entries()]
+      .filter(([, value]) => Math.abs(value) > 0.001)
+      .sort(([a], [b]) => cmp(a, b))
+      .map(([key, value]) => ({ key, value }));
 
     return {
-      keys,
+      keys: nonGamepadKeys,
       actions,
       mouse: {
         x: this.pointerScreenPos.x,
@@ -482,7 +788,7 @@ export class InputManager {
         down: this.pointerDownState,
       },
       gamepad: {
-        buttons: pressedButtons,
+        buttons: gamepadButtons,
         axes,
       },
     };

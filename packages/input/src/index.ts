@@ -10,4 +10,5 @@ export type {
   RebindResult,
   CameraLike,
   RendererLike,
+  GamepadInfo,
 } from "./types.js";
