@@ -467,12 +467,31 @@ describe("InputPlugin", () => {
     manager.fireGamepadButton("GamepadA", true);
     expect(manager.isPressed("jump")).toBe(true);
 
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      get: () => "hidden",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-    expect(manager.isPressed("jump")).toBe(false);
+    // Save the original descriptor so the override doesn't bleed into other
+    // specs that share the document object.
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Document.prototype,
+      "visibilityState",
+    );
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(manager.isPressed("jump")).toBe(false);
+    } finally {
+      // Remove our override; jsdom's prototype getter takes over again.
+      delete (document as unknown as { visibilityState?: unknown })
+        .visibilityState;
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Document.prototype,
+          "visibilityState",
+          originalDescriptor,
+        );
+      }
+    }
   });
 
   it("applies deadzones, triggerThreshold, and pollGamepads from config", () => {

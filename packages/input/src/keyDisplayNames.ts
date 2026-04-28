@@ -144,7 +144,13 @@ const KEY_DISPLAY_NAMES: Record<string, string> = {
   GamepadHome: "Home",
 };
 
+const GAMEPAD_BUTTON_FALLBACK = /^GamepadButton(\d+)$/;
+
 /** Returns a human-readable display name for a `KeyboardEvent.code` or mouse key string. */
 export function getKeyDisplayName(code: string): string {
-  return KEY_DISPLAY_NAMES[code] ?? code;
+  const direct = KEY_DISPLAY_NAMES[code];
+  if (direct !== undefined) return direct;
+  const fallback = GAMEPAD_BUTTON_FALLBACK.exec(code);
+  if (fallback) return `Gamepad Button ${fallback[1]}`;
+  return code;
 }

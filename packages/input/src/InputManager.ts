@@ -480,9 +480,18 @@ export class InputManager {
   /**
    * Inject a synthetic gamepad axis value. Stored under a synthetic pad index
    * and aggregated by `getStick` / `getTrigger` alongside real pads.
+   *
+   * Trigger axes additionally emit `GamepadLT`/`GamepadRT` button edges when
+   * crossing `triggerThreshold`, mirroring real-pad polling so synthetic
+   * inspector probes drive `isPressed` the same way as physical hardware.
    */
   fireGamepadAxis(side: GamepadAxisKey, value: number): void {
     this.gamepadAxisState.set(`${SYNTHETIC_PAD_INDEX}:${side}`, value);
+    if (side === "leftTrigger") {
+      this.fireGamepadButton("GamepadLT", value >= this.triggerThreshold);
+    } else if (side === "rightTrigger") {
+      this.fireGamepadButton("GamepadRT", value >= this.triggerThreshold);
+    }
   }
 
   // -- Gamepad analog API --
@@ -507,6 +516,9 @@ export class InputManager {
       }
     }
     if (bestMag < this.stickDeadzone) return Vec2.ZERO;
+    // Guards the deadzone:0 case — `bestMag === 0` slips past the previous
+    // check when the deadzone is disabled, and dividing by zero would yield NaN.
+    if (bestMag === 0) return Vec2.ZERO;
     const adjustedMag = Math.min(
       1,
       (bestMag - this.stickDeadzone) / (1 - this.stickDeadzone),

@@ -184,10 +184,10 @@ via `getTrigger`.
 ### Analog API
 
 ```ts
-input.getStick("left"): Vec2;     // radial deadzone, magnitude clamped to 1.0
-input.getStick("right"): Vec2;
-input.getTrigger("left"): number; // 0..1
-input.getTrigger("right"): number;
+const leftStick = input.getStick("left");      // Vec2 — radial deadzone, magnitude clamped to 1.0
+const rightStick = input.getStick("right");    // Vec2
+const leftTrigger = input.getTrigger("left");  // number, 0..1
+const rightTrigger = input.getTrigger("right");
 ```
 
 Across multiple connected pads, `getStick` returns the largest-magnitude

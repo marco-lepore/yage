@@ -68,4 +68,9 @@ describe("getKeyDisplayName", () => {
     expect(getKeyDisplayName("GamepadButtonX")).toBe("GamepadButtonX");
     expect(getKeyDisplayName("CustomKey")).toBe("CustomKey");
   });
+
+  it("formats GamepadButton{N} fallback codes", () => {
+    expect(getKeyDisplayName("GamepadButton5")).toBe("Gamepad Button 5");
+    expect(getKeyDisplayName("GamepadButton16")).toBe("Gamepad Button 16");
+  });
 });

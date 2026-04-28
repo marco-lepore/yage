@@ -826,6 +826,35 @@ describe("InputManager", () => {
       expect(input.isPressed("jump")).toBe(false);
     });
 
+    it("getStick(deadzone:0) returns Vec2.ZERO when stick is centered (no NaN)", () => {
+      input.setDeadzones({ stick: 0 });
+      input.fireGamepadAxis("leftX", 0);
+      input.fireGamepadAxis("leftY", 0);
+      const v = input.getStick("left");
+      expect(v.x).toBe(0);
+      expect(v.y).toBe(0);
+      expect(Number.isNaN(v.x)).toBe(false);
+      expect(Number.isNaN(v.y)).toBe(false);
+    });
+
+    it("fireGamepadAxis on triggers emits GamepadLT/GamepadRT button edges", () => {
+      input.setActionMap({ shoot: ["GamepadRT"], aim: ["GamepadLT"] });
+      input.setTriggerThreshold(0.5);
+
+      input.fireGamepadAxis("rightTrigger", 0.3);
+      expect(input.isPressed("shoot")).toBe(false);
+
+      input.fireGamepadAxis("rightTrigger", 0.8);
+      expect(input.isPressed("shoot")).toBe(true);
+
+      input._clearFrameState();
+      input.fireGamepadAxis("rightTrigger", 0.2);
+      expect(input.isPressed("shoot")).toBe(false);
+
+      input.fireGamepadAxis("leftTrigger", 0.9);
+      expect(input.isPressed("aim")).toBe(true);
+    });
+
     it("LT/RT fire as buttons when value exceeds triggerThreshold", () => {
       input.setActionMap({ shoot: ["GamepadRT"] });
       input.setTriggerThreshold(0.5);
