@@ -25,7 +25,7 @@
     "clean": "turbo run clean",
     "build:site": "turbo run build && node scripts/assemble-site.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && node scripts/sync-template-versions.mjs",
     "release": "turbo run build && changeset publish"
   },
   "devDependencies": {
