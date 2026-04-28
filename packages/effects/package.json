@@ -51,7 +51,7 @@
     "pixi-filters": "^6.1.5"
   },
   "peerDependencies": {
-    "@yagejs/renderer": "^0.3.0",
+    "@yagejs/renderer": ">=0.3.0 <1.0.0",
     "pixi.js": "^8.5.0"
   }
 }
