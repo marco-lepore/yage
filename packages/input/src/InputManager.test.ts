@@ -951,6 +951,54 @@ describe("InputManager", () => {
       expect(input.getStick("right").x).toBeGreaterThan(0);
     });
 
+    it("setDeadzones clamps stick to [0, 0.999] and ignores non-finite", () => {
+      input.setDeadzones({ stick: 5 });
+      input.fireGamepadAxis("leftX", 0.5);
+      // With deadzone clamped to 0.999, mag=0.5 falls below → returns ZERO
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+
+      input.setDeadzones({ stick: -1 });
+      input.fireGamepadAxis("leftX", 0.5);
+      // Clamped to 0; deadzone gate at 0 passes for mag=0.5
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+
+      // Non-finite is ignored (stick stays at the previous clamped 0)
+      input.setDeadzones({ stick: Number.NaN });
+      input.fireGamepadAxis("leftX", 0.3);
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+    });
+
+    it("setTriggerThreshold clamps to [0, 1] and ignores non-finite", () => {
+      input.setActionMap({ shoot: ["GamepadRT"] });
+
+      input.setTriggerThreshold(2);
+      input.fireGamepadAxis("rightTrigger", 0.99);
+      // Threshold clamped to 1 — value 0.99 doesn't reach
+      expect(input.isPressed("shoot")).toBe(false);
+
+      input.setTriggerThreshold(-1);
+      input.fireGamepadAxis("rightTrigger", 0.01);
+      // Threshold clamped to 0 — anything > 0 fires
+      expect(input.isPressed("shoot")).toBe(true);
+
+      input.fireGamepadAxis("rightTrigger", 0); // reset
+      input.setTriggerThreshold(Number.POSITIVE_INFINITY);
+      input.fireGamepadAxis("rightTrigger", 0.5);
+      // Non-finite ignored — last valid threshold (0) still wins
+      expect(input.isPressed("shoot")).toBe(true);
+    });
+
+    it("polling drops axis state for pads that vanished without disconnect event", () => {
+      setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+
+      // Pad disappears without firing gamepaddisconnected
+      setPads([]);
+      input._pollGamepads();
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+    });
+
     it("snapshotState splits keyboard and gamepad keys", () => {
       input.fireKeyDown("Space");
       input.fireGamepadButton("GamepadA", true);

@@ -33,8 +33,14 @@ interface InputManagerLike {
   firePointerMove(x: number, y: number): void;
   firePointerDown(button?: 0 | 1 | 2): void;
   firePointerUp(button?: 0 | 1 | 2): void;
-  fireGamepadButton(idx: number, pressed: boolean): void;
-  fireGamepadAxis(idx: number, value: number): void;
+  /** `code` is a gamepad code string (e.g. `"GamepadA"`, `"GamepadLT"`). */
+  fireGamepadButton(code: string, pressed: boolean): void;
+  /**
+   * `side` is a `GamepadAxisKey` from `@yagejs/input` (`"leftX"`, `"leftY"`,
+   * `"rightX"`, `"rightY"`, `"leftTrigger"`, `"rightTrigger"`). Typed as
+   * `string` here to avoid a runtime dep on the input package.
+   */
+  fireGamepadAxis(side: string, value: number): void;
   fireAction(name: string): void;
   clearAll(): void;
   snapshotState(): InputStateSnapshot;
@@ -198,8 +204,13 @@ export interface InputStateSnapshot {
     down: boolean;
   };
   gamepad: {
-    buttons: number[];
-    axes: Array<{ index: number; value: number }>;
+    /** Currently-held gamepad codes (e.g. `"GamepadA"`, `"GamepadLT"`). */
+    buttons: string[];
+    /**
+     * Axis state keyed by `${padIndex}:${axisName}` (axisName is a
+     * `GamepadAxisKey` from `@yagejs/input`).
+     */
+    axes: Array<{ key: string; value: number }>;
   };
 }
 
@@ -327,11 +338,11 @@ export class Inspector {
     mouseUp: (button: 0 | 1 | 2 = 0): void => {
       this.requireInputManager().firePointerUp(button);
     },
-    gamepadButton: (idx: number, pressed: boolean): void => {
-      this.requireInputManager().fireGamepadButton(idx, pressed);
+    gamepadButton: (code: string, pressed: boolean): void => {
+      this.requireInputManager().fireGamepadButton(code, pressed);
     },
-    gamepadAxis: (idx: number, value: number): void => {
-      this.requireInputManager().fireGamepadAxis(idx, value);
+    gamepadAxis: (side: string, value: number): void => {
+      this.requireInputManager().fireGamepadAxis(side, value);
     },
     tap: (code: string, frames = 1): void => {
       this.assertNonNegativeInteger(frames, "Inspector.input.tap(frames)");

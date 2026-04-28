@@ -607,15 +607,27 @@ export class InputManager {
     return this.pollingEnabled;
   }
 
-  /** Update analog deadzones at runtime. Either field may be omitted. */
+  /**
+   * Update analog deadzones at runtime. Either field may be omitted.
+   * Values are clamped to `[0, 0.999]` — capping below 1 keeps the rescaling
+   * denominator non-zero. Non-finite values are ignored.
+   */
   setDeadzones(opts: { stick?: number; trigger?: number }): void {
-    if (opts.stick !== undefined) this.stickDeadzone = opts.stick;
-    if (opts.trigger !== undefined) this.triggerDeadzone = opts.trigger;
+    if (opts.stick !== undefined && Number.isFinite(opts.stick)) {
+      this.stickDeadzone = Math.max(0, Math.min(0.999, opts.stick));
+    }
+    if (opts.trigger !== undefined && Number.isFinite(opts.trigger)) {
+      this.triggerDeadzone = Math.max(0, Math.min(0.999, opts.trigger));
+    }
   }
 
-  /** Set the trigger button-edge threshold (default 0.5). */
+  /**
+   * Set the trigger button-edge threshold (default 0.5). Clamped to `[0, 1]`;
+   * non-finite values are ignored.
+   */
   setTriggerThreshold(value: number): void {
-    this.triggerThreshold = value;
+    if (!Number.isFinite(value)) return;
+    this.triggerThreshold = Math.max(0, Math.min(1, value));
   }
 
   // -- Internal: polling and connect/disconnect plumbing --
@@ -676,6 +688,20 @@ export class InputManager {
       return;
     }
     const pads = navigator.getGamepads();
+
+    // Defensively drop axis entries from pads that vanished without firing
+    // gamepaddisconnected (e.g. tab backgrounded during disconnect). Without
+    // this, getStick/getTrigger could keep returning stale values.
+    const liveIndices = new Set<number>();
+    for (const pad of pads) if (pad) liveIndices.add(pad.index);
+    for (const key of [...this.gamepadAxisState.keys()]) {
+      const colon = key.indexOf(":");
+      if (colon === -1) continue;
+      const idx = Number.parseInt(key.slice(0, colon), 10);
+      if (idx !== SYNTHETIC_PAD_INDEX && !liveIndices.has(idx)) {
+        this.gamepadAxisState.delete(key);
+      }
+    }
 
     // Collect "any pad pressed" per code, plus refresh axis state.
     const codePressed = new Map<string, boolean>();
