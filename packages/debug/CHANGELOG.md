@@ -1,5 +1,21 @@
 # @yagejs/debug
 
+## 0.4.0
+
+### Minor Changes
+
+- [#45](https://github.com/marco-lepore/yage/pull/45) [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Inspector deterministic test mode and per-package serialization plumbing for `Inspector.snapshot()`.
+  - `DebugPlugin` now wires the manual `DebugClock` into `Inspector.attachTimeController(...)` so `inspector.time.freeze()/step()` works while the plugin is active, and turns on event-log recording via `inspector.setEventLogEnabled(true)` during `onStart`.
+  - `DebugConfig.deterministicSeed?: number` opt-in: when set, every scene's RNG is initialized to this seed via `inspector.setDefaultSceneSeed(...)`. Leave undefined for normal debug builds; set it from test fixtures so replays start from a known RNG state. The previous unconditional fixed seed is gone.
+  - Renderer-aware diagnostics (`getLayerTransform`, `getCameraStack`) are now published via `inspector.addExtension("debug", ...)` and exposed as `DebugDiagnostics` — fetch with `inspector.getExtension<DebugDiagnostics>("debug")`. The plugin removes the extension on `onDestroy`, so they no longer leak past plugin teardown.
+  - The `Period` step hotkey advances one frame through the same `DebugClock` the inspector uses, keeping the manual timeline coherent across hotkey + programmatic stepping.
+
+### Patch Changes
+
+- Updated dependencies [[`e7d6645`](https://github.com/marco-lepore/yage/commit/e7d6645f9acff27269fa6f6e52032482651b146d), [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805), [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805), [`08efa94`](https://github.com/marco-lepore/yage/commit/08efa94a8be02ba56c1df9d3bed643abcc1d7159)]:
+  - @yagejs/renderer@0.4.0
+  - @yagejs/core@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes

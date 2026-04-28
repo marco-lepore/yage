@@ -1,5 +1,13 @@
 # @yagejs/tilemap
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`e7d6645`](https://github.com/marco-lepore/yage/commit/e7d6645f9acff27269fa6f6e52032482651b146d), [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805), [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805), [`08efa94`](https://github.com/marco-lepore/yage/commit/08efa94a8be02ba56c1df9d3bed643abcc1d7159)]:
+  - @yagejs/renderer@0.4.0
+  - @yagejs/core@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes

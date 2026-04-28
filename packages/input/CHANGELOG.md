@@ -1,5 +1,21 @@
 # @yagejs/input
 
+## 0.4.0
+
+### Minor Changes
+
+- [#45](https://github.com/marco-lepore/yage/pull/45) [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Inspector deterministic test mode and per-package serialization plumbing for `Inspector.snapshot()`.
+  - `InputManager` exposes synthetic input drivers consumed by the inspector — `fireKeyDown`/`fireKeyUp`, `firePointerMove`/`firePointerDown`/`firePointerUp`, `fireGamepadButton`/`fireGamepadAxis`, `fireAction`, `clearAll` — plus `snapshotState()` returning a stable view of pressed keys, active actions, mouse and gamepad state.
+  - Synthetic actions are tracked separately (`syntheticPressedActions` / `syntheticActionStarts`) so `isPressed` / `isJustPressed` / `getHoldDuration` see fired actions even without a bound key. Mouse buttons and gamepad button/axis state are now tracked too, so `snapshotState()` is complete.
+  - `InputPlugin` routes real DOM pointer events through the new `firePointerDown`/`Up` paths so production input goes through the same code path as inspector-driven input.
+  - New `@yagejs/input/api` subpath that re-exports `InputManagerKey` and `InputConfig` for downstream packages that need the types without pulling the runtime.
+
+### Patch Changes
+
+- Updated dependencies [[`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805), [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805)]:
+  - @yagejs/core@0.4.0
+  - @yagejs/debug@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

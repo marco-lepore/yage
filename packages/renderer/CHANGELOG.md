@@ -1,5 +1,31 @@
 # @yagejs/renderer
 
+## 0.4.0
+
+### Minor Changes
+
+- [#44](https://github.com/marco-lepore/yage/pull/44) [`e7d6645`](https://github.com/marco-lepore/yage/commit/e7d6645f9acff27269fa6f6e52032482651b146d) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Effects preset package + handle-based save/load for effects and masks.
+  - New `@yagejs/effects` package: ten hero presets — `hitFlash`, `bloom`, `outline`, `dropShadow`, `pixelate`, `glow`, `crt`, `chromaticAberration`, `vignette`, `colorGrade`. Each preset registers under a stable `yage:<name>` string via `defineEffect` so it survives save/load.
+  - Renderer: new `defineEffect` / `defineMask` registries; `EffectStack.serialize` / `restoreFrom`; `MaskHandle.serialize`; `restoreMask` helper. The 4 visual components now persist their effects + mask through `serialize` / `afterRestore`. A `RendererSnapshotContributor` is auto-registered with `SaveService` (when present) to cover layer / scene / screen-scope effects + masks.
+  - Save: new `SnapshotContributor` extension hook (`registerSnapshotExtra` / `unregisterSnapshotExtra`) so plugins can extend `GameSnapshot.extras`. Snapshot version bumped 3 → 4 — older saves no longer load.
+
+  `rawFilter`, `spriteMask`, and `graphicsMask` skip serialization with a one-shot warning since they have no string identity to record. In-flight `fadeIn` / `fadeOut` tweens are not preserved across save/load.
+
+- [#45](https://github.com/marco-lepore/yage/pull/45) [`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Inspector deterministic test mode and per-package serialization plumbing for `Inspector.snapshot()`.
+  - `CameraComponent`, `CameraFollow`, `CameraShake`, `CameraZoom`, `CameraBoundsComponent`, and `ScreenFollow` are now `@serializable`, with explicit `serialize()` / `static fromSnapshot(data)` pairs. Inspector world snapshots and save-system slots now capture full camera state (position, zoom, rotation, follow target by entity id, shake/zoom processes, bounds rect, parallax bindings).
+  - New public types: `CameraComponentData`, `CameraFollowData`, `CameraShakeData`, `CameraZoomData`, `CameraBoundsComponentData`, `ScreenFollowData` (exported from the package barrel).
+
+- [#39](https://github.com/marco-lepore/yage/pull/39) [`08efa94`](https://github.com/marco-lepore/yage/commit/08efa94a8be02ba56c1df9d3bed643abcc1d7159) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `TextComponent` and gradient fill helpers so user code no longer needs to import `Text` or `FillGradient` from `pixi.js`.
+  - `TextComponent` — layer-aware, Transform-synced, serializable text, analogous to `SpriteComponent` / `GraphicsComponent`. Constructor takes `{ text, style?, anchor?, layer?, visible?, tint?, alpha? }`; `style` forwards to PixiJS `TextStyle` (CSS-like font properties). Use for world-space labels, floating damage numbers, and HUD text. Style options are cached on the component so `serialize()` emits a JSON-safe POJO rather than the live pixi `TextStyle` instance.
+  - `linearGradient(...)` / `radialGradient(...)` — factory functions returning a `GradientFill` (pixi `FillGradient` under the hood) usable anywhere `g.fill(...)` accepts a fill style. Stops use yage-style numeric `color` + optional `alpha` per stop (no CSS color strings). Linear gradients support an `axis: "horizontal" | "vertical"` shorthand or explicit `start`/`end` points; radial gradients take `center`, `innerRadius`, `outerRadius`. Both default to `space: "local"` so a single instance scales across any shape it fills; pass `"global"` for absolute pixel coords.
+  - New public type aliases: `DisplayText`, `GradientFill`. `public-types.ts` now uses top-level `import type` per AGENTS.md.
+  - `examples/src/responsive-ui.ts` is rewritten — zero `pixi.js` imports remain. HUD cards now use `UIPanel` + `UIText` (`@yagejs/ui`) with `positioning: "transform"`, demonstrating the idiomatic split: laid-out text widgets are UI's job (flexbox padding, gap, background, child rows for free), while `TextComponent` and `GraphicsComponent` are the right primitives for free-positioned single-string text and procedural shapes respectively. The fog overlay uses the new `linearGradient` helper.
+
+### Patch Changes
+
+- Updated dependencies [[`0711684`](https://github.com/marco-lepore/yage/commit/0711684b642da76cd29bf250eccc646d89360805)]:
+  - @yagejs/core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
