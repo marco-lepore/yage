@@ -39,6 +39,14 @@ describe("getKeyDisplayName", () => {
     expect(getKeyDisplayName("MouseRight")).toBe("Right Click");
   });
 
+  it("maps gamepad buttons", () => {
+    expect(getKeyDisplayName("GamepadA")).toBe("A");
+    expect(getKeyDisplayName("GamepadLT")).toBe("LT");
+    expect(getKeyDisplayName("GamepadLeftStick")).toBe("Left Stick");
+    expect(getKeyDisplayName("GamepadDPadUp")).toBe("D-Pad Up");
+    expect(getKeyDisplayName("GamepadStart")).toBe("Start");
+  });
+
   it("maps numpad keys", () => {
     expect(getKeyDisplayName("Numpad0")).toBe("Numpad 0");
     expect(getKeyDisplayName("NumpadAdd")).toBe("Numpad +");
@@ -59,5 +67,10 @@ describe("getKeyDisplayName", () => {
   it("returns the code itself for unknown codes", () => {
     expect(getKeyDisplayName("GamepadButtonX")).toBe("GamepadButtonX");
     expect(getKeyDisplayName("CustomKey")).toBe("CustomKey");
+  });
+
+  it("formats GamepadButton{N} fallback codes", () => {
+    expect(getKeyDisplayName("GamepadButton5")).toBe("Gamepad Button 5");
+    expect(getKeyDisplayName("GamepadButton16")).toBe("Gamepad Button 16");
   });
 });

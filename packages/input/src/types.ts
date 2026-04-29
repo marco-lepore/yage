@@ -35,7 +35,47 @@ export interface InputConfig {
    * key.
    */
   rendererKey?: ServiceKey<RendererAdapter>;
+  /** Deadzone thresholds for analog inputs. */
+  deadzones?: {
+    /** Radial deadzone applied to stick magnitude (default 0.15). */
+    stick?: number;
+    /** Lower deadzone for trigger analog values (default 0.05). */
+    trigger?: number;
+  };
+  /**
+   * Trigger value at which `GamepadLT`/`GamepadRT` fire as button edges in the
+   * action map (default 0.5). Below this, the trigger remains "released" for
+   * `isPressed` purposes; the analog `getTrigger` value is unaffected.
+   */
+  triggerThreshold?: number;
+  /**
+   * Whether to poll `navigator.getGamepads()` each frame (default `true`).
+   * Disable to use only synthetic input via `fireGamepadButton`/`fireGamepadAxis`
+   * — useful for inspector probes that want deterministic state.
+   */
+  pollGamepads?: boolean;
 }
+
+/** Information about a connected gamepad. */
+export interface GamepadInfo {
+  /** Index in `navigator.getGamepads()`. May change if pads are hot-swapped. */
+  index: number;
+  /** Browser-reported gamepad identifier (vendor + product). */
+  id: string;
+}
+
+/**
+ * Named gamepad analog axis. Sticks are exposed per axis (`leftX`/`leftY`,
+ * etc.); triggers (`leftTrigger`/`rightTrigger`) carry the W3C
+ * `GamepadButton.value` for buttons 6/7 under standard mapping.
+ */
+export type GamepadAxisKey =
+  | "leftX"
+  | "leftY"
+  | "rightX"
+  | "rightY"
+  | "leftTrigger"
+  | "rightTrigger";
 
 /** Maps action names to arrays of physical key codes. */
 export type ActionMapDefinition = Record<string, string[]>;

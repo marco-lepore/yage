@@ -123,9 +123,34 @@ const KEY_DISPLAY_NAMES: Record<string, string> = {
   MouseLeft: "Left Click",
   MouseMiddle: "Middle Click",
   MouseRight: "Right Click",
+
+  // Gamepad buttons (synthetic codes from InputPollSystem; standard mapping)
+  GamepadA: "A",
+  GamepadB: "B",
+  GamepadX: "X",
+  GamepadY: "Y",
+  GamepadLB: "LB",
+  GamepadRB: "RB",
+  GamepadLT: "LT",
+  GamepadRT: "RT",
+  GamepadSelect: "Select",
+  GamepadStart: "Start",
+  GamepadLeftStick: "Left Stick",
+  GamepadRightStick: "Right Stick",
+  GamepadDPadUp: "D-Pad Up",
+  GamepadDPadDown: "D-Pad Down",
+  GamepadDPadLeft: "D-Pad Left",
+  GamepadDPadRight: "D-Pad Right",
+  GamepadHome: "Home",
 };
+
+const GAMEPAD_BUTTON_FALLBACK = /^GamepadButton(\d+)$/;
 
 /** Returns a human-readable display name for a `KeyboardEvent.code` or mouse key string. */
 export function getKeyDisplayName(code: string): string {
-  return KEY_DISPLAY_NAMES[code] ?? code;
+  const direct = KEY_DISPLAY_NAMES[code];
+  if (direct !== undefined) return direct;
+  const fallback = GAMEPAD_BUTTON_FALLBACK.exec(code);
+  if (fallback) return `Gamepad Button ${fallback[1]}`;
+  return code;
 }

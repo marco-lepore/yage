@@ -249,7 +249,10 @@ class PlayerController extends Component {
     }
 
     // -- Horizontal movement --
-    let dx = this.input.getAxis("left", "right");
+    // Analog stick wins when present; otherwise fall back to digital actions
+    // (keyboard or D-pad) so all input devices feel snappy.
+    const stickX = this.input.getStick("left").x;
+    let dx = stickX !== 0 ? stickX : this.input.getAxis("left", "right");
 
     // -- Wall detection: don't push into walls while airborne --
     if (dx !== 0 && !onGround) {
@@ -667,9 +670,9 @@ async function main() {
   engine.use(new AudioPlugin());
   engine.use(new InputPlugin({
     actions: {
-      left: ["KeyA", "ArrowLeft"],
-      right: ["KeyD", "ArrowRight"],
-      jump: ["Space"],
+      left: ["KeyA", "ArrowLeft", "GamepadDPadLeft"],
+      right: ["KeyD", "ArrowRight", "GamepadDPadRight"],
+      jump: ["Space", "GamepadA"],
     },
     preventDefaultKeys: ["Space"],
   }));

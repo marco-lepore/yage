@@ -39,6 +39,18 @@ export class InputPlugin implements Plugin {
       this.manager.setGroups(this.config.groups);
     }
 
+    if (this.config.deadzones) {
+      this.manager.setDeadzones(this.config.deadzones);
+    }
+
+    if (this.config.triggerThreshold !== undefined) {
+      this.manager.setTriggerThreshold(this.config.triggerThreshold);
+    }
+
+    if (this.config.pollGamepads === false) {
+      this.manager.setPollingEnabled(false);
+    }
+
     // Default to the well-known RendererAdapterKey so the canonical renderer
     // is picked up with no config. `rendererKey` stays as an override for
     // custom/foreign renderers registered under a different key.
@@ -133,6 +145,46 @@ export class InputPlugin implements Plugin {
       () => window.removeEventListener("pointerup", onPointerUp),
       () => window.removeEventListener("pointercancel", onPointerCancel),
     );
+
+    // Gamepad connect/disconnect — note: browsers gate this behind a first
+    // button press, so a freshly-plugged pad won't fire until the user acts.
+    const onGamepadConnected = (e: Event): void => {
+      const ge = e as GamepadEvent;
+      if (!ge.gamepad) return;
+      this.manager._onGamepadConnected({
+        index: ge.gamepad.index,
+        id: ge.gamepad.id,
+      });
+    };
+    const onGamepadDisconnected = (e: Event): void => {
+      const ge = e as GamepadEvent;
+      if (!ge.gamepad) return;
+      this.manager._onGamepadDisconnected({
+        index: ge.gamepad.index,
+        id: ge.gamepad.id,
+      });
+    };
+    window.addEventListener("gamepadconnected", onGamepadConnected);
+    window.addEventListener("gamepaddisconnected", onGamepadDisconnected);
+    this.cleanupFns.push(
+      () => window.removeEventListener("gamepadconnected", onGamepadConnected),
+      () =>
+        window.removeEventListener("gamepaddisconnected", onGamepadDisconnected),
+    );
+
+    // When the tab hides, `navigator.getGamepads()` returns stale data — force
+    // -release any held gamepad codes so they don't appear stuck on return.
+    if (typeof document !== "undefined") {
+      const onVisibilityChange = (): void => {
+        if (document.visibilityState === "hidden") {
+          this.manager._releaseAllGamepadState();
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      this.cleanupFns.push(() =>
+        document.removeEventListener("visibilitychange", onVisibilityChange),
+      );
+    }
 
     context.register(InputManagerKey, this.manager);
   }

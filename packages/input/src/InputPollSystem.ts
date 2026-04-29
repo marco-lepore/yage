@@ -3,13 +3,19 @@ import { InputManagerKey } from "./types.js";
 
 /**
  * Runs at the start of each frame (EarlyUpdate, priority -100).
- * Advances the input elapsed clock. Gamepad polling will be added here later.
+ * Advances the input elapsed clock and polls connected gamepads, emitting
+ * key-down/key-up edges through the manager so action queries, hold-duration,
+ * and `listenForNextKey` all work uniformly across keyboard and gamepad.
  */
 export class InputPollSystem extends System {
   readonly phase = Phase.EarlyUpdate;
   readonly priority = -100;
 
   update(dt: number): void {
-    this.use(InputManagerKey)._advanceTime(dt);
+    const manager = this.use(InputManagerKey);
+    manager._advanceTime(dt);
+    if (manager.isPollingEnabled()) {
+      manager._pollGamepads();
+    }
   }
 }

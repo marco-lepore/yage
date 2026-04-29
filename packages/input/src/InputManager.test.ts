@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Vec2 } from "@yagejs/core";
 import { InputManager } from "./InputManager.js";
 
@@ -575,16 +575,16 @@ describe("InputManager", () => {
       input.fireKeyDown("ArrowRight");
       input.firePointerMove(120, 240);
       input.firePointerDown(0);
-      input.fireGamepadButton(1, true);
-      input.fireGamepadAxis(0, 0.5);
+      input.fireGamepadButton("GamepadB", true);
+      input.fireGamepadAxis("leftX", 0.5);
 
       expect(input.snapshotState()).toEqual({
         keys: ["ArrowRight", "MouseLeft"],
         actions: ["fire", "moveRight"],
         mouse: { x: 120, y: 240, buttons: [0], down: true },
         gamepad: {
-          buttons: [1],
-          axes: [{ index: 0, value: 0.5 }],
+          buttons: ["GamepadB"],
+          axes: [{ key: "synthetic:leftX", value: 0.5 }],
         },
       });
     });
@@ -593,7 +593,7 @@ describe("InputManager", () => {
       input.fireKeyDown("Space");
       input.fireAction("jump");
       input.firePointerDown(2);
-      input.fireGamepadButton(0, true);
+      input.fireGamepadButton("GamepadA", true);
 
       input.clearAll();
 
@@ -645,6 +645,586 @@ describe("InputManager", () => {
       // Second should still be active
       input._onKeyDown("KeyB");
       await expect(second).resolves.toBe("KeyB");
+    });
+  });
+
+  // -- Gamepad --
+
+  describe("gamepad", () => {
+    function makePad(opts: {
+      index?: number;
+      mapping?: string;
+      buttons?: Array<{ pressed?: boolean; value?: number }>;
+      axes?: number[];
+    }): Gamepad {
+      const buttons = (opts.buttons ?? []).map((b) => ({
+        pressed: b.pressed ?? false,
+        touched: false,
+        value: b.value ?? (b.pressed ? 1 : 0),
+      })) as readonly GamepadButton[];
+      return {
+        id: "test-pad",
+        index: opts.index ?? 0,
+        connected: true,
+        timestamp: 0,
+        mapping: opts.mapping ?? "standard",
+        axes: opts.axes ?? [0, 0, 0, 0],
+        buttons,
+        vibrationActuator: null,
+      } as unknown as Gamepad;
+    }
+
+    let originalGetGamepads:
+      | (() => (Gamepad | null)[])
+      | undefined;
+
+    function setPads(pads: Array<Gamepad | null>): void {
+      Object.defineProperty(navigator, "getGamepads", {
+        configurable: true,
+        value: () => pads,
+      });
+    }
+
+    afterEach(() => {
+      if (originalGetGamepads) {
+        Object.defineProperty(navigator, "getGamepads", {
+          configurable: true,
+          value: originalGetGamepads,
+        });
+      } else {
+        // Best-effort cleanup when jsdom didn't have it originally
+        delete (navigator as unknown as { getGamepads?: unknown }).getGamepads;
+      }
+      vi.restoreAllMocks();
+    });
+
+    beforeEach(() => {
+      originalGetGamepads = (
+        navigator as unknown as { getGamepads?: () => (Gamepad | null)[] }
+      ).getGamepads;
+    });
+
+    it("fireGamepadButton drives isPressed via the action map", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+      input.fireGamepadButton("GamepadA", true);
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustPressed("jump")).toBe(true);
+
+      input._clearFrameState();
+      input.fireGamepadButton("GamepadA", false);
+      expect(input.isPressed("jump")).toBe(false);
+    });
+
+    it("getStick returns Vec2.ZERO inside deadzone", () => {
+      input.fireGamepadAxis("leftX", 0.1);
+      input.fireGamepadAxis("leftY", 0.05);
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+    });
+
+    it("getStick returns deadzone-rescaled vector outside deadzone", () => {
+      input.fireGamepadAxis("leftX", 1);
+      input.fireGamepadAxis("leftY", 0);
+      const v = input.getStick("left");
+      expect(v.x).toBeCloseTo(1, 5);
+      expect(v.y).toBeCloseTo(0, 5);
+    });
+
+    it("getStick magnitude clamps to 1.0 even when raw value exceeds 1", () => {
+      input.fireGamepadAxis("leftX", 1.5);
+      input.fireGamepadAxis("leftY", 0);
+      const v = input.getStick("left");
+      expect(Math.hypot(v.x, v.y)).toBeLessThanOrEqual(1.0001);
+    });
+
+    it("getTrigger returns 0 inside deadzone, normalized 0..1 outside", () => {
+      input.fireGamepadAxis("leftTrigger", 0.02);
+      expect(input.getTrigger("left")).toBe(0);
+
+      input.fireGamepadAxis("leftTrigger", 1);
+      expect(input.getTrigger("left")).toBeCloseTo(1, 5);
+    });
+
+    it("setDeadzones changes stick threshold", () => {
+      input.setDeadzones({ stick: 0.5 });
+      input.fireGamepadAxis("leftX", 0.4);
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+
+      input.fireGamepadAxis("leftX", 0.6);
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+    });
+
+    it("polling emits key-down/up edges through the action map", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+
+      setPads([makePad({ buttons: [{ pressed: true }] })]);
+      input._pollGamepads();
+      expect(input.isPressed("jump")).toBe(true);
+
+      setPads([makePad({ buttons: [{ pressed: false }] })]);
+      input._pollGamepads();
+      expect(input.isPressed("jump")).toBe(false);
+    });
+
+    it("polling diff produces no edges on stable state", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+      setPads([makePad({ buttons: [{ pressed: true }] })]);
+      input._pollGamepads();
+      input._clearFrameState();
+
+      input._pollGamepads();
+      expect(input.isJustPressed("jump")).toBe(false);
+      expect(input.isPressed("jump")).toBe(true);
+    });
+
+    it("any-pad semantics: either pad pressing fires the action", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.isPressed("jump")).toBe(true);
+    });
+
+    it("any-pad semantics: releasing one pad while other holds does not fire up-edge", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      input._clearFrameState();
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustReleased("jump")).toBe(false);
+    });
+
+    it("listenForNextKey resolves with gamepad code from polling", async () => {
+      const promise = input.listenForNextKey();
+      setPads([makePad({ buttons: [{ pressed: true }] })]);
+      input._pollGamepads();
+      await expect(promise).resolves.toBe("GamepadA");
+    });
+
+    it("held-button-during-listen does not re-fire on subsequent polls", async () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+      const promise = input.listenForNextKey();
+
+      setPads([makePad({ buttons: [{ pressed: true }] })]);
+      input._pollGamepads();
+      await promise;
+      input._clearFrameState();
+
+      // Button still held — polling must not re-fire
+      input._pollGamepads();
+      expect(input.isJustPressed("jump")).toBe(false);
+      expect(input.isPressed("jump")).toBe(false);
+    });
+
+    it("getStick(deadzone:0) returns Vec2.ZERO when stick is centered (no NaN)", () => {
+      input.setDeadzones({ stick: 0 });
+      input.fireGamepadAxis("leftX", 0);
+      input.fireGamepadAxis("leftY", 0);
+      const v = input.getStick("left");
+      expect(v.x).toBe(0);
+      expect(v.y).toBe(0);
+      expect(Number.isNaN(v.x)).toBe(false);
+      expect(Number.isNaN(v.y)).toBe(false);
+    });
+
+    it("fireGamepadAxis on triggers emits GamepadLT/GamepadRT button edges", () => {
+      input.setActionMap({ shoot: ["GamepadRT"], aim: ["GamepadLT"] });
+      input.setTriggerThreshold(0.5);
+
+      input.fireGamepadAxis("rightTrigger", 0.3);
+      expect(input.isPressed("shoot")).toBe(false);
+
+      input.fireGamepadAxis("rightTrigger", 0.8);
+      expect(input.isPressed("shoot")).toBe(true);
+
+      input._clearFrameState();
+      input.fireGamepadAxis("rightTrigger", 0.2);
+      expect(input.isPressed("shoot")).toBe(false);
+
+      input.fireGamepadAxis("leftTrigger", 0.9);
+      expect(input.isPressed("aim")).toBe(true);
+    });
+
+    it("LT/RT fire as buttons when value exceeds triggerThreshold", () => {
+      input.setActionMap({ shoot: ["GamepadRT"] });
+      input.setTriggerThreshold(0.5);
+
+      const buttons = Array.from({ length: 8 }, () => ({ pressed: false, value: 0 }));
+      buttons[7] = { pressed: false, value: 0.3 };
+      setPads([makePad({ buttons })]);
+      input._pollGamepads();
+      expect(input.isPressed("shoot")).toBe(false);
+
+      buttons[7] = { pressed: false, value: 0.8 };
+      setPads([makePad({ buttons })]);
+      input._pollGamepads();
+      expect(input.isPressed("shoot")).toBe(true);
+    });
+
+    it("non-standard mapping uses GamepadButton{N} fallback", () => {
+      input.setActionMap({ jump: ["GamepadButton0"] });
+      setPads([
+        makePad({ mapping: "", buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.isPressed("jump")).toBe(true);
+    });
+
+    it("_onGamepadDisconnected releases held codes when polling is enabled", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+
+      // Press
+      setPads([makePad({ index: 0, buttons: [{ pressed: true }] })]);
+      input._pollGamepads();
+      expect(input.isPressed("jump")).toBe(true);
+
+      // Pad gone
+      setPads([null]);
+      input._onGamepadDisconnected({ index: 0, id: "test-pad" });
+      expect(input.isPressed("jump")).toBe(false);
+    });
+
+    it("_onGamepadDisconnected force-releases when polling disabled", () => {
+      input.setActionMap({ jump: ["GamepadA"] });
+      input._onGamepadConnected({ index: 0, id: "test-pad" });
+      input.fireGamepadButton("GamepadA", true);
+      expect(input.isPressed("jump")).toBe(true);
+
+      input.setPollingEnabled(false);
+      input._onGamepadDisconnected({ index: 0, id: "test-pad" });
+      expect(input.isPressed("jump")).toBe(false);
+    });
+
+    it("onGamepadConnected replays currently-known pads on subscribe", () => {
+      const seen: number[] = [];
+      input._onGamepadConnected({ index: 0, id: "p0" });
+      input._onGamepadConnected({ index: 2, id: "p2" });
+
+      input.onGamepadConnected((info) => seen.push(info.index));
+      expect(seen).toEqual([0, 2]);
+    });
+
+    it("onGamepadConnected disposer stops further callbacks", () => {
+      const seen: number[] = [];
+      const dispose = input.onGamepadConnected((info) => seen.push(info.index));
+      dispose();
+      input._onGamepadConnected({ index: 5, id: "p5" });
+      expect(seen).toEqual([]);
+    });
+
+    it("_releaseAllGamepadState clears pressed gamepad keys but keeps keyboard state", () => {
+      input.setActionMap({ jump: ["GamepadA"], left: ["KeyA"] });
+      input.fireGamepadButton("GamepadA", true);
+      input._onKeyDown("KeyA");
+
+      input._releaseAllGamepadState();
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.isPressed("left")).toBe(true);
+    });
+
+    it("_releaseAllGamepadState clears real-pad state but preserves synthetic axis injection", () => {
+      // Real pad activates and supplies stick data
+      setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+
+      // Synthetic axis injection lives in its own slot (shadowed while
+      // a real pad is active — that's correct).
+      input.fireGamepadAxis("rightX", 0.5);
+
+      // Tab hides while real pad is mid-press
+      setPads([]);
+      input._releaseAllGamepadState();
+
+      // Real-pad axis is gone
+      expect(input.getStick("left", { pad: 0 })).toEqual(Vec2.ZERO);
+      // Demoting to no active pad lets the synthetic state surface
+      input.setActivePad(null);
+      expect(input.getStick("right").x).toBeGreaterThan(0);
+    });
+
+    it("non-finite axis input via fireGamepadAxis is coerced to 0", () => {
+      input.fireGamepadAxis("leftX", Number.NaN);
+      input.fireGamepadAxis("leftY", Number.POSITIVE_INFINITY);
+      const v = input.getStick("left");
+      expect(Number.isNaN(v.x)).toBe(false);
+      expect(Number.isNaN(v.y)).toBe(false);
+      expect(v).toEqual(Vec2.ZERO);
+    });
+
+    it("non-finite trigger input via fireGamepadAxis is coerced to 0", () => {
+      input.fireGamepadAxis("rightTrigger", Number.NaN);
+      const t = input.getTrigger("right");
+      expect(Number.isNaN(t)).toBe(false);
+      expect(t).toBe(0);
+    });
+
+    it("non-finite axis values from polling are coerced to 0", () => {
+      setPads([
+        makePad({
+          index: 0,
+          axes: [Number.NaN, Number.POSITIVE_INFINITY, 0, 0],
+        }),
+      ]);
+      input._pollGamepads();
+      const v = input.getStick("left");
+      expect(Number.isNaN(v.x)).toBe(false);
+      expect(Number.isNaN(v.y)).toBe(false);
+      expect(v).toEqual(Vec2.ZERO);
+    });
+
+    it("setDeadzones clamps stick to [0, 0.999] and ignores non-finite", () => {
+      input.setDeadzones({ stick: 5 });
+      input.fireGamepadAxis("leftX", 0.5);
+      // With deadzone clamped to 0.999, mag=0.5 falls below → returns ZERO
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+
+      input.setDeadzones({ stick: -1 });
+      input.fireGamepadAxis("leftX", 0.5);
+      // Clamped to 0; deadzone gate at 0 passes for mag=0.5
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+
+      // Non-finite is ignored (stick stays at the previous clamped 0)
+      input.setDeadzones({ stick: Number.NaN });
+      input.fireGamepadAxis("leftX", 0.3);
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+    });
+
+    it("setTriggerThreshold clamps to [0, 1] and ignores non-finite", () => {
+      input.setActionMap({ shoot: ["GamepadRT"] });
+
+      input.setTriggerThreshold(2);
+      input.fireGamepadAxis("rightTrigger", 0.99);
+      // Threshold clamped to 1 — value 0.99 doesn't reach
+      expect(input.isPressed("shoot")).toBe(false);
+
+      input.setTriggerThreshold(-1);
+      input.fireGamepadAxis("rightTrigger", 0.01);
+      // Threshold clamped to 0 — anything > 0 fires
+      expect(input.isPressed("shoot")).toBe(true);
+
+      input.fireGamepadAxis("rightTrigger", 0); // reset
+      input.setTriggerThreshold(Number.POSITIVE_INFINITY);
+      input.fireGamepadAxis("rightTrigger", 0.5);
+      // Non-finite ignored — last valid threshold (0) still wins
+      expect(input.isPressed("shoot")).toBe(true);
+    });
+
+    it("polling drops axis state for pads that vanished without disconnect event", () => {
+      setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+
+      // Pad disappears without firing gamepaddisconnected
+      setPads([]);
+      input._pollGamepads();
+      expect(input.getStick("left")).toEqual(Vec2.ZERO);
+    });
+
+    // -- Active pad --
+
+    it("getActivePad returns null when no pad is connected", () => {
+      expect(input.getActivePad()).toBeNull();
+    });
+
+    it("first connect auto-promotes the pad to active", () => {
+      setPads([makePad({ index: 2, buttons: [{ pressed: false }] })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(2);
+    });
+
+    it("getStick reads from the active pad by default", () => {
+      setPads([
+        makePad({ index: 0, axes: [0.8, 0, 0, 0] }),
+        makePad({ index: 1, axes: [0, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      // Pad 0 connects first → becomes active and reads cleanly
+      expect(input.getActivePad()?.index).toBe(0);
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+    });
+
+    it("getStick({ pad }) reads from a specific pad regardless of active", () => {
+      setPads([
+        makePad({ index: 0, axes: [0.6, 0, 0, 0] }),
+        makePad({ index: 1, axes: [0.5, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      // Active pad's own activity protects it from being stolen by pad 1
+      expect(input.getActivePad()?.index).toBe(0);
+      // Explicit pad lookup peeks at any pad regardless of active
+      expect(input.getStick("left", { pad: 1 }).x).toBeGreaterThan(0);
+      expect(input.getStick("left", { pad: 0 }).x).toBeGreaterThan(0);
+    });
+
+    it("rising-edge stick activity promotes inactive pad when active is idle", () => {
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+        makePad({ index: 1, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      // Active pad is idle, pad 1 moves stick → promotion fires
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+        makePad({ index: 1, buttons: [{ pressed: false }], axes: [0.9, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("button press promotes inactive pad on rising edge when active is idle", () => {
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: false }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("active pad's own activity protects against being stolen", () => {
+      // Both pads connected, pad 0 active. Pad 1 presses a button while
+      // pad 0 is also pressing — promotion does NOT fire (active protected).
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: false }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+    });
+
+    it("held activity on inactive pad does not bounce promotion", () => {
+      // Pad 0 active. Pad 1 has continuously-held button. After pad 0 goes
+      // idle, pad 1 is held but not rising-edge → no promotion bounce.
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      // Both have rising-edge activity, but pad 0 is active and protected
+      expect(input.getActivePad()?.index).toBe(0);
+
+      input._pollGamepads();
+      input._pollGamepads();
+      // Held state, no rising edges → active stable
+      expect(input.getActivePad()?.index).toBe(0);
+    });
+
+    it("disconnect of active pad demotes to next remaining pad", () => {
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: false }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      // Pad 0 vanishes — pad 1 takes over
+      setPads([makePad({ index: 1, buttons: [{ pressed: false }] })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("disconnect of last pad sets active to null", () => {
+      setPads([makePad({ index: 0 })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      setPads([]);
+      input._pollGamepads();
+      expect(input.getActivePad()).toBeNull();
+    });
+
+    it("setActivePad manually switches between connected pads", () => {
+      setPads([
+        makePad({ index: 0 }),
+        makePad({ index: 1 }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      input.setActivePad(1);
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("setActivePad ignores unknown indices", () => {
+      setPads([makePad({ index: 0 })]);
+      input._pollGamepads();
+      input.setActivePad(99);
+      expect(input.getActivePad()?.index).toBe(0);
+    });
+
+    it("setActivePad(null) clears active and surfaces synthetic state", () => {
+      setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
+      input._pollGamepads();
+      input.fireGamepadAxis("leftX", 0.4);
+
+      // Real pad is active — synthetic shadowed
+      expect(input.getStick("left").x).toBeGreaterThan(
+        0.5, // pad 0's 0.7 reads through, not synthetic 0.4
+      );
+
+      input.setActivePad(null);
+      expect(input.getActivePad()).toBeNull();
+      // Now synthetic surfaces
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+      expect(input.getStick("left").x).toBeLessThan(0.5);
+    });
+
+    it("onActivePadChanged replays current state on subscribe and fires on transitions", () => {
+      const events: Array<number | null> = [];
+      const dispose = input.onActivePadChanged((info) =>
+        events.push(info?.index ?? null),
+      );
+      // Replay-on-subscribe: null because no pad yet
+      expect(events).toEqual([null]);
+
+      setPads([makePad({ index: 0 })]);
+      input._pollGamepads();
+      expect(events).toEqual([null, 0]);
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(events).toEqual([null, 0, 1]);
+
+      dispose();
+    });
+
+    it("snapshotState splits keyboard and gamepad keys", () => {
+      input.fireKeyDown("Space");
+      input.fireGamepadButton("GamepadA", true);
+
+      const snap = input.snapshotState();
+      expect(snap.keys).toEqual(["Space"]);
+      expect(snap.gamepad.buttons).toEqual(["GamepadA"]);
     });
   });
 });

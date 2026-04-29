@@ -27,4 +27,17 @@ describe("InputPollSystem", () => {
     system.update(16);
     expect(spy).toHaveBeenCalledWith(16);
   });
+
+  it("polls gamepads when pollingEnabled is true (default)", () => {
+    const spy = vi.spyOn(manager, "_pollGamepads");
+    system.update(16);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips polling when pollingEnabled is false", () => {
+    manager.setPollingEnabled(false);
+    const spy = vi.spyOn(manager, "_pollGamepads");
+    system.update(16);
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
