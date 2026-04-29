@@ -116,7 +116,7 @@ across devices.
 | `GamepadLeftStick`, `GamepadRightStick` | Stick clicks (L3 / R3) |
 | `GamepadDPadUp/Down/Left/Right` | D-pad |
 | `GamepadHome` | Home / Guide button |
-| `GamepadButton{0..15}` | Numeric fallback for non-standard mappings |
+| `GamepadButtonN` | Numeric fallback for non-standard mappings (`N` is the browser button index — any non-negative integer the runtime emits, e.g. `GamepadButton0`, `GamepadButton16`) |
 
 PlayStation users see ✕/○/△/□ on hardware that maps to `GamepadA/B/X/Y`
 in code — code names are layout-canonical (Xbox), not glyph-specific.
@@ -205,14 +205,17 @@ for "show me what pads are plugged in right now", call `gamepads()`.
 ### Press-any-button recipe
 
 ```typescript
-const dispose = input.onGamepadConnected((info) => {
+let dispose: (() => void) | undefined;
+dispose = input.onGamepadConnected((info) => {
   showHud(`Player ready! (${info.id})`);
-  dispose();
+  dispose?.();
 });
 ```
 
 Replay-on-subscribe means this also fires for pads that were already known —
-you handle "current and future" pads with one callback.
+you handle "current and future" pads with one callback. The `let dispose`
+indirection is needed because the callback can run synchronously inside
+`onGamepadConnected` (during replay) before the `const` would be bound.
 
 ### Synthetic injection (testing)
 

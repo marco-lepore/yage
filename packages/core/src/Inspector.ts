@@ -27,6 +27,19 @@ const PhysicsWorldManagerRuntimeKey = new ServiceKey<PhysicsWorldManagerLike>(
 );
 const RendererRuntimeKey = new ServiceKey<RendererLike>("renderer");
 
+/**
+ * Mirrors `GamepadAxisKey` from `@yagejs/input` as a local union so the
+ * Inspector contract gets compile-time literal checking without taking a
+ * runtime dependency on the input package.
+ */
+type InspectorGamepadAxisKey =
+  | "leftX"
+  | "leftY"
+  | "rightX"
+  | "rightY"
+  | "leftTrigger"
+  | "rightTrigger";
+
 interface InputManagerLike {
   fireKeyDown(code: string): void;
   fireKeyUp(code: string): void;
@@ -35,12 +48,7 @@ interface InputManagerLike {
   firePointerUp(button?: 0 | 1 | 2): void;
   /** `code` is a gamepad code string (e.g. `"GamepadA"`, `"GamepadLT"`). */
   fireGamepadButton(code: string, pressed: boolean): void;
-  /**
-   * `side` is a `GamepadAxisKey` from `@yagejs/input` (`"leftX"`, `"leftY"`,
-   * `"rightX"`, `"rightY"`, `"leftTrigger"`, `"rightTrigger"`). Typed as
-   * `string` here to avoid a runtime dep on the input package.
-   */
-  fireGamepadAxis(side: string, value: number): void;
+  fireGamepadAxis(side: InspectorGamepadAxisKey, value: number): void;
   fireAction(name: string): void;
   clearAll(): void;
   snapshotState(): InputStateSnapshot;
@@ -341,7 +349,10 @@ export class Inspector {
     gamepadButton: (code: string, pressed: boolean): void => {
       this.requireInputManager().fireGamepadButton(code, pressed);
     },
-    gamepadAxis: (side: string, value: number): void => {
+    gamepadAxis: (
+      side: InspectorGamepadAxisKey,
+      value: number,
+    ): void => {
       this.requireInputManager().fireGamepadAxis(side, value);
     },
     tap: (code: string, frames = 1): void => {

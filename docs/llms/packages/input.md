@@ -175,7 +175,9 @@ new InputPlugin({
 `GamepadA/B/X/Y`, `GamepadLB/RB/LT/RT`, `GamepadSelect/Start`,
 `GamepadLeftStick/RightStick` (clicking the stick),
 `GamepadDPadUp/Down/Left/Right`, `GamepadHome`. Non-standard pads
-(`mapping === ""`) only expose `GamepadButton{0..15}`.
+(`mapping === ""`) expose `GamepadButtonN`, where `N` is the browser button
+index (any non-negative integer the runtime emits, e.g. `GamepadButton0`,
+`GamepadButton16`).
 
 `GamepadLT`/`GamepadRT` fire as button edges when their analog value crosses
 `triggerThreshold` (default 0.5). The analog value is independently available

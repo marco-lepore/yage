@@ -491,11 +491,12 @@ export class InputManager {
    * inspector probes drive `isPressed` the same way as physical hardware.
    */
   fireGamepadAxis(side: GamepadAxisKey, value: number): void {
-    this.syntheticAxisState.set(side, value);
+    const safe = Number.isFinite(value) ? value : 0;
+    this.syntheticAxisState.set(side, safe);
     if (side === "leftTrigger") {
-      this.fireGamepadButton("GamepadLT", value >= this.triggerThreshold);
+      this.fireGamepadButton("GamepadLT", safe >= this.triggerThreshold);
     } else if (side === "rightTrigger") {
-      this.fireGamepadButton("GamepadRT", value >= this.triggerThreshold);
+      this.fireGamepadButton("GamepadRT", safe >= this.triggerThreshold);
     }
   }
 
@@ -790,15 +791,22 @@ export class InputManager {
         for (let axIdx = 0; axIdx < STANDARD_AXIS_KEYS.length; axIdx++) {
           const axisKey = STANDARD_AXIS_KEYS[axIdx];
           if (!axisKey) continue;
+          const raw = pad.axes[axIdx] ?? 0;
           this.gamepadAxisState.set(
             `${pad.index}:${axisKey}`,
-            pad.axes[axIdx] ?? 0,
+            Number.isFinite(raw) ? raw : 0,
           );
         }
-        const lt = pad.buttons[TRIGGER_LEFT_INDEX];
-        const rt = pad.buttons[TRIGGER_RIGHT_INDEX];
-        this.gamepadAxisState.set(`${pad.index}:leftTrigger`, lt?.value ?? 0);
-        this.gamepadAxisState.set(`${pad.index}:rightTrigger`, rt?.value ?? 0);
+        const lt = pad.buttons[TRIGGER_LEFT_INDEX]?.value ?? 0;
+        const rt = pad.buttons[TRIGGER_RIGHT_INDEX]?.value ?? 0;
+        this.gamepadAxisState.set(
+          `${pad.index}:leftTrigger`,
+          Number.isFinite(lt) ? lt : 0,
+        );
+        this.gamepadAxisState.set(
+          `${pad.index}:rightTrigger`,
+          Number.isFinite(rt) ? rt : 0,
+        );
       }
       currentActivity.set(pad.index, this.padHasActivity(pad));
     }

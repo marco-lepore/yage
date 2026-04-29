@@ -954,6 +954,36 @@ describe("InputManager", () => {
       expect(input.getStick("right").x).toBeGreaterThan(0);
     });
 
+    it("non-finite axis input via fireGamepadAxis is coerced to 0", () => {
+      input.fireGamepadAxis("leftX", Number.NaN);
+      input.fireGamepadAxis("leftY", Number.POSITIVE_INFINITY);
+      const v = input.getStick("left");
+      expect(Number.isNaN(v.x)).toBe(false);
+      expect(Number.isNaN(v.y)).toBe(false);
+      expect(v).toEqual(Vec2.ZERO);
+    });
+
+    it("non-finite trigger input via fireGamepadAxis is coerced to 0", () => {
+      input.fireGamepadAxis("rightTrigger", Number.NaN);
+      const t = input.getTrigger("right");
+      expect(Number.isNaN(t)).toBe(false);
+      expect(t).toBe(0);
+    });
+
+    it("non-finite axis values from polling are coerced to 0", () => {
+      setPads([
+        makePad({
+          index: 0,
+          axes: [Number.NaN, Number.POSITIVE_INFINITY, 0, 0],
+        }),
+      ]);
+      input._pollGamepads();
+      const v = input.getStick("left");
+      expect(Number.isNaN(v.x)).toBe(false);
+      expect(Number.isNaN(v.y)).toBe(false);
+      expect(v).toEqual(Vec2.ZERO);
+    });
+
     it("setDeadzones clamps stick to [0, 0.999] and ignores non-finite", () => {
       input.setDeadzones({ stick: 5 });
       input.fireGamepadAxis("leftX", 0.5);
