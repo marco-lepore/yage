@@ -40,12 +40,23 @@ type InspectorGamepadAxisKey =
   | "leftTrigger"
   | "rightTrigger";
 
+/**
+ * Options for synthetic pointer injection. Pass `id` / `type` / `isPrimary`
+ * to drive a non-primary, touch, or pen pointer in deterministic tests. All
+ * fields are optional and default to a primary mouse pointer with `id: 1`.
+ */
+interface InspectorPointerOpts {
+  id?: number;
+  type?: "mouse" | "pen" | "touch";
+  isPrimary?: boolean;
+}
+
 interface InputManagerLike {
   fireKeyDown(code: string): void;
   fireKeyUp(code: string): void;
-  firePointerMove(x: number, y: number): void;
-  firePointerDown(button?: 0 | 1 | 2): void;
-  firePointerUp(button?: 0 | 1 | 2): void;
+  firePointerMove(x: number, y: number, opts?: InspectorPointerOpts): void;
+  firePointerDown(button?: 0 | 1 | 2, opts?: InspectorPointerOpts): void;
+  firePointerUp(button?: 0 | 1 | 2, opts?: { id?: number }): void;
   /** `code` is a gamepad code string (e.g. `"GamepadA"`, `"GamepadLT"`). */
   fireGamepadButton(code: string, pressed: boolean): void;
   fireGamepadAxis(side: InspectorGamepadAxisKey, value: number): void;
@@ -370,6 +381,35 @@ export class Inspector {
     },
     mouseUp: (button: 0 | 1 | 2 = 0): void => {
       this.requireInputManager().firePointerUp(button);
+    },
+    /**
+     * Inject a synthetic pointer-move with full pointer addressing. Pass `opts`
+     * with `id` / `type: "touch"` to drive a specific finger; defaults match
+     * the primary mouse pointer (same as `mouseMove`).
+     */
+    pointerMove: (
+      x: number,
+      y: number,
+      opts?: InspectorPointerOpts,
+    ): void => {
+      this.requireInputManager().firePointerMove(x, y, opts);
+    },
+    /**
+     * Inject a synthetic pointer-down. With `opts.id` and `opts.type: "touch"`
+     * this drives a multi-touch contact, exercising `getPointers()`,
+     * per-pointer event hooks, and the any-pointer aggregate for `MouseLeft`.
+     */
+    pointerDown: (
+      button: 0 | 1 | 2 = 0,
+      opts?: InspectorPointerOpts,
+    ): void => {
+      this.requireInputManager().firePointerDown(button, opts);
+    },
+    pointerUp: (
+      button: 0 | 1 | 2 = 0,
+      opts?: { id?: number },
+    ): void => {
+      this.requireInputManager().firePointerUp(button, opts);
     },
     gamepadButton: (code: string, pressed: boolean): void => {
       this.requireInputManager().fireGamepadButton(code, pressed);

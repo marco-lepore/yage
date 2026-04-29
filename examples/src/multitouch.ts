@@ -59,6 +59,7 @@ class MultitouchVisualizer extends Component {
   private readonly ripples: Ripple[] = [];
   private elapsed = 0;
   private disposers: Array<() => void> = [];
+  private pendingRemovals = new Set<ReturnType<typeof setTimeout>>();
 
   override onAdd(): void {
     this.disposers.push(
@@ -79,7 +80,11 @@ class MultitouchVisualizer extends Component {
         // shortly after so the user sees the release without a stale finger.
         // (Mouse stays in getPointers naturally, so we keep its trail.)
         if (p.type !== "mouse") {
-          setTimeout(() => this.trails.delete(p.id), 0);
+          const handle = setTimeout(() => {
+            this.pendingRemovals.delete(handle);
+            this.trails.delete(p.id);
+          }, 0);
+          this.pendingRemovals.add(handle);
         }
       }),
     );
@@ -88,6 +93,8 @@ class MultitouchVisualizer extends Component {
   override onRemove(): void {
     for (const off of this.disposers) off();
     this.disposers.length = 0;
+    for (const handle of this.pendingRemovals) clearTimeout(handle);
+    this.pendingRemovals.clear();
   }
 
   private upsertTrail(p: PointerInfo): void {

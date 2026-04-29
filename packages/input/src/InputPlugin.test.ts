@@ -597,6 +597,98 @@ describe("InputPlugin", () => {
     }
   });
 
+  it("clears held pointer state when tab visibility goes hidden", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 7,
+        pointerType: "touch",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.isPressed("fire")).toBe(true);
+    expect(manager.getPointer(7)).toBeDefined();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Document.prototype,
+      "visibilityState",
+    );
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      expect(manager.isPressed("fire")).toBe(false);
+      expect(manager.getPointers()).toHaveLength(0);
+    } finally {
+      delete (document as unknown as { visibilityState?: unknown })
+        .visibilityState;
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Document.prototype,
+          "visibilityState",
+          originalDescriptor,
+        );
+      }
+    }
+  });
+
+  it("pointerleave on canvas removes a hovering touch / pen pointer", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    // A pen hovering over the canvas: pointermove with no pointerdown.
+    window.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 42,
+        pointerType: "pen",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.getPointer(42)).toBeDefined();
+
+    document.dispatchEvent(
+      new PointerEvent("pointerleave", {
+        pointerId: 42,
+        pointerType: "pen",
+      }),
+    );
+    expect(manager.getPointer(42)).toBeUndefined();
+  });
+
+  it("pointerleave keeps mouse pointers tracked (cursor persistence)", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.getPointer(1)).toBeDefined();
+
+    document.dispatchEvent(
+      new PointerEvent("pointerleave", {
+        pointerId: 1,
+        pointerType: "mouse",
+      }),
+    );
+    expect(manager.getPointer(1)).toBeDefined();
+  });
+
   it("applies deadzones, triggerThreshold, and pollGamepads from config", () => {
     context = createContext();
     plugin = new InputPlugin({

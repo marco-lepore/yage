@@ -136,16 +136,27 @@ export class InputPlugin implements Plugin {
       const pe = e as PointerEvent;
       this.manager._onPointerCancel(pe.pointerId);
     };
+    // `pointerleave` covers the hover lifecycle for pen / touch pointers that
+    // never receive a `pointerdown` (a stylus floating over the tablet, then
+    // pulled away). Without this, the manager would accumulate undead entries
+    // in `getPointers()` for every hover session. Mouse pointers ignore leave
+    // by design — `_onPointerCancel` skips removal for `type === "mouse"`.
+    const onPointerLeave = (e: Event): void => {
+      const pe = e as PointerEvent;
+      this.manager._onPointerCancel(pe.pointerId);
+    };
 
     pointerTarget.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerCancel);
+    pointerTarget.addEventListener("pointerleave", onPointerLeave);
     this.cleanupFns.push(
       () => pointerTarget.removeEventListener("pointerdown", onPointerDown),
       () => window.removeEventListener("pointermove", onPointerMove),
       () => window.removeEventListener("pointerup", onPointerUp),
       () => window.removeEventListener("pointercancel", onPointerCancel),
+      () => pointerTarget.removeEventListener("pointerleave", onPointerLeave),
     );
 
     // Gamepad connect/disconnect — note: browsers gate this behind a first
@@ -174,12 +185,15 @@ export class InputPlugin implements Plugin {
         window.removeEventListener("gamepaddisconnected", onGamepadDisconnected),
     );
 
-    // When the tab hides, `navigator.getGamepads()` returns stale data — force
-    // -release any held gamepad codes so they don't appear stuck on return.
+    // When the tab hides, `navigator.getGamepads()` returns stale data and a
+    // touch held at the moment of hide may never receive its `pointerup`
+    // (Android notification shade, iOS app switcher). Force-release both so
+    // they don't appear stuck on return.
     if (typeof document !== "undefined") {
       const onVisibilityChange = (): void => {
         if (document.visibilityState === "hidden") {
           this.manager._releaseAllGamepadState();
+          this.manager.clearPointerButtons();
         }
       };
       document.addEventListener("visibilitychange", onVisibilityChange);

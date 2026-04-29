@@ -1244,7 +1244,12 @@ export class InputManager {
       this.recomputeMouseAggregate(button);
     }
     this.notifyPointerListeners(this.pointerUpListeners, pointer);
-    this.removePointer(id);
+    // Mouse pointers persist across cancel for the same reason they persist
+    // across up — the cursor's last position is still useful for hover queries
+    // and the browser doesn't emit a separate "leave" on every cancel.
+    if (pointer.type !== "mouse") {
+      this.removePointer(id);
+    }
   }
 
   private upsertPointer(info: PointerEventInfo): MutablePointerInfo {

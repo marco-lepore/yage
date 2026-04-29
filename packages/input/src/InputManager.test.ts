@@ -292,6 +292,22 @@ describe("InputManager", () => {
       expect(input.isPressed("fire")).toBe(false);
     });
 
+    it("_onPointerCancel keeps mouse pointers in getPointers (cursor persistence)", () => {
+      input.firePointerMove(40, 50);
+      input.firePointerDown(0);
+      expect(input.isPressed("fire")).toBe(true);
+
+      input._onPointerCancel(1);
+
+      // Mouse persists across cancel for the same reason it persists across
+      // up — the cursor's last position is still useful for hover queries.
+      expect(input.getPointer(1)).toBeDefined();
+      expect(input.getPointer(1)?.screenPos.x).toBe(40);
+      // ...but its aggregate buttons are released.
+      expect(input.isPressed("fire")).toBe(false);
+      expect(input.isPointerDown()).toBe(false);
+    });
+
     it("getPointerPosition returns Vec2.ZERO when no pointer is tracked even with a camera set", () => {
       input.setCamera({
         screenToWorld: (sx: number, sy: number) => new Vec2(sx + 100, sy + 100),
