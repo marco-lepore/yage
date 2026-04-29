@@ -381,7 +381,7 @@ describe("InputPlugin", () => {
 
   it("ignores unmapped mouse buttons on pointerdown and pointerup", () => {
     context = createContext();
-    plugin = new InputPlugin();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
     plugin.install(context);
     const manager = context.resolve(InputManagerKey);
 
@@ -390,7 +390,9 @@ describe("InputPlugin", () => {
     // record itself is still tracked.
     document.dispatchEvent(new PointerEvent("pointerdown", { button: 3 }));
     expect(manager.isPointerDown()).toBe(false);
-    expect(manager.isPressed("MouseLeft")).toBe(false);
+    // `fire` is bound to `MouseLeft`; if button 3 ever started firing the
+    // primary mouse code by mistake, this would catch it.
+    expect(manager.isPressed("fire")).toBe(false);
 
     window.dispatchEvent(new PointerEvent("pointerup", { button: 3 }));
     expect(manager.isPointerDown()).toBe(false);

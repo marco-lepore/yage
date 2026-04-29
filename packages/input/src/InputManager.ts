@@ -205,12 +205,13 @@ export class InputManager {
    * convert each `screenPos` via the camera as needed.
    */
   getPointerPosition(): Vec2 {
-    const screen = this.getPointerScreenPosition();
+    const primary = this.getPrimaryPointer();
+    if (!primary) return Vec2.ZERO;
     if (this.camera) {
-      const w = this.camera.screenToWorld(screen.x, screen.y);
+      const w = this.camera.screenToWorld(primary.screenPos.x, primary.screenPos.y);
       return new Vec2(w.x, w.y);
     }
-    return screen;
+    return primary.screenPos;
   }
 
   /** Primary pointer's raw position in screen coordinates, or `Vec2.ZERO` when no pointer is tracked. */
@@ -227,12 +228,35 @@ export class InputManager {
 
   /** All currently-tracked pointers (one per active mouse, pen, or finger). */
   getPointers(): readonly PointerInfo[] {
-    return [...this.pointers.values()];
+    const out: PointerInfo[] = [];
+    for (const p of this.pointers.values()) {
+      out.push(this.toPointerInfo(p));
+    }
+    return out;
   }
 
   /** Direct lookup by `pointerId`, or `undefined` if no pointer with that id is tracked. */
   getPointer(id: number): PointerInfo | undefined {
-    return this.pointers.get(id);
+    const p = this.pointers.get(id);
+    return p ? this.toPointerInfo(p) : undefined;
+  }
+
+  /**
+   * Defensive snapshot of a tracked pointer. The runtime `MutablePointerInfo`
+   * holds a real `Set` for `buttons` — even though the `PointerInfo` type
+   * declares `ReadonlySet`, JS doesn't enforce that at runtime, so we copy the
+   * set on every public read. `Vec2` is convention-immutable across YAGE, so
+   * we share the same instance.
+   */
+  private toPointerInfo(pointer: MutablePointerInfo): PointerInfo {
+    return {
+      id: pointer.id,
+      screenPos: pointer.screenPos,
+      type: pointer.type,
+      isPrimary: pointer.isPrimary,
+      buttons: new Set(pointer.buttons),
+      isDown: pointer.isDown,
+    };
   }
 
   /**
@@ -1290,10 +1314,13 @@ export class InputManager {
     pointer: MutablePointerInfo,
   ): void {
     if (listeners.length === 0) return;
-    // Iterate a copy so a listener that calls its own disposer doesn't skip
-    // the next one. Cheap — the array is tiny in practice.
+    // Snapshot once per emission so all listeners see the same view and a
+    // misbehaving consumer can't mutate manager state. Iterate a copy of
+    // `listeners` so a callback that calls its own disposer doesn't skip the
+    // next one.
+    const info = this.toPointerInfo(pointer);
     for (const fn of [...listeners]) {
-      fn(pointer);
+      fn(info);
     }
   }
 

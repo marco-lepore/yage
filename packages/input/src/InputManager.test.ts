@@ -292,6 +292,28 @@ describe("InputManager", () => {
       expect(input.isPressed("fire")).toBe(false);
     });
 
+    it("getPointerPosition returns Vec2.ZERO when no pointer is tracked even with a camera set", () => {
+      input.setCamera({
+        screenToWorld: (sx: number, sy: number) => new Vec2(sx + 100, sy + 100),
+      });
+      const pos = input.getPointerPosition();
+      expect(pos.x).toBe(0);
+      expect(pos.y).toBe(0);
+    });
+
+    it("getPointers returns defensive snapshots — mutating buttons does not affect manager state", () => {
+      input.firePointerDown(0, { id: 9, type: "touch" });
+
+      const snap = input.getPointer(9);
+      expect(snap?.buttons.has(0)).toBe(true);
+
+      // Even though `buttons` is typed ReadonlySet, the runtime is a real Set;
+      // a misbehaving consumer cannot corrupt manager state through it.
+      (snap!.buttons as Set<number>).clear();
+      expect(input.getPointer(9)?.buttons.has(0)).toBe(true);
+      expect(input.isPressed("fire")).toBe(true);
+    });
+
     it("clearPointerButtons drops all pointers and releases aggregate", () => {
       input.firePointerDown(0, { id: 1, type: "mouse" });
       input.firePointerDown(0, { id: 2, type: "touch", isPrimary: false });
