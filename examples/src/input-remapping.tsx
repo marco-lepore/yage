@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   Component,
   Engine,
@@ -16,7 +16,7 @@ import {
   InputManagerKey,
   getKeyDisplayName,
 } from "@yagejs/input";
-import type { RebindResult } from "@yagejs/input";
+import type { GamepadInfo, RebindResult } from "@yagejs/input";
 import { UIPlugin } from "@yagejs/ui";
 import {
   UIReactPlugin,
@@ -38,11 +38,15 @@ injectStyles();
 // Configuration
 // ---------------------------------------------------------------------------
 
+// Default bindings include gamepad codes alongside keyboard keys —
+// listenForNextKey() resolves with gamepad codes the same way it does
+// keyboard codes, so the rebind UI works for either device with no
+// special-casing.
 const ACTIONS = {
-  p1Up: ["KeyW"],
-  p1Down: ["KeyS"],
-  p1Left: ["KeyA"],
-  p1Right: ["KeyD"],
+  p1Up: ["KeyW", "GamepadDPadUp"],
+  p1Down: ["KeyS", "GamepadDPadDown"],
+  p1Left: ["KeyA", "GamepadDPadLeft"],
+  p1Right: ["KeyD", "GamepadDPadRight"],
   p2Up: ["ArrowUp"],
   p2Down: ["ArrowDown"],
   p2Left: ["ArrowLeft"],
@@ -147,37 +151,70 @@ const conflictStore: Store<ConflictState> = createStore<ConflictState>({
 function BindingRow({
   action,
   input,
-  isListening,
+  listeningSlot,
   onRebind,
 }: {
   action: string;
   input: InputManager;
-  isListening: boolean;
+  /** Which slot for THIS action is currently listening, or null. */
+  listeningSlot: number | null;
   onRebind: (action: string, slot: number) => void;
 }) {
   const bindings = input.getBindings(action);
   const label = ACTION_LABELS[action] ?? action;
-  const keyLabel =
-    bindings.length > 0 ? getKeyDisplayName(bindings[0]!) : "—";
-
+  // Two slots per action: 0 (typically keyboard / mouse) and 1 (typically
+  // gamepad). Each is independently rebindable to any input code.
   return (
-    <Panel direction="row" gap={8} alignItems="center">
+    <Panel direction="row" gap={6} alignItems="center">
       <Text style={{ fontSize: 13, fill: 0xbbbbbb, wordWrapWidth: 50 }}>{label}</Text>
-      <Button
-        width={120}
-        height={26}
-        textStyle={{ fontSize: 12, fill: isListening ? 0xfacc15 : 0xffffff }}
-        bg={{ color: isListening ? 0x713f12 : 0x334155, alpha: 1, radius: 3 }}
-        hoverBg={{
-          color: isListening ? 0x713f12 : 0x475569,
-          alpha: 1,
-          radius: 3,
-        }}
+      <SlotButton
+        label={bindings[0] ? getKeyDisplayName(bindings[0]) : "—"}
+        listening={listeningSlot === 0}
         onClick={() => onRebind(action, 0)}
-      >
-        {isListening ? "Press a key..." : keyLabel}
-      </Button>
+      />
+      <SlotButton
+        label={bindings[1] ? getKeyDisplayName(bindings[1]) : "+ pad"}
+        listening={listeningSlot === 1}
+        onClick={() => onRebind(action, 1)}
+        muted={!bindings[1]}
+      />
     </Panel>
+  );
+}
+
+function SlotButton({
+  label,
+  listening,
+  onClick,
+  muted = false,
+}: {
+  label: string;
+  listening: boolean;
+  onClick: () => void;
+  muted?: boolean;
+}) {
+  return (
+    <Button
+      width={90}
+      height={26}
+      textStyle={{
+        fontSize: 12,
+        fill: listening ? 0xfacc15 : muted ? 0x64748b : 0xffffff,
+      }}
+      bg={{
+        color: listening ? 0x713f12 : muted ? 0x1e293b : 0x334155,
+        alpha: 1,
+        radius: 3,
+      }}
+      hoverBg={{
+        color: listening ? 0x713f12 : 0x475569,
+        alpha: 1,
+        radius: 3,
+      }}
+      onClick={onClick}
+    >
+      {listening ? "Press..." : label}
+    </Button>
   );
 }
 
@@ -189,7 +226,7 @@ function GroupSection({
   group,
   meta,
   input,
-  listeningAction,
+  listening,
   onRebind,
   onReset,
   onToggle,
@@ -197,7 +234,8 @@ function GroupSection({
   group: string;
   meta: GroupMeta;
   input: InputManager;
-  listeningAction: string | null;
+  /** `{ action, slot }` of the row currently in listen mode, or null. */
+  listening: { action: string; slot: number } | null;
   onRebind: (action: string, slot: number) => void;
   onReset: (group: string) => void;
   onToggle: (group: string) => void;
@@ -245,7 +283,9 @@ function GroupSection({
           key={action}
           action={action}
           input={input}
-          isListening={listeningAction === action}
+          listeningSlot={
+            listening?.action === action ? listening.slot : null
+          }
           onRebind={onRebind}
         />
       ))}
@@ -324,8 +364,19 @@ function RebindPanel() {
   const input = useMemo(() => ctx.resolve(InputManagerKey), [ctx]);
 
   const [version, setVersion] = useState(0);
-  const [listeningAction, setListeningAction] = useState<string | null>(null);
-  const listeningRef = useRef<string | null>(null);
+  const [listening, setListening] = useState<{ action: string; slot: number } | null>(
+    null,
+  );
+  const [activePad, setActivePad] = useState<GamepadInfo | null>(() =>
+    input.getActivePad(),
+  );
+  const listeningRef = useRef<{ action: string; slot: number } | null>(null);
+
+  // Track which controller (if any) is currently feeding input. The example
+  // pre-binds D-pad codes for Player 1, so plugging in a controller gives
+  // P1 gamepad control with no extra wiring — and the rebind UI still
+  // works to remap individual codes to anything (key or gamepad button).
+  useEffect(() => input.onActivePadChanged(setActivePad), [input]);
 
   // Re-render when a conflict is resolved via "Replace" in the modal.
   const resolveVersion = useStore(conflictStore, (s) => s.resolveVersion);
@@ -341,17 +392,20 @@ function RebindPanel() {
       if (listeningRef.current) {
         input.cancelListen();
         listeningRef.current = null;
-        setListeningAction(null);
+        setListening(null);
         return;
       }
 
-      listeningRef.current = action;
-      setListeningAction(action);
+      listeningRef.current = { action, slot };
+      setListening({ action, slot });
 
+      // Resolves with any input code: keyboard ("KeyZ"), mouse ("MouseLeft"),
+      // or gamepad ("GamepadA"). Polling routes gamepad button edges through
+      // the same interception path as keyboard, so this works uniformly.
       const key = await input.listenForNextKey();
 
       listeningRef.current = null;
-      setListeningAction(null);
+      setListening(null);
 
       if (!key) return;
 
@@ -412,21 +466,35 @@ function RebindPanel() {
     >
       <Text style={{ fontSize: 16, fill: 0xffffff }}>Controls</Text>
 
+      <Panel direction="column" gap={2}>
+        <Text style={{ fontSize: 10, fill: 0x94a3b8 }}>Active controller</Text>
+        <Text
+          style={{
+            fontSize: 11,
+            fill: activePad ? 0x22d3ee : 0x64748b,
+            wordWrapWidth: 240,
+          }}
+        >
+          {activePad ? activePad.id : "No controller — keyboard only"}
+        </Text>
+      </Panel>
+
       {Object.entries(GROUP_META).map(([group, meta]) => (
         <GroupSection
           key={group}
           group={group}
           meta={meta}
           input={input}
-          listeningAction={listeningAction}
+          listening={listening}
           onRebind={handleRebind}
           onReset={handleReset}
           onToggle={handleToggle}
         />
       ))}
 
-      <Text style={{ fontSize: 10, fill: 0x666666 }}>
-        Click a key to rebind. Esc to cancel.
+      <Text style={{ fontSize: 10, fill: 0x666666, wordWrapWidth: 240 }}>
+        Click a binding to rebind. Press any keyboard key, mouse button, or
+        gamepad button to set it. Esc to cancel.
       </Text>
     </Panel>
   );
