@@ -188,10 +188,31 @@ const leftStick = input.getStick("left");      // Vec2 — radial deadzone, magn
 const rightStick = input.getStick("right");    // Vec2
 const leftTrigger = input.getTrigger("left");  // number, 0..1
 const rightTrigger = input.getTrigger("right");
+
+// Explicit per-pad lookup (couch-co-op style)
+const player2Stick = input.getStick("left", { pad: 1 });
 ```
 
-Across multiple connected pads, `getStick` returns the largest-magnitude
-vector and `getTrigger` returns the maximum value (single-player default).
+Reads from the active pad by default. Pass `{ pad: index }` to read from a
+specific pad regardless of active.
+
+### Active pad
+
+A single pad is "active" at any time — the most-recently-used controller
+auto-promotes via input activity (button press or stick/trigger above its
+deadzone). The active pad's own activity protects it from being stolen, so
+two players each pressing buttons doesn't bounce active back and forth.
+
+```ts
+input.getActivePad();              // GamepadInfo | null
+input.setActivePad(0);             // manual switch (must be connected)
+input.setActivePad(null);          // clear; analog falls back to synthetic state
+
+const dispose = input.onActivePadChanged((info) => {
+  // Replays current state on subscribe; fires on every transition.
+  hud.show(info ? `Player on pad ${info.index}` : "No controller");
+});
+```
 
 ### Connect / disconnect
 

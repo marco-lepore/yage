@@ -444,6 +444,10 @@ describe("InputPlugin", () => {
     plugin.install(context);
     const manager = context.resolve(InputManagerKey);
 
+    // Connect first so the disconnect actually does something — the
+    // disconnect handler is now idempotent for unknown pads.
+    manager._onGamepadConnected({ index: 1, id: "test-pad" });
+
     const seen: number[] = [];
     manager.onGamepadDisconnected((info) => seen.push(info.index));
 

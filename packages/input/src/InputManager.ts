@@ -32,9 +32,6 @@ const STANDARD_BUTTON_CODES = [
 const TRIGGER_LEFT_INDEX = 6;
 const TRIGGER_RIGHT_INDEX = 7;
 
-/** Synthetic pad index used by `fireGamepadAxis` injection. */
-const SYNTHETIC_PAD_INDEX = -1;
-
 const STICK_AXIS_KEYS: Record<
   "left" | "right",
   { x: GamepadAxisKey; y: GamepadAxisKey }
@@ -72,14 +69,21 @@ export class InputManager {
   private pointerScreenPos = Vec2.ZERO;
   private pointerDownState = false;
   private pressedMouseButtons = new Set<number>();
-  /** Per-pad axis values keyed by `${padIndex}:${axisKey}`. */
+  /** Real-pad axis values keyed by `${padIndex}:${axisKey}`. */
   private gamepadAxisState = new Map<string, number>();
+  /** Synthetic axis values for fireGamepadAxis injection (test path). */
+  private syntheticAxisState = new Map<GamepadAxisKey, number>();
   /** "Any pad" aggregate of currently-pressed gamepad codes. */
   private lastButtonState = new Map<string, boolean>();
-  /** Pads we've seen via gamepadconnected events. */
+  /** Per-pad "anything happening" flag, used to detect rising-edge activity for active-pad promotion. */
+  private lastPadActivity = new Map<number, boolean>();
+  /** Pads currently known to the engine (populated via events or polling). */
   private connectedPads = new Map<number, GamepadInfo>();
+  /** Index of the pad whose analog input is read by default. `null` when no pad is connected. */
+  private activePadIndex: number | null = null;
   private gamepadConnectListeners: Array<(info: GamepadInfo) => void> = [];
   private gamepadDisconnectListeners: Array<(info: GamepadInfo) => void> = [];
+  private activePadListeners: Array<(info: GamepadInfo | null) => void> = [];
   private stickDeadzone = 0.15;
   private triggerDeadzone = 0.05;
   private triggerThreshold = 0.5;
@@ -478,15 +482,16 @@ export class InputManager {
   }
 
   /**
-   * Inject a synthetic gamepad axis value. Stored under a synthetic pad index
-   * and aggregated by `getStick` / `getTrigger` alongside real pads.
+   * Inject a synthetic gamepad axis value. Stored separately from real-pad
+   * axis state and consulted by `getStick` / `getTrigger` only when no real
+   * pad is active — matching how a test fixture would use the API.
    *
    * Trigger axes additionally emit `GamepadLT`/`GamepadRT` button edges when
    * crossing `triggerThreshold`, mirroring real-pad polling so synthetic
    * inspector probes drive `isPressed` the same way as physical hardware.
    */
   fireGamepadAxis(side: GamepadAxisKey, value: number): void {
-    this.gamepadAxisState.set(`${SYNTHETIC_PAD_INDEX}:${side}`, value);
+    this.syntheticAxisState.set(side, value);
     if (side === "leftTrigger") {
       this.fireGamepadButton("GamepadLT", value >= this.triggerThreshold);
     } else if (side === "rightTrigger") {
@@ -498,57 +503,53 @@ export class InputManager {
 
   /**
    * Returns the deadzoned, magnitude-clamped stick vector for the given side.
-   * Across multiple connected pads, the largest-magnitude vector wins.
+   *
+   * By default reads from the active pad (the most recently used controller,
+   * or the first connected one if nothing has been used yet). Pass
+   * `{ pad: index }` to read from a specific pad — useful for couch-co-op
+   * where each player's controller is addressed explicitly.
+   *
+   * Falls back to synthetic injection (`fireGamepadAxis`) when no pad is
+   * active — that's the test/probe path.
    */
-  getStick(side: "left" | "right"): Vec2 {
+  getStick(side: "left" | "right", opts?: { pad?: number }): Vec2 {
     const { x: xKey, y: yKey } = STICK_AXIS_KEYS[side];
-    let bestX = 0;
-    let bestY = 0;
-    let bestMag = 0;
-    for (const padIdx of this.collectPadIndices()) {
-      const x = this.gamepadAxisState.get(`${padIdx}:${xKey}`) ?? 0;
-      const y = this.gamepadAxisState.get(`${padIdx}:${yKey}`) ?? 0;
-      const mag = Math.hypot(x, y);
-      if (mag > bestMag) {
-        bestMag = mag;
-        bestX = x;
-        bestY = y;
-      }
+    const padIdx = opts?.pad !== undefined ? opts.pad : this.activePadIndex;
+    let x: number;
+    let y: number;
+    if (padIdx !== null) {
+      x = this.gamepadAxisState.get(`${padIdx}:${xKey}`) ?? 0;
+      y = this.gamepadAxisState.get(`${padIdx}:${yKey}`) ?? 0;
+    } else {
+      x = this.syntheticAxisState.get(xKey) ?? 0;
+      y = this.syntheticAxisState.get(yKey) ?? 0;
     }
-    if (bestMag < this.stickDeadzone) return Vec2.ZERO;
-    // Guards the deadzone:0 case — `bestMag === 0` slips past the previous
-    // check when the deadzone is disabled, and dividing by zero would yield NaN.
-    if (bestMag === 0) return Vec2.ZERO;
+    const mag = Math.hypot(x, y);
+    if (mag < this.stickDeadzone) return Vec2.ZERO;
+    // Guards the deadzone:0 case — `mag === 0` slips past the deadzone check
+    // when the deadzone is disabled, and dividing by zero would yield NaN.
+    if (mag === 0) return Vec2.ZERO;
     const adjustedMag = Math.min(
       1,
-      (bestMag - this.stickDeadzone) / (1 - this.stickDeadzone),
+      (mag - this.stickDeadzone) / (1 - this.stickDeadzone),
     );
-    return new Vec2((bestX / bestMag) * adjustedMag, (bestY / bestMag) * adjustedMag);
+    return new Vec2((x / mag) * adjustedMag, (y / mag) * adjustedMag);
   }
 
   /**
    * Returns the deadzoned trigger value (0..1) for the given side.
-   * Across multiple connected pads, the maximum value wins.
+   * Reads from the active pad by default; use `{ pad: index }` for explicit
+   * per-pad reads. Falls back to synthetic state when no pad is active.
    */
-  getTrigger(side: "left" | "right"): number {
+  getTrigger(side: "left" | "right", opts?: { pad?: number }): number {
     const key = TRIGGER_AXIS_KEYS[side];
-    let best = 0;
-    for (const padIdx of this.collectPadIndices()) {
-      const v = this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0;
-      if (v > best) best = v;
-    }
-    if (best < this.triggerDeadzone) return 0;
-    return Math.min(1, (best - this.triggerDeadzone) / (1 - this.triggerDeadzone));
-  }
-
-  private collectPadIndices(): Set<number> {
-    const indices = new Set<number>();
-    for (const key of this.gamepadAxisState.keys()) {
-      const colon = key.indexOf(":");
-      if (colon === -1) continue;
-      indices.add(Number.parseInt(key.slice(0, colon), 10));
-    }
-    return indices;
+    const padIdx = opts?.pad !== undefined ? opts.pad : this.activePadIndex;
+    const v =
+      padIdx !== null
+        ? (this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0)
+        : (this.syntheticAxisState.get(key) ?? 0);
+    if (v < this.triggerDeadzone) return 0;
+    return Math.min(1, (v - this.triggerDeadzone) / (1 - this.triggerDeadzone));
   }
 
   // -- Gamepad enumeration / events --
@@ -595,6 +596,51 @@ export class InputManager {
     };
   }
 
+  // -- Active pad --
+
+  /**
+   * The pad whose analog input is read by default. Auto-promotes on input
+   * activity (button press or stick/trigger above deadzone) and on first
+   * connect. Returns `null` when no pad is connected.
+   */
+  getActivePad(): GamepadInfo | null {
+    if (this.activePadIndex === null) return null;
+    return this.connectedPads.get(this.activePadIndex) ?? null;
+  }
+
+  /**
+   * Manually set the active pad. Index must match a currently connected pad
+   * — pass an unknown index and the call is a no-op. Pass `null` to clear
+   * (analog reads will fall back to synthetic state if any).
+   */
+  setActivePad(index: number | null): void {
+    if (index !== null && !this.connectedPads.has(index)) return;
+    this.setActivePadInternal(index);
+  }
+
+  /**
+   * Subscribe to active-pad changes. Replays the current active pad
+   * synchronously on subscribe so callers get the present state without a
+   * separate `getActivePad()` call. Returns a disposer.
+   */
+  onActivePadChanged(
+    fn: (info: GamepadInfo | null) => void,
+  ): () => void {
+    this.activePadListeners.push(fn);
+    fn(this.getActivePad());
+    return () => {
+      const idx = this.activePadListeners.indexOf(fn);
+      if (idx !== -1) this.activePadListeners.splice(idx, 1);
+    };
+  }
+
+  private setActivePadInternal(index: number | null): void {
+    if (this.activePadIndex === index) return;
+    this.activePadIndex = index;
+    const info = this.getActivePad();
+    for (const fn of this.activePadListeners) fn(info);
+  }
+
   // -- Gamepad runtime config --
 
   /** Enable or disable real gamepad polling. Synthetic injection still works when disabled. */
@@ -636,39 +682,56 @@ export class InputManager {
    * @internal Force-release held gamepad buttons and clear real-pad analog
    * snapshots. Used on tab-hide (where `navigator.getGamepads()` returns
    * stale data) and on disconnect when polling is paused. Synthetic axes
-   * under `SYNTHETIC_PAD_INDEX` are preserved so test fixtures survive.
+   * live in their own field, so they're untouched.
    */
   _releaseAllGamepadState(): void {
     for (const code of [...this.lastButtonState.keys()]) {
       this._onKeyUp(code);
     }
     this.lastButtonState.clear();
-    const syntheticPrefix = `${SYNTHETIC_PAD_INDEX}:`;
-    for (const key of [...this.gamepadAxisState.keys()]) {
-      if (!key.startsWith(syntheticPrefix)) {
-        this.gamepadAxisState.delete(key);
-      }
-    }
+    this.gamepadAxisState.clear();
+    this.lastPadActivity.clear();
   }
 
-  /** @internal Called by InputPlugin from `gamepadconnected` event. */
+  /** @internal Called by InputPlugin from `gamepadconnected` event or by
+   * polling when discovering a previously-unknown pad. Idempotent. */
   _onGamepadConnected(info: GamepadInfo): void {
+    if (this.connectedPads.has(info.index)) return;
     this.connectedPads.set(info.index, info);
+    // First pad to connect auto-promotes — single-player "just works" with
+    // no setActivePad call required.
+    if (this.activePadIndex === null) {
+      this.setActivePadInternal(info.index);
+    }
     for (const fn of this.gamepadConnectListeners) fn(info);
   }
 
-  /** @internal Called by InputPlugin from `gamepaddisconnected` event. */
+  /** @internal Called by InputPlugin from `gamepaddisconnected` event or by
+   * polling when a pad vanishes silently. Idempotent. */
   _onGamepadDisconnected(info: GamepadInfo): void {
+    if (!this.connectedPads.has(info.index)) return;
     this.connectedPads.delete(info.index);
-    // Drop axis state for the departed pad
+    // Drop per-pad state for the departed pad.
     for (const key of [...this.gamepadAxisState.keys()]) {
       if (key.startsWith(`${info.index}:`)) this.gamepadAxisState.delete(key);
     }
-    // Re-aggregate held buttons against remaining pads. If polling is
-    // disabled (test mode), conservatively release all gamepad buttons —
-    // synthetic injection callers can re-press anything they still want held.
-    if (this.pollingEnabled) {
-      this._pollGamepads();
+    this.lastPadActivity.delete(info.index);
+    // If the departed pad was active, demote and pick the first remaining
+    // connected pad (or null) so analog reads keep working without API calls.
+    if (this.activePadIndex === info.index) {
+      const next = this.connectedPads.keys().next();
+      this.setActivePadInternal(next.done ? null : next.value);
+    }
+    // Re-aggregate held buttons against remaining pads. We can't recursively
+    // call `_pollGamepads` because the disconnect detection there is what got
+    // us here — instead reconcile button state inline against the current
+    // navigator snapshot.
+    if (
+      this.pollingEnabled &&
+      typeof navigator !== "undefined" &&
+      typeof navigator.getGamepads === "function"
+    ) {
+      this.reconcileButtonStateAcrossPads(navigator.getGamepads());
     } else {
       this._releaseAllGamepadState();
     }
@@ -689,21 +752,110 @@ export class InputManager {
     }
     const pads = navigator.getGamepads();
 
-    // Defensively drop axis entries from pads that vanished without firing
-    // gamepaddisconnected (e.g. tab backgrounded during disconnect). Without
-    // this, getStick/getTrigger could keep returning stale values.
+    // 1. Reconcile pad presence. The browser's `gamepadconnected` event is
+    // gated behind first user input, so polling discovers already-plugged
+    // pads. The matching `gamepaddisconnected` is also unreliable when the
+    // tab backgrounds — polling reconciles vanished pads too.
     const liveIndices = new Set<number>();
-    for (const pad of pads) if (pad) liveIndices.add(pad.index);
+    for (const pad of pads) {
+      if (!pad) continue;
+      liveIndices.add(pad.index);
+      if (!this.connectedPads.has(pad.index)) {
+        this._onGamepadConnected({ index: pad.index, id: pad.id });
+      }
+    }
+    for (const [, info] of [...this.connectedPads]) {
+      if (!liveIndices.has(info.index)) {
+        this._onGamepadDisconnected(info);
+      }
+    }
+
+    // 2. Defensive axis-state cleanup for any stale entries the disconnect
+    // path missed (e.g. partial state during prior frames).
     for (const key of [...this.gamepadAxisState.keys()]) {
       const colon = key.indexOf(":");
       if (colon === -1) continue;
       const idx = Number.parseInt(key.slice(0, colon), 10);
-      if (idx !== SYNTHETIC_PAD_INDEX && !liveIndices.has(idx)) {
-        this.gamepadAxisState.delete(key);
-      }
+      if (!liveIndices.has(idx)) this.gamepadAxisState.delete(key);
     }
 
-    // Collect "any pad pressed" per code, plus refresh axis state.
+    // 3. Refresh per-pad axis state and compute current activity. Activity
+    // is captured into a map first so the promotion decision can consider
+    // all pads together (not in iteration order).
+    const currentActivity = new Map<number, boolean>();
+    for (const pad of pads) {
+      if (!pad) continue;
+      const standard = pad.mapping === "standard";
+      if (standard) {
+        for (let axIdx = 0; axIdx < STANDARD_AXIS_KEYS.length; axIdx++) {
+          const axisKey = STANDARD_AXIS_KEYS[axIdx];
+          if (!axisKey) continue;
+          this.gamepadAxisState.set(
+            `${pad.index}:${axisKey}`,
+            pad.axes[axIdx] ?? 0,
+          );
+        }
+        const lt = pad.buttons[TRIGGER_LEFT_INDEX];
+        const rt = pad.buttons[TRIGGER_RIGHT_INDEX];
+        this.gamepadAxisState.set(`${pad.index}:leftTrigger`, lt?.value ?? 0);
+        this.gamepadAxisState.set(`${pad.index}:rightTrigger`, rt?.value ?? 0);
+      }
+      currentActivity.set(pad.index, this.padHasActivity(pad));
+    }
+
+    // 4. Auto-promotion. The active pad's own activity protects it — we
+    // only promote when active is idle, so couch-co-op players don't steal
+    // each other's slot mid-press. Among rising-edge candidates we pick the
+    // first one in iteration order (deterministic; arbitrary in practice).
+    const activeStillActive =
+      this.activePadIndex !== null &&
+      (currentActivity.get(this.activePadIndex) ?? false);
+    if (!activeStillActive) {
+      for (const [padIdx, isActive] of currentActivity) {
+        const wasActive = this.lastPadActivity.get(padIdx) ?? false;
+        if (isActive && !wasActive && padIdx !== this.activePadIndex) {
+          this.setActivePadInternal(padIdx);
+          break;
+        }
+      }
+    }
+    for (const [padIdx, isActive] of currentActivity) {
+      this.lastPadActivity.set(padIdx, isActive);
+    }
+
+    // 5. Reconcile button state across all pads (any-pad action map).
+    this.reconcileButtonStateAcrossPads(pads);
+  }
+
+  /** Whether a pad has any input that should claim active-pad ownership. */
+  private padHasActivity(pad: Gamepad): boolean {
+    for (const btn of pad.buttons) {
+      if (btn?.pressed) return true;
+    }
+    if (pad.mapping === "standard") {
+      const lx = pad.axes[0] ?? 0;
+      const ly = pad.axes[1] ?? 0;
+      const rx = pad.axes[2] ?? 0;
+      const ry = pad.axes[3] ?? 0;
+      if (Math.hypot(lx, ly) > this.stickDeadzone) return true;
+      if (Math.hypot(rx, ry) > this.stickDeadzone) return true;
+      const lt = pad.buttons[TRIGGER_LEFT_INDEX]?.value ?? 0;
+      const rt = pad.buttons[TRIGGER_RIGHT_INDEX]?.value ?? 0;
+      if (lt > this.triggerDeadzone) return true;
+      if (rt > this.triggerDeadzone) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Aggregate "any pad pressed" per code across the supplied pad list and
+   * emit `_onKeyDown`/`_onKeyUp` edges. `lastButtonState` is updated
+   * unconditionally so listen-mode interception doesn't cause held-button
+   * re-fires on subsequent frames.
+   */
+  private reconcileButtonStateAcrossPads(
+    pads: ReadonlyArray<Gamepad | null>,
+  ): void {
     const codePressed = new Map<string, boolean>();
     for (const pad of pads) {
       if (!pad) continue;
@@ -718,30 +870,13 @@ export class InputManager {
             : undefined;
         const code = standardCode ?? `GamepadButton${btnIdx}`;
         const isTrigger =
-          standard && (btnIdx === TRIGGER_LEFT_INDEX || btnIdx === TRIGGER_RIGHT_INDEX);
+          standard &&
+          (btnIdx === TRIGGER_LEFT_INDEX || btnIdx === TRIGGER_RIGHT_INDEX);
         const isDown = isTrigger ? btn.value >= this.triggerThreshold : btn.pressed;
         if (isDown) codePressed.set(code, true);
       }
-
-      // Stick axes
-      if (standard) {
-        for (let axIdx = 0; axIdx < STANDARD_AXIS_KEYS.length; axIdx++) {
-          const axisKey = STANDARD_AXIS_KEYS[axIdx];
-          if (!axisKey) continue;
-          this.gamepadAxisState.set(
-            `${pad.index}:${axisKey}`,
-            pad.axes[axIdx] ?? 0,
-          );
-        }
-        // Trigger analog values from buttons 6/7
-        const lt = pad.buttons[TRIGGER_LEFT_INDEX];
-        const rt = pad.buttons[TRIGGER_RIGHT_INDEX];
-        this.gamepadAxisState.set(`${pad.index}:leftTrigger`, lt?.value ?? 0);
-        this.gamepadAxisState.set(`${pad.index}:rightTrigger`, rt?.value ?? 0);
-      }
     }
 
-    // Edge detection: union of last-frame and this-frame codes
     const allCodes = new Set<string>([
       ...this.lastButtonState.keys(),
       ...codePressed.keys(),
@@ -754,9 +889,6 @@ export class InputManager {
       } else if (!isPressed && wasPressed) {
         this._onKeyUp(code);
       }
-      // Update lastButtonState unconditionally — fixes listen-mode held-button:
-      // when _onKeyDown intercepts (listen resolves and short-circuits), the
-      // diff next frame is `true → true` (no edge), preventing infinite re-fire.
       if (isPressed) {
         this.lastButtonState.set(code, true);
       } else {
@@ -791,6 +923,8 @@ export class InputManager {
     this.pointerDownState = false;
     this.lastButtonState.clear();
     this.gamepadAxisState.clear();
+    this.syntheticAxisState.clear();
+    this.lastPadActivity.clear();
   }
 
   /** Release any pressed pointer buttons without touching keyboard state. */
@@ -822,10 +956,13 @@ export class InputManager {
       .filter((action) => this.isPressed(action))
       .sort(cmp);
     const buttons = [...this.pressedMouseButtons].sort((a, b) => a - b);
-    const axes = [...this.gamepadAxisState.entries()]
+    const realAxes = [...this.gamepadAxisState.entries()]
       .filter(([, value]) => Math.abs(value) > 0.001)
-      .sort(([a], [b]) => cmp(a, b))
       .map(([key, value]) => ({ key, value }));
+    const syntheticAxes = [...this.syntheticAxisState.entries()]
+      .filter(([, value]) => Math.abs(value) > 0.001)
+      .map(([key, value]) => ({ key: `synthetic:${key}`, value }));
+    const axes = [...realAxes, ...syntheticAxes].sort((a, b) => cmp(a.key, b.key));
 
     return {
       keys: nonGamepadKeys,

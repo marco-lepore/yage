@@ -129,6 +129,15 @@ const aim = input.getStick("right");
 const charge = input.getTrigger("right"); // 0..1
 ```
 
+Both methods read from the **active pad** — the most-recently-used controller.
+For couch-co-op or any case where you need to address a specific controller,
+pass `{ pad: index }`:
+
+```typescript
+const player1 = input.getStick("left", { pad: 0 });
+const player2 = input.getStick("left", { pad: 1 });
+```
+
 Default deadzones: 0.15 for sticks (radial), 0.05 for triggers. Override per
 plugin:
 
@@ -136,6 +145,26 @@ plugin:
 new InputPlugin({
   deadzones: { stick: 0.2, trigger: 0.1 },
   triggerThreshold: 0.6,
+});
+```
+
+### Active pad
+
+A single pad is "active" at any time. It auto-promotes when the user presses
+a button or moves a stick / trigger above its deadzone, so single-player
+hot-swap (keyboard → controller mid-session) just works. The active pad's own
+activity protects it from being stolen, so two players pressing buttons in
+parallel doesn't ping-pong the active state.
+
+```typescript
+input.getActivePad();              // GamepadInfo | null
+input.setActivePad(0);             // manual switch (must be a connected pad)
+input.setActivePad(null);          // no active pad; analog falls back to synthetic state
+
+const unsubscribe = input.onActivePadChanged((info) => {
+  // Replays the current active pad synchronously on subscribe, then fires
+  // on every transition.
+  hud.show(info ? `Controller: ${info.id}` : "No controller");
 });
 ```
 

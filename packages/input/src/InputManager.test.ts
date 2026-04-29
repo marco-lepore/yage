@@ -584,7 +584,7 @@ describe("InputManager", () => {
         mouse: { x: 120, y: 240, buttons: [0], down: true },
         gamepad: {
           buttons: ["GamepadB"],
-          axes: [{ key: "-1:leftX", value: 0.5 }],
+          axes: [{ key: "synthetic:leftX", value: 0.5 }],
         },
       });
     });
@@ -896,6 +896,7 @@ describe("InputManager", () => {
 
     it("_onGamepadDisconnected force-releases when polling disabled", () => {
       input.setActionMap({ jump: ["GamepadA"] });
+      input._onGamepadConnected({ index: 0, id: "test-pad" });
       input.fireGamepadButton("GamepadA", true);
       expect(input.isPressed("jump")).toBe(true);
 
@@ -931,23 +932,25 @@ describe("InputManager", () => {
       expect(input.isPressed("left")).toBe(true);
     });
 
-    it("_releaseAllGamepadState clears real-pad axis values but preserves synthetic ones", () => {
-      // Real pad axis stored under a non-synthetic index
+    it("_releaseAllGamepadState clears real-pad state but preserves synthetic axis injection", () => {
+      // Real pad activates and supplies stick data
       setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
       input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
       expect(input.getStick("left").x).toBeGreaterThan(0);
 
-      // Synthetic axis injected directly
+      // Synthetic axis injection lives in its own slot (shadowed while
+      // a real pad is active — that's correct).
       input.fireGamepadAxis("rightX", 0.5);
-      expect(input.getStick("right").x).toBeGreaterThan(0);
 
-      // Real pad disconnects from polling cycle
+      // Tab hides while real pad is mid-press
       setPads([]);
       input._releaseAllGamepadState();
 
       // Real-pad axis is gone
-      expect(input.getStick("left")).toEqual(Vec2.ZERO);
-      // Synthetic axis survives
+      expect(input.getStick("left", { pad: 0 })).toEqual(Vec2.ZERO);
+      // Demoting to no active pad lets the synthetic state surface
+      input.setActivePad(null);
       expect(input.getStick("right").x).toBeGreaterThan(0);
     });
 
@@ -997,6 +1000,192 @@ describe("InputManager", () => {
       setPads([]);
       input._pollGamepads();
       expect(input.getStick("left")).toEqual(Vec2.ZERO);
+    });
+
+    // -- Active pad --
+
+    it("getActivePad returns null when no pad is connected", () => {
+      expect(input.getActivePad()).toBeNull();
+    });
+
+    it("first connect auto-promotes the pad to active", () => {
+      setPads([makePad({ index: 2, buttons: [{ pressed: false }] })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(2);
+    });
+
+    it("getStick reads from the active pad by default", () => {
+      setPads([
+        makePad({ index: 0, axes: [0.8, 0, 0, 0] }),
+        makePad({ index: 1, axes: [0, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      // Pad 0 connects first → becomes active and reads cleanly
+      expect(input.getActivePad()?.index).toBe(0);
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+    });
+
+    it("getStick({ pad }) reads from a specific pad regardless of active", () => {
+      setPads([
+        makePad({ index: 0, axes: [0.6, 0, 0, 0] }),
+        makePad({ index: 1, axes: [0.5, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      // Active pad's own activity protects it from being stolen by pad 1
+      expect(input.getActivePad()?.index).toBe(0);
+      // Explicit pad lookup peeks at any pad regardless of active
+      expect(input.getStick("left", { pad: 1 }).x).toBeGreaterThan(0);
+      expect(input.getStick("left", { pad: 0 }).x).toBeGreaterThan(0);
+    });
+
+    it("rising-edge stick activity promotes inactive pad when active is idle", () => {
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+        makePad({ index: 1, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      // Active pad is idle, pad 1 moves stick → promotion fires
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }], axes: [0, 0, 0, 0] }),
+        makePad({ index: 1, buttons: [{ pressed: false }], axes: [0.9, 0, 0, 0] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("button press promotes inactive pad on rising edge when active is idle", () => {
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: false }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("active pad's own activity protects against being stolen", () => {
+      // Both pads connected, pad 0 active. Pad 1 presses a button while
+      // pad 0 is also pressing — promotion does NOT fire (active protected).
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: false }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+    });
+
+    it("held activity on inactive pad does not bounce promotion", () => {
+      // Pad 0 active. Pad 1 has continuously-held button. After pad 0 goes
+      // idle, pad 1 is held but not rising-edge → no promotion bounce.
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: true }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      // Both have rising-edge activity, but pad 0 is active and protected
+      expect(input.getActivePad()?.index).toBe(0);
+
+      input._pollGamepads();
+      input._pollGamepads();
+      // Held state, no rising edges → active stable
+      expect(input.getActivePad()?.index).toBe(0);
+    });
+
+    it("disconnect of active pad demotes to next remaining pad", () => {
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: false }] }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      // Pad 0 vanishes — pad 1 takes over
+      setPads([makePad({ index: 1, buttons: [{ pressed: false }] })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("disconnect of last pad sets active to null", () => {
+      setPads([makePad({ index: 0 })]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      setPads([]);
+      input._pollGamepads();
+      expect(input.getActivePad()).toBeNull();
+    });
+
+    it("setActivePad manually switches between connected pads", () => {
+      setPads([
+        makePad({ index: 0 }),
+        makePad({ index: 1 }),
+      ]);
+      input._pollGamepads();
+      expect(input.getActivePad()?.index).toBe(0);
+
+      input.setActivePad(1);
+      expect(input.getActivePad()?.index).toBe(1);
+    });
+
+    it("setActivePad ignores unknown indices", () => {
+      setPads([makePad({ index: 0 })]);
+      input._pollGamepads();
+      input.setActivePad(99);
+      expect(input.getActivePad()?.index).toBe(0);
+    });
+
+    it("setActivePad(null) clears active and surfaces synthetic state", () => {
+      setPads([makePad({ index: 0, axes: [0.7, 0, 0, 0] })]);
+      input._pollGamepads();
+      input.fireGamepadAxis("leftX", 0.4);
+
+      // Real pad is active — synthetic shadowed
+      expect(input.getStick("left").x).toBeGreaterThan(
+        0.5, // pad 0's 0.7 reads through, not synthetic 0.4
+      );
+
+      input.setActivePad(null);
+      expect(input.getActivePad()).toBeNull();
+      // Now synthetic surfaces
+      expect(input.getStick("left").x).toBeGreaterThan(0);
+      expect(input.getStick("left").x).toBeLessThan(0.5);
+    });
+
+    it("onActivePadChanged replays current state on subscribe and fires on transitions", () => {
+      const events: Array<number | null> = [];
+      const dispose = input.onActivePadChanged((info) =>
+        events.push(info?.index ?? null),
+      );
+      // Replay-on-subscribe: null because no pad yet
+      expect(events).toEqual([null]);
+
+      setPads([makePad({ index: 0 })]);
+      input._pollGamepads();
+      expect(events).toEqual([null, 0]);
+
+      setPads([
+        makePad({ index: 0, buttons: [{ pressed: false }] }),
+        makePad({ index: 1, buttons: [{ pressed: true }] }),
+      ]);
+      input._pollGamepads();
+      expect(events).toEqual([null, 0, 1]);
+
+      dispose();
     });
 
     it("snapshotState splits keyboard and gamepad keys", () => {
