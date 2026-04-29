@@ -12,4 +12,6 @@ export type {
   RendererLike,
   GamepadInfo,
   GamepadAxisKey,
+  PointerInfo,
+  PointerType,
 } from "./types.js";

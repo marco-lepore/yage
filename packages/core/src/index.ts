@@ -110,6 +110,7 @@ export type {
   WorldSceneSnapshot,
   CameraSnapshot,
   InputStateSnapshot,
+  PointerSnapshot,
   EngineSnapshot,
   InspectorTimeController,
 } from "./Inspector.js";

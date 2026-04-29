@@ -202,15 +202,40 @@ export interface CameraSnapshot {
   rotation: number;
 }
 
+/**
+ * Per-pointer entry in {@link InputStateSnapshot.pointers}. Mirrors the runtime
+ * `PointerInfo` shape from `@yagejs/input`. Touch pointers vanish from the
+ * array once their last button releases; mouse pointers persist.
+ */
+export interface PointerSnapshot {
+  /** `PointerEvent.pointerId`, or the synthetic id passed via `firePointer*`. */
+  id: number;
+  x: number;
+  y: number;
+  type: "mouse" | "pen" | "touch";
+  isPrimary: boolean;
+  buttons: number[];
+  down: boolean;
+}
+
 export interface InputStateSnapshot {
   keys: string[];
   actions: string[];
+  /**
+   * Aggregate / primary-pointer view, retained for back-compat. `x` / `y` track
+   * the primary pointer's screen position; `buttons` / `down` reflect the
+   * any-pointer aggregate that drives the `MouseLeft`/`Middle`/`Right` action codes.
+   *
+   * For multi-touch state, read {@link InputStateSnapshot.pointers}.
+   */
   mouse: {
     x: number;
     y: number;
     buttons: number[];
     down: boolean;
   };
+  /** All currently-tracked pointers (one per active mouse, pen, or finger). */
+  pointers: PointerSnapshot[];
   gamepad: {
     /** Currently-held gamepad codes (e.g. `"GamepadA"`, `"GamepadLT"`). */
     buttons: string[];
@@ -1025,6 +1050,7 @@ export class Inspector {
         keys: [],
         actions: [],
         mouse: { x: 0, y: 0, buttons: [], down: false },
+        pointers: [],
         gamepad: { buttons: [], axes: [] },
       }
     );

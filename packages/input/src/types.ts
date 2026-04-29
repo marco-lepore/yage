@@ -1,5 +1,5 @@
 import { ServiceKey } from "@yagejs/core";
-import type { RendererAdapter } from "@yagejs/core";
+import type { RendererAdapter, Vec2 } from "@yagejs/core";
 import type { InputManager } from "./InputManager.js";
 
 /** Service key for the InputManager. */
@@ -76,6 +76,52 @@ export type GamepadAxisKey =
   | "rightY"
   | "leftTrigger"
   | "rightTrigger";
+
+/**
+ * Class of physical pointer device. Sourced from `PointerEvent.pointerType` on
+ * real input; defaults to `"mouse"` for synthetic injection.
+ */
+export type PointerType = "mouse" | "pen" | "touch";
+
+/**
+ * Read-only view of a tracked pointer. Returned from {@link InputManager.getPointers}
+ * and the per-pointer event hooks. Treat as immutable — fields reflect the
+ * pointer's state at query time and are not retained between frames.
+ */
+export interface PointerInfo {
+  /** Browser-assigned `PointerEvent.pointerId`, or the synthetic id passed via `firePointer*`. */
+  readonly id: number;
+  /** Position in screen-space pixels (already routed through `canvasToVirtual` if available). */
+  readonly screenPos: Vec2;
+  /** Source device class. */
+  readonly type: PointerType;
+  /** Whether the browser flagged this as the primary pointer (`PointerEvent.isPrimary`). */
+  readonly isPrimary: boolean;
+  /** Currently-held button indices (0=left/primary, 1=middle, 2=right). */
+  readonly buttons: ReadonlySet<number>;
+  /** Convenience mirror of `buttons.size > 0`. */
+  readonly isDown: boolean;
+}
+
+/**
+ * Per-event payload assembled by {@link InputPlugin} from each `PointerEvent`
+ * (or by `firePointer*` for synthetic injection) and forwarded to the manager's
+ * internal pointer handlers.
+ *
+ * @internal
+ */
+export interface PointerEventInfo {
+  id: number;
+  screenX: number;
+  screenY: number;
+  type: PointerType;
+  isPrimary: boolean;
+  /**
+   * The button whose state changed for this event. `-1` for events that don't
+   * change button state (move-only). Down/up handlers ignore `-1`.
+   */
+  button: number;
+}
 
 /** Maps action names to arrays of physical key codes. */
 export type ActionMapDefinition = Record<string, string[]>;

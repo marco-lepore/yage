@@ -2,16 +2,15 @@ import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
 import { RendererAdapterKey } from "@yagejs/core";
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import { InputManager } from "./InputManager.js";
-import { InputManagerKey, type InputConfig } from "./types.js";
+import {
+  InputManagerKey,
+  type InputConfig,
+  type PointerEventInfo,
+  type PointerType,
+} from "./types.js";
 import { InputPollSystem } from "./InputPollSystem.js";
 import { InputClearSystem } from "./InputClearSystem.js";
 import { InputDebugContributor } from "./InputDebugContributor.js";
-
-const MOUSE_BUTTON_MAP: Record<number, string> = {
-  0: "MouseLeft",
-  1: "MouseMiddle",
-  2: "MouseRight",
-};
 
 /** Input plugin — wires keyboard and pointer listeners, registers InputManager. */
 export class InputPlugin implements Plugin {
@@ -97,9 +96,8 @@ export class InputPlugin implements Plugin {
     );
 
     // Pointer listeners — pointerdown on target, pointerup/move/cancel on window
-    // so releases outside the target element are still captured
-    const onPointerMove = (e: Event): void => {
-      const pe = e as PointerEvent;
+    // so releases outside the target element are still captured.
+    const buildInfo = (pe: PointerEvent): PointerEventInfo => {
       let cssX: number;
       let cssY: number;
       if (coordinateElement) {
@@ -111,28 +109,32 @@ export class InputPlugin implements Plugin {
         cssY = pe.clientY;
       }
       const mapped = mapPointer(cssX, cssY);
-      this.manager._onPointerMove(mapped.x, mapped.y);
+      // Browsers occasionally emit empty `pointerType` for unusual devices.
+      // Fall back to `"mouse"` so downstream code never sees an invalid string.
+      const rawType = pe.pointerType;
+      const type: PointerType =
+        rawType === "touch" || rawType === "pen" ? rawType : "mouse";
+      return {
+        id: pe.pointerId,
+        screenX: mapped.x,
+        screenY: mapped.y,
+        type,
+        isPrimary: pe.isPrimary,
+        button: pe.button,
+      };
+    };
+    const onPointerMove = (e: Event): void => {
+      this.manager._onPointerMove(buildInfo(e as PointerEvent));
     };
     const onPointerDown = (e: Event): void => {
-      const pe = e as PointerEvent;
-      const button = pe.button as 0 | 1 | 2;
-      if (button in MOUSE_BUTTON_MAP) {
-        this.manager.firePointerDown(button);
-      } else {
-        this.manager._onPointerDown();
-      }
+      this.manager._onPointerDown(buildInfo(e as PointerEvent));
     };
     const onPointerUp = (e: Event): void => {
-      const pe = e as PointerEvent;
-      const button = pe.button as 0 | 1 | 2;
-      if (button in MOUSE_BUTTON_MAP) {
-        this.manager.firePointerUp(button);
-      } else {
-        this.manager._onPointerUp();
-      }
+      this.manager._onPointerUp(buildInfo(e as PointerEvent));
     };
-    const onPointerCancel = (): void => {
-      this.manager.clearPointerButtons();
+    const onPointerCancel = (e: Event): void => {
+      const pe = e as PointerEvent;
+      this.manager._onPointerCancel(pe.pointerId);
     };
 
     pointerTarget.addEventListener("pointerdown", onPointerDown);

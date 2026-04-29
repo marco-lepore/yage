@@ -4,9 +4,25 @@ import type {
   CameraLike,
   GamepadAxisKey,
   GamepadInfo,
+  PointerEventInfo,
+  PointerInfo,
+  PointerType,
   RebindOptions,
   RebindResult,
 } from "./types.js";
+
+/** Action-map codes for the three primary mouse buttons, indexed by button. */
+const MOUSE_BUTTON_CODES = ["MouseLeft", "MouseMiddle", "MouseRight"] as const;
+
+/** Mutable internal pointer record. Exposed externally as the read-only {@link PointerInfo}. */
+interface MutablePointerInfo {
+  id: number;
+  screenPos: Vec2;
+  type: PointerType;
+  isPrimary: boolean;
+  buttons: Set<number>;
+  isDown: boolean;
+}
 
 /** Standard-mapping button codes, indexed by W3C button position. */
 const STANDARD_BUTTON_CODES = [
@@ -66,9 +82,19 @@ export class InputManager {
   private groups = new Map<string, Set<string>>();
   private actionGroups = new Map<string, Set<string>>();
   private disabledGroups = new Set<string>();
-  private pointerScreenPos = Vec2.ZERO;
-  private pointerDownState = false;
-  private pressedMouseButtons = new Set<number>();
+  /** Tracked pointers keyed by `pointerId`. Mouse persists; touch/pen removed on up/cancel. */
+  private pointers = new Map<number, MutablePointerInfo>();
+  /** Id of the pointer the browser last marked `isPrimary`, or `null` when none are tracked. */
+  private primaryPointerId: number | null = null;
+  /**
+   * Aggregate "any pointer has this button held" cache. The action-map codes
+   * `MouseLeft`/`MouseMiddle`/`MouseRight` are driven from edges into/out of this
+   * set so two simultaneous taps holding button 0 do not double-fire.
+   */
+  private mouseButtonAggregate = new Set<number>();
+  private pointerDownListeners: Array<(info: PointerInfo) => void> = [];
+  private pointerUpListeners: Array<(info: PointerInfo) => void> = [];
+  private pointerMoveListeners: Array<(info: PointerInfo) => void> = [];
   /** Real-pad axis values keyed by `${padIndex}:${axisKey}`. */
   private gamepadAxisState = new Map<string, number>();
   /** Synthetic axis values for fireGamepadAxis injection (test path). */
@@ -171,26 +197,80 @@ export class InputManager {
 
   // -- Pointer --
 
-  /** Pointer position in world coordinates (via Camera), or screen coords if no camera. */
+  /**
+   * Primary pointer's position in world coordinates (via Camera), or screen
+   * coords if no camera. Returns `Vec2.ZERO` when no pointer is tracked.
+   *
+   * For multi-pointer access (touch UIs etc.) iterate {@link getPointers} and
+   * convert each `screenPos` via the camera as needed.
+   */
   getPointerPosition(): Vec2 {
+    const screen = this.getPointerScreenPosition();
     if (this.camera) {
-      const w = this.camera.screenToWorld(
-        this.pointerScreenPos.x,
-        this.pointerScreenPos.y,
-      );
+      const w = this.camera.screenToWorld(screen.x, screen.y);
       return new Vec2(w.x, w.y);
     }
-    return this.pointerScreenPos;
+    return screen;
   }
 
-  /** Raw pointer position in screen coordinates. */
+  /** Primary pointer's raw position in screen coordinates, or `Vec2.ZERO` when no pointer is tracked. */
   getPointerScreenPosition(): Vec2 {
-    return this.pointerScreenPos;
+    const primary = this.getPrimaryPointer();
+    return primary ? primary.screenPos : Vec2.ZERO;
   }
 
-  /** Whether any pointer button is currently held. */
+  /** Whether the primary pointer has any button held. */
   isPointerDown(): boolean {
-    return this.pointerDownState;
+    const primary = this.getPrimaryPointer();
+    return primary ? primary.isDown : false;
+  }
+
+  /** All currently-tracked pointers (one per active mouse, pen, or finger). */
+  getPointers(): readonly PointerInfo[] {
+    return [...this.pointers.values()];
+  }
+
+  /** Direct lookup by `pointerId`, or `undefined` if no pointer with that id is tracked. */
+  getPointer(id: number): PointerInfo | undefined {
+    return this.pointers.get(id);
+  }
+
+  /**
+   * Subscribe to pointer-down events (button transitions from up → down on a
+   * tracked pointer). Returns a disposer that detaches the listener.
+   */
+  onPointerDown(fn: (info: PointerInfo) => void): () => void {
+    this.pointerDownListeners.push(fn);
+    return () => {
+      const idx = this.pointerDownListeners.indexOf(fn);
+      if (idx !== -1) this.pointerDownListeners.splice(idx, 1);
+    };
+  }
+
+  /**
+   * Subscribe to pointer-up events (button transitions from down → up, plus
+   * touch / pen lifecycle ends and `pointercancel`). Returns a disposer.
+   */
+  onPointerUp(fn: (info: PointerInfo) => void): () => void {
+    this.pointerUpListeners.push(fn);
+    return () => {
+      const idx = this.pointerUpListeners.indexOf(fn);
+      if (idx !== -1) this.pointerUpListeners.splice(idx, 1);
+    };
+  }
+
+  /** Subscribe to pointer-move events. Returns a disposer. */
+  onPointerMove(fn: (info: PointerInfo) => void): () => void {
+    this.pointerMoveListeners.push(fn);
+    return () => {
+      const idx = this.pointerMoveListeners.indexOf(fn);
+      if (idx !== -1) this.pointerMoveListeners.splice(idx, 1);
+    };
+  }
+
+  private getPrimaryPointer(): MutablePointerInfo | null {
+    if (this.primaryPointerId === null) return null;
+    return this.pointers.get(this.primaryPointerId) ?? null;
   }
 
   // -- Runtime action map management --
@@ -434,32 +514,73 @@ export class InputManager {
     this._onKeyUp(code);
   }
 
-  /** Public wrapper for synthetic pointer movement. */
-  firePointerMove(screenX: number, screenY: number): void {
-    this._onPointerMove(screenX, screenY);
+  /**
+   * Public wrapper for synthetic pointer movement. Defaults to the primary
+   * mouse pointer (`id: 1`, `type: "mouse"`); pass `opts` to drive a specific
+   * touch / pen pointer.
+   */
+  firePointerMove(
+    screenX: number,
+    screenY: number,
+    opts?: { id?: number; type?: PointerType; isPrimary?: boolean },
+  ): void {
+    this._onPointerMove(this.makeSyntheticInfo(screenX, screenY, -1, opts));
   }
 
-  /** Public wrapper for synthetic pointer-button presses. */
-  firePointerDown(button: 0 | 1 | 2 = 0): void {
-    this._onPointerDown();
-    this.pressedMouseButtons.add(button);
-
-    if (button === 0) this._onKeyDown("MouseLeft");
-    if (button === 1) this._onKeyDown("MouseMiddle");
-    if (button === 2) this._onKeyDown("MouseRight");
+  /**
+   * Public wrapper for synthetic pointer-button presses. Defaults to button 0
+   * on the primary mouse pointer. Pass `opts` for touch / pen / non-primary
+   * pointers (e.g. `{ id: 5, type: "touch", isPrimary: false }`).
+   */
+  firePointerDown(
+    button: 0 | 1 | 2 = 0,
+    opts?: { id?: number; type?: PointerType; isPrimary?: boolean },
+  ): void {
+    const id = opts?.id ?? 1;
+    const existing = this.pointers.get(id);
+    this._onPointerDown(
+      this.makeSyntheticInfo(
+        existing?.screenPos.x ?? 0,
+        existing?.screenPos.y ?? 0,
+        button,
+        opts,
+      ),
+    );
   }
 
   /** Public wrapper for synthetic pointer-button releases. */
-  firePointerUp(button: 0 | 1 | 2 = 0): void {
-    this.pressedMouseButtons.delete(button);
-    this.pointerDownState = this.pressedMouseButtons.size > 0;
-    if (!this.pointerDownState) {
-      this._onPointerUp();
-    }
+  firePointerUp(
+    button: 0 | 1 | 2 = 0,
+    opts?: { id?: number },
+  ): void {
+    const id = opts?.id ?? 1;
+    const existing = this.pointers.get(id);
+    const info: PointerEventInfo = {
+      id,
+      screenX: existing?.screenPos.x ?? 0,
+      screenY: existing?.screenPos.y ?? 0,
+      type: existing?.type ?? "mouse",
+      isPrimary: existing?.isPrimary ?? id === 1,
+      button,
+    };
+    this._onPointerUp(info);
+  }
 
-    if (button === 0) this._onKeyUp("MouseLeft");
-    if (button === 1) this._onKeyUp("MouseMiddle");
-    if (button === 2) this._onKeyUp("MouseRight");
+  private makeSyntheticInfo(
+    screenX: number,
+    screenY: number,
+    button: number,
+    opts?: { id?: number; type?: PointerType; isPrimary?: boolean },
+  ): PointerEventInfo {
+    const id = opts?.id ?? 1;
+    return {
+      id,
+      screenX,
+      screenY,
+      type: opts?.type ?? "mouse",
+      isPrimary: opts?.isPrimary ?? id === 1,
+      button,
+    };
   }
 
   /**
@@ -927,23 +1048,28 @@ export class InputManager {
     this.holdStart.clear();
     this.syntheticPressedActions.clear();
     this.syntheticActionStarts.clear();
-    this.pressedMouseButtons.clear();
-    this.pointerDownState = false;
+    this.pointers.clear();
+    this.primaryPointerId = null;
+    this.mouseButtonAggregate.clear();
     this.lastButtonState.clear();
     this.gamepadAxisState.clear();
     this.syntheticAxisState.clear();
     this.lastPadActivity.clear();
   }
 
-  /** Release any pressed pointer buttons without touching keyboard state. */
+  /**
+   * Drop all tracked pointers and release the aggregate `MouseLeft/Middle/Right`
+   * codes without touching keyboard or gamepad state. Useful for window-blur
+   * / page-hide handling.
+   */
   clearPointerButtons(): void {
-    for (const button of [...this.pressedMouseButtons]) {
-      if (button === 0) this._onKeyUp("MouseLeft");
-      if (button === 1) this._onKeyUp("MouseMiddle");
-      if (button === 2) this._onKeyUp("MouseRight");
+    for (const button of [...this.mouseButtonAggregate]) {
+      const code = MOUSE_BUTTON_CODES[button];
+      if (code) this._onKeyUp(code);
     }
-    this.pressedMouseButtons.clear();
-    this.pointerDownState = false;
+    this.mouseButtonAggregate.clear();
+    this.pointers.clear();
+    this.primaryPointerId = null;
   }
 
   /** Snapshot of current held input state for inspector tooling. */
@@ -951,6 +1077,15 @@ export class InputManager {
     keys: string[];
     actions: string[];
     mouse: { x: number; y: number; buttons: number[]; down: boolean };
+    pointers: Array<{
+      id: number;
+      x: number;
+      y: number;
+      type: PointerType;
+      isPrimary: boolean;
+      buttons: number[];
+      down: boolean;
+    }>;
     gamepad: {
       buttons: string[];
       axes: Array<{ key: string; value: number }>;
@@ -963,7 +1098,19 @@ export class InputManager {
     const actions = this.getActionNames()
       .filter((action) => this.isPressed(action))
       .sort(cmp);
-    const buttons = [...this.pressedMouseButtons].sort((a, b) => a - b);
+    const aggregateButtons = [...this.mouseButtonAggregate].sort((a, b) => a - b);
+    const pointers = [...this.pointers.values()]
+      .sort((a, b) => a.id - b.id)
+      .map((p) => ({
+        id: p.id,
+        x: p.screenPos.x,
+        y: p.screenPos.y,
+        type: p.type,
+        isPrimary: p.isPrimary,
+        buttons: [...p.buttons].sort((a, b) => a - b),
+        down: p.isDown,
+      }));
+    const primary = this.getPrimaryPointer();
     const realAxes = [...this.gamepadAxisState.entries()]
       .filter(([, value]) => Math.abs(value) > 0.001)
       .map(([key, value]) => ({ key, value }));
@@ -976,11 +1123,12 @@ export class InputManager {
       keys: nonGamepadKeys,
       actions,
       mouse: {
-        x: this.pointerScreenPos.x,
-        y: this.pointerScreenPos.y,
-        buttons,
-        down: this.pointerDownState,
+        x: primary?.screenPos.x ?? 0,
+        y: primary?.screenPos.y ?? 0,
+        buttons: aggregateButtons,
+        down: this.mouseButtonAggregate.size > 0,
       },
+      pointers,
       gamepad: {
         buttons: gamepadButtons,
         axes,
@@ -1015,18 +1163,138 @@ export class InputManager {
   }
 
   /** @internal */
-  _onPointerMove(screenX: number, screenY: number): void {
-    this.pointerScreenPos = new Vec2(screenX, screenY);
+  _onPointerMove(info: PointerEventInfo): void {
+    const pointer = this.upsertPointer(info);
+    pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    this.notifyPointerListeners(this.pointerMoveListeners, pointer);
   }
 
   /** @internal */
-  _onPointerDown(): void {
-    this.pointerDownState = true;
+  _onPointerDown(info: PointerEventInfo): void {
+    const pointer = this.upsertPointer(info);
+    pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    if (info.button >= 0 && info.button <= 2) {
+      pointer.buttons.add(info.button);
+      pointer.isDown = true;
+      this.recomputeMouseAggregate(info.button);
+    } else {
+      pointer.isDown = pointer.buttons.size > 0;
+    }
+    this.notifyPointerListeners(this.pointerDownListeners, pointer);
   }
 
   /** @internal */
-  _onPointerUp(): void {
-    this.pointerDownState = false;
+  _onPointerUp(info: PointerEventInfo): void {
+    const pointer = this.upsertPointer(info);
+    pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    if (info.button >= 0 && info.button <= 2) {
+      pointer.buttons.delete(info.button);
+      this.recomputeMouseAggregate(info.button);
+    }
+    pointer.isDown = pointer.buttons.size > 0;
+    this.notifyPointerListeners(this.pointerUpListeners, pointer);
+    // Touch / pen pointers vanish once their last button releases. Mouse
+    // pointers persist — the browser doesn't emit a separate "leave" on every
+    // up, and we need to keep the cursor's screenPos around for hover queries.
+    if (!pointer.isDown && pointer.type !== "mouse") {
+      this.removePointer(pointer.id);
+    }
+  }
+
+  /**
+   * @internal
+   *
+   * Drops a pointer record entirely (response to `pointercancel` or to a touch
+   * / pen ending). Releases any aggregate `MouseLeft/Middle/Right` codes the
+   * pointer was holding and notifies up-listeners with a snapshot of its final
+   * state — gesture-tracking code shouldn't have to distinguish "up" from
+   * "cancel".
+   */
+  _onPointerCancel(id: number): void {
+    const pointer = this.pointers.get(id);
+    if (!pointer) return;
+    const heldButtons = [...pointer.buttons];
+    pointer.buttons.clear();
+    pointer.isDown = false;
+    for (const button of heldButtons) {
+      this.recomputeMouseAggregate(button);
+    }
+    this.notifyPointerListeners(this.pointerUpListeners, pointer);
+    this.removePointer(id);
+  }
+
+  private upsertPointer(info: PointerEventInfo): MutablePointerInfo {
+    let pointer = this.pointers.get(info.id);
+    if (!pointer) {
+      pointer = {
+        id: info.id,
+        screenPos: new Vec2(info.screenX, info.screenY),
+        type: info.type,
+        isPrimary: info.isPrimary,
+        buttons: new Set<number>(),
+        isDown: false,
+      };
+      this.pointers.set(info.id, pointer);
+    } else {
+      pointer.type = info.type;
+      pointer.isPrimary = info.isPrimary;
+    }
+    if (info.isPrimary) {
+      this.primaryPointerId = info.id;
+    } else if (this.primaryPointerId === null) {
+      this.primaryPointerId = info.id;
+    }
+    return pointer;
+  }
+
+  private removePointer(id: number): void {
+    this.pointers.delete(id);
+    if (this.primaryPointerId === id) {
+      // Promote any remaining tracked pointer to primary so singular getters
+      // keep returning sensible state. Prefer one the browser already flagged
+      // primary, otherwise the first one we find.
+      let next: number | null = null;
+      for (const p of this.pointers.values()) {
+        if (p.isPrimary) {
+          next = p.id;
+          break;
+        }
+        if (next === null) next = p.id;
+      }
+      this.primaryPointerId = next;
+    }
+  }
+
+  private recomputeMouseAggregate(button: number): void {
+    const code = MOUSE_BUTTON_CODES[button];
+    if (!code) return;
+    let nowAny = false;
+    for (const p of this.pointers.values()) {
+      if (p.buttons.has(button)) {
+        nowAny = true;
+        break;
+      }
+    }
+    const wasAny = this.mouseButtonAggregate.has(button);
+    if (nowAny && !wasAny) {
+      this.mouseButtonAggregate.add(button);
+      this._onKeyDown(code);
+    } else if (!nowAny && wasAny) {
+      this.mouseButtonAggregate.delete(button);
+      this._onKeyUp(code);
+    }
+  }
+
+  private notifyPointerListeners(
+    listeners: Array<(info: PointerInfo) => void>,
+    pointer: MutablePointerInfo,
+  ): void {
+    if (listeners.length === 0) return;
+    // Iterate a copy so a listener that calls its own disposer doesn't skip
+    // the next one. Cheap — the array is tiny in practice.
+    for (const fn of [...listeners]) {
+      fn(pointer);
+    }
   }
 
   /** @internal Clear per-frame justPressed/justReleased flags. */

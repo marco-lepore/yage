@@ -98,6 +98,36 @@ if (input.isPointerDown()) {
 `input.setCamera(camera)`. If no camera is set, screen coordinates are
 returned.
 
+The singular getters above always report the **primary** pointer — whichever
+contact the browser flagged `isPrimary` (the mouse cursor or the first finger
+to touch). For multi-touch UIs, iterate every active pointer:
+
+```typescript
+import type { PointerInfo } from "@yagejs/input";
+
+for (const p of input.getPointers()) {
+  // p.id is PointerEvent.pointerId — stable across moves for the same finger
+  // p.type is "mouse" | "pen" | "touch"
+  // p.screenPos / p.buttons / p.isPrimary / p.isDown
+}
+```
+
+Per-pointer events let you track a single finger across its lifetime (down →
+move → up). Each subscriber returns a disposer:
+
+```typescript
+const offDown = input.onPointerDown((p: PointerInfo) => {
+  if (p.type === "touch") startTrackingFinger(p.id);
+});
+const offMove = input.onPointerMove((p) => updateTrackedFinger(p));
+const offUp = input.onPointerUp((p) => stopTrackingFinger(p.id));
+// Up listeners also fire on `pointercancel` — gestures clean up uniformly.
+```
+
+Touch primary contacts fire `MouseLeft` (since `PointerEvent.button === 0` for
+the first finger), so an action bound to `MouseLeft` works as a tap handler
+with no extra wiring.
+
 ## Gamepad
 
 Gamepads are polled each frame from `navigator.getGamepads()` and routed

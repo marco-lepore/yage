@@ -155,7 +155,7 @@ describe("InputManager", () => {
   // -- Pointer --
 
   it("getPointerScreenPosition returns current pointer screen coords", () => {
-    input._onPointerMove(150, 200);
+    input.firePointerMove(150, 200);
     const pos = input.getPointerScreenPosition();
     expect(pos.x).toBe(150);
     expect(pos.y).toBe(200);
@@ -166,14 +166,14 @@ describe("InputManager", () => {
       screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
     };
     input.setCamera(mockCamera);
-    input._onPointerMove(100, 50);
+    input.firePointerMove(100, 50);
     const pos = input.getPointerPosition();
     expect(pos.x).toBe(200);
     expect(pos.y).toBe(100);
   });
 
   it("getPointerPosition returns screen coords when no camera", () => {
-    input._onPointerMove(100, 50);
+    input.firePointerMove(100, 50);
     const pos = input.getPointerPosition();
     expect(pos.x).toBe(100);
     expect(pos.y).toBe(50);
@@ -181,10 +181,127 @@ describe("InputManager", () => {
 
   it("isPointerDown tracks pointer state", () => {
     expect(input.isPointerDown()).toBe(false);
-    input._onPointerDown();
+    input.firePointerDown(0);
     expect(input.isPointerDown()).toBe(true);
-    input._onPointerUp();
+    input.firePointerUp(0);
     expect(input.isPointerDown()).toBe(false);
+  });
+
+  // -- Multi-pointer / touch --
+
+  describe("multi-pointer", () => {
+    it("getPointers returns one entry per active pointer", () => {
+      input.firePointerMove(10, 20, { id: 1, type: "mouse" });
+      input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
+      input.firePointerMove(100, 200, { id: 5, type: "touch", isPrimary: false });
+
+      const pointers = input.getPointers();
+      expect(pointers.length).toBe(2);
+      const mouse = pointers.find((p) => p.type === "mouse");
+      const touch = pointers.find((p) => p.type === "touch");
+      expect(mouse).toBeDefined();
+      expect(touch).toBeDefined();
+      expect(touch!.id).toBe(5);
+      expect(touch!.screenPos.x).toBe(100);
+      expect(touch!.buttons.has(0)).toBe(true);
+      expect(touch!.isDown).toBe(true);
+    });
+
+    it("getPointer looks up by id", () => {
+      input.firePointerMove(50, 60, { id: 7, type: "touch", isPrimary: false });
+      const p = input.getPointer(7);
+      expect(p?.id).toBe(7);
+      expect(p?.screenPos.x).toBe(50);
+      expect(input.getPointer(999)).toBeUndefined();
+    });
+
+    it("releasing one of two touches keeps the other tracked", () => {
+      input.firePointerDown(0, { id: 10, type: "touch" });
+      input.firePointerDown(0, { id: 11, type: "touch", isPrimary: false });
+      expect(input.getPointers().length).toBe(2);
+
+      input.firePointerUp(0, { id: 10 });
+      const remaining = input.getPointers();
+      expect(remaining.length).toBe(1);
+      expect(remaining[0]!.id).toBe(11);
+    });
+
+    it("MouseLeft aggregate stays held while any pointer holds button 0", () => {
+      input.firePointerDown(0, { id: 10, type: "touch" });
+      input.firePointerDown(0, { id: 11, type: "touch", isPrimary: false });
+      expect(input.isPressed("fire")).toBe(true);
+
+      input.firePointerUp(0, { id: 10 });
+      expect(input.isPressed("fire")).toBe(true); // pointer 11 still holds it
+
+      input.firePointerUp(0, { id: 11 });
+      expect(input.isPressed("fire")).toBe(false);
+    });
+
+    it("primary getters keep tracking the primary pointer when others are present", () => {
+      input.firePointerMove(40, 50, { id: 1, type: "mouse" });
+      input.firePointerMove(900, 900, { id: 5, type: "touch", isPrimary: false });
+
+      const pos = input.getPointerScreenPosition();
+      expect(pos.x).toBe(40);
+      expect(pos.y).toBe(50);
+    });
+
+    it("snapshot includes the pointers array alongside mouse", () => {
+      input.firePointerMove(10, 20);
+      input.firePointerDown(0);
+      input.firePointerDown(0, { id: 7, type: "touch", isPrimary: false });
+
+      const snap = input.snapshotState();
+      expect(snap.pointers.length).toBe(2);
+      expect(snap.pointers.map((p) => p.id).sort()).toEqual([1, 7]);
+      expect(snap.mouse.x).toBe(10);
+      expect(snap.mouse.down).toBe(true);
+    });
+
+    it("onPointerDown fires with PointerInfo and disposer detaches", () => {
+      const events: number[] = [];
+      const dispose = input.onPointerDown((info) => events.push(info.id));
+
+      input.firePointerDown(0, { id: 3, type: "touch" });
+      input.firePointerDown(0, { id: 4, type: "touch", isPrimary: false });
+      dispose();
+      input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
+
+      expect(events).toEqual([3, 4]);
+    });
+
+    it("onPointerUp fires when a touch releases its last button", () => {
+      const released: number[] = [];
+      input.onPointerUp((info) => released.push(info.id));
+
+      input.firePointerDown(0, { id: 9, type: "touch" });
+      input.firePointerUp(0, { id: 9 });
+
+      expect(released).toEqual([9]);
+      expect(input.getPointer(9)).toBeUndefined();
+    });
+
+    it("_onPointerCancel drops the pointer and releases aggregate buttons", () => {
+      input.firePointerDown(0, { id: 12, type: "touch" });
+      expect(input.isPressed("fire")).toBe(true);
+
+      input._onPointerCancel(12);
+
+      expect(input.getPointer(12)).toBeUndefined();
+      expect(input.isPressed("fire")).toBe(false);
+    });
+
+    it("clearPointerButtons drops all pointers and releases aggregate", () => {
+      input.firePointerDown(0, { id: 1, type: "mouse" });
+      input.firePointerDown(0, { id: 2, type: "touch", isPrimary: false });
+      expect(input.isPressed("fire")).toBe(true);
+
+      input.clearPointerButtons();
+
+      expect(input.getPointers()).toHaveLength(0);
+      expect(input.isPressed("fire")).toBe(false);
+    });
   });
 
   // -- Action map management --
@@ -582,6 +699,17 @@ describe("InputManager", () => {
         keys: ["ArrowRight", "MouseLeft"],
         actions: ["fire", "moveRight"],
         mouse: { x: 120, y: 240, buttons: [0], down: true },
+        pointers: [
+          {
+            id: 1,
+            x: 120,
+            y: 240,
+            type: "mouse",
+            isPrimary: true,
+            buttons: [0],
+            down: true,
+          },
+        ],
         gamepad: {
           buttons: ["GamepadB"],
           axes: [{ key: "synthetic:leftX", value: 0.5 }],
@@ -603,6 +731,7 @@ describe("InputManager", () => {
         keys: [],
         actions: [],
         mouse: { x: 0, y: 0, buttons: [], down: false },
+        pointers: [],
         gamepad: { buttons: [], axes: [] },
       });
     });
