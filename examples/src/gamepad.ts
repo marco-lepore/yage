@@ -80,7 +80,9 @@ class ShipController extends Component {
 
   redraw(): void {
     this.graphics.draw((g) => {
-      // Engine glow when boosting
+      // GraphicsComponent.draw() appends; clear before each repaint or
+      // shapes accumulate every time the boost state toggles.
+      g.clear();
       if (this.boosting) {
         g.circle(-22, 0, 14).fill({ color: 0xfacc15, alpha: 0.55 });
         g.circle(-22, 0, 18).fill({ color: 0xf97316, alpha: 0.25 });
@@ -157,6 +159,7 @@ class GamepadHud extends Component {
 
   private drawHud(left: Vec2, right: Vec2, lt: number, rt: number): void {
     this.graphics.draw((g) => {
+      g.clear();
       const stickRadius = 28;
       // Left/right stick rings + dots
       drawStick(g, 60, 60, stickRadius, left);
