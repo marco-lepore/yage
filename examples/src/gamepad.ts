@@ -235,22 +235,22 @@ class GamepadScene extends Scene {
 
     // HUD strip — anchored bottom-left
     const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform({ position: new Vec2(20, HEIGHT - 110) }));
+    hudEntity.add(new Transform({ position: new Vec2(20, HEIGHT - 130) }));
     hudEntity.add(new GraphicsComponent());
 
     // Stick / trigger labels
-    addHudLabel(this, 60 + 20, HEIGHT - 110 + 100, "L Stick");
-    addHudLabel(this, 200 + 20, HEIGHT - 110 + 100, "R Stick");
-    addHudLabel(this, 320 + 20, HEIGHT - 110 + 100, "LT");
-    addHudLabel(this, 360 + 20, HEIGHT - 110 + 100, "RT");
+    addHudLabel(this, 60 + 20, HEIGHT - 130 + 100, "L Stick");
+    addHudLabel(this, 200 + 20, HEIGHT - 130 + 100, "R Stick");
+    addHudLabel(this, 320 + 20, HEIGHT - 130 + 100, "LT");
+    addHudLabel(this, 360 + 20, HEIGHT - 130 + 100, "RT");
 
     // Held-buttons text — anchored bottom-right of HUD strip
     const buttonsEntity = this.spawn("buttons");
     buttonsEntity.add(
-      new Transform({ position: new Vec2(450, HEIGHT - 75) }),
+      new Transform({ position: new Vec2(450, HEIGHT - 95) }),
     );
     const buttonsLabel = this.spawn("buttons-label");
-    buttonsLabel.add(new Transform({ position: new Vec2(450, HEIGHT - 95) }));
+    buttonsLabel.add(new Transform({ position: new Vec2(450, HEIGHT - 115) }));
     buttonsLabel.add(
       new TextComponent({
         text: "Buttons held",
@@ -272,7 +272,7 @@ class GamepadScene extends Scene {
 
     // Footer — controls hint
     const footer = this.spawn("footer");
-    footer.add(new Transform({ position: new Vec2(20, HEIGHT - 28) }));
+    footer.add(new Transform({ position: new Vec2(20, HEIGHT - 48) }));
     footer.add(
       new TextComponent({
         text: "Left stick / WASD: move    ·    Right stick: aim    ·    A or Space or RT: boost",
