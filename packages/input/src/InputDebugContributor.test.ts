@@ -63,7 +63,7 @@ describe("InputDebugContributor", () => {
   // -- drawWorld --
 
   it("drawWorld draws crosshair when pointer flag is enabled", () => {
-    manager._onPointerMove(100, 50);
+    manager.firePointerMove(100, 50);
     const g = createMockGraphics();
     const api = createWorldApi({
       acquireGraphics: vi.fn(() => g),
@@ -97,7 +97,7 @@ describe("InputDebugContributor", () => {
   });
 
   it("drawWorld scales crosshair by camera zoom", () => {
-    manager._onPointerMove(0, 0);
+    manager.firePointerMove(0, 0);
     const g = createMockGraphics();
     const api = createWorldApi({
       acquireGraphics: vi.fn(() => g),

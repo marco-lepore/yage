@@ -265,7 +265,7 @@ describe("InputPlugin", () => {
     manager.setCamera({
       screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
     });
-    manager._onPointerMove(50, 100);
+    manager.firePointerMove(50, 100);
 
     const worldPos = manager.getPointerPosition();
     expect(worldPos.x).toBe(100);
@@ -282,7 +282,7 @@ describe("InputPlugin", () => {
       screenToWorld: (sx: number, sy: number) => new Vec2(sx * 2, sy * 2),
     });
     manager.clearCamera();
-    manager._onPointerMove(50, 100);
+    manager.firePointerMove(50, 100);
 
     const pos = manager.getPointerPosition();
     expect(pos.x).toBe(50);
@@ -381,17 +381,116 @@ describe("InputPlugin", () => {
 
   it("ignores unmapped mouse buttons on pointerdown and pointerup", () => {
     context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    // Buttons 3+ (back / forward / etc.) don't fire Mouse* action codes and
+    // don't count toward `isPointerDown` — only buttons 0/1/2 do. The pointer
+    // record itself is still tracked.
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 3 }));
+    expect(manager.isPointerDown()).toBe(false);
+    // `fire` is bound to `MouseLeft`; if button 3 ever started firing the
+    // primary mouse code by mistake, this would catch it.
+    expect(manager.isPressed("fire")).toBe(false);
+
+    window.dispatchEvent(new PointerEvent("pointerup", { button: 3 }));
+    expect(manager.isPointerDown()).toBe(false);
+  });
+
+  it("forwards pointerType from PointerEvent to PointerInfo", () => {
+    context = createContext();
     plugin = new InputPlugin();
     plugin.install(context);
     const manager = context.resolve(InputManagerKey);
 
-    // Button 3 (back button) is not in MOUSE_BUTTON_MAP
-    document.dispatchEvent(new PointerEvent("pointerdown", { button: 3 }));
-    expect(manager.isPointerDown()).toBe(true);
-    // No crash, no phantom key mapped
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 42,
+        pointerType: "touch",
+        isPrimary: true,
+      }),
+    );
 
-    window.dispatchEvent(new PointerEvent("pointerup", { button: 3 }));
-    expect(manager.isPointerDown()).toBe(false);
+    const pointer = manager.getPointer(42);
+    expect(pointer?.type).toBe("touch");
+    expect(pointer?.isPrimary).toBe(true);
+  });
+
+  it("pointercancel removes the pointer and releases aggregate buttons", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 7,
+        pointerType: "touch",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.isPressed("fire")).toBe(true);
+
+    window.dispatchEvent(
+      new PointerEvent("pointercancel", { pointerId: 7 }),
+    );
+    expect(manager.getPointer(7)).toBeUndefined();
+    expect(manager.isPressed("fire")).toBe(false);
+  });
+
+  it("tracks two simultaneous touch pointers independently", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 100,
+        pointerType: "touch",
+        isPrimary: true,
+        clientX: 10,
+        clientY: 20,
+      }),
+    );
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 101,
+        pointerType: "touch",
+        isPrimary: false,
+        clientX: 200,
+        clientY: 300,
+      }),
+    );
+
+    const all = manager.getPointers();
+    expect(all.length).toBe(2);
+    const primary = all.find((p) => p.isPrimary);
+    expect(primary?.id).toBe(100);
+    expect(primary?.screenPos.x).toBe(10);
+  });
+
+  it("falls back to 'mouse' when PointerEvent.pointerType is empty", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 50,
+        pointerType: "",
+        isPrimary: true,
+      }),
+    );
+
+    expect(manager.getPointer(50)?.type).toBe("mouse");
   });
 
   it("onStart registers debug contributor when debug registry is available", () => {
@@ -496,6 +595,98 @@ describe("InputPlugin", () => {
         );
       }
     }
+  });
+
+  it("clears held pointer state when tab visibility goes hidden", () => {
+    context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 7,
+        pointerType: "touch",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.isPressed("fire")).toBe(true);
+    expect(manager.getPointer(7)).toBeDefined();
+
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      Document.prototype,
+      "visibilityState",
+    );
+    try {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      expect(manager.isPressed("fire")).toBe(false);
+      expect(manager.getPointers()).toHaveLength(0);
+    } finally {
+      delete (document as unknown as { visibilityState?: unknown })
+        .visibilityState;
+      if (originalDescriptor) {
+        Object.defineProperty(
+          Document.prototype,
+          "visibilityState",
+          originalDescriptor,
+        );
+      }
+    }
+  });
+
+  it("pointerleave on canvas removes a hovering touch / pen pointer", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    // A pen hovering over the canvas: pointermove with no pointerdown.
+    window.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 42,
+        pointerType: "pen",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.getPointer(42)).toBeDefined();
+
+    document.dispatchEvent(
+      new PointerEvent("pointerleave", {
+        pointerId: 42,
+        pointerType: "pen",
+      }),
+    );
+    expect(manager.getPointer(42)).toBeUndefined();
+  });
+
+  it("pointerleave keeps mouse pointers tracked (cursor persistence)", () => {
+    context = createContext();
+    plugin = new InputPlugin();
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    window.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+      }),
+    );
+    expect(manager.getPointer(1)).toBeDefined();
+
+    document.dispatchEvent(
+      new PointerEvent("pointerleave", {
+        pointerId: 1,
+        pointerType: "mouse",
+      }),
+    );
+    expect(manager.getPointer(1)).toBeDefined();
   });
 
   it("applies deadzones, triggerThreshold, and pollGamepads from config", () => {

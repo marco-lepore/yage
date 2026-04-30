@@ -52,10 +52,31 @@ input.getVector("left", "right", "up", "down"); // Vec2 (not normalized)
 ```ts
 input.getPointerPosition(); // Vec2 in world coords (if camera set)
 input.getPointerScreenPosition(); // Vec2 in virtual-space coords
-input.isPointerDown(); // any pointer button held
+input.isPointerDown(); // primary pointer has any of buttons 0/1/2 held
 ```
 
-Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`.
+Mouse buttons map to actions: `MouseLeft`, `MouseMiddle`, `MouseRight`. Touch / pen primary contacts fire `MouseLeft` (matches `PointerEvent.button === 0`), so existing click-handler bindings work for taps unchanged.
+
+The singular getters above always report the **primary** pointer (the one the browser flagged `isPrimary`). Multi-touch state lives behind `getPointers`.
+
+### Multi-pointer / touch
+
+```ts
+import type { PointerInfo } from "@yagejs/input";
+
+input.getPointers();      // readonly PointerInfo[] — one per active mouse / pen / finger
+input.getPointer(id);     // PointerInfo | undefined — direct lookup by pointerId
+
+// Per-pointer events. Each returns a disposer.
+const off = input.onPointerDown((p: PointerInfo) => {/* ... */});
+input.onPointerUp((p) => {/* fires for pointer release AND pointercancel */});
+input.onPointerMove((p) => {/* ... */});
+off();
+```
+
+`PointerInfo` carries `{ id, screenPos: Vec2, type: "mouse" | "pen" | "touch", isPrimary: boolean, buttons: ReadonlySet<number>, isDown: boolean }`. Treat as an immutable snapshot — don't retain across frames.
+
+Touch / pen pointers are removed from `getPointers()` once their last button releases (or on `pointercancel`); mouse pointers persist across click cycles. The `MouseLeft/Middle/Right` action codes are aggregate "any pointer holds this button" — two simultaneous taps holding button 0 emit one down edge, one up edge.
 
 ### Pointer coords under responsive fit
 
@@ -248,6 +269,12 @@ new InputPlugin({
 ```ts
 input.fireGamepadButton("GamepadA", true);   // routes through real path
 input.fireGamepadAxis("leftX", 0.7);         // stored under synthetic pad
+
+// Pointer injection accepts an optional opts arg for multi-pointer / touch tests.
+input.firePointerMove(120, 80);
+input.firePointerDown(0);
+input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
+input.firePointerUp(0, { id: 5 });
 ```
 
 For deterministic inspector probes with a real controller plugged in, pair

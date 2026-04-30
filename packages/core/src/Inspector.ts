@@ -40,12 +40,23 @@ type InspectorGamepadAxisKey =
   | "leftTrigger"
   | "rightTrigger";
 
+/**
+ * Options for synthetic pointer injection. Pass `id` / `type` / `isPrimary`
+ * to drive a non-primary, touch, or pen pointer in deterministic tests. All
+ * fields are optional and default to a primary mouse pointer with `id: 1`.
+ */
+interface InspectorPointerOpts {
+  id?: number;
+  type?: "mouse" | "pen" | "touch";
+  isPrimary?: boolean;
+}
+
 interface InputManagerLike {
   fireKeyDown(code: string): void;
   fireKeyUp(code: string): void;
-  firePointerMove(x: number, y: number): void;
-  firePointerDown(button?: 0 | 1 | 2): void;
-  firePointerUp(button?: 0 | 1 | 2): void;
+  firePointerMove(x: number, y: number, opts?: InspectorPointerOpts): void;
+  firePointerDown(button?: 0 | 1 | 2, opts?: InspectorPointerOpts): void;
+  firePointerUp(button?: 0 | 1 | 2, opts?: { id?: number }): void;
   /** `code` is a gamepad code string (e.g. `"GamepadA"`, `"GamepadLT"`). */
   fireGamepadButton(code: string, pressed: boolean): void;
   fireGamepadAxis(side: InspectorGamepadAxisKey, value: number): void;
@@ -202,15 +213,40 @@ export interface CameraSnapshot {
   rotation: number;
 }
 
+/**
+ * Per-pointer entry in {@link InputStateSnapshot.pointers}. Mirrors the runtime
+ * `PointerInfo` shape from `@yagejs/input`. Touch pointers vanish from the
+ * array once their last button releases; mouse pointers persist.
+ */
+export interface PointerSnapshot {
+  /** `PointerEvent.pointerId`, or the synthetic id passed via `firePointer*`. */
+  id: number;
+  x: number;
+  y: number;
+  type: "mouse" | "pen" | "touch";
+  isPrimary: boolean;
+  buttons: number[];
+  down: boolean;
+}
+
 export interface InputStateSnapshot {
   keys: string[];
   actions: string[];
+  /**
+   * Aggregate / primary-pointer view, retained for back-compat. `x` / `y` track
+   * the primary pointer's screen position; `buttons` / `down` reflect the
+   * any-pointer aggregate that drives the `MouseLeft`/`Middle`/`Right` action codes.
+   *
+   * For multi-touch state, read {@link InputStateSnapshot.pointers}.
+   */
   mouse: {
     x: number;
     y: number;
     buttons: number[];
     down: boolean;
   };
+  /** All currently-tracked pointers (one per active mouse, pen, or finger). */
+  pointers: PointerSnapshot[];
   gamepad: {
     /** Currently-held gamepad codes (e.g. `"GamepadA"`, `"GamepadLT"`). */
     buttons: string[];
@@ -345,6 +381,35 @@ export class Inspector {
     },
     mouseUp: (button: 0 | 1 | 2 = 0): void => {
       this.requireInputManager().firePointerUp(button);
+    },
+    /**
+     * Inject a synthetic pointer-move with full pointer addressing. Pass `opts`
+     * with `id` / `type: "touch"` to drive a specific finger; defaults match
+     * the primary mouse pointer (same as `mouseMove`).
+     */
+    pointerMove: (
+      x: number,
+      y: number,
+      opts?: InspectorPointerOpts,
+    ): void => {
+      this.requireInputManager().firePointerMove(x, y, opts);
+    },
+    /**
+     * Inject a synthetic pointer-down. With `opts.id` and `opts.type: "touch"`
+     * this drives a multi-touch contact, exercising `getPointers()`,
+     * per-pointer event hooks, and the any-pointer aggregate for `MouseLeft`.
+     */
+    pointerDown: (
+      button: 0 | 1 | 2 = 0,
+      opts?: InspectorPointerOpts,
+    ): void => {
+      this.requireInputManager().firePointerDown(button, opts);
+    },
+    pointerUp: (
+      button: 0 | 1 | 2 = 0,
+      opts?: { id?: number },
+    ): void => {
+      this.requireInputManager().firePointerUp(button, opts);
     },
     gamepadButton: (code: string, pressed: boolean): void => {
       this.requireInputManager().fireGamepadButton(code, pressed);
@@ -1025,6 +1090,7 @@ export class Inspector {
         keys: [],
         actions: [],
         mouse: { x: 0, y: 0, buttons: [], down: false },
+        pointers: [],
         gamepad: { buttons: [], axes: [] },
       }
     );
