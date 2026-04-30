@@ -330,6 +330,15 @@ export class RendererPlugin implements Plugin {
   hitTestUI(x: number, y: number): boolean {
     const boundary = this._app.renderer.events?.rootBoundary;
     if (!boundary) return false;
+    // Pixi v8 sets `rootBoundary.rootTarget` on each render. Before the first
+    // frame (or under `inspector.time.freeze()` in deterministic test runs
+    // that pause the ticker) it can be null — and `boundary.hitTest` reads
+    // `rootTarget.eventMode` unconditionally, so the call would crash. Bind
+    // it to `app.stage` ourselves; Pixi's render loop will keep it accurate
+    // once frames start landing.
+    if (!boundary.rootTarget) {
+      boundary.rootTarget = this._app.stage;
+    }
     const hit = boundary.hitTest(x, y) as Container | null;
     if (!hit) return false;
     let node: Container | null = hit;
