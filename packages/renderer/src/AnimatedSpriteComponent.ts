@@ -40,6 +40,11 @@ export interface AnimatedSpriteComponentOptions {
 export interface AnimatedSpriteData {
   source: FrameSource;
   layer: string;
+  /** See {@link SpriteData.interactive} — same shape, same persistence semantics. */
+  interactive?: {
+    eventMode?: "static" | "dynamic";
+    consumeOnInteraction?: boolean;
+  };
   effects?: EffectStackSnapshot;
   mask?: MaskSnapshot;
 }
@@ -57,6 +62,7 @@ export class AnimatedSpriteComponent extends Component {
   );
   private readonly _source: FrameSource | null;
   private _mask: MaskHandle | undefined;
+  private _interactive: AnimatedSpriteComponentOptions["interactive"];
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super();
@@ -81,6 +87,7 @@ export class AnimatedSpriteComponent extends Component {
     }
 
     if (options.interactive) {
+      this._interactive = { ...options.interactive };
       this.animatedSprite.eventMode =
         options.interactive.eventMode ?? "static";
       if (options.interactive.consumeOnInteraction) {
@@ -130,6 +137,7 @@ export class AnimatedSpriteComponent extends Component {
       source: this._source,
       layer: this.layerName,
     };
+    if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;
     const mask = this._mask?.serialize();

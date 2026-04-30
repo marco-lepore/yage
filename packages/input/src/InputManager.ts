@@ -36,7 +36,7 @@ type BufferedInputEvent =
   | { kind: "keyUp"; code: string }
   | { kind: "pointerDown"; info: PointerEventInfo }
   | { kind: "pointerUp"; info: PointerEventInfo }
-  | { kind: "pointerCancel"; id: number }
+  | { kind: "pointerCancel"; id: number; heldButtons: readonly number[] }
   | { kind: "wheel"; dx: number; dy: number };
 
 /** Standard-mapping button codes, indexed by W3C button position. */
@@ -765,8 +765,11 @@ export class InputManager {
     this._applyPointerUp(info);
   }
 
-  /** Public wrapper for synthetic wheel input. Applies sync, including action edges. */
+  /** Public wrapper for synthetic wheel input. Applies sync, including
+   * action edges and `onWheel` listener notification — matching the DOM path
+   * so tests and inspector probes drive the full surface. */
   fireWheel(dx: number, dy: number): void {
+    for (const fn of [...this.wheelListeners]) fn(dx, dy);
     this.applyWheelEdges(dx, dy);
   }
 
@@ -1386,15 +1389,22 @@ export class InputManager {
   }
 
   /**
-   * @internal Sync portion: upsert pointer (existence, screenPos, type,
-   * isPrimary, primaryPointerId) and notify pointerDownListeners. Button
-   * mutation, action-map edges, and mouse-aggregate emit are deferred to the
-   * next drain at `Phase.EarlyUpdate` so {@link consumePointer} (or the
-   * renderer's UI hit-test) can suppress them.
+   * @internal Sync portion: upsert pointer, mutate `buttons` / `isDown`, and
+   * notify pointerDownListeners with the post-mutation state — so DOM-driven
+   * listeners observe the same `PointerInfo` shape that `_applyPointerDown`
+   * produces in the synthetic path. Action-map edges and mouse-aggregate
+   * emission are still deferred to the next drain at `Phase.EarlyUpdate` so
+   * {@link consumePointer} (or the renderer's UI hit-test) can suppress them.
    */
   _enqueuePointerDown(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    if (info.button >= 0 && info.button <= 2) {
+      pointer.buttons.add(info.button);
+      pointer.isDown = true;
+    } else {
+      pointer.isDown = pointer.buttons.size > 0;
+    }
     this.notifyPointerListeners(this.pointerDownListeners, pointer);
     this.inputQueue.push({ kind: "pointerDown", info });
   }
@@ -1403,17 +1413,35 @@ export class InputManager {
   _enqueuePointerUp(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
+    if (info.button >= 0 && info.button <= 2) {
+      pointer.buttons.delete(info.button);
+    }
+    pointer.isDown = pointer.buttons.size > 0;
     this.notifyPointerListeners(this.pointerUpListeners, pointer);
+    // Touch / pen lifecycle ends synchronously when the last button releases —
+    // matches the synthetic `_applyPointerUp` path so a cancel-then-down on the
+    // same id (rare but possible across DOM re-creates) doesn't lose the
+    // re-upserted pointer at drain time.
+    if (!pointer.isDown && pointer.type !== "mouse") {
+      this.removePointer(info.id);
+    }
     this.inputQueue.push({ kind: "pointerUp", info });
   }
 
   /** @internal */
   _enqueuePointerCancel(id: number): void {
     const pointer = this.pointers.get(id);
+    let heldButtons: readonly number[] = [];
     if (pointer) {
+      heldButtons = [...pointer.buttons];
+      pointer.buttons.clear();
+      pointer.isDown = false;
       this.notifyPointerListeners(this.pointerUpListeners, pointer);
+      if (pointer.type !== "mouse") {
+        this.removePointer(id);
+      }
     }
-    this.inputQueue.push({ kind: "pointerCancel", id });
+    this.inputQueue.push({ kind: "pointerCancel", id, heldButtons });
   }
 
   /** @internal */
@@ -1450,7 +1478,7 @@ export class InputManager {
           this.drainPointerUp(event.info);
           break;
         case "pointerCancel":
-          this.drainPointerCancel(event.id);
+          this.drainPointerCancel(event.id, event.heldButtons);
           break;
         case "wheel":
           this.applyWheelEdges(event.dx, event.dy);
@@ -1462,56 +1490,44 @@ export class InputManager {
   private drainPointerDown(info: PointerEventInfo): void {
     // Auto-consume on UI hit. Skipped if explicitly already consumed (the
     // primitive `consumePointer` won — no need to re-check) so handler code
-    // stays authoritative.
+    // stays authoritative. Pointer.buttons / isDown were already mutated
+    // synchronously in `_enqueuePointerDown` so DOM listeners saw fresh state.
     if (
       !this.consumedPointers.has(info.id) &&
       this.renderer?.hitTestUI?.(info.screenX, info.screenY)
     ) {
       this.consumedPointers.add(info.id);
     }
-    const pointer = this.pointers.get(info.id);
-    if (!pointer) return;
+    if (!this.pointers.has(info.id)) return;
     if (info.button >= 0 && info.button <= 2) {
-      pointer.buttons.add(info.button);
-      pointer.isDown = true;
       this.recomputeMouseAggregate(info.button);
-    } else {
-      pointer.isDown = pointer.buttons.size > 0;
     }
   }
 
   private drainPointerUp(info: PointerEventInfo): void {
-    const pointer = this.pointers.get(info.id);
-    if (!pointer) return;
+    // Buttons / isDown / pointer removal were already done in
+    // `_enqueuePointerUp`. This step recomputes the consume-gated aggregate
+    // (the contributing pointer is either gone or has the button cleared, so
+    // the walk naturally finds whether any other pointer still holds it) and
+    // clears the consume mark when the cycle closes.
     if (info.button >= 0 && info.button <= 2) {
-      pointer.buttons.delete(info.button);
       this.recomputeMouseAggregate(info.button);
     }
-    pointer.isDown = pointer.buttons.size > 0;
-    if (!pointer.isDown) {
-      // End of event cycle — clear the consume mark so the next press starts
-      // unmarked. Touch / pen pointers also vanish here (mouse persists for
-      // hover queries; the browser does not emit a separate "leave").
+    const pointer = this.pointers.get(info.id);
+    if (!pointer || !pointer.isDown) {
       this.consumedPointers.delete(info.id);
-      if (pointer.type !== "mouse") {
-        this.removePointer(pointer.id);
-      }
     }
   }
 
-  private drainPointerCancel(id: number): void {
-    const pointer = this.pointers.get(id);
-    if (!pointer) return;
-    const heldButtons = [...pointer.buttons];
-    pointer.buttons.clear();
-    pointer.isDown = false;
+  private drainPointerCancel(id: number, heldButtons: readonly number[]): void {
+    // Buttons / isDown were cleared and the pointer removed (touch / pen) in
+    // `_enqueuePointerCancel`. Recompute aggregate for each button the
+    // pointer had been holding, since one of those transitions may now
+    // trigger a `MouseLeft` / `Middle` / `Right` keyUp edge.
     for (const button of heldButtons) {
       this.recomputeMouseAggregate(button);
     }
     this.consumedPointers.delete(id);
-    if (pointer.type !== "mouse") {
-      this.removePointer(id);
-    }
   }
 
   private applyWheelEdges(dx: number, dy: number): void {
@@ -1765,11 +1781,17 @@ export class InputManager {
     for (const fn of [...list]) fn(name);
   }
 
-  /** Action names that include `code` in their bindings. Used for action listener fan-out. */
+  /**
+   * Action names that include `code` in their bindings AND whose group is
+   * currently enabled. Used for `onAction` / `onActionReleased` listener
+   * fan-out so disabled-group suppression matches `isPressed` behavior.
+   */
   private actionsForCode(code: string): string[] {
     const result: string[] = [];
     for (const [action, keys] of this.actionMap) {
-      if (keys.includes(code)) result.push(action);
+      if (keys.includes(code) && this.isActionEnabled(action)) {
+        result.push(action);
+      }
     }
     return result;
   }

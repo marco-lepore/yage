@@ -62,6 +62,16 @@ export interface SpriteData {
   alpha?: number;
   anchor?: { x: number; y: number };
   visible?: boolean;
+  /**
+   * Interactive opt-in config from the original options. Persisted so
+   * restored scenes keep `eventMode` and the `consumeOnInteraction` mark on
+   * the rebuilt sprite — without this, save/load silently strips the
+   * tappable behavior.
+   */
+  interactive?: {
+    eventMode?: "static" | "dynamic";
+    consumeOnInteraction?: boolean;
+  };
   effects?: EffectStackSnapshot;
   mask?: MaskSnapshot;
 }
@@ -84,6 +94,7 @@ export class SpriteComponent extends Component {
   );
   private _textureKey: string | null;
   private _mask: MaskHandle | undefined;
+  private _interactive: SpriteComponentOptions["interactive"];
 
   constructor(options: SpriteComponentOptions) {
     super();
@@ -109,6 +120,7 @@ export class SpriteComponent extends Component {
       this.sprite.alpha = options.alpha;
     }
     if (options.interactive) {
+      this._interactive = { ...options.interactive };
       this.sprite.eventMode = options.interactive.eventMode ?? "static";
       if (options.interactive.consumeOnInteraction) {
         markPointerConsumeContainer(this.sprite);
@@ -144,6 +156,7 @@ export class SpriteComponent extends Component {
       anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
       visible: this.sprite.visible,
     };
+    if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
@@ -175,6 +188,7 @@ export class SpriteComponent extends Component {
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.anchor) opts.anchor = data.anchor;
     if (data.visible !== undefined) opts.visible = data.visible;
+    if (data.interactive) opts.interactive = { ...data.interactive };
     return new SpriteComponent(opts);
   }
 
