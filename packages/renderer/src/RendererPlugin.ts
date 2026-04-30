@@ -1,6 +1,7 @@
 import {
   AssetManagerKey,
   GameLoopKey,
+  isPointerConsumeContainer,
   makeGlobalScopedQueue,
   ProcessSystemKey,
   RendererAdapterKey,
@@ -21,7 +22,7 @@ import type { SnapshotContributor } from "@yagejs/save";
 // dynamic-import variable below.
 import type * as SaveModule from "@yagejs/save";
 import { Application, Assets, Graphics } from "pixi.js";
-import type { Spritesheet } from "pixi.js";
+import type { Container, Spritesheet } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -313,6 +314,30 @@ export class RendererPlugin implements Plugin {
    */
   virtualToCanvas(x: number, y: number): Vec2 {
     return this._fitController.virtualToCanvas(x, y);
+  }
+
+  /**
+   * Hit-test at virtual-space `(x, y)` and return `true` when the topmost
+   * interactive Pixi container has any ancestor (including itself) marked via
+   * `markPointerConsumeContainer`. Used by `@yagejs/input`'s drain step to
+   * auto-claim presses landing on UI surfaces.
+   *
+   * `EventBoundary.hitTest` operates in stage-local coordinates. The fit
+   * controller already aligns `app.stage` with the virtual space (its scale
+   * + translate transform maps `virtual` into `canvas`), so passing virtual
+   * coordinates straight through matches what Pixi's hit-test sees.
+   */
+  hitTestUI(x: number, y: number): boolean {
+    const boundary = this._app.renderer.events?.rootBoundary;
+    if (!boundary) return false;
+    const hit = boundary.hitTest(x, y) as Container | null;
+    if (!hit) return false;
+    let node: Container | null = hit;
+    while (node) {
+      if (isPointerConsumeContainer(node)) return true;
+      node = node.parent ?? null;
+    }
+    return false;
   }
 
   /**

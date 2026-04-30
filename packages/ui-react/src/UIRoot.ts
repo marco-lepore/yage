@@ -1,4 +1,10 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import {
+  Component,
+  Transform,
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
+  serializable,
+} from "@yagejs/core";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 import { Container } from "pixi.js";
@@ -25,6 +31,14 @@ import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 export interface UIRootOptions {
   anchor?: Anchor;
   offset?: { x: number; y: number };
+  /**
+   * Whether the root container marks itself as a UI auto-consume surface.
+   * Default `true`: pointer events landing inside the React tree are claimed
+   * by `@yagejs/input` so they don't leak through to gameplay actions. Pass
+   * `false` for a transparent overlay (decorative full-screen filters,
+   * cursor-following ornament, etc.) that should let clicks pass through.
+   */
+  consumeInput?: boolean;
   /**
    * Target layer name. Defaults to the auto-provisioned screen-space
    * `"ui"` layer. Pass the name of a layer declared on `Scene.layers`
@@ -70,6 +84,9 @@ export class UIRoot extends Component {
   constructor(opts?: UIRootOptions) {
     super();
     this._container = new Container();
+    if (opts?.consumeInput !== false) {
+      markPointerConsumeContainer(this._container);
+    }
     this._anchor = opts?.anchor;
     this._offset = opts?.offset ?? { x: 0, y: 0 };
     this._layer = opts?.layer;
@@ -208,6 +225,7 @@ export class UIRoot extends Component {
 
   onDestroy(): void {
     if (this._onCommit) removeOnCommit(this._onCommit);
+    unmarkPointerConsumeContainer(this._container);
     this.root?.unmount();
     this.root = null;
     this._container.removeFromParent();

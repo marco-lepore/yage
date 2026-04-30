@@ -58,6 +58,10 @@ export class InputPlugin implements Plugin {
     const pointerTarget: EventTarget =
       this.config.target ?? renderer?.canvas ?? document;
 
+    // Stash the renderer adapter so the manager's drain step can call its
+    // optional `hitTestUI(x, y)` for the UI auto-consume fallback.
+    this.manager._setRenderer(renderer ?? null);
+
     // Element used to convert clientX/clientY to element-relative coordinates.
     // When `canvasToVirtual` is available, it always expects canvas-origin
     // pixels — so prefer the canvas over a custom `config.target` (which may
@@ -76,17 +80,20 @@ export class InputPlugin implements Plugin {
 
     const preventSet = new Set(this.config.preventDefaultKeys ?? []);
 
-    // Keyboard listeners
+    // Keyboard listeners. DOM events enqueue onto the input manager's buffer
+    // and apply at the next `Phase.EarlyUpdate` drain — so any listener that
+    // wants to claim the event (`consumePointer`, hit-test fallback, etc.) has
+    // a chance to run before action-map edges fire.
     const onKeyDown = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (ke.repeat) return;
       if (preventSet.has(ke.code)) ke.preventDefault();
-      this.manager._onKeyDown(ke.code);
+      this.manager._enqueueKeyDown(ke.code);
     };
     const onKeyUp = (e: Event): void => {
       const ke = e as KeyboardEvent;
       if (preventSet.has(ke.code)) ke.preventDefault();
-      this.manager._onKeyUp(ke.code);
+      this.manager._enqueueKeyUp(ke.code);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -124,26 +131,26 @@ export class InputPlugin implements Plugin {
       };
     };
     const onPointerMove = (e: Event): void => {
-      this.manager._onPointerMove(buildInfo(e as PointerEvent));
+      this.manager._enqueuePointerMove(buildInfo(e as PointerEvent));
     };
     const onPointerDown = (e: Event): void => {
-      this.manager._onPointerDown(buildInfo(e as PointerEvent));
+      this.manager._enqueuePointerDown(buildInfo(e as PointerEvent));
     };
     const onPointerUp = (e: Event): void => {
-      this.manager._onPointerUp(buildInfo(e as PointerEvent));
+      this.manager._enqueuePointerUp(buildInfo(e as PointerEvent));
     };
     const onPointerCancel = (e: Event): void => {
       const pe = e as PointerEvent;
-      this.manager._onPointerCancel(pe.pointerId);
+      this.manager._enqueuePointerCancel(pe.pointerId);
     };
     // `pointerleave` covers the hover lifecycle for pen / touch pointers that
     // never receive a `pointerdown` (a stylus floating over the tablet, then
     // pulled away). Without this, the manager would accumulate undead entries
     // in `getPointers()` for every hover session. Mouse pointers ignore leave
-    // by design — `_onPointerCancel` skips removal for `type === "mouse"`.
+    // by design — `_applyPointerCancel` skips removal for `type === "mouse"`.
     const onPointerLeave = (e: Event): void => {
       const pe = e as PointerEvent;
-      this.manager._onPointerCancel(pe.pointerId);
+      this.manager._enqueuePointerCancel(pe.pointerId);
     };
 
     pointerTarget.addEventListener("pointerdown", onPointerDown);
@@ -157,6 +164,25 @@ export class InputPlugin implements Plugin {
       () => window.removeEventListener("pointerup", onPointerUp),
       () => window.removeEventListener("pointercancel", onPointerCancel),
       () => pointerTarget.removeEventListener("pointerleave", onPointerLeave),
+    );
+
+    // Scroll wheel — fires `WheelUp/Down/Left/Right` action-map edges (one
+    // frame each) and notifies any `onWheel` subscribers with raw deltas.
+    const wheelInvertY = this.config.wheelInvertY === true;
+    const preventDefaultWheel = this.config.preventDefaultWheel === true;
+    const onWheel = (e: Event): void => {
+      const we = e as WheelEvent;
+      if (preventDefaultWheel) we.preventDefault();
+      const dy = wheelInvertY ? -we.deltaY : we.deltaY;
+      this.manager._enqueueWheel(we.deltaX, dy);
+    };
+    pointerTarget.addEventListener(
+      "wheel",
+      onWheel,
+      preventDefaultWheel ? { passive: false } : undefined,
+    );
+    this.cleanupFns.push(() =>
+      pointerTarget.removeEventListener("wheel", onWheel),
     );
 
     // Gamepad connect/disconnect — note: browsers gate this behind a first

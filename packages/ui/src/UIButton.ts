@@ -4,6 +4,7 @@ import { Display } from "yoga-layout";
 import type { BackgroundOptions, UIElement, UIButtonProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
+import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
 
@@ -53,6 +54,7 @@ export class UIButton implements UIElement {
     this.container = new Container();
     this.container.eventMode = "static";
     this.container.cursor = "pointer";
+    applyConsumeInput(this.container, p.consumeInput);
 
     this.bgRenderer = new BackgroundRenderer();
     this.bgRenderer.set(this.bgOpts, this.container, 0);
@@ -142,6 +144,7 @@ export class UIButton implements UIElement {
     if (p.children !== undefined) this.label.text = p.children;
     if (p.onClick !== undefined) this.onClick = p.onClick;
     if (p.disabled !== undefined) this.setDisabled(p.disabled);
+    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
 
     if (p.background) {
       this.bgOpts = mergeBg(DEFAULT_BG, p.background);
@@ -164,6 +167,7 @@ export class UIButton implements UIElement {
   }
 
   destroy(): void {
+    clearConsumeInput(this.container);
     this.yogaNode.free();
     this.bgRenderer.destroy();
     this.label.destroy();
