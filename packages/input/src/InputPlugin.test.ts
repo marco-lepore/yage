@@ -186,6 +186,29 @@ describe("InputPlugin", () => {
     expect(manager.isPressed("fire")).toBe(false);
   });
 
+  it("same-tick DOM pointerdown+pointerup both fire MouseLeft edges on next drain", () => {
+    // Regression: Playwright's `mouse.down(); mouse.up()` and any synthetic
+    // dispatch from script fire both events in the same task tick before the
+    // next rAF. The drain must replay both buffered transitions, not infer
+    // the aggregate from live pointer state — otherwise the press/release
+    // edges silently disappear.
+    context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { button: 0 }));
+    // Pre-drain: nothing applied yet
+    expect(manager.isJustPressed("fire")).toBe(false);
+
+    manager._drainInputQueue();
+
+    expect(manager.isJustPressed("fire")).toBe(true);
+    expect(manager.isJustReleased("fire")).toBe(true);
+    expect(manager.isPressed("fire")).toBe(false);
+  });
+
   it("cleans up listeners on destroy", () => {
     context = createContext();
     plugin = new InputPlugin({
