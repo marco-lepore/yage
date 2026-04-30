@@ -486,6 +486,49 @@ describe("InputManager", () => {
     expect(input.getBindings("jump")).toEqual(["Space"]);
   });
 
+  // -- Frame deferral / drain --
+
+  describe("frame deferral", () => {
+    it("same-frame DOM pointerdown+pointerup still fires MouseLeft press/release edges", () => {
+      // Regression: when the rAF tick is throttled or events are dispatched
+      // back-to-back (Playwright `mouse.down(); mouse.up();`), both fire
+      // before drain. The drain must replay the buffered button transitions
+      // — recomputing aggregate from live state alone would silently drop
+      // the click because pointer.buttons is back to empty.
+      const downs: string[] = [];
+      const ups: string[] = [];
+      input.onAction("fire", (n) => downs.push(n));
+      input.onActionReleased("fire", (n) => ups.push(n));
+
+      input._enqueuePointerDown({
+        id: 1,
+        screenX: 10,
+        screenY: 20,
+        type: "mouse",
+        isPrimary: true,
+        button: 0,
+      });
+      input._enqueuePointerUp({
+        id: 1,
+        screenX: 10,
+        screenY: 20,
+        type: "mouse",
+        isPrimary: true,
+        button: 0,
+      });
+      // Pre-drain: action queries see no edge yet
+      expect(input.isJustPressed("fire")).toBe(false);
+
+      input._drainInputQueue();
+
+      expect(input.isJustPressed("fire")).toBe(true);
+      expect(input.isJustReleased("fire")).toBe(true);
+      expect(input.isPressed("fire")).toBe(false);
+      expect(downs).toEqual(["fire"]);
+      expect(ups).toEqual(["fire"]);
+    });
+  });
+
   // -- Group management --
 
   describe("groups", () => {
