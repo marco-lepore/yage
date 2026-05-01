@@ -290,10 +290,6 @@ class DemoScene extends Scene {
     // first use — our nameplate + health bar entities land there.
   ];
 
-  constructor() {
-    super();
-  }
-
   onEnter(): void {
     const cam = this.spawn(CameraEntity, {
       position: new Vec2(WORLD / 2, WORLD / 2),
