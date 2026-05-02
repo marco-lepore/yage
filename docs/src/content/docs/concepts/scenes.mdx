@@ -14,7 +14,7 @@ are pushed onto or popped from the scene stack.
 Extend the `Scene` base class:
 
 ```typescript
-import { Scene } from "@yagejs/core";
+import { Scene, Transform, Vec2 } from "@yagejs/core";
 
 class GameplayScene extends Scene {
   readonly name = "gameplay";
@@ -23,7 +23,7 @@ class GameplayScene extends Scene {
 
   onEnter() {
     const player = this.spawn("player");
-    player.add(new Transform(400, 300));
+    player.add(new Transform({ position: new Vec2(400, 300) }));
     player.add(new PlayerController());
   }
 
@@ -46,11 +46,13 @@ class GameplayScene extends Scene {
 | Property | Default | Purpose |
 |---|---|---|
 | `name` | — | Unique identifier for the scene |
-| `pauseBelow` | `false` | When `true`, scenes below this one stop updating |
+| `pauseBelow` | `true`  | When `true`, scenes below this one stop updating. Set to `false` for HUD or overlay scenes that should let the underlying scene keep running. |
 | `transparentBelow` | `false` | When `true`, scenes below this one still render |
 
-A pause menu typically sets both `pauseBelow: true` and
-`transparentBelow: true` — the game world is visible but frozen underneath.
+A pause menu inherits the default `pauseBelow: true` and adds
+`transparentBelow: true` — the game world is visible but frozen
+underneath. A HUD overlay typically sets `pauseBelow: false` and
+`transparentBelow: true` so gameplay continues to tick under it.
 
 ## Scene Stack Management
 
@@ -100,22 +102,33 @@ Scenes are always classes. Override `onEnter` to spawn entities, resolve
 services, and wire up the scene:
 
 ```typescript
-import { Scene, Transform } from "@yagejs/core";
-import { SpriteComponent } from "@yagejs/renderer";
+import { Component, Scene, SceneManagerKey, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
 import { InputManagerKey } from "@yagejs/input";
+
+const LogoTex = texture("assets/logo.png");
+
+// Per-frame input polling lives in a Component, not in the Scene.
+class TitleController extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly scenes = this.service(SceneManagerKey);
+
+  update(): void {
+    if (this.input.isJustPressed("start")) {
+      this.scenes.replace(new GameplayScene());
+    }
+  }
+}
 
 class TitleScene extends Scene {
   readonly name = "title";
 
   onEnter() {
     const logo = this.spawn("logo");
-    logo.add(new Transform(640, 200));
-    logo.add(new SpriteComponent({ textureKey: "logo.png" }));
+    logo.add(new Transform({ position: new Vec2(640, 200) }));
+    logo.add(new SpriteComponent({ texture: LogoTex }));
 
-    const input = this.context.resolve(InputManagerKey);
-    input.onPressed("start", () => {
-      this.context.resolve(SceneManagerKey).replace(new GameplayScene());
-    });
+    this.spawn("controller").add(new TitleController());
   }
 }
 

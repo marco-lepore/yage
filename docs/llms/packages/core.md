@@ -93,6 +93,22 @@ time base.
 | `Sequence` | Chainable step builder: `then`, `wait`, `call`, `parallel`, `loop` |
 | `TimerEntity` | Pre-built entity with ProcessComponent API |
 
+Decision matrix:
+
+| Need | Reach for |
+|---|---|
+| Wait N ms then run a callback | `Process.delay()` |
+| Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()` |
+| Animate one property A → B | `Tween.to()` / `.vec2()` |
+| Interpolate a number from→to with a custom setter | `Tween.custom(setter, from, to, duration, easing?)` |
+| Arbitrary per-frame logic (no interpolation) | `new Process({ update })` |
+| Multi-step "do this, then this, then this" | `Sequence` |
+| Run several animations together | `Sequence.parallel()` |
+| Multi-point or non-monotonic animation curves | `KeyframeAnimator` |
+| Fire discrete events at specific times | `KeyframeAnimator` keyframe `event` |
+
+Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
+
 ### Animation
 
 Keyframe-based property animation on top of `ProcessComponent`. Runs multiple named animations concurrently; values interpolate between keyframes via an easing function and are pushed to a user-supplied setter.

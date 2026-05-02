@@ -83,8 +83,8 @@ import { texture, spritesheet, renderAsset } from "@yagejs/renderer";
 // Load a single texture
 const bg = texture("assets/background.png");
 
-// Load a spritesheet with atlas data
-const heroSheet = spritesheet("assets/hero.png", "assets/hero.json");
+// Load a spritesheet (atlas JSON; the JSON references the texture image)
+const heroSheet = spritesheet("assets/hero.json");
 
 // Generic render asset (auto-detects type)
 const asset = renderAsset("assets/tileset.png");

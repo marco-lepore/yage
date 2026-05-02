@@ -2,6 +2,14 @@
 
 Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
+## Capabilities & Limits
+
+Supported: orthogonal Tiled JSON, multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction (raw `rect` / `polygon` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets.
+
+Not supported: animated tiles, infinite/chunked maps, isometric/hex/staggered orientations, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
+
+Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.
+
 ## Setup
 
 ```ts
