@@ -38,8 +38,11 @@ through the debug overlay. Two distinct steps make up the Tiled-collision-to-Rap
    shape data in Tiled's coordinate system (top-left-origin rects and
    polygons).
 2. **Physics conversion** — `toPhysicsColliders(shapes)` adapts those
-   raw shapes into Rapier `ColliderConfig`s with the offsets baked in
-   (center-origin, as Rapier expects).
+   raw shapes into Rapier `ColliderConfig`s with the offsets baked in.
+   Rect shapes become center-origin `box` configs (offset =
+   `x + width/2, y + height/2`); polygon shapes keep their original
+   vertices and a top-left-based offset (`offset = { x, y }`), since
+   Rapier polygons are vertex-defined and don't need centering.
 
 The wiring (extracted shapes → `toPhysicsColliders()` → static
 `RigidBodyComponent` + per-shape `ColliderComponent`) is shown inline

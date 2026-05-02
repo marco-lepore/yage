@@ -14,7 +14,7 @@ are pushed onto or popped from the scene stack.
 Extend the `Scene` base class:
 
 ```typescript
-import { Scene } from "@yagejs/core";
+import { Scene, Transform, Vec2 } from "@yagejs/core";
 
 class GameplayScene extends Scene {
   readonly name = "gameplay";
@@ -23,7 +23,7 @@ class GameplayScene extends Scene {
 
   onEnter() {
     const player = this.spawn("player");
-    player.add(new Transform(400, 300));
+    player.add(new Transform({ position: new Vec2(400, 300) }));
     player.add(new PlayerController());
   }
 
