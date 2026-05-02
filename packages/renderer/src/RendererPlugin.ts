@@ -179,7 +179,7 @@ export class RendererPlugin implements Plugin {
     //     Both emit onto the engine event bus. Gated behind environment
     //     checks so node-environment tests that don't stub the globals
     //     skip the wiring without crashing.
-    const bus = context.resolve(EventBusKey) as EventBus<EngineEvents>;
+    const bus = context.resolve(EventBusKey);
     this.installFullscreenListener(bus);
     this.installOrientationListener(bus);
 
@@ -419,8 +419,8 @@ export class RendererPlugin implements Plugin {
    * back to the canvas itself otherwise. Wraps `Element.requestFullscreen`
    * with the legacy `webkitRequestFullscreen` fallback for iOS Safari.
    *
-   * Must be called from a user-gesture handler (click, touch, key).
-   * Browsers reject silently otherwise.
+   * Must be called from a user-gesture handler (click, touch, key);
+   * browsers reject the returned Promise with a `TypeError` otherwise.
    */
   async requestFullscreen(): Promise<void> {
     const target = this.fullscreenTarget();

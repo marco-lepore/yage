@@ -230,9 +230,11 @@ bus.on("screen:fullscreen", ({ active }) => {
 ```
 
 **iOS Safari caveat.** `requestFullscreen` must be called from a
-user-gesture handler (click, touch, key) — browsers reject silently
-otherwise. The `webkitRequestFullscreen` variant on older iOS returns
-`void` rather than a `Promise`; the wrapper handles both.
+user-gesture handler (click, touch, key); the returned Promise rejects
+with a `TypeError` otherwise, so wrap the call in `try` / `catch` (or
+`.catch()`) if you want to recover gracefully. The
+`webkitRequestFullscreen` variant on older iOS returns `void` rather
+than a `Promise`; the wrapper handles both.
 
 ## Orientation
 
