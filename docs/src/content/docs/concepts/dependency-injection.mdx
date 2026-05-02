@@ -22,7 +22,7 @@ that `resolve()` returns the correct type without casts:
 import { ServiceKey } from "@yagejs/core";
 
 // Define a key with a descriptive label
-const AudioMixerKey = ServiceKey<AudioMixer>("AudioMixer");
+const AudioMixerKey = new ServiceKey<AudioMixer>("AudioMixer");
 ```
 
 Never use plain strings for service resolution — always define a `ServiceKey`.

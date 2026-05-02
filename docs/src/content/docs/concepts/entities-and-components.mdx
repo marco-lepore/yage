@@ -16,11 +16,14 @@ const bullet = scene.spawn("bullet");
 ### Adding and Querying Components
 
 ```typescript
-import { Transform, SpriteComponent } from "@yagejs/core";
+import { Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent, texture } from "@yagejs/renderer";
+
+const HeroTex = texture("assets/hero.png");
 
 // Add components
-player.add(new Transform(100, 200));
-player.add(new SpriteComponent({ textureKey: "hero.png" }));
+player.add(new Transform({ position: new Vec2(100, 200) }));
+player.add(new SpriteComponent({ texture: HeroTex }));
 
 // Get a component (throws if missing)
 const transform = player.get(Transform);

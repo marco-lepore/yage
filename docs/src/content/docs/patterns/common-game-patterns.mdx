@@ -19,27 +19,36 @@ bullet.add(new ColliderComponent({ shape: { type: "circle", radius: 4 } }));
 bullet.get(RigidBodyComponent).setVelocity(direction.scale(800));
 ```
 
-For reusable entity templates, use `defineBlueprint`:
+For reusable entity templates, prefer an `Entity` subclass with a
+`setup()` method — see the [Entity Subclasses](/patterns/entity-subclasses/)
+guide:
 
 ```typescript
-import { defineBlueprint } from "@yagejs/core";
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { GraphicsComponent } from "@yagejs/renderer";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
-const CoinBP = defineBlueprint<{ x: number; y: number }>(
-  "coin",
-  (entity, { x, y }) => {
-    entity.add(new Transform({ position: new Vec2(x, y) }));
-    entity.add(new GraphicsComponent().draw(drawCoin));
-    entity.add(new RigidBodyComponent({ type: "static" }));
-    entity.add(new ColliderComponent({
+interface CoinParams { x: number; y: number; }
+
+class Coin extends Entity {
+  override setup({ x, y }: CoinParams): void {
+    this.add(new Transform({ position: new Vec2(x, y) }));
+    this.add(new GraphicsComponent().draw(drawCoin));
+    this.add(new RigidBodyComponent({ type: "static" }));
+    this.add(new ColliderComponent({
       shape: { type: "circle", radius: 10 },
       sensor: true,
     }));
-  },
-);
+  }
+}
 
-// Spawn from blueprint
-this.scene.spawn(CoinBP, { x: 200, y: 300 });
+this.scene.spawn(Coin, { x: 200, y: 300 });
 ```
+
+`defineBlueprint` is still available for parametric factories where a
+class would be overkill, but entity subclasses are the preferred pattern
+for anything stateful — they let you add methods, fields, and `update()`
+ticks alongside the construction logic.
 
 ## Entity Destruction
 

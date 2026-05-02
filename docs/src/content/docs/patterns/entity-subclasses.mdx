@@ -146,11 +146,11 @@ and a more natural class-based API.
 import { defineBlueprint } from "@yagejs/core";
 
 const CoinBlueprint = defineBlueprint("Coin", (entity, params: CoinParams) => {
-  entity.add(new Transform(params.position));
+  entity.add(new Transform({ position: params.position }));
   entity.add(new SpriteComponent({ texture: coinTexture }));
 });
 
-const coin = scene.spawnBlueprint(CoinBlueprint, { position });
+const coin = scene.spawn(CoinBlueprint, { position });
 ```
 
 If you're starting a new project, use entity subclasses. If you're maintaining

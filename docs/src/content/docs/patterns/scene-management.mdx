@@ -140,14 +140,14 @@ engine.scenes.pop();
 
 ### Full Navigation Reset
 
-Replace all scenes to return to the main menu:
+Replace all scenes to return to the main menu. Use `popAll()` rather than
+a manual pop loop — it routes through the same transition queue as the
+other scene mutations, so it's safe to call during a transition without
+racing against in-flight pushes/pops.
 
 ```typescript
-// Pop everything and push the menu
-while (engine.scenes.all.length > 0) {
-  engine.scenes.pop();
-}
-engine.scenes.push(new MainMenuScene());
+await engine.scenes.popAll();
+await engine.scenes.push(new MainMenuScene());
 ```
 
 ## Cross-Scene Communication
