@@ -18,7 +18,8 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Object layers (spawns, triggers, collision shapes) | Supported   |
 | Custom properties on objects                       | Supported   |
 | Object-reference resolution (Tiled object refs)    | Supported   |
-| Collision-shape extraction → Rapier colliders      | Supported   |
+| Collision-shape extraction (raw rects/polygons)    | Supported   |
+| `toPhysicsColliders()` adapter for Rapier          | Supported   |
 | Tileset-image and collection-of-images tilesets    | Supported   |
 | Animated tiles                                     | Not yet     |
 | Infinite / chunked maps                            | Not yet     |
@@ -31,12 +32,18 @@ shapes, see the
 [`tilemap`](https://github.com/marco-lepore/yage/blob/main/examples/tilemap.html)
 example — it parses a Tiled JSON, renders the layers, calls
 `getCollisionShapes("walls")`, and visualizes the resulting rectangles
-through the debug overlay. The full Tiled-collision-to-Rapier wiring
-(extracted shapes → static `RigidBodyComponent` + `ColliderComponent`)
-is shown inline in the [Collision Extraction](#collision-extraction)
-section below; for polygon shapes, pass them through the
-`toPhysicsColliders()` helper to convert top-left-origin Tiled rects
-into center-origin Rapier configs.
+through the debug overlay. Two distinct steps make up the Tiled-collision-to-Rapier workflow:
+
+1. **Extraction** — `tilemap.getCollisionShapes("walls")` returns raw
+   shape data in Tiled's coordinate system (top-left-origin rects and
+   polygons).
+2. **Physics conversion** — `toPhysicsColliders(shapes)` adapts those
+   raw shapes into Rapier `ColliderConfig`s with the offsets baked in
+   (center-origin, as Rapier expects).
+
+The wiring (extracted shapes → `toPhysicsColliders()` → static
+`RigidBodyComponent` + per-shape `ColliderComponent`) is shown inline
+in the [Collision Extraction](#collision-extraction) section below.
 
 ## TilemapPlugin Setup
 

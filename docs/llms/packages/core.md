@@ -107,7 +107,7 @@ Decision matrix:
 | Multi-point or non-monotonic animation curves | `KeyframeAnimator` |
 | Fire discrete events at specific times | `KeyframeAnimator` keyframe `event` |
 
-Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes auto-cancel on entity destroy.
+Tag processes with `pc.run(p, { tags: ["vfx"] })` then cancel groups with `pc.cancel("vfx")`. Processes and slots auto-cancel on entity destroy via `ProcessComponent.onDestroy()`.
 
 ### Animation
 

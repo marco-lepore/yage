@@ -105,7 +105,7 @@ Tweens smoothly interpolate a value over time. They run as processes, so they
 respect pause state and entity lifetime.
 
 ```typescript
-import { Tween, easeOutQuad, easeInOutQuad } from "@yagejs/core";
+import { Tween, Transform, easeOutQuad, easeInOutQuad } from "@yagejs/core";
 
 // Tween a single property
 pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad));
@@ -166,34 +166,44 @@ Run multiple processes at the same time within a sequence:
 
 ```typescript
 const t = entity.get(Transform);
-new Sequence()
-  .parallel(
-    Tween.to(sprite, "alpha", 0, 300, easeOutQuad),
-    Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 300, easeInQuad),
-  )
-  .call(() => entity.destroy())
-  .start();
+pc.run(
+  new Sequence()
+    .parallel(
+      Tween.to(sprite, "alpha", 0, 300, easeOutQuad),
+      Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 300, easeInQuad),
+    )
+    .call(() => entity.destroy())
+    .start(),
+);
 ```
 
 The sequence advances past a `.parallel()` step once **all** of its children
 complete.
 
+`Sequence.start()` builds and returns the wrapping `Process` but does
+**not** schedule it — pass it to `pc.run(...)` for the sequence to
+actually tick.
+
 ### Looping
 
 ```typescript
 // Loop forever
-new Sequence()
-  .then(Tween.to(sprite, "alpha", 0.5, 500, easeInOutQuad))
-  .then(Tween.to(sprite, "alpha", 1.0, 500, easeInOutQuad))
-  .loop()
-  .start();
+pc.run(
+  new Sequence()
+    .then(Tween.to(sprite, "alpha", 0.5, 500, easeInOutQuad))
+    .then(Tween.to(sprite, "alpha", 1.0, 500, easeInOutQuad))
+    .loop()
+    .start(),
+);
 
 // Repeat a fixed number of times
-new Sequence()
-  .call(() => flash())
-  .wait(100)
-  .repeat(5)
-  .start();
+pc.run(
+  new Sequence()
+    .call(() => flash())
+    .wait(100)
+    .repeat(5)
+    .start(),
+);
 ```
 
 ## TimerEntity
