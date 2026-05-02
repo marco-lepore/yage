@@ -7,6 +7,42 @@ YAGE's process system (from `@yagejs/core`) gives you timers, tweens, and
 sequenced workflows that run inside the game loop. Everything is tied to
 entities, so processes are automatically cleaned up when an entity is destroyed.
 
+## Picking the Right Tool
+
+The process system has four overlapping primitives. They're not redundant —
+each is the cleanest fit for a different shape of problem.
+
+| Use                                           | Reach for                  |
+| --------------------------------------------- | -------------------------- |
+| Wait N ms then run a callback                 | `Process.delay()`          |
+| Cooldown / restartable timer                  | `pc.slot()`                |
+| Animate a single property A → B               | `Tween.to()` / `.vec2()`   |
+| Interpolate a number from→to with a custom setter | `Tween.custom()`        |
+| Arbitrary per-frame logic (no interpolation)  | `new Process({ update })`  |
+| Multi-step "do this, then this, then this"    | `Sequence`                 |
+| Run several animations together               | `Sequence.parallel()`      |
+| Multi-point or non-monotonic animation curves | `KeyframeAnimator`         |
+| Fire discrete events at specific times        | `KeyframeAnimator` + `event` |
+
+A few rules of thumb:
+
+- **`Tween` is for two-point animations** — start value, end value, easing.
+  Reach for it first; it's the simplest of the bunch.
+- **`Sequence` is for orchestration**, not animation. If your problem fits
+  on a timeline ("flash, wait, fade, destroy"), it's a sequence — even when
+  the individual steps happen to be tweens.
+- **`KeyframeAnimator` is for curves a tween can't draw.** A bobbing motion
+  that goes up, back down, and past the start; an idle loop with three
+  hand-tuned poses; a track that needs to fire a sound at exactly t=400ms.
+  If a single ease curve isn't enough, you want keyframes.
+- **`pc.slot()` is for state, not animation.** Cooldowns, invincibility
+  windows, "time until next spawn" — anything you'll check repeatedly with
+  `slot.completed`.
+
+When in doubt, start with a tween or a sequence. Promote to
+`KeyframeAnimator` only when you find yourself layering multiple tweens to
+fake one curve.
+
 ## ProcessComponent
 
 Add a `ProcessComponent` to any entity to gain access to entity-level timing:
@@ -69,19 +105,28 @@ Tweens smoothly interpolate a value over time. They run as processes, so they
 respect pause state and entity lifetime.
 
 ```typescript
-import { Tween, easeOutQuad } from "@yagejs/core";
+import { Tween, easeOutQuad, easeInOutQuad } from "@yagejs/core";
 
 // Tween a single property
 pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad));
 
-// Tween a Vec2 (e.g., position)
-pc.run(Tween.vec2(entity.transform, "position", targetPos, 600, easeInOutQuad));
+// Tween a Vec2 (e.g., position) — pass a setter that applies the value
+const t = entity.get(Transform);
+pc.run(Tween.vec2(
+  (v) => t.setPosition(v.x, v.y),
+  t.position,
+  targetPos,
+  600,
+  easeInOutQuad,
+));
 
-// Custom tween with a per-frame callback
+// Custom tween — interpolates from→to over duration; setter receives
+// the eased value each frame
 pc.run(
-  Tween.custom(500, easeOutQuad, (t) => {
-    entity.transform.setScale(1 + t * 0.5, 1 + t * 0.5);
-  }),
+  Tween.custom(
+    (v) => t.setScale(1 + v, 1 + v),
+    0, 0.5, 500, easeOutQuad,
+  ),
 );
 ```
 
@@ -106,12 +151,12 @@ builder:
 import { Sequence } from "@yagejs/core";
 
 pc.run(
-  Sequence.create()
+  new Sequence()
     .call(() => sprite.alpha = 1)
     .wait(200)
     .then(Tween.to(sprite, "alpha", 0, 400, easeOutQuad))
     .call(() => entity.destroy())
-    .build(),
+    .start(),
 );
 ```
 
@@ -120,13 +165,14 @@ pc.run(
 Run multiple processes at the same time within a sequence:
 
 ```typescript
-Sequence.create()
+const t = entity.get(Transform);
+new Sequence()
   .parallel(
     Tween.to(sprite, "alpha", 0, 300, easeOutQuad),
-    Tween.vec2(entity.transform, "position", offscreen, 300, easeInQuad),
+    Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 300, easeInQuad),
   )
   .call(() => entity.destroy())
-  .build();
+  .start();
 ```
 
 The sequence advances past a `.parallel()` step once **all** of its children
@@ -136,18 +182,18 @@ complete.
 
 ```typescript
 // Loop forever
-Sequence.create()
+new Sequence()
   .then(Tween.to(sprite, "alpha", 0.5, 500, easeInOutQuad))
   .then(Tween.to(sprite, "alpha", 1.0, 500, easeInOutQuad))
   .loop()
-  .build();
+  .start();
 
 // Repeat a fixed number of times
-Sequence.create()
+new Sequence()
   .call(() => flash())
   .wait(100)
   .repeat(5)
-  .build();
+  .start();
 ```
 
 ## TimerEntity
@@ -157,27 +203,32 @@ For scene-level timing that doesn't belong to any game object, use
 need to create a custom entity:
 
 ```typescript
-import { TimerEntity } from "@yagejs/core";
+import { TimerEntity, Process } from "@yagejs/core";
 
 const timer = scene.spawn(TimerEntity);
-const pc = timer.get(ProcessComponent);
-
-pc.run(Process.delay(3000, () => {
+timer.run(Process.delay(3000, () => {
   scene.switchTo(NextLevel);
 }));
 ```
+
+`TimerEntity` exposes `.run()`, `.slot()`, and `.cancel()` directly — they
+forward to its internal `ProcessComponent`, so you don't need to fetch
+the component manually.
 
 ## Cancelling by Tag
 
 Tag processes so you can cancel groups of them later:
 
 ```typescript
-pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad), { tag: "vfx" });
-pc.run(Tween.to(sprite, "scale", 2, 300, easeOutQuad), { tag: "vfx" });
+pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad), { tags: ["vfx"] });
+pc.run(Tween.to(sprite, "scale", 2, 300, easeOutQuad), { tags: ["vfx"] });
 
 // Cancel all processes tagged "vfx"
 pc.cancel("vfx");
 ```
+
+A process can carry multiple tags — `{ tags: ["vfx", "ui"] }` lets the
+same process be cancelled by either group.
 
 This is useful for cleaning up visual effects when an entity changes state (for
 example, cancelling hit-flash tweens when the entity dies).
@@ -311,3 +362,194 @@ const blended = interpolate(0, 100, 0.5, easeOutQuad); // ≈ 75
 `interpolate` primitive — resolves to `number | Vec2Like`. Both are supported
 out of the box; if you need to animate other types (colour, quaternion),
 compose multiple number tracks or write a custom setter.
+
+## Common Recipes
+
+Patterns you'll write over and over. Copy, adapt, and tag them so you can
+cancel groups when state changes.
+
+### Damage Flash
+
+A short red-then-white pulse on hit. Tag it so a follow-up hit cancels the
+in-flight flash before starting a new one.
+
+```typescript
+const TINT_HIT = 0xff5050;
+const TINT_NORMAL = 0xffffff;
+
+function damageFlash(entity: Entity) {
+  const sprite = entity.get(SpriteComponent);
+  const pc = entity.get(ProcessComponent);
+  pc.cancel("flash");
+  pc.run(
+    new Sequence()
+      .call(() => (sprite.tint = TINT_HIT))
+      .wait(120)
+      .call(() => (sprite.tint = TINT_NORMAL))
+      .start(),
+    { tags: ["flash"] },
+  );
+}
+```
+
+For a smooth fade rather than a hard cut, tween a separate `flashAmount`
+value 0 → 1 → 0 and resolve the tint per-frame inside the setter (channel-
+wise lerp on `0xRRGGBB`).
+
+### Squash & Stretch on Land
+
+Single keyframe track — scale Y squashes down, then bounces back. The
+"past the resting state" overshoot makes it feel responsive.
+
+```typescript
+const anim = entity.add(new KeyframeAnimator<"land">({
+  land: {
+    keyframes: [
+      { time: 0,   data: 1.0 },
+      { time: 80,  data: 0.7 },
+      { time: 240, data: 1.1 },
+      { time: 360, data: 1.0 },
+    ],
+    setter: (v) => entity.get(Transform).setScale(1, v as number),
+    easing: easeOutQuad,
+  },
+}));
+
+// On landing:
+anim.play("land");
+```
+
+### Camera Shake
+
+Random offset for a fixed window, decaying to zero. Shake intensity drives
+both magnitude and the per-frame jitter.
+
+```typescript
+function shake(camera: Entity, magnitude = 8, duration = 250) {
+  const t = camera.get(Transform);
+  const baseX = t.x, baseY = t.y;
+  camera.get(ProcessComponent).run(
+    Tween.custom(
+      (k) => {
+        const m = magnitude * (1 - k);
+        t.x = baseX + (Math.random() * 2 - 1) * m;
+        t.y = baseY + (Math.random() * 2 - 1) * m;
+      },
+      0, 1, duration, easeOutQuad,
+    ),
+    { tags: ["shake"] },
+  );
+}
+```
+
+Cancel with `pc.cancel("shake")` if a stronger shake supersedes a weaker
+one. Reset `t.x`/`t.y` to baseline after cancellation if your camera
+controller doesn't already.
+
+### Hit-Pause (Time Freeze)
+
+A few frames of frozen time on a heavy impact. Drives the scene's
+`timeScale` rather than running a tween — the entire scene pauses, then
+resumes.
+
+```typescript
+function hitPause(scene: Scene, duration = 80) {
+  scene.timeScale = 0;
+  setTimeout(() => (scene.timeScale = 1), duration);
+}
+```
+
+A `Process.delay` won't work for this recipe — `timeScale = 0` freezes the
+scene's processes, so the delay never resolves. `setTimeout` runs against
+wall-clock time and is unaffected. If you'd rather avoid `setTimeout`,
+spawn the unfreezing timer in a *parent* scene whose `timeScale` is still
+1 (e.g. a paused-stack root scene).
+
+### Enemy Telegraph
+
+The "wind-up" before a heavy attack. Sequence orchestrates the windup,
+hold, and execution.
+
+```typescript
+function telegraph(enemy: Entity, attack: () => void) {
+  const sprite = enemy.get(SpriteComponent);
+  const pc = enemy.get(ProcessComponent);
+  pc.run(
+    new Sequence()
+      .call(() => (sprite.tint = 0xff5050))
+      .then(Tween.to(sprite, "alpha", 0.5, 200, easeInOutQuad))
+      .wait(300)
+      .call(() => {
+        sprite.alpha = 1;
+        sprite.tint = 0xffffff;
+      })
+      .call(attack)
+      .start(),
+  );
+}
+```
+
+### UI Fade In/Out
+
+Two tweens — one for entry, one for exit. Tag so a fade-out cancels an
+in-flight fade-in cleanly.
+
+```typescript
+function fadeIn(entity: Entity, duration = 200) {
+  const sprite = entity.get(SpriteComponent);
+  sprite.alpha = 0;
+  entity.get(ProcessComponent).cancel("fade");
+  entity.get(ProcessComponent).run(
+    Tween.to(sprite, "alpha", 1, duration, easeOutQuad),
+    { tags: ["fade"] },
+  );
+}
+
+function fadeOut(entity: Entity, duration = 200, onDone?: () => void) {
+  const sprite = entity.get(SpriteComponent);
+  entity.get(ProcessComponent).cancel("fade");
+  entity.get(ProcessComponent).run(
+    new Sequence()
+      .then(Tween.to(sprite, "alpha", 0, duration, easeInQuad))
+      .call(() => onDone?.())
+      .start(),
+    { tags: ["fade"] },
+  );
+}
+```
+
+### Looping Idle (Two-Frame Bob)
+
+Lightweight idle motion for an NPC or pickup. `KeyframeAnimator` with
+`loop: true` is a one-liner.
+
+```typescript
+const anim = entity.add(new KeyframeAnimator<"idle">({
+  idle: {
+    keyframes: [
+      { time: 0,    data: 0 },
+      { time: 800,  data: 4 },
+      { time: 1600, data: 0 },
+    ],
+    setter: (v) => (entity.get(Transform).y = baseY + (v as number)),
+    loop: true,
+    easing: easeInOutQuad,
+  },
+}));
+anim.play("idle");
+```
+
+### Cancellation Hygiene
+
+Two patterns to remember:
+
+- **Tag every effect tween** so you can cancel groups by name when state
+  changes. `pc.cancel("vfx")` on death; `pc.cancel("flash")` before starting
+  a new flash.
+- **Processes auto-cancel on entity destroy.** You don't need cleanup logic
+  for the common case — `entity.destroy()` cancels everything bound to it.
+  Same for slots.
+
+If you find yourself writing a manual `_running` boolean alongside a
+process, you probably want a `pc.slot()` instead — it tracks completion
+and exposes `restart()` / `cancel()` / `completed` for free.

@@ -2,6 +2,12 @@
 
 Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
+## Capabilities & Limits
+
+Supported: orthogonal Tiled JSON, multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction → Rapier, tileset-image and collection-of-images tilesets.
+
+Not supported: animated tiles, infinite/chunked maps, isometric/hex/staggered orientations, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
+
 ## Setup
 
 ```ts

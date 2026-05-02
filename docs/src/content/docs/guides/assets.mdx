@@ -1,0 +1,271 @@
+---
+title: "Assets"
+description: "Asset handles, scene preloading, manifests, caching, and unloading"
+---
+
+YAGE's asset model is small on purpose. There are three concepts:
+
+- **Asset handles** — typed, serializable references to files on disk
+  (`texture("hero.png")`, `sound("hit.ogg")`, `tiledMap("level.json")`).
+- **`AssetManager`** — engine-owned cache + loader registry. Plugins
+  register loaders (texture, audio, spritesheet, tiledMap, …) and the
+  manager loads handles concurrently with progress callbacks.
+- **`Scene.preload`** — declarative array of handles each scene needs;
+  `SceneManager` loads them automatically before `onEnter()` runs.
+
+Everything else is a pattern on top of those three pieces.
+
+## Asset Handles
+
+Each plugin exposes factories that produce typed handles. Handles are
+plain serializable objects — pass them around freely, store them in
+modules, embed them in scene classes.
+
+```typescript
+import { texture, spritesheet } from "@yagejs/renderer";
+import { sound } from "@yagejs/audio";
+import { tiledMap } from "@yagejs/tilemap";
+
+const HeroTex   = texture("assets/hero.png");
+const HeroSheet = spritesheet("assets/hero.json");      // atlas JSON; references the texture
+const CoinSfx   = sound("assets/sfx/coin.ogg");
+const Level1Map = tiledMap("assets/levels/1.json");
+```
+
+A handle is just `{ type, path }`. It becomes a loaded asset only when
+the manager has resolved it — `AssetManager.get(handle)` throws if you
+ask for an asset that hasn't been preloaded.
+
+## Per-Scene Preload
+
+The simplest pattern: each scene declares what it needs.
+
+```typescript
+import { Scene } from "@yagejs/core";
+
+class GameScene extends Scene {
+  readonly preload = [HeroTex, CoinSfx, Level1Map];
+
+  onEnter() {
+    // All three are guaranteed loaded — Assets.get() is safe
+    const hero = this.assets.get(HeroTex);
+    // …
+  }
+}
+```
+
+`SceneManager` handles the rest:
+
+- Calls `assets.loadAll(this.preload)` before `onEnter()`.
+- Skips already-cached handles (re-entering a scene is free).
+- Routes progress to `scene.onProgress(ratio)` if you override it on the
+  scene class — useful for ad-hoc loading scenes that aren't using
+  `LoadingScene`.
+- Throws if a handle's loader plugin isn't installed (clear error
+  message naming the missing type).
+
+You don't need to call `loadAll` yourself in `onEnter`. The
+[Loading Scene](/guides/loading-scene/) guide covers progress UI on top
+of this — `LoadingScene` overrides `onProgress` to also emit
+`scene:loading:progress` on the event bus, which is what progress
+components subscribe to.
+
+## Manifests for Larger Games
+
+Past a few dozen handles, scattering them across scene files becomes
+painful. The `Scene.preload` array is the manifest API — there's no
+separate manifest abstraction, just an array, and you can build it
+however you like.
+
+A common pattern is one handle module per content area:
+
+```typescript
+// content/heroes.ts
+export const HeroTex   = texture("assets/hero.png");
+export const HeroSheet = spritesheet("assets/hero.json");
+
+// content/sfx.ts
+export const CoinSfx = sound("assets/sfx/coin.ogg");
+export const HitSfx  = sound("assets/sfx/hit.ogg");
+export const JumpSfx = sound("assets/sfx/jump.ogg");
+
+// content/level1.ts
+import { CoinSfx, HitSfx } from "./sfx.js";
+import { HeroSheet } from "./heroes.js";
+import { tiledMap } from "@yagejs/tilemap";
+
+export const Level1Map = tiledMap("assets/levels/1.json");
+
+export const Level1Manifest = [
+  Level1Map,
+  HeroSheet,
+  CoinSfx,
+  HitSfx,
+] as const;
+```
+
+```typescript
+// scenes/Level1.ts
+import { Level1Manifest } from "../content/level1.js";
+
+class Level1 extends Scene {
+  readonly preload = Level1Manifest;
+  onEnter() { /* … */ }
+}
+```
+
+Two practical wins from this layout:
+
+- **Reuse across scenes.** A "load shared HUD assets" manifest can be
+  spread into multiple scenes' preload arrays.
+- **Static analysis.** TypeScript catches typos in handle imports
+  immediately — no string-keyed registry to drift out of sync with
+  filenames.
+
+## Cache Lifetime
+
+Loaded assets stay in the `AssetManager` cache until something tells
+them to leave. The cache is shared across the entire engine — there's
+no per-scene scoping.
+
+| Action                                | Effect                              |
+| ------------------------------------- | ----------------------------------- |
+| `assets.loadAll([h1, h2])`            | Loads handles not already cached    |
+| `assets.get(handle)`                  | Reads from cache (throws if absent) |
+| `assets.has(handle)`                  | `true` if cached                    |
+| `assets.unload(handle)`               | Drops one handle, calls loader's `unload?()` if defined |
+| `assets.clear()`                      | Drops everything                    |
+
+For a small game, you almost never need to unload — the cache is
+GPU-cheap (Pixi shares textures on hot atlases) and disk-cheap (the
+asset is already in memory). Reach for `unload`/`clear` when:
+
+- A level transition replaces a large tilemap and tileset that the
+  next level won't need.
+- The game streams chapters of content and old chapters can be
+  evicted.
+- The user enters a settings menu and you want to free a music track
+  bound to a specific scene.
+
+```typescript
+class Level1 extends Scene {
+  readonly preload = Level1Manifest;
+  onExit() {
+    // Free this level's textures before the next one preloads
+    for (const h of Level1Manifest) this.assets.unload(h);
+  }
+}
+```
+
+The default loaders dispose appropriately: `unload(textureHandle)`
+calls Pixi's `Assets.unload(path)` so the texture can be released and
+garbage-collected; `unload(soundHandle)` calls `sound.remove(path)` to
+release the `@pixi/sound` instance.
+
+## Error Handling
+
+An asset that fails to load throws from `assets.loadAll`. There are two
+places to catch it:
+
+- **Inside `LoadingScene`** — override `onLoadError(err)` to render a
+  retry button or skip to a safe scene. See the
+  [Loading Scene](/guides/loading-scene/) guide.
+- **Around an explicit `loadAll`** — when you load assets *outside* of
+  a scene's `preload` (e.g. a runtime asset bundle), wrap the call in
+  try/catch. The error message names the failing path so you can show
+  it to the user or log it to your telemetry.
+
+```typescript
+try {
+  await this.assets.loadAll([LateBundle]);
+} catch (err) {
+  this.spawn(ErrorBanner, { message: String(err) });
+}
+```
+
+There's no built-in fallback-asset mechanism — the cache either has the
+handle or doesn't. If you need a missing-asset placeholder, ship a
+known-good fallback in your initial preload and reference it explicitly
+when the optional asset isn't available.
+
+## Base Path & Bundler Notes
+
+Asset paths are resolved relative to the page hosting the game (the
+HTML file's URL), not to your source files. With Vite's default config,
+files placed under `public/` are served at the site root:
+
+```
+public/
+  assets/
+    hero.png        →  fetched as /assets/hero.png
+    levels/1.json   →  fetched as /assets/levels/1.json
+```
+
+Match the strings in `texture("assets/hero.png")` to the served path,
+not the source path.
+
+If your game ships under a sub-path (e.g. `https://example.com/yage/`),
+configure Vite's `base` option **and** prepend it to your handle paths:
+
+```typescript
+// vite.config.ts
+export default defineConfig({ base: "/yage/" });
+
+// content/...
+const HeroTex = texture(`${import.meta.env.BASE_URL}assets/hero.png`);
+```
+
+`import.meta.env.BASE_URL` resolves to the configured base path at
+build time and to `/` in dev. Wrap the prefix once in a helper if
+you have many assets:
+
+```typescript
+const asset = (p: string) => `${import.meta.env.BASE_URL}${p}`;
+const HeroTex = texture(asset("assets/hero.png"));
+```
+
+The asset factories don't perform path normalization — they pass the
+string straight to the browser's `fetch`. Whatever you put in the
+factory is what gets requested.
+
+## Custom Loaders
+
+If you need a file type none of the plugins handle (a `.ron` settings
+file, a binary level format, etc.), register a custom loader against the
+`AssetManager`. Loaders are `{ load(path), unload?(path, asset) }`.
+
+```typescript
+import { AssetManagerKey, AssetHandle } from "@yagejs/core";
+
+class MyPlugin {
+  install(context: EngineContext) {
+    context.resolve(AssetManagerKey).registerLoader("levelfmt", {
+      async load(path) {
+        const res = await fetch(path);
+        if (!res.ok) throw new Error(`Failed: ${path}`);
+        return parseLevel(await res.arrayBuffer());
+      },
+    });
+  }
+}
+
+// Factory for typed handles
+export function level(path: string): AssetHandle<Level> {
+  return new AssetHandle("levelfmt", path);
+}
+```
+
+Once registered, handles of that type work in `Scene.preload` and
+through `AssetManager.get` like any built-in asset.
+
+## When to Reach for Each
+
+| Need                                         | Use                                |
+| -------------------------------------------- | ---------------------------------- |
+| Load assets before a scene starts            | `Scene.preload`                    |
+| Show a progress bar while loading            | `LoadingScene` + progress UI       |
+| Load extra assets mid-scene                  | `this.assets.loadAll([handles])`   |
+| Free assets between levels                   | `this.assets.unload(handle)` per scene `onExit` |
+| Discard everything (game over → main menu)   | `this.assets.clear()`              |
+| Add support for a new file type              | Custom loader on `AssetManager`    |
+| Reference an asset shipped under a sub-path  | Prefix paths with `import.meta.env.BASE_URL` |

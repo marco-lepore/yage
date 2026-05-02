@@ -7,6 +7,37 @@ The `@yagejs/tilemap` package loads and renders maps created with the
 [Tiled](https://www.mapeditor.org/) map editor. It supports tile layer rendering,
 object layer extraction, and physics collision shape generation.
 
+## Capabilities & Limits
+
+Worth knowing up front so you don't reach for something that isn't there.
+
+| Feature                                            | Status      |
+| -------------------------------------------------- | ----------- |
+| Orthogonal Tiled JSON maps                         | Supported   |
+| Multiple tile layers per map                       | Supported   |
+| Object layers (spawns, triggers, collision shapes) | Supported   |
+| Custom properties on objects                       | Supported   |
+| Object-reference resolution (Tiled object refs)    | Supported   |
+| Collision-shape extraction → Rapier colliders      | Supported   |
+| Tileset-image and collection-of-images tilesets    | Supported   |
+| Animated tiles                                     | Not yet     |
+| Infinite / chunked maps                            | Not yet     |
+| Isometric / hexagonal / staggered orientations     | Not planned |
+| Dynamic tile editing at runtime                    | Not yet     |
+| Parallax / background scroll layers                | Not built-in (use a regular sprite layer) |
+
+For a worked example of loading a Tiled map and extracting collision
+shapes, see the
+[`tilemap`](https://github.com/marco-lepore/yage/blob/main/examples/tilemap.html)
+example — it parses a Tiled JSON, renders the layers, calls
+`getCollisionShapes("walls")`, and visualizes the resulting rectangles
+through the debug overlay. The full Tiled-collision-to-Rapier wiring
+(extracted shapes → static `RigidBodyComponent` + `ColliderComponent`)
+is shown inline in the [Collision Extraction](#collision-extraction)
+section below; for polygon shapes, pass them through the
+`toPhysicsColliders()` helper to convert top-left-origin Tiled rects
+into center-origin Rapier configs.
+
 ## TilemapPlugin Setup
 
 ```typescript

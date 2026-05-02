@@ -7,6 +7,9 @@
 - [Core Concepts](llms/core-concepts.md): Architecture, lifecycle, ECS, scenes, events, DI, processes, serialization
 - [Quick Start](llms/quick-start.md): Installation, engine setup, scene class, first project
 - [Patterns](llms/patterns.md): Component, entity, process, and testing patterns; common gotchas
+- [Assets](llms/assets.md): Asset handles, scene preload, manifests, cache lifetime, base path
+- [Loading Scene](llms/loading-scene.md): Loading-scene orchestration, progress events, error handling
+- [Scene Transitions](llms/scene-transitions.md): Built-in transitions and the SceneTransition contract
 
 ## Packages
 
