@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
@@ -401,6 +401,226 @@ describe("RendererPlugin", () => {
       // Plugin must be installed before its screen-scope EffectsHost exists;
       // accessing `.fx` before that is a programmer error.
       expect(plugin.fx).toBeUndefined();
+    });
+  });
+
+  describe("fullscreen", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("calls requestFullscreen on the configured container", async () => {
+      const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+      const container = {
+        requestFullscreen,
+        appendChild: vi.fn(),
+        getBoundingClientRect: () => ({ width: 800, height: 600 }),
+      } as unknown as HTMLElement;
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        exitFullscreen: vi.fn().mockResolvedValue(undefined),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({ ...defaultConfig, container });
+      await plugin.install(context);
+      await plugin.requestFullscreen();
+
+      expect(requestFullscreen).toHaveBeenCalledOnce();
+    });
+
+    it("falls back to the webkit-prefixed API when unprefixed is unavailable", async () => {
+      const webkitRequestFullscreen = vi.fn();
+      const container = {
+        webkitRequestFullscreen,
+        appendChild: vi.fn(),
+        getBoundingClientRect: () => ({ width: 800, height: 600 }),
+      } as unknown as HTMLElement;
+      vi.stubGlobal("document", {
+        webkitFullscreenElement: null,
+        webkitExitFullscreen: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({ ...defaultConfig, container });
+      await plugin.install(context);
+      await plugin.requestFullscreen();
+
+      expect(webkitRequestFullscreen).toHaveBeenCalledOnce();
+    });
+
+    it("emits screen:fullscreen when fullscreenchange fires", async () => {
+      let changeHandler: (() => void) | null = null;
+      const container = {
+        requestFullscreen: vi.fn().mockResolvedValue(undefined),
+        appendChild: vi.fn(),
+        getBoundingClientRect: () => ({ width: 800, height: 600 }),
+      } as unknown as HTMLElement;
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        exitFullscreen: vi.fn().mockResolvedValue(undefined),
+        addEventListener: vi.fn((event: string, fn: () => void) => {
+          if (event === "fullscreenchange") changeHandler = fn;
+        }),
+        removeEventListener: vi.fn(),
+      });
+
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const received: Array<{ active: boolean }> = [];
+      bus.on("screen:fullscreen", (data) => received.push(data));
+
+      const plugin = new RendererPlugin({ ...defaultConfig, container });
+      await plugin.install(context);
+
+      // Simulate the browser entering fullscreen, then dispatching the event.
+      const fire = changeHandler as unknown as (() => void) | null;
+      (
+        document as unknown as { fullscreenElement: HTMLElement | null }
+      ).fullscreenElement = container;
+      fire?.();
+      expect(received).toEqual([{ active: true }]);
+
+      (
+        document as unknown as { fullscreenElement: HTMLElement | null }
+      ).fullscreenElement = null;
+      fire?.();
+      expect(received).toEqual([{ active: true }, { active: false }]);
+    });
+
+    it("removes the fullscreenchange listener on destroy", async () => {
+      const removeEventListener = vi.fn();
+      const container = {
+        requestFullscreen: vi.fn().mockResolvedValue(undefined),
+        appendChild: vi.fn(),
+        getBoundingClientRect: () => ({ width: 800, height: 600 }),
+      } as unknown as HTMLElement;
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        exitFullscreen: vi.fn().mockResolvedValue(undefined),
+        addEventListener: vi.fn(),
+        removeEventListener,
+      });
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({ ...defaultConfig, container });
+      await plugin.install(context);
+      plugin.onDestroy();
+
+      // Both the standard and prefixed listener names are detached.
+      const detached = removeEventListener.mock.calls.map(
+        (args: unknown[]) => args[0],
+      );
+      expect(detached).toContain("fullscreenchange");
+      expect(detached).toContain("webkitfullscreenchange");
+    });
+  });
+
+  describe("orientation", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("emits screen:orientation when the screen orientation changes", async () => {
+      let changeHandler: (() => void) | null = null;
+      const orientationMock = {
+        type: "landscape-primary",
+        addEventListener: vi.fn(
+          (event: string, fn: () => void) => {
+            if (event === "change") changeHandler = fn;
+          },
+        ),
+        removeEventListener: vi.fn(),
+      };
+      vi.stubGlobal("window", {
+        screen: { orientation: orientationMock },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const received: Array<{ type: OrientationType }> = [];
+      bus.on("screen:orientation", (data) => received.push(data));
+
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      orientationMock.type = "portrait-primary";
+      (changeHandler as unknown as (() => void) | null)?.();
+
+      expect(received).toEqual([{ type: "portrait-primary" }]);
+      expect(plugin.orientation).toBe("portrait-primary");
+    });
+
+    it("falls back to window.orientationchange on browsers without screen.orientation", async () => {
+      let changeHandler: (() => void) | null = null;
+      const windowAddEventListener = vi.fn(
+        (event: string, fn: () => void) => {
+          if (event === "orientationchange") changeHandler = fn;
+        },
+      );
+      vi.stubGlobal("window", {
+        screen: {},
+        orientation: 90,
+        addEventListener: windowAddEventListener,
+        removeEventListener: vi.fn(),
+      });
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+
+      const { context } = createInstallContext();
+      const bus = context.resolve(EventBusKey);
+      const received: Array<{ type: OrientationType }> = [];
+      bus.on("screen:orientation", (data) => received.push(data));
+
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      (changeHandler as unknown as (() => void) | null)?.();
+      expect(received).toEqual([{ type: "landscape-primary" }]);
+    });
+
+    it("removes the orientation listener on destroy", async () => {
+      const removeEventListener = vi.fn();
+      vi.stubGlobal("window", {
+        screen: {
+          orientation: {
+            type: "portrait-primary",
+            addEventListener: vi.fn(),
+            removeEventListener,
+          },
+        },
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+      vi.stubGlobal("document", {
+        fullscreenElement: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      });
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      plugin.onDestroy();
+
+      expect(removeEventListener).toHaveBeenCalledWith(
+        "change",
+        expect.any(Function),
+      );
     });
   });
 });

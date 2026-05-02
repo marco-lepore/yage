@@ -192,3 +192,71 @@ import { InputPlugin } from "@yagejs/input";
 engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
 engine.use(new InputPlugin({ actions: { /* ... */ } }));
 ```
+
+## Fullscreen
+
+`RendererPlugin` exposes a small fullscreen helper that wraps the
+browser API with the legacy `webkitRequestFullscreen` fallback for
+iOS Safari. The target is the configured `container` when present
+(so DOM overlays alongside the canvas remain inside the fullscreen
+area), or the canvas itself otherwise.
+
+```typescript
+const renderer = engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
+
+button.addEventListener("click", () => {
+  if (renderer.isFullscreen) renderer.exitFullscreen();
+  else renderer.requestFullscreen();
+});
+```
+
+| Member | Purpose |
+|---|---|
+| `requestFullscreen(): Promise<void>` | Enter fullscreen on the host element. Rejects if unsupported. |
+| `exitFullscreen(): Promise<void>` | Exit fullscreen. No-op if not currently fullscreen. |
+| `isFullscreen: boolean` | Reads `document.fullscreenElement` live, so it stays correct when the user exits via Esc or browser UI. |
+
+The renderer also emits a `screen:fullscreen` event on the engine
+event bus whenever the fullscreen state changes (entering, exiting,
+or the user pressing Esc). Subscribe via `EventBusKey` for HUD
+relayouts or to update a button label:
+
+```typescript
+import { EventBusKey } from "@yagejs/core";
+const bus = engine.context.resolve(EventBusKey);
+bus.on("screen:fullscreen", ({ active }) => {
+  fullscreenButton.textContent = active ? "Exit fullscreen" : "Enter fullscreen";
+});
+```
+
+**iOS Safari caveat.** `requestFullscreen` must be called from a
+user-gesture handler (click, touch, key) — browsers reject silently
+otherwise. The `webkitRequestFullscreen` variant on older iOS returns
+`void` rather than a `Promise`; the wrapper handles both.
+
+## Orientation
+
+The engine emits a `screen:orientation` event on the event bus when
+the device orientation changes. Payload is
+`{ type: OrientationType }` where `OrientationType` is the built-in
+DOM union (`"portrait-primary" | "portrait-secondary" |
+"landscape-primary" | "landscape-secondary"`).
+
+```typescript
+import { EventBusKey } from "@yagejs/core";
+const bus = engine.context.resolve(EventBusKey);
+bus.on("screen:orientation", ({ type }) => {
+  if (type.startsWith("portrait")) showRotateOverlay();
+  else hideRotateOverlay();
+});
+```
+
+For one-shot reads, `renderer.orientation` returns the current
+orientation type, or `null` when neither the modern
+`screen.orientation` API nor the legacy `window.orientation` angle
+is available.
+
+The renderer prefers `window.screen.orientation.addEventListener
+("change", …)` and falls back to `window.addEventListener
+("orientationchange", …)` on browsers that don't expose the modern
+API (older iOS Safari). Both wire onto the same bus event.

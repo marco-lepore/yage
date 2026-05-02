@@ -1,5 +1,6 @@
 import {
   AssetManagerKey,
+  EventBusKey,
   GameLoopKey,
   makeGlobalScopedQueue,
   ProcessSystemKey,
@@ -9,6 +10,8 @@ import {
 } from "@yagejs/core";
 import type {
   EngineContext,
+  EngineEvents,
+  EventBus,
   Plugin,
   ProcessSystem,
   ServiceKey,
@@ -80,6 +83,8 @@ export class RendererPlugin implements Plugin {
   fx!: EffectsHost;
   private _engineContext: EngineContext | null = null;
   private _unregisterSaveContributor: (() => void) | null = null;
+  private _unregisterFullscreenListener: (() => void) | null = null;
+  private _unregisterOrientationListener: (() => void) | null = null;
 
   constructor(config: RendererConfig) {
     this._config = config;
@@ -170,6 +175,14 @@ export class RendererPlugin implements Plugin {
       return () => this._app.ticker.remove(fn);
     });
 
+    // 8b. Wire viewport-lifecycle listeners (fullscreen + orientation).
+    //     Both emit onto the engine event bus. Gated behind environment
+    //     checks so node-environment tests that don't stub the globals
+    //     skip the wiring without crashing.
+    const bus = context.resolve(EventBusKey) as EventBus<EngineEvents>;
+    this.installFullscreenListener(bus);
+    this.installOrientationListener(bus);
+
     // 9. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
@@ -250,6 +263,10 @@ export class RendererPlugin implements Plugin {
     // instead of throwing on access.
     this._unregisterSaveContributor?.();
     this._unregisterSaveContributor = null;
+    this._unregisterFullscreenListener?.();
+    this._unregisterFullscreenListener = null;
+    this._unregisterOrientationListener?.();
+    this._unregisterOrientationListener = null;
     this._unregisterHooks?.();
     this._unregisterHooks = null;
     if (this._installed.fit) this._fitController.stop();
@@ -393,6 +410,99 @@ export class RendererPlugin implements Plugin {
     }
   }
 
+  // ─── Fullscreen ──────────────────────────────────────────────────
+
+  /**
+   * Request fullscreen for the renderer's host element. Targets the
+   * configured `container` when present (so DOM overlays placed
+   * alongside the canvas remain inside the fullscreened area), falling
+   * back to the canvas itself otherwise. Wraps `Element.requestFullscreen`
+   * with the legacy `webkitRequestFullscreen` fallback for iOS Safari.
+   *
+   * Must be called from a user-gesture handler (click, touch, key).
+   * Browsers reject silently otherwise.
+   */
+  async requestFullscreen(): Promise<void> {
+    const target = this.fullscreenTarget();
+    if (!target) {
+      throw new Error(
+        "RendererPlugin.requestFullscreen: no host element available.",
+      );
+    }
+    await getFullscreenAPI(target).request();
+  }
+
+  /** Exit fullscreen. No-op if the page isn't currently fullscreen. */
+  async exitFullscreen(): Promise<void> {
+    const target = this.fullscreenTarget();
+    if (!target) return;
+    await getFullscreenAPI(target).exit();
+  }
+
+  /**
+   * Whether the renderer's host element is currently the fullscreen
+   * element. Reads live from the DOM, so this stays accurate when the
+   * user exits fullscreen via Esc or the browser UI.
+   */
+  get isFullscreen(): boolean {
+    const target = this.fullscreenTarget();
+    if (!target) return false;
+    const current = getFullscreenAPI(target).fullscreenElement();
+    return current === target;
+  }
+
+  /**
+   * Current device orientation. Returns `null` when neither the
+   * `screen.orientation` API nor the legacy `window.orientation` angle
+   * is available — typical of headless tests and very old browsers.
+   */
+  get orientation(): OrientationType | null {
+    return deriveOrientationType();
+  }
+
+  private fullscreenTarget(): HTMLElement | null {
+    if (this._config.container) return this._config.container;
+    if (this._installed.app) return this._app.canvas;
+    return null;
+  }
+
+  private installFullscreenListener(bus: EventBus<EngineEvents>): void {
+    if (typeof document === "undefined") return;
+    const handler = (): void => {
+      bus.emit("screen:fullscreen", { active: this.isFullscreen });
+    };
+    document.addEventListener("fullscreenchange", handler);
+    document.addEventListener("webkitfullscreenchange", handler);
+    this._unregisterFullscreenListener = () => {
+      document.removeEventListener("fullscreenchange", handler);
+      document.removeEventListener("webkitfullscreenchange", handler);
+    };
+  }
+
+  private installOrientationListener(bus: EventBus<EngineEvents>): void {
+    if (typeof window === "undefined") return;
+    const emit = (): void => {
+      const type = deriveOrientationType();
+      if (type !== null) bus.emit("screen:orientation", { type });
+    };
+    const orientation = window.screen?.orientation;
+    if (orientation && typeof orientation.addEventListener === "function") {
+      orientation.addEventListener("change", emit);
+      this._unregisterOrientationListener = () => {
+        orientation.removeEventListener("change", emit);
+      };
+      return;
+    }
+    // Legacy fallback: window.orientationchange. Deprecated but still the
+    // only signal on older iOS Safari.
+    window.addEventListener("orientationchange", emit);
+    this._unregisterOrientationListener = () => {
+      window.removeEventListener("orientationchange", emit);
+    };
+  }
+
+  // ─── Internal ────────────────────────────────────────────────────
+
   private startFit(options: RendererFitOptions): void {
     const target = this.resolveFitTarget(options);
     this._fitController?.stop();
@@ -426,4 +536,81 @@ export class RendererPlugin implements Plugin {
     if (parent) return parent;
     return null;
   }
+}
+
+// ─── Module-private helpers ──────────────────────────────────────────
+
+interface FullscreenAPI {
+  request(): Promise<void>;
+  exit(): Promise<void>;
+  fullscreenElement(): Element | null;
+}
+
+type WebkitElement = Element & {
+  webkitRequestFullscreen?: () => void | Promise<void>;
+};
+
+type WebkitDocument = Document & {
+  webkitExitFullscreen?: () => void | Promise<void>;
+  webkitFullscreenElement?: Element | null;
+};
+
+/**
+ * Resolve the fullscreen API at call time, picking the unprefixed
+ * standard methods when present and falling back to the `webkit*`
+ * variants on iOS Safari. Detection runs on each call rather than at
+ * module load so the helper still works if the prefixed API is
+ * polyfilled or wrapped after import.
+ */
+function getFullscreenAPI(el: Element): FullscreenAPI {
+  if (typeof document === "undefined") {
+    return {
+      request: () => Promise.reject(new Error("Fullscreen unavailable: no document")),
+      exit: () => Promise.resolve(),
+      fullscreenElement: () => null,
+    };
+  }
+  if ("requestFullscreen" in el) {
+    return {
+      request: () => Promise.resolve(el.requestFullscreen()),
+      exit: () => Promise.resolve(document.exitFullscreen()),
+      fullscreenElement: () => document.fullscreenElement,
+    };
+  }
+  const webkitEl = el as WebkitElement;
+  const webkitDoc = document as WebkitDocument;
+  if (typeof webkitEl.webkitRequestFullscreen === "function") {
+    return {
+      request: () =>
+        Promise.resolve(webkitEl.webkitRequestFullscreen?.()),
+      exit: () => Promise.resolve(webkitDoc.webkitExitFullscreen?.()),
+      fullscreenElement: () => webkitDoc.webkitFullscreenElement ?? null,
+    };
+  }
+  return {
+    request: () =>
+      Promise.reject(new Error("Fullscreen API not supported in this browser")),
+    exit: () => Promise.resolve(),
+    fullscreenElement: () => null,
+  };
+}
+
+/**
+ * Best-effort device orientation read. Prefers `window.screen.orientation.type`,
+ * falling back to deriving from the legacy numeric `window.orientation` angle
+ * (deprecated but still the only signal on some old iOS Safari versions).
+ * Returns `null` when neither API is available.
+ */
+function deriveOrientationType(): OrientationType | null {
+  if (typeof window === "undefined") return null;
+  const modern = window.screen?.orientation?.type;
+  if (modern) return modern;
+  const legacyAngle =
+    (window as Window & { orientation?: number }).orientation ?? null;
+  if (legacyAngle === null) return null;
+  if (legacyAngle === 0) return "portrait-primary";
+  if (legacyAngle === 180) return "portrait-secondary";
+  if (legacyAngle === 90) return "landscape-primary";
+  if (legacyAngle === -90 || legacyAngle === 270) return "landscape-secondary";
+  return null;
 }
