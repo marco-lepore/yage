@@ -1,5 +1,6 @@
 import {
   Engine,
+  EventBusKey,
   Scene,
   Entity,
   Component,
@@ -47,6 +48,20 @@ injectStyles(`
     border-radius: 6px;
     pointer-events: none;
   }
+  #fullscreen-btn {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    background: rgba(0,0,0,0.7);
+    color: #38bdf8;
+    font-family: monospace;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.85rem;
+    border-radius: 6px;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    cursor: pointer;
+  }
+  #fullscreen-btn:hover { background: rgba(0,0,0,0.85); }
   #win-message {
     position: fixed;
     top: 50%;
@@ -75,6 +90,13 @@ const hud = document.createElement("div");
 hud.id = "hud";
 hud.textContent = "Enemies: 0 / 4";
 document.body.appendChild(hud);
+
+// Fullscreen toggle — wired to RendererPlugin in main()
+const fullscreenBtn = document.createElement("button");
+fullscreenBtn.id = "fullscreen-btn";
+fullscreenBtn.type = "button";
+fullscreenBtn.textContent = "⛶ Fullscreen";
+document.body.appendChild(fullscreenBtn);
 
 // Win message
 const winMsg = document.createElement("div");
@@ -1142,13 +1164,14 @@ class ShooterScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
-  engine.use(new RendererPlugin({
+  const renderer = new RendererPlugin({
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0f172a,
     pixi: { roundPixels: true },
     container: setupGameContainer(WIDTH, HEIGHT),
-  }));
+  });
+  engine.use(renderer);
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));
   engine.use(new AudioPlugin());
   engine.use(new InputPlugin({
@@ -1163,6 +1186,22 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
+
+  // Fullscreen button: toggle on click, sync label from the bus event so
+  // it stays correct when the user exits via Esc or the browser UI.
+  const bus = engine.context.resolve(EventBusKey);
+  const updateBtn = (active: boolean): void => {
+    fullscreenBtn.textContent = active ? "⛶ Exit fullscreen" : "⛶ Fullscreen";
+  };
+  bus.on("screen:fullscreen", ({ active }) => updateBtn(active));
+  fullscreenBtn.addEventListener("click", () => {
+    if (renderer.isFullscreen) {
+      renderer.exitFullscreen().catch((err: unknown) => console.warn(err));
+    } else {
+      renderer.requestFullscreen().catch((err: unknown) => console.warn(err));
+    }
+  });
+
   await engine.scenes.push(new ShooterScene());
 }
 
