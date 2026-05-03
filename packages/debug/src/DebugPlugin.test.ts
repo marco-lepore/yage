@@ -331,6 +331,25 @@ describe("DebugPlugin", () => {
     plugin.onDestroy();
   });
 
+  it("stops Pixi's ticker during install when startFrozen is set", async () => {
+    const { context, scheduler, app } = createContext();
+    const plugin = new DebugPlugin({ startFrozen: true });
+
+    plugin.install(context);
+    // The ticker stop must land BEFORE registerSystems / onStart, since
+    // those run after `loop.start()` in `Engine.start()` and any tick
+    // between then and the user's first `freeze()` would mutate state.
+    expect(app.stop).toHaveBeenCalledOnce();
+
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    const clock = getExposedClock();
+    expect(clock.isFrozen).toBe(true);
+
+    plugin.onDestroy();
+  });
+
   it("steps exact frames and renders once per frame in manual mode", async () => {
     const { context, scheduler, app, loop } = createContext();
     const plugin = new DebugPlugin();

@@ -676,24 +676,29 @@ async function main() {
     },
     preventDefaultKeys: ["Space"],
   }));
-  // Test fixtures opt into a fixed RNG seed so playback snapshots are
-  // bit-identical across runs. Production builds leave it unset.
-  const deterministicSeed = (
-    globalThis as { __YAGE_DETERMINISTIC_SEED__?: number }
-  ).__YAGE_DETERMINISTIC_SEED__;
-  engine.use(
-    new DebugPlugin(
-      deterministicSeed !== undefined ? { deterministicSeed } : undefined,
-    ),
-  );
+  // Test fixtures opt into a fixed RNG seed and a paused-from-frame-zero
+  // clock so playback snapshots are bit-identical across runs. Production
+  // builds leave both unset. `startFrozen` runs at plugin `install()` so
+  // no auto-frames tick before scene push — without it, the few frames
+  // that slip in between RendererPlugin install and user-space resumption
+  // of `await engine.start()` move physics state non-deterministically.
+  const globals = globalThis as {
+    __YAGE_DETERMINISTIC_SEED__?: number;
+    __YAGE_START_FROZEN__?: boolean;
+  };
+  const debugConfig: {
+    deterministicSeed?: number;
+    startFrozen?: boolean;
+  } = {};
+  if (globals.__YAGE_DETERMINISTIC_SEED__ !== undefined) {
+    debugConfig.deterministicSeed = globals.__YAGE_DETERMINISTIC_SEED__;
+  }
+  if (globals.__YAGE_START_FROZEN__) {
+    debugConfig.startFrozen = true;
+  }
+  engine.use(new DebugPlugin(debugConfig));
 
   await engine.start();
-  const shouldStartFrozen = (
-    globalThis as { __YAGE_START_FROZEN__?: boolean }
-  ).__YAGE_START_FROZEN__;
-  if (shouldStartFrozen) {
-    engine.inspector.time.freeze();
-  }
   await engine.scenes.push(new PlatformerScene());
 }
 
