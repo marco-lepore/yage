@@ -1,4 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Mock the runtime `Graphics` class FitController instantiates for the
+// letterbox mask. Pixi v8's real `Graphics` works headless today, but
+// depending on its internals from a pure-logic unit test is fragile —
+// this mock keeps the test independent of Pixi version churn.
+const graphicsDestroySpy = vi.fn();
+vi.mock("pixi.js", () => {
+  class MockGraphics {
+    children: unknown[] = [];
+    clear(): this {
+      return this;
+    }
+    rect(): this {
+      return this;
+    }
+    fill(): this {
+      return this;
+    }
+    destroy(): void {
+      graphicsDestroySpy();
+    }
+  }
+  return { Graphics: MockGraphics };
+});
+
 import { FitController } from "./Fit.js";
 import type { Application, Container } from "pixi.js";
 
@@ -186,14 +211,18 @@ describe("FitController", () => {
       expect(app.stage.children).toContain(app.stage.mask);
     });
 
-    it("removes the mask on stop()", () => {
+    it("removes the mask on stop() and disposes the Graphics", () => {
       const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      graphicsDestroySpy.mockClear();
       fit.start();
       expect(app.stage.mask).not.toBeNull();
 
       fit.stop();
       expect(app.stage.mask).toBeNull();
       expect(app.stage.children).toHaveLength(0);
+      // Releasing the underlying Graphics resource is part of the contract:
+      // re-installing fit must not leak a `GraphicsContext` per cycle.
+      expect(graphicsDestroySpy).toHaveBeenCalledTimes(1);
     });
   });
 
