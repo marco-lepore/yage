@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Save Stores</title>
+    <link rel="stylesheet" href="/shared.css">
+    <style>
+      .save-ui {
+        max-width: 800px;
+        width: 100%;
+        margin-top: 1rem;
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 1fr 1fr;
+      }
+      .save-ui section {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 1rem;
+      }
+      .save-ui h2 {
+        font-size: 1rem;
+        color: #eee;
+        margin: 0 0 0.6rem;
+      }
+      .save-ui label {
+        font-size: 0.85rem;
+        color: #aaa;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0.4rem 0;
+      }
+      .save-ui input[type="range"] {
+        flex: 1;
+      }
+      .save-ui input[type="checkbox"] {
+        accent-color: #38bdf8;
+      }
+      .save-ui .stat {
+        font-size: 0.85rem;
+        color: #ccc;
+        font-variant-numeric: tabular-nums;
+      }
+      .save-ui button {
+        background: #2563eb;
+        border: none;
+        color: white;
+        padding: 0.4rem 0.8rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        margin: 0.2rem 0.2rem 0.2rem 0;
+      }
+      .save-ui button:hover { background: #1d4ed8; }
+      .save-ui button.danger { background: #b91c1c; }
+      .save-ui button.danger:hover { background: #991b1b; }
+      .save-ui button.subtle { background: #333; color: #ccc; }
+      .save-ui button.subtle:hover { background: #444; }
+      .save-ui .slot-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        margin: 0.3rem 0;
+        padding: 0.3rem;
+        background: #0f0f0f;
+        border-radius: 4px;
+      }
+      .save-ui .slot-row .meta {
+        flex: 1;
+        color: #aaa;
+      }
+      .save-ui .slot-row .meta b { color: #eee; }
+    </style>
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Save Stores</h1>
+    <p style="font-size: 0.85rem; color: #888; max-width: 800px; text-align: center; line-height: 1.4;">
+      Settings auto-persist on change. Progression saves to named slots with metadata.
+      Reload the page to see Continue restore your run.
+    </p>
+
+    <div id="game-container"></div>
+
+    <div class="save-ui">
+      <section>
+        <h2>Settings (auto-persist)</h2>
+        <label>
+          Music
+          <input id="music" type="range" min="0" max="100" />
+          <span id="music-value" class="stat">—</span>
+        </label>
+        <label>
+          SFX
+          <input id="sfx" type="range" min="0" max="100" />
+          <span id="sfx-value" class="stat">—</span>
+        </label>
+        <label>
+          <input id="vsync" type="checkbox" /> VSync
+        </label>
+        <p class="stat" id="settings-status" style="color:#666; margin-top: 0.6rem;">No changes yet</p>
+      </section>
+
+      <section>
+        <h2>Progression</h2>
+        <p class="stat">Chapter <b id="chapter">1</b></p>
+        <p class="stat">Coins <b id="coins">0</b></p>
+        <p class="stat">Deaths <b id="deaths">0</b></p>
+        <button id="collect">Collect coin</button>
+        <button id="advance">Advance chapter</button>
+        <button id="die">Die</button>
+        <button id="reset" class="danger">New game</button>
+      </section>
+
+      <section style="grid-column: 1 / -1;">
+        <h2>Save Slots</h2>
+        <button id="save-1">Save → manual-1</button>
+        <button id="save-2">Save → manual-2</button>
+        <button id="save-3">Save → manual-3</button>
+        <button id="continue" class="subtle">Continue (load latest)</button>
+        <span id="autosave-status" class="stat" style="margin-left: 1rem; color: #666;"></span>
+        <div id="slot-list" style="margin-top: 0.8rem;"></div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/save-stores.ts"></script>
+  </body>
+</html>

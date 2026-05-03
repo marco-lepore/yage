@@ -237,13 +237,29 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 
 ### `@yagejs/save`
 
-| File                         | Purpose                                      |
-| ---------------------------- | -------------------------------------------- |
-| `src/SavePlugin.ts`          | Plugin entry, registers `SaveServiceKey`     |
-| `src/SaveService.ts`         | Snapshot + user data save/load orchestration |
-| `src/LocalStorageAdapter.ts` | `SaveStorage` impl for browser localStorage  |
-| `src/types.ts`               | `SaveStorage`, snapshot types                |
-| `src/keys.ts`                | `SaveServiceKey`                             |
+Two persistence paths in one package:
+
+**Stores + Save instance** (primary path — typed reactive stores):
+
+| File                                | Purpose                                                       |
+| ----------------------------------- | ------------------------------------------------------------- |
+| `src/Save.ts`                       | `Save` class + `createSave({ adapter })`, slot manifest, IO   |
+| `src/SavePlugin.ts`                 | Plugin entry, registers `SaveServiceKey` from user-provided `Save` |
+| `src/keys.ts`                       | `SaveServiceKey`                                              |
+| `src/adapters/localStorage.ts`      | `localStorageAdapter()` — browser default                     |
+| `src/adapters/memory.ts`            | `memoryAdapter()` — tests + Node                              |
+
+Stores themselves (`defineStore` / `defineSet` / `defineMap` / `defineCounter` / `Atom`) live in `@yagejs/core` under `src/state/` and are re-exported from `@yagejs/save`.
+
+**Snapshot path** (advanced — full-scene `@serializable` quicksave):
+
+| File                                                   | Purpose                                            |
+| ------------------------------------------------------ | -------------------------------------------------- |
+| `src/snapshot/SnapshotPlugin.ts`                       | Plugin entry, registers `SnapshotServiceKey`       |
+| `src/snapshot/SnapshotService.ts`                      | Snapshot + user data orchestration                 |
+| `src/snapshot/LocalStorageSnapshotStorage.ts`          | `SnapshotStorage` impl for browser localStorage    |
+| `src/snapshot/types.ts`                                | `SnapshotStorage`, snapshot types                  |
+| `src/snapshot/keys.ts`                                 | `SnapshotServiceKey`                               |
 
 ### Project Root
 
@@ -660,18 +676,44 @@ class PlayerEntity extends Entity {
 
 ### Use the Save System
 
-```typescript
-import { SavePlugin, SaveServiceKey } from "@yagejs/save";
+Two paths — pick by use case.
 
-// Register the plugin:
-engine.use(new SavePlugin());
+**Stores + Save instance** (primary — settings, slots, world facts, progression):
+
+```typescript
+import {
+  defineStore, defineSet, createSave, SavePlugin,
+  localStorageAdapter, SaveServiceKey,
+} from "@yagejs/save";
+
+// Define stores at module scope
+const settings = defineStore<{ volume: number }>("settings", {
+  defaults: () => ({ volume: 0.8 }),
+});
+const opened = defineSet<string>("world.opened");
+
+// Construct Save in main; register via plugin
+const save = createSave({ adapter: localStorageAdapter() });
+await save.restoreAll([settings, opened]);
+save.autoPersist(settings);
+engine.use(new SavePlugin({ save }));
 
 // In game code:
 const save = this.service(SaveServiceKey);
-save.saveSnapshot("slot1"); // save full game state
-await save.loadSnapshot("slot1"); // restore from snapshot
-save.saveData("settings", { volume: 0.8 }); // save user data
-const settings = save.loadData("settings"); // load user data
+await save.saveSlot(saves, "manual-1", { metadata: { /* ... */ } });
+await save.loadSlot(saves, "manual-1");
+```
+
+**Snapshot path** (advanced — full-scene quicksave):
+
+```typescript
+import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
+
+engine.use(new SnapshotPlugin());
+
+const snap = this.service(SnapshotServiceKey);
+snap.saveSnapshot("slot1");
+await snap.loadSnapshot("slot1");
 ```
 
 ### Serializing Drawables (GraphicsComponent)
@@ -944,7 +986,7 @@ Quick summary of the key architectural decisions:
 | Internal coordinate conversion                          | `PhysicsWorld` handles pixels ↔ meters; users never see Rapier units                                                                           |
 | Error resilience (`ErrorBoundary`)                      | One bad component/system never crashes the loop; errors are logged and inspectable                                                             |
 | Inspector + Logger as core features                     | Testing and debugging are first-class; `window.__yage__` enables Playwright assertions                                                         |
-| `@serializable` decorator in core                       | Components/entities self-register at import time. `SaveService` reads the registry — no manual registration needed                             |
+| `@serializable` decorator in core                       | Components/entities self-register at import time. `SnapshotService` reads the registry — no manual registration needed                         |
 | String keys for texture-dependent components            | `FrameSource` (animation), `textureKey` (particles), string texture key (sprites) enable serialization without coupling to PixiJS objects      |
 
 ---

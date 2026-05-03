@@ -7,7 +7,7 @@ import {
 } from "@yagejs/core";
 import type { EngineContext } from "@yagejs/core";
 import type {
-  SaveStorage,
+  SnapshotStorage,
   UntypedSlots,
   GameSnapshot,
   SceneSnapshotEntry,
@@ -37,14 +37,18 @@ const COMPONENT_ORDER = [
 ];
 
 /** Orchestrates full game-state serialization and hydration. */
-export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
-  private readonly storage: SaveStorage;
+export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
+  private readonly storage: SnapshotStorage;
   private readonly context: EngineContext;
   private readonly namespace: string;
   private readonly contributors = new Map<string, SnapshotContributor>();
   private _loading = false;
 
-  constructor(storage: SaveStorage, context: EngineContext, namespace = "yage") {
+  constructor(
+    storage: SnapshotStorage,
+    context: EngineContext,
+    namespace = "yage",
+  ) {
     this.storage = storage;
     this.context = context;
     this.namespace = namespace;
@@ -217,7 +221,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
         }
       } catch (err) {
         console.error(
-          `SaveService: contributor "${key}" serialize failed; ` +
+          `SnapshotService: contributor "${key}" serialize failed; ` +
             `omitting its extras from this snapshot.`,
           err,
         );
@@ -291,7 +295,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
           await contributor.restore(extras[key]);
         } catch (err) {
           console.error(
-            `SaveService: contributor "${key}" restore failed; continuing.`,
+            `SnapshotService: contributor "${key}" restore failed; continuing.`,
             err,
           );
         }
@@ -299,7 +303,7 @@ export class SaveService<TSlots extends UntypedSlots = UntypedSlots> {
       for (const key of Object.keys(extras)) {
         if (!this.contributors.has(key)) {
           console.warn(
-            `SaveService: snapshot contains extras for "${key}" but no ` +
+            `SnapshotService: snapshot contains extras for "${key}" but no ` +
               `contributor is registered — skipping.`,
           );
         }

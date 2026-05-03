@@ -121,6 +121,10 @@ export default defineConfig({
             { label: "UI", slug: "guides/ui" },
             { label: "UI (React)", slug: "guides/ui-react" },
             { label: "Save & Load", slug: "guides/save-and-load" },
+            {
+              label: "Snapshot Quicksave",
+              slug: "guides/snapshot-quicksave",
+            },
             { label: "Assets", slug: "guides/assets" },
             { label: "Loading Scene", slug: "guides/loading-scene" },
             { label: "Debug Tools", slug: "guides/debug" },

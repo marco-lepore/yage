@@ -1,12 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { createStore } from "./store.js";
+import { createStore } from "./Store.js";
 
 describe("createStore", () => {
-  it("get() returns frozen initial state", () => {
+  it("get() returns initial state", () => {
     const store = createStore({ score: 0, hp: 100 });
     const snap = store.get();
     expect(snap).toEqual({ score: 0, hp: 100 });
-    expect(Object.isFrozen(snap)).toBe(true);
   });
 
   it("set() merges partial state and notifies subscribers", () => {
@@ -67,7 +66,7 @@ describe("createStore", () => {
     expect(b).toHaveBeenCalledTimes(1);
   });
 
-  it("get() returns a new frozen snapshot after set()", () => {
+  it("get() returns a new snapshot reference after set()", () => {
     const store = createStore({ v: 0 });
     const snap1 = store.get();
     store.set({ v: 1 });
@@ -76,6 +75,13 @@ describe("createStore", () => {
     expect(snap1).not.toBe(snap2);
     expect(snap1.v).toBe(0);
     expect(snap2.v).toBe(1);
-    expect(Object.isFrozen(snap2)).toBe(true);
+  });
+
+  it("snapshot reference is stable when set() is a no-op", () => {
+    const store = createStore({ v: 0 });
+    const snap1 = store.get();
+    store.set({ v: 0 });
+    const snap2 = store.get();
+    expect(snap1).toBe(snap2);
   });
 });

@@ -1,372 +1,271 @@
 ---
 title: "Save & Load"
-description: "Snapshots, serialization, and persistent game state"
+description: "Typed reactive stores, save slots, and persistent game state"
 ---
 
-The `@yagejs/save` package provides automatic save/load with component-level
-serialization, entity and scene restoration hooks, and slot-based storage.
+YAGE has two persistence paths:
 
-## SavePlugin Setup
+1. **Stores + a Save instance** (this guide). Typed reactive singletons for
+   settings, save slots, world facts, and progression. The default for almost
+   everything.
+2. **Snapshot quicksave**. Full-scene serialization via `@serializable`, used
+   when you specifically want to "pause and resume the simulator." See the
+   [Snapshot Quicksave guide](/guides/snapshot-quicksave/) for that path.
+
+Most games only need stores. Reach for snapshots when stores aren't enough.
+
+## Why stores
+
+Most save data isn't really "the simulator's runtime state" — it's the
+*intentional* facts about the game: which chests are opened, what chapter the
+player is on, the current settings, the inventory. Trying to serialize a live
+component graph to capture that data is fragile (closures, runtime objects,
+destroyed entities). A typed store says directly what the data *is*.
+
+Stores also avoid the trap of accidentally persisting things you don't want —
+particle positions, animation phase, transient UI state — because you choose
+what each store contains.
+
+## Defining stores
+
+Stores are typed singletons declared at module scope. They live in
+`@yagejs/core` and are re-exported from `@yagejs/save` for convenience.
 
 ```typescript
+// game/persistence/stores.ts
+import { defineStore, defineSet, defineMap, defineCounter } from "@yagejs/save";
+
+export interface SettingsData {
+  audio: { music: number; sfx: number };
+  vsync: boolean;
+}
+
+export const settings = defineStore<SettingsData>("settings", {
+  version: 1,
+  defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
+});
+
+export interface RunData {
+  chapter: number;
+  position: { x: number; y: number };
+  inventory: string[];
+}
+
+export const saves = defineStore<RunData>("saves", {
+  version: 1,
+  defaults: () => ({ chapter: 1, position: { x: 0, y: 0 }, inventory: [] }),
+});
+
+// Specialized helpers — sets, maps, and counters
+export const opened    = defineSet<string>("world.opened");
+export const defeated  = defineMap<string, number>("world.defeated");
+export const restEpoch = defineCounter("world.restEpoch");
+```
+
+The store API:
+
+```typescript
+store.get()                         // Readonly<T> — stable ref between sets
+store.set(partial)                  // shallow merge for object stores
+store.subscribe(listener)           // returns unsubscribe
+store.reset()                       // restore defaults
+```
+
+`defineSet`, `defineMap`, `defineCounter` add typed convenience methods
+(`add`, `has`, `remove`, `increment`, etc.) and bundle codecs internally.
+
+## Creating the Save instance
+
+Construct `Save` once in your entry point. The plugin only registers it under
+`SaveServiceKey` for in-game DI access — boot-time work uses `save` directly.
+
+```typescript
+// game/persistence/save.ts
+import { createSave, localStorageAdapter } from "@yagejs/save";
+
+export const save = createSave({
+  adapter: localStorageAdapter({ namespace: "my-game" }),
+});
+```
+
+```typescript
+// game/main.ts
+import { Engine } from "@yagejs/core";
 import { SavePlugin } from "@yagejs/save";
+import { save } from "./persistence/save.js";
+import { settings, saves } from "./persistence/stores.js";
 
-engine.use(new SavePlugin({
-  namespace: "my-game",     // storage key prefix (default: "yage")
-}));
+await save.restoreAll([settings, saves]);   // boot-time restore
+save.autoPersist(settings);                  // stream changes back to disk
+
+const engine = new Engine();
+engine.use(new SavePlugin({ save }));
+await engine.start();
 ```
 
-## The `@serializable` Decorator
+## Settings — single document + auto-persist
 
-Mark classes with `@serializable` so the save system can snapshot and restore
-them. This works on entities, scenes, and components.
+Settings change rarely and should write to disk on every change. `autoPersist`
+subscribes to the store and writes on every change, coalescing multiple
+synchronous `set` calls into one write per microtask.
 
 ```typescript
-import { serializable } from "@yagejs/core";
+await save.restore(settings);                       // load on boot
+const stop = save.autoPersist(settings);
 
-@serializable
-class Player extends Entity {
-  // ...
-}
-
-@serializable
-class GameScene extends Scene {
-  // ...
-}
+// Anywhere in the game…
+settings.set({ audio: { ...settings.get().audio, music: 0.5 } });
+// → one write fires after the current microtask
 ```
 
-Only `@serializable` classes are included in snapshots. Built-in components
-like `Transform`, `RigidBodyComponent`, and `ColliderComponent` are already
-serializable.
+`stop()` removes the subscriber and cancels any pending write. For real
+time-based debouncing across user interactions (e.g. throttling a slider
+drag), wrap the store yourself.
 
-## Auto-Serialization
+## Save slots
 
-Components with simple data fields are serialized automatically:
+Slots are named instances of a store. Use them for "save game" semantics.
+Each slot has optional metadata persisted alongside the value (timestamp,
+location, thumbnail, anything you want).
 
 ```typescript
-@serializable
-class ScoreComponent extends Component {
-  score = 0;
-  combo = 1;
-
-  // These fields will be saved and restored automatically
-  // via serialize() / fromSnapshot() defaults
+interface RunMeta {
+  location: string;
+  playtime: number;
 }
+
+await save.saveSlot<RunMeta>(saves, "manual-1", {
+  metadata: { location: "Forest Temple", playtime: 60 },
+});
+
+await save.loadSlot(saves, "manual-1");
+
+const slots = await save.listSlots<RunMeta>(saves);
+// [{ name: "manual-1", savedAt: 1714…, metadata: { location, playtime } }, …]
+
+await save.deleteSlot(saves, "manual-1");
 ```
 
-## Custom Serialization
+`loadSlot` throws `SlotNotFoundError` for missing slots.
 
-For components with non-trivial state, implement `serialize()` and
-`static fromSnapshot()`:
+### Continue (load latest)
 
 ```typescript
-@serializable
-class MovingSpike extends Component {
-  private startY: number;
-  private amplitude: number;
-  private speed: number;
-  private elapsed = 0;
-
-  constructor(opts: { startY: number; amplitude: number; speed: number }) {
-    super();
-    this.startY = opts.startY;
-    this.amplitude = opts.amplitude;
-    this.speed = opts.speed;
-  }
-
-  serialize() {
-    return {
-      startY: this.startY,
-      amplitude: this.amplitude,
-      speed: this.speed,
-      elapsed: this.elapsed,
-    };
-  }
-
-  static fromSnapshot(data: {
-    startY: number;
-    amplitude: number;
-    speed: number;
-    elapsed: number;
-  }) {
-    const spike = new MovingSpike({
-      startY: data.startY,
-      amplitude: data.amplitude,
-      speed: data.speed,
-    });
-    spike.elapsed = data.elapsed;
-    return spike;
-  }
+const slots = await save.listSlots(saves);
+if (slots.length > 0) {
+  const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+  await save.loadSlot(saves, latest.name);
 }
 ```
 
-## Entity afterRestore
+### Multi-profile
 
-Some state cannot be serialized — draw callbacks, event listeners, and runtime
-references. Use `afterRestore()` to re-create them:
+If you have profiles (per-user save banks), use hierarchical slot names with
+the `prefix` filter:
 
 ```typescript
-@serializable
-class Coin extends Entity {
-  setup(): void {
-    this.add(new Transform());
-    this.add(new GraphicsComponent().draw(drawCoin));
-    this.add(new RigidBodyComponent({ type: "static" }));
-
-    const collider = new ColliderComponent({
-      shape: { type: "circle", radius: 10 },
-      sensor: true,
-    });
-    this.add(collider);
-    this.setupTrigger(collider);
-  }
-
-  afterRestore(): void {
-    // Re-create the draw callback (not serializable)
-    this.get(GraphicsComponent).draw(drawCoin);
-
-    // Re-attach event handlers
-    this.setupTrigger(this.get(ColliderComponent));
-  }
-
-  private setupTrigger(collider: ColliderComponent): void {
-    collider.onTrigger((ev) => {
-      if (ev.entered) {
-        this.emit(CoinCollected);
-        this.destroy();
-      }
-    });
-  }
-}
+await save.saveSlot(saves, `${profile}/manual-1`);
+const profileSlots = await save.listSlots(saves, { prefix: `${profile}/` });
 ```
 
-## Scene afterRestore
+The engine doesn't formalize profile scopes — the convention lives in your
+game code, which keeps the primitive simple.
 
-Scenes also have an `afterRestore()` hook for re-creating scene-level state:
+## In-game access via DI
 
-```typescript
-@serializable
-class GameScene extends Scene {
-  readonly name = "game";
-
-  onEnter(): void {
-    this.buildShared();
-    this.spawnInitialEntities();
-  }
-
-  afterRestore(): void {
-    this.buildShared();
-    // Entities are restored automatically — don't re-spawn them
-  }
-
-  private buildShared(): void {
-    // Set up event listeners, services, static geometry —
-    // anything needed by both fresh start and load
-    this.on(CoinCollected, () => { /* ... */ });
-  }
-}
-```
-
-The pattern is:
-
-- `onEnter()` — called for a fresh start. Spawn entities, set up state.
-- `afterRestore()` — called after loading. Entities are already restored.
-  Re-create non-serializable scene state only.
-- Extract shared setup into a helper method called by both.
-
-## Snapshot API
-
-Access the save service via DI:
+Components and scenes resolve the registered Save instance through
+`SaveServiceKey`:
 
 ```typescript
 import { SaveServiceKey } from "@yagejs/save";
 
-const saveService = this.use(SaveServiceKey);
-```
-
-### Save and Load
-
-```typescript
-// Save current state to a slot
-saveService.saveSnapshot("slot1");
-
-// Load from a slot (async — rebuilds scenes and entities)
-await saveService.loadSnapshot("slot1");
-
-// Check if a slot exists
-saveService.hasSnapshot("slot1");  // boolean
-
-// Delete a slot
-saveService.deleteSnapshot("slot1");
-```
-
-### Import / Export
-
-Export snapshots as plain objects for cloud saves or file download:
-
-```typescript
-const data = saveService.exportSnapshot("slot1");  // GameSnapshot | null
-await saveService.importSnapshot("slot1", data);
-```
-
-### Snapshot Schema
-
-`exportSnapshot()` returns a `GameSnapshot` — a plain object with a stable,
-documented shape. You normally never look inside it; `importSnapshot()` does
-the restoration for you. But understanding the structure is useful when
-writing custom migrations, building a save-file preview UI, or debugging
-stale save data.
-
-```typescript
-interface GameSnapshot {
-  version: number;              // schema version — bump when formats change
-  timestamp: number;            // Date.now() at save time
-  scenes: SceneSnapshotEntry[]; // one entry per scene in the stack
-}
-
-interface SceneSnapshotEntry {
-  type: string;                 // class name from @serializable
-  paused: boolean;              // was the scene paused at save time
-  entities: EntitySnapshotEntry[];
-  userData?: unknown;           // result of scene.serialize()
-}
-
-interface EntitySnapshotEntry {
-  id: number;                   // save-time ID, used to rewire cross-entity refs
-  type: string;                 // class name from @serializable
-  components: ComponentSnapshot[];
-  userData?: unknown;           // result of entity.serialize()
-  parentId?: number;            // if this is a child of another entity
-  childName?: string;           // name under which parent registered this child
-}
-
-interface ComponentSnapshot {
-  type: string;                 // component class name
-  data: unknown;                // result of component.serialize()
-}
-```
-
-The `id` on `EntitySnapshotEntry` is what makes cross-entity references work.
-When you save an entity that holds a pointer to another entity (say, an AI
-that "targets" a player), the pointer is stored as the target's save-time
-`id`. On load, `afterRestore()` receives a `SnapshotResolver` whose
-`resolver.entity(oldId)` returns the freshly-restored instance, so you can
-rewire the pointer without having to care about ID collisions:
-
-```typescript
-@serializable
-class Enemy extends Entity {
-  targetId!: number;
-
-  serialize() {
-    return { targetId: this.target?.id };
-  }
-
-  afterRestore(data: { targetId: number }, resolver: SnapshotResolver) {
-    this.target = resolver.entity(data.targetId);
+class CheckpointOnRest extends Component {
+  setup() {
+    this.entity.on(Rested, async () => {
+      const save = this.use(SaveServiceKey);
+      await save.saveSlot(saves, "auto");
+    });
   }
 }
 ```
 
-One common read-only use of the schema is building a save-slot preview UI —
-read `exportSnapshot()`, count `scenes[0].entities`, inspect `timestamp`,
-and render a summary without having to actually restore the save:
+## Migration & versioning
+
+Bump `version` when the data shape changes; provide `migrate` to transform
+older payloads:
 
 ```typescript
-const preview = saveService.exportSnapshot("slot1");
-if (preview) {
-  const age = new Date(preview.timestamp).toLocaleString();
-  const count = preview.scenes[0]?.entities.length ?? 0;
-  renderSlot({ age, entityCount: count });
-}
+defineStore<RunData>("saves", {
+  version: 3,
+  defaults: () => initialRun(),
+  migrate: (old, fromVersion) => {
+    let v = old as Record<string, unknown>;
+    if (fromVersion < 2) v = { ...v, inventory: [] };
+    if (fromVersion < 3) v = { ...v, position: v.startPos ?? { x: 0, y: 0 } };
+    return v as RunData;
+  },
+});
 ```
 
-## Persistent User Data
+`hydrate` calls `migrate` when stored version &lt; current. Newer-than-current
+payloads throw `StoreVersionTooNewError`.
 
-Store data that persists across saves — settings, unlocks, best scores:
+## Codecs
+
+Stores serialize via a `Codec<T>`. Built-ins:
 
 ```typescript
-// Save arbitrary data
-saveService.saveData("bestScore", { value: 9999 });
+import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/save";
 
-// Load it back
-const best = saveService.loadData("bestScore");  // { value: 9999 } | null
-
-// Check / delete
-saveService.hasData("bestScore");
-saveService.deleteData("bestScore");
+jsonCodec<T>()    // identity (default for defineStore)
+setCodec<K>()     // Set<K>     <-> K[]
+mapCodec<K, V>()  // Map<K, V>  <-> [K, V][]
+dateCodec()       // Date       <-> ISO string
 ```
 
-User data is independent of game snapshots. It survives even if snapshots are
-deleted.
+`defineSet`/`defineMap`/`defineCounter` bundle the right codec — you only
+specify a codec for `defineStore<T>` when the type contains exotic values.
 
-## Typed Slots
-
-By default, `saveService.saveData("bestScore", ...)` accepts any string key
-and any value — the service is typed as `SaveService<UntypedSlots>`, which is
-effectively `Record<string, any>`. That's fine for prototyping, but it gives
-you no autocomplete on slot names and no compile-time check that you're
-storing the right shape under the right key.
-
-`SaveService` is generic over a slot-key map. Declare an interface describing
-the shape of every persistent slot your game uses, then cast the resolved
-service once:
+## Adapters
 
 ```typescript
-import { SaveServiceKey, type SaveService } from "@yagejs/save";
+import { localStorageAdapter, memoryAdapter } from "@yagejs/save";
 
-interface MySlots {
-  bestScore: { value: number };
-  playerName: string;
-  settings: { volume: number; muted: boolean };
-}
-
-const save = this.use(SaveServiceKey) as SaveService<MySlots>;
-
-save.saveData("bestScore", { value: 9999 });    // ✓ typed
-save.saveData("playerName", "Ada");              // ✓ typed
-save.saveData("settings", { volume: 0.5, muted: false });
-
-const name = save.loadData("playerName");       // string | null
-// save.saveData("bstScore", ...)                // ✗ typo → compile error
-// save.saveData("bestScore", 9999)              // ✗ wrong shape → compile error
+localStorageAdapter({ namespace?: string })  // browser
+memoryAdapter()                              // tests + Node
 ```
 
-You get autocomplete on slot names and compile-time errors when you pass a
-value of the wrong shape, with no runtime cost — the cast is purely a type
-hint.
+The `SaveAdapter` interface is intentionally minimal — `read`, `write`,
+`delete`, `list` over async string IO. Custom adapters (file system, IndexedDB,
+cloud sync) plug in here.
 
-This only types the persistent-user-data slots (`saveData`/`loadData`). The
-snapshot API (`saveSnapshot`/`loadSnapshot`) is keyed by slot name as a
-free-form string and serializes whatever scenes are currently on the stack,
-so it doesn't need to know your slot shape.
+## Tests
 
-## Quicksave Pattern
-
-A common pattern is F5/F9 quicksave/quickload:
+Reset every store between tests, swap in `memoryAdapter`:
 
 ```typescript
-class GameScene extends Scene {
-  private readonly input = this.service(InputManagerKey);
-  private readonly save = this.service(SaveServiceKey);
+import { _resetAllStoresForTesting } from "@yagejs/core";
+import { createSave, memoryAdapter } from "@yagejs/save";
 
-  update(): void {
-    if (this.input.isJustPressed("quicksave")) {
-      this.save.saveSnapshot("quicksave");
-    }
-    if (this.input.isJustPressed("quickload")) {
-      this.save.loadSnapshot("quicksave");
-    }
-  }
-}
+beforeEach(() => {
+  _resetAllStoresForTesting();
+});
+
+const save = createSave({ adapter: memoryAdapter() });
 ```
 
-## What Gets Serialized
+## Per-frame updates: don't
 
-- **Included:** `@serializable` entities, scenes, and components. The full
-  scene stack, entity hierarchy (parent/child), and component data.
-- **Not included:** draw callbacks, event listeners, runtime service
-  references, non-`@serializable` classes.
+Stores are for *intentional* state — settings, slots, world facts. They notify
+all subscribers synchronously on every change, and any UI bindings re-render.
+**Don't update stores from `update(dt)` or other per-frame paths**; that's
+what ECS state and `useQuery` / `useSceneSelector` are for. If you find
+yourself debouncing every `set`, you're using the wrong primitive.
 
-If something is missing after a load, you need an `afterRestore()` hook to
-re-create it.
+## When stores aren't enough
+
+If your game genuinely needs to capture and resume the entire simulator state
+(every entity, component, active process, scene stack) — for example a true
+quicksave during physics simulation — see the
+[Snapshot Quicksave guide](/guides/snapshot-quicksave/) for the
+`@serializable` path.

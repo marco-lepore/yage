@@ -1,0 +1,224 @@
+---
+title: "Snapshot Quicksave"
+description: "Full-scene serialization via @serializable for quicksave-style save/load"
+---
+
+The snapshot path captures the entire scene stack — every `@serializable`
+entity, component, and scene-level state — into one `GameSnapshot`. Use it
+when you genuinely need to "pause and resume the simulator." For settings,
+save slots, and progression, prefer the [Save & Load guide](/guides/save-and-load/),
+which uses typed stores and is far simpler.
+
+## SnapshotPlugin Setup
+
+```typescript
+import { SnapshotPlugin } from "@yagejs/save";
+
+engine.use(new SnapshotPlugin({
+  namespace: "my-game",     // storage key prefix (default: "yage")
+}));
+```
+
+## Bundler setup (Vite 8+)
+
+`@serializable` looks up classes by `class.name` at restore time. Two flags
+in `vite.config.ts` are required for user code that uses the decorator:
+
+```typescript
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  oxc: {
+    decorator: { legacy: true },
+  },
+  build: {
+    rollupOptions: { output: { keepNames: true } },
+  },
+});
+```
+
+`oxc.decorator.legacy: true` enables the stage-2 decorator transform that
+TypeScript's `@serializable` relies on. `output.keepNames: true` preserves
+class names through oxc's minifier so the registry key stored in a snapshot
+still matches the runtime class.
+
+These flags are only required for user code. `@yagejs/*` packages are
+pre-compiled and unaffected.
+
+## The `@serializable` Decorator
+
+```typescript
+import { serializable } from "@yagejs/core";
+
+@serializable
+class Player extends Entity { }
+
+@serializable
+class GameScene extends Scene { }
+```
+
+Built-in serializable components: `Transform`, `RigidBodyComponent`,
+`ColliderComponent`, `SpriteComponent`, `GraphicsComponent`. Compose your
+entity from these and most state serializes for free.
+
+## Custom serialization
+
+Components with non-trivial state implement `serialize()` + a static
+`fromSnapshot()`:
+
+```typescript
+@serializable
+class MovingSpike extends Component {
+  serialize() {
+    return { startY: this.startY, speed: this.speed, elapsed: this.elapsed };
+  }
+
+  static fromSnapshot(data: { startY: number; speed: number; elapsed: number }) {
+    const spike = new MovingSpike({ startY: data.startY, speed: data.speed });
+    spike.elapsed = data.elapsed;
+    return spike;
+  }
+}
+```
+
+## afterRestore hooks
+
+Re-create non-serializable state (draw callbacks, event listeners,
+runtime references):
+
+```typescript
+@serializable
+class Coin extends Entity {
+  afterRestore(): void {
+    this.get(GraphicsComponent).draw(drawCoin);
+    this.setupTrigger(this.get(ColliderComponent));
+  }
+}
+```
+
+Pattern: extract shared setup into a method called by both `onEnter()` and
+`afterRestore()`.
+
+## SnapshotService API
+
+```typescript
+import { SnapshotServiceKey } from "@yagejs/save";
+
+const snapshot = this.use(SnapshotServiceKey);
+
+snapshot.saveSnapshot("slot1");
+await snapshot.loadSnapshot("slot1");
+snapshot.hasSnapshot("slot1");
+snapshot.deleteSnapshot("slot1");
+
+// Export as plain object for cloud uploads / file export
+const data = snapshot.exportSnapshot("slot1");   // GameSnapshot | null
+await snapshot.importSnapshot("slot1", data);
+```
+
+## Snapshot schema
+
+```typescript
+interface GameSnapshot {
+  version: number;
+  timestamp: number;
+  scenes: SceneSnapshotEntry[];
+  extras?: Record<string, unknown>;   // plugin-contributed extras
+}
+
+interface SceneSnapshotEntry {
+  type: string;
+  paused: boolean;
+  entities: EntitySnapshotEntry[];
+  userData?: unknown;
+}
+
+interface EntitySnapshotEntry {
+  id: number;                  // save-time id, used to rewire references
+  type: string;
+  components: ComponentSnapshot[];
+  userData?: unknown;
+  parentId?: number;
+  childName?: string;
+}
+
+interface ComponentSnapshot {
+  type: string;
+  data: unknown;
+}
+```
+
+`GameSnapshot.version` is `4`. Older saves throw a version-mismatch error at
+load time.
+
+### Cross-entity references
+
+When an entity holds a pointer to another entity, store the *save-time id*
+in `serialize()`. On load, `afterRestore()` receives a `SnapshotResolver`
+that maps old ids to freshly-restored instances:
+
+```typescript
+@serializable
+class Enemy extends Entity {
+  target: Entity | null = null;
+
+  serialize() {
+    return { targetId: this.target?.id };
+  }
+
+  afterRestore(data: { targetId?: number }, resolver: SnapshotResolver) {
+    if (data.targetId != null) this.target = resolver.entity(data.targetId);
+  }
+}
+```
+
+## Quicksave pattern
+
+```typescript
+class GameScene extends Scene {
+  private readonly input = this.service(InputManagerKey);
+  private readonly snapshot = this.service(SnapshotServiceKey);
+
+  update(): void {
+    if (this.input.isJustPressed("quicksave")) {
+      this.snapshot.saveSnapshot("quicksave");
+    }
+    if (this.input.isJustPressed("quickload")) {
+      this.snapshot.loadSnapshot("quicksave");
+    }
+  }
+}
+```
+
+## Snapshot contributors
+
+Plugins owning state outside the entity/component model (renderer-scope
+effects, audio buses, etc.) can contribute extras:
+
+```typescript
+import { SnapshotServiceKey, type SnapshotContributor } from "@yagejs/save";
+
+const svc = context.tryResolve(SnapshotServiceKey);
+svc?.registerSnapshotExtra("myPlugin", {
+  serialize: () => ({ /* … */ }),
+  restore: (data) => { /* apply data */ },
+});
+```
+
+Every registered contributor is called on `loadSnapshot` — including with
+`undefined` when the snapshot has no entry for it — so contributors can reset
+to baseline. A failing contributor is logged via `console.error` and the
+load continues.
+
+The renderer plugin auto-registers a contributor under `"renderer"` for
+layer/scene/screen-scope effects + masks.
+
+## What gets serialized
+
+- **Included:** `@serializable` entities, scenes, and components. The full
+  scene stack, entity hierarchy (parent/child), and component data.
+- **Not included:** draw callbacks, event listeners, runtime service
+  references, non-`@serializable` classes.
+
+If something is missing after a load, you need an `afterRestore()` hook to
+re-create it.

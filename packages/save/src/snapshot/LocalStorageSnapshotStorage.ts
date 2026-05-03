@@ -1,7 +1,7 @@
-import type { SaveStorage } from "./types.js";
+import type { SnapshotStorage } from "./types.js";
 
-/** SaveStorage backed by browser localStorage. */
-export class LocalStorageSaveStorage implements SaveStorage {
+/** SnapshotStorage backed by browser localStorage. */
+export class LocalStorageSnapshotStorage implements SnapshotStorage {
   load(key: string): string | null {
     return localStorage.getItem(key);
   }
