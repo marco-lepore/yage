@@ -1,5 +1,19 @@
 # @yagejs/ui
 
+## 0.5.0
+
+### Minor Changes
+
+- [#52](https://github.com/marco-lepore/yage/pull/52) [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Input ergonomics: frame-deferred action edges, pointer/wheel consume primitives, listener parity, and UI auto-consume via the renderer's hit-test fallback.
+  - Every UI primitive (`UIButton`, `UICheckbox`, `UIPanel`, `UIImage`, `UINineSlice`, `UIProgressBar`, `UIText`) now marks its underlying Pixi container via `markPointerConsumeContainer` from `@yagejs/core`. Combined with the renderer's `hitTestUI` and `@yagejs/input`'s drain-time fallback, taps on any UI element — including blank panel backgrounds, decorative text, and layout containers with no handlers — automatically suppress gameplay action edges (`MouseLeft` / `Middle` / `Right`).
+  - New per-component escape hatch: `consumeInput?: boolean` on every UI prop interface (default `true`). Set to `false` for see-through overlays (cosmetic full-screen filters, decorative HUD borders) that should let pointer events propagate to gameplay. Lives on the underlying primitive props so it propagates through `@yagejs/ui-react` mirrors with no extra wiring.
+
+### Patch Changes
+
+- Updated dependencies [[`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c), [`bc3790d`](https://github.com/marco-lepore/yage/commit/bc3790dc4c31c42c4821cd275a9376a0830bb0db), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`114d246`](https://github.com/marco-lepore/yage/commit/114d246820a88e68841a4f9cec2167c188269970)]:
+  - @yagejs/renderer@0.5.0
+  - @yagejs/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

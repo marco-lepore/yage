@@ -1,5 +1,33 @@
 # @yagejs/renderer
 
+## 0.5.0
+
+### Minor Changes
+
+- [#54](https://github.com/marco-lepore/yage/pull/54) [`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fullscreen helper, viewport-lifecycle bus events, and a letterbox clipping fix.
+
+  **Fullscreen helper on `RendererPlugin`** (additive)
+  - `RendererPlugin.requestFullscreen()` / `exitFullscreen()` / `isFullscreen` getter — wraps the browser fullscreen API with a `webkitRequestFullscreen` fallback for iOS Safari. Targets the configured `container` (so DOM overlays placed alongside the canvas remain inside the fullscreened area), falling back to the canvas when no container was provided.
+  - `RendererPlugin.orientation` getter — current `OrientationType`, or `null` when neither `screen.orientation` nor the legacy `window.orientation` angle is available.
+
+  **New typed events on `EngineEvents`** (additive)
+  - `screen:fullscreen` with payload `{ active: boolean }` — fired by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange` (entering, exiting, Esc, browser UI).
+  - `screen:orientation` with payload `{ type: OrientationType }` — fired by `RendererPlugin` on `screen.orientation.change`, falling back to `window.orientationchange` on browsers without the modern API.
+  - Listeners install during `RendererPlugin.install()` (gated behind `typeof document/window !== "undefined"` so node-environment tests are unaffected) and tear down in `onDestroy()`.
+
+  **Bug fix: `letterbox` now actually clips world content to the virtual rect**
+
+  `letterbox` and `expand` shared the same transform with no clip, so any game whose world is larger than the virtual rect (e.g. a side-scroller) would render world content into the letterbox bars whenever the host's aspect ratio didn't match virtual. The contract documented for `letterbox` ("leftover canvas painted with `backgroundColor` — bars are blank") was prose-only. Fullscreen made the leak obvious because it forces the container to the viewport's aspect ratio. Under `letterbox` the `FitController` now installs a `Graphics` mask on the stage covering `(0, 0, virtualWidth, virtualHeight)`, restoring the doc'd behaviour. `expand`, `cover`, and `stretch` deliberately don't clip (`expand` is the explicit opt-out for games drawing into bars; the other two cover the canvas already). No API change — existing games on `letterbox` should look the same on aspect-matched hosts and gain proper bar-clipping on mismatched ones.
+
+- [#52](https://github.com/marco-lepore/yage/pull/52) [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Input ergonomics: frame-deferred action edges, pointer/wheel consume primitives, listener parity, and UI auto-consume via the renderer's hit-test fallback.
+  - `RendererPlugin` now implements the `hitTestUI(x, y)` extension on `RendererAdapter`. Walks Pixi's `EventBoundary.rootBoundary.hitTest` result up the parent chain and returns `true` when any ancestor was flagged via `markPointerConsumeContainer` (from `@yagejs/core`). `@yagejs/input` calls this on `pointerdown` drains to auto-claim presses landing on UI surfaces.
+  - `SpriteComponent` and `AnimatedSpriteComponent` gain an optional `interactive?: { eventMode?, consumeOnInteraction? }` config. When `interactive` is set, the underlying Pixi sprite gets `eventMode: "static"` (or whatever was passed). When `consumeOnInteraction: true`, the sprite is also added to the consume registry — pointer presses landing on it auto-claim, so a tappable in-world sprite never double-fires gameplay actions like `MouseLeft`. Default `false` preserves the "I want both Pixi events AND the action map" use case.
+
+### Patch Changes
+
+- Updated dependencies [[`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c), [`bc3790d`](https://github.com/marco-lepore/yage/commit/bc3790dc4c31c42c4821cd275a9376a0830bb0db), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`114d246`](https://github.com/marco-lepore/yage/commit/114d246820a88e68841a4f9cec2167c188269970)]:
+  - @yagejs/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@yagejs/physics",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Rapier 2D physics integration (rigid bodies, colliders, joints) for the YAGE 2D game engine",
   "keywords": [
     "yage",
@@ -60,8 +60,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@yagejs/core": "^0.4.0",
-    "@yagejs/debug": "^0.4.0",
+    "@yagejs/core": "^0.5.0",
+    "@yagejs/debug": "^0.5.0",
     "@dimforge/rapier2d": "^0.19.0"
   }
 }

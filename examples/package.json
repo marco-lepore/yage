@@ -1,7 +1,7 @@
 {
   "name": "@yagejs/examples",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,18 +14,18 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@yagejs/audio": "^0.4.0",
-    "@yagejs/core": "^0.4.0",
-    "@yagejs/debug": "^0.4.0",
-    "@yagejs/effects": "^0.4.0",
-    "@yagejs/input": "^0.4.0",
-    "@yagejs/particles": "^0.4.0",
-    "@yagejs/physics": "^0.4.0",
-    "@yagejs/renderer": "^0.4.0",
-    "@yagejs/save": "^0.4.0",
-    "@yagejs/tilemap": "^0.4.0",
-    "@yagejs/ui": "^0.4.0",
-    "@yagejs/ui-react": "^0.4.0",
+    "@yagejs/audio": "^0.5.0",
+    "@yagejs/core": "^0.5.0",
+    "@yagejs/debug": "^0.5.0",
+    "@yagejs/effects": "^0.5.0",
+    "@yagejs/input": "^0.5.0",
+    "@yagejs/particles": "^0.5.0",
+    "@yagejs/physics": "^0.5.0",
+    "@yagejs/renderer": "^0.5.0",
+    "@yagejs/save": "^0.5.0",
+    "@yagejs/tilemap": "^0.5.0",
+    "@yagejs/ui": "^0.5.0",
+    "@yagejs/ui-react": "^0.5.0",
     "react": "^19.0.0"
   }
 }
