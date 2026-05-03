@@ -21,8 +21,8 @@ import {
 import type { EngineEvents } from "@yagejs/core";
 import type { SnapshotResolver } from "@yagejs/core";
 import { MemoryStorage } from "./test-helpers.js";
-import { SaveService } from "./SaveService.js";
-import { SaveServiceKey } from "./keys.js";
+import { SnapshotService } from "./SnapshotService.js";
+import { SnapshotServiceKey } from "./keys.js";
 
 // ---- Custom serializable component for testing ----
 
@@ -158,15 +158,15 @@ function createTestContext() {
   sceneManager._setContext(ctx);
 
   const storage = new MemoryStorage();
-  const service = new SaveService(storage, ctx);
-  ctx.register(SaveServiceKey, service);
+  const service = new SnapshotService(storage, ctx);
+  ctx.register(SnapshotServiceKey, service);
 
   return { ctx, sceneManager, storage, service };
 }
 
 // ---- Tests ----
 
-describe("SaveService", () => {
+describe("SnapshotService", () => {
   describe("snapshot operations", () => {
     it("hasSnapshot returns false for empty slot", async () => {
       const { service } = createTestContext();

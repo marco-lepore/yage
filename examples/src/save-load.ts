@@ -1,11 +1,18 @@
 /**
- * Save / Load example (v2 — auto-serialization)
+ * Snapshot Save / Load example
  *
- * Demonstrates the @yagejs/save package:
+ * Demonstrates the snapshot path of @yagejs/save — full-scene serialization
+ * via @serializable decorators and SnapshotPlugin. This is the advanced
+ * "quicksave the simulator" path.
+ *
+ * For the simpler typed-store path (settings, save slots, progression with
+ * manual + auto save), see `save-stores.ts`.
+ *
+ * Highlights:
  * - Components auto-serialize (Transform, RigidBody, Collider, Graphics)
  * - Entity afterRestore() only handles non-serializable gaps (draw calls, custom components)
  * - Scene afterRestore() handles scene-level state (GameState, event listeners)
- * - SaveService.saveData/loadData for persistent data (best score survives browser refresh)
+ * - SnapshotService.saveData/loadData for persistent data (best score survives browser refresh)
  * - F5/F9 quicksave/load
  */
 
@@ -33,8 +40,8 @@ import {
   PhysicsWorldKey,
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
-import { SavePlugin, SaveServiceKey } from "@yagejs/save";
-import type { SaveService } from "@yagejs/save";
+import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
+import type { SnapshotService } from "@yagejs/save";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupGameContainer } from "./shared.js";
@@ -124,7 +131,7 @@ class GameState {
   bestScore: number;
   collectedCoinIds = new Set<string>();
 
-  constructor(private saveService: SaveService) {
+  constructor(private saveService: SnapshotService) {
     const profile = saveService.loadData("profile") as ProfileData | null;
     this.bestScore = profile?.bestScore ?? 0;
   }
@@ -475,7 +482,7 @@ class SaveDemoScene extends Scene {
 
   // ---- Shared setup (both paths) ----
   private buildShared() {
-    const saveService = this.context.resolve(SaveServiceKey);
+    const saveService = this.context.resolve(SnapshotServiceKey);
     this.gs = new GameState(saveService);
     this.context.unregister(GameStateKey);
     this.context.register(GameStateKey, this.gs);
@@ -492,7 +499,7 @@ class SaveDemoScene extends Scene {
     hudEntity.add(
       new (class extends Component {
         private readonly input = this.service(InputManagerKey);
-        private readonly saveService = this.service(SaveServiceKey);
+        private readonly saveService = this.service(SnapshotServiceKey);
 
         update() {
           hud.innerHTML =
@@ -563,7 +570,7 @@ async function main() {
     },
     preventDefaultKeys: ["Space", "F5", "F9"],
   }));
-  engine.use(new SavePlugin());
+  engine.use(new SnapshotPlugin());
   engine.use(new DebugPlugin());
 
   await engine.start();

@@ -2,21 +2,21 @@ export { VERSION } from "@yagejs/core";
 
 // Types
 export type {
-  SaveStorage,
+  SnapshotStorage,
   UntypedSlots,
   GameSnapshot,
   SceneSnapshotEntry,
   EntitySnapshotEntry,
   ComponentSnapshot,
   SnapshotContributor,
-} from "./types.js";
+} from "./snapshot/types.js";
 export type { SnapshotResolver } from "@yagejs/core";
 
 // Storage
-export { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";
+export { LocalStorageSnapshotStorage } from "./snapshot/LocalStorageSnapshotStorage.js";
 
 // Service
-export { SaveService } from "./SaveService.js";
-export { SavePlugin } from "./SavePlugin.js";
-export type { SavePluginOptions } from "./SavePlugin.js";
-export { SaveServiceKey } from "./keys.js";
+export { SnapshotService } from "./snapshot/SnapshotService.js";
+export { SnapshotPlugin } from "./snapshot/SnapshotPlugin.js";
+export type { SnapshotPluginOptions } from "./snapshot/SnapshotPlugin.js";
+export { SnapshotServiceKey } from "./snapshot/keys.js";

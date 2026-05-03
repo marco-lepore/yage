@@ -9,8 +9,8 @@ import {
 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
-import { SavePlugin, SaveServiceKey } from "@yagejs/save";
-import type { SaveService, SnapshotResolver } from "@yagejs/save";
+import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
+import type { SnapshotService, SnapshotResolver } from "@yagejs/save";
 import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
@@ -134,10 +134,10 @@ engine.use(
   }),
 );
 engine.use(new DebugPlugin());
-engine.use(new SavePlugin());
+engine.use(new SnapshotPlugin());
 await engine.start();
 await engine.scenes.push(new TestScene());
 
 // Expose save service for e2e test control
-const saveService = engine.context.resolve(SaveServiceKey);
+const saveService = engine.context.resolve(SnapshotServiceKey);
 (window as any).__saveService__ = saveService;

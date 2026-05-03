@@ -28,7 +28,7 @@ import {
   type LayerDef,
 } from "@yagejs/renderer";
 import type { EffectHandle, MaskHandle } from "@yagejs/renderer";
-import { SavePlugin, SaveServiceKey } from "@yagejs/save";
+import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
 import {
   hitFlash,
   bloom,
@@ -563,13 +563,13 @@ class ShowcaseScene extends Scene {
   }
 
   doSave(): void {
-    const save = this.context.resolve(SaveServiceKey);
+    const save = this.context.resolve(SnapshotServiceKey);
     save.saveSnapshot("showcase");
     showToast("Saved");
   }
 
   async doLoad(): Promise<void> {
-    const save = this.context.resolve(SaveServiceKey);
+    const save = this.context.resolve(SnapshotServiceKey);
     if (!save.hasSnapshot("showcase")) {
       showToast("No save");
       return;
@@ -599,7 +599,7 @@ async function main(): Promise<void> {
       container: setupGameContainer(STAGE_WIDTH, STAGE_HEIGHT),
     }),
   );
-  engine.use(new SavePlugin());
+  engine.use(new SnapshotPlugin());
 
   // Hotkeys — bare S/L only, so Cmd/Ctrl+S (browser save) and Cmd/Ctrl+L
   // (focus address bar) keep their default behavior.
