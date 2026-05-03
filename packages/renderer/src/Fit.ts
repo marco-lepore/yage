@@ -1,4 +1,5 @@
 import { Vec2 } from "@yagejs/core";
+import { Graphics } from "pixi.js";
 import type { Application, Container } from "pixi.js";
 import type { FitMode } from "./types.js";
 
@@ -47,6 +48,15 @@ export class FitController {
   };
   private canvasW: number;
   private canvasH: number;
+  /**
+   * Mask applied to the stage under `letterbox` to clip rendering to the
+   * virtual rect. Lives as a child of `stage` so it inherits the same
+   * scale/offset transform — drawing it at virtual-local `(0,0,vW,vH)`
+   * lands it exactly on the virtual rect after the transform is applied.
+   * `null` outside `letterbox` mode (no clipping needed for `expand`,
+   * `cover`, or `stretch`).
+   */
+  private letterboxMask: Graphics | null = null;
 
   constructor(
     private readonly app: Application,
@@ -99,10 +109,16 @@ export class FitController {
     this.observer.observe(this.target, { box: "border-box" });
   }
 
-  /** Stop observing and release the ResizeObserver. Leaves stage transform untouched. */
+  /**
+   * Stop observing and release the ResizeObserver. Removes the letterbox
+   * mask from the stage so re-installing fit (or destroying the renderer)
+   * doesn't leave a dangling Graphics child. Leaves the scale/position
+   * transform on the stage untouched.
+   */
   stop(): void {
     this.observer?.disconnect();
     this.observer = null;
+    this.removeLetterboxMask();
   }
 
   /** Update mode and/or target without rebuilding the controller. */
@@ -365,5 +381,41 @@ export class FitController {
     this.canvasW = hostW;
     this.canvasH = hostH;
     this.transform = { scaleX, scaleY, offsetX, offsetY };
+
+    // Letterbox is documented as "leftover space painted with backgroundColor"
+    // — i.e. bars are blank. Without a mask, content drawn at stage-local
+    // coords outside (0,0,vW,vH) leaks into the bars (visible whenever the
+    // game's world is larger than the virtual rect, e.g. a side-scroller
+    // wider than the viewport). Install a clip rect to enforce the doc'd
+    // contract. `expand`, `cover`, and `stretch` deliberately don't clip:
+    // `expand` lets the game draw into bars on purpose, `cover` and
+    // `stretch` fully cover the canvas already.
+    this.applyLetterboxMask();
+  }
+
+  private applyLetterboxMask(): void {
+    if (this.mode === "letterbox") {
+      if (!this.letterboxMask) {
+        this.letterboxMask = new Graphics();
+        this.stage.addChild(this.letterboxMask);
+        this.stage.mask = this.letterboxMask;
+      }
+      this.letterboxMask
+        .clear()
+        .rect(0, 0, this.virtualWidth, this.virtualHeight)
+        .fill(0xffffff);
+      return;
+    }
+    this.removeLetterboxMask();
+  }
+
+  private removeLetterboxMask(): void {
+    if (!this.letterboxMask) return;
+    if (this.stage.mask === this.letterboxMask) {
+      this.stage.mask = null;
+    }
+    this.stage.removeChild(this.letterboxMask);
+    this.letterboxMask.destroy();
+    this.letterboxMask = null;
   }
 }

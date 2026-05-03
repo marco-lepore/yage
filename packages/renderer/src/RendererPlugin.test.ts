@@ -82,9 +82,25 @@ vi.mock("pixi.js", () => {
     enabled = true;
     constructor(public label = "filter") {}
   }
+  class MockGraphics extends mocks.MockContainer {
+    clear(): this {
+      return this;
+    }
+    rect(): this {
+      return this;
+    }
+    fill(): this {
+      return this;
+    }
+    destroy(): void {
+      // mirror Pixi v8: just a no-op marker, parent removeChild already
+      // detaches us from any container.
+    }
+  }
   return {
     Application: mocks.MockApplication,
     Container: mocks.MockContainer,
+    Graphics: MockGraphics,
     Filter: MockFilter,
     AlphaFilter: class extends MockFilter {
       alpha: number;
