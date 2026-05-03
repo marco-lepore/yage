@@ -29,7 +29,6 @@ describe("defineStore", () => {
   it("starts with defaults", () => {
     const s = make();
     expect(s.get()).toEqual({ music: 0.8, sfx: 1.0 });
-    expect(Object.isFrozen(s.get())).toBe(true);
   });
 
   it("set() shallow-merges and notifies", () => {

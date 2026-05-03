@@ -515,7 +515,13 @@ class SaveDemoScene extends Scene {
               showToast("No save found!");
               return;
             }
-            this.saveService.loadSnapshot("quick").then(() => showToast("Quickloaded!"));
+            void this.saveService
+              .loadSnapshot("quick")
+              .then(() => showToast("Quickloaded!"))
+              .catch((err) => {
+                console.error("Quickload failed:", err);
+                showToast("Quickload failed!");
+              });
           }
         }
       })(),
