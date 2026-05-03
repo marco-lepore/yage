@@ -48,6 +48,22 @@ class Entity {
 | `EventToken<T>` | Typed token for entity events |
 | `defineEvent<T>(name)` | Create an event token |
 
+`EngineEvents` (the typed map used by `EventBusKey`):
+
+| Event | Payload |
+|---|---|
+| `entity:created` / `entity:destroyed` | `{ entity }` |
+| `component:added` | `{ entity; component }` |
+| `component:removed` | `{ entity; componentClass }` |
+| `scene:pushed` / `scene:popped` | `{ scene }` |
+| `scene:replaced` | `{ oldScene; newScene }` |
+| `scene:transition:started` / `scene:transition:ended` | `{ kind; fromScene; toScene }` |
+| `scene:loading:progress` | `{ scene; ratio }` |
+| `scene:loading:done` | `{ scene }` |
+| `engine:started` / `engine:stopped` | `undefined` |
+| `screen:fullscreen` | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange` |
+| `screen:orientation` | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback) |
+
 ### Math
 
 | Export | Purpose |

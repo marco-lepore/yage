@@ -103,6 +103,34 @@ Note: "screen" in the engine (UI `LayerSpace: "screen"`, `Camera.screenToWorld`)
 
 Pair with `@yagejs/input` — `InputPlugin` auto-resolves the renderer via `RendererAdapterKey` (core), so pointer events target this canvas and coordinates route through `canvasToVirtual` out of the box. `InputManager.getPointerPosition()` stays correct under fit with no config.
 
+## Fullscreen & Orientation
+
+`RendererPlugin` wraps the browser fullscreen API (with `webkitRequestFullscreen` fallback for iOS Safari) and emits viewport-lifecycle events on the engine bus. The fullscreen target is the configured `container` when present, falling back to the canvas.
+
+| Member | Purpose |
+|---|---|
+| `requestFullscreen(): Promise<void>` | Enter fullscreen on the host. Must be called from a user gesture. Rejects if unsupported. |
+| `exitFullscreen(): Promise<void>` | Exit fullscreen. No-op if not currently fullscreen. |
+| `isFullscreen: boolean` | Live read of `document.fullscreenElement === host`. |
+| `orientation: OrientationType \| null` | Current device orientation (`portrait-primary`, `landscape-primary`, etc.), or `null` when neither modern nor legacy API is available. |
+
+Emits on the engine `EventBus`:
+
+| Event | Payload | When |
+|---|---|---|
+| `screen:fullscreen` | `{ active: boolean }` | `fullscreenchange` / `webkitfullscreenchange` (entering, exiting, Esc, browser UI). |
+| `screen:orientation` | `{ type: OrientationType }` | `screen.orientation.change` if available, else `window.orientationchange` fallback. |
+
+```ts
+import { EventBusKey } from "@yagejs/core";
+const renderer = engine.use(new RendererPlugin({ width: 800, height: 600, container: host }));
+const bus = engine.context.resolve(EventBusKey);
+bus.on("screen:orientation", ({ type }) => layoutHud(type));
+button.addEventListener("click", () => renderer.requestFullscreen());
+```
+
+Listeners are wired in `install()` (gated by `typeof document/window !== "undefined"`) and torn down in `onDestroy()`. iOS Safari requires `requestFullscreen` to run inside a user-gesture handler.
+
 ## Components
 
 ### Pick a component

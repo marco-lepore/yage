@@ -36,6 +36,11 @@ export interface EngineEvents {
   "scene:loading:done": { scene: Scene };
   "engine:started": undefined;
   "engine:stopped": undefined;
+  // Viewport / device events. Emitted by RendererPlugin when the canvas
+  // host element enters/exits fullscreen and when the device orientation
+  // changes. `OrientationType` is the built-in DOM lib union.
+  "screen:fullscreen": { active: boolean };
+  "screen:orientation": { type: OrientationType };
 }
 
 /** Typed publish/subscribe event bus. */

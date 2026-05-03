@@ -52,6 +52,17 @@ export interface DebugConfig {
    * normal debug builds so randomness behaves the same as in production.
    */
   deterministicSeed?: number;
+  /**
+   * If true, the engine boots with a paused Pixi ticker so no auto-frames
+   * tick before user code can intervene — equivalent to calling
+   * `inspector.time.freeze()` at frame zero, but applied during plugin
+   * `install()` (before `loop.start()`). Use for deterministic E2E runs:
+   * any later `engine.scenes.push(...)` resolves under frozen time, so
+   * snapshots taken right after only depend on the explicit `time.step()`
+   * calls — not on how many auto-frames slipped in between
+   * `await engine.start()` and the test's first `freeze()`.
+   */
+  startFrozen?: boolean;
 }
 
 export interface LayerTransformSnapshot {
@@ -125,6 +136,16 @@ export class DebugPlugin implements Plugin {
       context
         .resolve(InspectorKey)
         .setDefaultSceneSeed(this.config.deterministicSeed);
+    }
+    if (this.config.startFrozen) {
+      // Stop Pixi's ticker before `loop.start()` runs, so no frames tick
+      // between `app.init()` (which auto-starts the ticker) and the user's
+      // first `inspector.time.freeze()`. Without this, even the few auto-
+      // frames that slip in between RendererPlugin install and user-space
+      // `await engine.start()` resolution mutate physics / input clocks,
+      // breaking bit-identical replay snapshots. The DebugClock created in
+      // `onStart` will pick this up via its own `freeze()` call.
+      this.renderer.application.stop();
     }
 
     this.registry = new DebugRegistryImpl();
@@ -201,6 +222,14 @@ export class DebugPlugin implements Plugin {
     inspector.attachTimeController(this.clock);
     inspector.setEventLogEnabled(true);
     this.attachToGlobal(this.clock);
+    if (this.config.startFrozen) {
+      // `install()` already called `app.stop()`. Run the clock's own
+      // `freeze()` now to take ownership: it captures `minFPS`, zeroes
+      // `syntheticTime` / `lastTime`, and flips `_isFrozen` so the public
+      // `inspector.time.isFrozen()` reflects reality without a redundant
+      // freeze cycle from the caller.
+      this.clock.freeze();
+    }
 
     // Materialize the debug scene off-stack. `_mountDetached` routes through
     // the same beforeEnter hooks as `push`, so the renderer materializes the

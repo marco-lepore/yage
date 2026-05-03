@@ -1,4 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Mock the runtime `Graphics` class FitController instantiates for the
+// letterbox mask. Pixi v8's real `Graphics` works headless today, but
+// depending on its internals from a pure-logic unit test is fragile —
+// this mock keeps the test independent of Pixi version churn.
+const graphicsDestroySpy = vi.fn();
+vi.mock("pixi.js", () => {
+  class MockGraphics {
+    children: unknown[] = [];
+    clear(): this {
+      return this;
+    }
+    rect(): this {
+      return this;
+    }
+    fill(): this {
+      return this;
+    }
+    destroy(): void {
+      graphicsDestroySpy();
+    }
+  }
+  return { Graphics: MockGraphics };
+});
+
 import { FitController } from "./Fit.js";
 import type { Application, Container } from "pixi.js";
 
@@ -23,6 +48,18 @@ class MockContainer {
       this.y = py;
     },
   };
+  // Children / mask support for the letterbox-clip path. The real Pixi
+  // Container has many more responsibilities; we capture only what
+  // FitController touches.
+  children: unknown[] = [];
+  mask: unknown = null;
+  addChild(child: unknown): void {
+    this.children.push(child);
+  }
+  removeChild(child: unknown): void {
+    const idx = this.children.indexOf(child);
+    if (idx !== -1) this.children.splice(idx, 1);
+  }
 }
 
 class MockApp {
@@ -162,6 +199,47 @@ describe("FitController", () => {
       expect(app.stage.position.x).toBe(0);
       expect(app.stage.position.y).toBe(0);
     });
+
+    it("installs a stage mask that clips world content to the virtual rect", () => {
+      const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+
+      // Mask is applied to stage and is a child of stage so it inherits the
+      // same transform — drawn at virtual-local (0,0,vW,vH) it lands on the
+      // virtual rect after the stage scale/offset is applied.
+      expect(app.stage.mask).not.toBeNull();
+      expect(app.stage.children).toContain(app.stage.mask);
+    });
+
+    it("removes the mask on stop() and disposes the Graphics", () => {
+      const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      graphicsDestroySpy.mockClear();
+      fit.start();
+      expect(app.stage.mask).not.toBeNull();
+
+      fit.stop();
+      expect(app.stage.mask).toBeNull();
+      expect(app.stage.children).toHaveLength(0);
+      // Releasing the underlying Graphics resource is part of the contract:
+      // re-installing fit must not leak a `GraphicsContext` per cycle.
+      expect(graphicsDestroySpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not clobber a pre-existing stage mask", () => {
+      const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      const userMask = { sentinel: true };
+      app.stage.mask = userMask;
+
+      fit.start();
+
+      // User's mask wins; we don't install ours over it.
+      expect(app.stage.mask).toBe(userMask);
+      expect(app.stage.children).toHaveLength(0);
+
+      // stop() must leave the user's mask alone.
+      fit.stop();
+      expect(app.stage.mask).toBe(userMask);
+    });
   });
 
   describe("cover", () => {
@@ -208,6 +286,13 @@ describe("FitController", () => {
       expect(app.stage.scale.x).toBe(2);
       expect(app.stage.position.x).toBe(0);
       expect(app.stage.position.y).toBe(100);
+    });
+
+    it("does not install a stage mask — the game is expected to draw into bars", () => {
+      const { fit, app } = makeFit("expand", 400, 300, 1000, 600);
+      fit.start();
+      expect(app.stage.mask).toBeNull();
+      expect(app.stage.children).toHaveLength(0);
     });
 
     it("keeps visibleVirtualRect at the full virtual rect regardless of aspect", () => {
@@ -642,6 +727,26 @@ describe("FitController", () => {
       fit.reconfigure("letterbox", newTarget);
       expect(firstObs.disconnected).toBe(true);
       expect(observers[1]!.observed).toBe(newTarget);
+    });
+
+    it("removes the letterbox mask when switching to expand", () => {
+      const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      fit.start();
+      expect(app.stage.mask).not.toBeNull();
+
+      fit.reconfigure("expand", fit.currentTarget);
+      expect(app.stage.mask).toBeNull();
+      expect(app.stage.children).toHaveLength(0);
+    });
+
+    it("installs the letterbox mask when switching from expand to letterbox", () => {
+      const { fit, app } = makeFit("expand", 400, 300, 1000, 600);
+      fit.start();
+      expect(app.stage.mask).toBeNull();
+
+      fit.reconfigure("letterbox", fit.currentTarget);
+      expect(app.stage.mask).not.toBeNull();
+      expect(app.stage.children).toContain(app.stage.mask);
     });
   });
 });

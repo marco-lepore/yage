@@ -1,6 +1,7 @@
 import {
   Component,
   Engine,
+  EventBusKey,
   Scene,
   Transform,
   Vec2,
@@ -22,7 +23,25 @@ injectStyles(`
      long-press selection on the canvas. Without this the second finger's
      events get hijacked by the browser before YAGE sees them. */
   #game-container { touch-action: none; user-select: none; -webkit-user-select: none; }
+  #orientation-badge {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(0,0,0,0.7);
+    color: #38bdf8;
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    pointer-events: none;
+  }
 `);
+
+const orientationBadge = document.createElement("div");
+orientationBadge.id = "orientation-badge";
+orientationBadge.textContent = "orientation: …";
+document.body.appendChild(orientationBadge);
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -295,18 +314,28 @@ class MultitouchScene extends Scene {
 async function main() {
   const engine = new Engine();
 
-  engine.use(
-    new RendererPlugin({
-      width: WIDTH,
-      height: HEIGHT,
-      backgroundColor: 0x0f172a,
-      container: setupGameContainer(WIDTH, HEIGHT),
-    }),
-  );
+  const renderer = new RendererPlugin({
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: 0x0f172a,
+    container: setupGameContainer(WIDTH, HEIGHT),
+  });
+  engine.use(renderer);
 
   engine.use(new InputPlugin());
 
   await engine.start();
+
+  // Orientation badge: seed with the current value, then update live from
+  // the bus event. Falls back to "—" when the runtime exposes neither
+  // `screen.orientation` nor a legacy `window.orientation` angle.
+  const renderType = (type: OrientationType | null): string => type ?? "—";
+  orientationBadge.textContent = `orientation: ${renderType(renderer.orientation)}`;
+  const bus = engine.context.resolve(EventBusKey);
+  bus.on("screen:orientation", ({ type }) => {
+    orientationBadge.textContent = `orientation: ${type}`;
+  });
+
   await engine.scenes.push(new MultitouchScene());
 }
 
