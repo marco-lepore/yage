@@ -1,5 +1,37 @@
 # @yagejs/debug
 
+## 0.5.0
+
+### Minor Changes
+
+- [#54](https://github.com/marco-lepore/yage/pull/54) [`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add `DebugPlugin` `startFrozen` option for true frame-zero determinism.
+
+  `new DebugPlugin({ startFrozen: true })` stops Pixi's ticker during plugin
+  `install()` — _before_ `Engine.start()` calls `loop.start()` — and brings
+  up the `DebugClock` already in frozen state. Pair with `deterministicSeed`
+  for E2E replay.
+
+  **Why:** previously the recommended pattern was `await engine.start();
+inspector.time.freeze();`. Pixi auto-starts the ticker inside
+  `Application.init()` (which `RendererPlugin.install` awaits), so any frame
+  that ticked between then and the user-space `freeze()` mutated physics /
+  input clocks non-deterministically. Snapshots taken right after the
+  freeze were therefore _not_ bit-identical across runs — visible as a flaky
+  `inspector-determinism.spec.ts` on slow CI runners.
+
+  `startFrozen` closes the window: by the time `onStart()` runs and the user
+  ever sees `await engine.start()` resolve, the engine has ticked zero
+  frames. `inspector.time.thaw()` resumes auto-mode normally.
+
+  Updated `examples/src/platformer.ts` to read `__YAGE_START_FROZEN__` into
+  `startFrozen` instead of calling `freeze()` after `engine.start()`.
+
+### Patch Changes
+
+- Updated dependencies [[`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c), [`bc3790d`](https://github.com/marco-lepore/yage/commit/bc3790dc4c31c42c4821cd275a9376a0830bb0db), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`114d246`](https://github.com/marco-lepore/yage/commit/114d246820a88e68841a4f9cec2167c188269970)]:
+  - @yagejs/renderer@0.5.0
+  - @yagejs/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

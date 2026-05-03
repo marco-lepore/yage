@@ -1,5 +1,42 @@
 # @yagejs/core
 
+## 0.5.0
+
+### Minor Changes
+
+- [#54](https://github.com/marco-lepore/yage/pull/54) [`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fullscreen helper, viewport-lifecycle bus events, and a letterbox clipping fix.
+
+  **Fullscreen helper on `RendererPlugin`** (additive)
+  - `RendererPlugin.requestFullscreen()` / `exitFullscreen()` / `isFullscreen` getter — wraps the browser fullscreen API with a `webkitRequestFullscreen` fallback for iOS Safari. Targets the configured `container` (so DOM overlays placed alongside the canvas remain inside the fullscreened area), falling back to the canvas when no container was provided.
+  - `RendererPlugin.orientation` getter — current `OrientationType`, or `null` when neither `screen.orientation` nor the legacy `window.orientation` angle is available.
+
+  **New typed events on `EngineEvents`** (additive)
+  - `screen:fullscreen` with payload `{ active: boolean }` — fired by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange` (entering, exiting, Esc, browser UI).
+  - `screen:orientation` with payload `{ type: OrientationType }` — fired by `RendererPlugin` on `screen.orientation.change`, falling back to `window.orientationchange` on browsers without the modern API.
+  - Listeners install during `RendererPlugin.install()` (gated behind `typeof document/window !== "undefined"` so node-environment tests are unaffected) and tear down in `onDestroy()`.
+
+  **Bug fix: `letterbox` now actually clips world content to the virtual rect**
+
+  `letterbox` and `expand` shared the same transform with no clip, so any game whose world is larger than the virtual rect (e.g. a side-scroller) would render world content into the letterbox bars whenever the host's aspect ratio didn't match virtual. The contract documented for `letterbox` ("leftover canvas painted with `backgroundColor` — bars are blank") was prose-only. Fullscreen made the leak obvious because it forces the container to the viewport's aspect ratio. Under `letterbox` the `FitController` now installs a `Graphics` mask on the stage covering `(0, 0, virtualWidth, virtualHeight)`, restoring the doc'd behaviour. `expand`, `cover`, and `stretch` deliberately don't clip (`expand` is the explicit opt-out for games drawing into bars; the other two cover the canvas already). No API change — existing games on `letterbox` should look the same on aspect-matched hosts and gain proper bar-clipping on mismatched ones.
+
+- [#49](https://github.com/marco-lepore/yage/pull/49) [`bc3790d`](https://github.com/marco-lepore/yage/commit/bc3790dc4c31c42c4821cd275a9376a0830bb0db) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Real gamepad polling, analog sticks/triggers, and `listenForNextKey` support across devices.
+  - `Inspector.input.gamepadButton(code, pressed)` and `gamepadAxis(side, value)` now take string identifiers (gamepad code / `GamepadAxisKey`) instead of numeric indices, matching the new `@yagejs/input` API and avoiding the W3C-mapping leak into the public Inspector surface.
+  - `InputStateSnapshot.gamepad` updated: `buttons` is now `string[]` (gamepad codes) and `axes` is now `Array<{ key: string; value: number }>` (key format `${padIndex}:${axisName}`), matching what the new `InputManager.snapshotState()` returns.
+
+- [#52](https://github.com/marco-lepore/yage/pull/52) [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Input ergonomics: frame-deferred action edges, pointer/wheel consume primitives, listener parity, and UI auto-consume via the renderer's hit-test fallback.
+  - New cross-package consume registry: `markPointerConsumeContainer(c)`, `unmarkPointerConsumeContainer(c)`, `isPointerConsumeContainer(c)` over a module-level `WeakSet`. Used by `@yagejs/ui`, `@yagejs/ui-react`, and `@yagejs/renderer` (sprite opt-in) to flag display containers as UI-input surfaces; `@yagejs/input`'s drain step queries the renderer's `hitTestUI(x, y)` to auto-claim pointer presses landing on any marked container.
+  - `RendererAdapter` interface gains an optional `hitTestUI?(x, y): boolean` for renderer implementations to expose a virtual-space hit test. The canonical `@yagejs/renderer` implements it; foreign renderers can omit and the input-side fallback is a no-op.
+
+- [#51](https://github.com/marco-lepore/yage/pull/51) [`114d246`](https://github.com/marco-lepore/yage/commit/114d246820a88e68841a4f9cec2167c188269970) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Multi-pointer / touch support across the input layer.
+  - New per-pointer state keyed by `pointerId`: every active mouse, pen, or finger gets its own tracked entry. `getPointers(): readonly PointerInfo[]` and `getPointer(id): PointerInfo | undefined` expose them; `PointerInfo` carries `{ id, screenPos, type, isPrimary, buttons, isDown }`.
+  - `pointerType` (`"mouse" | "pen" | "touch"`) is now exposed on every tracked pointer so games can branch on input class (e.g. show or hide a hover indicator).
+  - Per-pointer event hooks: `onPointerDown(fn)` / `onPointerUp(fn)` / `onPointerMove(fn)` each return a disposer. Up listeners also fire on `pointercancel`, so gesture-tracking code does not need to special-case it.
+  - `MouseLeft` / `MouseMiddle` / `MouseRight` action codes now use any-pointer aggregation (mirrors the Tier 1 gamepad fix): two simultaneous pointers holding button 0 emit one down edge and one up edge, never spurious duplicates.
+  - The singular `getPointerPosition()`, `getPointerScreenPosition()`, and `isPointerDown()` continue to report the **primary** pointer (the one the browser flagged `isPrimary`), so existing single-pointer call sites keep working unchanged. `isPointerDown()` now reflects "primary pointer has any of buttons 0/1/2 held" — buttons 3+ no longer set it.
+  - Synthetic injection (`firePointerMove` / `firePointerDown` / `firePointerUp`) gains an optional second `opts?: { id?, type?, isPrimary? }` argument for driving non-primary or touch pointers in tests. Existing zero-arg / single-arg calls keep their previous semantics.
+  - `InputStateSnapshot` (from `@yagejs/core`) now exposes a `pointers: PointerSnapshot[]` array next to `mouse`. `mouse` is preserved as a primary-pointer mirror for back-compat with existing inspector tooling.
+  - `pointercancel` now drops the cancelled pointer entirely and releases the aggregate `MouseLeft`/`Middle`/`Right` edges it was holding — replaces the previous "clear all pointer buttons" handling, which over-cleared when only one of multiple touches was cancelled.
+
 ## 0.4.0
 
 ### Minor Changes

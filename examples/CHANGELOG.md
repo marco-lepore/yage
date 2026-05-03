@@ -1,5 +1,23 @@
 # @yagejs/examples
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [[`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c), [`cf617fe`](https://github.com/marco-lepore/yage/commit/cf617fe0f28db6ea1a5af7992b76dc19eec8cd0c), [`bc3790d`](https://github.com/marco-lepore/yage/commit/bc3790dc4c31c42c4821cd275a9376a0830bb0db), [`bc3790d`](https://github.com/marco-lepore/yage/commit/bc3790dc4c31c42c4821cd275a9376a0830bb0db), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`d998fc1`](https://github.com/marco-lepore/yage/commit/d998fc16746ee56ff3cad22a5fdf77b2ac19800b), [`114d246`](https://github.com/marco-lepore/yage/commit/114d246820a88e68841a4f9cec2167c188269970)]:
+  - @yagejs/debug@0.5.0
+  - @yagejs/renderer@0.5.0
+  - @yagejs/core@0.5.0
+  - @yagejs/input@0.5.0
+  - @yagejs/ui-react@0.5.0
+  - @yagejs/ui@0.5.0
+  - @yagejs/physics@0.5.0
+  - @yagejs/particles@0.5.0
+  - @yagejs/tilemap@0.5.0
+  - @yagejs/audio@0.5.0
+  - @yagejs/save@0.5.0
+  - @yagejs/effects@0.5.0
+
 ## 0.0.3
 
 ### Patch Changes
