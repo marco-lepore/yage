@@ -7,7 +7,7 @@
  *   - `defineStore<T>` for object data (settings, progression)
  *   - `defineCounter` for a death counter
  *   - `save.persist` / `save.restore` for unslotted documents (settings)
- *   - `save.autoPersist` to write debounced on every change
+ *   - `save.autoPersist` to write on every change (microtask-coalesced)
  *   - `save.saveSlot` / `loadSlot` / `listSlots` / `deleteSlot` with typed metadata
  *   - "Continue" picks the most recent slot (manual or auto)
  *   - "New game" resets all stores and writes a fresh auto-save
@@ -165,31 +165,22 @@ function bindSettings(): void {
 
   music.addEventListener("input", () => {
     settings.set({ music: music.valueAsNumber / 100 });
-    status.textContent = "Saving…";
-    status.style.color = "#facc15";
   });
   sfx.addEventListener("input", () => {
     settings.set({ sfx: sfx.valueAsNumber / 100 });
-    status.textContent = "Saving…";
-    status.style.color = "#facc15";
   });
   vsync.addEventListener("change", () => {
     settings.set({ vsync: vsync.checked });
-    status.textContent = "Saving…";
-    status.style.color = "#facc15";
   });
 
-  // Visual feedback when autoPersist actually writes — `persist` resolves once
-  // the adapter accepts the value. We don't have a public hook for that, so we
-  // poll the input event timing in a simple way: 600ms after the last change,
-  // assume the debounced write has fired (debounce default is 250ms).
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  // autoPersist coalesces synchronous changes and writes on the next
+  // microtask, so by the time a `subscribe` listener returns the write is
+  // either in flight or already committed for tiny localStorage payloads.
+  // Show a timestamp of the last-saved state so the user can see writes are
+  // happening without claiming an artificial "Saving…" pause.
   settings.subscribe(() => {
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      status.textContent = "Saved";
-      status.style.color = "#22c55e";
-    }, 600);
+    status.textContent = `Saved at ${new Date().toLocaleTimeString()}`;
+    status.style.color = "#22c55e";
   });
 }
 
@@ -350,7 +341,7 @@ async function main(): Promise<void> {
   // — boot-time UI reflects the last-saved state on page load.
   await save.restoreAll([settings, progression, deaths]);
 
-  // Stream settings changes back to disk, debounced.
+  // Stream settings changes back to disk, microtask-coalesced.
   save.autoPersist(settings);
   // Progression auto-persists too, so refresh-after-collect doesn't lose state
   // even without an explicit save.

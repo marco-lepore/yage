@@ -65,7 +65,7 @@ export const restEpoch = defineCounter("world.restEpoch");
 The store API:
 
 ```typescript
-store.get()                         // Readonly<T> — frozen snapshot
+store.get()                         // Readonly<T> — stable ref between sets
 store.set(partial)                  // shallow merge for object stores
 store.subscribe(listener)           // returns unsubscribe
 store.reset()                       // restore defaults

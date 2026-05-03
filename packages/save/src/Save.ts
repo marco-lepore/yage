@@ -47,16 +47,6 @@ export class SlotNotFoundError extends Error {
   }
 }
 
-/** Thrown when restoring an unslotted document that doesn't exist. */
-export class DocumentNotFoundError extends Error {
-  readonly storeId: string;
-  constructor(storeId: string) {
-    super(`No persisted document found for store "${storeId}".`);
-    this.name = "DocumentNotFoundError";
-    this.storeId = storeId;
-  }
-}
-
 /** Thrown when a store id or slot name contains a reserved character. */
 export class InvalidKeyError extends Error {
   constructor(message: string) {

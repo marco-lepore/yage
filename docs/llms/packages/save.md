@@ -57,7 +57,7 @@ export const restEpoch = defineCounter("world.restEpoch");
 Store API:
 
 ```ts
-store.get(): Readonly<T>           // frozen snapshot, stable reference
+store.get(): Readonly<T>           // stable reference between sets
 store.set(partial: Partial<T>): void  // shallow merge
 store.subscribe(listener): () => void
 store.reset(): void                // restore defaults

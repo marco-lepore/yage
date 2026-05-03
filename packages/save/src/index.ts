@@ -35,7 +35,7 @@ export {
   Save,
   createSave,
   SlotNotFoundError,
-  DocumentNotFoundError,
+  InvalidKeyError,
 } from "./Save.js";
 export type { SaveAdapter, SlotInfo, CreateSaveOptions } from "./Save.js";
 

@@ -298,9 +298,9 @@ a.get();             // 0
 a.set(1);            // notifies subscribers iff Object.is(old, next) is false
 a.subscribe(v => …); // returns unsubscribe
 
-// Object-shaped store with shallow merge + frozen snapshots
+// Object-shaped store with shallow merge
 const store = createStore({ score: 0, hp: 100 });
-store.get();                  // Readonly<{score, hp}>
+store.get();                  // Readonly<{score, hp}>, stable ref between sets
 store.set({ score: 5 });      // shallow merge, only notifies on change
 store.subscribe(() => …);
 
