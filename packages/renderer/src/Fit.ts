@@ -396,6 +396,12 @@ export class FitController {
   private applyLetterboxMask(): void {
     if (this.mode === "letterbox") {
       if (!this.letterboxMask) {
+        // Don't clobber a pre-existing stage mask. Letterbox clipping is a
+        // fit-level convenience; a caller-installed `stage.mask` is the
+        // explicit escape hatch and takes precedence. Removal is also
+        // defensive — `removeLetterboxMask` only clears `stage.mask` when
+        // it still points at our Graphics.
+        if (this.stage.mask !== null) return;
         this.letterboxMask = new Graphics();
         this.stage.addChild(this.letterboxMask);
         this.stage.mask = this.letterboxMask;

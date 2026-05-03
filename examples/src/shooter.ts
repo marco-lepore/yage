@@ -37,7 +37,7 @@ import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   #hud {
-    position: fixed;
+    position: absolute;
     top: 1rem;
     right: 1rem;
     background: rgba(0,0,0,0.7);
@@ -49,7 +49,7 @@ injectStyles(`
     pointer-events: none;
   }
   #fullscreen-btn {
-    position: fixed;
+    position: absolute;
     top: 1rem;
     left: 1rem;
     background: rgba(0,0,0,0.7);
@@ -63,7 +63,7 @@ injectStyles(`
   }
   #fullscreen-btn:hover { background: rgba(0,0,0,0.85); }
   #win-message {
-    position: fixed;
+    position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -89,20 +89,17 @@ injectStyles(`
 const hud = document.createElement("div");
 hud.id = "hud";
 hud.textContent = "Enemies: 0 / 4";
-document.body.appendChild(hud);
 
 // Fullscreen toggle — wired to RendererPlugin in main()
 const fullscreenBtn = document.createElement("button");
 fullscreenBtn.id = "fullscreen-btn";
 fullscreenBtn.type = "button";
 fullscreenBtn.textContent = "⛶ Fullscreen";
-document.body.appendChild(fullscreenBtn);
 
 // Win message
 const winMsg = document.createElement("div");
 winMsg.id = "win-message";
 winMsg.innerHTML = `You Win!<div class="sub">All enemies defeated</div>`;
-document.body.appendChild(winMsg);
 
 // ---------------------------------------------------------------------------
 // Sound asset handles
@@ -1164,12 +1161,20 @@ class ShooterScene extends Scene {
 async function main() {
   const engine = new Engine({ debug: true });
 
+  // Mount overlays inside the same container the renderer will fullscreen,
+  // so HUD / fullscreen button / win message stay visible alongside the
+  // canvas in fullscreen mode.
+  const gameContainer = setupGameContainer(WIDTH, HEIGHT);
+  gameContainer.appendChild(hud);
+  gameContainer.appendChild(fullscreenBtn);
+  gameContainer.appendChild(winMsg);
+
   const renderer = new RendererPlugin({
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x0f172a,
     pixi: { roundPixels: true },
-    container: setupGameContainer(WIDTH, HEIGHT),
+    container: gameContainer,
   });
   engine.use(renderer);
   engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));

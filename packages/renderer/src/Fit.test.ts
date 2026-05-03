@@ -224,6 +224,22 @@ describe("FitController", () => {
       // re-installing fit must not leak a `GraphicsContext` per cycle.
       expect(graphicsDestroySpy).toHaveBeenCalledTimes(1);
     });
+
+    it("does not clobber a pre-existing stage mask", () => {
+      const { fit, app } = makeFit("letterbox", 400, 300, 1000, 600);
+      const userMask = { sentinel: true };
+      app.stage.mask = userMask;
+
+      fit.start();
+
+      // User's mask wins; we don't install ours over it.
+      expect(app.stage.mask).toBe(userMask);
+      expect(app.stage.children).toHaveLength(0);
+
+      // stop() must leave the user's mask alone.
+      fit.stop();
+      expect(app.stage.mask).toBe(userMask);
+    });
   });
 
   describe("cover", () => {
