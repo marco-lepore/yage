@@ -26,11 +26,11 @@ interface RegisteredEntry {
 
 const registry = new Set<RegisteredEntry>();
 
-function register(entry: RegisteredEntry): void {
+function register(factory: string, entry: RegisteredEntry): void {
   for (const existing of registry) {
     if (existing.id === entry.id) {
       throw new Error(
-        `defineStore: a store with id "${entry.id}" is already defined. ` +
+        `${factory}: a store with id "${entry.id}" is already defined. ` +
           `Store ids must be unique.`,
       );
     }
@@ -165,7 +165,7 @@ export function defineStore<T extends object>(
     },
   };
 
-  register({ id, reset: () => store.reset() });
+  register("defineStore", { id, reset: () => store.reset() });
   return store;
 }
 
@@ -265,7 +265,7 @@ export function defineSet<K>(
     },
   };
 
-  register({ id, reset: () => store.reset() });
+  register("defineSet", { id, reset: () => store.reset() });
   return store;
 }
 
@@ -369,7 +369,7 @@ export function defineMap<K, V>(
     },
   };
 
-  register({ id, reset: () => store.reset() });
+  register("defineMap", { id, reset: () => store.reset() });
   return store;
 }
 
@@ -458,6 +458,6 @@ export function defineCounter(
     },
   };
 
-  register({ id, reset: () => store.reset() });
+  register("defineCounter", { id, reset: () => store.reset() });
   return store;
 }

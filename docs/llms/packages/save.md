@@ -181,13 +181,15 @@ interface SaveAdapter {
 
 ## Storage layout
 
-For store id `"saves"`:
+Adapter keys are URI-encoded segments joined by `/` so legal store ids and
+slot names (including those containing `:` or `/`) can never overlap. For a
+store with id `saves`:
 
-```
-saves                      ← unslotted document (persist/restore)
-saves:manual-1             ← slot data
-saves:auto                 ← slot data
-saves:__slots__            ← slot manifest (savedAt + metadata)
+```text
+saves/d                    ← unslotted document (persist/restore)
+saves/s/manual-1           ← slot data
+saves/s/auto               ← slot data
+saves/m                    ← slot manifest (savedAt + metadata)
 ```
 
 `listSlots` reads the manifest, not adapter `list()` — metadata is fast and atomic with each save.

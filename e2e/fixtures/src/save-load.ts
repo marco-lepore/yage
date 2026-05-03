@@ -10,7 +10,7 @@ import {
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { DebugPlugin } from "@yagejs/debug";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
-import type { SnapshotService, SnapshotResolver } from "@yagejs/save";
+import type { SnapshotResolver } from "@yagejs/save";
 import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();

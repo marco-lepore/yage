@@ -19,23 +19,42 @@ instance, register it via the plugin.
 import { Engine } from "@yagejs/core";
 import {
   defineStore, defineSet,
-  createSave, SavePlugin, localStorageAdapter, SaveServiceKey,
+  createSave, SavePlugin, localStorageAdapter,
 } from "@yagejs/save";
 
 interface Settings { music: number; sfx: number }
+interface RunData { chapter: number; position: { x: number; y: number } }
 
 const settings = defineStore<Settings>("settings", {
   defaults: () => ({ music: 0.8, sfx: 1.0 }),
 });
 const opened = defineSet<string>("world.opened");
+const saves = defineStore<RunData>("saves", {
+  defaults: () => ({ chapter: 1, position: { x: 0, y: 0 } }),
+});
 
 const save = createSave({ adapter: localStorageAdapter() });
 
-await save.restoreAll([settings, opened]);
+await save.restoreAll([settings, opened, saves]);
 save.autoPersist(settings);
 
 const engine = new Engine();
 engine.use(new SavePlugin({ save }));
+```
+
+In-game components resolve the registered Save through `SaveServiceKey`:
+
+```ts
+import { SaveServiceKey } from "@yagejs/save";
+
+class CheckpointOnRest extends Component {
+  setup() {
+    this.entity.on(Rested, async () => {
+      const save = this.use(SaveServiceKey);
+      await save.saveSlot(saves, "auto");
+    });
+  }
+}
 ```
 
 Save slots with typed metadata:

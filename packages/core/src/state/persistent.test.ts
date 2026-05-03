@@ -147,6 +147,19 @@ describe("defineStore", () => {
       }),
     ).toThrow();
   });
+
+  it("duplicate-id error names the actual factory that was called", () => {
+    defineSet<string>("t.dupe-factory");
+    expect(() => defineSet<string>("t.dupe-factory")).toThrow(/defineSet/);
+
+    defineMap<string, number>("t.dupe-factory.map");
+    expect(() => defineMap<string, number>("t.dupe-factory.map")).toThrow(
+      /defineMap/,
+    );
+
+    defineCounter("t.dupe-factory.ctr");
+    expect(() => defineCounter("t.dupe-factory.ctr")).toThrow(/defineCounter/);
+  });
 });
 
 describe("defineSet", () => {
