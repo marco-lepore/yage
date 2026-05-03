@@ -1,51 +1,270 @@
 # @yagejs/save
 
-Depends on `@yagejs/core`. Save/load with auto-serialization.
+Depends on `@yagejs/core`. Persistence for YAGE — two paths:
+
+1. **Stores + Save instance** (primary). Typed reactive stores for settings, save slots, world facts, progression. Most games need only this.
+2. **Snapshot system** (advanced). Full-scene serialization via `@serializable` for quicksave-style "pause and resume the simulator." See bottom of file.
 
 ## Setup
 
 ```ts
-import { SavePlugin } from "@yagejs/save";
+import { Engine } from "@yagejs/core";
+import { createSave, SavePlugin, localStorageAdapter } from "@yagejs/save";
 
-engine.use(new SavePlugin({
-  namespace: "my-game",     // localStorage key prefix (default "yage")
-  storage: myStorage,       // custom SaveStorage implementation (default localStorage)
-}));
+const save = createSave({
+  adapter: localStorageAdapter({ namespace: "my-game" }),
+});
+
+const engine = new Engine();
+engine.use(new SavePlugin({ save }));
 ```
 
-## Bundler Setup
+`save` is constructed in your code (typically `main.ts`) and registered through the plugin so components can resolve it via `SaveServiceKey`. No globals.
 
-`@yagejs/save` relies on TypeScript's `@serializable` class decorator and looks up classes by `class.name` at restore time. On Vite 8+ this requires two extra flags in your `vite.config.ts`:
+`save` is also usable before `engine.start()` — boot-time `restore` of settings is the canonical pattern.
+
+## Defining stores
+
+Stores are typed singletons declared at module scope. Re-exported from `@yagejs/save` for convenience; originals live in `@yagejs/core`.
 
 ```ts
-// vite.config.ts
-import { defineConfig } from "vite";
+import { defineStore, defineSet, defineMap, defineCounter } from "@yagejs/save";
 
-export default defineConfig({
-  oxc: {
-    decorator: {
-      legacy: true, // transform TypeScript decorator syntax
-    },
+interface SettingsData {
+  audio: { music: number; sfx: number };
+  vsync: boolean;
+}
+
+export const settings = defineStore<SettingsData>("settings", {
+  version: 1,
+  defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
+});
+
+export const saves = defineStore<RunData>("saves", {
+  version: 2,
+  defaults: () => ({ chapter: 1, position: { x: 0, y: 0 }, inventory: [] }),
+  migrate: (old, fromVersion) => {
+    if (fromVersion < 2) return { ...(old as RunData), inventory: [] };
+    return old as RunData;
   },
-  build: {
-    rollupOptions: {
-      output: {
-        keepNames: true, // preserve class names through minification
-      },
-    },
+});
+
+export const opened   = defineSet<string>("world.opened");
+export const defeated = defineMap<string, number>("world.defeated");
+export const restEpoch = defineCounter("world.restEpoch");
+```
+
+Store API:
+
+```ts
+store.get(): Readonly<T>           // frozen snapshot, stable reference
+store.set(partial: Partial<T>): void  // shallow merge
+store.subscribe(listener): () => void
+store.reset(): void                // restore defaults
+```
+
+`defineSet<K>`: `has`, `add`, `remove`, `clear`, `size`, `values`.
+`defineMap<K, V>`: `has`, `get`, `set`, `remove`, `clear`, `size`, `entries`.
+`defineCounter`: `value`, `set`, `increment`, `decrement`.
+
+Store ids must be unique within a process. Defining two with the same id throws.
+
+## Save instance API
+
+```ts
+// Unslotted single-document
+await save.persist(store);
+await save.restore(store);
+await save.restoreAll([s1, s2, s3]);
+
+// Slotted with typed metadata
+interface RunMeta { location: string; playtime: number }
+await save.saveSlot<RunMeta>(saves, "manual-1", {
+  metadata: { location: "Forest", playtime: 60 },
+});
+await save.loadSlot(saves, "manual-1");
+const slots = await save.listSlots<RunMeta>(saves);
+// -> [{ name: "manual-1", savedAt: 1714..., metadata: {...} }, ...]
+await save.deleteSlot(saves, "manual-1");
+
+// Auto-persist — coalesces synchronous sets into one write per microtask.
+// Each separate event triggers its own write. For real time-based debouncing,
+// wrap the store yourself.
+const stop = save.autoPersist(settings);
+
+// Multi-profile via hierarchical slot names + prefix filter
+await save.saveSlot(saves, `${profile}/manual-1`);
+await save.listSlots(saves, { prefix: `${profile}/` });
+```
+
+Errors:
+
+- `SlotNotFoundError` — `loadSlot` on a slot that doesn't exist.
+- `StoreVersionTooNewError` — stored version is greater than `defineStore`'s `version`.
+- `StoreMigrationMissingError` — stored version is older and no `migrate` configured.
+
+## Boot pattern
+
+```ts
+// game/main.ts
+import { settings, saves, opened, defeated } from "./persistence/stores.js";
+import { save } from "./persistence/save.js";
+
+await save.restoreAll([settings, saves, opened, defeated]);
+save.autoPersist(settings);
+save.autoPersist(saves);
+
+const engine = new Engine();
+engine.use(new SavePlugin({ save }));
+await engine.start();
+```
+
+## Continue pattern
+
+```ts
+const slots = await save.listSlots(saves);
+if (slots.length > 0) {
+  const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
+  await save.loadSlot(saves, latest.name);
+}
+```
+
+## Component access
+
+```ts
+import { SaveServiceKey } from "@yagejs/save";
+
+class CheckpointOnRest extends Component {
+  setup() {
+    this.entity.on(Rested, async () => {
+      const save = this.use(SaveServiceKey);
+      await save.saveSlot(saves, "auto");
+    });
+  }
+}
+```
+
+## Codecs
+
+Stores accept a `Codec<T>` for non-JSON-native value types. Built-ins:
+
+```ts
+import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/save";
+
+jsonCodec<T>()       // identity (default)
+setCodec<K>()        // Set<K>     <-> K[]
+mapCodec<K, V>()     // Map<K, V>  <-> [K, V][]
+dateCodec()          // Date       <-> ISO string
+```
+
+`defineSet`/`defineMap`/`defineCounter` bundle codecs internally — you only specify a codec for `defineStore<T>` when `T` contains exotic types.
+
+## Adapters
+
+```ts
+import { localStorageAdapter, memoryAdapter } from "@yagejs/save";
+
+localStorageAdapter({ namespace?: string })  // browser; namespaces every key
+memoryAdapter()                              // in-memory; tests + Node
+```
+
+`SaveAdapter` interface:
+
+```ts
+interface SaveAdapter {
+  read(key: string): Promise<string | null>;
+  write(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+  list(prefix: string): Promise<string[]>;
+}
+```
+
+## Storage layout
+
+For store id `"saves"`:
+
+```
+saves                      ← unslotted document (persist/restore)
+saves:manual-1             ← slot data
+saves:auto                 ← slot data
+saves:__slots__            ← slot manifest (savedAt + metadata)
+```
+
+`listSlots` reads the manifest, not adapter `list()` — metadata is fast and atomic with each save.
+
+## Migration
+
+```ts
+defineStore<RunData>("saves", {
+  version: 3,
+  defaults: () => initialRun(),
+  migrate: (old, fromVersion) => {
+    let v = old as Record<string, unknown>;
+    if (fromVersion < 2) v = { ...v, inventory: [] };
+    if (fromVersion < 3) v = { ...v, position: v.startPos ?? { x: 0, y: 0 } };
+    return v as RunData;
   },
 });
 ```
 
-`oxc.decorator.legacy: true` — Vite 8's oxc transformer only implements TypeScript's stage-2 (legacy) decorator transform. Stage-3 decorators are passed through raw, and browsers can't parse `@serializable class Foo` natively. The `legacy` flag tells oxc to rewrite it as `Foo = _decorate([serializable], Foo)` at build time. The name "legacy" is historical — this is the decorator flavor used by ~every TS decorator-based framework (Angular, NestJS, TypeORM, MobX) and is not deprecated.
+Migration runs inside `store.hydrate` when stored version < current. Future versions throw `StoreVersionTooNewError`.
 
-`output.keepNames: true` — oxc's minifier mangles class and function names by default. `@serializable` reads `class.name` to compute the registry key, so without `keepNames` the type string stored in a snapshot (e.g. `"Player"`) won't match the mangled runtime name (e.g. `"t"`), and `afterRestore()` silently fails to reconstruct entities. Enabling `keepNames` preserves the original names across the oxc minifier.
+## Test setup
 
-These flags are only required for user code that uses `@serializable` directly. `@yagejs/*` packages are pre-compiled by tsup/esbuild (which already handles decorators) and are unaffected by your Vite config.
+```ts
+import { _resetAllStoresForTesting } from "@yagejs/core";
+import { createSave, memoryAdapter } from "@yagejs/save";
+
+beforeEach(() => {
+  _resetAllStoresForTesting();
+});
+
+const save = createSave({ adapter: memoryAdapter() });
+```
+
+## Per-frame updates: don't
+
+Stores are for *intentional* state — settings, slots, world facts, progression. They notify all subscribers synchronously on every change, and UI bindings re-render. **Don't update stores from `update(dt)` or other per-frame paths**; that's what ECS state and `useQuery`/`useSceneSelector` are for. If you find yourself debouncing every set, you're using the wrong primitive.
+
+---
+
+# Snapshot path (advanced)
+
+Full-scene serialization via `@serializable` decorators. Use when you need quicksave/quickload of the running simulator (every entity, component, active process, scene stack). For settings, save slots, and progression, prefer the store path above.
+
+## Snapshot setup
+
+```ts
+import { SnapshotPlugin } from "@yagejs/save";
+
+engine.use(new SnapshotPlugin({
+  namespace: "my-game",     // localStorage key prefix (default "yage")
+  storage: myStorage,       // custom SnapshotStorage (default localStorage)
+}));
+```
+
+## Bundler setup
+
+`@yagejs/save` relies on TypeScript's `@serializable` class decorator and looks up classes by `class.name` at restore time. On Vite 8+ this requires two extra flags in your `vite.config.ts`:
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  oxc: {
+    decorator: { legacy: true },
+  },
+  build: {
+    rollupOptions: { output: { keepNames: true } },
+  },
+});
+```
+
+`oxc.decorator.legacy: true` rewrites `@serializable class Foo` as a stage-2 decorator call. `output.keepNames: true` preserves class names through the oxc minifier so the registry key stored in a snapshot still matches the runtime class.
+
+These flags are only required for user code that uses `@serializable` directly. `@yagejs/*` packages are pre-compiled and unaffected.
 
 ## @serializable
-
-Mark classes for save/load. Works on Entity, Scene, and Component subclasses.
 
 ```ts
 import { serializable } from "@yagejs/core";
@@ -59,7 +278,7 @@ class GameScene extends Scene { }
 
 Built-in serializable components: `Transform`, `RigidBodyComponent`, `ColliderComponent`, `SpriteComponent`, `GraphicsComponent`.
 
-## Custom Serialization
+## Custom serialization
 
 ```ts
 @serializable
@@ -67,7 +286,6 @@ class MovingSpike extends Component {
   serialize() {
     return { startY: this.startY, speed: this.speed, elapsed: this.elapsed };
   }
-
   static fromSnapshot(data: { startY: number; speed: number; elapsed: number }) {
     const spike = new MovingSpike({ startY: data.startY, speed: data.speed });
     spike.elapsed = data.elapsed;
@@ -76,88 +294,77 @@ class MovingSpike extends Component {
 }
 ```
 
-## afterRestore Hooks
+## afterRestore hooks
 
 Re-create non-serializable state (draw callbacks, event listeners):
 
 ```ts
-// Entity
 afterRestore(): void {
   this.get(GraphicsComponent).draw(drawFn);
   this.setupTrigger(this.get(ColliderComponent));
-}
-
-// Scene
-afterRestore(): void {
-  this.on(CoinCollected, () => { /* ... */ });
 }
 ```
 
 Pattern: extract shared setup into a method called by both `onEnter()` and `afterRestore()`.
 
-## SaveService
+## SnapshotService
 
 ```ts
-import { SaveServiceKey } from "@yagejs/save";
+import { SnapshotServiceKey } from "@yagejs/save";
 
-const save = this.use(SaveServiceKey);
+const save = this.use(SnapshotServiceKey);
 
-// Snapshots
 save.saveSnapshot("slot1");
 await save.loadSnapshot("slot1");
 save.hasSnapshot("slot1");
 save.deleteSnapshot("slot1");
 
-// Export/import (for cloud saves)
 const data = save.exportSnapshot("slot1");   // GameSnapshot | null
 await save.importSnapshot("slot1", data);
 
-// Persistent user data (survives snapshot deletion)
+// Generic key/value blobs alongside snapshots — use the store path for new code.
 save.saveData("bestScore", { value: 9999 });
-save.loadData("bestScore");                  // { value: 9999 } | null
-save.hasData("bestScore");
-save.deleteData("bestScore");
+save.loadData("bestScore");
 ```
 
-## Snapshot Schema
-
-`exportSnapshot()` returns a `GameSnapshot` — a plain object you can serialize to JSON, ship to a cloud backend, or inspect for custom migrations. You normally interact with it only through `save.importSnapshot()`, but understanding the shape is useful when writing migration logic or debugging stale save data:
+## Snapshot schema
 
 ```ts
 interface GameSnapshot {
-  version: number;              // schema version — bump when formats change
-  timestamp: number;            // Date.now() at save time
+  version: number;
+  timestamp: number;
   scenes: SceneSnapshotEntry[];
+  extras?: Record<string, unknown>;  // plugin-contributed extras
 }
 
 interface SceneSnapshotEntry {
-  type: string;                 // class name from @serializable
-  paused: boolean;              // was the scene paused at save time
+  type: string;
+  paused: boolean;
   entities: EntitySnapshotEntry[];
-  userData?: unknown;           // result of scene.serialize()
+  userData?: unknown;
 }
 
 interface EntitySnapshotEntry {
-  id: number;                   // save-time ID, used to rewire cross-entity refs
-  type: string;                 // class name from @serializable
+  id: number;
+  type: string;
   components: ComponentSnapshot[];
-  userData?: unknown;           // result of entity.serialize()
-  parentId?: number;            // if this is a child of another entity
-  childName?: string;           // name under which parent registered this child
+  userData?: unknown;
+  parentId?: number;
+  childName?: string;
 }
 
 interface ComponentSnapshot {
-  type: string;                 // component class name
-  data: unknown;                // result of component.serialize()
+  type: string;
+  data: unknown;
 }
 ```
 
-The `id` field on `EntitySnapshotEntry` is what `SnapshotResolver.entity(oldId)` consults inside `afterRestore()` hooks to resolve references that pointed at other entities before the save.
+`SnapshotResolver.entity(oldId)` consults `EntitySnapshotEntry.id` inside `afterRestore()` hooks to rewire cross-entity references.
 
-## SaveStorage Interface
+## SnapshotStorage
 
 ```ts
-interface SaveStorage {
+interface SnapshotStorage {
   load(key: string): string | null;
   save(key: string, data: string): void;
   delete(key: string): void;
@@ -165,49 +372,24 @@ interface SaveStorage {
 }
 ```
 
-Default: `LocalStorageSaveStorage`.
+Default: `LocalStorageSnapshotStorage`. (Distinct from the store path's async `SaveAdapter`.)
 
-## Typed Slots
+## Snapshot contributors
 
-`SaveService` is generic over a slot-key map, so persistent user data (not snapshots) can be typed. Pass your slot shape when resolving the service to get autocomplete and type-checked `saveData`/`loadData` calls:
-
-```ts
-import { SaveServiceKey, type SaveService } from "@yagejs/save";
-
-interface MySlots {
-  bestScore: { value: number };
-  playerName: string;
-  settings: { volume: number; muted: boolean };
-}
-
-const save = this.use(SaveServiceKey) as SaveService<MySlots>;
-
-save.saveData("bestScore", { value: 9999 });  // typed
-const name = save.loadData("playerName");     // string | null
-```
-
-Untyped usage falls back to `SaveService<UntypedSlots>` (`Record<string, any>`), which is what `this.use(SaveServiceKey)` gives you by default.
-
-## Snapshot Contributors
-
-Plugins that own state outside the entity/component model can register a `SnapshotContributor` to extend the snapshot:
+Plugins that own state outside the entity/component model:
 
 ```ts
-import { SaveServiceKey, type SnapshotContributor } from "@yagejs/save";
+import { SnapshotServiceKey, type SnapshotContributor } from "@yagejs/save";
 
-const save = context.tryResolve(SaveServiceKey);
-save?.registerSnapshotExtra("myPlugin", {
-  serialize: () => ({ ... }) ,           // or undefined to omit
+const svc = context.tryResolve(SnapshotServiceKey);
+svc?.registerSnapshotExtra("myPlugin", {
+  serialize: () => ({ ... }),
   restore: (data) => { /* apply data */ },
 });
 ```
 
-Contributors are invoked during `saveSnapshot` (their data lands under `GameSnapshot.extras[key]`) and during `loadSnapshot` *after* every scene + entity has been restored — so contributors can rely on live `SceneRenderTree`s and other restored state existing.
+Every registered contributor is invoked on `loadSnapshot`, even when the snapshot has no matching entry — `restore(undefined)` is called, and the contributor is expected to reset to baseline. A failing contributor is logged and the load continues.
 
-**Asymmetric registration on restore.** Every registered contributor is invoked on `loadSnapshot`, even if the snapshot has no matching entry — `restore(undefined)` is called, and the contributor is expected to reset its state to the empty/baseline configuration so a Load returns to the saved state instead of overlaying it on whatever was live. Conversely, if a snapshot's `extras` contains a key with no currently-registered contributor (e.g. a snapshot saved while a plugin was installed, loaded after the plugin was removed), the entry is skipped with a `console.warn` and load continues. Plugin authors writing migrations should account for both paths.
+The renderer plugin auto-registers a contributor under `"renderer"` for layer/scene/screen-scope effects + masks.
 
-A single contributor's `serialize()` or `restore(...)` throwing is logged via `console.error` and the rest of the contributors run unaffected — one bad plugin can't poison the whole save/load.
-
-The renderer plugin (`@yagejs/renderer`) auto-registers a contributor under the key `"renderer"` for layer/scene/screen-scope effects + masks. Component-scope effects are saved through their owning component's `serialize()` and don't go through this channel.
-
-`GameSnapshot.version` is `4` — older saves error out at load with a version-mismatch message.
+`GameSnapshot.version` is `4`; older saves error at load with a version mismatch.

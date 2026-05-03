@@ -197,12 +197,12 @@ saved). For savable custom shapes, register one with `defineMask`.
 ## Save / load
 
 Effects + masks built from `defineEffect` / `defineMask` factories survive
-`SaveService.saveSnapshot` round-trips automatically:
+`SnapshotService.saveSnapshot` round-trips automatically:
 
 - **Component scope** — captured inside each visual component's
   `serialize()` and restored in `afterRestore`.
 - **Layer / Scene / Screen scope** — the renderer registers a snapshot
-  contributor with `SaveService` (key `"renderer"`) on plugin install.
+  contributor with `SnapshotService` (key `"renderer"`) on plugin install.
 - **In-flight fades are not preserved** — only steady-state intensity +
   enabled. Trigger any fade-in animations from your scene's `onEnter` or
   `afterRestore` if you want them to play again on load.
