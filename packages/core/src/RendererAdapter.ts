@@ -18,6 +18,19 @@ export interface RendererAdapter {
    * only when canvas CSS size equals virtual size).
    */
   canvasToVirtual?(x: number, y: number): { x: number; y: number };
+  /**
+   * Hit-test at virtual-space coordinates and return `true` when the topmost
+   * interactive container under `(x, y)` is parented (directly or through any
+   * ancestor) to a container marked via {@link markPointerConsumeContainer}.
+   * Optional — when absent, the input plugin's UI auto-consume fallback is a
+   * no-op.
+   *
+   * Implemented by `@yagejs/renderer` over Pixi's `EventBoundary`. The input
+   * plugin calls this on `pointerdown` drains to auto-claim presses that land
+   * on UI surfaces (UIPanel backgrounds, decorative UIText, etc.) without
+   * requiring per-component handler boilerplate.
+   */
+  hitTestUI?(x: number, y: number): boolean;
 }
 
 /**

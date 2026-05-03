@@ -5,6 +5,7 @@ import { MeasureMode } from "yoga-layout";
 import { Display } from "yoga-layout";
 import type { UIElement, UITextProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
+import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
@@ -24,6 +25,7 @@ export class UIText implements UIElement {
     }
 
     this.displayObject = this.text;
+    applyConsumeInput(this.text, props.consumeInput);
 
     // Yoga measure function — returns PixiJS text metrics
     const textRef = this.text;
@@ -71,6 +73,7 @@ export class UIText implements UIElement {
     if (p.style) {
       this.setStyle(p.style);
     }
+    if (p.consumeInput !== undefined) applyConsumeInput(this.text, p.consumeInput);
     applyLayoutProps(this.yogaNode, p);
 
     if (p.visible !== undefined) {
@@ -79,6 +82,7 @@ export class UIText implements UIElement {
   }
 
   destroy(): void {
+    clearConsumeInput(this.text);
     this.yogaNode.free();
     this.text.destroy();
   }

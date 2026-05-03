@@ -120,6 +120,122 @@ onExit(): void {
 
 Any object implementing `CameraLike` (has `screenToWorld(x, y)`) works with `setCamera()`. `CameraEntity` satisfies this interface.
 
+## Listener APIs
+
+Disposer-returning hooks for keys, actions, wheel, and (already covered above) pointers. Use these instead of raw DOM listeners — they participate in the action map, group enable/disable, and `consumePointer` gating.
+
+```ts
+import { InputManagerKey } from "@yagejs/input";
+
+const input = context.resolve(InputManagerKey);
+
+// Keys: code-specific or `"*"` for any-key.
+const offSpace = input.onKeyDown("Space", (code) => {/* fired once per press */});
+input.onKeyUp("Space", (code) => {/* once per release */});
+input.onKeyDown("*", (code) => {/* fired for every key, useful for rebinding UIs */});
+
+// Actions: name-based, fires for every binding (keyboard + gamepad + mouse).
+input.onAction("fire", (name) => {/* rising edge */});
+input.onActionReleased("fire", (name) => {/* falling edge */});
+
+// All return disposers; call to detach.
+offSpace();
+```
+
+Action listeners honor group enable/disable — a disabled group's actions don't fire, matching `isPressed` / `isJustPressed` behavior. DOM-driven events fire one frame after the browser dispatch (see [Frame deferral](#frame-deferral)); synthetic injection (`fireKeyDown` etc.) is sync.
+
+## Scroll wheel
+
+`wheel` events surface as one-frame action edges (`WheelUp`, `WheelDown`, `WheelLeft`, `WheelRight`) — rebindable like keys, never linger in `pressedKeys`. Direct callback access via `onWheel(fn)` for raw deltas.
+
+```ts
+new InputPlugin({
+  actions: {
+    zoomIn: ["WheelUp", "Equal"],
+    zoomOut: ["WheelDown", "Minus"],
+  },
+  wheelInvertY: false,         // default; flip if your game wants positive dy = up
+  preventDefaultWheel: false,  // default; opt-in to swallow page scroll
+});
+
+// In a component
+input.onWheel((dx, dy) => {
+  // raw deltas (already inverted if wheelInvertY)
+});
+input.consumeWheel(); // suppress WheelUp/Down/Left/Right action edges this frame
+```
+
+## Frame deferral
+
+DOM-originated keyboard, pointer, and wheel events buffer onto an internal queue and apply at `Phase.EarlyUpdate` via `InputPollSystem`. Action queries (`isJustPressed`, `isJustReleased`) see the edge on the frame *after* the browser dispatch — single-frame latency, invisible to gameplay reading state at frame start.
+
+```
+F0:  browser dispatches `pointerdown`
+     -> InputPlugin queues the event
+     -> pointer listeners (onPointerDown) fire synchronously
+F0:  rAF tick — InputPollSystem drains the queue
+     -> action edges applied (justPressed / mouseAggregate)
+F0:  user systems read state
+```
+
+Why: any listener that wants to claim the event (`consumePointer`, the renderer's UI hit-test fallback) gets a chance to run before action-map edges fire. Removes the "Pixi must register listeners before YAGE" load-bearing assumption.
+
+Synthetic injection bypasses the queue and applies state synchronously, so existing tests using `fireKeyDown` / `firePointerDown` / `fireGamepadButton` need no changes. Tests that drive `dispatchEvent` directly need an explicit `manager._drainInputQueue()` (or a frame step) before assertions.
+
+## Pointer / wheel consume
+
+Primitives for handler code that wants to claim an event so it doesn't propagate to the action map. Listener notifications still fire (they're explicit user opt-ins); only the gameplay action edges (`MouseLeft`/`Middle`/`Right`, `WheelUp/Down/Left/Right`) are suppressed.
+
+```ts
+input.consumePointer(id);          // claim a pointer for the rest of its event cycle
+input.isPointerConsumed(id);       // boolean
+input.consumeWheel();              // suppress wheel action edges for this frame
+```
+
+`consumePointer` lifetime is per-pointer-event-cycle: cleared when the pointer's last button releases (drained `pointerUp`) or on `pointercancel`. So a tap-and-drag pattern works naturally — claim on `pointerdown`, the matching `pointerup` is also gated, and a fresh down later starts unmarked.
+
+## UI auto-consume
+
+Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks its underlying Pixi `Container` as a "consume surface" via a shared `WeakSet` in `@yagejs/core`. The renderer's optional `RendererAdapter.hitTestUI(x, y)` walks `EventBoundary.hitTest`'s parent chain looking for a marked ancestor; `@yagejs/input`'s drain step calls it on each `pointerdown` and auto-claims the pointer when the press lands on UI. Result: clicks on UI panels, buttons, decorative text, layout containers — **none of them fire gameplay actions** by default, with no per-component handler boilerplate.
+
+Per-component escape hatch via `consumeInput?: boolean` (default `true`):
+
+```tsx
+// React
+<UIPanel consumeInput={false}>
+  {/* This panel is transparent to the action map; clicks pass through. */}
+</UIPanel>
+
+// Imperative
+new UIPanel({ consumeInput: false, /* … */ });
+```
+
+For custom Pixi containers that should also auto-consume, mark them yourself:
+
+```ts
+import { markPointerConsumeContainer, unmarkPointerConsumeContainer } from "@yagejs/core";
+
+const container = new Container();
+markPointerConsumeContainer(container);  // also forces eventMode="static"
+// later
+unmarkPointerConsumeContainer(container);
+```
+
+Marking forces `eventMode = "static"` — required for Pixi's hit-test to report the container as the hit. Without that, `passive`-mode containers are skipped and the parent walk never sees the mark.
+
+## SpriteComponent opt-in
+
+Sprites are NOT marked by default — gameplay sprites usually want both Pixi events AND the action map. Opt in via `interactive`:
+
+```ts
+new SpriteComponent({
+  texture: "button.png",
+  interactive: { eventMode: "static", consumeOnInteraction: true },
+});
+```
+
+`consumeOnInteraction: true` adds the sprite to the consume registry. The setting persists across save/load via `SpriteData.interactive`.
+
 ## Runtime Rebinding
 
 ```ts

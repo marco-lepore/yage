@@ -2,6 +2,8 @@ import {
   AssetHandle,
   Component,
   makeEntityScopedQueue,
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
@@ -24,12 +26,25 @@ export interface AnimatedSpriteComponentOptions {
   textures?: readonly TextureInput[];
   /** Render layer name. Default: "default". */
   layer?: string;
+  /**
+   * Make the sprite interactive. See {@link SpriteComponentOptions.interactive}
+   * — the shape and semantics are identical here.
+   */
+  interactive?: {
+    eventMode?: "static" | "dynamic";
+    consumeOnInteraction?: boolean;
+  };
 }
 
 /** Serializable snapshot of an AnimatedSpriteComponent. */
 export interface AnimatedSpriteData {
   source: FrameSource;
   layer: string;
+  /** See {@link SpriteData.interactive} — same shape, same persistence semantics. */
+  interactive?: {
+    eventMode?: "static" | "dynamic";
+    consumeOnInteraction?: boolean;
+  };
   effects?: EffectStackSnapshot;
   mask?: MaskSnapshot;
 }
@@ -47,6 +62,7 @@ export class AnimatedSpriteComponent extends Component {
   );
   private readonly _source: FrameSource | null;
   private _mask: MaskHandle | undefined;
+  private _interactive: AnimatedSpriteComponentOptions["interactive"];
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super();
@@ -68,6 +84,15 @@ export class AnimatedSpriteComponent extends Component {
       throw new Error(
         "AnimatedSpriteComponent requires either `source` or `textures`.",
       );
+    }
+
+    if (options.interactive) {
+      this._interactive = { ...options.interactive };
+      this.animatedSprite.eventMode =
+        options.interactive.eventMode ?? "static";
+      if (options.interactive.consumeOnInteraction) {
+        markPointerConsumeContainer(this.animatedSprite);
+      }
     }
   }
 
@@ -112,6 +137,7 @@ export class AnimatedSpriteComponent extends Component {
       source: this._source,
       layer: this.layerName,
     };
+    if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
@@ -164,6 +190,7 @@ export class AnimatedSpriteComponent extends Component {
   }
 
   onDestroy(): void {
+    unmarkPointerConsumeContainer(this.animatedSprite);
     this.fx.destroy();
     this._mask?.remove();
     this.animatedSprite.removeFromParent();

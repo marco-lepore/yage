@@ -128,6 +128,167 @@ Touch primary contacts fire `MouseLeft` (since `PointerEvent.button === 0` for
 the first finger), so an action bound to `MouseLeft` works as a tap handler
 with no extra wiring.
 
+## UI vs gameplay clicks
+
+A common source of bugs in past versions: a Pixi UI button is mapped to one
+`onClick` callback, but the same `pointerdown` also fires whatever gameplay
+action is bound to `MouseLeft`. The 0.5 release fixes this end-to-end with no
+per-component boilerplate.
+
+Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks
+itself as a "consume surface". When a `pointerdown` lands on a marked
+container, `@yagejs/input` automatically claims that pointer for its entire
+event cycle — gameplay action edges (`MouseLeft`, `MouseMiddle`, `MouseRight`,
+or any custom binding to those codes) are suppressed, while the UI element's
+own handler still fires:
+
+```tsx
+<UIPanel>
+  <Button onClick={openMenu}>Settings</Button>
+</UIPanel>
+```
+
+Clicking "Settings" calls `openMenu` and **does not** fire any
+`MouseLeft`-bound action. Even clicking the empty background of the panel
+is suppressed — the renderer's hit-test walks up from the topmost
+interactive container and reports the panel as a UI hit.
+
+Drag-through-up works correctly: pressing inside a panel and releasing
+outside still keeps the action gated, because the consume mark sticks
+for the entire down → up cycle.
+
+### Per-component escape hatch
+
+For overlays that should let clicks through (decorative HUD borders,
+full-screen filters, see-through frames), pass `consumeInput={false}`:
+
+```tsx
+<UIPanel consumeInput={false}>
+  <Image texture="hud-frame" />
+</UIPanel>
+```
+
+The element still renders normally — it just becomes transparent to the
+action map.
+
+### Custom Pixi containers
+
+If you build a custom interactive Pixi `Container` outside the YAGE UI
+primitives and want it to auto-consume too, mark it directly:
+
+```ts
+import {
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
+} from "@yagejs/core";
+import { Container } from "pixi.js";
+
+const inventory = new Container();
+markPointerConsumeContainer(inventory);
+// ... attach to scene tree, attach handlers as usual
+
+// On teardown:
+unmarkPointerConsumeContainer(inventory);
+```
+
+`markPointerConsumeContainer` also sets `eventMode = "static"` — required
+for Pixi's hit-test to find the container.
+
+### Imperative consume from a handler
+
+For one-off cases where you want to claim an event imperatively from inside
+a handler:
+
+```ts
+input.onPointerDown((p) => {
+  if (clickedOnMyDraggable(p.screenPos)) {
+    input.consumePointer(p.id);
+    startDrag(p);
+  }
+});
+```
+
+`consumePointer` lifetime is per-event-cycle: cleared on the matching
+`pointerup`/`pointercancel`, so the drag's `pointerup` is also gated and a
+later fresh down starts unmarked.
+
+There's an analogous `consumeWheel()` for one-frame suppression of
+`WheelUp/Down/Left/Right` action edges.
+
+## Frame deferral
+
+DOM-originated keyboard, pointer, and wheel events buffer onto an internal
+queue and apply at `Phase.EarlyUpdate` (drained by `InputPollSystem`). Your
+gameplay code reads `isJustPressed` at frame start and sees a single,
+coherent snapshot — but that snapshot lands one frame after the browser's
+event dispatch:
+
+```
+F0  browser dispatches pointerdown
+    -> pointer listeners fire synchronously (low-latency)
+    -> action edge buffered, NOT yet visible to isJustPressed
+F0  rAF tick — InputPollSystem drains the queue
+    -> action edges applied, isJustPressed("fire") returns true
+F0  user systems run (Update, FixedUpdate, …)
+```
+
+The single-frame latency is invisible to gameplay reading state at frame
+start. The win: any listener that wants to claim the event (UI auto-consume,
+`consumePointer` from a Pixi handler, the renderer's hit-test fallback) gets
+to run before action edges fire — eliminating the historical "Pixi must
+register listeners before YAGE" load-bearing assumption.
+
+Synthetic injection (`fireKeyDown`, `firePointerDown`, …) bypasses the queue
+and applies state synchronously, so existing tests using these helpers don't
+need to change. Tests that drive `dispatchEvent` directly need an explicit
+`manager._drainInputQueue()` (or a frame step) before assertions.
+
+## Listener APIs
+
+Disposer-returning hooks for keys, actions, and wheel input. Use these
+instead of raw DOM listeners — they participate in the action map, group
+enable/disable, and `consumePointer` gating.
+
+```typescript
+const offSpace = input.onKeyDown("Space", () => save());
+input.onKeyUp("Space", () => unfreeze());
+input.onKeyDown("*", (code) => console.log("any key:", code)); // wildcard
+
+input.onAction("attack", () => playSwooshSfx());        // rising edge
+input.onActionReleased("attack", () => stopChargeSfx()); // falling edge
+
+const offWheel = input.onWheel((dx, dy) => {
+  camera.zoomBy(dy * -0.001);
+});
+
+offSpace();
+offWheel();
+```
+
+Action listeners honor group enable/disable — disabled-group actions don't
+fire, matching `isPressed` / `isJustPressed` behavior.
+
+## Scroll wheel
+
+`wheel` events surface as one-frame action edges (`WheelUp`, `WheelDown`,
+`WheelLeft`, `WheelRight`) — rebindable like keys, never linger in
+`pressedKeys`. Direct callback access via `onWheel(fn)` for raw deltas.
+
+```typescript
+new InputPlugin({
+  actions: {
+    zoomIn: ["WheelUp", "Equal"],
+    zoomOut: ["WheelDown", "Minus"],
+  },
+  wheelInvertY: false,         // default; flip if your game wants positive dy = up
+  preventDefaultWheel: false,  // default; opt-in to swallow page scroll on the canvas
+});
+```
+
+`preventDefaultWheel: true` attaches the listener with `{ passive: false }`,
+so calling `preventDefault()` actually takes effect. Use it when your game
+canvas should not scroll the page.
+
 ## Gamepad
 
 Gamepads are polled each frame from `navigator.getGamepads()` and routed

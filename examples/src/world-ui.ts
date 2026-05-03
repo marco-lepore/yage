@@ -204,14 +204,11 @@ class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly camera: CameraEntity;
-  private readonly canvas: HTMLCanvasElement;
-  private readonly onClick: (ev: MouseEvent) => void;
+  private disposeClickListener: (() => void) | null = null;
 
-  constructor(camera: CameraEntity, canvas: HTMLCanvasElement) {
+  constructor(camera: CameraEntity) {
     super();
     this.camera = camera;
-    this.canvas = canvas;
-    this.onClick = (ev) => this.handleClick(ev);
   }
 
   onAdd(): void {
@@ -220,11 +217,22 @@ class PlayerController extends Component {
       deadzone: { halfWidth: 40, halfHeight: 30 },
     });
     this.camera.bounds = { minX: 0, minY: 0, maxX: WORLD, maxY: WORLD };
-    this.canvas.addEventListener("click", this.onClick);
+    // InputManager.onPointerDown delivers `screenPos` already routed through
+    // the renderer's `canvasToVirtual` — so it stays accurate under any fit
+    // mode / aspect ratio mismatch. Hand-rolling `clientX/rect.width*WIDTH`
+    // (the previous version) silently drifts whenever the canvas CSS aspect
+    // doesn't match the declared virtual aspect.
+    this.input.setCamera(this.camera);
+    this.disposeClickListener = this.input.onPointerDown((p) => {
+      if (!p.buttons.has(0)) return;
+      const world = this.camera.screenToWorld(p.screenPos.x, p.screenPos.y);
+      this.handleClick(world);
+    });
   }
 
   onDestroy(): void {
-    this.canvas.removeEventListener("click", this.onClick);
+    this.disposeClickListener?.();
+    this.disposeClickListener = null;
   }
 
   update(dt: number): void {
@@ -251,12 +259,7 @@ class PlayerController extends Component {
     }
   }
 
-  private handleClick(ev: MouseEvent): void {
-    const rect = this.canvas.getBoundingClientRect();
-    const sx = ((ev.clientX - rect.left) / rect.width) * WIDTH;
-    const sy = ((ev.clientY - rect.top) / rect.height) * HEIGHT;
-    const world = this.camera.screenToWorld(sx, sy);
-
+  private handleClick(world: Vec2): void {
     let closest: Entity | undefined;
     let closestDist = Infinity;
     for (const e of this.scene.findEntitiesByTag("enemy")) {
@@ -286,10 +289,6 @@ class DemoScene extends Scene {
     // The "ui" layer is auto-provisioned screen-space by @yagejs/ui on
     // first use — our nameplate + health bar entities land there.
   ];
-
-  constructor(private readonly canvas: HTMLCanvasElement) {
-    super();
-  }
 
   onEnter(): void {
     const cam = this.spawn(CameraEntity, {
@@ -324,7 +323,7 @@ class DemoScene extends Scene {
         g.circle(0, 0, 3).fill({ color: 0xffffff });
       }),
     );
-    player.add(new PlayerController(cam, this.canvas));
+    player.add(new PlayerController(cam));
   }
 
   private drawGrid(): void {
@@ -378,7 +377,4 @@ engine.use(new DebugPlugin());
 
 await engine.start();
 
-const canvas = container.querySelector("canvas");
-if (!canvas) throw new Error("canvas not mounted");
-
-await engine.scenes.push(new DemoScene(canvas as HTMLCanvasElement));
+await engine.scenes.push(new DemoScene());

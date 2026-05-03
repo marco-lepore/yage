@@ -34,6 +34,7 @@ import type {
 import type { Anchor } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
+import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 // ---------------------------------------------------------------------------
 // Enum mapping helpers
@@ -81,6 +82,7 @@ export class PanelNode implements UIContainerElement {
   constructor(opts: PanelProps) {
     this.container = new Container();
     this.yogaNode = createYogaNode();
+    applyConsumeInput(this.container, opts.consumeInput);
     this._applyProps({ direction: "column", ...opts });
   }
 
@@ -270,6 +272,8 @@ export class PanelNode implements UIContainerElement {
       }
     }
 
+    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+
     applyLayoutProps(this.yogaNode, p);
 
     if (p.visible !== undefined) {
@@ -282,6 +286,7 @@ export class PanelNode implements UIContainerElement {
   // ---------------------------------------------------------------------------
 
   destroy(): void {
+    clearConsumeInput(this.container);
     for (const child of this._children) {
       child.destroy();
     }
