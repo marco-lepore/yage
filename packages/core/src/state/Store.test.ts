@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createStore } from "./store.js";
+import { createStore } from "./Store.js";
 
 describe("createStore", () => {
   it("get() returns frozen initial state", () => {
@@ -77,5 +77,13 @@ describe("createStore", () => {
     expect(snap1.v).toBe(0);
     expect(snap2.v).toBe(1);
     expect(Object.isFrozen(snap2)).toBe(true);
+  });
+
+  it("snapshot reference is stable when set() is a no-op", () => {
+    const store = createStore({ v: 0 });
+    const snap1 = store.get();
+    store.set({ v: 0 });
+    const snap2 = store.get();
+    expect(snap1).toBe(snap2);
   });
 });
