@@ -147,14 +147,33 @@ export interface UIContainerElement extends UIElement {
 // Props interfaces for element constructors
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-component opt-out for the UI auto-consume pointer fallback.
+ *
+ * Every UI primitive (UIButton, UICheckbox, UIPanel, UIImage, UINineSlice,
+ * UIProgressBar, UIText) marks its underlying Pixi container so that
+ * `pointerdown` events landing on it (or any descendant) are auto-claimed by
+ * `@yagejs/input` via the renderer's hit-test fallback — preventing taps on
+ * UI from also firing gameplay actions like `MouseLeft`.
+ *
+ * Set `consumeInput: false` on a specific element to make it transparent to
+ * the action map: pointer events still fire its own handlers (e.g. an
+ * `onClick` callback) but also propagate to gameplay actions. Useful for
+ * cosmetic overlays (decorative HUD borders, full-screen filters) that should
+ * not block clicks on the world behind them.
+ */
+export interface ConsumeInputProps {
+  consumeInput?: boolean;
+}
+
 /** Props for UIText (used by reconciler and props-driven constructor). */
-export interface UITextProps extends LayoutProps {
+export interface UITextProps extends LayoutProps, ConsumeInputProps {
   children?: string;
   style?: Partial<TextStyle>;
 }
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */
-export interface UIButtonProps extends LayoutProps {
+export interface UIButtonProps extends LayoutProps, ConsumeInputProps {
   children?: string;
   onClick?: () => void;
   background?: BackgroundOptions;
@@ -165,7 +184,7 @@ export interface UIButtonProps extends LayoutProps {
 }
 
 /** Props for PanelNode (used by reconciler and props-driven constructor). */
-export interface PanelProps extends LayoutProps {
+export interface PanelProps extends LayoutProps, ConsumeInputProps {
   direction?: FlexDirection;
   gap?: number;
   padding?: Padding;
@@ -187,14 +206,14 @@ export interface PanelProps extends LayoutProps {
 }
 
 /** Props for UIImage. */
-export interface UIImageProps extends LayoutProps {
+export interface UIImageProps extends LayoutProps, ConsumeInputProps {
   texture: TextureHandle;
   tint?: number;
   alpha?: number;
 }
 
 /** Props for UINineSlice. */
-export interface UINineSliceProps extends LayoutProps {
+export interface UINineSliceProps extends LayoutProps, ConsumeInputProps {
   texture: TextureHandle;
   insets:
     | { left: number; top: number; right: number; bottom: number }
@@ -204,7 +223,7 @@ export interface UINineSliceProps extends LayoutProps {
 }
 
 /** Props for UIProgressBar. */
-export interface UIProgressBarProps extends LayoutProps {
+export interface UIProgressBarProps extends LayoutProps, ConsumeInputProps {
   value: number;
   trackBackground?: BackgroundOptions;
   fillBackground?: BackgroundOptions;
@@ -212,7 +231,7 @@ export interface UIProgressBarProps extends LayoutProps {
 }
 
 /** Props for UICheckbox. */
-export interface UICheckboxProps extends LayoutProps {
+export interface UICheckboxProps extends LayoutProps, ConsumeInputProps {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   size?: number;
@@ -236,7 +255,7 @@ export interface FancyButtonAnimations {
 }
 
 /** Props for PixiFancyButton. */
-export interface PixiFancyButtonProps extends LayoutProps {
+export interface PixiFancyButtonProps extends LayoutProps, ConsumeInputProps {
   defaultView?: PixiViewType;
   hoverView?: PixiViewType;
   pressedView?: PixiViewType;
@@ -255,7 +274,7 @@ export interface PixiFancyButtonProps extends LayoutProps {
 }
 
 /** Props for PixiCheckbox. */
-export interface PixiCheckboxProps extends LayoutProps {
+export interface PixiCheckboxProps extends LayoutProps, ConsumeInputProps {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
   checkedView: PixiViewType;
@@ -266,7 +285,7 @@ export interface PixiCheckboxProps extends LayoutProps {
 }
 
 /** Props for PixiProgressBar. */
-export interface PixiProgressBarProps extends LayoutProps {
+export interface PixiProgressBarProps extends LayoutProps, ConsumeInputProps {
   value: number;
   bg: PixiViewType;
   fill: PixiViewType;
@@ -275,7 +294,7 @@ export interface PixiProgressBarProps extends LayoutProps {
 }
 
 /** Props for PixiSlider. */
-export interface PixiSliderProps extends LayoutProps {
+export interface PixiSliderProps extends LayoutProps, ConsumeInputProps {
   value?: number;
   min?: number;
   max?: number;
@@ -292,7 +311,7 @@ export interface PixiSliderProps extends LayoutProps {
 }
 
 /** Props for PixiInput. */
-export interface PixiInputProps extends LayoutProps {
+export interface PixiInputProps extends LayoutProps, ConsumeInputProps {
   bg: PixiViewType;
   textStyle?: Partial<TextStyle>;
   placeholder?: string;
@@ -307,7 +326,7 @@ export interface PixiInputProps extends LayoutProps {
 }
 
 /** Props for PixiScrollBox. */
-export interface PixiScrollBoxProps extends LayoutProps {
+export interface PixiScrollBoxProps extends LayoutProps, ConsumeInputProps {
   scrollWidth?: number;
   scrollHeight?: number;
   background?: ColorValue;
@@ -319,7 +338,7 @@ export interface PixiScrollBoxProps extends LayoutProps {
 }
 
 /** Props for PixiSelect. */
-export interface PixiSelectProps extends LayoutProps {
+export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
   closedBG: PixiViewType;
   openBG: PixiViewType;
   items: string[];
@@ -336,7 +355,7 @@ export interface PixiSelectProps extends LayoutProps {
 }
 
 /** Props for PixiRadioGroup. */
-export interface PixiRadioGroupProps extends LayoutProps {
+export interface PixiRadioGroupProps extends LayoutProps, ConsumeInputProps {
   items: PixiCheckboxProps[];
   type: "vertical" | "horizontal";
   elementsMargin: number;

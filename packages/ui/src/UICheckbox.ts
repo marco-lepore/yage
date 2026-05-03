@@ -3,6 +3,7 @@ import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import type { UIElement, UICheckboxProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
+import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 const DEFAULT_SIZE = 20;
 const DEFAULT_BOX_COLOR = 0x666666;
@@ -33,6 +34,7 @@ export class UICheckbox implements UIElement {
     this.container = new Container();
     this.container.eventMode = "static";
     this.container.cursor = "pointer";
+    applyConsumeInput(this.container, props.consumeInput);
 
     this._checked = props.checked ?? false;
     this._size = props.size ?? DEFAULT_SIZE;
@@ -117,6 +119,7 @@ export class UICheckbox implements UIElement {
     }
     if (p.onChange !== undefined) this.onChange = p.onChange;
     if (p.disabled !== undefined) this.setDisabled(p.disabled);
+    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
 
     if (p.size !== undefined && p.size !== this._size) {
       this._size = p.size;
@@ -156,6 +159,7 @@ export class UICheckbox implements UIElement {
   }
 
   destroy(): void {
+    clearConsumeInput(this.container);
     this.yogaNode.free();
     this.box.destroy();
     this.checkmark.destroy();

@@ -2,6 +2,8 @@ import {
   AssetHandle,
   Component,
   makeEntityScopedQueue,
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
 import { Sprite } from "pixi.js";
@@ -28,6 +30,28 @@ export interface SpriteComponentOptions {
   tint?: number;
   /** Alpha (opacity). Default: 1. */
   alpha?: number;
+  /**
+   * Make the sprite interactive. When set, Pixi `eventMode` is configured so
+   * the sprite participates in pointer hit-testing — required for any
+   * `sprite.on("pointerdown", ...)` listener to fire.
+   *
+   * `consumeOnInteraction: true` additionally marks the sprite as a UI-input
+   * surface (via `@yagejs/core`'s consume registry), so a `pointerdown` over
+   * the sprite is auto-claimed by `@yagejs/input` — preventing the same press
+   * from also firing gameplay action-map edges like `MouseLeft`. Default
+   * `false`: by default an interactive sprite still propagates the action,
+   * matching the "I want both Pixi events AND the action map" use case.
+   */
+  interactive?: {
+    /**
+     * Pixi event mode. Defaults to `"static"` when the option object is set
+     * (interactive sprite, no children-recurse cost). Pass `"dynamic"` for
+     * Pixi behavior where event-mode propagates to children automatically.
+     */
+    eventMode?: "static" | "dynamic";
+    /** When `true`, claim pointer events landing on this sprite. Default `false`. */
+    consumeOnInteraction?: boolean;
+  };
 }
 
 /** Serialisable snapshot of a SpriteComponent. */
@@ -38,6 +62,16 @@ export interface SpriteData {
   alpha?: number;
   anchor?: { x: number; y: number };
   visible?: boolean;
+  /**
+   * Interactive opt-in config from the original options. Persisted so
+   * restored scenes keep `eventMode` and the `consumeOnInteraction` mark on
+   * the rebuilt sprite — without this, save/load silently strips the
+   * tappable behavior.
+   */
+  interactive?: {
+    eventMode?: "static" | "dynamic";
+    consumeOnInteraction?: boolean;
+  };
   effects?: EffectStackSnapshot;
   mask?: MaskSnapshot;
 }
@@ -60,6 +94,7 @@ export class SpriteComponent extends Component {
   );
   private _textureKey: string | null;
   private _mask: MaskHandle | undefined;
+  private _interactive: SpriteComponentOptions["interactive"];
 
   constructor(options: SpriteComponentOptions) {
     super();
@@ -83,6 +118,13 @@ export class SpriteComponent extends Component {
     }
     if (options.alpha !== undefined) {
       this.sprite.alpha = options.alpha;
+    }
+    if (options.interactive) {
+      this._interactive = { ...options.interactive };
+      this.sprite.eventMode = options.interactive.eventMode ?? "static";
+      if (options.interactive.consumeOnInteraction) {
+        markPointerConsumeContainer(this.sprite);
+      }
     }
   }
 
@@ -114,6 +156,7 @@ export class SpriteComponent extends Component {
       anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
       visible: this.sprite.visible,
     };
+    if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
@@ -145,6 +188,7 @@ export class SpriteComponent extends Component {
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.anchor) opts.anchor = data.anchor;
     if (data.visible !== undefined) opts.visible = data.visible;
+    if (data.interactive) opts.interactive = { ...data.interactive };
     return new SpriteComponent(opts);
   }
 
@@ -199,6 +243,7 @@ export class SpriteComponent extends Component {
   }
 
   onDestroy(): void {
+    unmarkPointerConsumeContainer(this.sprite);
     this.fx.destroy();
     this._mask?.remove();
     this.sprite.removeFromParent();

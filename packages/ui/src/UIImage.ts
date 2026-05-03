@@ -6,6 +6,7 @@ import type { AssetHandle } from "@yagejs/core";
 import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
+import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 /** Displays a texture as a UI element, scaling to fit Yoga-computed dimensions. */
 export class UIImage implements UIElement {
@@ -24,6 +25,7 @@ export class UIImage implements UIElement {
 
     const texture = resolveTexture(this.textureHandle);
     this.container = new Sprite(texture);
+    applyConsumeInput(this.container, props.consumeInput);
 
     if (props.tint !== undefined) this.container.tint = props.tint;
     if (props.alpha !== undefined) this.container.alpha = props.alpha;
@@ -89,6 +91,7 @@ export class UIImage implements UIElement {
 
     if (p.tint !== undefined) this.container.tint = p.tint;
     if (p.alpha !== undefined) this.container.alpha = p.alpha;
+    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
 
     applyLayoutProps(this.yogaNode, p);
 
@@ -98,6 +101,7 @@ export class UIImage implements UIElement {
   }
 
   destroy(): void {
+    clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();
   }

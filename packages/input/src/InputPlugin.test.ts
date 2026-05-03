@@ -61,9 +61,11 @@ describe("InputPlugin", () => {
     const manager = context.resolve(InputManagerKey);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    manager._drainInputQueue();
     expect(manager.isPressed("jump")).toBe(true);
 
     window.dispatchEvent(new KeyboardEvent("keyup", { code: "Space" }));
+    manager._drainInputQueue();
     expect(manager.isPressed("jump")).toBe(false);
   });
 
@@ -76,6 +78,7 @@ describe("InputPlugin", () => {
     const manager = context.resolve(InputManagerKey);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    manager._drainInputQueue();
     expect(manager.isJustPressed("jump")).toBe(true);
 
     manager._clearFrameState();
@@ -83,6 +86,7 @@ describe("InputPlugin", () => {
     window.dispatchEvent(
       new KeyboardEvent("keydown", { code: "Space", repeat: true }),
     );
+    manager._drainInputQueue();
     expect(manager.isJustPressed("jump")).toBe(false);
   });
 
@@ -171,12 +175,37 @@ describe("InputPlugin", () => {
 
     // pointerdown on target (document when no renderer)
     document.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    manager._drainInputQueue();
     expect(manager.isPointerDown()).toBe(true);
     expect(manager.isPressed("fire")).toBe(true);
 
     // pointerup on window (so releases outside target are captured)
     window.dispatchEvent(new PointerEvent("pointerup", { button: 0 }));
+    manager._drainInputQueue();
     expect(manager.isPointerDown()).toBe(false);
+    expect(manager.isPressed("fire")).toBe(false);
+  });
+
+  it("same-tick DOM pointerdown+pointerup both fire MouseLeft edges on next drain", () => {
+    // Regression: Playwright's `mouse.down(); mouse.up()` and any synthetic
+    // dispatch from script fire both events in the same task tick before the
+    // next rAF. The drain must replay both buffered transitions, not infer
+    // the aggregate from live pointer state — otherwise the press/release
+    // edges silently disappear.
+    context = createContext();
+    plugin = new InputPlugin({ actions: { fire: ["MouseLeft"] } });
+    plugin.install(context);
+    const manager = context.resolve(InputManagerKey);
+
+    document.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    window.dispatchEvent(new PointerEvent("pointerup", { button: 0 }));
+    // Pre-drain: nothing applied yet
+    expect(manager.isJustPressed("fire")).toBe(false);
+
+    manager._drainInputQueue();
+
+    expect(manager.isJustPressed("fire")).toBe(true);
+    expect(manager.isJustReleased("fire")).toBe(true);
     expect(manager.isPressed("fire")).toBe(false);
   });
 
@@ -253,6 +282,7 @@ describe("InputPlugin", () => {
 
     const manager = context.resolve(InputManagerKey);
     window.dispatchEvent(new KeyboardEvent("keydown", { code: "Space" }));
+    manager._drainInputQueue();
     expect(manager.isPressed("jump")).toBe(true);
   });
 
@@ -337,9 +367,11 @@ describe("InputPlugin", () => {
     const manager = context.resolve(InputManagerKey);
 
     document.dispatchEvent(new PointerEvent("pointerdown", { button: 0 }));
+    manager._drainInputQueue();
     expect(manager.isPointerDown()).toBe(true);
 
     window.dispatchEvent(new PointerEvent("pointercancel"));
+    manager._drainInputQueue();
     expect(manager.isPointerDown()).toBe(false);
   });
 
@@ -355,12 +387,16 @@ describe("InputPlugin", () => {
     const manager = context.resolve(InputManagerKey);
 
     document.dispatchEvent(new PointerEvent("pointerdown", { button: 1 }));
+    manager._drainInputQueue();
     expect(manager.isPressed("middleClick")).toBe(true);
     window.dispatchEvent(new PointerEvent("pointerup", { button: 1 }));
+    manager._drainInputQueue();
 
     document.dispatchEvent(new PointerEvent("pointerdown", { button: 2 }));
+    manager._drainInputQueue();
     expect(manager.isPressed("rightClick")).toBe(true);
     window.dispatchEvent(new PointerEvent("pointerup", { button: 2 }));
+    manager._drainInputQueue();
   });
 
   it("calls preventDefault on keyup for configured keys", () => {
@@ -432,11 +468,13 @@ describe("InputPlugin", () => {
         isPrimary: true,
       }),
     );
+    manager._drainInputQueue();
     expect(manager.isPressed("fire")).toBe(true);
 
     window.dispatchEvent(
       new PointerEvent("pointercancel", { pointerId: 7 }),
     );
+    manager._drainInputQueue();
     expect(manager.getPointer(7)).toBeUndefined();
     expect(manager.isPressed("fire")).toBe(false);
   });
@@ -611,6 +649,7 @@ describe("InputPlugin", () => {
         isPrimary: true,
       }),
     );
+    manager._drainInputQueue();
     expect(manager.isPressed("fire")).toBe(true);
     expect(manager.getPointer(7)).toBeDefined();
 
@@ -662,6 +701,7 @@ describe("InputPlugin", () => {
         pointerType: "pen",
       }),
     );
+    manager._drainInputQueue();
     expect(manager.getPointer(42)).toBeUndefined();
   });
 

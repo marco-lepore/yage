@@ -54,6 +54,19 @@ export interface InputConfig {
    * — useful for inspector probes that want deterministic state.
    */
   pollGamepads?: boolean;
+  /**
+   * Invert vertical scroll so positive `dy` means up (default `false`,
+   * matching the W3C convention where positive `deltaY` is "scroll content
+   * down"). Affects both `onWheel` callbacks and `WheelUp/Down` action edges.
+   */
+  wheelInvertY?: boolean;
+  /**
+   * Call `preventDefault()` on incoming wheel events so the page does not
+   * scroll. Default `false` — opt in only if your game canvas should swallow
+   * scroll. The listener is attached as `{ passive: false }` when this is
+   * enabled so `preventDefault()` actually takes effect.
+   */
+  preventDefaultWheel?: boolean;
 }
 
 /** Information about a connected gamepad. */

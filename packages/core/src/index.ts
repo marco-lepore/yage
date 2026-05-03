@@ -175,6 +175,12 @@ export { RendererAdapterKey } from "./RendererAdapter.js";
 export type { RendererAdapter } from "./RendererAdapter.js";
 
 export {
+  markPointerConsumeContainer,
+  unmarkPointerConsumeContainer,
+  isPointerConsumeContainer,
+} from "./ui-consume-registry.js";
+
+export {
   createTestEngine,
   createMockScene,
   createMockEntity,

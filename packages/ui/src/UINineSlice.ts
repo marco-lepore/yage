@@ -6,6 +6,7 @@ import type { AssetHandle } from "@yagejs/core";
 import type { UIElement, UINineSliceProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
+import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 /** Displays a nine-slice texture as a UI element. Requires explicit width/height from layout. */
 export class UINineSlice implements UIElement {
@@ -43,6 +44,8 @@ export class UINineSlice implements UIElement {
       });
     }
 
+    applyConsumeInput(this.container, props.consumeInput);
+
     if (props.tint !== undefined) this.container.tint = props.tint;
     if (props.alpha !== undefined) this.container.alpha = props.alpha;
 
@@ -79,6 +82,7 @@ export class UINineSlice implements UIElement {
 
     if (p.tint !== undefined) this.container.tint = p.tint;
     if (p.alpha !== undefined) this.container.alpha = p.alpha;
+    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
 
     applyLayoutProps(this.yogaNode, p);
 
@@ -88,6 +92,7 @@ export class UINineSlice implements UIElement {
   }
 
   destroy(): void {
+    clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();
   }

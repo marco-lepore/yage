@@ -32,6 +32,7 @@ export default defineConfig({
         "scene-stack": resolve(__dirname, "scene-stack.html"),
         "save-load": resolve(__dirname, "save-load.html"),
         "ui-button": resolve(__dirname, "ui-button.html"),
+        "input-ui-consume": resolve(__dirname, "input-ui-consume.html"),
         "camera-parallax": resolve(__dirname, "camera-parallax.html"),
         "camera-lifecycle": resolve(__dirname, "camera-lifecycle.html"),
         "loading-scene": resolve(__dirname, "loading-scene.html"),
