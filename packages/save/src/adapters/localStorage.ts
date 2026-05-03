@@ -16,12 +16,29 @@ export function localStorageAdapter(
   const prefix = `${namespace}:`;
 
   const ls = (): Storage => {
-    if (typeof window === "undefined" || !window.localStorage) {
+    if (typeof window === "undefined") {
       throw new Error(
-        "localStorageAdapter: window.localStorage is not available in this environment.",
+        "localStorageAdapter: window is not available in this environment.",
       );
     }
-    return window.localStorage;
+    // Safari with cookies blocked, private-mode iframes, and some embedded
+    // contexts throw `SecurityError` on the property access itself — not
+    // just on get/set. Catch eagerly and rethrow with a normalized message
+    // so callers don't have to handle raw DOMExceptions.
+    try {
+      const storage = window.localStorage;
+      if (!storage) {
+        throw new Error(
+          "localStorageAdapter: window.localStorage is not available in this environment.",
+        );
+      }
+      return storage;
+    } catch (err) {
+      throw new Error(
+        "localStorageAdapter: window.localStorage is not available in this environment.",
+        { cause: err },
+      );
+    }
   };
 
   return {

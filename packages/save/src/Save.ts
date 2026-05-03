@@ -57,22 +57,54 @@ export class DocumentNotFoundError extends Error {
   }
 }
 
+/** Thrown when a store id or slot name contains a reserved character. */
+export class InvalidKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidKeyError";
+  }
+}
+
 export interface CreateSaveOptions {
   adapter: SaveAdapter;
 }
 
-const MANIFEST_SUFFIX = ":__slots__";
+// Each adapter key is built from URI-encoded segments joined by `/`. Encoding
+// every user-supplied segment is what guarantees that legal-but-pathological
+// store ids or slot names (e.g. id="a/b" or slot="m") can't construct keys
+// that overlap with documents, slots, or manifests for other stores. The
+// suffix tags (`d`/`s`/`m`) are fixed and never come from user input.
+const SEP = "/";
+const DOC_TAG = "d";
+const SLOT_TAG = "s";
+const MANIFEST_TAG = "m";
+
+function validateStoreId(id: string): void {
+  if (id.length === 0) {
+    throw new InvalidKeyError("Save: store id must be non-empty.");
+  }
+}
+
+function validateSlotName(slot: string): void {
+  if (slot.length === 0) {
+    throw new InvalidKeyError("Save: slot name must be non-empty.");
+  }
+}
 
 function docKey(id: string): string {
-  return id;
+  validateStoreId(id);
+  return `${encodeURIComponent(id)}${SEP}${DOC_TAG}`;
 }
 
 function slotKey(id: string, slot: string): string {
-  return `${id}:${slot}`;
+  validateStoreId(id);
+  validateSlotName(slot);
+  return `${encodeURIComponent(id)}${SEP}${SLOT_TAG}${SEP}${encodeURIComponent(slot)}`;
 }
 
 function manifestKey(id: string): string {
-  return `${id}${MANIFEST_SUFFIX}`;
+  validateStoreId(id);
+  return `${encodeURIComponent(id)}${SEP}${MANIFEST_TAG}`;
 }
 
 async function readManifest(
@@ -107,6 +139,17 @@ async function writeManifest(
  */
 export class Save {
   readonly adapter: SaveAdapter;
+
+  /**
+   * Per-store manifest update queue. Two concurrent saveSlot/deleteSlot calls
+   * against the same store would otherwise read-modify-write the manifest
+   * blindly — the later writer wins and the earlier change is silently lost.
+   * Funnelling manifest mutations through a per-store promise chain serializes
+   * them while leaving slot data writes (which target distinct keys)
+   * unaffected. Per-store, not global, because manifests for different stores
+   * never collide.
+   */
+  private readonly manifestQueues = new Map<string, Promise<void>>();
 
   constructor(opts: CreateSaveOptions) {
     this.adapter = opts.adapter;
@@ -146,19 +189,19 @@ export class Save {
     await this.adapter.write(slotKey(store.id, slot), JSON.stringify(payload));
 
     // Slot data is written before the manifest. If the manifest write fails,
-    // the slot data exists at `${id}:${slot}` but `listSlots` won't see it
+    // the slot data exists at its slot key but `listSlots` won't see it
     // (loadSlot can still find it by name). Acceptable for localStorage-class
     // adapters where writes are effectively atomic; adapters with unreliable
     // writes should retry the manifest update or wrap both writes in a
     // transaction.
-    const manifest = await readManifest(this.adapter, store.id);
     const entry: ManifestEntry = {
       name: slot,
       savedAt: Date.now(),
     };
     if (opts?.metadata !== undefined) entry.metadata = opts.metadata;
-    manifest.slots[slot] = entry;
-    await writeManifest(this.adapter, store.id, manifest);
+    await this.updateManifest(store.id, (manifest) => {
+      manifest.slots[slot] = entry;
+    });
   }
 
   /** Load a slot into the store. Throws `SlotNotFoundError` when missing. */
@@ -194,8 +237,8 @@ export class Save {
     // for localStorage-class adapters; adapters with unreliable writes
     // should retry the manifest update.
     await this.adapter.delete(slotKey(store.id, slot));
-    const manifest = await readManifest(this.adapter, store.id);
-    if (slot in manifest.slots) {
+    await this.updateManifest(store.id, (manifest) => {
+      if (!(slot in manifest.slots)) return;
       // Build a fresh slots map without the deleted entry — avoids dynamic
       // delete on a record (lint: no-dynamic-delete).
       const next: Record<string, ManifestEntry> = {};
@@ -203,18 +246,47 @@ export class Save {
         if (name !== slot) next[name] = entry;
       }
       manifest.slots = next;
-      await writeManifest(this.adapter, store.id, manifest);
-    }
+    });
   }
 
   /**
-   * Subscribe to the store and persist on every change, coalesced to one
-   * write per microtask. Returns a stop function — call it to unsubscribe.
+   * Read-modify-write the manifest for a store, serialized through the
+   * per-store queue. The mutator runs on the freshly-read manifest; if it's
+   * a no-op the write is skipped (the mutator can opt out by leaving the
+   * passed manifest unchanged — but we always write back to keep the contract
+   * predictable; a no-op write is cheap).
+   */
+  private updateManifest(
+    storeId: string,
+    mutate: (manifest: SlotManifest) => void,
+  ): Promise<void> {
+    const prev = this.manifestQueues.get(storeId) ?? Promise.resolve();
+    const next = prev.then(async () => {
+      const manifest = await readManifest(this.adapter, storeId);
+      mutate(manifest);
+      await writeManifest(this.adapter, storeId, manifest);
+    });
+    // Swallow rejections in the chain so a single failure doesn't poison the
+    // queue for subsequent updates; callers still see the original rejection
+    // because we return `next`, not the swallowed copy.
+    this.manifestQueues.set(
+      storeId,
+      next.catch(() => undefined),
+    );
+    return next;
+  }
+
+  /**
+   * Subscribe to the store and persist on every change, coalesced to a single
+   * in-flight write per store. Returns a stop function — call it to
+   * unsubscribe.
    *
-   * Multiple synchronous `set` calls (e.g. several `store.set` in a row inside
-   * a single event handler) collapse into one write. Each separate user event
-   * triggers its own write. For real time-based debouncing across user
-   * interactions, wrap the store yourself.
+   * Writes are serialized: while a `persist()` is in flight, further changes
+   * mark the store dirty and trigger one more write *after* the current one
+   * resolves. The last-set state always wins, even on a slow async adapter,
+   * because each flush re-reads `store.serialize()` rather than capturing the
+   * value at scheduling time. Multiple synchronous `set` calls collapse into
+   * one write because the dirty flag is consumed atomically.
    *
    * `setTimeout` is intentionally not used here: `Save` runs alongside the
    * page lifecycle, not the engine loop, and may be active before the engine
@@ -222,22 +294,43 @@ export class Save {
    * engine-time processes here would tie persistence to a running scheduler.
    */
   autoPersist(store: PersistentLike): () => void {
-    let scheduled = false;
+    let inFlight = false;
+    let dirty = false;
     let stopped = false;
 
-    const off = store.subscribe(() => {
-      if (stopped || scheduled) return;
-      scheduled = true;
-      queueMicrotask(() => {
-        scheduled = false;
-        if (stopped) return;
-        // Fire-and-forget; surfaces failures via console for visibility.
-        this.persist(store).catch((err) => {
+    const flush = async (): Promise<void> => {
+      // Drain the dirty flag in a loop so any change that arrives while a
+      // write is in progress is captured by the next iteration. Snapshot the
+      // value at write time (via store.serialize, called inside persist) so
+      // we always commit the latest state — never an older one captured at
+      // schedule time.
+      while (dirty && !stopped) {
+        dirty = false;
+        try {
+          await this.persist(store);
+        } catch (err) {
           console.error(
             `autoPersist: failed to persist store "${store.id}":`,
             err,
           );
-        });
+        }
+      }
+      inFlight = false;
+    };
+
+    const off = store.subscribe(() => {
+      if (stopped) return;
+      dirty = true;
+      if (inFlight) return;
+      inFlight = true;
+      // Defer the first iteration to a microtask so multiple synchronous
+      // `set` calls collapse into one flush iteration.
+      queueMicrotask(() => {
+        if (stopped) {
+          inFlight = false;
+          return;
+        }
+        void flush();
       });
     });
 

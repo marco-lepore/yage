@@ -411,3 +411,153 @@ describe("Save — listSlots / deleteSlot edge cases", () => {
     await expect(save.deleteSlot(s, "nope")).resolves.toBeUndefined();
   });
 });
+
+describe("Save — key disambiguation", () => {
+  // Regression coverage for the collision class: pathological store ids and
+  // slot names that previously could overwrite each other now end up in
+  // distinct namespaces because every user segment is encoded.
+  it("a doc and a same-named slot don't collide", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    const a = defineStore<{ v: number }>("collide.a", {
+      defaults: () => ({ v: 0 }),
+    });
+    a.set({ v: 1 });
+    await save.persist(a);
+    await save.saveSlot(a, "v");
+
+    _clearStoreRegistryForTesting();
+    const b = defineStore<{ v: number }>("collide.a", {
+      defaults: () => ({ v: 0 }),
+    });
+    a.set({ v: 99 });
+    await save.persist(a);
+    await save.loadSlot(b, "v");
+    expect(b.get().v).toBe(1);
+  });
+
+  it("store ids and slot names with reserved characters round-trip", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    // `:` and `/` previously had structural meaning in adapter keys; encoded
+    // segments make them transparent to the storage layer.
+    const a = defineStore<{ v: number }>("alice/profile:v2", {
+      defaults: () => ({ v: 0 }),
+    });
+    a.set({ v: 7 });
+    await save.saveSlot(a, "alice/manual:1");
+
+    _clearStoreRegistryForTesting();
+    const b = defineStore<{ v: number }>("alice/profile:v2", {
+      defaults: () => ({ v: 0 }),
+    });
+    await save.loadSlot(b, "alice/manual:1");
+    expect(b.get().v).toBe(7);
+  });
+
+  it("slot named the same as the manifest tag works", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    const a = defineStore<{ v: number }>("sn", { defaults: () => ({ v: 0 }) });
+    a.set({ v: 5 });
+    // Pathological slot name that equals our manifest tag — now just a
+    // regular encoded segment.
+    await save.saveSlot(a, "m");
+    const slots = await save.listSlots(a);
+    expect(slots.map((s) => s.name)).toContain("m");
+
+    _clearStoreRegistryForTesting();
+    const b = defineStore<{ v: number }>("sn", { defaults: () => ({ v: 0 }) });
+    await save.loadSlot(b, "m");
+    expect(b.get().v).toBe(5);
+  });
+
+  it("rejects empty store id and empty slot name", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    const empty = defineStore<{ v: number }>("", {
+      defaults: () => ({ v: 0 }),
+    });
+    await expect(save.persist(empty)).rejects.toThrow(/non-empty/i);
+
+    const ok = defineStore<{ v: number }>("ok", { defaults: () => ({ v: 0 }) });
+    await expect(save.saveSlot(ok, "")).rejects.toThrow(/non-empty/i);
+  });
+});
+
+describe("Save — manifest serialization across concurrent updates", () => {
+  // Two concurrent saveSlot calls would previously read-modify-write the
+  // manifest with a last-writer-wins race. The per-store queue serializes
+  // them.
+  it("concurrent saveSlots both land in the manifest", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    const s = defineStore<{ v: number }>("concur", {
+      defaults: () => ({ v: 0 }),
+    });
+    await Promise.all([
+      save.saveSlot(s, "a", { metadata: { tag: "a" } }),
+      save.saveSlot(s, "b", { metadata: { tag: "b" } }),
+      save.saveSlot(s, "c", { metadata: { tag: "c" } }),
+    ]);
+    const slots = await save.listSlots<{ tag: string }>(s);
+    expect(slots.map((x) => x.name).sort()).toEqual(["a", "b", "c"]);
+    expect(slots.map((x) => x.metadata?.tag).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("concurrent saveSlot + deleteSlot serialize correctly", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    const s = defineStore<{ v: number }>("concur-del", {
+      defaults: () => ({ v: 0 }),
+    });
+    await save.saveSlot(s, "old");
+    // Race: delete the existing "old" slot while creating a new "new" slot.
+    await Promise.all([save.deleteSlot(s, "old"), save.saveSlot(s, "new")]);
+    const slots = await save.listSlots(s);
+    expect(slots.map((x) => x.name)).toEqual(["new"]);
+  });
+});
+
+describe("Save — autoPersist serialization", () => {
+  it("commits the latest state even when the adapter is slow", async () => {
+    // Slow async adapter — every write blocks on a deferred we can release
+    // from the test, so we can interleave changes around an in-flight write.
+    const pending: Array<() => void> = [];
+    const seenWrites: string[] = [];
+    const slowAdapter = {
+      ...memoryAdapter(),
+      async write(_key: string, value: string) {
+        seenWrites.push(value);
+        await new Promise<void>((resolve) => {
+          pending.push(resolve);
+        });
+      },
+    };
+    const save = createSave({ adapter: slowAdapter });
+
+    const s = defineStore<{ v: number }>("ap-slow", {
+      defaults: () => ({ v: 0 }),
+    });
+    const stop = save.autoPersist(s);
+
+    const flushMicrotasks = async (): Promise<void> => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    };
+
+    s.set({ v: 1 });
+    await flushMicrotasks(); // schedule + start first write
+
+    s.set({ v: 2 });
+    s.set({ v: 3 });
+
+    // Release the first (in-flight) write — should re-flush with the latest
+    // dirty state (v: 3) rather than the captured v: 1.
+    pending.shift()?.();
+    await flushMicrotasks();
+
+    // Release the second write so the chain can settle.
+    pending.shift()?.();
+    await flushMicrotasks();
+
+    stop();
+
+    const last = seenWrites[seenWrites.length - 1];
+    expect(last).toBeDefined();
+    expect(JSON.parse(last as string).data).toEqual({ v: 3 });
+  });
+});

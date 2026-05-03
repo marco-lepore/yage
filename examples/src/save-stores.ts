@@ -270,7 +270,7 @@ async function refreshSlotList(): Promise<void> {
     return;
   }
   list.style.color = "";
-  list.innerHTML = "";
+  list.replaceChildren();
   const sorted = [...slots].sort((a, b) => b.savedAt - a.savedAt);
   for (const slot of sorted) {
     const row = document.createElement("div");
@@ -278,11 +278,21 @@ async function refreshSlotList(): Promise<void> {
     const meta = document.createElement("span");
     meta.className = "meta";
     const m = slot.metadata;
+    // Slot metadata round-trips through localStorage (or any user-replaceable
+    // backing store), so we treat every field as untrusted text. Build the
+    // DOM nodes explicitly instead of stringifying into innerHTML so a
+    // tampered save can't inject markup or scripts here.
     const label = m?.label ?? slot.name;
-    meta.innerHTML =
-      `<b>${label}</b> · ${formatTime(slot.savedAt)} · ` +
-      `chapter ${m?.chapter ?? "?"} · ${m?.coins ?? 0} coins · ` +
-      `${m?.deaths ?? 0} deaths`;
+    const labelEl = document.createElement("b");
+    labelEl.textContent = label;
+    meta.appendChild(labelEl);
+    meta.appendChild(
+      document.createTextNode(
+        ` · ${formatTime(slot.savedAt)} · ` +
+          `chapter ${m?.chapter ?? "?"} · ${m?.coins ?? 0} coins · ` +
+          `${m?.deaths ?? 0} deaths`,
+      ),
+    );
     const loadBtn = document.createElement("button");
     loadBtn.textContent = "Load";
     loadBtn.addEventListener("click", async () => {
