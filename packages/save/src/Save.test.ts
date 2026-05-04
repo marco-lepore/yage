@@ -413,9 +413,6 @@ describe("Save — listSlots / deleteSlot edge cases", () => {
 });
 
 describe("Save — key disambiguation", () => {
-  // Regression coverage for the collision class: pathological store ids and
-  // slot names that previously could overwrite each other now end up in
-  // distinct namespaces because every user segment is encoded.
   it("a doc and a same-named slot don't collide", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const a = defineStore<{ v: number }>("collide.a", {
@@ -437,8 +434,6 @@ describe("Save — key disambiguation", () => {
 
   it("store ids and slot names with reserved characters round-trip", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    // `:` and `/` previously had structural meaning in adapter keys; encoded
-    // segments make them transparent to the storage layer.
     const a = defineStore<{ v: number }>("alice/profile:v2", {
       defaults: () => ({ v: 0 }),
     });
@@ -457,8 +452,6 @@ describe("Save — key disambiguation", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const a = defineStore<{ v: number }>("sn", { defaults: () => ({ v: 0 }) });
     a.set({ v: 5 });
-    // Pathological slot name that equals our manifest tag — now just a
-    // regular encoded segment.
     await save.saveSlot(a, "m");
     const slots = await save.listSlots(a);
     expect(slots.map((s) => s.name)).toContain("m");
@@ -482,9 +475,6 @@ describe("Save — key disambiguation", () => {
 });
 
 describe("Save — manifest serialization across concurrent updates", () => {
-  // Two concurrent saveSlot calls would previously read-modify-write the
-  // manifest with a last-writer-wins race. The per-store queue serializes
-  // them.
   it("concurrent saveSlots both land in the manifest", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = defineStore<{ v: number }>("concur", {
@@ -506,7 +496,6 @@ describe("Save — manifest serialization across concurrent updates", () => {
       defaults: () => ({ v: 0 }),
     });
     await save.saveSlot(s, "old");
-    // Race: delete the existing "old" slot while creating a new "new" slot.
     await Promise.all([save.deleteSlot(s, "old"), save.saveSlot(s, "new")]);
     const slots = await save.listSlots(s);
     expect(slots.map((x) => x.name)).toEqual(["new"]);

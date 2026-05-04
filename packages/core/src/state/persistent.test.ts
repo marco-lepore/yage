@@ -136,28 +136,16 @@ describe("defineStore", () => {
     expect(t.get().when.toISOString()).toBe("2026-05-03T00:00:00.000Z");
   });
 
-  it("throws when defining two stores with the same id", () => {
-    defineStore<Settings>("t.dupe", {
+  it("re-defining the same id replaces the entry instead of throwing", () => {
+    const a = defineStore<Settings>("t.dupe", {
       defaults: () => ({ music: 0.8, sfx: 1.0 }),
     });
+    a.set({ music: 0.5 });
     expect(() =>
       defineStore<Settings>("t.dupe", {
         defaults: () => ({ music: 0.8, sfx: 1.0 }),
       }),
-    ).toThrow();
-  });
-
-  it("duplicate-id error names the actual factory that was called", () => {
-    defineSet<string>("t.dupe-factory");
-    expect(() => defineSet<string>("t.dupe-factory")).toThrow(/defineSet/);
-
-    defineMap<string, number>("t.dupe-factory.map");
-    expect(() => defineMap<string, number>("t.dupe-factory.map")).toThrow(
-      /defineMap/,
-    );
-
-    defineCounter("t.dupe-factory.ctr");
-    expect(() => defineCounter("t.dupe-factory.ctr")).toThrow(/defineCounter/);
+    ).not.toThrow();
   });
 });
 

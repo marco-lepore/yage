@@ -24,18 +24,13 @@ interface RegisteredEntry {
   reset(): void;
 }
 
-const registry = new Set<RegisteredEntry>();
+// Keyed by id so a subsequent re-evaluation of the same module (e.g. a
+// dev-server hot reload) replaces the entry transparently rather than
+// throwing on the second `defineX` call.
+const registry = new Map<string, RegisteredEntry>();
 
-function register(factory: string, entry: RegisteredEntry): void {
-  for (const existing of registry) {
-    if (existing.id === entry.id) {
-      throw new Error(
-        `${factory}: a store with id "${entry.id}" is already defined. ` +
-          `Store ids must be unique.`,
-      );
-    }
-  }
-  registry.add(entry);
+function register(entry: RegisteredEntry): void {
+  registry.set(entry.id, entry);
 }
 
 /**
@@ -45,7 +40,7 @@ function register(factory: string, entry: RegisteredEntry): void {
  * @internal
  */
 export function _resetAllStoresForTesting(): void {
-  for (const entry of registry) entry.reset();
+  for (const entry of registry.values()) entry.reset();
 }
 
 /**
@@ -165,7 +160,7 @@ export function defineStore<T extends object>(
     },
   };
 
-  register("defineStore", { id, reset: () => store.reset() });
+  register({ id, reset: () => store.reset() });
   return store;
 }
 
@@ -265,7 +260,7 @@ export function defineSet<K>(
     },
   };
 
-  register("defineSet", { id, reset: () => store.reset() });
+  register({ id, reset: () => store.reset() });
   return store;
 }
 
@@ -369,7 +364,7 @@ export function defineMap<K, V>(
     },
   };
 
-  register("defineMap", { id, reset: () => store.reset() });
+  register({ id, reset: () => store.reset() });
   return store;
 }
 
@@ -458,6 +453,6 @@ export function defineCounter(
     },
   };
 
-  register("defineCounter", { id, reset: () => store.reset() });
+  register({ id, reset: () => store.reset() });
   return store;
 }
