@@ -255,6 +255,17 @@ describe("Scene", () => {
 
     class Plain extends Entity {}
 
+    // Regression: `setup(params: T = {})` reports `setup.length === 0` but
+    // is still a setup method. The runtime must route the 2nd arg to
+    // params (matching TS overload selection), not silently drop it as
+    // misidentified options.
+    class DefaultedSetup extends Entity {
+      received: { x?: number } = {};
+      override setup(params: { x?: number } = {}): void {
+        this.received = params;
+      }
+    }
+
     it("spawn(name, { key }) registers the key and exposes it via findByKey", () => {
       const { ctx } = createContext();
       const scene = new TestScene();
@@ -271,6 +282,16 @@ describe("Scene", () => {
       const e = scene.spawn(Plain, { key: "marker" });
       expect(e.key).toBe("marker");
       expect(scene.findByKey("marker")).toBe(e);
+    });
+
+    it("spawn(Class, params) routes to setup() when setup uses default-valued params", () => {
+      // setup(params: P = {}).length === 0 — must NOT misroute params as options.
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(DefaultedSetup, { x: 42 });
+      expect(e.received).toEqual({ x: 42 });
+      expect(e.key).toBeUndefined();
     });
 
     it("spawn(Class, params, { key }) keys an entity that needs setup params", () => {
@@ -322,6 +343,18 @@ describe("Scene", () => {
       scene._setContext(ctx);
       const e = scene.spawn(KeyedEntity, { key: "captured" });
       expect(e.capturedKey).toBe("captured");
+    });
+
+    it("spawn(Class, options) keys a setup-bearing class when the 2nd arg is options-shaped", () => {
+      // setup(params = {}) — arity 0 but params still flow when present.
+      // Passing a key-only object as the 2nd arg routes it to options, not
+      // params, because the shape matches SpawnOptions exactly.
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(DefaultedSetup, { key: "defaulted" });
+      expect(e.key).toBe("defaulted");
+      expect(e.received).toEqual({});
     });
 
     it("duplicate key throws and leaves no orphan entity in the scene", () => {

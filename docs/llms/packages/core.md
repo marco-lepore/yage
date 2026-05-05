@@ -246,7 +246,7 @@ parent.spawnChild("body", Bone, { key: "bone-01" });
 const chest = scene.findByKey<Chest>("forest/chest-01");
 ```
 
-Routing for `spawn(Class, X)`: if the class declares `setup(params: P)` (arity ≥ 1), `X` is `params`; otherwise `X` is `SpawnOptions`. If your class has `setup(params?: P)` (optional), TS routes via `SpawnOptions` — drop the `?` or use the 3-arg form `spawn(Class, params, { key })`.
+Routing for `spawn(Class, X)`: no `setup` declared → `X` is options. Setup declared and `X`'s own keys are exactly `{ key }` → `X` is options (covers `setup(params = {})` keyed without params, and `setup()` keyed). Otherwise → `X` is params. The 3-arg form `spawn(Class, params, options)` is always unambiguous. Don't name a top-level setup-params field `key`; if you must, use the 3-arg form.
 
 Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`defineSet<string>("world.opened")`).
 

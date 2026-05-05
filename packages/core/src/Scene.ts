@@ -34,18 +34,37 @@ export interface SpawnOptions {
    * across save/load or cross-scene navigation, or that game code looks up
    * by name (chests, doors, named NPCs).
    *
-   * Heads-up: if your entity class declares `setup(params?: P)` (optional
-   * param), the 2-arg form `spawn(Class, options)` routes the second
-   * argument to options, not params. Drop the `?` or use the 3-arg form
-   * `spawn(Class, params, { key })`.
+   * Heads-up: don't name a top-level setup-params field `key`. The 2-arg
+   * `spawn(Class, X)` form looks at `X`'s shape to disambiguate params from
+   * options — an `X` whose only own keys are SpawnOptions fields routes
+   * to options. If your params shape clashes (e.g. `setup(p: { key: number })`),
+   * use the explicit 3-arg form `spawn(Class, params, options)`.
    */
   key?: string;
 }
 
+/**
+ * Heuristic: is this object exactly the shape of `SpawnOptions`? Used by the
+ * runtime to disambiguate the 2-arg `spawn(Class, X)` / `spawn(Blueprint, X)`
+ * forms when both params and options are plausible.
+ *
+ * Rule: a plain object whose only own keys are SpawnOptions fields. As of
+ * today, that's just `key`. If `SpawnOptions` grows, extend the allow-list.
+ *
+ * Trade-off: a params shape with a top-level `key` and nothing else is
+ * misrouted to options — the "reserved-keys-in-options" footgun called out
+ * in the design memo. Mitigation: don't name a top-level setup-params field
+ * `key`. Use the 3-arg form (`spawn(Class, params, options)`) when in doubt.
+ */
+const _SPAWN_OPTION_KEYS: ReadonlySet<string> = new Set(["key"]);
 function _looksLikeSpawnOptions(v: unknown): v is SpawnOptions {
-  return (
-    typeof v === "object" && v !== null && !Array.isArray(v) && "key" in v
-  );
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const keys = Object.keys(v);
+  if (keys.length === 0) return false;
+  for (const k of keys) {
+    if (!_SPAWN_OPTION_KEYS.has(k)) return false;
+  }
+  return true;
 }
 
 /**
@@ -152,12 +171,16 @@ export abstract class Scene {
    * identity key, looked up later via `scene.findByKey`. The key is assigned
    * before `setup()` runs, so `entity.requireKey()` is safe inside it.
    *
-   * Runtime overload routing for the class form (`spawn(Class, X)`): if the
-   * class declares `setup(params: P)` (i.e. `Class.prototype.setup.length > 0`),
-   * `X` is treated as `params`; otherwise `X` is treated as `SpawnOptions`.
-   * Optional setup params (`setup(params?: P)`) report arity 0 and so route to
-   * the options form — pass them via the 3-arg call (`spawn(Class, params, options)`)
-   * or drop the `?`.
+   * Runtime routing for the 2-arg class form (`spawn(Class, X)`):
+   *   - If the class doesn't declare `setup` → `X` is options.
+   *   - Else if `X`'s own keys are exactly SpawnOptions fields (`{ key }`) →
+   *     `X` is options. Covers both `setup(params = {})` keyed without
+   *     params and `setup()` (no real params) keyed.
+   *   - Else → `X` is params (forwarded to `setup`).
+   * The 3-arg form is always unambiguous: `spawn(Class, params, options)`.
+   *
+   * Don't name a top-level setup-params field `key` — the shape check would
+   * misroute it. If you must, use the 3-arg form.
    */
   spawn(name?: string, options?: SpawnOptions): Entity;
   /**
@@ -184,19 +207,32 @@ export abstract class Scene {
     // Class-based spawn: argument is a constructor function for an Entity subclass
     if (typeof nameOrBlueprintOrClass === "function") {
       const Ctor = nameOrBlueprintOrClass;
-      const setupFn = (Ctor.prototype as { setup?: (...a: unknown[]) => void })
-        .setup;
-      const setupHasParams = !!setupFn && setupFn.length > 0;
+      const hasSetup =
+        typeof (Ctor.prototype as { setup?: unknown }).setup === "function";
 
       let params: unknown;
       let options: SpawnOptions | undefined;
       if (maybeOptions !== undefined) {
+        // 3-arg: explicit. paramsOrOptions = params, maybeOptions = options.
         params = paramsOrOptions;
         options = maybeOptions;
-      } else if (setupHasParams) {
-        params = paramsOrOptions;
+      } else if (paramsOrOptions === undefined) {
+        // 1-arg: nothing to route.
+      } else if (!hasSetup) {
+        // No setup → 2nd arg can only be options.
+        options = paramsOrOptions as SpawnOptions;
+      } else if (_looksLikeSpawnOptions(paramsOrOptions)) {
+        // Setup exists, but the 2nd arg is options-shaped (only `key`).
+        // This covers two cases that arity alone gets wrong:
+        //   - setup(params = {}) with `spawn(Class, { key })` → options ✓
+        //   - setup() with `spawn(Class, { key })` → options ✓
+        // For setup-bearing classes whose params type happens to have ONLY
+        // a top-level `key` field, the user must use the 3-arg form.
+        options = paramsOrOptions;
       } else {
-        options = paramsOrOptions as SpawnOptions | undefined;
+        // Setup exists and 2nd arg has params-shaped content (e.g.
+        // `{ position, zoom }`). Forward to setup.
+        params = paramsOrOptions;
       }
 
       const entity = new Ctor();
