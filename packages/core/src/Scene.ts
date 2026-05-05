@@ -324,8 +324,8 @@ export abstract class Scene {
           `Destroy it before spawning a duplicate.`,
       );
     }
-    this._identityIndex.set(key, entity);
     entity._setKey(key);
+    this._identityIndex.set(key, entity);
   }
 
   /**
