@@ -331,4 +331,31 @@ describe("Entity", () => {
       expect(scene.getEntities().size).toBe(before);
     });
   });
+
+  describe("stable identity", () => {
+    it("entity.key is undefined when spawned without a key", () => {
+      const { scene } = createMockScene();
+      const e = scene.spawn("anon");
+      expect(e.key).toBeUndefined();
+    });
+
+    it("requireKey() throws when no key is set", () => {
+      const e = new Entity("loose");
+      expect(() => e.requireKey()).toThrow(
+        /Entity "loose".*has no stable key/,
+      );
+    });
+
+    it("requireKey() returns the key when set", () => {
+      const { scene } = createMockScene();
+      const e = scene.spawn("npc", { key: "elder" });
+      expect(e.requireKey()).toBe("elder");
+    });
+
+    it("_setKey rejects re-keying", () => {
+      const e = new Entity("once");
+      e._setKey("first");
+      expect(() => e._setKey("second")).toThrow(/already has key "first"/);
+    });
+  });
 });

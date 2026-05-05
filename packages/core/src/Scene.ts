@@ -21,6 +21,34 @@ import {
 } from "./EngineContext.js";
 
 /**
+ * Options accepted by the trailing argument of `Scene.spawn` and
+ * `Entity.spawnChild`.
+ */
+export interface SpawnOptions {
+  /**
+   * Stable per-scene identity key. Looked up via `Scene.findByKey` and used
+   * as a stable id in persistent stores (e.g. `defineSet<string>("world.opened")`).
+   *
+   * Identity is opt-in — most entities (bullets, particles, transient enemies)
+   * never need a key. Pass one only for entities whose state should persist
+   * across save/load or cross-scene navigation, or that game code looks up
+   * by name (chests, doors, named NPCs).
+   *
+   * Heads-up: if your entity class declares `setup(params?: P)` (optional
+   * param), the 2-arg form `spawn(Class, options)` routes the second
+   * argument to options, not params. Drop the `?` or use the 3-arg form
+   * `spawn(Class, params, { key })`.
+   */
+  key?: string;
+}
+
+function _looksLikeSpawnOptions(v: unknown): v is SpawnOptions {
+  return (
+    typeof v === "object" && v !== null && !Array.isArray(v) && "key" in v
+  );
+}
+
+/**
  * Scenes own entities and define lifecycle hooks.
  * Each scene is a self-contained world with its own entity pool.
  */
@@ -60,6 +88,7 @@ export abstract class Scene {
     | ((eventName: string, data: unknown, entity: Entity) => void)
     | undefined;
   private _scopedServices?: Map<string, unknown>;
+  private _identityIndex?: Map<string, Entity>;
 
   /** Access the EngineContext. */
   get context(): EngineContext {
@@ -116,25 +145,65 @@ export abstract class Scene {
     }) as T;
   }
 
-  /** Spawn a new entity in this scene. */
-  spawn(name?: string): Entity;
-  spawn<P>(blueprint: Blueprint<P>, params: P): Entity;
-  spawn(blueprint: Blueprint<void>): Entity;
+  /**
+   * Spawn a new entity in this scene.
+   *
+   * Pass `{ key }` in the trailing options to register a stable per-scene
+   * identity key, looked up later via `scene.findByKey`. The key is assigned
+   * before `setup()` runs, so `entity.requireKey()` is safe inside it.
+   *
+   * Runtime overload routing for the class form (`spawn(Class, X)`): if the
+   * class declares `setup(params: P)` (i.e. `Class.prototype.setup.length > 0`),
+   * `X` is treated as `params`; otherwise `X` is treated as `SpawnOptions`.
+   * Optional setup params (`setup(params?: P)`) report arity 0 and so route to
+   * the options form — pass them via the 3-arg call (`spawn(Class, params, options)`)
+   * or drop the `?`.
+   */
+  spawn(name?: string, options?: SpawnOptions): Entity;
+  /**
+   * Spawn from a blueprint. **Note**: blueprint params must not include a
+   * top-level `key: string` field — the runtime can't disambiguate it from
+   * `SpawnOptions`. If your params do, use the explicit 3-arg form
+   * (`spawn(bp, params, { key })`) so options arrives in the trailing slot.
+   */
+  spawn<P>(blueprint: Blueprint<P>, params: P, options?: SpawnOptions): Entity;
+  spawn(blueprint: Blueprint<void>, options?: SpawnOptions): Entity;
   /** Spawn an entity subclass with setup params. */
   spawn<E extends Entity, P>(
     Class: new () => E & { setup(params: P): void },
     params: P,
+    options?: SpawnOptions,
   ): E;
   /** Spawn an entity subclass without setup params. */
-  spawn<E extends Entity>(Class: new () => E): E;
+  spawn<E extends Entity>(Class: new () => E, options?: SpawnOptions): E;
   spawn(
     nameOrBlueprintOrClass?: string | Blueprint<unknown> | (new () => Entity),
-    params?: unknown,
+    paramsOrOptions?: unknown,
+    maybeOptions?: SpawnOptions,
   ): Entity {
     // Class-based spawn: argument is a constructor function for an Entity subclass
     if (typeof nameOrBlueprintOrClass === "function") {
-      const entity = new nameOrBlueprintOrClass();
+      const Ctor = nameOrBlueprintOrClass;
+      const setupFn = (Ctor.prototype as { setup?: (...a: unknown[]) => void })
+        .setup;
+      const setupHasParams = !!setupFn && setupFn.length > 0;
+
+      let params: unknown;
+      let options: SpawnOptions | undefined;
+      if (maybeOptions !== undefined) {
+        params = paramsOrOptions;
+        options = maybeOptions;
+      } else if (setupHasParams) {
+        params = paramsOrOptions;
+      } else {
+        options = paramsOrOptions as SpawnOptions | undefined;
+      }
+
+      const entity = new Ctor();
       entity._setScene(this, this.entityCallbacks);
+      // Register key BEFORE adding to entities/emitting created — a duplicate
+      // key throw must not leave a half-spawned entity in the scene.
+      if (options?.key !== undefined) this._registerKey(entity, options.key);
       this.entities.add(entity);
       this.bus?.emit("entity:created", { entity });
       entity.setup?.(params);
@@ -150,16 +219,77 @@ export abstract class Scene {
       ? (nameOrBlueprintOrClass as Blueprint<unknown>).name
       : (nameOrBlueprintOrClass as string | undefined);
 
+    // Routing for non-class forms:
+    //   spawn(name, options?)            → paramsOrOptions = options
+    //   spawn(blueprint, params, options?) → paramsOrOptions = params, maybeOptions = options
+    //   spawn(blueprint, options?)        (Blueprint<void>) → paramsOrOptions = options
+    // For blueprints we can't introspect arity reliably (build is user code);
+    // disambiguate via a 3-arg call (always passes options as the third arg)
+    // vs 2-arg (where the second slot is options for void blueprints, or params
+    // for parameterised ones — which is fine because params for a `Blueprint<void>`
+    // doesn't typecheck either way).
+    let blueprintParams: unknown;
+    let options: SpawnOptions | undefined;
+    if (isBlueprint) {
+      if (maybeOptions !== undefined) {
+        blueprintParams = paramsOrOptions;
+        options = maybeOptions;
+      } else if (
+        paramsOrOptions !== undefined &&
+        _looksLikeSpawnOptions(paramsOrOptions)
+      ) {
+        options = paramsOrOptions;
+      } else {
+        blueprintParams = paramsOrOptions;
+      }
+    } else {
+      // spawn(name, options?)
+      options = paramsOrOptions as SpawnOptions | undefined;
+    }
+
     const entity = new Entity(name);
     entity._setScene(this, this.entityCallbacks);
+    if (options?.key !== undefined) this._registerKey(entity, options.key);
     this.entities.add(entity);
     this.bus?.emit("entity:created", { entity });
 
     if (isBlueprint) {
-      (nameOrBlueprintOrClass as Blueprint<unknown>).build(entity, params);
+      (nameOrBlueprintOrClass as Blueprint<unknown>).build(
+        entity,
+        blueprintParams,
+      );
     }
 
     return entity;
+  }
+
+  /**
+   * Look up an entity by its stable identity key, scoped to this scene.
+   * Returns `undefined` for unknown or already-destroyed entities.
+   */
+  findByKey<E extends Entity = Entity>(key: string): E | undefined {
+    const entity = this._identityIndex?.get(key);
+    if (!entity || entity.isDestroyed) return undefined;
+    return entity as E;
+  }
+
+  /**
+   * Internal: register a key on a freshly spawned entity. Throws on
+   * duplicate so callers (Scene.spawn) can abort before adding to
+   * `this.entities` or emitting `entity:created`.
+   * @internal
+   */
+  _registerKey(entity: Entity, key: string): void {
+    this._identityIndex ??= new Map();
+    const existing = this._identityIndex.get(key);
+    if (existing && !existing.isDestroyed) {
+      throw new Error(
+        `Scene "${this.name}" already has an entity with key "${key}". ` +
+          `Destroy it before spawning a duplicate.`,
+      );
+    }
+    this._identityIndex.set(key, entity);
+    entity._setKey(key);
   }
 
   /**
@@ -367,13 +497,25 @@ export abstract class Scene {
       entity._performDestroy();
       this.queryCache?.onEntityDestroyed(entity);
       this.entities.delete(entity);
+      if (
+        entity.key !== undefined &&
+        this._identityIndex?.get(entity.key) === entity
+      ) {
+        // Only evict if the slot still points to *this* entity. A
+        // same-frame destroy + respawn with the same key replaces the
+        // map entry inside `_registerKey`; we must not delete the
+        // replacement here.
+        this._identityIndex.delete(entity.key);
+      }
       this.bus?.emit("entity:destroyed", { entity });
     }
     this.destroyQueue.length = 0;
   }
 
   /**
-   * Destroy all entities — used during scene exit.
+   * Destroy all entities — used during scene exit. Clears the identity
+   * index in bulk; per-entity key removal in `_flushDestroyQueue` is the
+   * in-game path.
    * @internal
    */
   _destroyAllEntities(): void {
@@ -384,5 +526,6 @@ export abstract class Scene {
     this.entities.clear();
     this.destroyQueue.length = 0;
     this._entityEventHandlers?.clear();
+    this._identityIndex?.clear();
   }
 }

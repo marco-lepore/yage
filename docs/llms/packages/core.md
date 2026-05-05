@@ -23,17 +23,29 @@ Zero runtime dependencies. ECS foundation, DI, game loop, scenes, events, proces
 ```ts
 class Entity {
   readonly name: string;
+  readonly key?: string;                      // stable identity (opt-in)
   get scene(): Scene;                         // throws if detached
   get tryScene(): Scene | null;               // null if detached
+  requireKey(): string;                       // throws if no key
   addChild(name: string, child: Entity): void;
-  spawnChild(name: string): Entity;
-  spawnChild<E extends Entity>(name: string, Class: new () => E): E;
+  spawnChild(name: string, options?: SpawnOptions): Entity;
+  spawnChild<E extends Entity>(
+    name: string,
+    Class: new () => E,
+    options?: SpawnOptions,
+  ): E;
   spawnChild<E extends Entity, P>(
     name: string,
     Class: new () => E & { setup(params: P): void },
     params: P,
+    options?: SpawnOptions,
   ): E;
-  spawnChild<P>(name: string, blueprint: Blueprint<P>, params: P): Entity;
+  spawnChild<P>(
+    name: string,
+    blueprint: Blueprint<P>,
+    params: P,
+    options?: SpawnOptions,
+  ): Entity;
 }
 ```
 
@@ -213,6 +225,30 @@ Events: `scene:transition:started { kind, fromScene, toScene }`, `scene:transiti
 | `QueryCache` | Incremental entity query cache |
 | `QueryResult` | Iterable result from `cache.register([Component, ...])` |
 | `filterEntities(entities, filter)` | One-off filter by name, tag, component, or trait |
+
+### Stable Identity
+
+Opt-in per-scene entity keys. Most entities (bullets, particles, transient enemies) don't need them; pass `{ key }` only for entities whose state should persist (chests, doors, named NPCs).
+
+| Export | Purpose |
+|---|---|
+| `SpawnOptions` | `{ key?: string }` — trailing arg of `scene.spawn` / `entity.spawnChild` |
+| `entity.key` | `string \| undefined` — the assigned key |
+| `entity.requireKey()` | Returns `key` or throws (use in component `setup()`) |
+| `scene.findByKey<E>(key)` | Look up entity by key, scene-scoped, hides destroyed entities |
+
+```ts
+scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
+scene.spawn(Plain, { key: "spawn-point" });        // class with no setup-params
+scene.spawn("anchor", { key: "anchor-01" });       // anonymous entity with a key
+parent.spawnChild("body", Bone, { key: "bone-01" });
+
+const chest = scene.findByKey<Chest>("forest/chest-01");
+```
+
+Routing for `spawn(Class, X)`: if the class declares `setup(params: P)` (arity ≥ 1), `X` is `params`; otherwise `X` is `SpawnOptions`. If your class has `setup(params?: P)` (optional), TS routes via `SpawnOptions` — drop the `?` or use the 3-arg form `spawn(Class, params, { key })`.
+
+Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`defineSet<string>("world.opened")`).
 
 ### Assets
 

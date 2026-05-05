@@ -3,7 +3,7 @@ import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import type { Blueprint } from "./Blueprint.js";
 import type { SnapshotResolver } from "./Serializable.js";
-import type { Scene } from "./Scene.js";
+import type { Scene, SpawnOptions } from "./Scene.js";
 import { TRAITS_KEY, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 
@@ -38,6 +38,13 @@ export class Entity {
   readonly name: string;
   /** Tags for group queries. */
   readonly tags: Set<string>;
+  /**
+   * Stable identity key, scene-scoped. Set at spawn-time when
+   * `options.key` is passed to `scene.spawn` / `entity.spawnChild`;
+   * `undefined` otherwise. Used with `scene.findByKey` and as a stable
+   * id in persistent stores (e.g. `defineSet<string>("world.opened")`).
+   */
+  readonly key?: string;
 
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
@@ -136,24 +143,38 @@ export class Entity {
    * this.spawnChild("hp", EnemyHealthBar);
    * ```
    */
-  spawnChild(name: string): Entity;
-  spawnChild<E extends Entity>(name: string, Class: new () => E): E;
+  spawnChild(name: string, options?: SpawnOptions): Entity;
+  spawnChild<E extends Entity>(
+    name: string,
+    Class: new () => E,
+    options?: SpawnOptions,
+  ): E;
   spawnChild<E extends Entity, P>(
     name: string,
     Class: new () => E & { setup(params: P): void },
     params: P,
+    options?: SpawnOptions,
   ): E;
   spawnChild<P>(
     name: string,
     blueprint: Blueprint<P>,
     params: P,
+    options?: SpawnOptions,
   ): Entity;
   // eslint-disable-next-line @typescript-eslint/unified-signatures -- preserves Class return-type narrowing on the overload above
-  spawnChild(name: string, blueprint: Blueprint<void>): Entity;
   spawnChild(
     name: string,
-    classOrBlueprint?: (new () => Entity) | Blueprint<unknown>,
-    params?: unknown,
+    blueprint: Blueprint<void>,
+    options?: SpawnOptions,
+  ): Entity;
+  spawnChild(
+    name: string,
+    classOrBlueprintOrOptions?:
+      | (new () => Entity)
+      | Blueprint<unknown>
+      | SpawnOptions,
+    paramsOrOptions?: unknown,
+    maybeOptions?: SpawnOptions,
   ): Entity {
     const scene = this.scene;
     // Validate before spawning so we don't leave an orphan entity in the
@@ -170,13 +191,20 @@ export class Entity {
     // into `Scene.spawn`'s matching overloads without per-variant
     // branches. When no class/blueprint is provided, forward `name` as
     // the entity's own name so `child.name` matches the child-map key.
-    const child =
-      classOrBlueprint === undefined
-        ? scene.spawn(name)
-        : (scene.spawn as (a?: unknown, b?: unknown) => Entity)(
-            classOrBlueprint,
-            params,
-          );
+    let child: Entity;
+    if (classOrBlueprintOrOptions === undefined) {
+      child = scene.spawn(name);
+    } else if (
+      typeof classOrBlueprintOrOptions === "object" &&
+      !("build" in classOrBlueprintOrOptions)
+    ) {
+      // spawnChild(name, options)
+      child = scene.spawn(name, classOrBlueprintOrOptions as SpawnOptions);
+    } else {
+      child = (
+        scene.spawn as (a?: unknown, b?: unknown, c?: unknown) => Entity
+      )(classOrBlueprintOrOptions, paramsOrOptions, maybeOptions);
+    }
     this.addChild(name, child);
     return child;
   }
@@ -367,6 +395,21 @@ export class Entity {
   }
 
   /**
+   * Return the stable key, or throw if this entity was spawned without one.
+   * Use inside component `setup()` when the component depends on identity
+   * (e.g. reading from a `defineSet` keyed by entity id).
+   */
+  requireKey(): string {
+    if (this.key === undefined) {
+      throw new Error(
+        `Entity "${this.name}" (id=${this.id}) has no stable key. ` +
+          `Pass { key: "..." } to scene.spawn(...) or entity.spawnChild(...).`,
+      );
+    }
+    return this.key;
+  }
+
+  /**
    * Internal: set the scene and callbacks. Called by Scene.spawn().
    * @internal
    */
@@ -376,5 +419,20 @@ export class Entity {
   ): void {
     this._scene = scene;
     this.callbacks = callbacks;
+  }
+
+  /**
+   * Internal: assign the stable identity key. Called by `Scene._registerKey`
+   * during spawn. Throws if the entity already has a key — keys are
+   * immutable for an entity's lifetime.
+   * @internal
+   */
+  _setKey(key: string): void {
+    if (this.key !== undefined) {
+      throw new Error(
+        `Entity "${this.name}" already has key "${this.key}".`,
+      );
+    }
+    (this as { key?: string }).key = key;
   }
 }

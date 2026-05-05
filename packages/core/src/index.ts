@@ -116,6 +116,7 @@ export type {
 } from "./Inspector.js";
 
 export { Scene } from "./Scene.js";
+export type { SpawnOptions } from "./Scene.js";
 
 export { LoadingScene } from "./LoadingScene.js";
 

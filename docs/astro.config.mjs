@@ -139,6 +139,10 @@ export default defineConfig({
             { label: "Scene Management", slug: "patterns/scene-management" },
             { label: "State Management", slug: "patterns/state-management" },
             {
+              label: "Persistent World State",
+              slug: "patterns/persistent-world-state",
+            },
+            {
               label: "Common Game Patterns",
               slug: "patterns/common-game-patterns",
             },
