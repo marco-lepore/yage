@@ -2,7 +2,7 @@
 export type UntypedSlots = Record<string, any>;
 
 /** Pluggable storage backend for save data. */
-export interface SaveStorage {
+export interface SnapshotStorage {
   load(key: string): string | null;
   save(key: string, data: string): void;
   delete(key: string): void;
@@ -18,7 +18,7 @@ export interface GameSnapshot {
   /**
    * Extension data contributed by plugins outside the entity/component model
    * — e.g. layer/scene/screen-scope effects from the renderer. Keyed by the
-   * string passed to `SaveService.registerSnapshotExtra`.
+   * string passed to `SnapshotService.registerSnapshotExtra`.
    */
   extras?: Record<string, unknown>;
 }

@@ -285,6 +285,40 @@ class Boot extends LoadingScene {
 
 Emits `scene:loading:progress` and `scene:loading:done` on `EventBusKey`. Set `autoContinue = false` and call `scene.continue()` to gate the handoff (e.g. "press any key").
 
+## State
+
+Typed reactive primitives for game-wide singleton state. Used by `@yagejs/ui-react`'s `useStore`, the save layer (via `defineStore` etc.), and any code wanting a typed singleton with subscribers.
+
+```ts
+import { createAtom, createStore, defineStore, defineSet, defineMap, defineCounter } from "@yagejs/core";
+
+// Minimal reactive cell (signal-shaped)
+const a = createAtom(0);
+a.get();             // 0
+a.set(1);            // notifies subscribers iff Object.is(old, next) is false
+a.subscribe(v => …); // returns unsubscribe
+
+// Object-shaped store with shallow merge
+const store = createStore({ score: 0, hp: 100 });
+store.get();                  // Readonly<{score, hp}>, stable ref between sets
+store.set({ score: 5 });      // shallow merge, only notifies on change
+store.subscribe(() => …);
+
+// Persistent stores — add id/version/migrate/codec/serialize/hydrate.
+// Save layer (`@yagejs/save`) consumes these.
+const settings = defineStore<Settings>("settings", {
+  version: 1,
+  defaults: () => ({ music: 0.8, sfx: 1.0 }),
+});
+const opened   = defineSet<string>("world.opened");          // .has/.add/.remove
+const enemies  = defineMap<string, number>("world.enemies"); // .has/.get/.set/.remove
+const restEpoch = defineCounter("world.rest");                // .value/.set/.increment/.decrement
+```
+
+Codecs for non-JSON-native types: `jsonCodec()`, `setCodec<K>()`, `mapCodec<K,V>()`, `dateCodec()`. Set/Map/Counter wrappers bundle codecs internally; you only specify a codec on `defineStore<T>` for exotic types.
+
+Test reset: `_resetAllStoresForTesting()` resets every defined store to defaults. See `@yagejs/save` docs for the IO layer that consumes these.
+
 ## Core Types
 
 ```ts

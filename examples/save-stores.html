@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Save Stores</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Save Stores</h1>
+    <p style="font-size: 0.85rem; color: #888; max-width: 700px; text-align: center; line-height: 1.4;">
+      Multi-scene demo of typed reactive stores. Menu has Continue / New Game and a
+      slot list. Gameplay has a HUD and pause overlay (<kbd>Esc</kbd>) where you save
+      to a slot. Settings is a separate scene with auto-persisted sliders. All UI
+      lives in <code>@yagejs/ui-react</code>; saves go through <code>SaveServiceKey</code>.
+    </p>
+
+    <div id="game-container"></div>
+
+    <div class="controls">
+      <span><kbd>Esc</kbd> open pause menu</span>
+      <span>Reload to verify Continue restores latest run</span>
+    </div>
+
+    <script type="module" src="/src/save-stores.tsx"></script>
+  </body>
+</html>

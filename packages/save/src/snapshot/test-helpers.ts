@@ -1,7 +1,7 @@
-import type { SaveStorage } from "./types.js";
+import type { SnapshotStorage } from "./types.js";
 
-/** In-memory SaveStorage for testing. */
-export class MemoryStorage implements SaveStorage {
+/** In-memory SnapshotStorage for testing. */
+export class MemoryStorage implements SnapshotStorage {
   private data = new Map<string, string>();
 
   load(key: string): string | null {

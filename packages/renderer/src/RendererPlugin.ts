@@ -43,7 +43,7 @@ import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
 
 import "./scene-augmentation.js";
 
-interface SaveServiceLike {
+interface SnapshotServiceLike {
   registerSnapshotExtra(key: string, contributor: SnapshotContributor): void;
   unregisterSnapshotExtra(key: string): void;
 }
@@ -205,40 +205,40 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 10. Stash the context for use in onStart, where the save bridge is
+    // 10. Stash the context for use in onStart, where the snapshot bridge is
     //     wired up — we need to wait for every plugin to install before
-    //     resolving SaveServiceKey, otherwise registration order matters.
+    //     resolving SnapshotServiceKey, otherwise registration order matters.
     this._engineContext = context;
   }
 
   async onStart(): Promise<void> {
-    // Bridge layer/scene/screen-scope effects + masks into the save system.
+    // Bridge layer/scene/screen-scope effects + masks into the snapshot system.
     // `@yagejs/save` is an optional peer dep — the dynamic import + try/catch
     // lets the renderer keep working when it's not installed (the contributor
     // simply doesn't register). Done in onStart, not install, so RendererPlugin
-    // and SavePlugin can be registered in any order.
+    // and SnapshotPlugin can be registered in any order.
     if (!this._engineContext) return;
-    await this.tryRegisterSaveContributor(this._engineContext);
-    // Drop the install-time context reference once the save bridge is wired —
+    await this.tryRegisterSnapshotContributor(this._engineContext);
+    // Drop the install-time context reference once the snapshot bridge is wired —
     // we don't need it past startup, no point holding the EngineContext alive
     // for the plugin's lifetime.
     this._engineContext = null;
   }
 
-  private async tryRegisterSaveContributor(
+  private async tryRegisterSnapshotContributor(
     context: EngineContext,
   ): Promise<void> {
     let save: typeof SaveModule;
     try {
       save = await import("@yagejs/save");
     } catch {
-      // @yagejs/save not installed — save support for renderer-scope effects
+      // @yagejs/save not installed — snapshot support for renderer-scope effects
       // is unavailable. Component-scope effects still serialize through the
       // visual components' own snapshot path.
       return;
     }
-    const key = save.SaveServiceKey as
-      | ServiceKey<SaveServiceLike>
+    const key = save.SnapshotServiceKey as
+      | ServiceKey<SnapshotServiceLike>
       | undefined;
     if (!key) return;
     const service = context.tryResolve(key);

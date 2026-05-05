@@ -1,32 +1,31 @@
 import type { EngineContext, Plugin } from "@yagejs/core";
-import type { SaveStorage } from "./types.js";
-import { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";
-import { SaveService } from "./SaveService.js";
+import type { Save } from "./Save.js";
 import { SaveServiceKey } from "./keys.js";
 
-/** Options for the SavePlugin. */
 export interface SavePluginOptions {
-  /** Custom storage backend. Defaults to LocalStorageSaveStorage. */
-  storage?: SaveStorage;
-  /** Namespace for stored keys. Defaults to "yage". */
-  namespace?: string;
+  /**
+   * Save instance to register. Constructed in user code (typically in `main.ts`)
+   * so it's also available before the engine starts — for restoring settings,
+   * loading a save slot, or other boot-time work.
+   */
+  save: Save;
 }
 
-/** Plugin that registers SaveService into the engine context. */
+/**
+ * Registers a Save instance under `SaveServiceKey` so components can resolve it
+ * via `this.use(SaveServiceKey)` for in-game persistence.
+ */
 export class SavePlugin implements Plugin {
   readonly name = "save";
   readonly version = "1.0.0";
 
   private readonly options: SavePluginOptions;
 
-  constructor(options?: SavePluginOptions) {
-    this.options = options ?? {};
+  constructor(options: SavePluginOptions) {
+    this.options = options;
   }
 
   install(context: EngineContext): void {
-    const storage = this.options.storage ?? new LocalStorageSaveStorage();
-    const service = new SaveService(storage, context, this.options.namespace);
-
-    context.register(SaveServiceKey, service);
+    context.register(SaveServiceKey, this.options.save);
   }
 }

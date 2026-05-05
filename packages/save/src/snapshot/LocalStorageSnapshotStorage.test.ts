@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { LocalStorageSaveStorage } from "./LocalStorageAdapter.js";
+import { LocalStorageSnapshotStorage } from "./LocalStorageSnapshotStorage.js";
 
 /** Minimal localStorage stub — no jsdom needed. */
 function createLocalStorageStub(): Storage {
@@ -14,13 +14,13 @@ function createLocalStorageStub(): Storage {
   };
 }
 
-describe("LocalStorageSaveStorage", () => {
-  let storage: LocalStorageSaveStorage;
+describe("LocalStorageSnapshotStorage", () => {
+  let storage: LocalStorageSnapshotStorage;
 
   beforeEach(() => {
     const stub = createLocalStorageStub();
     Object.defineProperty(globalThis, "localStorage", { value: stub, configurable: true });
-    storage = new LocalStorageSaveStorage();
+    storage = new LocalStorageSnapshotStorage();
   });
 
   it("load returns null for missing key", () => {

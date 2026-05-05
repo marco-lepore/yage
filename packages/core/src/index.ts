@@ -186,3 +186,34 @@ export {
   createMockEntity,
   advanceFrames,
 } from "./test-utils.js";
+
+export {
+  createAtom,
+  createStore,
+  defineStore,
+  defineSet,
+  defineMap,
+  defineCounter,
+  StoreVersionTooNewError,
+  StoreMigrationMissingError,
+  jsonCodec,
+  setCodec,
+  mapCodec,
+  dateCodec,
+  _resetAllStoresForTesting,
+  _clearStoreRegistryForTesting,
+} from "./state/index.js";
+export type {
+  Atom,
+  Store,
+  Codec,
+  PersistentLike,
+  PersistentStore,
+  PersistentSet,
+  PersistentMap,
+  PersistentCounter,
+  DefineStoreOptions,
+  DefineSetOptions,
+  DefineMapOptions,
+  DefineCounterOptions,
+} from "./state/index.js";

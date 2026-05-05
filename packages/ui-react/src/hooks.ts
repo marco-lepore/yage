@@ -67,15 +67,13 @@ function subscribeFrame(listener: () => void): () => void {
  * Push-based via `useSyncExternalStore` — re-renders only when the selected
  * value changes.
  */
-export function useStore<T extends Record<string, unknown>>(
-  store: Store<T>,
-): Readonly<T>;
-export function useStore<T extends Record<string, unknown>, R>(
+export function useStore<T extends object>(store: Store<T>): Readonly<T>;
+export function useStore<T extends object, R>(
   store: Store<T>,
   selector: (state: Readonly<T>) => R,
   isEqual?: (a: R, b: R) => boolean,
 ): R;
-export function useStore<T extends Record<string, unknown>, R = Readonly<T>>(
+export function useStore<T extends object, R = Readonly<T>>(
   store: Store<T>,
   selector?: (state: Readonly<T>) => R,
   isEqual: (a: R, b: R) => boolean = shallowEqual as (a: R, b: R) => boolean,
