@@ -11,7 +11,8 @@ import { SceneManager } from "./SceneManager.js";
 import { QueryCache } from "./QueryCache.js";
 import { EventBus } from "./EventBus.js";
 import type { EngineEvents } from "./EventBus.js";
-import { _resetEntityIdCounter } from "./Entity.js";
+import { Entity, _resetEntityIdCounter } from "./Entity.js";
+import { defineBlueprint } from "./Blueprint.js";
 
 class TestScene extends Scene {
   readonly name = "test";
@@ -235,5 +236,227 @@ describe("Scene", () => {
     scene.destroyEntity(e);
     scene._flushDestroyQueue();
     expect(scene.getEntities().size).toBe(0);
+  });
+
+  describe("stable identity", () => {
+    class KeyedEntity extends Entity {
+      capturedKey: string | undefined;
+      override setup(): void {
+        this.capturedKey = this.key;
+      }
+    }
+
+    class KeyedWithParams extends Entity {
+      content: string[] = [];
+      override setup(params: { content: string[] }): void {
+        this.content = params.content;
+      }
+    }
+
+    class Plain extends Entity {}
+
+    // Regression: `setup(params: T = {})` reports `setup.length === 0` but
+    // is still a setup method. The runtime must route the 2nd arg to
+    // params (matching TS overload selection), not silently drop it as
+    // misidentified options.
+    class DefaultedSetup extends Entity {
+      received: { x?: number } = {};
+      override setup(params: { x?: number } = {}): void {
+        this.received = params;
+      }
+    }
+
+    it("spawn(name, { key }) registers the key and exposes it via findByKey", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn("npc", { key: "elder" });
+      expect(e.key).toBe("elder");
+      expect(scene.findByKey("elder")).toBe(e);
+    });
+
+    it("spawn(Class, { key }) routes the second arg to options when class has no setup params", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(Plain, { key: "marker" });
+      expect(e.key).toBe("marker");
+      expect(scene.findByKey("marker")).toBe(e);
+    });
+
+    it("spawn(Class, params) routes to setup() when setup uses default-valued params", () => {
+      // setup(params: P = {}).length === 0 — must NOT misroute params as options.
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(DefaultedSetup, { x: 42 });
+      expect(e.received).toEqual({ x: 42 });
+      expect(e.key).toBeUndefined();
+    });
+
+    it("spawn(Class, params, { key }) keys an entity that needs setup params", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(
+        KeyedWithParams,
+        { content: ["potion"] },
+        { key: "forest/chest-01" },
+      );
+      expect(e.key).toBe("forest/chest-01");
+      expect(e.content).toEqual(["potion"]);
+      expect(scene.findByKey("forest/chest-01")).toBe(e);
+    });
+
+    it("spawn(Blueprint, params, { key }) keys a blueprint-spawned entity", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const bp = defineBlueprint<{ x: number }>("door", () => {});
+      const e = scene.spawn(bp, { x: 0 }, { key: "door-01" });
+      expect(e.key).toBe("door-01");
+      expect(scene.findByKey("door-01")).toBe(e);
+    });
+
+    it("spawn(VoidBlueprint, { key }) keys a void blueprint via the 2-arg form", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const bp = defineBlueprint("anchor", () => {});
+      const e = scene.spawn(bp, { key: "anchor-01" });
+      expect(e.key).toBe("anchor-01");
+      expect(scene.findByKey("anchor-01")).toBe(e);
+    });
+
+    it("entity without a key returns undefined from .key and throws on requireKey", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn("plain");
+      expect(e.key).toBeUndefined();
+      expect(() => e.requireKey()).toThrow(/no stable key/);
+    });
+
+    it("key is set before setup() runs (entity.requireKey is safe in setup)", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(KeyedEntity, { key: "captured" });
+      expect(e.capturedKey).toBe("captured");
+    });
+
+    it("spawn(Class, options) keys a setup-bearing class when the 2nd arg is options-shaped", () => {
+      // setup(params = {}) — arity 0 but params still flow when present.
+      // Passing a key-only object as the 2nd arg routes it to options, not
+      // params, because the shape matches SpawnOptions exactly.
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(DefaultedSetup, { key: "defaulted" });
+      expect(e.key).toBe("defaulted");
+      expect(e.received).toEqual({});
+    });
+
+    it("duplicate key throws and leaves no orphan entity in the scene", () => {
+      const { ctx, bus } = createContext();
+      const created = vi.fn();
+      bus.on("entity:created", created);
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const first = scene.spawn(Plain, { key: "dup" });
+      expect(created).toHaveBeenCalledTimes(1);
+      expect(() => scene.spawn(Plain, { key: "dup" })).toThrow(
+        /already has an entity with key "dup"/,
+      );
+      // No second emission, no half-spawned second entity in the scene.
+      expect(created).toHaveBeenCalledTimes(1);
+      expect(scene.getEntities().size).toBe(1);
+      expect(scene.findByKey("dup")).toBe(first);
+    });
+
+    it("findByKey returns undefined for destroyed entities (before flush)", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(Plain, { key: "doomed" });
+      e.destroy();
+      // Still in queue, not flushed — but findByKey should hide it.
+      expect(scene.findByKey("doomed")).toBeUndefined();
+    });
+
+    it("entity.destroy() + flush removes the key from the index", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const e = scene.spawn(Plain, { key: "doomed" });
+      e.destroy();
+      scene._flushDestroyQueue();
+      expect(scene.findByKey("doomed")).toBeUndefined();
+      // Re-using the key after flush is now allowed.
+      const replacement = scene.spawn(Plain, { key: "doomed" });
+      expect(scene.findByKey("doomed")).toBe(replacement);
+    });
+
+    it("same-frame destroy + respawn with the same key keeps the replacement findable after flush", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const first = scene.spawn(Plain, { key: "reused" });
+      first.destroy();
+      // Destroyed but not flushed — registering again must succeed (the
+      // existing entry is destroyed, so the duplicate guard skips it) and
+      // must not be evicted by the subsequent flush of the dead entity.
+      const replacement = scene.spawn(Plain, { key: "reused" });
+      scene._flushDestroyQueue();
+      expect(scene.findByKey("reused")).toBe(replacement);
+    });
+
+    it("scene teardown clears the identity index", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      scene.spawn(Plain, { key: "a" });
+      scene.spawn(Plain, { key: "b" });
+      scene._destroyAllEntities();
+      expect(scene.findByKey("a")).toBeUndefined();
+      expect(scene.findByKey("b")).toBeUndefined();
+    });
+
+    it("entity.spawnChild(name, Class, params, { key }) registers in the parent's scene index", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const parent = scene.spawn("parent");
+      const child = parent.spawnChild(
+        "body",
+        KeyedWithParams,
+        { content: ["bone"] },
+        { key: "child-01" },
+      );
+      expect(child.key).toBe("child-01");
+      expect(scene.findByKey("child-01")).toBe(child);
+      expect(parent.children.get("body")).toBe(child);
+    });
+
+    it("entity.spawnChild(name, Class, { key }) keys a no-params child", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const parent = scene.spawn("parent");
+      const child = parent.spawnChild("dot", Plain, { key: "dot-01" });
+      expect(child.key).toBe("dot-01");
+      expect(scene.findByKey("dot-01")).toBe(child);
+    });
+
+    it("entity.spawnChild(name, { key }) keys an anonymous child", () => {
+      const { ctx } = createContext();
+      const scene = new TestScene();
+      scene._setContext(ctx);
+      const parent = scene.spawn("parent");
+      const child = parent.spawnChild("hp", { key: "hp-bar-01" });
+      expect(child.key).toBe("hp-bar-01");
+      expect(child.name).toBe("hp");
+      expect(scene.findByKey("hp-bar-01")).toBe(child);
+    });
   });
 });

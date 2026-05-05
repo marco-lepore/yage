@@ -1,0 +1,214 @@
+---
+title: "Persistent World State"
+description: "Stable entity identity + reactive stores for chests, doors, one-shot events, and other persistent world facts."
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+YAGE ships two primitives that compose into the canonical "openable chest"
+pattern (and most other world-fact patterns games need):
+
+- **Stable identity** — opt-in per-scene keys for entities whose state should
+  persist across save/load or scene navigation. `scene.spawn(..., { key })`,
+  `entity.key`, `scene.findByKey(key)`.
+- **Reactive stores** — `defineSet`, `defineMap`, `defineCounter` keyed by
+  string IDs.
+
+Identity is just an enabler. The save layer doesn't see entity keys; it only
+sees stores. Game code threads the stable id through both.
+
+## Why opt-in
+
+Most entities never need a stable key — bullets, particles, transient enemies,
+UI markers. A key is metadata for *the entities you want to address by name
+across time*: chests, doors, named NPCs, spawn anchors, one-shot trigger
+volumes. Keeping identity opt-in avoids tempting callers to use it as a
+general-purpose lookup and keeps the base `Entity` lean.
+
+## Spawning a keyed entity
+
+```typescript
+// Class with setup params + key:
+scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
+
+// Class with no setup params, just a key:
+scene.spawn(SpawnAnchor, { key: "anchors/forest" });
+
+// Anonymous keyed entity:
+scene.spawn("village-bell", { key: "village/bell" });
+
+// Keyed child:
+parent.spawnChild("body", BoneEntity, { content: ["femur"] }, { key: "bone-01" });
+```
+
+Look it up later, anywhere in the scene:
+
+```typescript
+const chest = scene.findByKey<Chest>("forest/chest-01");
+```
+
+`findByKey` is scene-scoped and hides destroyed entities (between
+`entity.destroy()` and end-of-frame flush, the index still holds the entry,
+but `findByKey` returns `undefined` so callers don't act on a dying entity).
+
+## The Openable pattern
+
+A chest that remembers it has been opened. Three pieces:
+
+### 1. A persistent store, keyed by entity id
+
+```typescript
+// game/world/persistence.ts
+import { defineSet } from "@yagejs/core";
+
+export const opened = defineSet<string>("world.opened");
+```
+
+The store is keyed by `string` — those strings are entity keys. Save/load
+serialises the store; identity is what makes the strings meaningful.
+
+### 2. A trait — an interface contract
+
+```typescript
+// game/traits/Openable.ts
+import { defineTrait } from "@yagejs/core";
+
+export interface Openable {
+  isOpen(): boolean;
+  open(): void;
+}
+export const Openable = defineTrait<Openable>("Openable");
+```
+
+Traits are *queryable interface contracts*, not custom Components. Different
+entities can satisfy the same trait via different components — chests,
+treasure piles, secret doors — and `scene.query(Openable)` returns all of
+them.
+
+### 3. A component that wires identity + store + trait
+
+```typescript
+// game/components/OpenableState.ts
+import { Component, trait, defineEvent } from "@yagejs/core";
+import { opened } from "../world/persistence.js";
+import { Openable } from "../traits/Openable.js";
+
+export const Opened = defineEvent<{ silent?: boolean }>("opened");
+
+@trait(Openable)
+export class OpenableState extends Component implements Openable {
+  override setup(): void {
+    const id = this.entity.requireKey();
+    if (opened.has(id)) {
+      this.entity.emit(Opened, { silent: true });
+    }
+  }
+
+  isOpen(): boolean {
+    return opened.has(this.entity.requireKey());
+  }
+
+  open(): void {
+    const id = this.entity.requireKey();
+    if (opened.has(id)) return;
+    opened.add(id);
+    this.entity.emit(Opened, { silent: false });
+  }
+}
+```
+
+`requireKey()` throws if the entity wasn't spawned with `{ key }`. That fail-
+loud behaviour is intentional: a component that depends on identity should
+crash early rather than silently mishandle keyless entities.
+
+The component is set up *after* the key is assigned, so `requireKey()` is safe
+inside `setup()`.
+
+### Putting it together
+
+```typescript
+class Chest extends Entity {
+  override setup(params: { content: string[] }): void {
+    this.add(new OpenableState());
+    this.add(new ChestSprite(params.content));
+  }
+}
+
+// Game code:
+scene.spawn(Chest, { content: ["potion"] }, { key: "forest/chest-01" });
+
+// Player opens the chest:
+scene.findByKey<Chest>("forest/chest-01")?.get(OpenableState).open();
+
+// Later (e.g. after save/load), the same chest skips the open animation
+// because `opened` already contains its key.
+```
+
+## Variants
+
+The same composition handles more than chests.
+
+### One-shot cutscene flag
+
+```typescript
+// game/world/persistence.ts
+export const triggered = defineSet<string>("world.triggered");
+
+// game/components/OneShot.ts
+class OneShotTrigger extends Component {
+  fire(): void {
+    const id = this.entity.requireKey();
+    if (triggered.has(id)) return;
+    triggered.add(id);
+    this.entity.emit(Triggered);
+  }
+}
+
+scene.spawn(StoryTrigger, { key: "intro/meet-elder" });
+```
+
+### Respawnable resource node
+
+```typescript
+// "harvested at frame N" → respawns after some interval
+export const harvestedAt = defineMap<string, number>("world.harvestedAt");
+
+class RespawnableState extends Component {
+  isHarvested(currentFrame: number, cooldown: number): boolean {
+    const at = harvestedAt.get(this.entity.requireKey());
+    return at !== undefined && currentFrame - at < cooldown;
+  }
+
+  harvest(currentFrame: number): void {
+    harvestedAt.set(this.entity.requireKey(), currentFrame);
+  }
+}
+```
+
+## Notes & gotchas
+
+<Aside type="note">
+**YAGE does not ship `Openable` / `OneShot` / `Respawnable` as a package.**
+They're 20 lines each in your game, and that's the right place for them — the
+exact contract differs per game (some chests have inventory, some doors need
+animations, some triggers gate on player level). The engine ships
+*identity + stores + codecs*; the patterns live in your codebase.
+</Aside>
+
+<Aside type="caution">
+**Duplicate keys throw.** Spawning two entities with the same key in one scene
+throws an error before the second entity is added. The first entity is still
+findable; the second is never created. To swap, destroy the first and let the
+end-of-frame flush remove its key, or do it next frame.
+</Aside>
+
+**Keys are immutable per entity.** No rename API. Destroy + respawn.
+
+**Identity is per-scene.** Stacked scenes (e.g. paused inventory over a game
+scene) each have their own index. Cross-scene lookups go through whichever
+scene owns the entity.
+
+**Identity is independent of `@yagejs/save`.** The save layer reads stores,
+not entity keys. You can use the identity primitive without enabling save, and
+you can use save without keying every entity. They compose because game code
+threads the stable id through both.
