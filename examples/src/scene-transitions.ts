@@ -13,9 +13,12 @@ import {
   RendererPlugin,
   GraphicsComponent,
   SceneRenderTreeProviderKey,
+  chessboard,
   crossFade,
   fade,
   flash,
+  iris,
+  slidePush,
 } from "@yagejs/renderer";
 import {
   Anchor,
@@ -268,6 +271,24 @@ bind("btn-push-crossfade", () => {
 bind("btn-push-slide", () => {
   void engine.scenes.push(nextScene(), {
     transition: slideIn(currentDuration()),
+  });
+});
+
+bind("btn-push-iris", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: iris({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-push-chessboard", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: chessboard({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-push-slidepush", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: slidePush({ duration: currentDuration() }),
   });
 });
 

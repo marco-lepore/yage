@@ -5,7 +5,7 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 ## Usage
 
 ```ts
-import { crossFade, fade, flash } from "@yagejs/renderer";
+import { chessboard, crossFade, fade, flash, iris, slidePush } from "@yagejs/renderer";
 
 // Push with a fade
 await engine.scenes.push(nextScene, { transition: fade({ duration: 400 }) });
@@ -15,6 +15,15 @@ await engine.scenes.pop({ transition: flash({ duration: 200, color: 0xff0000 }) 
 
 // Replace with a cross-dissolve
 await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 }) });
+
+// Iris-out → swap → iris-in (Zelda-style)
+await engine.scenes.replace(nextScene, { transition: iris({ duration: 700 }) });
+
+// Checkerboard wipe with a custom grid
+await engine.scenes.push(nextScene, { transition: chessboard({ rows: 4, cols: 6 }) });
+
+// Both scenes slide together (incoming pushes the previous one off)
+await engine.scenes.push(nextScene, { transition: slidePush({ direction: "left" }) });
 
 // Per-scene default
 class MenuScene extends Scene {
@@ -56,6 +65,9 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 | `fade({ duration?, color? })` | Triangle alpha ramp: fade out → fade in. Scene swap happens under the fully-opaque mid-point. Default 300ms, black. |
 | `flash({ duration?, color? })` | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 200ms, white. |
 | `crossFade({ duration? })` | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 400ms. |
+| `iris({ duration?, color?, center? })` | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. Default 600ms, black, screen-center. |
+| `chessboard({ duration?, rows?, cols?, color? })` | Two-pass checkerboard wipe: even-parity cells fade in first, odd-parity follow; both fully cover at the mid-point, then fade out in the same stagger to reveal the destination. Default 700ms, 6×10, black. |
+| `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 500ms, cubic ease-out. |
 | `getSceneContainer(ctx, scene)` | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized. |
 
 For multi-step sequences (delayed fades, strobing flashes, etc.) write a
