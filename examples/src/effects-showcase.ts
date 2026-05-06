@@ -3,6 +3,13 @@
  * scope (component, layer, scene, screen) and demonstrates that the state
  * survives a save/load round-trip.
  *
+ * The toggle UI lives on its own screen-space `"ui"` layer, ABOVE the
+ * `"world"` layer that gets bloomed/pixelated/halftoned/etc. Layer-scope
+ * effects on `"world"` paint only that layer, so the UI stays crisp through
+ * every world-level toggle. Scene-scope (`tree.fx`) and screen-scope
+ * (`renderer.fx`) effects DO cover the UI — that's what those scopes mean,
+ * and toggling crt or vignette puts the UI under the same treatment.
+ *
  * Geometry is procedural (`GraphicsComponent.draw`) and the engine doesn't
  * persist drawing commands across save/load, so each shape lives on its
  * own `@serializable` entity that re-runs its draw in `afterRestore()`.
@@ -29,6 +36,7 @@ import {
 } from "@yagejs/renderer";
 import type { EffectHandle, MaskHandle } from "@yagejs/renderer";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
+import { UIPlugin, UIPanel, UIButton, Anchor, type ColorBackground } from "@yagejs/ui";
 import {
   hitFlash,
   bloom,
@@ -40,31 +48,22 @@ import {
   chromaticAberration,
   vignette,
   colorGrade,
+  godRay,
+  shockwave,
+  motionBlur,
+  oldFilm,
+  bulgePinch,
+  halftone,
+  wave,
 } from "@yagejs/effects";
-import type { HitFlashHandle } from "@yagejs/effects";
+import type { HitFlashHandle, ShockwaveHandle } from "@yagejs/effects";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
-const STAGE_WIDTH = 800;
-const STAGE_HEIGHT = 600;
+const STAGE_WIDTH = 900;
+const STAGE_HEIGHT = 640;
+const SIDEBAR_WIDTH = 248;
 
 injectStyles(`
-  #panel {
-    position: fixed; top: 1rem; right: 1rem;
-    background: rgba(0,0,0,0.85); color: #ffe66d;
-    font-family: monospace; font-size: 0.85rem;
-    padding: 0.75rem 1rem; border-radius: 6px;
-    line-height: 1.6; min-width: 12rem;
-  }
-  #panel h3 { margin: 0.5rem 0 0.25rem; color: #fff; font-size: 0.9rem; }
-  #panel button {
-    display: block; width: 100%; margin: 0.15rem 0;
-    background: #1f2937; color: #ffe66d; border: 1px solid #374151;
-    padding: 0.25rem 0.5rem; cursor: pointer; font-family: monospace;
-    text-align: left;
-  }
-  #panel button.on { background: #0ea5e9; color: #fff; }
-  #panel button:hover { background: #374151; }
-  #panel button.on:hover { background: #0284c7; }
   #toast {
     position: fixed; bottom: 2rem; left: 50%;
     transform: translateX(-50%);
@@ -76,10 +75,6 @@ injectStyles(`
   }
   #toast.show { opacity: 1; }
 `);
-
-const panel = document.createElement("div");
-panel.id = "panel";
-document.body.appendChild(panel);
 
 const toast = document.createElement("div");
 toast.id = "toast";
@@ -93,11 +88,49 @@ function showToast(msg: string): void {
   toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1500);
 }
 
+// ---------------------------------------------------------------------------
+// Layer setup. The "ui" layer is screen-space and ordered above everything
+// else, so it's not transformed by cameras and isn't part of the "world"
+// layer's effects host. World-scope effects (bloom, halftone, etc.) attach
+// to the "world" RenderLayer's container — the UI layer is a sibling, not a
+// descendant, and is unaffected.
+// ---------------------------------------------------------------------------
 const layers: LayerDef[] = [
   { name: "background", order: -10 },
   { name: "world", order: 0 },
-  { name: "hud", order: 100 },
+  { name: "ui", order: 1000, space: "screen" },
 ];
+
+// Toggle button styling — color BG only, no nine-slice assets needed.
+const BTN_OFF: ColorBackground = { color: 0x1f2937, alpha: 1, radius: 4 };
+const BTN_OFF_HOVER: ColorBackground = { color: 0x374151, alpha: 1, radius: 4 };
+const BTN_ON: ColorBackground = { color: 0x0ea5e9, alpha: 1, radius: 4 };
+const BTN_ON_HOVER: ColorBackground = { color: 0x0284c7, alpha: 1, radius: 4 };
+const BTN_ACCENT: ColorBackground = { color: 0x115e59, alpha: 1, radius: 4 };
+const BTN_ACCENT_HOVER: ColorBackground = { color: 0x0f766e, alpha: 1, radius: 4 };
+
+const TXT_LABEL = { fontFamily: "monospace", fontSize: 11, fill: 0xffffff };
+const TXT_HEADING = {
+  fontFamily: "monospace",
+  fontSize: 11,
+  fill: 0xfde68a,
+  fontWeight: "bold" as const,
+};
+const TXT_TITLE = {
+  fontFamily: "monospace",
+  fontSize: 14,
+  fill: 0xffffff,
+  fontWeight: "bold" as const,
+};
+
+/** Apply on/off styling to a UIButton. Used to mark the active toggles so
+ * the in-game UI mirrors the panel's HTML predecessor. */
+function paintButton(btn: UIButton, on: boolean): void {
+  btn.update({
+    background: on ? BTN_ON : BTN_OFF,
+    hoverBackground: on ? BTN_ON_HOVER : BTN_OFF_HOVER,
+  });
+}
 
 /** Colourful, detailed backdrop so subtle effects stay visible. Lives on
  * the "background" layer below the world. */
@@ -118,7 +151,6 @@ class BackgroundEntity extends Entity {
     if (!g) return;
     g.draw((ctx) => {
       ctx.clear();
-      // Deep gradient sky — purple → teal — anchored to the canvas.
       const sky = linearGradient({
         axis: "vertical",
         stops: [
@@ -129,7 +161,6 @@ class BackgroundEntity extends Entity {
       });
       ctx.rect(0, 0, STAGE_WIDTH, STAGE_HEIGHT).fill(sky);
 
-      // Subtle radial highlight in the upper-left to break up the flat fill.
       const sun = radialGradient({
         center: { x: 0.25, y: 0.25 },
         outerRadius: 0.7,
@@ -141,7 +172,8 @@ class BackgroundEntity extends Entity {
       });
       ctx.rect(0, 0, STAGE_WIDTH, STAGE_HEIGHT).fill(sun);
 
-      // Grid lines so pixelate / chromaticAberration / CRT have geometry to chew on.
+      // Grid lines so pixelate / chromaticAberration / CRT / halftone /
+      // wave have geometry to chew on.
       const gridStep = 40;
       for (let x = 0; x <= STAGE_WIDTH; x += gridStep) {
         ctx
@@ -156,8 +188,6 @@ class BackgroundEntity extends Entity {
           .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
       }
 
-      // Scattered glowing dots — predictable positions so the visual
-      // doesn't shift across saves.
       const palette = [0xfacc15, 0xf472b6, 0x60a5fa, 0x34d399, 0xfb923c];
       let seed = 1;
       const rand = (): number => {
@@ -171,7 +201,6 @@ class BackgroundEntity extends Entity {
         const color = palette[Math.floor(rand() * palette.length)] ?? 0xffffff;
         ctx.circle(x, y, r).fill({ color, alpha: 0.65 });
       }
-
     });
   }
 }
@@ -180,9 +209,10 @@ class BackgroundEntity extends Entity {
 @serializable
 class HeroEntity extends Entity {
   flashHandle: HitFlashHandle | null = null;
+  shockwaveHandle: ShockwaveHandle | null = null;
 
   setup(): void {
-    this.add(new Transform({ position: new Vec2(250, 320) }));
+    this.add(new Transform({ position: new Vec2(150, 320) }));
     this.add(new GraphicsComponent({ layer: "world" }));
     this.redraw();
     this.attachHitFlash();
@@ -190,10 +220,9 @@ class HeroEntity extends Entity {
 
   afterRestore(): void {
     this.redraw();
-    // GraphicsComponent.afterRestore already rebuilt the saved hitFlash;
-    // recover its handle so the trigger button keeps working.
     const g = this.tryGet(GraphicsComponent);
     this.flashHandle = g?.fx.findEffect(hitFlash) ?? null;
+    this.shockwaveHandle = g?.fx.findEffect(shockwave) ?? null;
     if (!this.flashHandle) this.attachHitFlash();
   }
 
@@ -220,7 +249,7 @@ class HeroEntity extends Entity {
 @serializable
 class BlockEntity extends Entity {
   setup(): void {
-    this.add(new Transform({ position: new Vec2(470, 320) }));
+    this.add(new Transform({ position: new Vec2(310, 320) }));
     this.add(new GraphicsComponent({ layer: "world" }));
     this.redraw();
   }
@@ -244,7 +273,7 @@ class BlockEntity extends Entity {
 @serializable
 class GemEntity extends Entity {
   setup(): void {
-    this.add(new Transform({ position: new Vec2(670, 320) }));
+    this.add(new Transform({ position: new Vec2(490, 320) }));
     this.add(new GraphicsComponent({ layer: "world" }));
     this.redraw();
   }
@@ -273,13 +302,13 @@ class ShowcaseScene extends Scene {
   readonly layers = layers;
 
   private effectHandles = new Map<string, EffectHandle | null>();
-  private background: BackgroundEntity | null = null;
+  private toggleButtons = new Map<string, UIButton>();
   private hero: HeroEntity | null = null;
   private block: BlockEntity | null = null;
   private gem: GemEntity | null = null;
 
   onEnter(): void {
-    this.background = this.spawn(BackgroundEntity);
+    this.spawn(BackgroundEntity);
     this.hero = this.spawn(HeroEntity);
     this.block = this.spawn(BlockEntity);
     this.gem = this.spawn(GemEntity);
@@ -288,17 +317,14 @@ class ShowcaseScene extends Scene {
   }
 
   afterRestore(): void {
-    // Recover entity references by walking the restored entity list. Order
-    // is determined by save-time spawn order, but each is a single instance
-    // here so a per-class find is safe.
     for (const e of this.getEntities()) {
-      if (e instanceof BackgroundEntity) this.background = e;
-      else if (e instanceof HeroEntity) this.hero = e;
+      if (e instanceof HeroEntity) this.hero = e;
       else if (e instanceof BlockEntity) this.block = e;
       else if (e instanceof GemEntity) this.gem = e;
     }
 
     this.effectHandles.clear();
+    this.toggleButtons.clear();
     this.buildPanel();
     // Layer/scene/screen-scope effects are restored by the renderer's
     // snapshot contributor AFTER scene.afterRestore returns. doLoad calls
@@ -307,9 +333,9 @@ class ShowcaseScene extends Scene {
   }
 
   /** After load, the renderer has rebuilt every saved effect at every
-   * scope, but the panel's `effectHandles` map is empty. Walk each scope
-   * for the presets we expose buttons for, recover their handles, and
-   * mark the corresponding buttons as "on". */
+   * scope, but our toggle map is empty. Walk each scope for the presets we
+   * expose buttons for, recover their handles, and re-paint the
+   * corresponding toggle button as "on". */
   syncPanelToRestoredEffects(): void {
     const tree = this.context.resolve(SceneRenderTreeProviderKey).getTree(this);
     if (!tree) return;
@@ -319,26 +345,31 @@ class ShowcaseScene extends Scene {
     const sync = (key: string, handle: EffectHandle | null): void => {
       if (!handle) return;
       this.effectHandles.set(key, handle);
-      const btn = panel.querySelector<HTMLButtonElement>(
-        `button[data-toggle-key="${key}"]`,
-      );
-      btn?.classList.add("on");
+      const btn = this.toggleButtons.get(key);
+      if (btn) paintButton(btn, true);
     };
 
-    sync(
-      "outline",
-      this.block?.tryGet(GraphicsComponent)?.fx.findEffect(outline) ?? null,
-    );
-    sync(
-      "dropShadow",
-      this.block?.tryGet(GraphicsComponent)?.fx.findEffect(dropShadow) ?? null,
-    );
-    sync(
-      "glow",
-      this.gem?.tryGet(GraphicsComponent)?.fx.findEffect(glow) ?? null,
-    );
+    const heroGfx = this.hero?.tryGet(GraphicsComponent);
+    const blockGfx = this.block?.tryGet(GraphicsComponent);
+    const gemGfx = this.gem?.tryGet(GraphicsComponent);
+
+    sync("outline", blockGfx?.fx.findEffect(outline) ?? null);
+    sync("dropShadow", blockGfx?.fx.findEffect(dropShadow) ?? null);
+    sync("glow", gemGfx?.fx.findEffect(glow) ?? null);
+    sync("shockwave", heroGfx?.fx.findEffect(shockwave) ?? null);
+    if (this.hero) {
+      this.hero.shockwaveHandle = (heroGfx?.fx.findEffect(shockwave) ?? null) as
+        | ShockwaveHandle
+        | null;
+    }
     sync("bloom", world?.fx.findEffect(bloom) ?? null);
     sync("pixelate", world?.fx.findEffect(pixelate) ?? null);
+    sync("godRay", world?.fx.findEffect(godRay) ?? null);
+    sync("motionBlur", world?.fx.findEffect(motionBlur) ?? null);
+    sync("halftone", world?.fx.findEffect(halftone) ?? null);
+    sync("wave", world?.fx.findEffect(wave) ?? null);
+    sync("oldFilm", world?.fx.findEffect(oldFilm) ?? null);
+    sync("bulgePinch", world?.fx.findEffect(bulgePinch) ?? null);
     sync("crt", tree.fx.findEffect(crt));
     sync("colorGrade", tree.fx.findEffect(colorGrade));
     sync("ca", tree.fx.findEffect(chromaticAberration));
@@ -350,12 +381,28 @@ class ShowcaseScene extends Scene {
     if (!tree) throw new Error("scene render tree not yet attached");
     const renderer = this.context.resolve(RendererKey);
 
-    panel.innerHTML = "";
+    // The sidebar entity carries the root UIPanel. We rebuild it on every
+    // call (initial + afterRestore) — entities and their UI are scene-owned
+    // so they're already recreated by the snapshot pipeline; we just need
+    // to repopulate the toggle handle map.
+    const sidebarEntity = this.spawn("effects-sidebar");
+    const sidebar = sidebarEntity.add(
+      new UIPanel({
+        layer: "ui",
+        anchor: Anchor.TopRight,
+        offset: { x: -8, y: 8 },
+        direction: "column",
+        gap: 4,
+        padding: 10,
+        width: SIDEBAR_WIDTH,
+        background: { color: 0x000000, alpha: 0.85, radius: 6 },
+      }),
+    );
+
+    sidebar.text("Effects Showcase", TXT_TITLE);
 
     const section = (title: string): void => {
-      const h = document.createElement("h3");
-      h.textContent = title;
-      panel.appendChild(h);
+      sidebar.text(title, TXT_HEADING);
     };
 
     const toggle = (
@@ -363,30 +410,48 @@ class ShowcaseScene extends Scene {
       key: string,
       attach: () => EffectHandle,
     ): void => {
-      const btn = document.createElement("button");
-      btn.textContent = label;
-      btn.dataset.toggleKey = key;
-      btn.onclick = () => {
-        const existing = this.effectHandles.get(key);
-        if (existing) {
-          existing.remove();
-          this.effectHandles.set(key, null);
-          btn.classList.remove("on");
-        } else {
-          this.effectHandles.set(key, attach());
-          btn.classList.add("on");
-        }
-      };
-      panel.appendChild(btn);
+      const btn = sidebar.button(label, {
+        height: 22,
+        width: SIDEBAR_WIDTH - 20,
+        background: BTN_OFF,
+        hoverBackground: BTN_OFF_HOVER,
+        pressBackground: BTN_OFF_HOVER,
+        textStyle: TXT_LABEL,
+        onClick: () => {
+          const existing = this.effectHandles.get(key);
+          if (existing) {
+            existing.remove();
+            this.effectHandles.set(key, null);
+            paintButton(btn, false);
+          } else {
+            this.effectHandles.set(key, attach());
+            paintButton(btn, true);
+          }
+        },
+      });
+      this.toggleButtons.set(key, btn);
+    };
+
+    const action = (
+      label: string,
+      onClick: () => void,
+      bg: ColorBackground = BTN_ACCENT,
+      bgHover: ColorBackground = BTN_ACCENT_HOVER,
+    ): void => {
+      sidebar.button(label, {
+        height: 22,
+        width: SIDEBAR_WIDTH - 20,
+        background: bg,
+        hoverBackground: bgHover,
+        pressBackground: bgHover,
+        textStyle: TXT_LABEL,
+        onClick,
+      });
     };
 
     section("Component (sprite)");
-    {
-      const btn = document.createElement("button");
-      btn.textContent = "Hit Flash trigger";
-      btn.onclick = () => this.hero?.flashHandle?.trigger();
-      panel.appendChild(btn);
-    }
+    action("Hit Flash trigger", () => this.hero?.flashHandle?.trigger());
+
     toggle("outline (block)", "outline", () => {
       const g = this.block?.tryGet(GraphicsComponent);
       if (!g) throw new Error("block graphics missing");
@@ -402,16 +467,54 @@ class ShowcaseScene extends Scene {
       if (!g) throw new Error("gem graphics missing");
       return g.fx.addEffect(glow({ color: 0xffff00, outerStrength: 3 }));
     });
+    toggle("shockwave (hero)", "shockwave", () => {
+      const g = this.hero?.tryGet(GraphicsComponent);
+      if (!g) throw new Error("hero graphics missing");
+      const handle = g.fx.addEffect(
+        shockwave({ amplitude: 24, wavelength: 80, duration: 800 }),
+      );
+      if (this.hero) this.hero.shockwaveHandle = handle;
+      return handle;
+    });
+    action("Trigger shockwave", () => this.hero?.shockwaveHandle?.trigger(0, 0));
 
-    section("Layer (world)");
+    section("Layer (world only — UI unaffected)");
     toggle("bloom", "bloom", () =>
       tree.get("world").fx.addEffect(bloom({ threshold: 0.3, bloomScale: 1.4 })),
     );
     toggle("pixelate", "pixelate", () =>
       tree.get("world").fx.addEffect(pixelate({ size: 6 })),
     );
+    toggle("godRay", "godRay", () =>
+      tree.get("world").fx.addEffect(godRay({ angle: 25, gain: 0.5 })),
+    );
+    toggle("motionBlur", "motionBlur", () =>
+      tree.get("world").fx.addEffect(motionBlur({ velocity: { x: 24, y: 0 } })),
+    );
+    toggle("oldFilm", "oldFilm", () =>
+      tree.get("world").fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 })),
+    );
+    toggle("bulgePinch (center)", "bulgePinch", () =>
+      tree.get("world").fx.addEffect(
+        bulgePinch({
+          strength: 0.6,
+          radius: 220,
+          center: { x: 0.4, y: 0.5 },
+        }),
+      ),
+    );
+    toggle("halftone (custom shader)", "halftone", () =>
+      tree.get("world").fx.addEffect(
+        halftone({ size: 6, angle: Math.PI / 4 }),
+      ),
+    );
+    toggle("wave (custom shader)", "wave", () =>
+      tree.get("world").fx.addEffect(
+        wave({ amplitude: 5, wavelength: 60, speed: 0.8 }),
+      ),
+    );
 
-    section("Scene");
+    section("Scene (covers UI too)");
     toggle("crt", "crt", () =>
       tree.fx.addEffect(crt({ lineContrast: 0.3 })),
     );
@@ -422,54 +525,40 @@ class ShowcaseScene extends Scene {
       tree.fx.addEffect(chromaticAberration({ separation: 4 })),
     );
 
-    section("Screen (cross-scene)");
+    section("Screen (covers UI too)");
     toggle("vignette", "vignette", () =>
       renderer.fx.addEffect(vignette({ alpha: 0.6 })),
     );
 
-    // ---- Fades (intensity tweens) ----
-    //
-    // Every effect handle has fadeIn(ms) / fadeOut(ms) that tween the
-    // effect's primary intensity uniform. The fade is scheduled through
-    // the same scope-bound process host that backs the rest of the
-    // engine, so layer/scene-scope fades pause with the scene; the
-    // screen-scope vignette fade keeps running across scene transitions.
-    //
-    // For a button-driven demo we operate on whichever handle is already
-    // attached via the toggles above — toggle bloom or vignette on, then
-    // fade it.
+    // ---- Fades — operate on whichever handle is currently attached. ----
     section("Fades");
-    const fadeBtn = (label: string, key: string, ms: number, dir: "in" | "out"): void => {
-      const btn = document.createElement("button");
-      btn.textContent = label;
-      btn.onclick = () => {
-        const h = this.effectHandles.get(key);
-        if (!h) {
-          showToast(`Toggle ${key} on first`);
-          return;
-        }
-        if (dir === "in") h.fadeIn(ms);
-        else h.fadeOut(ms);
-      };
-      panel.appendChild(btn);
+    const fadeBtn = (
+      label: string,
+      key: string,
+      ms: number,
+      dir: "in" | "out",
+    ): void => {
+      action(
+        label,
+        () => {
+          const h = this.effectHandles.get(key);
+          if (!h) {
+            showToast(`Toggle ${key} on first`);
+            return;
+          }
+          if (dir === "in") h.fadeIn(ms);
+          else h.fadeOut(ms);
+        },
+        BTN_OFF,
+        BTN_OFF_HOVER,
+      );
     };
     fadeBtn("bloom: fade out 1s", "bloom", 1000, "out");
     fadeBtn("bloom: fade in 1s", "bloom", 1000, "in");
     fadeBtn("vignette: fade out 1s", "vignette", 1000, "out");
     fadeBtn("vignette: fade in 1s", "vignette", 1000, "in");
 
-    // ---- Masks ----
-    //
-    // Masks are exclusive (one per container) so they use a separate API
-    // from addEffect: setMask / clearMask. The component's `mask` getter
-    // exposes the currently-attached handle, which we re-acquire here on
-    // every buildPanel — important after save/load, where the stored
-    // handle reference is stale but the underlying mask was rebuilt by
-    // GraphicsComponent.afterRestore.
-    //
-    // `rectMask` survives the save round-trip; `graphicsMask` does not
-    // (its draw closure has no string identity), so its panel button
-    // correctly stays "off" on load — the mask is genuinely gone.
+    // ---- Masks — exclusive setMask/clearMask, not addEffect. ----
     section("Masks");
     {
       const gemGfx = this.gem?.tryGet(GraphicsComponent);
@@ -478,88 +567,75 @@ class ShowcaseScene extends Scene {
       let gemInverse = gemHandle?.inverse ?? false;
       let blockHandle: MaskHandle | null = blockGfx?.mask ?? null;
 
-      const maskGem = document.createElement("button");
-      maskGem.textContent = "Mask gem (top half)";
-      if (gemHandle) maskGem.classList.add("on");
-      maskGem.onclick = () => {
-        if (gemHandle) {
-          gemHandle.remove();
-          gemHandle = null;
-          gemInverse = false;
-          maskGem.classList.remove("on");
-          inverseGem.classList.remove("on");
-          return;
-        }
-        if (!gemGfx) throw new Error("gem graphics missing");
-        // Plain rect (no `rounded`) so the cut reads as an unambiguous
-        // horizontal slice. The diamond's silhouette tapers to a point at
-        // the bbox corners, so a `rounded` rect on this shape is invisible
-        // — its rounded corners fall outside the diamond. The `rounded`
-        // option is well-suited to masking actually-rectangular targets.
-        gemHandle = gemGfx.setMask(
-          rectMask({ x: -55, y: -55, width: 110, height: 55 }),
-        );
-        maskGem.classList.add("on");
-      };
-      panel.appendChild(maskGem);
+      const maskGem = sidebar.button("Mask gem (top half)", {
+        height: 22,
+        width: SIDEBAR_WIDTH - 20,
+        background: gemHandle ? BTN_ON : BTN_OFF,
+        hoverBackground: gemHandle ? BTN_ON_HOVER : BTN_OFF_HOVER,
+        textStyle: TXT_LABEL,
+        onClick: () => {
+          if (gemHandle) {
+            gemHandle.remove();
+            gemHandle = null;
+            gemInverse = false;
+            paintButton(maskGem, false);
+            paintButton(inverseGem, false);
+            return;
+          }
+          if (!gemGfx) throw new Error("gem graphics missing");
+          gemHandle = gemGfx.setMask(
+            rectMask({ x: -55, y: -55, width: 110, height: 55 }),
+          );
+          paintButton(maskGem, true);
+        },
+      });
 
-      const inverseGem = document.createElement("button");
-      inverseGem.textContent = "Toggle gem mask inverse";
-      if (gemInverse) inverseGem.classList.add("on");
-      inverseGem.onclick = () => {
-        if (!gemHandle) {
-          showToast("Mask gem first");
-          return;
-        }
-        gemInverse = !gemInverse;
-        gemHandle.setInverse(gemInverse);
-        inverseGem.classList.toggle("on", gemInverse);
-      };
-      panel.appendChild(inverseGem);
+      const inverseGem = sidebar.button("Toggle gem mask inverse", {
+        height: 22,
+        width: SIDEBAR_WIDTH - 20,
+        background: gemInverse ? BTN_ON : BTN_OFF,
+        hoverBackground: gemInverse ? BTN_ON_HOVER : BTN_OFF_HOVER,
+        textStyle: TXT_LABEL,
+        onClick: () => {
+          if (!gemHandle) {
+            showToast("Mask gem first");
+            return;
+          }
+          gemInverse = !gemInverse;
+          gemHandle.setInverse(gemInverse);
+          paintButton(inverseGem, gemInverse);
+        },
+      });
 
-      const maskBlock = document.createElement("button");
-      maskBlock.textContent = "Mask block (graphicsMask circle)";
-      if (blockHandle) maskBlock.classList.add("on");
-      maskBlock.onclick = () => {
-        if (blockHandle) {
-          blockHandle.remove();
-          blockHandle = null;
-          maskBlock.classList.remove("on");
-          return;
-        }
-        if (!blockGfx) throw new Error("block graphics missing");
-        // graphicsMask gotchas:
-        //   1. Always g.clear() first — pixi commands accumulate, so each
-        //      redraw() would otherwise stack another shape on top.
-        //   2. Read live state inside the closure; never snapshot a
-        //      `const` outside, or redraw() keeps using the original.
-        //   The block's drawn extent is static (-60..60), so capturing
-        //   the literal radius is fine here. For dynamic dimensions
-        //   (e.g. a UIPanel), reach through to the live source on each
-        //   call — see UIPanel's own setMask call site.
-        blockHandle = blockGfx.setMask(
-          graphicsMask((mg) => {
-            mg.clear();
-            mg.circle(0, 0, 55);
-            mg.fill({ color: 0xffffff });
-          }),
-        );
-        maskBlock.classList.add("on");
-      };
-      panel.appendChild(maskBlock);
+      const maskBlock = sidebar.button("Mask block (graphicsMask)", {
+        height: 22,
+        width: SIDEBAR_WIDTH - 20,
+        background: blockHandle ? BTN_ON : BTN_OFF,
+        hoverBackground: blockHandle ? BTN_ON_HOVER : BTN_OFF_HOVER,
+        textStyle: TXT_LABEL,
+        onClick: () => {
+          if (blockHandle) {
+            blockHandle.remove();
+            blockHandle = null;
+            paintButton(maskBlock, false);
+            return;
+          }
+          if (!blockGfx) throw new Error("block graphics missing");
+          blockHandle = blockGfx.setMask(
+            graphicsMask((mg) => {
+              mg.clear();
+              mg.circle(0, 0, 55);
+              mg.fill({ color: 0xffffff });
+            }),
+          );
+          paintButton(maskBlock, true);
+        },
+      });
     }
 
-    section("Save / Load");
-    {
-      const save = document.createElement("button");
-      save.textContent = "Save (S)";
-      save.onclick = () => this.doSave();
-      panel.appendChild(save);
-      const load = document.createElement("button");
-      load.textContent = "Load (L)";
-      load.onclick = () => void this.doLoad();
-      panel.appendChild(load);
-    }
+    section("Save / Load (S / L)");
+    action("Save", () => this.doSave());
+    action("Load", () => void this.doLoad());
   }
 
   doSave(): void {
@@ -576,9 +652,6 @@ class ShowcaseScene extends Scene {
     }
     try {
       await save.loadSnapshot("showcase");
-      // Sync after the load resolves — by this point the renderer's
-      // snapshot contributor has rebuilt every layer/scene/screen-scope
-      // effect and we can recover their handles for the panel UI.
       this.syncPanelToRestoredEffects();
       showToast("Loaded");
     } catch (err) {
@@ -600,6 +673,7 @@ async function main(): Promise<void> {
     }),
   );
   engine.use(new SnapshotPlugin());
+  engine.use(new UIPlugin());
 
   // Hotkeys — bare S/L only, so Cmd/Ctrl+S (browser save) and Cmd/Ctrl+L
   // (focus address bar) keep their default behavior.

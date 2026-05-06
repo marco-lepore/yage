@@ -10,6 +10,13 @@ import {
   chromaticAberration,
   vignette,
   colorGrade,
+  godRay,
+  shockwave,
+  motionBlur,
+  oldFilm,
+  bulgePinch,
+  halftone,
+  wave,
 } from "./index.js";
 
 // Smoke tests live here. End-to-end attach + serialize round-trip is
@@ -31,16 +38,30 @@ describe("@yagejs/effects presets", () => {
       chromaticAberration,
       vignette,
       colorGrade,
+      godRay,
+      shockwave,
+      motionBlur,
+      oldFilm,
+      bulgePinch,
+      halftone,
+      wave,
     ]) {
       expect(preset.name).toMatch(/^yage:/);
       names.add(preset.name);
     }
-    expect(names.size).toBe(10);
+    expect(names.size).toBe(17);
   });
 
   it("calling a preset with options returns a callable factory", () => {
     expect(typeof hitFlash({ color: 0xffffff })).toBe("function");
     expect(typeof bloom({ bloomScale: 1.5 })).toBe("function");
     expect(typeof colorGrade({ preset: "sepia" })).toBe("function");
+    expect(typeof godRay({ angle: 45 })).toBe("function");
+    expect(typeof shockwave({ amplitude: 20 })).toBe("function");
+    expect(typeof motionBlur({ velocity: { x: 30, y: 0 } })).toBe("function");
+    expect(typeof oldFilm({ sepia: 0.5 })).toBe("function");
+    expect(typeof bulgePinch({ strength: 0.5 })).toBe("function");
+    expect(typeof halftone({ size: 6 })).toBe("function");
+    expect(typeof wave({ amplitude: 6 })).toBe("function");
   });
 });
