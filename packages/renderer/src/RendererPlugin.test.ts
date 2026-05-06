@@ -298,10 +298,15 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       // scale = min(800/400, 600/300) = min(2, 2) = 2
+      // The fit transform lives on the renderer's `_worldRoot` (first child
+      // of stage), not on stage itself — see RendererPlugin._worldRoot.
       const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
-      const stage = app.stage;
-      expect(stage.scale.x).toBe(2);
-      expect(stage.scale.y).toBe(2);
+      const worldRoot = app.stage.children[0]!;
+      expect(worldRoot.scale.x).toBe(2);
+      expect(worldRoot.scale.y).toBe(2);
+      // Stage itself stays at identity so `@pixi/tilemap` doesn't double-apply.
+      expect(app.stage.scale.x).toBe(1);
+      expect(app.stage.scale.y).toBe(1);
     });
 
     it("computes correct scale for wider canvas (pillarbox)", async () => {
@@ -316,11 +321,11 @@ describe("RendererPlugin", () => {
 
       // scale = min(1000/400, 600/300) = min(2.5, 2) = 2
       const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
-      const stage = app.stage;
-      expect(stage.scale.x).toBe(2);
-      expect(stage.scale.y).toBe(2);
+      const worldRoot = app.stage.children[0]!;
+      expect(worldRoot.scale.x).toBe(2);
+      expect(worldRoot.scale.y).toBe(2);
       // offsetX = (1000 - 400*2) / 2 = 100; position is in screen space
-      expect(stage.position.x).toBe(100);
+      expect(worldRoot.position.x).toBe(100);
     });
 
     it("computes correct scale for taller canvas (letterbox)", async () => {
@@ -335,11 +340,11 @@ describe("RendererPlugin", () => {
 
       // scale = min(800/400, 800/300) = min(2, 2.667) = 2
       const app = plugin.application as unknown as InstanceType<typeof mocks.MockApplication>;
-      const stage = app.stage;
-      expect(stage.scale.x).toBe(2);
-      expect(stage.scale.y).toBe(2);
+      const worldRoot = app.stage.children[0]!;
+      expect(worldRoot.scale.x).toBe(2);
+      expect(worldRoot.scale.y).toBe(2);
       // offsetY = (800 - 300*2) / 2 = 100; position is in screen space
-      expect(stage.position.y).toBe(100);
+      expect(worldRoot.position.y).toBe(100);
     });
   });
 

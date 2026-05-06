@@ -24,8 +24,8 @@ import type { SnapshotContributor } from "@yagejs/save";
 // save package while letting us reference `typeof SaveModule` for the
 // dynamic-import variable below.
 import type * as SaveModule from "@yagejs/save";
-import { Application, Assets, Graphics } from "pixi.js";
-import type { Container, Spritesheet } from "pixi.js";
+import { Application, Assets, Container, Graphics } from "pixi.js";
+import type { Spritesheet } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -66,6 +66,24 @@ export class RendererPlugin implements Plugin {
   private _tickerFn: (() => void) | null = null;
   private _unregisterHooks: (() => void) | null = null;
   private _fitController!: FitController;
+  /**
+   * Holds the fit transform (scale + offset) and parents every per-scene
+   * render tree. Sits as the only "world" child of `app.stage`, which we
+   * deliberately keep at identity.
+   *
+   * Why this layer exists: in Pixi v8 the active render group's transform
+   * is fed to shaders via `uWorldTransformMatrix`, and `@pixi/tilemap`'s
+   * pipe composes `uProjection × uWorldTransformMatrix × tilemap.worldTransform`.
+   * `tilemap.worldTransform` is already cumulative from root, so any
+   * non-identity transform on the active render group (= `app.stage` by
+   * default) is applied twice — silently mis-scaling tile rendering vs.
+   * Sprites/Graphics, which the batched renderer pre-transforms on CPU.
+   * Pushing the fit onto a non-render-group child (this `_worldRoot`)
+   * keeps `uWorldTransformMatrix` identity at render time. Stage-direct
+   * children (transition overlays, screen-scope effects) keep their
+   * intended canvas-pixel coordinates.
+   */
+  private _worldRoot!: Container;
   private _installed = {
     app: false,
     fit: false,
@@ -115,7 +133,14 @@ export class RendererPlugin implements Plugin {
       this._config.container.appendChild(this._app.canvas);
     }
 
-    // 3. FitController always owns the stage transform. When `fit` is
+    // 2b. Insert the world-root container between `app.stage` and every
+    //     per-scene tree. The fit transform lives here, not on stage —
+    //     see the field-level comment on `_worldRoot` for why.
+    this._worldRoot = new Container();
+    this._worldRoot.label = "yage:worldRoot";
+    this._app.stage.addChild(this._worldRoot);
+
+    // 3. FitController owns the world-root transform. When `fit` is
     //    configured (or defaulted), it observes a host element and re-maps
     //    the virtual rectangle on each resize. In environments without a
     //    DOM target (tests, headless), it applies the transform once against
@@ -139,9 +164,10 @@ export class RendererPlugin implements Plugin {
     );
 
     // 5. Create the per-scene render tree provider.
-    //    Each scene gets one root container as a direct child of app.stage.
+    //    Each scene gets one root container as a direct child of `_worldRoot`
+    //    (which is itself the only world-space child of `app.stage`).
     this._provider = new SceneRenderTreeProviderImpl(
-      this._app.stage,
+      this._worldRoot,
       this._processSystem,
     );
     this._installed.provider = true;
@@ -339,9 +365,9 @@ export class RendererPlugin implements Plugin {
    * `markPointerConsumeContainer`. Used by `@yagejs/input`'s drain step to
    * auto-claim presses landing on UI surfaces.
    *
-   * `EventBoundary.hitTest` operates in stage-local coordinates. The fit
-   * controller already aligns `app.stage` with the virtual space (its scale
-   * + translate transform maps `virtual` into `canvas`), so passing virtual
+   * `EventBoundary.hitTest` operates in root-target-local coordinates. The
+   * fit controller aligns `_worldRoot` with the virtual space (its scale +
+   * translate transform maps `virtual` into `canvas`), so passing virtual
    * coordinates straight through matches what Pixi's hit-test sees.
    */
   hitTestUI(x: number, y: number): boolean {
@@ -351,10 +377,11 @@ export class RendererPlugin implements Plugin {
     // frame (or under `inspector.time.freeze()` in deterministic test runs
     // that pause the ticker) it can be null — and `boundary.hitTest` reads
     // `rootTarget.eventMode` unconditionally, so the call would crash. Bind
-    // it to `app.stage` ourselves; Pixi's render loop will keep it accurate
+    // it to `_worldRoot` ourselves so virtual-space hit-tests resolve before
+    // the first frame; Pixi's render loop will keep `rootTarget` accurate
     // once frames start landing.
     if (!boundary.rootTarget) {
-      boundary.rootTarget = this._app.stage;
+      boundary.rootTarget = this._worldRoot;
     }
     const hit = boundary.hitTest(x, y) as Container | null;
     if (!hit) return false;
@@ -542,7 +569,7 @@ export class RendererPlugin implements Plugin {
     this._fitController?.stop();
     this._fitController = new FitController(
       this._app,
-      this._app.stage,
+      this._worldRoot,
       this._virtualWidth,
       this._virtualHeight,
       options.mode,
