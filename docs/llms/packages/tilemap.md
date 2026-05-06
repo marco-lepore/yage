@@ -36,8 +36,10 @@ class Level extends Scene {
 ```ts
 import { TilemapComponent } from "@yagejs/tilemap";
 
+// Preferred: pass the asset handle. Captures both the parsed data and the
+// asset path, which doubles as the prefix for Tiled-derived auto-keys.
 entity.add(new TilemapComponent({
-  mapKey: MapData.path,          // serializable asset ref
+  source: MapData,               // AssetHandle<TiledMapData>
   layers: ["ground", "walls"],   // tile layers to render (omit for all)
   layer: "map",                  // render layer name
 }));
@@ -47,17 +49,21 @@ Properties:
 - `widthPx` / `heightPx` — total map size in pixels
 - `tileWidth` / `tileHeight` — single tile dimensions
 - `data: TilemapData` — parsed map structure (see Map Data below)
+- `mapKey: string | null` — asset path, or `null` if constructed from raw `map:` data
+- `keyPrefix: string | null` — prefix used for `objectKey` / `forEachObject`
 
 ## Serialization
 
-`TilemapComponent` is `@serializable`, but the live parsed `TiledMapData` object is not — it contains PixiJS textures. Pass `mapKey` (an asset path) instead of `map` if you want save/load to restore the tilemap after a reload:
+`TilemapComponent` is `@serializable`, but the live parsed `TiledMapData` object is not — it contains PixiJS textures. Pass `source` (an asset handle) or `mapKey` (an asset path) instead of `map` if you want save/load to restore the tilemap after a reload:
 
 ```ts
 interface TilemapComponentOptions {
-  map?: TiledMapData;          // live parsed map — not serializable
-  mapKey?: string;              // asset path — serializable, resolved via Assets.get
-  layers?: string[];            // which tile layers to render (omit for all)
-  layer?: string;               // render layer name (default "default")
+  source?: AssetHandle<TiledMapData>;  // preferred — handle from tiledMap()
+  map?: TiledMapData;                  // raw parsed data — not serializable
+  mapKey?: string;                     // asset path — serializable, resolved via Assets.get
+  layers?: string[];                   // which tile layers to render (omit for all)
+  layer?: string;                      // render layer name (default "default")
+  keyPrefix?: string;                  // override for auto-keys (default = mapKey)
 }
 
 // Serialized shape stored in snapshots:
@@ -65,10 +71,11 @@ interface TilemapComponentData {
   mapKey: string;               // required — saved snapshots always reference an asset
   layers?: string[];
   layer: string;
+  keyPrefix?: string;           // only present when overridden
 }
 ```
 
-At least one of `map` or `mapKey` must be supplied. If you construct with an inline `map`, snapshot serialization will warn and require a `mapKey` to round-trip.
+At least one of `source`, `map`, or `mapKey` must be supplied. If you construct with an inline `map`, snapshot serialization will warn and require `source` or `mapKey` to round-trip.
 
 ## Tile Queries
 
@@ -110,45 +117,61 @@ interface ObjectLayerData {
 ## Object Layers
 
 ```ts
+// Grouped by class ?? name
 const objects = tilemap.getObjects("spawns");
-// Record<string, MapObject[]> — grouped by class/name
+// Record<string, MapObject[]>
+
+// Flat list across every object layer
+const all = tilemap.getAllObjects();
+
+// Direct lookups
+tilemap.findObject(42);            // by Tiled id
+tilemap.findObjectByName("Player"); // first match across all layers
 
 // MapObject: { id, name, class?, x, y, width, height, rotation, visible, point?, polygon?, properties? }
 ```
 
+## Spawning Entities from Tiled Objects (auto-keys)
+
+Tiled object IDs are stable per-map identifiers. Combine them with the map's asset path to derive a stable per-scene `entity.key` that persistent stores can use:
+
+```ts
+import { tiledObjectKey, TilemapComponent } from "@yagejs/tilemap";
+
+// Format: `<mapKey>#object:<id>` (or `<keyPrefix>#object:<id>` if you set one)
+tiledObjectKey("/assets/dungeon.json", 42);
+// → "/assets/dungeon.json#object:42"
+
+// On the component:
+tilemap.objectKey(obj);            // prefix already wired up
+tilemap.forEachObject("interactables", (obj, key) => {
+  if (obj.class === "EnemySpawn") {
+    scene.spawn(EnemyEntity, { object: obj }, { key });
+  }
+});
+```
+
+Pass `keyPrefix: "level1"` to the component constructor when multiple instances of the same map need distinct identity namespaces (instanced dungeons, per-floor layouts).
+
+`objectKey` and `forEachObject` throw if the component was constructed from raw `map:` data without a `mapKey`, `source`, or explicit `keyPrefix` — auto-keys need a stable prefix.
+
 ## Property Utilities
 
 ```ts
+// On the component (preferred — typed and discoverable):
+tilemap.getProperty<number>(obj, "speed");
+tilemap.getPropertyArray<number>(obj, "point");   // point[0], point[1], ...
+tilemap.resolveRef(obj, "target");                // auto-collects across layers
+tilemap.resolveRefArray(ctrl, "spawns");          // spawns[0], spawns[1], ...
+
+// Standalone equivalents (caller supplies the object pool):
 import { getProperty, getPropertyArray, resolveObjectRef } from "@yagejs/tilemap";
-
-getProperty<number>(obj, "speed");          // single custom property
-getPropertyArray<number>(obj, "point");     // indexed: point[0], point[1]
-resolveObjectRef(obj, "target", allObjs);   // resolve Tiled object reference
+getProperty<number>(obj, "speed");
+getPropertyArray<number>(obj, "point");
+resolveObjectRef(obj, "target", allObjs);
 ```
 
-## Object Reference Resolution
-
-Tiled's object-reference properties store numeric IDs, not the target objects themselves. `resolveObjectRef` and `resolveObjectRefArray` turn those IDs into `MapObject` instances by searching a caller-supplied array:
-
-```ts
-import { resolveObjectRef, resolveObjectRefArray } from "@yagejs/tilemap";
-
-const allObjects = Object.values(tilemap.getObjects("interactables")).flat();
-
-// Single ref: door has a `target` property of type `object`
-for (const door of tilemap.getObjects("doors").door ?? []) {
-  const exit = resolveObjectRef(door, "target", allObjects);
-  if (exit) spawnDoor(door, exit);
-}
-
-// Array ref: trigger has `targets[0]`, `targets[1]`, ... properties
-for (const trigger of tilemap.getObjects("triggers").trigger ?? []) {
-  const targets = resolveObjectRefArray(trigger, "targets", allObjects);
-  spawnTrigger(trigger, targets);
-}
-```
-
-IDs that can't be resolved (e.g. the referenced object was deleted) are silently filtered out.
+The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; reach for the standalone helpers only when you've already collected the pool yourself.
 
 ## Collision Extraction
 

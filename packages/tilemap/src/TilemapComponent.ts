@@ -1,8 +1,16 @@
 import { Component, Transform, serializable } from "@yagejs/core";
+import type { AssetHandle } from "@yagejs/core";
 import { Assets, Container } from "pixi.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
 import { extractCollisionShapes } from "./colliders.js";
+import { tiledObjectKey } from "./keys.js";
+import {
+  getProperty,
+  getPropertyArray,
+  resolveObjectRef,
+  resolveObjectRefArray,
+} from "./properties.js";
 import type { TiledMapData } from "./tiled/types.js";
 import type {
   TilemapData,
@@ -12,14 +20,22 @@ import type {
 
 /** Options for creating a TilemapComponent. */
 export interface TilemapComponentOptions {
-  /** Parsed Tiled map data (not serializable). */
+  /** Asset handle for the map. Preferred — captures both the parsed data and the asset path. */
+  source?: AssetHandle<TiledMapData>;
+  /** Parsed Tiled map data. Use only when you don't have an AssetHandle. Save/load and auto-keys require `mapKey` or `source`. */
   map?: TiledMapData;
-  /** Asset path to the Tiled JSON (serializable, resolved via Assets.get). */
+  /** Asset path to the Tiled JSON. Resolved via `Assets.get`. Save/load uses this. */
   mapKey?: string;
   /** Which tile layers to render. Omit to render all. */
   layers?: string[];
   /** Render layer name. Default: "default". */
   layer?: string;
+  /**
+   * Override prefix used when auto-keying entities spawned from Tiled objects.
+   * Defaults to `mapKey`. Set this when multiple instances of the same map need
+   * distinct entity-key namespaces (e.g. instanced dungeons).
+   */
+  keyPrefix?: string;
 }
 
 /** Serializable snapshot of a TilemapComponent. */
@@ -27,6 +43,7 @@ export interface TilemapComponentData {
   mapKey: string;
   layers?: string[];
   layer: string;
+  keyPrefix?: string;
 }
 
 /** Component that renders a Tiled map using @pixi/tilemap. */
@@ -34,32 +51,56 @@ export interface TilemapComponentData {
 export class TilemapComponent extends Component {
   readonly container: Container;
   readonly data: TilemapData;
+  /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
+  readonly mapKey: string | null;
+  /** Prefix used to derive auto-keys for entities spawned from objects. */
+  readonly keyPrefix: string | null;
   private readonly _tiledMap: TiledMapData;
-  private readonly _mapKey: string | null;
   private readonly layerNames: string[] | undefined;
   private readonly renderLayerName: string;
+  private readonly _explicitKeyPrefix: string | undefined;
 
   constructor(options: TilemapComponentOptions) {
     super();
 
-    if (!options.map && !options.mapKey) {
+    const sourceCount =
+      (options.source ? 1 : 0) +
+      (options.map ? 1 : 0) +
+      (options.mapKey ? 1 : 0);
+    if (sourceCount === 0) {
       throw new Error(
-        "TilemapComponent requires either `map` or `mapKey`.",
+        "TilemapComponent requires one of `source`, `map`, or `mapKey`.",
       );
     }
 
-    this._mapKey = options.mapKey ?? null;
-    const tiledMap = options.map ?? Assets.get<TiledMapData>(options.mapKey!);
-    if (!tiledMap) {
-      throw new Error(
-        `TilemapComponent: map "${options.mapKey}" is not loaded. Add it to scene preload.`,
-      );
+    if (options.source) {
+      this.mapKey = options.source.path;
+      const data = Assets.get<TiledMapData>(options.source.path);
+      if (!data) {
+        throw new Error(
+          `TilemapComponent: source "${options.source.path}" is not loaded. Add it to scene preload.`,
+        );
+      }
+      this._tiledMap = data;
+    } else if (options.mapKey) {
+      this.mapKey = options.mapKey;
+      const data = Assets.get<TiledMapData>(options.mapKey);
+      if (!data) {
+        throw new Error(
+          `TilemapComponent: map "${options.mapKey}" is not loaded. Add it to scene preload.`,
+        );
+      }
+      this._tiledMap = data;
+    } else {
+      this.mapKey = null;
+      this._tiledMap = options.map!;
     }
 
-    this._tiledMap = tiledMap;
-    this.data = toTilemapData(tiledMap);
+    this.data = toTilemapData(this._tiledMap);
     this.layerNames = options.layers;
     this.renderLayerName = options.layer ?? "default";
+    this._explicitKeyPrefix = options.keyPrefix;
+    this.keyPrefix = options.keyPrefix ?? this.mapKey;
     this.container = new Container();
   }
 
@@ -79,17 +120,20 @@ export class TilemapComponent extends Component {
   }
 
   serialize(): TilemapComponentData | null {
-    if (!this._mapKey) {
+    if (!this.mapKey) {
       console.warn(
         `TilemapComponent on "${this.entity?.name}": created with a TiledMapData object. ` +
-          `Use { mapKey } for save/load support.`,
+          `Use { source } or { mapKey } for save/load support.`,
       );
       return null;
     }
     return {
-      mapKey: this._mapKey,
+      mapKey: this.mapKey,
       layer: this.renderLayerName,
       ...(this.layerNames && { layers: this.layerNames }),
+      ...(this._explicitKeyPrefix !== undefined && {
+        keyPrefix: this._explicitKeyPrefix,
+      }),
     };
   }
 
@@ -98,6 +142,7 @@ export class TilemapComponent extends Component {
       mapKey: data.mapKey,
       layer: data.layer,
       ...(data.layers && { layers: data.layers }),
+      ...(data.keyPrefix !== undefined && { keyPrefix: data.keyPrefix }),
     });
   }
 
@@ -161,7 +206,7 @@ export class TilemapComponent extends Component {
     return extractCollisionShapes(this.data, objectLayerName);
   }
 
-  /** Extract objects from object layers grouped by class/name. */
+  /** Objects from object layers grouped by `class ?? name`. Use a layer name to scope. */
   getObjects(objectLayerName?: string): Record<string, MapObject[]> {
     const filtered = objectLayerName
       ? this.data.objectLayers.filter((l) => l.name === objectLayerName)
@@ -180,5 +225,95 @@ export class TilemapComponent extends Component {
     }
 
     return result;
+  }
+
+  /** Flat list of every object across every object layer. Cheap; avoids the layer-by-layer dance. */
+  getAllObjects(): MapObject[] {
+    const result: MapObject[] = [];
+    for (const layer of this.data.objectLayers) {
+      for (const obj of layer.objects) result.push(obj);
+    }
+    return result;
+  }
+
+  /**
+   * Iterate every object on the given layer (or every layer if omitted),
+   * passing the auto-derived stable key alongside each object so callers can
+   * spawn entities with `scene.spawn(Class, params, { key })`.
+   *
+   * Skips objects that don't have a key prefix (component constructed from raw
+   * `map:` without `mapKey` or `keyPrefix`) — those callers should iterate
+   * `getObjects` directly.
+   */
+  forEachObject(
+    layerName: string | undefined,
+    fn: (obj: MapObject, key: string) => void,
+  ): void {
+    if (this.keyPrefix === null) {
+      throw new Error(
+        "TilemapComponent.forEachObject: cannot derive auto-keys without a `mapKey`, `source`, or explicit `keyPrefix`.",
+      );
+    }
+    const layers = layerName
+      ? this.data.objectLayers.filter((l) => l.name === layerName)
+      : this.data.objectLayers;
+    for (const layer of layers) {
+      for (const obj of layer.objects) {
+        fn(obj, tiledObjectKey(this.keyPrefix, obj.id));
+      }
+    }
+  }
+
+  /** Auto-derived stable key for an object: `<keyPrefix>#object:<id>`. */
+  objectKey(obj: MapObject): string {
+    if (this.keyPrefix === null) {
+      throw new Error(
+        "TilemapComponent.objectKey: cannot derive a key without a `mapKey`, `source`, or explicit `keyPrefix`.",
+      );
+    }
+    return tiledObjectKey(this.keyPrefix, obj.id);
+  }
+
+  /** Find an object by its Tiled `id`. Searches every object layer. */
+  findObject(id: number): MapObject | undefined {
+    for (const layer of this.data.objectLayers) {
+      for (const obj of layer.objects) {
+        if (obj.id === id) return obj;
+      }
+    }
+    return undefined;
+  }
+
+  /** Find the first object with a matching `name`. Searches every object layer. */
+  findObjectByName(name: string): MapObject | undefined {
+    for (const layer of this.data.objectLayers) {
+      for (const obj of layer.objects) {
+        if (obj.name === name) return obj;
+      }
+    }
+    return undefined;
+  }
+
+  /** Read a typed custom property off any tilemap object. */
+  getProperty<T = unknown>(obj: MapObject, name: string): T | undefined {
+    return getProperty<T>(obj, name);
+  }
+
+  /** Read an indexed property bag (`name[0]`, `name[1]`, ...) as an array. */
+  getPropertyArray<T = unknown>(obj: MapObject, name: string): T[] {
+    return getPropertyArray<T>(obj, name);
+  }
+
+  /**
+   * Resolve a Tiled object-reference property to the actual object.
+   * Auto-collects across every layer so callers don't have to.
+   */
+  resolveRef(obj: MapObject, propName: string): MapObject | undefined {
+    return resolveObjectRef(obj, propName, this.getAllObjects());
+  }
+
+  /** Same as `resolveRef`, but for indexed object-reference arrays. */
+  resolveRefArray(obj: MapObject, propName: string): MapObject[] {
+    return resolveObjectRefArray(obj, propName, this.getAllObjects());
   }
 }

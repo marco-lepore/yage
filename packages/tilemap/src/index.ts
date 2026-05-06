@@ -14,6 +14,9 @@ export { TilemapRenderSystem } from "./TilemapRenderSystem.js";
 // Asset handle factory
 export { tiledMap } from "./assets.js";
 
+// Stable identity helpers
+export { tiledObjectKey } from "./keys.js";
+
 // Collision extraction
 export { extractCollisionShapes } from "./colliders.js";
 export { toPhysicsColliders } from "./toPhysicsColliders.js";
