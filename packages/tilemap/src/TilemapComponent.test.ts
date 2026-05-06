@@ -272,6 +272,8 @@ const testMap: TiledMapData = {
           rotation: 0,
           visible: true,
           properties: [
+            { name: "primaryTarget", type: "object", value: 11 },
+            { name: "missingRef", type: "object", value: 9999 },
             { name: "spawns[0]", type: "object", value: 11 },
             { name: "spawns[1]", type: "object", value: 12 },
           ],
@@ -576,11 +578,12 @@ describe("TilemapComponent", () => {
     it("resolveRef walks the full object set so callers don't have to", () => {
       const comp = new TilemapComponent({ map: testMap });
       const ctrl = comp.findObject(13)!;
-      // `spawns[0]` refers to id 11 — verify via resolveRefArray below;
-      // spot-check single-ref resolution by aliasing one slot.
-      expect(comp.resolveRefArray(ctrl, "spawns").map((o) => o.id)).toEqual([
-        11, 12,
-      ]);
+      // `primaryTarget` lives on the "interactables" layer, so resolution
+      // has to walk across layers (the controller is on the same layer
+      // here, but the helper doesn't know that).
+      expect(comp.resolveRef(ctrl, "primaryTarget")?.id).toBe(11);
+      expect(comp.resolveRef(ctrl, "missingRef")).toBeUndefined();
+      expect(comp.resolveRef(ctrl, "noSuchProp")).toBeUndefined();
     });
 
     it("resolveRefArray returns the referenced objects in index order", () => {

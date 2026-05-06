@@ -59,6 +59,8 @@ export class TilemapComponent extends Component {
   private readonly layerNames: string[] | undefined;
   private readonly renderLayerName: string;
   private readonly _explicitKeyPrefix: string | undefined;
+  /** Lazy flat-list cache. The parsed map is treated as immutable post-construction; if that ever changes, callers must invalidate. */
+  private _allObjectsCache: MapObject[] | undefined;
 
   constructor(options: TilemapComponentOptions) {
     super();
@@ -227,12 +229,14 @@ export class TilemapComponent extends Component {
     return result;
   }
 
-  /** Flat list of every object across every object layer. Cheap; avoids the layer-by-layer dance. */
+  /** Flat list of every object across every object layer. Memoized — safe because parsed map data is immutable post-construction. */
   getAllObjects(): MapObject[] {
+    if (this._allObjectsCache) return this._allObjectsCache;
     const result: MapObject[] = [];
     for (const layer of this.data.objectLayers) {
       for (const obj of layer.objects) result.push(obj);
     }
+    this._allObjectsCache = result;
     return result;
   }
 

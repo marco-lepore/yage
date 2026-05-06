@@ -131,10 +131,12 @@ tilemap.tileHeight;   // single tile height
 
 `TilemapComponent` is `@serializable`, but the live parsed map it wraps is
 not — the parsed `TiledMapData` carries PixiJS textures, which don't survive
-`JSON.stringify`. The constructor therefore accepts two alternative inputs:
-an in-memory `map` object for the fast-path case where you already have the
-parsed map, and a `mapKey` asset path that can be re-resolved from the
-`AssetManager` after a reload.
+`JSON.stringify`. The constructor therefore accepts three alternative
+inputs: a `source: AssetHandle<TiledMapData>` (preferred — captures both the
+parsed data and the asset path in one argument, which doubles as the prefix
+for object auto-keys), an in-memory `map` object for the fast-path case
+where you already have the parsed map, and a `mapKey` asset path that can
+be re-resolved from the `AssetManager` after a reload.
 
 ```typescript
 interface TilemapComponentOptions {
@@ -342,7 +344,7 @@ you've already collected an object pool yourself.
 tilemap.getProperty<number>(obj, "speed");
 tilemap.getPropertyArray<number>(obj, "point");
 tilemap.resolveRef(obj, "target");          // walks every layer
-tilemap.resolveRefArray(ctrl, "spawns");
+tilemap.resolveRefArray(obj, "spawns");
 
 // Standalone (caller supplies the pool)
 import { getProperty, getPropertyArray, resolveObjectRef, resolveObjectRefArray } from "@yagejs/tilemap";
