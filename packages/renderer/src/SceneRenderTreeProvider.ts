@@ -93,17 +93,20 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
 /**
  * Materializes a per-scene render tree with one root container per scene,
- * added as a direct child of `app.stage`. Registered under
+ * added as a direct child of the renderer plugin's `_worldRoot` container
+ * (which itself sits under `app.stage`, but holds the fit transform — see
+ * `RendererPlugin._worldRoot` for the rationale). Registered under
  * `SceneRenderTreeProviderKey` by the renderer plugin.
  *
  * ```
- * app.stage
- *  ├── scene A root
- *  │    ├── layer "bg" (order -10)
- *  │    ├── layer "world" (order 0)
- *  │    └── layer "hud" (order 100)
- *  └── scene B root
- *       └── ...
+ * app.stage                  // identity
+ *  └── _worldRoot           // fit transform lives here
+ *       ├── scene A root
+ *       │    ├── layer "bg" (order -10)
+ *       │    ├── layer "world" (order 0)
+ *       │    └── layer "hud" (order 100)
+ *       └── scene B root
+ *            └── ...
  * ```
  */
 export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {

@@ -22,7 +22,9 @@ export type EnsureLayerOptions = Pick<
  * enters. Scoped DI: components resolve via `this.use(SceneRenderTreeKey)`.
  */
 export interface SceneRenderTree {
-  /** The single root container for the scene. Direct child of app.stage. */
+  /** The single root container for the scene. Lives under the renderer's
+   * world-root container (which sits under `app.stage` and holds the fit
+   * transform). */
   readonly root: Container;
   /** Get a layer by name. Throws if not found. */
   get(name: string): RenderLayer;

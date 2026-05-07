@@ -28,12 +28,19 @@ export interface VirtualRect {
 export type CanvasRect = VirtualRect;
 
 /**
- * Owns the stage transform + canvas size under responsive fit.
+ * Owns the world-root transform + canvas size under responsive fit.
  *
  * On `start()`, observes the target element and re-applies both
- * `app.renderer.resize(hostW, hostH)` and a stage scale/position that maps
- * the virtual rectangle into the new canvas according to the fit mode. Guards
- * against zero-size firings (detached / `display:none` hosts).
+ * `app.renderer.resize(hostW, hostH)` and a scale/position transform on the
+ * supplied container that maps the virtual rectangle into the new canvas
+ * according to the fit mode. Guards against zero-size firings (detached /
+ * `display:none` hosts).
+ *
+ * The container we transform must NOT be `app.stage` itself — Pixi's stage
+ * is the active render group and `@pixi/tilemap`'s pipe double-applies any
+ * transform on the active render group. The renderer plugin owns a
+ * dedicated `_worldRoot` child of stage for this purpose; constructors in
+ * tests pass any plain Container.
  *
  * With a null target (headless environments, tests without a DOM), applies
  * the transform once against a fixed host size and installs no observer.
