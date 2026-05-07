@@ -36,7 +36,14 @@ import {
 } from "@yagejs/renderer";
 import type { EffectHandle, MaskHandle } from "@yagejs/renderer";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
-import { UIPlugin, UIPanel, UIButton, Anchor, type ColorBackground } from "@yagejs/ui";
+import {
+  UIPlugin,
+  UIPanel,
+  UIButton,
+  PanelNode,
+  Anchor,
+  type ColorBackground,
+} from "@yagejs/ui";
 import {
   hitFlash,
   bloom,
@@ -209,7 +216,6 @@ class BackgroundEntity extends Entity {
 @serializable
 class HeroEntity extends Entity {
   flashHandle: HitFlashHandle | null = null;
-  shockwaveHandle: ShockwaveHandle | null = null;
 
   setup(): void {
     this.add(new Transform({ position: new Vec2(150, 320) }));
@@ -222,7 +228,6 @@ class HeroEntity extends Entity {
     this.redraw();
     const g = this.tryGet(GraphicsComponent);
     this.flashHandle = g?.fx.findEffect(hitFlash) ?? null;
-    this.shockwaveHandle = g?.fx.findEffect(shockwave) ?? null;
     if (!this.flashHandle) this.attachHitFlash();
   }
 
@@ -349,30 +354,30 @@ class ShowcaseScene extends Scene {
       if (btn) paintButton(btn, true);
     };
 
-    const heroGfx = this.hero?.tryGet(GraphicsComponent);
     const blockGfx = this.block?.tryGet(GraphicsComponent);
     const gemGfx = this.gem?.tryGet(GraphicsComponent);
 
     sync("outline", blockGfx?.fx.findEffect(outline) ?? null);
     sync("dropShadow", blockGfx?.fx.findEffect(dropShadow) ?? null);
     sync("glow", gemGfx?.fx.findEffect(glow) ?? null);
-    sync("shockwave", heroGfx?.fx.findEffect(shockwave) ?? null);
-    if (this.hero) {
-      this.hero.shockwaveHandle = (heroGfx?.fx.findEffect(shockwave) ?? null) as
-        | ShockwaveHandle
-        | null;
-    }
     sync("bloom", world?.fx.findEffect(bloom) ?? null);
     sync("pixelate", world?.fx.findEffect(pixelate) ?? null);
-    sync("godRay", world?.fx.findEffect(godRay) ?? null);
     sync("motionBlur", world?.fx.findEffect(motionBlur) ?? null);
     sync("halftone", world?.fx.findEffect(halftone) ?? null);
     sync("wave", world?.fx.findEffect(wave) ?? null);
     sync("oldFilm", world?.fx.findEffect(oldFilm) ?? null);
-    sync("bulgePinch", world?.fx.findEffect(bulgePinch) ?? null);
     sync("crt", tree.fx.findEffect(crt));
     sync("colorGrade", tree.fx.findEffect(colorGrade));
     sync("ca", tree.fx.findEffect(chromaticAberration));
+    // godRay, bulgePinch, shockwave live at scene scope: they overlay the
+    // whole composited scene rather than a single layer. godRay's shader
+    // forces alpha=1, so on a partly-transparent layer it would mask the
+    // background to black; bulgePinch's distortion radius extends beyond
+    // any single sprite's bbox; shockwave's ring needs the full scene to
+    // expand into.
+    sync("godRay", tree.fx.findEffect(godRay));
+    sync("bulgePinch", tree.fx.findEffect(bulgePinch));
+    sync("shockwave", tree.fx.findEffect(shockwave));
     sync("vignette", renderer.fx.findEffect(vignette));
   }
 
@@ -401,18 +406,43 @@ class ShowcaseScene extends Scene {
 
     sidebar.text("Effects Showcase", TXT_TITLE);
 
-    const section = (title: string): void => {
-      sidebar.text(title, TXT_HEADING);
+    // Collapsible sections — clicking the header toggles the child panel's
+    // visibility. Without this the full preset list overflows the canvas.
+    // `defaultOpen=false` for everything except the first section keeps the
+    // initial paint short; users expand whichever scope they want.
+    const section = (title: string, defaultOpen = false): PanelNode => {
+      let isOpen = defaultOpen;
+      const headerBtn = sidebar.button(`${isOpen ? "▼" : "▶"} ${title}`, {
+        height: 22,
+        width: SIDEBAR_WIDTH - 20,
+        background: { color: 0x111827, alpha: 1, radius: 4 },
+        hoverBackground: { color: 0x1f2937, alpha: 1, radius: 4 },
+        pressBackground: { color: 0x1f2937, alpha: 1, radius: 4 },
+        textStyle: TXT_HEADING,
+        onClick: () => {
+          isOpen = !isOpen;
+          inner.visible = isOpen;
+          headerBtn.update({ children: `${isOpen ? "▼" : "▶"} ${title}` });
+        },
+      });
+      const inner = sidebar.panel({
+        direction: "column",
+        gap: 3,
+        padding: { left: 4 },
+        visible: isOpen,
+      });
+      return inner as PanelNode;
     };
 
-    const toggle = (
+    const mkToggle = (
+      host: PanelNode,
       label: string,
       key: string,
       attach: () => EffectHandle,
     ): void => {
-      const btn = sidebar.button(label, {
+      const btn = host.button(label, {
         height: 22,
-        width: SIDEBAR_WIDTH - 20,
+        width: SIDEBAR_WIDTH - 28,
         background: BTN_OFF,
         hoverBackground: BTN_OFF_HOVER,
         pressBackground: BTN_OFF_HOVER,
@@ -432,15 +462,16 @@ class ShowcaseScene extends Scene {
       this.toggleButtons.set(key, btn);
     };
 
-    const action = (
+    const mkAction = (
+      host: PanelNode,
       label: string,
       onClick: () => void,
       bg: ColorBackground = BTN_ACCENT,
       bgHover: ColorBackground = BTN_ACCENT_HOVER,
     ): void => {
-      sidebar.button(label, {
+      host.button(label, {
         height: 22,
-        width: SIDEBAR_WIDTH - 20,
+        width: SIDEBAR_WIDTH - 28,
         background: bg,
         hoverBackground: bgHover,
         pressBackground: bgHover,
@@ -449,96 +480,125 @@ class ShowcaseScene extends Scene {
       });
     };
 
-    section("Component (sprite)");
-    action("Hit Flash trigger", () => this.hero?.flashHandle?.trigger());
-
-    toggle("outline (block)", "outline", () => {
+    // ---- Component (sprite) ----
+    const componentSection = section("Component (per-entity)", true);
+    mkAction(componentSection, "Hit Flash trigger", () =>
+      this.hero?.flashHandle?.trigger(),
+    );
+    mkToggle(componentSection, "outline (block)", "outline", () => {
       const g = this.block?.tryGet(GraphicsComponent);
       if (!g) throw new Error("block graphics missing");
       return g.fx.addEffect(outline({ thickness: 4, color: 0x000000 }));
     });
-    toggle("dropShadow (block)", "dropShadow", () => {
+    mkToggle(componentSection, "dropShadow (block)", "dropShadow", () => {
       const g = this.block?.tryGet(GraphicsComponent);
       if (!g) throw new Error("block graphics missing");
-      return g.fx.addEffect(dropShadow({ offset: { x: 8, y: 8 }, alpha: 0.7 }));
+      return g.fx.addEffect(
+        dropShadow({ offset: { x: 8, y: 8 }, alpha: 0.7 }),
+      );
     });
-    toggle("glow (gem)", "glow", () => {
+    mkToggle(componentSection, "glow (gem)", "glow", () => {
       const g = this.gem?.tryGet(GraphicsComponent);
       if (!g) throw new Error("gem graphics missing");
       return g.fx.addEffect(glow({ color: 0xffff00, outerStrength: 3 }));
     });
-    toggle("shockwave (hero)", "shockwave", () => {
-      const g = this.hero?.tryGet(GraphicsComponent);
-      if (!g) throw new Error("hero graphics missing");
-      const handle = g.fx.addEffect(
-        shockwave({ amplitude: 24, wavelength: 80, duration: 800 }),
-      );
-      if (this.hero) this.hero.shockwaveHandle = handle;
-      return handle;
-    });
-    action("Trigger shockwave", () => this.hero?.shockwaveHandle?.trigger(0, 0));
 
-    section("Layer (world only — UI unaffected)");
-    toggle("bloom", "bloom", () =>
-      tree.get("world").fx.addEffect(bloom({ threshold: 0.3, bloomScale: 1.4 })),
+    // ---- Layer (world only — UI unaffected) ----
+    const layerSection = section("Layer · world (UI unaffected)");
+    mkToggle(layerSection, "bloom", "bloom", () =>
+      tree
+        .get("world")
+        .fx.addEffect(bloom({ threshold: 0.3, bloomScale: 1.4 })),
     );
-    toggle("pixelate", "pixelate", () =>
+    mkToggle(layerSection, "pixelate", "pixelate", () =>
       tree.get("world").fx.addEffect(pixelate({ size: 6 })),
     );
-    toggle("godRay", "godRay", () =>
-      tree.get("world").fx.addEffect(godRay({ angle: 25, gain: 0.5 })),
+    mkToggle(layerSection, "motionBlur", "motionBlur", () =>
+      tree
+        .get("world")
+        .fx.addEffect(motionBlur({ velocity: { x: 24, y: 0 } })),
     );
-    toggle("motionBlur", "motionBlur", () =>
-      tree.get("world").fx.addEffect(motionBlur({ velocity: { x: 24, y: 0 } })),
-    );
-    toggle("oldFilm", "oldFilm", () =>
+    mkToggle(layerSection, "oldFilm", "oldFilm", () =>
       tree.get("world").fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 })),
     );
-    toggle("bulgePinch (center)", "bulgePinch", () =>
-      tree.get("world").fx.addEffect(
+    mkToggle(layerSection, "halftone (custom shader)", "halftone", () =>
+      tree
+        .get("world")
+        .fx.addEffect(halftone({ size: 6, angle: Math.PI / 4 })),
+    );
+    mkToggle(layerSection, "wave (custom shader)", "wave", () =>
+      tree
+        .get("world")
+        .fx.addEffect(wave({ amplitude: 5, wavelength: 60, speed: 0.8 })),
+    );
+
+    // ---- Scene (covers UI too) ----
+    // godRay, bulgePinch, shockwave attach here rather than to the world
+    // layer:
+    //   - godRay's shader writes alpha=1 unconditionally, so on a
+    //     partly-transparent layer it would replace the underlying
+    //     background with black-tinted rays. At scene scope the composited
+    //     scene is opaque; the rays read correctly over it.
+    //   - bulgePinch's lens distortion has a `radius` (default 100px+) that
+    //     extends past any single sprite's bbox, so layer scope clips the
+    //     ring. Scene scope gives it the full canvas to work with.
+    //   - shockwave's ring expands outward from `center` and likewise needs
+    //     room beyond a single component's bbox to read as a ring rather
+    //     than a tiny bump.
+    const sceneSection = section("Scene (covers UI too)");
+    mkToggle(sceneSection, "crt", "crt", () =>
+      tree.fx.addEffect(crt({ lineContrast: 0.3 })),
+    );
+    mkToggle(sceneSection, "colorGrade: sepia", "colorGrade", () =>
+      tree.fx.addEffect(colorGrade({ preset: "sepia" })),
+    );
+    mkToggle(sceneSection, "chromaticAberration", "ca", () =>
+      tree.fx.addEffect(chromaticAberration({ separation: 4 })),
+    );
+    mkToggle(sceneSection, "godRay", "godRay", () =>
+      tree.fx.addEffect(godRay({ angle: 25, gain: 0.5 })),
+    );
+    mkToggle(sceneSection, "bulgePinch", "bulgePinch", () =>
+      tree.fx.addEffect(
+        // Center is normalized scene coords (0..1), so { 0.5, 0.5 } is
+        // dead-center of the canvas regardless of resolution.
         bulgePinch({
           strength: 0.6,
-          radius: 220,
+          radius: 260,
           center: { x: 0.4, y: 0.5 },
         }),
       ),
     );
-    toggle("halftone (custom shader)", "halftone", () =>
-      tree.get("world").fx.addEffect(
-        halftone({ size: 6, angle: Math.PI / 4 }),
+    mkToggle(sceneSection, "shockwave (toggle, then trigger)", "shockwave", () =>
+      tree.fx.addEffect(
+        shockwave({ amplitude: 30, wavelength: 120, duration: 900 }),
       ),
     );
-    toggle("wave (custom shader)", "wave", () =>
-      tree.get("world").fx.addEffect(
-        wave({ amplitude: 5, wavelength: 60, speed: 0.8 }),
-      ),
-    );
+    mkAction(sceneSection, "Trigger shockwave on hero", () => {
+      const h = this.effectHandles.get("shockwave") as
+        | ShockwaveHandle
+        | undefined;
+      if (!h) {
+        showToast("Toggle shockwave on first");
+        return;
+      }
+      // Hero position in scene-pixel space; shockwave's center uniform is
+      // in pixels of the scene's render texture.
+      const pos = this.hero?.tryGet(Transform)?.position;
+      h.trigger(pos?.x ?? STAGE_WIDTH / 2, pos?.y ?? STAGE_HEIGHT / 2);
+    });
 
-    section("Scene (covers UI too)");
-    toggle("crt", "crt", () =>
-      tree.fx.addEffect(crt({ lineContrast: 0.3 })),
-    );
-    toggle("colorGrade: sepia", "colorGrade", () =>
-      tree.fx.addEffect(colorGrade({ preset: "sepia" })),
-    );
-    toggle("chromaticAberration", "ca", () =>
-      tree.fx.addEffect(chromaticAberration({ separation: 4 })),
-    );
-
-    section("Screen (covers UI too)");
-    toggle("vignette", "vignette", () =>
+    // ---- Screen (covers UI too) ----
+    const screenSection = section("Screen (covers UI too)");
+    mkToggle(screenSection, "vignette", "vignette", () =>
       renderer.fx.addEffect(vignette({ alpha: 0.6 })),
     );
 
     // ---- Fades — operate on whichever handle is currently attached. ----
-    section("Fades");
-    const fadeBtn = (
-      label: string,
-      key: string,
-      ms: number,
-      dir: "in" | "out",
-    ): void => {
-      action(
+    const fadesSection = section("Fades");
+    const fadeBtn = (key: string, label: string, ms: number, dir: "in" | "out"): void => {
+      mkAction(
+        fadesSection,
         label,
         () => {
           const h = this.effectHandles.get(key);
@@ -553,13 +613,13 @@ class ShowcaseScene extends Scene {
         BTN_OFF_HOVER,
       );
     };
-    fadeBtn("bloom: fade out 1s", "bloom", 1000, "out");
-    fadeBtn("bloom: fade in 1s", "bloom", 1000, "in");
-    fadeBtn("vignette: fade out 1s", "vignette", 1000, "out");
-    fadeBtn("vignette: fade in 1s", "vignette", 1000, "in");
+    fadeBtn("bloom", "bloom: fade out 1s", 1000, "out");
+    fadeBtn("bloom", "bloom: fade in 1s", 1000, "in");
+    fadeBtn("vignette", "vignette: fade out 1s", 1000, "out");
+    fadeBtn("vignette", "vignette: fade in 1s", 1000, "in");
 
     // ---- Masks — exclusive setMask/clearMask, not addEffect. ----
-    section("Masks");
+    const masksSection = section("Masks");
     {
       const gemGfx = this.gem?.tryGet(GraphicsComponent);
       const blockGfx = this.block?.tryGet(GraphicsComponent);
@@ -567,9 +627,9 @@ class ShowcaseScene extends Scene {
       let gemInverse = gemHandle?.inverse ?? false;
       let blockHandle: MaskHandle | null = blockGfx?.mask ?? null;
 
-      const maskGem = sidebar.button("Mask gem (top half)", {
+      const maskGem = masksSection.button("Mask gem (top half)", {
         height: 22,
-        width: SIDEBAR_WIDTH - 20,
+        width: SIDEBAR_WIDTH - 28,
         background: gemHandle ? BTN_ON : BTN_OFF,
         hoverBackground: gemHandle ? BTN_ON_HOVER : BTN_OFF_HOVER,
         textStyle: TXT_LABEL,
@@ -590,9 +650,9 @@ class ShowcaseScene extends Scene {
         },
       });
 
-      const inverseGem = sidebar.button("Toggle gem mask inverse", {
+      const inverseGem = masksSection.button("Toggle gem mask inverse", {
         height: 22,
-        width: SIDEBAR_WIDTH - 20,
+        width: SIDEBAR_WIDTH - 28,
         background: gemInverse ? BTN_ON : BTN_OFF,
         hoverBackground: gemInverse ? BTN_ON_HOVER : BTN_OFF_HOVER,
         textStyle: TXT_LABEL,
@@ -607,9 +667,9 @@ class ShowcaseScene extends Scene {
         },
       });
 
-      const maskBlock = sidebar.button("Mask block (graphicsMask)", {
+      const maskBlock = masksSection.button("Mask block (graphicsMask)", {
         height: 22,
-        width: SIDEBAR_WIDTH - 20,
+        width: SIDEBAR_WIDTH - 28,
         background: blockHandle ? BTN_ON : BTN_OFF,
         hoverBackground: blockHandle ? BTN_ON_HOVER : BTN_OFF_HOVER,
         textStyle: TXT_LABEL,
@@ -633,9 +693,10 @@ class ShowcaseScene extends Scene {
       });
     }
 
-    section("Save / Load (S / L)");
-    action("Save", () => this.doSave());
-    action("Load", () => void this.doLoad());
+    // ---- Save / Load ----
+    const saveSection = section("Save / Load (S / L)");
+    mkAction(saveSection, "Save", () => this.doSave());
+    mkAction(saveSection, "Load", () => void this.doLoad());
   }
 
   doSave(): void {
