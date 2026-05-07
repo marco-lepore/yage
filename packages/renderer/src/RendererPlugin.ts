@@ -365,10 +365,13 @@ export class RendererPlugin implements Plugin {
    * `markPointerConsumeContainer`. Used by `@yagejs/input`'s drain step to
    * auto-claim presses landing on UI surfaces.
    *
-   * `EventBoundary.hitTest` operates in root-target-local coordinates. The
-   * fit controller aligns `_worldRoot` with the virtual space (its scale +
-   * translate transform maps `virtual` into `canvas`), so passing virtual
-   * coordinates straight through matches what Pixi's hit-test sees.
+   * Coordinates are supplied in virtual space (matching how the input plugin
+   * stores pointer positions); they are converted to canvas space via
+   * `FitController.virtualToCanvas` before being forwarded to
+   * `EventBoundary.hitTest`, which per the Pixi v8 spec expects canvas-
+   * relative ("world space above the boundary") coordinates. At fit ratio 1
+   * the two spaces coincide; at any other ratio (mobile / responsive) the
+   * conversion is required for the hit-test to land on the correct surface.
    */
   hitTestUI(x: number, y: number): boolean {
     const boundary = this._app.renderer.events?.rootBoundary;
@@ -377,13 +380,14 @@ export class RendererPlugin implements Plugin {
     // frame (or under `inspector.time.freeze()` in deterministic test runs
     // that pause the ticker) it can be null — and `boundary.hitTest` reads
     // `rootTarget.eventMode` unconditionally, so the call would crash. Bind
-    // it to `_worldRoot` ourselves so virtual-space hit-tests resolve before
+    // it to `_worldRoot` ourselves so the hit-test has a valid root before
     // the first frame; Pixi's render loop will keep `rootTarget` accurate
     // once frames start landing.
     if (!boundary.rootTarget) {
       boundary.rootTarget = this._worldRoot;
     }
-    const hit = boundary.hitTest(x, y) as Container | null;
+    const canvas = this._fitController.virtualToCanvas(x, y);
+    const hit = boundary.hitTest(canvas.x, canvas.y) as Container | null;
     if (!hit) return false;
     let node: Container | null = hit;
     while (node) {

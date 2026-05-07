@@ -8,4 +8,6 @@ Why: Pixi v8 feeds the active render group's transform to shaders via `uWorldTra
 
 Putting the fit transform on a regular Container child of stage keeps `uWorldTransformMatrix = identity` at render time, so `@pixi/tilemap`'s pipe — and any other shader that reads `uWorldTransformMatrix` — composes correctly. Stage-direct children (transition overlays, the screen-scope `RendererPlugin.fx` host) keep their canvas-pixel coordinates as before.
 
-User-visible surface is unchanged — `canvasToVirtual`, `hitTestUI`, scene render trees, and the `Fit` controller's outputs are all the same. The only structural change is one extra container in the tree (`stage → _worldRoot → scene roots`).
+User-visible surface is unchanged for `canvasToVirtual`, scene render trees, and the `Fit` controller's outputs. The only structural change is one extra container in the tree (`stage → _worldRoot → scene roots`).
+
+Also fixes a pre-existing bug in `hitTestUI`: the method is documented to take virtual coordinates (matching how the input plugin stores pointer positions) but was forwarding them straight through to `EventBoundary.hitTest`, which expects canvas-relative coordinates per the Pixi v8 spec. At fit ratio 1 the two coincide so the bug stayed hidden on desktop; at any other ratio (mobile / responsive) UI auto-consume silently missed every surface. The method now converts via `FitController.virtualToCanvas` before calling `boundary.hitTest`.
