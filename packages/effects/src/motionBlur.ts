@@ -28,9 +28,19 @@ export const motionBlur = defineEffect<MotionBlurHandle, MotionBlurOptions>({
   factory: (options) => {
     let baseVx = options.velocity?.x ?? 30;
     let baseVy = options.velocity?.y ?? 0;
+    // MotionBlurFilter requires kernelSize to be odd and >= 5; coerce
+    // user-provided values up to the nearest valid kernel rather than
+    // letting an invalid input produce inconsistent blur output.
+    const requestedKernel = Math.floor(options.kernelSize ?? 5);
+    const kernelSize =
+      requestedKernel < 5
+        ? 5
+        : requestedKernel % 2 === 0
+          ? requestedKernel + 1
+          : requestedKernel;
     const filter = new MotionBlurFilter({
       velocity: { x: baseVx, y: baseVy },
-      kernelSize: options.kernelSize ?? 5,
+      kernelSize,
       offset: options.offset ?? 0,
     });
     const baseMag = (): number => Math.hypot(baseVx, baseVy);

@@ -122,6 +122,15 @@ fn mainVertex(@location(0) aPosition: vec2<f32>) -> VSOutput {
   return VSOutput(filterVertexPosition(aPosition), filterTextureCoord(aPosition));
 }
 
+// WGSL's % operator on f32 returns a result with the LHS sign --
+// '-3.0 % 10.0' is -3.0, not 7.0 like GLSL's mod(). With a rotated grid
+// the lookup coords go negative on one side, so we wrap explicitly via
+// a floor-based modulo to keep cell coords in [0, size). Without this
+// the dot pattern reads as garbage on the negative-rotation half.
+fn fmod_pos(x: f32, m: f32) -> f32 {
+  return x - floor(x / m) * m;
+}
+
 @fragment
 fn mainFragment(
   @location(0) uv: vec2<f32>,
@@ -135,7 +144,8 @@ fn mainFragment(
   let s = sin(halftoneUniforms.uAngle);
   let rotated = vec2<f32>(c * px.x - s * px.y, s * px.x + c * px.y);
 
-  let cell = vec2<f32>(rotated.x % halftoneUniforms.uSize, rotated.y % halftoneUniforms.uSize) / halftoneUniforms.uSize - vec2<f32>(0.5, 0.5);
+  let size = max(halftoneUniforms.uSize, 1.0);
+  let cell = vec2<f32>(fmod_pos(rotated.x, size), fmod_pos(rotated.y, size)) / size - vec2<f32>(0.5, 0.5);
   let distToCenter = length(cell);
 
   let lum = dot(color.rgb, vec3<f32>(0.299, 0.587, 0.114));
@@ -154,6 +164,10 @@ fn mainFragment(
 /** @internal */
 class HalftoneFilter extends Filter {
   constructor(size: number, amount: number, angle: number) {
+    // The shader divides by `uSize` and modulos against it; a 0 or negative
+    // initial value would produce NaN until any setter fired, so clamp at
+    // construction.
+    const safeSize = Math.max(1, size);
     super({
       glProgram: GlProgram.from({
         vertex: VERTEX_GL,
@@ -166,7 +180,7 @@ class HalftoneFilter extends Filter {
       }),
       resources: {
         halftoneUniforms: {
-          uSize: { value: size, type: "f32" },
+          uSize: { value: safeSize, type: "f32" },
           uAmount: { value: amount, type: "f32" },
           uAngle: { value: angle, type: "f32" },
         },

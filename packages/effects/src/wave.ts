@@ -162,7 +162,10 @@ class WaveFilter extends Filter {
   }
   set amplitude(value: number) {
     this.uniforms().uAmplitude = value;
-    this.padding = Math.ceil(value) + 2;
+    // Padding is a max-displacement budget — sign-agnostic, so use the
+    // magnitude. A negative amplitude is visually equivalent to a 180°
+    // phase shift, but its padding requirement is identical.
+    this.padding = Math.ceil(Math.abs(value)) + 2;
   }
   get wavelength(): number {
     return this.uniforms().uWavelength;
@@ -196,13 +199,17 @@ export const wave = defineEffect<WaveHandle, WaveOptions>({
     const filter = new WaveFilter(baseAmplitude, options.wavelength ?? 40);
     const effect: Effect<WaveHandle> = {
       filter,
-      getIntensity: () => filter.amplitude / Math.max(baseAmplitude, 1e-6),
+      // Magnitude-based ratio so a negative configured amplitude still
+      // reports intensity in [0, 1] without sign flips.
+      getIntensity: () =>
+        filter.amplitude / Math.max(Math.abs(baseAmplitude), 1e-6),
       setIntensity: (v) => {
         filter.amplitude = baseAmplitude * v;
       },
       buildExtras: () => ({
         setAmplitude: (value: number) => {
-          const ratio = filter.amplitude / Math.max(baseAmplitude, 1e-6);
+          const ratio =
+            filter.amplitude / Math.max(Math.abs(baseAmplitude), 1e-6);
           baseAmplitude = value;
           filter.amplitude = value * ratio;
         },

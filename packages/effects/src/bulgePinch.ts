@@ -40,14 +40,20 @@ export const bulgePinch = defineEffect<BulgePinchHandle, BulgePinchOptions>({
     });
     const effect: Effect<BulgePinchHandle> = {
       filter,
-      getIntensity: () => filter.strength / Math.max(Math.abs(baseStrength), 1e-6),
+      // Magnitude-based ratio: pinch (negative strength) and bulge (positive)
+      // both report intensity in [0, 1] without sign flips.
+      getIntensity: () =>
+        Math.abs(filter.strength) / Math.max(Math.abs(baseStrength), 1e-6),
       setIntensity: (v) => {
         filter.strength = baseStrength * v;
       },
       buildExtras: () => ({
         setStrength: (value: number) => {
+          // Preserve magnitude ratio; rebase keeps current intensity AND
+          // adopts the new sign (so toggling pinch ↔ bulge actually flips
+          // direction instead of stalling at the previous polarity).
           const ratio =
-            filter.strength / Math.max(Math.abs(baseStrength), 1e-6);
+            Math.abs(filter.strength) / Math.max(Math.abs(baseStrength), 1e-6);
           baseStrength = value;
           filter.strength = value * ratio;
         },

@@ -20,20 +20,28 @@ export interface ShockwaveOptions {
   duration?: number;
 }
 
+// `time` value that's "obviously past the screen" — at the default speed of
+// 500 px/s this is the radius reached after ~2 hours of simulation. Used as
+// the parked state so toggling the effect on without a trigger yields no
+// visible distortion.
+const PARKED_TIME = 1e6;
+
 /**
  * Concentric-ring ripple via pixi-filters' ShockwaveFilter — the impact
- * polish for explosions, slams, blast waves. The filter's `time` uniform is
- * what drives the ring outward; this preset wraps it behind a `trigger(x, y)`
- * convenience that:
+ * polish for explosions, slams, blast waves.
  *
- *  1. Sets `center` to the strike point (in the host's local pixel space),
- *  2. Resets `time` to 0,
- *  3. Schedules a self-running ramp through the engine's process scheduler
- *     that advances `time` in seconds for `duration` ms before parking the
- *     ripple offscreen (effectively idle until the next trigger).
+ * Best applied at scene scope: the ring expands outward from `center` and
+ * is naturally clipped at the host's bounds, so a component-scoped
+ * shockwave on a small sprite reads as a tiny "bump" rather than a ring.
  *
- * The internal Process pauses with the owning scene, time-scales with it,
- * and is auto-cancelled on `remove()` — no caller-side `step(dt)` wiring.
+ * Underlying `center` is a pixel coordinate in the host filter's input
+ * frame — at scene scope that's the scene's render texture, so a
+ * `trigger(heroX, heroY)` lines up with the entity's transform position.
+ *
+ * The filter starts in a "parked" state (time pushed past every visible
+ * pixel) so toggling on is invisible until you `trigger()`. The trigger
+ * ramp drives itself through the engine's process scheduler — pauses with
+ * the owning scene, time-scales with it, auto-cancels on `remove()`.
  *
  * `setIntensity` cross-fades amplitude × brightness from 0 to the configured
  * values so `fadeIn`/`fadeOut` work the same as on every other preset.
@@ -50,7 +58,10 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
       wavelength: options.wavelength ?? 160,
       brightness: baseBrightness,
       radius: options.radius ?? -1,
-      time: 0,
+      // Park the initial ring offscreen so toggling the effect on (without
+      // a trigger) shows nothing. Without this, time=0 places the ring
+      // exactly at `center`, producing a stationary "bump" pinned there.
+      time: PARKED_TIME,
     });
     let intensity = 1;
     const apply = (): void => {
@@ -82,9 +93,7 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
                   filter.time += dt / 1000;
                 },
                 onComplete: () => {
-                  // Park the ring far outside any reasonable viewport so it
-                  // stops contributing visible pixels until the next trigger.
-                  filter.time = 1e6;
+                  filter.time = PARKED_TIME;
                 },
               }),
             );
