@@ -74,18 +74,36 @@ iris() // 600ms black iris from the center
 iris({ duration: 900, color: 0x111111, center: { x: 64, y: 64 } })
 ```
 
-**`chessboard({ duration?, rows?, cols?, color? })`** — Staggered
-checkerboard wipe. Even-parity cells fade in over the first quarter,
-odd-parity over the second; both parities are fully opaque at the
-mid-point so the scene swap is hidden under the cover; the same stagger
-runs in reverse over the second half to reveal the destination.
-Defaults to 700ms, a 6×10 grid, and black.
+**`irisReveal({ duration?, center?, easing? })`** — One-way iris that
+masks the incoming scene's container with an expanding circle, so the
+new scene "blooms" over the previous one from the chosen point. No
+color overlay and no dip-to-black mid-point — the previous scene stays
+visible outside the circle until the iris covers it. Reach for
+`irisReveal` when you want a smooth reveal; reach for `iris` when you
+want the retro hard-cut feel.
+
+```typescript
+import { irisReveal } from "@yagejs/renderer";
+
+irisReveal() // 600ms reveal from the center
+irisReveal({
+  duration: 800,
+  center: { x: 0, y: 0 },           // bloom from the top-left
+  easing: (t) => 1 - Math.pow(1 - t, 3),
+})
+```
+
+**`chessboard({ duration?, rows?, cols? })`** — Staggered checkerboard
+mask painted directly onto the incoming scene's container. Even-parity
+cells fade in over the first half, odd-parity over the second, so the
+new scene "paints in" cell-by-cell on top of the previous one — no
+blackout, no color overlay. Defaults to 700ms and a 6×10 grid.
 
 ```typescript
 import { chessboard } from "@yagejs/renderer";
 
-chessboard() // 700ms 6×10 black grid
-chessboard({ rows: 4, cols: 6, color: 0x1a1a2e, duration: 900 })
+chessboard() // 700ms 6×10 grid
+chessboard({ rows: 4, cols: 6, duration: 900 })
 ```
 
 **`slidePush({ duration?, direction?, reverseOnPop?, easing? })`** — Both

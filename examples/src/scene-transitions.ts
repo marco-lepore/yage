@@ -18,6 +18,7 @@ import {
   fade,
   flash,
   iris,
+  irisReveal,
   slidePush,
 } from "@yagejs/renderer";
 import {
@@ -277,6 +278,12 @@ bind("btn-push-slide", () => {
 bind("btn-push-iris", () => {
   void engine.scenes.push(nextScene(), {
     transition: iris({ duration: currentDuration() }),
+  });
+});
+
+bind("btn-push-iris-reveal", () => {
+  void engine.scenes.push(nextScene(), {
+    transition: irisReveal({ duration: currentDuration() }),
   });
 });
 

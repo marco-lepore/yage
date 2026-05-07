@@ -4,7 +4,7 @@ import type {
   SceneTransitionContext,
   SceneTransitionKind,
 } from "@yagejs/core";
-import { chessboard, cellAlpha } from "./chessboard.js";
+import { irisReveal } from "./irisReveal.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
 
@@ -28,7 +28,6 @@ function makeCtx(opts: {
   toScene?: Scene;
   fromScene?: Scene;
   toContainer?: MaskableContainer;
-  fromContainer?: MaskableContainer;
   bringSceneToFront?: (scene: Scene) => void;
 }): SceneTransitionContext {
   return {
@@ -52,9 +51,6 @@ function makeCtx(opts: {
               if (s === opts.toScene && opts.toContainer) {
                 return { root: opts.toContainer };
               }
-              if (s === opts.fromScene && opts.fromContainer) {
-                return { root: opts.fromContainer };
-              }
               return undefined;
             },
             bringSceneToFront: opts.bringSceneToFront,
@@ -66,17 +62,17 @@ function makeCtx(opts: {
   } as unknown as SceneTransitionContext;
 }
 
-describe("chessboard", () => {
-  it("defaults to 700ms duration", () => {
-    expect(chessboard().duration).toBe(700);
+describe("irisReveal", () => {
+  it("defaults to 600ms duration", () => {
+    expect(irisReveal().duration).toBe(600);
   });
 
   it("accepts custom duration", () => {
-    expect(chessboard({ duration: 1500 }).duration).toBe(1500);
+    expect(irisReveal({ duration: 1200 }).duration).toBe(1200);
   });
 
   it("brings the destination scene to the front so its mask drives the reveal on pop", () => {
-    const t = chessboard({ duration: 100 });
+    const t = irisReveal({ duration: 100 });
     const toScene = { name: "to" } as Scene;
     const toContainer = makeMaskableContainer();
     const bringSceneToFront = vi.fn();
@@ -93,8 +89,8 @@ describe("chessboard", () => {
     expect(bringSceneToFront).toHaveBeenCalledWith(toScene);
   });
 
-  it("attaches a mask to the destination container at begin and detaches it at end", () => {
-    const t = chessboard({ duration: 100 });
+  it("attaches a non-inverse mask to the destination at begin and detaches it at end", () => {
+    const t = irisReveal({ duration: 100 });
     const toScene = { name: "to" } as Scene;
     const toContainer = makeMaskableContainer();
     const setMask = vi.spyOn(toContainer, "setMask");
@@ -103,14 +99,13 @@ describe("chessboard", () => {
     expect(setMask).toHaveBeenCalledTimes(1);
     expect(setMask.mock.calls[0]?.[0]?.inverse).toBe(false);
 
-    // Direct assignment to `mask = null` is the documented teardown path.
     toContainer.mask = "still-here";
     t.end!(makeCtx({ elapsed: 100, kind: "push", toScene, toContainer }));
     expect(toContainer.mask).toBeNull();
   });
 
-  it("tolerates undefined scenes on either side", () => {
-    const t = chessboard({ duration: 100 });
+  it("tolerates an undefined toScene container", () => {
+    const t = irisReveal({ duration: 100 });
     expect(() =>
       t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
     ).not.toThrow();
@@ -120,31 +115,33 @@ describe("chessboard", () => {
     expect(() => t.end!(makeCtx({ elapsed: 100, kind: "push" }))).not.toThrow();
   });
 
-  it("clamps row/col counts to at least 1", () => {
+  it("accepts a custom center without throwing", () => {
+    const t = irisReveal({ duration: 100, center: { x: 0, y: 0 } });
+    const toScene = { name: "to" } as Scene;
+    const toContainer = makeMaskableContainer();
     expect(() =>
-      chessboard({ rows: 0, cols: -3, duration: 50 }).begin!(
-        makeCtx({ elapsed: 0, kind: "push" }),
-      ),
+      t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer })),
+    ).not.toThrow();
+    expect(() =>
+      t.tick(50, makeCtx({ elapsed: 50, kind: "push", toScene, toContainer })),
+    ).not.toThrow();
+    expect(() =>
+      t.end!(makeCtx({ elapsed: 100, kind: "push", toScene, toContainer })),
     ).not.toThrow();
   });
-});
 
-describe("cellAlpha", () => {
-  it("ramps phase-0 cells across [0, 0.5]", () => {
-    expect(cellAlpha(0, 0)).toBe(0);
-    expect(cellAlpha(0.25, 0)).toBeCloseTo(0.5, 5);
-    expect(cellAlpha(0.5, 0)).toBe(1);
-  });
-
-  it("ramps phase-1 cells across [0.5, 1]", () => {
-    expect(cellAlpha(0.4, 1)).toBe(0);
-    expect(cellAlpha(0.75, 1)).toBeCloseTo(0.5, 5);
-    expect(cellAlpha(1, 1)).toBe(1);
-  });
-
-  it("holds full opacity once a cell finishes its ramp", () => {
-    expect(cellAlpha(0.75, 0)).toBe(1);
-    expect(cellAlpha(1, 0)).toBe(1);
-    expect(cellAlpha(1.5, 0)).toBe(1);
+  it("respects a custom easing", () => {
+    const easing = vi.fn((t: number) => t * t);
+    const transition = irisReveal({ duration: 100, easing });
+    const toScene = { name: "to" } as Scene;
+    const toContainer = makeMaskableContainer();
+    transition.begin!(
+      makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }),
+    );
+    transition.tick(
+      50,
+      makeCtx({ elapsed: 50, kind: "push", toScene, toContainer }),
+    );
+    expect(easing).toHaveBeenCalled();
   });
 });

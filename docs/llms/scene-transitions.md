@@ -5,7 +5,15 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 ## Usage
 
 ```ts
-import { chessboard, crossFade, fade, flash, iris, slidePush } from "@yagejs/renderer";
+import {
+  chessboard,
+  crossFade,
+  fade,
+  flash,
+  iris,
+  irisReveal,
+  slidePush,
+} from "@yagejs/renderer";
 
 // Push with a fade
 await engine.scenes.push(nextScene, { transition: fade({ duration: 400 }) });
@@ -66,7 +74,8 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 | `flash({ duration?, color? })` | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 200ms, white. |
 | `crossFade({ duration? })` | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 400ms. |
 | `iris({ duration?, color?, center? })` | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. Default 600ms, black, screen-center. |
-| `chessboard({ duration?, rows?, cols?, color? })` | Two-pass checkerboard wipe: even-parity cells fade in first, odd-parity follow; both fully cover at the mid-point, then fade out in the same stagger to reveal the destination. Default 700ms, 6×10, black. |
+| `irisReveal({ duration?, center?, easing? })` | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 600ms, screen-center, linear. |
+| `chessboard({ duration?, rows?, cols? })` | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even cells fade in over `[0, 0.5]`, odd cells over `[0.5, 1]`; the previous scene stays visible underneath until each cell covers it. Default 700ms, 6×10. |
 | `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 500ms, cubic ease-out. |
 | `getSceneContainer(ctx, scene)` | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized. |
 

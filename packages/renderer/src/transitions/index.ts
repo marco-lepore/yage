@@ -6,6 +6,8 @@ export { crossFade } from "./crossFade.js";
 export type { CrossFadeOptions } from "./crossFade.js";
 export { iris } from "./iris.js";
 export type { IrisOptions } from "./iris.js";
+export { irisReveal } from "./irisReveal.js";
+export type { IrisRevealOptions } from "./irisReveal.js";
 export { chessboard } from "./chessboard.js";
 export type { ChessboardOptions } from "./chessboard.js";
 export { slidePush } from "./slidePush.js";
