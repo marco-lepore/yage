@@ -1,7 +1,17 @@
 ---
-"@yagejs/renderer": patch
+"@yagejs/renderer": minor
 ---
 
-Fix `fade`, `flash`, and `iris` fullscreen overlays under responsive fit on top of the world-root architecture. The previous PR sized them from `renderer.virtualSize`, which was correct while the fit transform sat on `app.stage` — but the fit moved onto `_worldRoot` in #59, so `app.stage` is now identity and direct stage children operate in canvas/CSS pixels. The three overlays are parented to `app.stage`, so they now read from `app.screen.width/.height` again. `IrisOptions.center` is documented (and consumed) in canvas pixels accordingly. The scene-root transitions (`chessboard`, `irisReveal`, `slidePush`) continue to use `getVirtualBounds(ctx)` because they manipulate scene roots, which still live under the fit transform.
+Re-home `fade`, `flash`, and `iris` overlays under the world-root architecture introduced in #59 (which moved the fit transform off `app.stage` onto a dedicated `_worldRoot`). All three now parent to `renderer.worldRoot` by default and size against `renderer.visibleCanvasRect` (the canvas extent in virtual pixels). Net effect:
 
-The `getVirtualBounds(ctx)` helper docs and the transition author guides now spell out the rule: pick the size source by where you `addChild` — scene root → virtual; `app.stage` direct → canvas pixels.
+- **letterbox** — overlay covers the virtual rect; bars stay visible (the worldRoot mask clips overshoot).
+- **expand** — overlay paints into the bars too (no clipping mask under expand), matching the model where `expand` games treat the bar area as part of the play surface.
+- **cover / stretch** — overlay covers what's on screen.
+
+Adds an opt-in `coverScreen?: boolean` to `FadeOptions`, `FlashOptions`, and `IrisOptions` that re-parents the overlay to `app.stage` and sizes against `app.screen.width / .height` — covers the canvas including letterbox bars, for the rare case where the host-page background showing through is jarring.
+
+`IrisOptions.center` and `IrisRevealOptions.center` are now both consistently in **virtual pixels** (game coordinates). When `coverScreen: true`, the iris center is converted internally via `renderer.virtualToCanvas`.
+
+Also exposes `RendererPlugin.worldRoot: Container` as a public getter so custom transition authors can parent virtual-space overlays without resolving private internals.
+
+The scene-root transitions (`chessboard`, `irisReveal`, `slidePush`) are unchanged — they manipulate scene roots directly and have always operated correctly in virtual pixels.

@@ -21,21 +21,18 @@ export function getSceneContainer(
 }
 
 /**
- * Bounds of the **scene-root coordinate space** — use this to size masks,
- * translations, or geometry parented to a scene root (or to any descendant
- * of `_worldRoot`, which carries the responsive-fit transform). Equivalent
- * to `renderer.virtualSize`.
+ * Bounds of the declared virtual play area — equivalent to
+ * `renderer.virtualSize`. Use this to size masks, translations, or
+ * geometry that's scoped to a single scene's content (e.g. a per-cell
+ * mask painted onto a scene root). Children of scene roots and of
+ * `_worldRoot` operate in virtual pixels.
  *
- * Use `app.screen.width / .height` instead when parenting directly to
- * `app.stage` — stage sits at identity, so its children operate in
- * canvas/CSS pixels (e.g. fade / flash / iris fullscreen overlays). Pick
- * the helper based on where you `addChild`:
- *
- * - `someSceneRoot.addChild(...)` → `getVirtualBounds(ctx)`
- * - `app.stage.addChild(...)` → `app.screen.width / .height`
- *
- * Mixing the two silently mis-scales geometry under any non-1.0 fit
- * ratio — common on mobile letterbox.
+ * For full-screen overlays parented to `renderer.worldRoot`, prefer
+ * `renderer.visibleCanvasRect` — it equals the virtual rect under
+ * `letterbox` (clipped) but extends into the bars under `expand`, which
+ * is usually what an obscuring overlay wants. For overlays that must
+ * also paint over letterbox bars, parent on `app.stage` and size in
+ * canvas pixels via `app.screen.width / .height`.
  */
 export function getVirtualBounds(ctx: SceneTransitionContext): {
   width: number;

@@ -25,10 +25,9 @@ function makeCtx(opts: {
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {
-            // `flash` overlays parent to `app.stage` (identity), so they
-            // size against `app.screen` — virtualSize is intentionally
-            // distinct here to catch any regression that reaches for it.
             virtualSize: { width: 400, height: 300 },
+            visibleCanvasRect: { x: 0, y: 0, width: 400, height: 300 },
+            worldRoot: { addChild: () => {} },
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },

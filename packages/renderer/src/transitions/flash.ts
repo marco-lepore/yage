@@ -1,6 +1,6 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import type { Application, Container } from "pixi.js";
+import type { Container } from "pixi.js";
 import { RendererKey } from "../types.js";
 import { getSceneContainer } from "./helpers.js";
 
@@ -9,6 +9,12 @@ export interface FlashOptions {
   duration?: number;
   /** Flash color as a hex number. Default: 0xffffff. */
   color?: number;
+  /**
+   * When `true`, the overlay covers the full canvas including
+   * letterbox / expand bars. When `false` (default), it covers only the
+   * virtual play area — bars stay visible during the flash.
+   */
+  coverScreen?: boolean;
 }
 
 /**
@@ -24,22 +30,30 @@ export interface FlashOptions {
 export function flash(opts: FlashOptions = {}): SceneTransition {
   const duration = opts.duration ?? 200;
   const color = opts.color ?? 0xffffff;
+  const coverScreen = opts.coverScreen ?? false;
 
   let overlay: Graphics | undefined;
-  let app: Application | undefined;
   let fromContainer: Container | undefined;
 
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
+      const renderer = ctx.engineContext.resolve(RendererKey);
       overlay = new Graphics();
-      // Overlay is parented to `app.stage` (identity since the fit transform
-      // moved to `_worldRoot`), so size in canvas/CSS pixels via `app.screen`.
-      overlay.rect(0, 0, app.screen.width, app.screen.height);
+      if (coverScreen) {
+        const { width, height } = renderer.application.screen;
+        overlay.rect(0, 0, width, height);
+        renderer.application.stage.addChild(overlay);
+      } else {
+        // `visibleCanvasRect` returns the full canvas extent in virtual
+        // pixels — clipped to virtual under letterbox, extends into the
+        // bars under expand.
+        const r = renderer.visibleCanvasRect;
+        overlay.rect(r.x, r.y, r.width, r.height);
+        renderer.worldRoot.addChild(overlay);
+      }
       overlay.fill({ color, alpha: 1 });
       overlay.alpha = 1;
-      app.stage.addChild(overlay);
 
       if (ctx.kind === "pop") {
         fromContainer = getSceneContainer(ctx, ctx.fromScene);
@@ -60,7 +74,6 @@ export function flash(opts: FlashOptions = {}): SceneTransition {
       // PIXI renders, so restoring would paint the outgoing scene for one
       // last frame.
       fromContainer = undefined;
-      app = undefined;
     },
   };
 }

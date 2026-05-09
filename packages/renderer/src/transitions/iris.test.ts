@@ -30,6 +30,14 @@ function makeCtx(opts: {
         if (key === RendererKey) {
           return {
             virtualSize: { width: 400, height: 300 },
+            visibleCanvasRect: { x: 0, y: 0, width: 400, height: 300 },
+            worldRoot: { addChild: () => {} },
+            // Distinct virtual vs canvas so a `coverScreen` regression that
+            // forgets to convert the center via `virtualToCanvas` is caught.
+            virtualToCanvas: (x: number, y: number) => ({
+              x: x * 2,
+              y: y * 2,
+            }),
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },

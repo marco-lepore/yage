@@ -1,6 +1,6 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import type { Application, Container } from "pixi.js";
+import type { Container } from "pixi.js";
 import { RendererKey } from "../types.js";
 import { getSceneContainer } from "./helpers.js";
 
@@ -9,6 +9,12 @@ export interface FadeOptions {
   duration?: number;
   /** Fill color as a hex number. Default: 0x000000. */
   color?: number;
+  /**
+   * When `true`, the overlay covers the full canvas including
+   * letterbox / expand bars. When `false` (default), it covers only the
+   * virtual play area — bars stay visible during the dip.
+   */
+  coverScreen?: boolean;
 }
 
 /**
@@ -26,9 +32,9 @@ export interface FadeOptions {
 export function fade(opts: FadeOptions = {}): SceneTransition {
   const duration = opts.duration ?? 300;
   const color = opts.color ?? 0x000000;
+  const coverScreen = opts.coverScreen ?? false;
 
   let overlay: Graphics | undefined;
-  let app: Application | undefined;
   let toContainer: Container | undefined;
   let fromContainer: Container | undefined;
   let crossedHalfway = false;
@@ -36,16 +42,25 @@ export function fade(opts: FadeOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
+      const renderer = ctx.engineContext.resolve(RendererKey);
       overlay = new Graphics();
-      // Overlay is parented to `app.stage`, which sits at identity now that
-      // the fit transform lives on `_worldRoot`. Stage children operate in
-      // canvas/CSS pixels, so size against `app.screen` — `virtualSize`
-      // would mis-scale the overlay under any non-1.0 fit ratio.
-      overlay.rect(0, 0, app.screen.width, app.screen.height);
+      if (coverScreen) {
+        // `app.stage` sits at identity, so its children operate in canvas
+        // pixels — sized to cover the bars too.
+        const { width, height } = renderer.application.screen;
+        overlay.rect(0, 0, width, height);
+        renderer.application.stage.addChild(overlay);
+      } else {
+        // Size against `visibleCanvasRect` (canvas extent in virtual-px
+        // coords). Under letterbox the worldRoot mask clips the overshoot
+        // back to virtual; under expand there's no mask, so the overlay
+        // paints into the bars too — exactly what `expand` games want.
+        const r = renderer.visibleCanvasRect;
+        overlay.rect(r.x, r.y, r.width, r.height);
+        renderer.worldRoot.addChild(overlay);
+      }
       overlay.fill({ color, alpha: 1 });
       overlay.alpha = 0;
-      app.stage.addChild(overlay);
 
       crossedHalfway = false;
       if (ctx.kind === "pop") {
@@ -81,7 +96,6 @@ export function fade(opts: FadeOptions = {}): SceneTransition {
       toContainer = undefined;
       fromContainer = undefined;
       crossedHalfway = false;
-      app = undefined;
     },
   };
 }
