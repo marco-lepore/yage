@@ -25,6 +25,9 @@ function makeCtx(opts: {
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {
+            // `fade` overlays parent to `app.stage` (identity), so they
+            // size against `app.screen` — virtualSize is intentionally
+            // distinct here to catch any regression that reaches for it.
             virtualSize: { width: 400, height: 300 },
             application: {
               screen: { width: 800, height: 600 },

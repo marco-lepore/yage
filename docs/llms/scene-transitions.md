@@ -131,7 +131,16 @@ scene.isTransitioning           // same, accessible from the scene
 Two helpers cover most needs:
 
 - `getSceneContainer(ctx, scene)` — reach a scene's PIXI root container inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
-- `getVirtualBounds(ctx)` — `{ width, height }` of the coordinate space that scene roots and `app.stage` operate in. Use this to size fullscreen overlays, masks, and slide distances.
+- `getVirtualBounds(ctx)` — `{ width, height }` of the scene-root coordinate space. Use this to size masks / translations / geometry parented to a scene root (or any descendant of `_worldRoot`, which carries the responsive-fit transform).
+
+Coordinate-space rule: pick the dimension source by where you `addChild`:
+
+| Parent                       | Coord space        | Size source              |
+| ---------------------------- | ------------------ | ------------------------ |
+| Scene root / `_worldRoot`    | virtual pixels     | `getVirtualBounds(ctx)`  |
+| `app.stage` (direct)         | canvas / CSS px    | `app.screen.width/.height` |
+
+Stage sits at identity (the fit lives on `_worldRoot`), so direct stage children — fade / flash / iris fullscreen overlays — keep canvas-pixel coordinates. Mixing the two silently mis-scales geometry under any non-1.0 fit ratio.
 
 ```ts
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
@@ -164,7 +173,7 @@ function slideIn(duration: number): SceneTransition {
 Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
 - `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as a matter of hygiene.
-- **Do NOT read `app.screen` for sizing.** It returns canvas/CSS pixels, but `app.stage` carries the responsive-fit transform — its children operate in virtual-space. Sizing a fullscreen overlay or mask from `app.screen` silently shrinks or stretches the geometry under any non-1.0 fit ratio (mobile letterbox, etc.). Use `getVirtualBounds(ctx)` (or `renderer.virtualSize`) instead.
+- **Read the right dimension source for the right parent.** Stage-direct overlays (fade / flash / iris) live in canvas pixels — size them from `app.screen`. Scene-root masks and translations (chessboard / irisReveal / slidePush) live in virtual pixels — size them from `getVirtualBounds(ctx)`. Mixing the two silently mis-scales under non-1.0 fit ratios.
 
 ## Composition with LoadingScene
 

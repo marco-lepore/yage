@@ -191,9 +191,10 @@ from `@yagejs/renderer` cover most cases:
 - `getSceneContainer(ctx, scene)` — returns the PIXI `Container` for a
   scene so you can manipulate its `alpha`, `visible`, `position`, or
   `filters` directly.
-- `getVirtualBounds(ctx)` — returns `{ width, height }` of the coordinate
-  space scene roots and `app.stage` operate in. Use it to size fullscreen
-  overlays, masks, and slide distances.
+- `getVirtualBounds(ctx)` — returns `{ width, height }` of the
+  scene-root coordinate space. Use it to size masks, translations, or
+  geometry parented to a scene root (or any descendant of `_worldRoot`,
+  which carries the responsive-fit transform).
 
 ```typescript
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
@@ -230,14 +231,19 @@ The `SceneTransitionContext` gives you:
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
 
-:::caution[Don't read `app.screen` for sizing]
-`app.stage` carries the responsive-fit transform, so its children — every
-scene root, plus anything you `addChild` directly to the stage — operate
-in **virtual-space pixels**. `app.screen` returns canvas/CSS pixels;
-sizing a fullscreen overlay or mask from it silently shrinks or stretches
-the geometry under any non-1.0 fit ratio (mobile letterbox is the common
-case). Reach for `getVirtualBounds(ctx)` (or `renderer.virtualSize`)
-instead.
+:::caution[Pick the size source by parent]
+The fit transform lives on `_worldRoot`, not on `app.stage`. So:
+
+| Parent                       | Coord space        | Size source                |
+| ---------------------------- | ------------------ | -------------------------- |
+| Scene root / `_worldRoot`    | virtual pixels     | `getVirtualBounds(ctx)`    |
+| `app.stage` (direct)         | canvas / CSS px    | `app.screen.width/.height` |
+
+Stage-direct overlays (fade / flash / iris fullscreen overlays) keep
+canvas-pixel coordinates. Scene-root masks and translations (chessboard /
+irisReveal / slidePush) live in virtual pixels. Mixing the two silently
+mis-scales geometry under any non-1.0 fit ratio (mobile letterbox is the
+common case).
 :::
 
 ## Composition with Loading Scenes

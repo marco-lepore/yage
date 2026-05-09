@@ -21,16 +21,21 @@ export function getSceneContainer(
 }
 
 /**
- * Bounds of the scene-stage coordinate space — the size that geometry
- * parented to `app.stage` (or to a scene root) must use to cover the
- * viewport. Equivalent to `renderer.virtualSize`.
+ * Bounds of the **scene-root coordinate space** — use this to size masks,
+ * translations, or geometry parented to a scene root (or to any descendant
+ * of `_worldRoot`, which carries the responsive-fit transform). Equivalent
+ * to `renderer.virtualSize`.
  *
- * Do **not** read `app.screen` here. The fit controller installs a
- * scale + translate on `app.stage`, so its children operate in
- * virtual-space pixels; sizing a fullscreen overlay or mask from
- * `app.screen` (which returns canvas/CSS pixels) silently shrinks or
- * stretches the geometry under any non-1.0 fit ratio — common on mobile
- * letterbox.
+ * Use `app.screen.width / .height` instead when parenting directly to
+ * `app.stage` — stage sits at identity, so its children operate in
+ * canvas/CSS pixels (e.g. fade / flash / iris fullscreen overlays). Pick
+ * the helper based on where you `addChild`:
+ *
+ * - `someSceneRoot.addChild(...)` → `getVirtualBounds(ctx)`
+ * - `app.stage.addChild(...)` → `app.screen.width / .height`
+ *
+ * Mixing the two silently mis-scales geometry under any non-1.0 fit
+ * ratio — common on mobile letterbox.
  */
 export function getVirtualBounds(ctx: SceneTransitionContext): {
   width: number;

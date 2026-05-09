@@ -2,7 +2,7 @@ import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import type { Application, Container } from "pixi.js";
 import { RendererKey } from "../types.js";
-import { getSceneContainer, getVirtualBounds } from "./helpers.js";
+import { getSceneContainer } from "./helpers.js";
 
 export interface IrisOptions {
   /** Iris duration in ms. Default: 600. */
@@ -10,10 +10,13 @@ export interface IrisOptions {
   /** Fill color visible outside the iris. Default: 0x000000. */
   color?: number;
   /**
-   * Iris center in virtual-space pixels. Default: virtual-space center.
-   * The maximum radius is the distance from this point to the farthest
-   * corner of the virtual rect, so the iris always fully covers the
-   * canvas at the mid-point.
+   * Iris center in canvas (CSS) pixels. Default: canvas center. The
+   * overlay is parented to `app.stage` (identity since the fit transform
+   * moved to `_worldRoot`), so the center and radius live in canvas
+   * pixels — `app.screen.width / 2`, not `virtualSize.width / 2`. The
+   * maximum radius is the distance from this point to the farthest
+   * canvas corner, so the iris always fully covers the canvas at the
+   * mid-point.
    */
   center?: { x: number; y: number };
 }
@@ -54,7 +57,10 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
     duration,
     begin(ctx: SceneTransitionContext) {
       app = ctx.engineContext.resolve(RendererKey).application;
-      const { width: w, height: h } = getVirtualBounds(ctx);
+      // Overlay is parented to `app.stage` (identity), so size and place
+      // everything in canvas/CSS pixels via `app.screen`.
+      const w = app.screen.width;
+      const h = app.screen.height;
       cx = opts.center?.x ?? w / 2;
       cy = opts.center?.y ?? h / 2;
       const farX = Math.max(cx, w - cx);
