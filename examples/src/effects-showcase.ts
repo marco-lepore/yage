@@ -725,9 +725,20 @@ class ShowcaseScene extends Scene {
   }
 
   doSave(): void {
-    const save = this.context.resolve(SnapshotServiceKey);
-    save.saveSnapshot("showcase");
-    showToast("Saved");
+    // Wrap the whole save in try/catch so a failure surfaces as a visible
+    // "Save failed" toast + console error rather than silently swallowing
+    // the success toast. Without this, any throw inside `buildSnapshot` or
+    // `JSON.stringify` (a serialize() that errors, a localStorage quota
+    // hit, etc.) leaves the user thinking they saved when they didn't —
+    // a subsequent Load then logs "No save" with no breadcrumb.
+    try {
+      const save = this.context.resolve(SnapshotServiceKey);
+      save.saveSnapshot("showcase");
+      showToast("Saved");
+    } catch (err) {
+      console.error("Save failed:", err);
+      showToast("Save failed");
+    }
   }
 
   async doLoad(): Promise<void> {
