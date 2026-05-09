@@ -25,6 +25,7 @@ function makeCtx(opts: {
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {
+            virtualSize: { width: 400, height: 300 },
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },

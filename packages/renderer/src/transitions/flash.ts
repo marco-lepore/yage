@@ -32,9 +32,11 @@ export function flash(opts: FlashOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
+      const renderer = ctx.engineContext.resolve(RendererKey);
+      app = renderer.application;
+      const { width, height } = renderer.virtualSize;
       overlay = new Graphics();
-      overlay.rect(0, 0, app.screen.width, app.screen.height);
+      overlay.rect(0, 0, width, height);
       overlay.fill({ color, alpha: 1 });
       overlay.alpha = 1;
       app.stage.addChild(overlay);
