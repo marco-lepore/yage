@@ -10,9 +10,10 @@ export interface IrisOptions {
   /** Fill color visible outside the iris. Default: 0x000000. */
   color?: number;
   /**
-   * Iris center in screen pixels. Default: screen center. The maximum radius
-   * is the distance from this point to the farthest screen corner, so the
-   * iris always fully covers the canvas at the mid-point.
+   * Iris center in virtual-space pixels. Default: virtual-space center.
+   * The maximum radius is the distance from this point to the farthest
+   * corner of the virtual rect, so the iris always fully covers the
+   * canvas at the mid-point.
    */
   center?: { x: number; y: number };
 }
@@ -52,9 +53,9 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
-      const w = app.screen.width;
-      const h = app.screen.height;
+      const renderer = ctx.engineContext.resolve(RendererKey);
+      app = renderer.application;
+      const { width: w, height: h } = renderer.virtualSize;
       cx = opts.center?.x ?? w / 2;
       cy = opts.center?.y ?? h / 2;
       const farX = Math.max(cx, w - cx);
@@ -79,7 +80,7 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
       if (!maskGfx) return;
-      const t = ctx.elapsed / duration;
+      const t = Math.min(ctx.elapsed / duration, 1);
       const r = Math.abs(1 - t * 2) * maxRadius;
       drawCircleMask(maskGfx, cx, cy, r);
       if (!crossedHalfway && t >= 0.5) {

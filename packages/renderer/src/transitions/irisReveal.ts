@@ -1,6 +1,6 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import type { Application, Container } from "pixi.js";
+import type { Container } from "pixi.js";
 import { RendererKey } from "../types.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { getSceneContainer } from "./helpers.js";
@@ -9,9 +9,10 @@ export interface IrisRevealOptions {
   /** Iris duration in ms. Default: 600. */
   duration?: number;
   /**
-   * Iris center in screen pixels. Default: screen center. The maximum
-   * radius is the distance from this point to the farthest screen corner,
-   * so the iris always fully covers the canvas at `t = 1`.
+   * Iris center in virtual-space pixels. Default: virtual-space center.
+   * The maximum radius is the distance from this point to the farthest
+   * corner of the virtual rect, so the iris always fully covers the
+   * canvas at `t = 1`.
    */
   center?: { x: number; y: number };
   /** Easing function applied to the radius. Default: linear. */
@@ -38,7 +39,6 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
   const duration = opts.duration ?? 600;
   const easing = opts.easing ?? ((t) => t);
 
-  let app: Application | undefined;
   let toContainer: Container | undefined;
   let maskGfx: Graphics | undefined;
   let cx = 0;
@@ -48,15 +48,14 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
+      const renderer = ctx.engineContext.resolve(RendererKey);
       const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
       if (ctx.toScene) provider.bringSceneToFront?.(ctx.toScene);
 
       toContainer = getSceneContainer(ctx, ctx.toScene);
       if (!toContainer) return;
 
-      const w = app.screen.width;
-      const h = app.screen.height;
+      const { width: w, height: h } = renderer.virtualSize;
       cx = opts.center?.x ?? w / 2;
       cy = opts.center?.y ?? h / 2;
       const farX = Math.max(cx, w - cx);
@@ -84,7 +83,6 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
         maskGfx = undefined;
       }
       toContainer = undefined;
-      app = undefined;
     },
   };
 }

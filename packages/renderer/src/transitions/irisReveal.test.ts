@@ -30,6 +30,9 @@ function makeCtx(opts: {
   toContainer?: MaskableContainer;
   bringSceneToFront?: (scene: Scene) => void;
 }): SceneTransitionContext {
+  // Distinct virtual vs canvas sizes — the mask is parented to the scene
+  // root, which lives in virtual-space, so its sizing must come from
+  // `renderer.virtualSize`, not `app.screen`.
   return {
     elapsed: opts.elapsed,
     kind: opts.kind,
@@ -39,6 +42,7 @@ function makeCtx(opts: {
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {
+            virtualSize: { width: 400, height: 300 },
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },

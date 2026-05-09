@@ -4,7 +4,7 @@ import type {
   SceneTransitionContext,
   SceneTransitionKind,
 } from "@yagejs/core";
-import { chessboard, cellAlpha } from "./chessboard.js";
+import { chessboard } from "./chessboard.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
 
@@ -31,6 +31,9 @@ function makeCtx(opts: {
   fromContainer?: MaskableContainer;
   bringSceneToFront?: (scene: Scene) => void;
 }): SceneTransitionContext {
+  // Distinct virtual vs canvas sizes — the mask is parented to the scene
+  // root, which lives in virtual-space, so its sizing must come from
+  // `renderer.virtualSize`, not `app.screen`.
   return {
     elapsed: opts.elapsed,
     kind: opts.kind,
@@ -40,6 +43,7 @@ function makeCtx(opts: {
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {
+            virtualSize: { width: 400, height: 300 },
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },
@@ -126,25 +130,5 @@ describe("chessboard", () => {
         makeCtx({ elapsed: 0, kind: "push" }),
       ),
     ).not.toThrow();
-  });
-});
-
-describe("cellAlpha", () => {
-  it("ramps phase-0 cells across [0, 0.5]", () => {
-    expect(cellAlpha(0, 0)).toBe(0);
-    expect(cellAlpha(0.25, 0)).toBeCloseTo(0.5, 5);
-    expect(cellAlpha(0.5, 0)).toBe(1);
-  });
-
-  it("ramps phase-1 cells across [0.5, 1]", () => {
-    expect(cellAlpha(0.4, 1)).toBe(0);
-    expect(cellAlpha(0.75, 1)).toBeCloseTo(0.5, 5);
-    expect(cellAlpha(1, 1)).toBe(1);
-  });
-
-  it("holds full opacity once a cell finishes its ramp", () => {
-    expect(cellAlpha(0.75, 0)).toBe(1);
-    expect(cellAlpha(1, 0)).toBe(1);
-    expect(cellAlpha(1.5, 0)).toBe(1);
   });
 });

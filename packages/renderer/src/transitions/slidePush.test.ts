@@ -23,6 +23,11 @@ function makeCtx(opts: {
   width?: number;
   height?: number;
 }): SceneTransitionContext {
+  // Use distinct virtual vs canvas sizes so tests catch any regression that
+  // mistakenly reads `app.screen` (canvas pixels) instead of `renderer.virtualSize`
+  // (the scene root's coord space — what mask sizing and translations live in).
+  const vw = opts.width ?? 800;
+  const vh = opts.height ?? 600;
   return {
     elapsed: opts.elapsed,
     kind: opts.kind,
@@ -32,8 +37,9 @@ function makeCtx(opts: {
       resolve: (key: unknown) => {
         if (key === RendererKey) {
           return {
+            virtualSize: { width: vw, height: vh },
             application: {
-              screen: { width: opts.width ?? 800, height: opts.height ?? 600 },
+              screen: { width: vw * 2, height: vh * 2 },
               stage: { addChild: () => {} },
             },
           };

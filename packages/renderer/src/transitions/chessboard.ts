@@ -1,6 +1,7 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import type { Application, Container } from "pixi.js";
+import type { Container } from "pixi.js";
+import type { RendererPlugin } from "../RendererPlugin.js";
 import { RendererKey } from "../types.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { getSceneContainer } from "./helpers.js";
@@ -16,14 +17,20 @@ export interface ChessboardOptions {
 
 /**
  * Reveal the destination scene through a staggered checkerboard mask. The
- * incoming scene's container is masked by a grid of cells that fade in
- * over time — even-parity cells first, odd-parity second — so the new
- * scene "paints in" cell-by-cell on top of the previous one. No blackout
- * mid-point and no color overlay: the previous scene stays visible
- * underneath until each cell of the new scene covers it.
+ * incoming scene's container is masked by a grid of cells that grow from
+ * a center point to fill their slot — even-parity cells first, odd-parity
+ * second — so the new scene "paints in" cell-by-cell on top of the
+ * previous one. No blackout mid-point and no color overlay: the previous
+ * scene stays visible underneath until each cell of the new scene covers it.
  *
- * - Even cells (`(row + col) & 1 === 0`): fade alpha 0→1 over `[0, 0.5]`
- * - Odd cells (`(row + col) & 1 === 1`):  fade alpha 0→1 over `[0.5, 1]`
+ * - Even cells (`(row + col) & 1 === 0`): grow over `[0, 0.7]`
+ * - Odd cells  (`(row + col) & 1 === 1`): grow over `[0.3, 1]`
+ *
+ * Pixi v8 Graphics masks are stencil clips (binary in/out, no alpha) —
+ * scaling each cell from 0 to its full size with smoothstep easing produces
+ * the soft per-cell entry that mask-fill alpha can't. The 0.4 overlap means
+ * odd cells start growing while even cells are still mid-grow, removing the
+ * "second wave pops in" jolt at the midpoint.
  *
  * On `pop` the destination scene is brought to the front of the scene
  * stack so the same mechanic applies — without it the outgoing scene
@@ -34,14 +41,14 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
   const rows = Math.max(1, Math.floor(opts.rows ?? 6));
   const cols = Math.max(1, Math.floor(opts.cols ?? 10));
 
-  let app: Application | undefined;
+  let renderer: RendererPlugin | undefined;
   let toContainer: Container | undefined;
   let maskGfx: Graphics | undefined;
 
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
+      renderer = ctx.engineContext.resolve(RendererKey);
       const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
       // Pop normally leaves the outgoing scene on top — bring the
       // destination to the front so its mask drives the visual reveal.
@@ -50,15 +57,17 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
 
       toContainer = getSceneContainer(ctx, ctx.toScene);
       if (!toContainer) return;
+      const { width, height } = renderer.virtualSize;
       maskGfx = new Graphics();
       toContainer.addChild(maskGfx);
       toContainer.setMask({ mask: maskGfx, inverse: false });
-      drawCells(maskGfx, app.screen.width, app.screen.height, rows, cols, 0);
+      drawCells(maskGfx, width, height, rows, cols, 0);
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      if (!maskGfx || !app) return;
+      if (!maskGfx || !renderer) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      drawCells(maskGfx, app.screen.width, app.screen.height, rows, cols, t);
+      const { width, height } = renderer.virtualSize;
+      drawCells(maskGfx, width, height, rows, cols, t);
     },
     end() {
       // Direct assignment instead of `setMask({ mask: null })` — pixi v8's
@@ -72,7 +81,7 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
         maskGfx = undefined;
       }
       toContainer = undefined;
-      app = undefined;
+      renderer = undefined;
     },
   };
 }
@@ -91,22 +100,22 @@ function drawCells(
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const phase = ((r + c) & 1) as 0 | 1;
-      const a = cellAlpha(t, phase);
-      if (a <= 0) continue;
-      g.rect(c * cw, r * ch, cw, ch).fill({ color: 0xffffff, alpha: a });
+      const s = cellScale(t, phase);
+      if (s <= 0) continue;
+      const w = cw * s;
+      const h = ch * s;
+      const x = c * cw + (cw - w) / 2;
+      const y = r * ch + (ch - h) / 2;
+      g.rect(x, y, w, h).fill({ color: 0xffffff });
     }
   }
 }
 
-/**
- * Per-cell alpha for the staggered reveal. Phase 0 cells fade in over
- * `[0, 0.5]` and stay full; phase 1 cells fade in over `[0.5, 1]`. Both
- * end at full opacity so the mask fully covers the destination at `t=1`.
- */
-export function cellAlpha(t: number, phase: 0 | 1): number {
-  const start = phase === 0 ? 0 : 0.5;
-  const end = phase === 0 ? 0.5 : 1;
+function cellScale(t: number, phase: 0 | 1): number {
+  const start = phase === 0 ? 0 : 0.3;
+  const end = phase === 0 ? 0.7 : 1;
   if (t <= start) return 0;
   if (t >= end) return 1;
-  return (t - start) / (end - start);
+  const x = (t - start) / (end - start);
+  return x * x * (3 - 2 * x);
 }

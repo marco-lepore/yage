@@ -1,5 +1,5 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import type { Application, Container } from "pixi.js";
+import type { Container } from "pixi.js";
 import { RendererKey } from "../types.js";
 import { getSceneContainer } from "./helpers.js";
 
@@ -45,7 +45,6 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
   const reverseOnPop = opts.reverseOnPop ?? true;
   const easing = opts.easing ?? ((t) => 1 - Math.pow(1 - t, 3));
 
-  let app: Application | undefined;
   let toContainer: Container | undefined;
   let fromContainer: Container | undefined;
   let dx = 0;
@@ -54,9 +53,8 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
-      const w = app.screen.width;
-      const h = app.screen.height;
+      const renderer = ctx.engineContext.resolve(RendererKey);
+      const { width: w, height: h } = renderer.virtualSize;
       const effective =
         ctx.kind === "pop" && reverseOnPop ? reverse(direction) : direction;
       const off = directionOffsets(effective, w, h);
@@ -101,7 +99,6 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
       }
       toContainer = undefined;
       fromContainer = undefined;
-      app = undefined;
     },
   };
 }
