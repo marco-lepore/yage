@@ -12,4 +12,4 @@ export { chessboard } from "./chessboard.js";
 export type { ChessboardOptions } from "./chessboard.js";
 export { slidePush } from "./slidePush.js";
 export type { SlideDirection, SlidePushOptions } from "./slidePush.js";
-export { getSceneContainer } from "./helpers.js";
+export { getSceneContainer, getVirtualBounds } from "./helpers.js";

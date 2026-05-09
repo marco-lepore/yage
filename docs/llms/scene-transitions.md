@@ -128,21 +128,24 @@ scene.isTransitioning           // same, accessible from the scene
 
 ## Custom Transitions
 
-Use `getSceneContainer(ctx, scene)` to reach a scene's PIXI root container
-inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`,
-`filters` directly.
+Two helpers cover most needs:
+
+- `getSceneContainer(ctx, scene)` — reach a scene's PIXI root container inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
+- `getVirtualBounds(ctx)` — `{ width, height }` of the coordinate space that scene roots and `app.stage` operate in. Use this to size fullscreen overlays, masks, and slide distances.
 
 ```ts
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import type { Container } from "pixi.js";
-import { getSceneContainer } from "@yagejs/renderer";
+import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
 
-function slideIn(duration: number, width: number): SceneTransition {
+function slideIn(duration: number): SceneTransition {
   let toRoot: Container | undefined;
+  let width = 0;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
       toRoot = getSceneContainer(ctx, ctx.toScene);
+      width = getVirtualBounds(ctx).width;
       if (toRoot) toRoot.x = width;
     },
     tick(_dt, ctx) {
@@ -161,6 +164,7 @@ function slideIn(duration: number, width: number): SceneTransition {
 Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
 - `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as a matter of hygiene.
+- **Do NOT read `app.screen` for sizing.** It returns canvas/CSS pixels, but `app.stage` carries the responsive-fit transform — its children operate in virtual-space. Sizing a fullscreen overlay or mask from `app.screen` silently shrinks or stretches the geometry under any non-1.0 fit ratio (mobile letterbox, etc.). Use `getVirtualBounds(ctx)` (or `renderer.virtualSize`) instead.
 
 ## Composition with LoadingScene
 

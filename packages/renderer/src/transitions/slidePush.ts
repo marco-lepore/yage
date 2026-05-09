@@ -1,7 +1,6 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import type { Container } from "pixi.js";
-import { RendererKey } from "../types.js";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 /** Direction the outgoing scene exits the frame in. */
 export type SlideDirection = "left" | "right" | "up" | "down";
@@ -53,8 +52,7 @@ export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      const renderer = ctx.engineContext.resolve(RendererKey);
-      const { width: w, height: h } = renderer.virtualSize;
+      const { width: w, height: h } = getVirtualBounds(ctx);
       const effective =
         ctx.kind === "pop" && reverseOnPop ? reverse(direction) : direction;
       const off = directionOffsets(effective, w, h);

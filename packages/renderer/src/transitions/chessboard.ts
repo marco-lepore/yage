@@ -1,10 +1,8 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import type { Container } from "pixi.js";
-import type { RendererPlugin } from "../RendererPlugin.js";
-import { RendererKey } from "../types.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface ChessboardOptions {
   /** Total duration in ms. Default: 700. */
@@ -41,14 +39,12 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
   const rows = Math.max(1, Math.floor(opts.rows ?? 6));
   const cols = Math.max(1, Math.floor(opts.cols ?? 10));
 
-  let renderer: RendererPlugin | undefined;
   let toContainer: Container | undefined;
   let maskGfx: Graphics | undefined;
 
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      renderer = ctx.engineContext.resolve(RendererKey);
       const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
       // Pop normally leaves the outgoing scene on top — bring the
       // destination to the front so its mask drives the visual reveal.
@@ -57,16 +53,16 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
 
       toContainer = getSceneContainer(ctx, ctx.toScene);
       if (!toContainer) return;
-      const { width, height } = renderer.virtualSize;
+      const { width, height } = getVirtualBounds(ctx);
       maskGfx = new Graphics();
       toContainer.addChild(maskGfx);
       toContainer.setMask({ mask: maskGfx, inverse: false });
       drawCells(maskGfx, width, height, rows, cols, 0);
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
-      if (!maskGfx || !renderer) return;
+      if (!maskGfx) return;
       const t = Math.min(ctx.elapsed / duration, 1);
-      const { width, height } = renderer.virtualSize;
+      const { width, height } = getVirtualBounds(ctx);
       drawCells(maskGfx, width, height, rows, cols, t);
     },
     end() {
@@ -81,7 +77,6 @@ export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
         maskGfx = undefined;
       }
       toContainer = undefined;
-      renderer = undefined;
     },
   };
 }

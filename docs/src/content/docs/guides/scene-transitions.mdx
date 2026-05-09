@@ -185,22 +185,29 @@ engine.events.on("scene:transition:ended", ({ kind }) => {
 
 ## Custom Transitions
 
-Implement the `SceneTransition` interface to create your own. The
-`getSceneContainer` helper from `@yagejs/renderer` returns the PIXI
-`Container` for a scene so you can manipulate its `alpha`, `visible`,
-`position`, or `filters` directly:
+Implement the `SceneTransition` interface to create your own. Two helpers
+from `@yagejs/renderer` cover most cases:
+
+- `getSceneContainer(ctx, scene)` — returns the PIXI `Container` for a
+  scene so you can manipulate its `alpha`, `visible`, `position`, or
+  `filters` directly.
+- `getVirtualBounds(ctx)` — returns `{ width, height }` of the coordinate
+  space scene roots and `app.stage` operate in. Use it to size fullscreen
+  overlays, masks, and slide distances.
 
 ```typescript
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import type { Container } from "pixi.js";
-import { getSceneContainer } from "@yagejs/renderer";
+import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
 
-function slideIn(duration: number, width: number): SceneTransition {
+function slideIn(duration: number): SceneTransition {
   let toRoot: Container | undefined;
+  let width = 0;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
       toRoot = getSceneContainer(ctx, ctx.toScene);
+      width = getVirtualBounds(ctx).width;
       if (toRoot) toRoot.x = width;
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
@@ -222,6 +229,16 @@ The `SceneTransitionContext` gives you:
 - `kind` — `"push"`, `"pop"`, or `"replace"`
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
+
+:::caution[Don't read `app.screen` for sizing]
+`app.stage` carries the responsive-fit transform, so its children — every
+scene root, plus anything you `addChild` directly to the stage — operate
+in **virtual-space pixels**. `app.screen` returns canvas/CSS pixels;
+sizing a fullscreen overlay or mask from it silently shrinks or stretches
+the geometry under any non-1.0 fit ratio (mobile letterbox is the common
+case). Reach for `getVirtualBounds(ctx)` (or `renderer.virtualSize`)
+instead.
+:::
 
 ## Composition with Loading Scenes
 

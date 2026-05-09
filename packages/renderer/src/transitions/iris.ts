@@ -2,7 +2,7 @@ import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import type { Application, Container } from "pixi.js";
 import { RendererKey } from "../types.js";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface IrisOptions {
   /** Iris duration in ms. Default: 600. */
@@ -53,9 +53,8 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      const renderer = ctx.engineContext.resolve(RendererKey);
-      app = renderer.application;
-      const { width: w, height: h } = renderer.virtualSize;
+      app = ctx.engineContext.resolve(RendererKey).application;
+      const { width: w, height: h } = getVirtualBounds(ctx);
       cx = opts.center?.x ?? w / 2;
       cy = opts.center?.y ?? h / 2;
       const farX = Math.max(cx, w - cx);

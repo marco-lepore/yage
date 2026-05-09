@@ -1,9 +1,8 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import type { Container } from "pixi.js";
-import { RendererKey } from "../types.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface IrisRevealOptions {
   /** Iris duration in ms. Default: 600. */
@@ -48,14 +47,13 @@ export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      const renderer = ctx.engineContext.resolve(RendererKey);
       const provider = ctx.engineContext.resolve(SceneRenderTreeProviderKey);
       if (ctx.toScene) provider.bringSceneToFront?.(ctx.toScene);
 
       toContainer = getSceneContainer(ctx, ctx.toScene);
       if (!toContainer) return;
 
-      const { width: w, height: h } = renderer.virtualSize;
+      const { width: w, height: h } = getVirtualBounds(ctx);
       cx = opts.center?.x ?? w / 2;
       cy = opts.center?.y ?? h / 2;
       const farX = Math.max(cx, w - cx);

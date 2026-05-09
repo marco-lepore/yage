@@ -2,7 +2,7 @@ import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import type { Application, Container } from "pixi.js";
 import { RendererKey } from "../types.js";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface FadeOptions {
   /** Fade duration in ms. Default: 300. */
@@ -36,9 +36,8 @@ export function fade(opts: FadeOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      const renderer = ctx.engineContext.resolve(RendererKey);
-      app = renderer.application;
-      const { width, height } = renderer.virtualSize;
+      app = ctx.engineContext.resolve(RendererKey).application;
+      const { width, height } = getVirtualBounds(ctx);
       overlay = new Graphics();
       overlay.rect(0, 0, width, height);
       overlay.fill({ color, alpha: 1 });
