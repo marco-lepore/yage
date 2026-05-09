@@ -2,7 +2,7 @@ import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
 import type { Application, Container } from "pixi.js";
 import { RendererKey } from "../types.js";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface FlashOptions {
   /** Flash duration in ms. Default: 200. */
@@ -33,8 +33,9 @@ export function flash(opts: FlashOptions = {}): SceneTransition {
     duration,
     begin(ctx: SceneTransitionContext) {
       app = ctx.engineContext.resolve(RendererKey).application;
+      const { width, height } = getVirtualBounds(ctx);
       overlay = new Graphics();
-      overlay.rect(0, 0, app.screen.width, app.screen.height);
+      overlay.rect(0, 0, width, height);
       overlay.fill({ color, alpha: 1 });
       overlay.alpha = 1;
       app.stage.addChild(overlay);

@@ -4,7 +4,7 @@ import type {
   SceneTransitionContext,
   SceneTransitionKind,
 } from "@yagejs/core";
-import { fade } from "./fade.js";
+import { iris } from "./iris.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
 
@@ -16,6 +16,9 @@ function makeCtx(opts: {
   toContainer?: { visible: boolean };
   fromContainer?: { visible: boolean };
 }): SceneTransitionContext {
+  // Distinct virtual vs canvas sizes — `iris` draws on `app.stage`, which
+  // carries the responsive-fit transform, so its overlay/mask must be sized
+  // in virtual-space pixels, not canvas pixels.
   return {
     elapsed: opts.elapsed,
     kind: opts.kind,
@@ -51,36 +54,29 @@ function makeCtx(opts: {
   } as unknown as SceneTransitionContext;
 }
 
-describe("fade", () => {
-  it("defaults to 300ms duration and black", () => {
-    const t = fade();
-    expect(t.duration).toBe(300);
+describe("iris", () => {
+  it("defaults to 600ms duration", () => {
+    expect(iris().duration).toBe(600);
   });
 
   it("accepts custom duration", () => {
-    const t = fade({ duration: 500 });
-    expect(t.duration).toBe(500);
+    expect(iris({ duration: 1200 }).duration).toBe(1200);
   });
 
   it("hides toScene on push until the mid-point, then reveals it", () => {
-    const t = fade({ duration: 100 });
+    const t = iris({ duration: 100 });
     const toContainer = { visible: true };
     const toScene = { name: "to" } as Scene;
 
-    t.begin!(
-      makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }),
-    );
+    t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(false);
 
-    // Before half-way: still hidden.
     t.tick(25, makeCtx({ elapsed: 25, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(false);
 
-    // Exactly half-way: reveal.
     t.tick(25, makeCtx({ elapsed: 50, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(true);
 
-    // Stays revealed past the mid-point.
     t.tick(25, makeCtx({ elapsed: 75, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(true);
 
@@ -88,62 +84,54 @@ describe("fade", () => {
     expect(toContainer.visible).toBe(true);
   });
 
-  it("keeps fromScene visible through the fade-out, then hides it at the mid-point on pop", () => {
-    const t = fade({ duration: 100 });
+  it("hides fromScene at the mid-point on pop so the destination shows through", () => {
+    const t = iris({ duration: 100 });
     const fromContainer = { visible: true };
     const fromScene = { name: "from" } as Scene;
 
-    t.begin!(
-      makeCtx({ elapsed: 0, kind: "pop", fromScene, fromContainer }),
-    );
-    // Fade-out phase: outgoing scene should stay visible so we see it fade.
+    t.begin!(makeCtx({ elapsed: 0, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(true);
 
-    t.tick(
-      25,
-      makeCtx({ elapsed: 25, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(25, makeCtx({ elapsed: 25, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(true);
 
-    // Half-way: overlay is fully opaque, hide the outgoing scene so the
-    // fade-in half reveals the destination instead.
-    t.tick(
-      25,
-      makeCtx({ elapsed: 50, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(25, makeCtx({ elapsed: 50, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
 
-    t.tick(
-      25,
-      makeCtx({ elapsed: 75, kind: "pop", fromScene, fromContainer }),
-    );
+    t.tick(25, makeCtx({ elapsed: 75, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
 
-    // end() does NOT restore visibility — the outgoing scene is about to
-    // be destroyed synchronously after teardown, but PIXI renders between
-    // end() and that teardown, so restoring here would produce a visible
-    // last-frame pop.
-    t.end!(
-      makeCtx({ elapsed: 100, kind: "pop", fromScene, fromContainer }),
-    );
+    // end() does NOT restore — fromContainer is destroyed on the same
+    // frame after end() and a restore would flash it for one frame.
+    t.end!(makeCtx({ elapsed: 100, kind: "pop", fromScene, fromContainer }));
     expect(fromContainer.visible).toBe(false);
   });
 
-  it("end() restores visibility as a safety net if called mid-run", () => {
-    const t = fade({ duration: 100 });
+  it("end() restores incoming visibility as a mid-run safety net on push", () => {
+    const t = iris({ duration: 100 });
     const toContainer = { visible: true };
     const toScene = { name: "to" } as Scene;
 
     t.begin!(makeCtx({ elapsed: 0, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(false);
 
-    // Simulate clear() mid-run before reveal threshold.
     t.end!(makeCtx({ elapsed: 20, kind: "push", toScene, toContainer }));
     expect(toContainer.visible).toBe(true);
   });
 
-  it("tolerates an undefined toScene container", () => {
-    const t = fade({ duration: 100 });
+  it("tolerates undefined scenes on either side", () => {
+    const t = iris({ duration: 100 });
+    expect(() =>
+      t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
+    ).not.toThrow();
+    expect(() =>
+      t.tick(50, makeCtx({ elapsed: 50, kind: "push" })),
+    ).not.toThrow();
+    expect(() => t.end!(makeCtx({ elapsed: 100, kind: "push" }))).not.toThrow();
+  });
+
+  it("accepts a custom center without throwing", () => {
+    const t = iris({ duration: 100, center: { x: 0, y: 0 } });
     expect(() =>
       t.begin!(makeCtx({ elapsed: 0, kind: "push" })),
     ).not.toThrow();

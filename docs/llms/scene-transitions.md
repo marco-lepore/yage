@@ -5,7 +5,15 @@ Animate the handoff between scenes during `push`, `pop`, and `replace`. Both sce
 ## Usage
 
 ```ts
-import { crossFade, fade, flash } from "@yagejs/renderer";
+import {
+  chessboard,
+  crossFade,
+  fade,
+  flash,
+  iris,
+  irisReveal,
+  slidePush,
+} from "@yagejs/renderer";
 
 // Push with a fade
 await engine.scenes.push(nextScene, { transition: fade({ duration: 400 }) });
@@ -15,6 +23,15 @@ await engine.scenes.pop({ transition: flash({ duration: 200, color: 0xff0000 }) 
 
 // Replace with a cross-dissolve
 await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 }) });
+
+// Iris-out → swap → iris-in (Zelda-style)
+await engine.scenes.replace(nextScene, { transition: iris({ duration: 700 }) });
+
+// Checkerboard wipe with a custom grid
+await engine.scenes.push(nextScene, { transition: chessboard({ rows: 4, cols: 6 }) });
+
+// Both scenes slide together (incoming pushes the previous one off)
+await engine.scenes.push(nextScene, { transition: slidePush({ direction: "left" }) });
 
 // Per-scene default
 class MenuScene extends Scene {
@@ -56,6 +73,10 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 | `fade({ duration?, color? })` | Triangle alpha ramp: fade out → fade in. Scene swap happens under the fully-opaque mid-point. Default 300ms, black. |
 | `flash({ duration?, color? })` | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 200ms, white. |
 | `crossFade({ duration? })` | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 400ms. |
+| `iris({ duration?, color?, center? })` | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. Default 600ms, black, screen-center. |
+| `irisReveal({ duration?, center?, easing? })` | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 600ms, screen-center, linear. |
+| `chessboard({ duration?, rows?, cols? })` | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even cells fade in over `[0, 0.5]`, odd cells over `[0.5, 1]`; the previous scene stays visible underneath until each cell covers it. Default 700ms, 6×10. |
+| `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 500ms, cubic ease-out. |
 | `getSceneContainer(ctx, scene)` | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized. |
 
 For multi-step sequences (delayed fades, strobing flashes, etc.) write a
@@ -107,21 +128,24 @@ scene.isTransitioning           // same, accessible from the scene
 
 ## Custom Transitions
 
-Use `getSceneContainer(ctx, scene)` to reach a scene's PIXI root container
-inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`,
-`filters` directly.
+Two helpers cover most needs:
+
+- `getSceneContainer(ctx, scene)` — reach a scene's PIXI root container inside `begin`/`tick`/`end`. Manipulate `alpha`, `visible`, `position`, `filters` directly.
+- `getVirtualBounds(ctx)` — `{ width, height }` of the coordinate space that scene roots and `app.stage` operate in. Use this to size fullscreen overlays, masks, and slide distances.
 
 ```ts
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import type { Container } from "pixi.js";
-import { getSceneContainer } from "@yagejs/renderer";
+import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
 
-function slideIn(duration: number, width: number): SceneTransition {
+function slideIn(duration: number): SceneTransition {
   let toRoot: Container | undefined;
+  let width = 0;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
       toRoot = getSceneContainer(ctx, ctx.toScene);
+      width = getVirtualBounds(ctx).width;
       if (toRoot) toRoot.x = width;
     },
     tick(_dt, ctx) {
@@ -140,6 +164,7 @@ function slideIn(duration: number, width: number): SceneTransition {
 Notes:
 - `begin` fires synchronously when `SceneManager` starts the transition, before any frame is rendered — paint your start state here (hide incoming scene, offset it, etc.) to avoid a flash.
 - `end` always fires at the end of the duration, never mid-run. Restore any persistent properties (visibility, alpha) on surviving scenes as a matter of hygiene.
+- **Do NOT read `app.screen` for sizing.** It returns canvas/CSS pixels, but `app.stage` carries the responsive-fit transform — its children operate in virtual-space. Sizing a fullscreen overlay or mask from `app.screen` silently shrinks or stretches the geometry under any non-1.0 fit ratio (mobile letterbox, etc.). Use `getVirtualBounds(ctx)` (or `renderer.virtualSize`) instead.
 
 ## Composition with LoadingScene
 

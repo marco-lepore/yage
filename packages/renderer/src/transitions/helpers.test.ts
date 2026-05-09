@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Scene, SceneTransitionContext } from "@yagejs/core";
-import { getSceneContainer } from "./helpers.js";
+import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
+import { RendererKey } from "../types.js";
 
 function makeCtx(provider: unknown): SceneTransitionContext {
   return {
@@ -10,6 +11,22 @@ function makeCtx(provider: unknown): SceneTransitionContext {
     engineContext: {
       resolve: (key: unknown) =>
         key === SceneRenderTreeProviderKey ? provider : undefined,
+    },
+    fromScene: undefined,
+    toScene: undefined,
+  } as unknown as SceneTransitionContext;
+}
+
+function makeRendererCtx(virtualSize: {
+  width: number;
+  height: number;
+}): SceneTransitionContext {
+  return {
+    elapsed: 0,
+    kind: "push",
+    engineContext: {
+      resolve: (key: unknown) =>
+        key === RendererKey ? { virtualSize } : undefined,
     },
     fromScene: undefined,
     toScene: undefined,
@@ -40,5 +57,12 @@ describe("getSceneContainer", () => {
     const ctx = makeCtx(provider);
     const scene = { name: "s" } as Scene;
     expect(getSceneContainer(ctx, scene)).toBeUndefined();
+  });
+});
+
+describe("getVirtualBounds", () => {
+  it("returns the renderer's virtualSize verbatim", () => {
+    const ctx = makeRendererCtx({ width: 1024, height: 768 });
+    expect(getVirtualBounds(ctx)).toEqual({ width: 1024, height: 768 });
   });
 });

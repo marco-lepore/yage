@@ -59,6 +59,73 @@ crossFade() // 400ms
 crossFade({ duration: 600 })
 ```
 
+**`iris({ duration?, color?, center? })`** — Closing iris → swap → opening
+iris. A circular cut-out of the screen shrinks to zero over the first
+half (covering everything in `color`), then grows back over the second
+half to reveal the destination. Symmetric to `fade()` but with a
+circular shape — perfect for retro-style transitions like Zelda's
+overworld → cave or Mario's level intros. Defaults to 600ms, black,
+screen-center.
+
+```typescript
+import { iris } from "@yagejs/renderer";
+
+iris() // 600ms black iris from the center
+iris({ duration: 900, color: 0x111111, center: { x: 64, y: 64 } })
+```
+
+**`irisReveal({ duration?, center?, easing? })`** — One-way iris that
+masks the incoming scene's container with an expanding circle, so the
+new scene "blooms" over the previous one from the chosen point. No
+color overlay and no dip-to-black mid-point — the previous scene stays
+visible outside the circle until the iris covers it. Reach for
+`irisReveal` when you want a smooth reveal; reach for `iris` when you
+want the retro hard-cut feel.
+
+```typescript
+import { irisReveal } from "@yagejs/renderer";
+
+irisReveal() // 600ms reveal from the center
+irisReveal({
+  duration: 800,
+  center: { x: 0, y: 0 },           // bloom from the top-left
+  easing: (t) => 1 - Math.pow(1 - t, 3),
+})
+```
+
+**`chessboard({ duration?, rows?, cols? })`** — Staggered checkerboard
+mask painted directly onto the incoming scene's container. Even-parity
+cells fade in over the first half, odd-parity over the second, so the
+new scene "paints in" cell-by-cell on top of the previous one — no
+blackout, no color overlay. Defaults to 700ms and a 6×10 grid.
+
+```typescript
+import { chessboard } from "@yagejs/renderer";
+
+chessboard() // 700ms 6×10 grid
+chessboard({ rows: 4, cols: 6, duration: 900 })
+```
+
+**`slidePush({ duration?, direction?, reverseOnPop?, easing? })`** — Both
+scenes translate in lockstep, so the incoming scene visually pushes the
+outgoing one off the opposite edge. `direction` is the outgoing scene's
+exit direction (`"left" | "right" | "up" | "down"`, default `"left"`).
+On `pop` the direction is mirrored automatically so back motion reverses
+forward motion — opt out with `reverseOnPop: false`. Defaults to 500ms,
+cubic ease-out.
+
+```typescript
+import { slidePush } from "@yagejs/renderer";
+
+slidePush() // 500ms left push
+slidePush({ direction: "up", duration: 400 })
+slidePush({
+  direction: "right",
+  reverseOnPop: false, // pop also slides right
+  easing: (t) => t * t,
+})
+```
+
 `@yagejs/core` ships the `SceneTransition` contract and orchestration but
 no concrete transitions — all built-ins live in `@yagejs/renderer` because
 they need PIXI. For multi-step sequences (delayed fades, strobing flashes,
@@ -118,22 +185,29 @@ engine.events.on("scene:transition:ended", ({ kind }) => {
 
 ## Custom Transitions
 
-Implement the `SceneTransition` interface to create your own. The
-`getSceneContainer` helper from `@yagejs/renderer` returns the PIXI
-`Container` for a scene so you can manipulate its `alpha`, `visible`,
-`position`, or `filters` directly:
+Implement the `SceneTransition` interface to create your own. Two helpers
+from `@yagejs/renderer` cover most cases:
+
+- `getSceneContainer(ctx, scene)` — returns the PIXI `Container` for a
+  scene so you can manipulate its `alpha`, `visible`, `position`, or
+  `filters` directly.
+- `getVirtualBounds(ctx)` — returns `{ width, height }` of the coordinate
+  space scene roots and `app.stage` operate in. Use it to size fullscreen
+  overlays, masks, and slide distances.
 
 ```typescript
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import type { Container } from "pixi.js";
-import { getSceneContainer } from "@yagejs/renderer";
+import { getSceneContainer, getVirtualBounds } from "@yagejs/renderer";
 
-function slideIn(duration: number, width: number): SceneTransition {
+function slideIn(duration: number): SceneTransition {
   let toRoot: Container | undefined;
+  let width = 0;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
       toRoot = getSceneContainer(ctx, ctx.toScene);
+      width = getVirtualBounds(ctx).width;
       if (toRoot) toRoot.x = width;
     },
     tick(_dt: number, ctx: SceneTransitionContext) {
@@ -155,6 +229,16 @@ The `SceneTransitionContext` gives you:
 - `kind` — `"push"`, `"pop"`, or `"replace"`
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
+
+:::caution[Don't read `app.screen` for sizing]
+`app.stage` carries the responsive-fit transform, so its children — every
+scene root, plus anything you `addChild` directly to the stage — operate
+in **virtual-space pixels**. `app.screen` returns canvas/CSS pixels;
+sizing a fullscreen overlay or mask from it silently shrinks or stretches
+the geometry under any non-1.0 fit ratio (mobile letterbox is the common
+case). Reach for `getVirtualBounds(ctx)` (or `renderer.virtualSize`)
+instead.
+:::
 
 ## Composition with Loading Scenes
 
