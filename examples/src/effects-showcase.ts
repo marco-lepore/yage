@@ -19,6 +19,7 @@ import {
   Entity,
   Engine,
   Scene,
+  SceneManagerKey,
   Transform,
   Vec2,
   serializable,
@@ -311,6 +312,7 @@ class ShowcaseScene extends Scene {
   private hero: HeroEntity | null = null;
   private block: BlockEntity | null = null;
   private gem: GemEntity | null = null;
+  private scroller: PanelNode | null = null;
 
   onEnter(): void {
     this.spawn(BackgroundEntity);
@@ -400,11 +402,34 @@ class ShowcaseScene extends Scene {
         gap: 4,
         padding: 10,
         width: SIDEBAR_WIDTH,
+        // Cap the panel at the canvas height (with a margin matching the
+        // anchor offset on top + bottom) and clip the overflow. Sections
+        // expanded enough to overflow the cap are scrollable via the wheel
+        // handler installed in main() — it offsets `scroller`'s top margin.
+        maxHeight: STAGE_HEIGHT - 16,
+        overflow: "hidden",
         background: { color: 0x000000, alpha: 0.85, radius: 6 },
       }),
     );
 
-    sidebar.text("Effects Showcase", TXT_TITLE);
+    // Everything visible inside the sidebar lives inside `scroller`, the
+    // sole child of the sidebar's flex column. Wheel scrolling translates
+    // `scroller` via a negative top margin, sliding overflowing content
+    // under the sidebar's mask. Title goes inside the scroller too so the
+    // whole panel scrolls as one document — pinning the title outside lets
+    // scrolled rows draw over it (no z-isolation between sidebar children).
+    const scroller = sidebar.panel({
+      direction: "column",
+      gap: 4,
+    });
+    this.scroller = scroller;
+    activeScroller = scroller;
+    activeSidebar = sidebar._node;
+    // After a rebuild (initial spawn or afterRestore), reset scroll so the
+    // newly-built panel starts at the top.
+    sidebarScrollY = 0;
+
+    scroller.text("Effects Showcase", TXT_TITLE);
 
     // Collapsible sections — clicking the header toggles the child panel's
     // visibility. Without this the full preset list overflows the canvas.
@@ -412,7 +437,7 @@ class ShowcaseScene extends Scene {
     // initial paint short; users expand whichever scope they want.
     const section = (title: string, defaultOpen = false): PanelNode => {
       let isOpen = defaultOpen;
-      const headerBtn = sidebar.button(`${isOpen ? "▼" : "▶"} ${title}`, {
+      const headerBtn = scroller.button(`${isOpen ? "▼" : "▶"} ${title}`, {
         height: 22,
         width: SIDEBAR_WIDTH - 20,
         background: { color: 0x111827, alpha: 1, radius: 4 },
@@ -425,7 +450,7 @@ class ShowcaseScene extends Scene {
           headerBtn.update({ children: `${isOpen ? "▼" : "▶"} ${title}` });
         },
       });
-      const inner = sidebar.panel({
+      const inner = scroller.panel({
         direction: "column",
         gap: 3,
         padding: { left: 4 },
@@ -707,13 +732,22 @@ class ShowcaseScene extends Scene {
 
   async doLoad(): Promise<void> {
     const save = this.context.resolve(SnapshotServiceKey);
+    // Capture the SceneManager BEFORE the await — `loadSnapshot` calls
+    // `popAll()` then pushes a fresh ShowcaseScene from the snapshot, so
+    // `this` is a destroyed shell by the time the promise resolves and
+    // `this.context` may no longer route. We need the new active scene to
+    // sync the freshly-built panel against the just-restored effects.
+    const sceneManager = this.context.resolve(SceneManagerKey);
     if (!save.hasSnapshot("showcase")) {
       showToast("No save");
       return;
     }
     try {
       await save.loadSnapshot("showcase");
-      this.syncPanelToRestoredEffects();
+      const active = sceneManager.active;
+      if (active instanceof ShowcaseScene) {
+        active.syncPanelToRestoredEffects();
+      }
       showToast("Loaded");
     } catch (err) {
       console.error("Load failed:", err);
@@ -722,19 +756,63 @@ class ShowcaseScene extends Scene {
   }
 }
 
+// Module-level state for the sidebar scroller. `buildPanel` rewires these
+// each time it runs (initial spawn + every load), so the wheel handler in
+// `main()` always operates on the live PanelNodes — no per-scene listener
+// teardown needed across save/load.
+let activeScroller: PanelNode | null = null;
+let activeSidebar: PanelNode | null = null;
+let sidebarScrollY = 0;
+
 async function main(): Promise<void> {
   const engine = new Engine({ debug: false });
 
+  const container = setupGameContainer(STAGE_WIDTH, STAGE_HEIGHT);
   engine.use(
     new RendererPlugin({
       width: STAGE_WIDTH,
       height: STAGE_HEIGHT,
       backgroundColor: 0x000000,
-      container: setupGameContainer(STAGE_WIDTH, STAGE_HEIGHT),
+      container,
     }),
   );
   engine.use(new SnapshotPlugin());
   engine.use(new UIPlugin());
+
+  // Wheel-scroll the sidebar when the pointer is over it. Yoga's
+  // `margin.top: -scrollY` on `scroller` slides overflowing content up under
+  // the sidebar's `overflow: "hidden"` mask — no per-frame layout hook
+  // required; Yoga incorporates the offset on the next layout pass.
+  container.addEventListener(
+    "wheel",
+    (e) => {
+      const scroller = activeScroller;
+      const sidebar = activeSidebar;
+      if (!scroller || !sidebar) return;
+      const canvas = container.querySelector("canvas");
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = ((e.clientX - rect.left) * STAGE_WIDTH) / rect.width;
+      const cy = ((e.clientY - rect.top) * STAGE_HEIGHT) / rect.height;
+      const left = STAGE_WIDTH - SIDEBAR_WIDTH - 8;
+      if (cx < left || cx > STAGE_WIDTH - 8 || cy < 8 || cy > STAGE_HEIGHT - 8) {
+        return;
+      }
+      const visibleH = sidebar.yogaNode.getComputedHeight();
+      const contentH = scroller.yogaNode.getComputedHeight();
+      // Subtract sidebar's top + bottom padding (10px each) to get the
+      // scrollable viewport height. The title scrolls with the rest now.
+      const chromeH = 20;
+      const maxScroll = Math.max(0, contentH - (visibleH - chromeH));
+      const next = Math.max(0, Math.min(maxScroll, sidebarScrollY + e.deltaY));
+      if (next !== sidebarScrollY) {
+        sidebarScrollY = next;
+        scroller.update({ margin: { top: -sidebarScrollY } });
+      }
+      e.preventDefault();
+    },
+    { passive: false },
+  );
 
   // Hotkeys — bare S/L only, so Cmd/Ctrl+S (browser save) and Cmd/Ctrl+L
   // (focus address bar) keep their default behavior.

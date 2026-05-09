@@ -62,8 +62,12 @@ void main(void) {
   float s = sin(uAngle);
   vec2 rotated = mat2(c, -s, s, c) * px;
 
-  // Position inside the cell: 0 in the center, 0.5 at the corners.
-  vec2 cell = mod(rotated, uSize) / uSize - 0.5;
+  // Position inside the cell: 0 in the center, 0.5 at the corners. Guard
+  // against a 0/negative uSize so the divide and modulo can't go NaN --
+  // public setters clamp on write, but the WGSL backend mirrors this
+  // guard and the two should stay symmetric.
+  float size = max(uSize, 1.0);
+  vec2 cell = mod(rotated, size) / size - 0.5;
   float distToCenter = length(cell);
 
   // Luminance — Rec. 601 weights are good enough for a stylized effect.
@@ -71,8 +75,11 @@ void main(void) {
 
   // Bigger dots in dark regions, smaller in light. 0.5 covers the cell.
   float radius = (1.0 - lum) * 0.5;
-  // 0..1 anti-aliased step against a half-pixel-equivalent edge in cell space.
-  float edge = fwidth(distToCenter) + 0.001;
+  // Pixi v8 doesn't enable OES_standard_derivatives in its GLSL preamble, so
+  // fwidth() fails to link on WebGL2 ("no matching overloaded function"); the
+  // WGSL backend can't access fwidth in fragment scope either. Match WGSL
+  // and use a fixed AA edge — looks fine for the stylized output.
+  float edge = 0.02;
   float dot01 = 1.0 - smoothstep(radius - edge, radius + edge, distToCenter);
 
   vec3 halftoned = mix(vec3(1.0), vec3(0.0), dot01);

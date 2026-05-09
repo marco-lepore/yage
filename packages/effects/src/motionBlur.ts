@@ -38,6 +38,14 @@ export const motionBlur = defineEffect<MotionBlurHandle, MotionBlurOptions>({
         : requestedKernel % 2 === 0
           ? requestedKernel + 1
           : requestedKernel;
+    if (
+      options.kernelSize !== undefined &&
+      (requestedKernel < 5 || requestedKernel % 2 === 0)
+    ) {
+      console.warn(
+        `[yage:motionBlur] kernelSize must be odd and ≥ 5; coerced ${options.kernelSize} → ${kernelSize}.`,
+      );
+    }
     const filter = new MotionBlurFilter({
       velocity: { x: baseVx, y: baseVy },
       kernelSize,

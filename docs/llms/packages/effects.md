@@ -31,10 +31,29 @@ Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enab
 | `chromaticAberration` | `{ separation? }` | `pixi-filters` `RGBSplitFilter` | symmetric `separation` (red −x, blue +x) |
 | `vignette` | `{ radius?, alpha?, blur? }` | `CRTFilter` (with CRT features zeroed) | `vignettingAlpha` |
 | `colorGrade` | `{ preset?, amount? }` | built-in `ColorMatrixFilter` | filter `alpha` (cross-fades to identity) |
+| `godRay` | `{ angle?, gain?, lacunarity?, alpha? }` | `pixi-filters` `GodrayFilter` | `gain` (rays scale 0 → full) |
+| `shockwave` | `{ speed?, amplitude?, wavelength?, brightness?, radius?, duration? }` | `pixi-filters` `ShockwaveFilter` | `amplitude × brightness` (parked off until `trigger`) |
+| `motionBlur` | `{ velocity?, kernelSize?, offset? }` | `pixi-filters` `MotionBlurFilter` | configured `velocity` magnitude |
+| `oldFilm` | `{ sepia?, noise?, noiseSize?, scratch?, scratchDensity?, scratchWidth?, vignetting?, vignettingAlpha?, vignettingBlur? }` | `pixi-filters` `OldFilmFilter` | filter `alpha` (whole effect; noise self-animates) |
+| `bulgePinch` | `{ strength?, radius?, center? }` | `pixi-filters` `BulgePinchFilter` | configured `strength` (sign preserved) |
+| `halftone` | `{ size?, amount?, angle? }` | custom WebGL+WGSL | `amount` (cross-fades back to source) |
+| `wave` | `{ amplitude?, wavelength?, speed? }` | custom WebGL+WGSL | configured `amplitude` |
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
-`setIntensity` is the canonical "how strong is this effect right now" dial — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all go through it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
+`motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges; `setIntensity` scales magnitude while preserving the sign so a pinch fades flat → pinch (not flat → bulge → pinch). `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
+
+`setIntensity` is the canonical "how strong is this effect right now" dial — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all go through it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
+
+## Scope rationale
+
+Three presets read best at scene scope (or higher) rather than on a single component:
+
+- `godRay` — its alpha-aware fragment shader treats fully transparent host pixels as black, so on a per-component sprite the rays render against a black box; at scene scope the layer rasterizes alpha=1 across the visible area and the rays blend into the world as intended.
+- `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
+- `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite reads as a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
+
+The `examples/src/effects-showcase.ts` demo wires each of these at the recommended scope — copy that as the worked-out reference.
 
 ## Per-preset handle extras
 
@@ -74,6 +93,36 @@ vig.setStrength(0.8);
 
 const grade = tree.fx.addEffect(colorGrade({ preset: "neutral" }));
 grade.setPreset("sepia");
+
+const ray = scene.fx.addEffect(godRay({ angle: 30, gain: 0.5 }));
+ray.setAngle(45);            // tweak ray angle in degrees
+ray.setGain(0.8);            // rebases full strength; preserves intensity ratio
+
+const sw = scene.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
+sw.trigger(heroX, heroY);    // arms a ripple at given local-space pixels;
+                             // re-trigger cancels any in-flight ramp
+
+const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
+mb.setVelocity(50, 12);      // rebases full vector; preserves intensity ratio
+
+scene.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
+                             // noise self-animates; only the base
+                             // EffectHandle surface is exposed
+
+const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
+bp.setStrength(-0.8);        // flips bulge → pinch; intensity ratio preserved
+bp.setCenter(0.5, 0.5);      // normalized screen coords
+bp.setRadius(300);           // distortion radius in pixels
+
+const ht = layer.fx.addEffect(halftone({ size: 6, angle: Math.PI / 4 }));
+ht.setSize(10);
+ht.setAngle(0);
+ht.setAmount(0.7);           // rebases full ceiling; preserves intensity ratio
+
+const wv = layer.fx.addEffect(wave({ amplitude: 6, wavelength: 40 }));
+wv.setAmplitude(12);         // rebases full amplitude; preserves intensity ratio
+wv.setWavelength(60);        // clamped to ≥ 1
+wv.setSpeed(2);              // cycles/second; advances `uTime` from scene time
 ```
 
 ## Fade behavior
@@ -100,4 +149,4 @@ pc.run(Tween.custom(...));   // entity-scoped, NOT bound to any one effect
 
 ## Save/load
 
-All ten presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades are not preserved.
+All seventeen presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades and one-shot ramps (`hitFlash.trigger()`, `shockwave.trigger()`) are not preserved.
