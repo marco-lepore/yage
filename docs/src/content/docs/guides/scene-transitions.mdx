@@ -74,6 +74,12 @@ iris() // 600ms black iris from the center
 iris({ duration: 900, color: 0x111111, center: { x: 64, y: 64 } })
 ```
 
+`iris.center` is in **canvas / CSS pixels** (the overlay is parented
+directly to `app.stage`, which sits at identity). `irisReveal.center`
+is in **virtual pixels** (its mask is parented to the incoming scene's
+root, which lives under the fit transform). See the caution block below
+for the underlying rule.
+
 **`irisReveal({ duration?, center?, easing? })`** — One-way iris that
 masks the incoming scene's container with an expanding circle, so the
 new scene "blooms" over the previous one from the chosen point. No
@@ -88,7 +94,7 @@ import { irisReveal } from "@yagejs/renderer";
 irisReveal() // 600ms reveal from the center
 irisReveal({
   duration: 800,
-  center: { x: 0, y: 0 },           // bloom from the top-left
+  center: { x: 0, y: 0 },           // bloom from the top-left (virtual px)
   easing: (t) => 1 - Math.pow(1 - t, 3),
 })
 ```
