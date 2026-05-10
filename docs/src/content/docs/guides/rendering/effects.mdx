@@ -76,13 +76,17 @@ tears down each scope's `EffectStack` for you.
 
 ## Hero presets
 
-Ten presets ship in `@yagejs/effects`, all save-aware and all using the
-same handle protocol:
+Seventeen presets ship in `@yagejs/effects`, all save-aware and all using
+the same handle protocol:
 
 ```ts
 import {
+  // Originals
   hitFlash, bloom, outline, dropShadow, pixelate,
   glow, crt, chromaticAberration, vignette, colorGrade,
+  // Added in 0.5.x
+  godRay, shockwave, motionBlur, oldFilm, bulgePinch,
+  halftone, wave,
 } from "@yagejs/effects";
 ```
 
@@ -98,17 +102,100 @@ import {
 | `chromaticAberration` | RGB channel separation | symmetric separation |
 | `vignette` | Edge darkening | vignette alpha |
 | `colorGrade` | Sepia / grayscale / negative / night / warm / cool | filter alpha |
+| `godRay` | Animated volumetric light rays (self-scheduling time) | `gain` (rays scale 0 → full) |
+| `shockwave` | One-shot ripple at `(x, y)` via `trigger()` | `amplitude × brightness` (parked off until trigger) |
+| `motionBlur` | Directional smear along a velocity vector | velocity magnitude |
+| `oldFilm` | Sepia + grain + scratches + animated seed | filter alpha |
+| `bulgePinch` | Lens distortion — sign-preserving (negative pinches, positive bulges) | `strength` (sign preserved) |
+| `halftone` | Comic-print dot grid via custom WebGL+WGSL shader pair | `amount` (cross-fades back to source) |
+| `wave` | Sinusoidal x-displacement via custom shader; scene-time animator | configured `amplitude` |
 
 `setIntensity` doubles as the "how strong is this effect right now" dial —
 use it for fades AND for gameplay-driven scaling (HP-linked tinting,
 heartbeat glow, breathing vignette). The `set*` setters that change a
 preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`,
-`outline.setThickness`, etc.) preserve the current intensity ratio, so
-adjusting the ceiling mid-pulse raises the pulse height instead of
-snapping the visible effect back to 1.
+`outline.setThickness`, `godRay.setGain`, `motionBlur.setVelocity`,
+`bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, etc.)
+preserve the current intensity ratio, so adjusting the ceiling mid-pulse
+raises the pulse height instead of snapping the visible effect back to 1.
 
-Each preset wraps either a built-in `ColorMatrixFilter` or a `pixi-filters`
-filter and exposes typed extras specific to it.
+Most presets wrap either a built-in `ColorMatrixFilter` or a `pixi-filters`
+filter and expose typed extras specific to it. Two — `halftone` and `wave`
+— ship as custom WebGL + WGSL shader pairs with no `pixi-filters` dep,
+which makes them the smallest reference implementations to copy when
+authoring an effect from scratch.
+
+### Triggerable + animated presets
+
+A few presets behave differently from the steady-state pattern:
+
+```ts
+// shockwave — parks at "off" until you call trigger(); re-trigger cancels
+// any in-flight ramp.
+const sw = scene.fx.addEffect(shockwave({ amplitude: 40 }));
+sw.trigger(heroX, heroY);
+
+// godRay / oldFilm / wave self-advance their internal time uniform from
+// scene time, so they keep animating without any caller wiring. Pause
+// with the scene; time-scale with it.
+scene.fx.addEffect(godRay({ angle: 30, gain: 0.5 }));
+scene.fx.addEffect(oldFilm({ sepia: 0.4, noise: 0.4 }));
+layer.fx.addEffect(wave({ amplitude: 6, speed: 2 }));
+
+// motionBlur — directional. Coerces invalid kernel sizes (must be odd
+// and ≥ 5) up to the nearest valid value with a one-shot warning.
+const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
+mb.setVelocity(50, 12);
+
+// bulgePinch.center is normalized 0..1 screen coords (resolution-independent).
+const bp = scene.fx.addEffect(bulgePinch({ strength: 1, radius: 200 }));
+bp.setStrength(-0.8);   // flips bulge → pinch; intensity ratio preserved
+bp.setCenter(0.5, 0.5);
+```
+
+### Pick the right scope for each preset
+
+Three of the new presets read best at scene scope (or higher) rather than
+on a single component:
+
+- **`godRay`** — its alpha-aware fragment shader treats fully transparent
+  host pixels as black, so on a per-component sprite the rays render
+  against a black box. At scene scope the layer rasterizes alpha=1
+  across the visible area and the rays blend into the world as intended.
+- **`bulgePinch`** — distortion samples outside the host's bounding rect,
+  so a sprite-scoped bulge clips at the sprite edges. Apply at
+  scene/layer scope so the lens has room to bend pixels around its
+  `radius`.
+- **`shockwave`** — the ring expands outward from `center` and is
+  naturally clipped at the host's bounds, so a component-scoped
+  shockwave on a small sprite reads as a tiny "bump" rather than a
+  ring. Scene scope makes `trigger(heroX, heroY)` line up with the
+  entity's transform.
+
+`examples/src/effects-showcase.ts` wires each of these at the recommended
+scope — copy that as the worked-out reference.
+
+:::caution[Pixel-valued options scale with canvas size]
+Pixel-valued options on every preset *except* `shockwave` and
+`bulgePinch.center` are in **input-texture pixels** — the rasterized
+region's pixel size, post fit + camera transforms. With responsive `fit`,
+that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a
+desktop-native viewport but 8/382 = 2.10% on a mobile viewport. Effects
+visibly "scale up" on smaller canvases.
+
+Two presets ship with built-in resolution-stability today:
+
+- `bulgePinch.center` is normalized 0..1.
+- `shockwave` accepts container-local coords for `trigger(x, y)` AND for
+  every dimensional option, and converts each frame against the filter
+  target's live `worldTransform`. **This wrapper pattern is
+  experimental** — the API may shift as the broader fix lands. Don't
+  depend on `shockwave`'s exact unit story across versions.
+
+For resolution-stable output today on the other presets, scale your
+option values by `renderer.canvasSize.width / renderer.virtualSize.width`
+at the call site.
+:::
 
 ## Custom filters via `rawFilter`
 
