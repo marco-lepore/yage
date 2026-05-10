@@ -333,6 +333,11 @@ dungeons, per-floor layouts).
 raw `map:` data without a `mapKey`, `source`, or explicit `keyPrefix` — auto-keys
 need a stable prefix.
 
+See [Persistent World State](/patterns/persistent-world-state/) for the
+canonical pattern that pairs these auto-keys with `defineSet` /
+`defineMap` to remember which chests are open, which triggers fired,
+etc., across save/load.
+
 ## Custom Properties
 
 Read custom Tiled properties from objects. The component-method variants

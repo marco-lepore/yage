@@ -27,25 +27,29 @@ await engine.scenes.pop({
 
 ### Renderer (visual)
 
-**`fade({ duration?, color? })`** — Fades to a solid color and back. The
-first half fades out, the second half fades in. Defaults to 300ms, black.
+**`fade({ duration?, color?, coverScreen? })`** — Fades to a solid color and
+back. The first half fades out, the second half fades in. Defaults to 300ms,
+black, play-area-only. Pass `coverScreen: true` to also obscure letterbox bars
+(see the caution block below).
 
 ```typescript
 import { fade } from "@yagejs/renderer";
 
 fade() // 300ms black
 fade({ duration: 500, color: 0x1a1a2e }) // 500ms dark blue
+fade({ coverScreen: true }) // also obscure the letterbox bars
 ```
 
-**`flash({ duration?, color? })`** — Flashes a solid color that decays from
-full opacity to zero. Great for impacts or screen-clearing effects. Defaults
-to 200ms, white.
+**`flash({ duration?, color?, coverScreen? })`** — Flashes a solid color that
+decays from full opacity to zero. Great for impacts or screen-clearing
+effects. Defaults to 200ms, white, play-area-only.
 
 ```typescript
 import { flash } from "@yagejs/renderer";
 
 flash() // 200ms white
 flash({ duration: 150, color: 0xff0000 }) // quick red flash
+flash({ coverScreen: true }) // also obscure the letterbox bars
 ```
 
 **`crossFade({ duration? })`** — Cross-dissolves between scenes. The
@@ -102,9 +106,10 @@ irisReveal({
 
 **`chessboard({ duration?, rows?, cols? })`** — Staggered checkerboard
 mask painted directly onto the incoming scene's container. Even-parity
-cells fade in over the first half, odd-parity over the second, so the
-new scene "paints in" cell-by-cell on top of the previous one — no
-blackout, no color overlay. Defaults to 700ms and a 6×10 grid.
+cells grow over `[0, 0.7]` of the duration, odd-parity over `[0.3, 1]`
+(0.4-wide overlap, smoothstep-eased), so the new scene "paints in"
+cell-by-cell on top of the previous one — no blackout, no color overlay.
+Defaults to 700ms and a 6×10 grid.
 
 ```typescript
 import { chessboard } from "@yagejs/renderer";
@@ -255,6 +260,11 @@ bars (which the game treats as part of its play area). Reach for
 `app.stage` only when you also need to obscure letterbox bars — e.g.,
 the host page background is jarring during a dip-to-black. The built-in
 `fade` / `flash` / `iris` expose that via `coverScreen?: boolean`.
+
+Under `expand` mode `coverScreen: true` is mostly redundant — the
+default `worldRoot` overlay already paints into the bars. Reach for it
+under `letterbox` (or `cover`) where the bars would otherwise stay
+visible behind a dip-to-black.
 :::
 
 ## Composition with Loading Scenes

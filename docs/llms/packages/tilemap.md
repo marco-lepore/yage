@@ -117,8 +117,12 @@ interface ObjectLayerData {
 ## Object Layers
 
 ```ts
-// Grouped by class ?? name
+// Grouped by class ?? name (per object layer)
 const objects = tilemap.getObjects("spawns");
+// Record<string, MapObject[]>
+
+// No-arg variant — every object across every layer, grouped by class ?? name
+const grouped = tilemap.getObjects();
 // Record<string, MapObject[]>
 
 // Flat list across every object layer
@@ -165,10 +169,16 @@ tilemap.resolveRef(obj, "target");                // auto-collects across layers
 tilemap.resolveRefArray(ctrl, "spawns");          // spawns[0], spawns[1], ...
 
 // Standalone equivalents (caller supplies the object pool):
-import { getProperty, getPropertyArray, resolveObjectRef } from "@yagejs/tilemap";
+import {
+  getProperty,
+  getPropertyArray,
+  resolveObjectRef,
+  resolveObjectRefArray,
+} from "@yagejs/tilemap";
 getProperty<number>(obj, "speed");
 getPropertyArray<number>(obj, "point");
-resolveObjectRef(obj, "target", allObjs);
+resolveObjectRef(obj, "target", allObjs);             // single object ref
+resolveObjectRefArray(obj, "spawns", allObjs);        // spawns[0], spawns[1], ...
 ```
 
 The component-method variants of `resolveRef` / `resolveRefArray` walk every object layer for you; reach for the standalone helpers only when you've already collected the pool yourself.

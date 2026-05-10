@@ -16,8 +16,16 @@ import { SnapshotPlugin } from "@yagejs/save";
 
 engine.use(new SnapshotPlugin({
   namespace: "my-game",     // storage key prefix (default: "yage")
+  storage: myStorage,       // custom SnapshotStorage (default: localStorage)
 }));
 ```
+
+Provide `storage` when you need a backend other than `localStorage` — e.g.
+a Node test harness, an in-memory cache for headless runs, or a custom
+synchronous filesystem implementation. It must satisfy the synchronous
+`SnapshotStorage` contract (`load`, `save`, `delete`, `list`). Async-only
+backends like IndexedDB don't fit this contract directly; they'd need a
+sync wrapper (e.g. an in-memory cache that flushes asynchronously).
 
 ## Bundler setup (Vite 8+)
 
@@ -114,6 +122,16 @@ snapshot.deleteSnapshot("slot1");
 // Export as plain object for cloud uploads / file export
 const data = snapshot.exportSnapshot("slot1");   // GameSnapshot | null
 await snapshot.importSnapshot("slot1", data);
+
+// Generic key/value blobs alongside snapshots — the store path is preferred
+// for new code, but these are still useful for one-off blobs that don't
+// belong on the entity graph (best-score, highscore tables, etc.).
+snapshot.saveData("bestScore", { value: 9999 });
+snapshot.loadData("bestScore");                 // T | null
+snapshot.hasData("bestScore");                  // boolean
+snapshot.deleteData("bestScore");
+snapshot.exportData("bestScore");               // alias for loadData
+snapshot.importData("bestScore", { value: 1 }); // alias for saveData
 ```
 
 ## Snapshot schema
@@ -209,6 +227,10 @@ Every registered contributor is called on `loadSnapshot` — including with
 `undefined` when the snapshot has no entry for it — so contributors can reset
 to baseline. A failing contributor is logged via `console.error` and the
 load continues.
+
+Use `svc.unregisterSnapshotExtra(key)` to remove a contributor (e.g. when
+unloading a feature plugin at runtime). Re-registering with the same key
+replaces the previous contributor.
 
 The renderer plugin auto-registers a contributor under `"renderer"` for
 layer/scene/screen-scope effects + masks.
