@@ -76,3 +76,59 @@ export type ColorGradePreset =
 export interface ColorGradeHandle extends EffectHandle {
   setPreset(preset: ColorGradePreset): void;
 }
+
+/**
+ * Handle returned by `godRay`. The animator self-schedules through the
+ * engine's process scheduler — pauses with scene, time-scales with it.
+ */
+export interface GodRayHandle extends EffectHandle {
+  setAngle(value: number): void;
+  setGain(value: number): void;
+}
+
+/**
+ * Handle returned by `shockwave`. `trigger(x, y)` arms a ripple from the
+ * given local-space pixel coordinates and resolves itself through the
+ * engine's process scheduler — overlapping triggers cancel the previous
+ * ramp before starting the new one.
+ */
+export interface ShockwaveHandle extends EffectHandle {
+  trigger(x?: number, y?: number): void;
+}
+
+/** Handle returned by `motionBlur`. */
+export interface MotionBlurHandle extends EffectHandle {
+  setVelocity(x: number, y: number): void;
+}
+
+/**
+ * Handle returned by `oldFilm`. Like `crt`, the noise animator drives itself
+ * through the engine's process scheduler — only the base `EffectHandle`
+ * surface is exposed.
+ */
+export type OldFilmHandle = EffectHandle;
+
+/** Handle returned by `bulgePinch`. */
+export interface BulgePinchHandle extends EffectHandle {
+  setStrength(value: number): void;
+  setCenter(x: number, y: number): void;
+  setRadius(value: number): void;
+}
+
+/** Handle returned by `halftone` (custom shader). */
+export interface HalftoneHandle extends EffectHandle {
+  setSize(value: number): void;
+  setAngle(value: number): void;
+  setAmount(value: number): void;
+}
+
+/**
+ * Handle returned by `wave` (custom shader). The time uniform self-advances
+ * through the engine's process scheduler — pauses with scene, time-scales
+ * with it. `setSpeed` retunes the per-frame phase rate.
+ */
+export interface WaveHandle extends EffectHandle {
+  setAmplitude(value: number): void;
+  setWavelength(value: number): void;
+  setSpeed(value: number): void;
+}

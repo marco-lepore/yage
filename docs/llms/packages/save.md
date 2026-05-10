@@ -329,6 +329,20 @@ save.saveData("bestScore", { value: 9999 });
 save.loadData("bestScore");
 ```
 
+`loadSnapshot` calls `popAll()` then pushes a fresh scene rebuilt from the snapshot — `this` (and any handles a Scene method captured before the await) refer to a destroyed shell after the promise resolves. If you need to act on the post-load scene, capture `SceneManagerKey` BEFORE the await and read `sceneManager.active` after:
+
+```ts
+async doLoad(): Promise<void> {
+  const save = this.context.resolve(SnapshotServiceKey);
+  const sceneManager = this.context.resolve(SceneManagerKey);
+  await save.loadSnapshot("slot1");
+  const active = sceneManager.active;
+  if (active instanceof MyScene) active.syncUIToRestoredState();
+}
+```
+
+Same caveat for any caller-side handle captured before save — the `EffectHandle` / `MaskHandle` you got from `.fx.addEffect(...)` is dead after load. Re-acquire via `findEffect(definition)` on the new scene's `tree` (renderer-contributed effects are restored by name + options).
+
 ## Snapshot schema
 
 ```ts

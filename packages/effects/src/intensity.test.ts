@@ -167,6 +167,101 @@ vi.mock("pixi-filters", () => {
       this.blue = opts.blue;
     }
   }
+  class GodrayFilter extends FakeFilter {
+    angle: number;
+    gain: number;
+    lacunarity: number;
+    parallel: boolean;
+    time = 0;
+    constructor(opts: {
+      angle: number;
+      gain: number;
+      lacunarity: number;
+      alpha: number;
+      parallel: boolean;
+    }) {
+      super();
+      this.angle = opts.angle;
+      this.gain = opts.gain;
+      this.lacunarity = opts.lacunarity;
+      this.alpha = opts.alpha;
+      this.parallel = opts.parallel;
+    }
+  }
+  class ShockwaveFilter extends FakeFilter {
+    speed: number;
+    amplitude: number;
+    wavelength: number;
+    brightness: number;
+    radius: number;
+    time: number;
+    center = { x: 0, y: 0 };
+    constructor(opts: {
+      speed: number;
+      amplitude: number;
+      wavelength: number;
+      brightness: number;
+      radius: number;
+      time: number;
+    }) {
+      super();
+      this.speed = opts.speed;
+      this.amplitude = opts.amplitude;
+      this.wavelength = opts.wavelength;
+      this.brightness = opts.brightness;
+      this.radius = opts.radius;
+      this.time = opts.time;
+    }
+  }
+  class MotionBlurFilter extends FakeFilter {
+    velocityX: number;
+    velocityY: number;
+    kernelSize: number;
+    offset: number;
+    constructor(opts: {
+      velocity: { x: number; y: number };
+      kernelSize: number;
+      offset: number;
+    }) {
+      super();
+      this.velocityX = opts.velocity.x;
+      this.velocityY = opts.velocity.y;
+      this.kernelSize = opts.kernelSize;
+      this.offset = opts.offset;
+    }
+    set velocity(v: { x: number; y: number }) {
+      this.velocityX = v.x;
+      this.velocityY = v.y;
+    }
+    get velocity(): { x: number; y: number } {
+      return { x: this.velocityX, y: this.velocityY };
+    }
+  }
+  class OldFilmFilter extends FakeFilter {
+    sepia: number;
+    noise: number;
+    seed = 0;
+    constructor(opts: { sepia: number; noise: number }) {
+      super();
+      this.sepia = opts.sepia;
+      this.noise = opts.noise;
+    }
+  }
+  class BulgePinchFilter extends FakeFilter {
+    strength: number;
+    radius: number;
+    center: { x: number; y: number };
+    constructor(opts: {
+      strength: number;
+      radius: number;
+      center: { x: number; y: number };
+    }) {
+      super();
+      this.strength = opts.strength;
+      this.radius = opts.radius;
+      this.center = opts.center;
+    }
+  }
   return {
     AdvancedBloomFilter,
     CRTFilter,
@@ -175,6 +270,11 @@ vi.mock("pixi-filters", () => {
     DropShadowFilter,
     PixelateFilter,
     RGBSplitFilter,
+    GodrayFilter,
+    ShockwaveFilter,
+    MotionBlurFilter,
+    OldFilmFilter,
+    BulgePinchFilter,
   };
 });
 
@@ -201,6 +301,10 @@ import { glow } from "./glow.js";
 import { outline } from "./outline.js";
 import { pixelate } from "./pixelate.js";
 import { vignette } from "./vignette.js";
+import { godRay } from "./godRay.js";
+import { motionBlur } from "./motionBlur.js";
+import { bulgePinch } from "./bulgePinch.js";
+import { shockwave } from "./shockwave.js";
 
 // Each preset is a defineEffect-wrapped factory of options → EffectFactory.
 // Calling it with options gives us a zero-arg factory; call that to get the
@@ -341,6 +445,90 @@ describe("intensity model", () => {
       // Now drop to setIntensity(0): clamp kicks in (size=1 minimum)
       e.setIntensity(0);
       expect((e.filter as unknown as { sizeX: number }).sizeX).toBe(1);
+    });
+  });
+
+  describe("godRay scales gain", () => {
+    it("setIntensity(0.5) halves gain", () => {
+      const e = godRay({ gain: 0.6 })();
+      e.setIntensity(0.5);
+      expect((e.filter as unknown as { gain: number }).gain).toBeCloseTo(0.3, 5);
+    });
+
+    it("setGain preserves intensity ratio", () => {
+      const e = godRay({ gain: 0.6 })();
+      e.setIntensity(0.5);
+      e.buildExtras!(null as never).setGain!(1);
+      expect(e.getIntensity()).toBeCloseTo(0.5, 5);
+      expect((e.filter as unknown as { gain: number }).gain).toBeCloseTo(0.5, 5);
+    });
+  });
+
+  describe("motionBlur scales velocity vector", () => {
+    it("setIntensity(0) zeros the velocity, setIntensity(1) restores it", () => {
+      const e = motionBlur({ velocity: { x: 30, y: 10 } })();
+      e.setIntensity(0);
+      const f = e.filter as unknown as { velocityX: number; velocityY: number };
+      expect(f.velocityX).toBe(0);
+      expect(f.velocityY).toBe(0);
+      e.setIntensity(1);
+      expect(f.velocityX).toBe(30);
+      expect(f.velocityY).toBe(10);
+    });
+
+    it("setVelocity preserves intensity ratio across rebasing", () => {
+      const e = motionBlur({ velocity: { x: 30, y: 0 } })();
+      e.setIntensity(0.5);
+      e.buildExtras!(null as never).setVelocity!(60, 0);
+      expect(e.getIntensity()).toBeCloseTo(0.5, 5);
+      const f = e.filter as unknown as { velocityX: number };
+      // 60 * 0.5 = 30 (live magnitude unchanged)
+      expect(f.velocityX).toBeCloseTo(30, 5);
+    });
+  });
+
+  describe("bulgePinch scales strength preserving sign", () => {
+    it("setIntensity(0.5) halves strength magnitude, keeps sign for pinch", () => {
+      const e = bulgePinch({ strength: -0.8 })();
+      e.setIntensity(0.5);
+      expect((e.filter as unknown as { strength: number }).strength).toBeCloseTo(
+        -0.4,
+        5,
+      );
+    });
+
+    it("setStrength preserves intensity ratio", () => {
+      const e = bulgePinch({ strength: 1 })();
+      e.setIntensity(0.4);
+      e.buildExtras!(null as never).setStrength!(0.5);
+      expect(e.getIntensity()).toBeCloseTo(0.4, 5);
+      expect((e.filter as unknown as { strength: number }).strength).toBeCloseTo(
+        0.2,
+        5,
+      );
+    });
+  });
+
+  describe("shockwave intensity scaling", () => {
+    // Shockwave's wrapper folds intensity into amplitude + brightness inside
+    // its per-frame `apply()` (alongside the local-coord → input-tex-px
+    // conversion for `center` and the dimensional uniforms). `setIntensity`
+    // just stores the multiplier on the filter — getIntensity reads it back.
+    // We assert the multiplier here rather than the post-conversion uniform
+    // so the test stays meaningful without spinning up a renderer to trigger
+    // `apply()`.
+    it("setIntensity(0) parks the multiplier at 0", () => {
+      const e = shockwave({ amplitude: 30, brightness: 1 })();
+      e.setIntensity(0);
+      expect((e.filter as unknown as { intensity: number }).intensity).toBe(0);
+      expect(e.getIntensity()).toBe(0);
+    });
+
+    it("setIntensity(0.5) parks the multiplier at 0.5", () => {
+      const e = shockwave({ amplitude: 30, brightness: 1 })();
+      e.setIntensity(0.5);
+      expect((e.filter as unknown as { intensity: number }).intensity).toBe(0.5);
+      expect(e.getIntensity()).toBe(0.5);
     });
   });
 });

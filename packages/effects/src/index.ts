@@ -28,6 +28,27 @@ export type { VignetteOptions } from "./vignette.js";
 export { colorGrade } from "./colorGrade.js";
 export type { ColorGradeOptions } from "./colorGrade.js";
 
+export { godRay } from "./godRay.js";
+export type { GodRayOptions } from "./godRay.js";
+
+export { shockwave } from "./shockwave.js";
+export type { ShockwaveOptions } from "./shockwave.js";
+
+export { motionBlur } from "./motionBlur.js";
+export type { MotionBlurOptions } from "./motionBlur.js";
+
+export { oldFilm } from "./oldFilm.js";
+export type { OldFilmOptions } from "./oldFilm.js";
+
+export { bulgePinch } from "./bulgePinch.js";
+export type { BulgePinchOptions } from "./bulgePinch.js";
+
+export { halftone } from "./halftone.js";
+export type { HalftoneOptions } from "./halftone.js";
+
+export { wave } from "./wave.js";
+export type { WaveOptions } from "./wave.js";
+
 export type {
   HitFlashHandle,
   BloomHandle,
@@ -40,4 +61,11 @@ export type {
   VignetteHandle,
   ColorGradeHandle,
   ColorGradePreset,
+  GodRayHandle,
+  ShockwaveHandle,
+  MotionBlurHandle,
+  OldFilmHandle,
+  BulgePinchHandle,
+  HalftoneHandle,
+  WaveHandle,
 } from "./handles.js";
