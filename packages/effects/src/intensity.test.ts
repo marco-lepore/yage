@@ -509,21 +509,26 @@ describe("intensity model", () => {
     });
   });
 
-  describe("shockwave scales amplitude × brightness together", () => {
-    it("setIntensity(0) zeros amplitude AND brightness so the ring is invisible", () => {
+  describe("shockwave intensity scaling", () => {
+    // Shockwave's wrapper folds intensity into amplitude + brightness inside
+    // its per-frame `apply()` (alongside the local-coord → input-tex-px
+    // conversion for `center` and the dimensional uniforms). `setIntensity`
+    // just stores the multiplier on the filter — getIntensity reads it back.
+    // We assert the multiplier here rather than the post-conversion uniform
+    // so the test stays meaningful without spinning up a renderer to trigger
+    // `apply()`.
+    it("setIntensity(0) parks the multiplier at 0", () => {
       const e = shockwave({ amplitude: 30, brightness: 1 })();
       e.setIntensity(0);
-      const f = e.filter as unknown as { amplitude: number; brightness: number };
-      expect(f.amplitude).toBe(0);
-      expect(f.brightness).toBe(0);
+      expect((e.filter as unknown as { intensity: number }).intensity).toBe(0);
+      expect(e.getIntensity()).toBe(0);
     });
 
-    it("setIntensity(0.5) scales both knobs proportionally", () => {
+    it("setIntensity(0.5) parks the multiplier at 0.5", () => {
       const e = shockwave({ amplitude: 30, brightness: 1 })();
       e.setIntensity(0.5);
-      const f = e.filter as unknown as { amplitude: number; brightness: number };
-      expect(f.amplitude).toBe(15);
-      expect(f.brightness).toBe(0.5);
+      expect((e.filter as unknown as { intensity: number }).intensity).toBe(0.5);
+      expect(e.getIntensity()).toBe(0.5);
     });
   });
 });

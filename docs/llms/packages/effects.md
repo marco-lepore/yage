@@ -99,18 +99,17 @@ ray.setAngle(45);            // tweak ray angle in degrees
 ray.setGain(0.8);            // rebases full strength; preserves intensity ratio
 
 const sw = scene.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
-sw.trigger(heroX, heroY);    // coords in the filter target's local space —
-                             // virtual px for scene/layer scope, sprite-local
-                             // for component scope. The wrapper converts to
-                             // input-texture px every frame using the
-                             // container's worldTransform + the rasterized
-                             // input frame, so resize / camera zoom / scope
-                             // changes all flow through automatically.
+sw.trigger(heroX, heroY);    // ALL pixel-valued inputs (center, amplitude,
+                             // wavelength, radius, speed) are in the filter
+                             // target's local space — virtual px for
+                             // scene/layer scope, sprite-local for
+                             // component scope. The wrapper rescales them
+                             // to input-texture px every frame from the
+                             // target's live worldTransform, so resize /
+                             // camera zoom / scope changes preserve both
+                             // the trigger point AND the visual ring shape
+                             // / travel speed at any size.
                              // Re-trigger cancels any in-flight ramp.
-                             // (`radius`/`wavelength`/`speed` stay in
-                             // input-texture px — convert with
-                             // canvasSize/virtualSize if you need them
-                             // resolution-stable.)
 
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12);      // rebases full vector; preserves intensity ratio

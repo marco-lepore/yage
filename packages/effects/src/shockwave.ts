@@ -7,44 +7,65 @@ import type { ShockwaveHandle } from "./handles.js";
 
 /** Options for the {@link shockwave} preset. */
 export interface ShockwaveOptions {
-  /** Ripple speed in pixels/second of the input texture. Default: 500. */
+  /** Ripple speed in pixels/second of the filter target's local space. Default: 500. */
   speed?: number;
-  /** Ripple amplitude in pixels of the input texture. Default: 30. */
+  /** Ripple amplitude in pixels of the filter target's local space. Default: 30. */
   amplitude?: number;
-  /** Ripple wavelength in pixels of the input texture. Default: 160. */
+  /** Ripple wavelength in pixels of the filter target's local space. Default: 160. */
   wavelength?: number;
-  /** Ripple brightness multiplier. Default: 1. */
+  /** Ripple brightness multiplier. Unitless. Default: 1. */
   brightness?: number;
-  /** Maximum radius in pixels of the input texture (-1 for infinite). Default: -1. */
+  /**
+   * Maximum radius in pixels of the filter target's local space.
+   * `-1` (default) keeps the ring expanding forever (no max-radius fade).
+   */
   radius?: number;
   /** Auto-trigger duration in ms — ramp `time` from 0 then idle. Default: 1000. */
   duration?: number;
 }
 
 /**
- * Subclass of pixi-filters `ShockwaveFilter` that interprets `center` in
- * the FILTER TARGET's container-local coordinate system rather than the
- * raw input-texture pixel space the upstream filter expects.
+ * Subclass of pixi-filters `ShockwaveFilter` that interprets every
+ * pixel-valued input — `center`, `amplitude`, `wavelength`, `radius`,
+ * `speed` — in the FILTER TARGET's container-local coordinate system
+ * rather than the raw input-texture pixel space the upstream filter
+ * expects.
  *
- * Why: pixi-filters' shockwave puts `uOffset` directly into the shader,
- * which samples in input-texture pixels. The input texture's size is the
- * target container's world bounds in renderer pixels — i.e., post every
- * transform stacked above the filter target (camera zoom, the renderer
- * fit transform on `_worldRoot`, parent scaling). Passing
- * `entity.transform.position` (in virtual pixels) drifts off-target the
- * moment any of those transforms isn't identity — most commonly when
- * `fit` scales the canvas down on a narrow viewport.
+ * Why: the upstream shader normalizes each of these by `uInputSize`
+ * (renderer pixels post every transform stacked above the filter target).
+ * Passing virtual-px values directly works at the default 1.0 fit ratio
+ * but visibly drifts the ring's center, AND its size, AND its travel
+ * speed the moment the canvas is scaled (narrow viewport, mobile,
+ * camera zoom). We don't just want the trigger point to land on the
+ * hero — we want a 30-virtual-px-amplitude ring at native to look like
+ * a 30-virtual-px-amplitude ring after `fit` halves the canvas.
  *
- * Fix: store the caller's local-space center, and re-derive the input-px
- * offset every frame inside `apply()` using the live `worldTransform` and
- * `input.frame` Pixi has already computed for this draw. Rotation,
- * non-uniform scale, and per-frame transform changes all flow through
- * automatically — no caller-side math, no engine-context plumbing.
+ * Fix: store every dimensional input in caller-local units, and re-scale
+ * each frame inside `apply()` using the live `worldTransform` Pixi has
+ * already computed for this draw. Rotation, non-uniform scale, and
+ * per-frame transform changes all flow through automatically — no
+ * caller-side math, no engine-context plumbing. (See pixi-filters'
+ * BulgePinchFilter for the same trick at a smaller scale: its `apply()`
+ * reads `input.frame.width/height` so its `center` stays normalized 0..1.)
+ *
+ * Non-uniform scale: size-related uniforms (amplitude / wavelength /
+ * radius) use the mean of x/y axis magnitudes so the ring stays
+ * symmetric in user units. Speed uses x-axis magnitude only because the
+ * shader's normalization uses `uInputSize.x`. Both choices are wrong
+ * under arbitrary rotation, but right under the fit + camera-zoom cases
+ * users actually hit.
  *
  * @internal
  */
 class YageShockwaveFilter extends ShockwaveFilter {
   centerLocal: { x: number; y: number } = { x: 0, y: 0 };
+  baseAmplitudeLocal = 30;
+  baseWavelengthLocal = 160;
+  /** `-1` sentinel = infinite radius (matches upstream `radius` semantics). */
+  baseRadiusLocal = -1;
+  baseSpeedLocal = 500;
+  baseBrightness = 1;
+  intensity = 1;
   /** Filter target captured by the host effect on attach. */
   yageTarget: Container | undefined;
 
@@ -57,21 +78,40 @@ class YageShockwaveFilter extends ShockwaveFilter {
     const target = this.yageTarget;
     if (target) {
       const wt = target.worldTransform;
-      // Local point → world point via the cumulative transform Pixi has
-      // already computed this frame.
+      // Local axis magnitudes — robust under rotation (hypot collapses to
+      // |a| / |d| in the axis-aligned case the fit transform actually uses).
+      const scaleX = Math.hypot(wt.a, wt.b);
+      const scaleY = Math.hypot(wt.c, wt.d);
+      const sizeScale = (scaleX + scaleY) * 0.5;
+
+      // Center: local point → world → input-frame coords. `input.frame` is
+      // the rasterized region in renderer-pixel space; subtracting its
+      // origin lands the offset in the texture-relative space `uOffset`
+      // samples in.
       const worldX =
         wt.a * this.centerLocal.x + wt.c * this.centerLocal.y + wt.tx;
       const worldY =
         wt.b * this.centerLocal.x + wt.d * this.centerLocal.y + wt.ty;
-      // World point → input-frame coords. `input.frame` is the rasterized
-      // region in renderer-pixel space; subtracting its origin gives the
-      // texture-relative offset the shader's `uOffset` actually needs.
       const frame = (input as unknown as { frame: { x: number; y: number } })
         .frame;
       this.center = {
         x: worldX - frame.x,
         y: worldY - frame.y,
       };
+
+      // Dimensional uniforms: scale local units to input-tex pixels every
+      // frame so visual ring size/speed track the user's intent at any fit
+      // ratio. setIntensity is folded in here too — keeps "amplitude" and
+      // "brightness" scaling on a single per-frame writeback.
+      this.amplitude =
+        this.baseAmplitudeLocal * this.intensity * sizeScale;
+      this.brightness = this.baseBrightness * this.intensity;
+      this.wavelength = this.baseWavelengthLocal * sizeScale;
+      this.speed = this.baseSpeedLocal * scaleX;
+      this.radius =
+        this.baseRadiusLocal < 0
+          ? this.baseRadiusLocal
+          : this.baseRadiusLocal * sizeScale;
     }
     super.apply(filterManager, input, output, clearMode);
   }
@@ -91,16 +131,14 @@ const PARKED_TIME = 1e6;
  * is naturally clipped at the host's bounds, so a component-scoped
  * shockwave on a small sprite reads as a tiny "bump" rather than a ring.
  *
- * `trigger(x, y)` accepts coordinates in the **filter target's local
- * coordinate system** — virtual pixels for scene/layer-scope effects,
- * sprite-local for component-scope. The wrapper converts to the
- * input-texture pixel space the shader actually samples in, every frame,
- * using the target container's live `worldTransform` and the rasterized
- * input frame. Resize the canvas, zoom the camera, attach the filter at
- * a different scope — the trigger keeps lining up with whatever you fed
- * it. (Other dimensions — `radius`, `wavelength`, `speed` — stay in
- * input-texture pixels because they're rarely runtime-tweaked; convert
- * by the same canvas/virtual ratio if needed.)
+ * **Coords are in the filter target's local space** — virtual pixels for
+ * scene/layer-scope effects, sprite-local for component-scope. Applies
+ * uniformly to `trigger(x, y)` AND to every dimensional option
+ * (`amplitude`, `wavelength`, `radius`, `speed`). The wrapper rescales
+ * to the input-texture pixel space the shader actually samples in every
+ * frame, using the target container's live `worldTransform`. Resize the
+ * canvas, zoom the camera, attach the filter at a different scope — both
+ * the trigger point and the visual ring size track your intent.
  *
  * The filter starts in a "parked" state (time pushed past every visible
  * pixel) so toggling on is invisible until you `trigger()`. The trigger
@@ -113,38 +151,45 @@ const PARKED_TIME = 1e6;
 export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
   name: "yage:shockwave",
   factory: (options) => {
-    const baseAmplitude = options.amplitude ?? 30;
-    const baseBrightness = options.brightness ?? 1;
     const duration = options.duration ?? 1000;
     const filter = new YageShockwaveFilter({
+      // Constructor needs SOMETHING for these to satisfy upstream init,
+      // but our apply() override rewrites all five each frame from the
+      // *Local fields below. The constructor values only matter for the
+      // pre-attach window (the first frame between construction and
+      // onAttach), where they're read with the upstream input-px meaning
+      // and produce one frame of "wrong-scale" output before the wrapper
+      // takes over. Acceptable.
       speed: options.speed ?? 500,
-      amplitude: baseAmplitude,
+      amplitude: options.amplitude ?? 30,
       wavelength: options.wavelength ?? 160,
-      brightness: baseBrightness,
+      brightness: options.brightness ?? 1,
       radius: options.radius ?? -1,
       // Park the initial ring offscreen so toggling the effect on (without
       // a trigger) shows nothing. Without this, time=0 places the ring
       // exactly at `center`, producing a stationary "bump" pinned there.
       time: PARKED_TIME,
     });
-    let intensity = 1;
-    const apply = (): void => {
-      filter.amplitude = baseAmplitude * intensity;
-      filter.brightness = baseBrightness * intensity;
-    };
-    apply();
+    // Stash the local-space options the wrapper's apply() reads each frame.
+    filter.baseAmplitudeLocal = options.amplitude ?? 30;
+    filter.baseWavelengthLocal = options.wavelength ?? 160;
+    filter.baseRadiusLocal = options.radius ?? -1;
+    filter.baseSpeedLocal = options.speed ?? 500;
+    filter.baseBrightness = options.brightness ?? 1;
+
     const effect: Effect<ShockwaveHandle> = {
       filter,
-      getIntensity: () => intensity,
+      getIntensity: () => filter.intensity,
       setIntensity: (v) => {
-        intensity = v;
-        apply();
+        // Just update the multiplier — apply() folds it into amplitude +
+        // brightness on the next frame. No direct uniform write here so we
+        // don't fight the wrapper's per-frame conversion.
+        filter.intensity = v;
       },
       onAttach: (target) => {
         // Capture the filter target so `apply()` can read its
-        // `worldTransform` each frame. Without this, `centerLocal` has
-        // nothing to project against and falls back to identity (= raw
-        // pixel coords, the upstream pixi-filters behavior).
+        // `worldTransform` each frame. Without this, every dimensional
+        // input falls back to the constructor-time input-px values.
         filter.yageTarget = target.displayObject;
       },
       onDetach: () => {
