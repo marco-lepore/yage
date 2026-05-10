@@ -84,19 +84,30 @@ class YageShockwaveFilter extends ShockwaveFilter {
       const scaleY = Math.hypot(wt.c, wt.d);
       const sizeScale = (scaleX + scaleY) * 0.5;
 
-      // Center: local point → world → input-frame coords. `input.frame` is
-      // the rasterized region in renderer-pixel space; subtracting its
-      // origin lands the offset in the texture-relative space `uOffset`
-      // samples in.
+      // Center: project local point → world via worldTransform, then
+      // world → input-texture coords by subtracting the rasterized region's
+      // world origin. That origin lives on `filterManager._activeFilterData.bounds.minX/minY`
+      // — it's NOT on `input.frame.x/y`, which Pixi's TexturePool always
+      // resets to 0 on allocation. Using `wt.tx/ty` instead fails on
+      // component-scope sprites whose bbox starts at `position - anchor*size`,
+      // and using `0` (the apparent `frame.x`) fails the moment the fit
+      // transform produces letterbox bars (offsetX != 0). The internal
+      // `_activeFilterData.bounds` is the only frame that's always correct
+      // — accept the underscore-prefixed access; it's stable in v8.
       const worldX =
         wt.a * this.centerLocal.x + wt.c * this.centerLocal.y + wt.tx;
       const worldY =
         wt.b * this.centerLocal.x + wt.d * this.centerLocal.y + wt.ty;
-      const frame = (input as unknown as { frame: { x: number; y: number } })
-        .frame;
+      const bounds = (
+        filterManager as unknown as {
+          _activeFilterData?: { bounds?: { minX: number; minY: number } };
+        }
+      )._activeFilterData?.bounds;
+      const minX = bounds?.minX ?? 0;
+      const minY = bounds?.minY ?? 0;
       this.center = {
-        x: worldX - frame.x,
-        y: worldY - frame.y,
+        x: worldX - minX,
+        y: worldY - minY,
       };
 
       // Dimensional uniforms: scale local units to input-tex pixels every
