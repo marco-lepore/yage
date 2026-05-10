@@ -1,5 +1,12 @@
 # @yagejs/audio
 
+## 0.6.0
+
+### Patch Changes
+
+- Updated dependencies [[`1126143`](https://github.com/marco-lepore/yage/commit/11261436719fed28472cec3143281632f082add5), [`fe4aabc`](https://github.com/marco-lepore/yage/commit/fe4aabcf25525d078e584ab96e69dd907d96bc7c)]:
+  - @yagejs/core@0.6.0
+
 ## 0.5.0
 
 ### Patch Changes
