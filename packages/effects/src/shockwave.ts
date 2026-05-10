@@ -68,6 +68,13 @@ class YageShockwaveFilter extends ShockwaveFilter {
   intensity = 1;
   /** Filter target captured by the host effect on attach. */
   yageTarget: Container | undefined;
+  /**
+   * Reused buffer for the per-frame `center = { x, y }` writeback. `apply()`
+   * runs every render frame; allocating a fresh object would churn GC
+   * needlessly. The upstream setter copies x/y into its own uniform, so
+   * mutating this buffer in place is safe.
+   */
+  private readonly _centerOut = { x: 0, y: 0 };
 
   override apply(
     filterManager: FilterSystem,
@@ -105,10 +112,9 @@ class YageShockwaveFilter extends ShockwaveFilter {
       )._activeFilterData?.bounds;
       const minX = bounds?.minX ?? 0;
       const minY = bounds?.minY ?? 0;
-      this.center = {
-        x: worldX - minX,
-        y: worldY - minY,
-      };
+      this._centerOut.x = worldX - minX;
+      this._centerOut.y = worldY - minY;
+      this.center = this._centerOut;
 
       // Dimensional uniforms: scale local units to input-tex pixels every
       // frame so visual ring size/speed track the user's intent at any fit
@@ -188,6 +194,15 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
     filter.baseSpeedLocal = options.speed ?? 500;
     filter.baseBrightness = options.brightness ?? 1;
 
+    // Shared between `buildExtras.trigger` (writes it) and `onDetach`
+    // (parks the wave). The base.run-scheduled Process is auto-cancelled
+    // when the effect is removed (per EffectStack lifetime contract), so
+    // the cancel() call here is belt-and-suspenders against re-detach
+    // ordering — what matters is parking `filter.time` so the same filter
+    // instance re-attached later doesn't render a stale mid-wave on its
+    // first frame.
+    let inFlight: Process | undefined;
+
     const effect: Effect<ShockwaveHandle> = {
       filter,
       getIntensity: () => filter.intensity,
@@ -204,32 +219,33 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
         filter.yageTarget = target.displayObject;
       },
       onDetach: () => {
+        inFlight?.cancel();
+        inFlight = undefined;
+        filter.time = PARKED_TIME;
         filter.yageTarget = undefined;
       },
-      buildExtras: (base) => {
-        let inFlight: Process | undefined;
-        return {
-          trigger: (x = 0, y = 0) => {
-            // Cancel any in-flight ramp before starting a new one — overlapping
-            // shockwaves on the same filter would otherwise stomp `time`
-            // mid-frame and produce a visible glitch.
-            inFlight?.cancel();
-            filter.centerLocal = { x, y };
-            filter.time = 0;
-            inFlight = base.run(
-              new Process({
-                duration,
-                update: (dt) => {
-                  filter.time += dt / 1000;
-                },
-                onComplete: () => {
-                  filter.time = PARKED_TIME;
-                },
-              }),
-            );
-          },
-        };
-      },
+      buildExtras: (base) => ({
+        trigger: (x = 0, y = 0) => {
+          // Cancel any in-flight ramp before starting a new one — overlapping
+          // shockwaves on the same filter would otherwise stomp `time`
+          // mid-frame and produce a visible glitch.
+          inFlight?.cancel();
+          filter.centerLocal = { x, y };
+          filter.time = 0;
+          inFlight = base.run(
+            new Process({
+              duration,
+              update: (dt) => {
+                filter.time += dt / 1000;
+              },
+              onComplete: () => {
+                filter.time = PARKED_TIME;
+                inFlight = undefined;
+              },
+            }),
+          );
+        },
+      }),
     };
     return effect;
   },
