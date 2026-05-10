@@ -472,7 +472,9 @@ function RebindPanel() {
           style={{
             fontSize: 11,
             fill: activePad ? 0x22d3ee : 0x64748b,
+            wordWrap: true,
             wordWrapWidth: 240,
+            breakWords: true,
           }}
         >
           {activePad ? activePad.id : "No controller — keyboard only"}
@@ -492,7 +494,14 @@ function RebindPanel() {
         />
       ))}
 
-      <Text style={{ fontSize: 10, fill: 0x666666, wordWrapWidth: 240 }}>
+      <Text
+        style={{
+          fontSize: 10,
+          fill: 0x666666,
+          wordWrap: true,
+          wordWrapWidth: 240,
+        }}
+      >
         Click a binding to rebind. Press any keyboard key, mouse button, or
         gamepad button to set it. Esc to cancel.
       </Text>
