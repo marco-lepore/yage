@@ -21,16 +21,18 @@ export function getSceneContainer(
 }
 
 /**
- * Bounds of the scene-stage coordinate space — the size that geometry
- * parented to `app.stage` (or to a scene root) must use to cover the
- * viewport. Equivalent to `renderer.virtualSize`.
+ * Bounds of the declared virtual play area — equivalent to
+ * `renderer.virtualSize`. Use this to size masks, translations, or
+ * geometry that's scoped to a single scene's content (e.g. a per-cell
+ * mask painted onto a scene root). Children of scene roots and of
+ * `_worldRoot` operate in virtual pixels.
  *
- * Do **not** read `app.screen` here. The fit controller installs a
- * scale + translate on `app.stage`, so its children operate in
- * virtual-space pixels; sizing a fullscreen overlay or mask from
- * `app.screen` (which returns canvas/CSS pixels) silently shrinks or
- * stretches the geometry under any non-1.0 fit ratio — common on mobile
- * letterbox.
+ * For full-screen overlays parented to `renderer.worldRoot`, prefer
+ * `renderer.visibleCanvasRect` — it equals the virtual rect under
+ * `letterbox` (clipped) but extends into the bars under `expand`, which
+ * is usually what an obscuring overlay wants. For overlays that must
+ * also paint over letterbox bars, parent on `app.stage` and size in
+ * canvas pixels via `app.screen.width / .height`.
  */
 export function getVirtualBounds(ctx: SceneTransitionContext): {
   width: number;

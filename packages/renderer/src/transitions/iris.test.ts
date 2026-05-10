@@ -16,9 +16,10 @@ function makeCtx(opts: {
   toContainer?: { visible: boolean };
   fromContainer?: { visible: boolean };
 }): SceneTransitionContext {
-  // Distinct virtual vs canvas sizes — `iris` draws on `app.stage`, which
-  // carries the responsive-fit transform, so its overlay/mask must be sized
-  // in virtual-space pixels, not canvas pixels.
+  // `iris` overlays parent to `app.stage` (identity since the fit transform
+  // moved to `_worldRoot`), so they size against `app.screen`. virtualSize
+  // is intentionally distinct here to catch any regression that reaches
+  // for it.
   return {
     elapsed: opts.elapsed,
     kind: opts.kind,
@@ -29,6 +30,14 @@ function makeCtx(opts: {
         if (key === RendererKey) {
           return {
             virtualSize: { width: 400, height: 300 },
+            visibleCanvasRect: { x: 0, y: 0, width: 400, height: 300 },
+            worldRoot: { addChild: () => {} },
+            // Distinct virtual vs canvas so a `coverScreen` regression that
+            // forgets to convert the center via `virtualToCanvas` is caught.
+            virtualToCanvas: (x: number, y: number) => ({
+              x: x * 2,
+              y: y * 2,
+            }),
             application: {
               screen: { width: 800, height: 600 },
               stage: { addChild: () => {} },

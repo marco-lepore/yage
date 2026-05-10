@@ -59,20 +59,27 @@ crossFade() // 400ms
 crossFade({ duration: 600 })
 ```
 
-**`iris({ duration?, color?, center? })`** — Closing iris → swap → opening
-iris. A circular cut-out of the screen shrinks to zero over the first
-half (covering everything in `color`), then grows back over the second
-half to reveal the destination. Symmetric to `fade()` but with a
-circular shape — perfect for retro-style transitions like Zelda's
-overworld → cave or Mario's level intros. Defaults to 600ms, black,
-screen-center.
+**`iris({ duration?, color?, center?, coverScreen? })`** — Closing iris →
+swap → opening iris. A circular cut-out of the screen shrinks to zero
+over the first half (covering everything in `color`), then grows back
+over the second half to reveal the destination. Symmetric to `fade()`
+but with a circular shape — perfect for retro-style transitions like
+Zelda's overworld → cave or Mario's level intros. Defaults to 600ms,
+black, virtual-center, play-area-only.
 
 ```typescript
 import { iris } from "@yagejs/renderer";
 
-iris() // 600ms black iris from the center
+iris() // 600ms black iris from the virtual-space center
 iris({ duration: 900, color: 0x111111, center: { x: 64, y: 64 } })
+iris({ coverScreen: true }) // also obscure the letterbox bars
 ```
+
+`iris.center` and `irisReveal.center` are both in **virtual pixels** —
+the same coords your game logic uses. `coverScreen: true` re-parents the
+overlay to `app.stage` so it covers the canvas including letterbox /
+expand bars; the center is converted internally. See the caution block
+below for the underlying rule.
 
 **`irisReveal({ duration?, center?, easing? })`** — One-way iris that
 masks the incoming scene's container with an expanding circle, so the
@@ -88,7 +95,7 @@ import { irisReveal } from "@yagejs/renderer";
 irisReveal() // 600ms reveal from the center
 irisReveal({
   duration: 800,
-  center: { x: 0, y: 0 },           // bloom from the top-left
+  center: { x: 0, y: 0 },           // bloom from the top-left (virtual px)
   easing: (t) => 1 - Math.pow(1 - t, 3),
 })
 ```
@@ -191,9 +198,10 @@ from `@yagejs/renderer` cover most cases:
 - `getSceneContainer(ctx, scene)` — returns the PIXI `Container` for a
   scene so you can manipulate its `alpha`, `visible`, `position`, or
   `filters` directly.
-- `getVirtualBounds(ctx)` — returns `{ width, height }` of the coordinate
-  space scene roots and `app.stage` operate in. Use it to size fullscreen
-  overlays, masks, and slide distances.
+- `getVirtualBounds(ctx)` — returns `{ width, height }` of the
+  scene-root coordinate space. Use it to size masks, translations, or
+  geometry parented to a scene root (or any descendant of `_worldRoot`,
+  which carries the responsive-fit transform).
 
 ```typescript
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
@@ -230,14 +238,23 @@ The `SceneTransitionContext` gives you:
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
 
-:::caution[Don't read `app.screen` for sizing]
-`app.stage` carries the responsive-fit transform, so its children — every
-scene root, plus anything you `addChild` directly to the stage — operate
-in **virtual-space pixels**. `app.screen` returns canvas/CSS pixels;
-sizing a fullscreen overlay or mask from it silently shrinks or stretches
-the geometry under any non-1.0 fit ratio (mobile letterbox is the common
-case). Reach for `getVirtualBounds(ctx)` (or `renderer.virtualSize`)
-instead.
+:::caution[Pick the parent for what you need to cover]
+The fit transform lives on `_worldRoot`, not on `app.stage`. Pick the
+parent and size source by what the transition has to obscure:
+
+| Parent                  | Coord space     | Size source                        | Covers                                                         |
+| ----------------------- | --------------- | ---------------------------------- | -------------------------------------------------------------- |
+| Scene root              | virtual pixels  | `getVirtualBounds(ctx)`            | one scene only (clipped to virtual)                            |
+| `renderer.worldRoot`    | virtual pixels  | `renderer.visibleCanvasRect`       | play area under letterbox; play area + bars under expand       |
+| `app.stage` (direct)    | canvas / CSS px | `app.screen.width / .height`       | full canvas including letterbox bars                           |
+
+`worldRoot` is the saner default for full-screen effects: under
+`letterbox` the worldRoot mask clips overshoot back to the virtual rect
+(bars stay visible), and under `expand` the overlay paints into the
+bars (which the game treats as part of its play area). Reach for
+`app.stage` only when you also need to obscure letterbox bars — e.g.,
+the host page background is jarring during a dip-to-black. The built-in
+`fade` / `flash` / `iris` expose that via `coverScreen?: boolean`.
 :::
 
 ## Composition with Loading Scenes

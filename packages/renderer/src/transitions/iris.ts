@@ -1,6 +1,6 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import type { Application, Container } from "pixi.js";
+import type { Container } from "pixi.js";
 import { RendererKey } from "../types.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
@@ -10,12 +10,20 @@ export interface IrisOptions {
   /** Fill color visible outside the iris. Default: 0x000000. */
   color?: number;
   /**
-   * Iris center in virtual-space pixels. Default: virtual-space center.
-   * The maximum radius is the distance from this point to the farthest
-   * corner of the virtual rect, so the iris always fully covers the
-   * canvas at the mid-point.
+   * Iris center in **virtual-space pixels** — the same coord system you
+   * use for game logic. Default: virtual-space center. The maximum radius
+   * is the distance from this point to the farthest corner of whatever
+   * the overlay covers (virtual rect by default, full canvas under
+   * `coverScreen: true`), so the iris always fully covers its target at
+   * the mid-point.
    */
   center?: { x: number; y: number };
+  /**
+   * When `true`, the dip-to-color overlay covers the full canvas
+   * including letterbox / expand bars. When `false` (default), it covers
+   * only the virtual play area — bars stay visible during the dip.
+   */
+  coverScreen?: boolean;
 }
 
 /**
@@ -39,8 +47,8 @@ export interface IrisOptions {
 export function iris(opts: IrisOptions = {}): SceneTransition {
   const duration = opts.duration ?? 600;
   const color = opts.color ?? 0x000000;
+  const coverScreen = opts.coverScreen ?? false;
 
-  let app: Application | undefined;
   let overlay: Graphics | undefined;
   let maskGfx: Graphics | undefined;
   let cx = 0;
@@ -53,21 +61,54 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
   return {
     duration,
     begin(ctx: SceneTransitionContext) {
-      app = ctx.engineContext.resolve(RendererKey).application;
-      const { width: w, height: h } = getVirtualBounds(ctx);
-      cx = opts.center?.x ?? w / 2;
-      cy = opts.center?.y ?? h / 2;
-      const farX = Math.max(cx, w - cx);
-      const farY = Math.max(cy, h - cy);
+      const renderer = ctx.engineContext.resolve(RendererKey);
+      const virtual = getVirtualBounds(ctx);
+      const cxv = opts.center?.x ?? virtual.width / 2;
+      const cyv = opts.center?.y ?? virtual.height / 2;
+
+      let rx: number;
+      let ry: number;
+      let rw: number;
+      let rh: number;
+      if (coverScreen) {
+        // Overlay covers the canvas including bars; sized + positioned in
+        // canvas pixels. Convert the virtual-px center through the fit
+        // transform so callers stay in game coords either way.
+        const screen = renderer.application.screen;
+        rx = 0;
+        ry = 0;
+        rw = screen.width;
+        rh = screen.height;
+        const canvasCenter = renderer.virtualToCanvas(cxv, cyv);
+        cx = canvasCenter.x;
+        cy = canvasCenter.y;
+      } else {
+        // Overlay scoped to the on-screen canvas extent in virtual pixels.
+        // Under letterbox the worldRoot mask clips overshoot back to
+        // virtual; under expand the overlay paints into the bars too.
+        const r = renderer.visibleCanvasRect;
+        rx = r.x;
+        ry = r.y;
+        rw = r.width;
+        rh = r.height;
+        cx = cxv;
+        cy = cyv;
+      }
+      const farX = Math.max(cx - rx, rx + rw - cx);
+      const farY = Math.max(cy - ry, ry + rh - cy);
       maxRadius = Math.hypot(farX, farY);
 
       overlay = new Graphics();
-      overlay.rect(0, 0, w, h).fill({ color, alpha: 1 });
+      overlay.rect(rx, ry, rw, rh).fill({ color, alpha: 1 });
       maskGfx = new Graphics();
       drawCircleMask(maskGfx, cx, cy, maxRadius);
       overlay.addChild(maskGfx);
       overlay.setMask({ mask: maskGfx, inverse: true });
-      app.stage.addChild(overlay);
+      if (coverScreen) {
+        renderer.application.stage.addChild(overlay);
+      } else {
+        renderer.worldRoot.addChild(overlay);
+      }
 
       crossedHalfway = false;
       if (ctx.kind === "pop") {
@@ -103,7 +144,6 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
       toContainer = undefined;
       fromContainer = undefined;
       crossedHalfway = false;
-      app = undefined;
     },
   };
 }

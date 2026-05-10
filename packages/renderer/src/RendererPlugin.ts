@@ -318,6 +318,19 @@ export class RendererPlugin implements Plugin {
     return this._app.canvas;
   }
 
+  /**
+   * The container that carries the responsive-fit transform — the natural
+   * parent for things that should live inside the virtual play area
+   * (transition overlays scoped to the play rect, world-space HUD, etc.).
+   * Children operate in virtual-space pixels.
+   *
+   * Use `app.stage` instead when the geometry must cover the canvas
+   * including letterbox / expand bars (full-screen dip-to-color overlays).
+   */
+  get worldRoot(): Container {
+    return this._worldRoot;
+  }
+
   /** Virtual resolution size. */
   get virtualSize(): { width: number; height: number } {
     return { width: this._virtualWidth, height: this._virtualHeight };
