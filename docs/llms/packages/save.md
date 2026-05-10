@@ -67,7 +67,7 @@ store.reset(): void                // restore defaults
 `defineMap<K, V>`: `has`, `get`, `set`, `remove`, `clear`, `size`, `entries`.
 `defineCounter`: `value`, `set`, `increment`, `decrement`.
 
-Store ids must be unique within a process. Defining two with the same id throws.
+Re-defining a store with the same id silently replaces the previous registry entry — this is intentional so dev-server hot reloads don't throw on the second `defineX` call. Treat ids as unique within a single non-HMR runtime; collisions across modules will quietly overwrite.
 
 ## Save instance API
 
@@ -102,6 +102,7 @@ Errors:
 - `SlotNotFoundError` — `loadSlot` on a slot that doesn't exist.
 - `StoreVersionTooNewError` — stored version is greater than `defineStore`'s `version`.
 - `StoreMigrationMissingError` — stored version is older and no `migrate` configured.
+- `InvalidKeyError` — empty store id or slot name passed to `Save` methods. Thrown synchronously before the adapter is touched.
 
 ## Boot pattern
 
@@ -326,7 +327,15 @@ await save.importSnapshot("slot1", data);
 
 // Generic key/value blobs alongside snapshots — use the store path for new code.
 save.saveData("bestScore", { value: 9999 });
-save.loadData("bestScore");
+save.loadData("bestScore");                  // T | null
+save.hasData("bestScore");                   // boolean
+save.deleteData("bestScore");
+save.exportData("bestScore");                // alias for loadData (external use)
+save.importData("bestScore", { value: 1 }); // alias for saveData (external use)
+
+// Contributor management
+save.registerSnapshotExtra("myPlugin", contributor);
+save.unregisterSnapshotExtra("myPlugin");
 ```
 
 `loadSnapshot` calls `popAll()` then pushes a fresh scene rebuilt from the snapshot — `this` (and any handles a Scene method captured before the await) refer to a destroyed shell after the promise resolves. If you need to act on the post-load scene, capture `SceneManagerKey` BEFORE the await and read `sceneManager.active` after:

@@ -37,9 +37,14 @@ scene.spawn(SpawnAnchor, { key: "anchors/forest" });
 // Anonymous keyed entity:
 scene.spawn("village-bell", { key: "village/bell" });
 
-// Keyed child:
-parent.spawnChild("body", BoneEntity, { content: ["femur"] }, { key: "bone-01" });
+// Keyed child (4-arg form: name, Class, setup params, options):
+parent.spawnChild("treasure", Chest, { content: ["potion"] }, { key: "manor/chest-attic" });
 ```
+
+The 4-argument `spawnChild` form mirrors `scene.spawn(Class, params, options)`:
+the third argument is whatever the entity's `setup(params)` accepts (here,
+`Chest.setup({ content })` defined further down on this page), and the fourth
+is the spawn options object.
 
 Look it up later, anywhere in the scene:
 
@@ -212,3 +217,23 @@ scene owns the entity.
 not entity keys. You can use the identity primitive without enabling save, and
 you can use save without keying every entity. They compose because game code
 threads the stable id through both.
+
+## With tilemaps
+
+For Tiled-backed levels, hand-typing keys per chest gets tedious fast. The
+[tilemap guide](/guides/tilemaps/#spawning-entities-from-tiled-objects-auto-keys)
+covers `tilemap.objectKey(obj)` and `tilemap.forEachObject(layer, cb)`, which
+derive a deterministic key from the map asset + Tiled object id and let you
+spawn keyed entities straight from the level file:
+
+```typescript
+tilemap.forEachObject("interactables", (obj, key) => {
+  if (obj.class === "Chest") {
+    scene.spawn(Chest, { content: obj.properties.content ?? [] }, { key });
+  }
+});
+```
+
+The key shape is `<prefix>#object:<id>` and stays stable across re-saves of the
+Tiled file (as long as object ids don't change), so `opened.has(key)` keeps
+working after a reload.
