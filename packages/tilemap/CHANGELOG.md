@@ -1,5 +1,23 @@
 # @yagejs/tilemap
 
+## 0.6.0
+
+### Minor Changes
+
+- [#59](https://github.com/marco-lepore/yage/pull/59) [`9a2519b`](https://github.com/marco-lepore/yage/commit/9a2519ba9ed739cacc116699fc2944eb54930e23) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Tilemap DX pass — Tiled-derived auto-keys, asset-handle constructor, ergonomic object lookups.
+  - New `source: AssetHandle<TiledMapData>` option on `TilemapComponent` — pass the same handle you preload, and the component captures both the parsed data and the asset path. Becomes the default form in docs; `mapKey` and `map` keep working.
+  - New `tiledObjectKey(prefix, id)` helper plus `tilemap.objectKey(obj)` and `tilemap.forEachObject(layerName, fn)` for spawning entities directly from Tiled objects with stable `entity.key` values like `<mapKey>#object:<id>`. Combine with `scene.spawn(Class, params, { key })` (PR [#56](https://github.com/marco-lepore/yage/issues/56)) to thread Tiled identity into persistent stores.
+  - New `keyPrefix` option lets games override the auto-key prefix when running multiple instances of the same map (instanced dungeons, per-floor layouts).
+  - New direct lookups on `TilemapComponent`: `findObject(id)`, `findObjectByName(name)`, `getAllObjects()`.
+  - New typed property/ref helpers on the component: `getProperty`, `getPropertyArray`, `resolveRef`, `resolveRefArray`. The ref helpers walk every object layer for you so callers don't have to gather a pool first.
+  - The dungeon `tilemap` example now drives the player and enemies from the Tiled object layer using the new auto-key path; the debug overlay visualises walls, spawn points, and `EnemySpawnController`-to-spawn wiring resolved via `resolveRefArray`.
+
+### Patch Changes
+
+- Updated dependencies [[`cd26383`](https://github.com/marco-lepore/yage/commit/cd2638345e54709a2a5281334dc71448de64f4cf), [`47ffab6`](https://github.com/marco-lepore/yage/commit/47ffab6b37423155f92e97519b66b73e14b73039), [`9a2519b`](https://github.com/marco-lepore/yage/commit/9a2519ba9ed739cacc116699fc2944eb54930e23), [`cd26383`](https://github.com/marco-lepore/yage/commit/cd2638345e54709a2a5281334dc71448de64f4cf), [`1126143`](https://github.com/marco-lepore/yage/commit/11261436719fed28472cec3143281632f082add5), [`d9be1b3`](https://github.com/marco-lepore/yage/commit/d9be1b365ae83a8ca365d72003ec23e6fbb8679f), [`fe4aabc`](https://github.com/marco-lepore/yage/commit/fe4aabcf25525d078e584ab96e69dd907d96bc7c), [`fe4aabc`](https://github.com/marco-lepore/yage/commit/fe4aabcf25525d078e584ab96e69dd907d96bc7c)]:
+  - @yagejs/renderer@0.6.0
+  - @yagejs/core@0.6.0
+
 ## 0.5.0
 
 ### Patch Changes

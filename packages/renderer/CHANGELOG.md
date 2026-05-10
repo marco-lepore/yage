@@ -1,5 +1,49 @@
 # @yagejs/renderer
 
+## 0.6.0
+
+### Minor Changes
+
+- [#59](https://github.com/marco-lepore/yage/pull/59) [`9a2519b`](https://github.com/marco-lepore/yage/commit/9a2519ba9ed739cacc116699fc2944eb54930e23) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Move the responsive `fit` transform off `app.stage` and onto a dedicated `_worldRoot` container that sits between stage and per-scene roots. Stage stays at identity; the world root carries scale/offset.
+
+  Why: Pixi v8 feeds the active render group's transform to shaders via `uWorldTransformMatrix`. `@pixi/tilemap`'s pipe composes `uProjection × uWorldTransformMatrix × tilemap.worldTransform`, but `tilemap.worldTransform` is already cumulative from root — so any non-identity transform on the active render group is applied twice, silently mis-scaling tile rendering relative to Sprites/Graphics (whose batched renderer pre-transforms vertices on CPU and doesn't read `uWorldTransformMatrix`). The bug only manifested at fit ratios ≠ 1 with non-trivial camera zoom, which is why it stayed hidden on desktop and surfaced as a tile/object misalignment on mobile.
+
+  Putting the fit transform on a regular Container child of stage keeps `uWorldTransformMatrix = identity` at render time, so `@pixi/tilemap`'s pipe — and any other shader that reads `uWorldTransformMatrix` — composes correctly. Stage-direct children (transition overlays, the screen-scope `RendererPlugin.fx` host) keep their canvas-pixel coordinates as before.
+
+  User-visible surface is unchanged for `canvasToVirtual`, scene render trees, and the `Fit` controller's outputs. The only structural change is one extra container in the tree (`stage → _worldRoot → scene roots`).
+
+  Also fixes a pre-existing bug in `hitTestUI`: the method is documented to take virtual coordinates (matching how the input plugin stores pointer positions) but was forwarding them straight through to `EventBoundary.hitTest`, which expects canvas-relative coordinates per the Pixi v8 spec. At fit ratio 1 the two coincide so the bug stayed hidden on desktop; at any other ratio (mobile / responsive) UI auto-consume silently missed every surface. The method now converts via `FitController.virtualToCanvas` before calling `boundary.hitTest`.
+
+- [#61](https://github.com/marco-lepore/yage/pull/61) [`cd26383`](https://github.com/marco-lepore/yage/commit/cd2638345e54709a2a5281334dc71448de64f4cf) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add four scene transitions: `iris` (close-then-open dip-to-color, retro Zelda style), `irisReveal` (one-way circular reveal of the destination), `chessboard` (staggered cell-by-cell mask reveal), and `slidePush` (incoming and outgoing scenes translate in lockstep). All four size their masks/translations against `renderer.virtualSize` so they line up correctly with the scene root under any responsive-fit ratio. `IrisOptions.center` and `IrisRevealOptions.center` are documented as virtual-space pixels.
+
+  Also adds `getVirtualBounds(ctx)` as a transition-author helper alongside `getSceneContainer`. Returns `{ width, height }` of the coordinate space scene roots and `app.stage` operate in — the right thing to size fullscreen overlays / masks / slide distances against. Reaching for `app.screen` (canvas pixels) on stage children is a footgun that surfaces only on non-1.0 fit ratios; the transition guides now flag it explicitly.
+
+- [#62](https://github.com/marco-lepore/yage/pull/62) [`d9be1b3`](https://github.com/marco-lepore/yage/commit/d9be1b365ae83a8ca365d72003ec23e6fbb8679f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Re-home `fade`, `flash`, and `iris` overlays under the world-root architecture introduced in [#59](https://github.com/marco-lepore/yage/issues/59) (which moved the fit transform off `app.stage` onto a dedicated `_worldRoot`). All three now parent to `renderer.worldRoot` by default and size against `renderer.visibleCanvasRect` (the canvas extent in virtual pixels). Net effect:
+  - **letterbox** — overlay covers the virtual rect; bars stay visible (the worldRoot mask clips overshoot).
+  - **expand** — overlay paints into the bars too (no clipping mask under expand), matching the model where `expand` games treat the bar area as part of the play surface.
+  - **cover / stretch** — overlay covers what's on screen.
+
+  Adds an opt-in `coverScreen?: boolean` to `FadeOptions`, `FlashOptions`, and `IrisOptions` that re-parents the overlay to `app.stage` and sizes against `app.screen.width / .height` — covers the canvas including letterbox bars, for the rare case where the host-page background showing through is jarring.
+
+  `IrisOptions.center` and `IrisRevealOptions.center` are now both consistently in **virtual pixels** (game coordinates). When `coverScreen: true`, the iris center is converted internally via `renderer.virtualToCanvas`.
+
+  Also exposes `RendererPlugin.worldRoot: Container` as a public getter so custom transition authors can parent virtual-space overlays without resolving private internals.
+
+  The scene-root transitions (`chessboard`, `irisReveal`, `slidePush`) are unchanged — they manipulate scene roots directly and have always operated correctly in virtual pixels.
+
+### Patch Changes
+
+- [#61](https://github.com/marco-lepore/yage/pull/61) [`cd26383`](https://github.com/marco-lepore/yage/commit/cd2638345e54709a2a5281334dc71448de64f4cf) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix `fade` and `flash` overlay sizing under responsive fit. The full-screen rect was sized from `app.screen` (canvas pixels) but parented to `app.stage`, which carries the fit transform — so on devices where the virtual size differs from the canvas size (mobile letterbox, any non-1.0 fit ratio) the overlay covered only a fraction of the viewport. Now sized from `renderer.virtualSize` like the other transitions.
+
+- [#64](https://github.com/marco-lepore/yage/pull/64) [`47ffab6`](https://github.com/marco-lepore/yage/commit/47ffab6b37423155f92e97519b66b73e14b73039) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix `FitController` resize feedback loop on hosts with a border or padding.
+  - `FitController` now measures the host's content box (synchronous initial apply via `getBoundingClientRect()` minus computed padding/border, ResizeObserver via `contentBoxSize`) instead of the border-box. Sizing the canvas to the border-box on a host without an explicit height pushed the host's intrinsic block-size up by `2 × border` per apply, the observer re-fired, and the loop only stopped when the host hit a parent-driven cap like `max-height: 100%` — visible as the gradual Y-axis grow on initial mount and on viewport resize-up.
+
+- [#55](https://github.com/marco-lepore/yage/pull/55) [`e4d8823`](https://github.com/marco-lepore/yage/commit/e4d882380e37a02c8fd259c5019c576a46f9aa89) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Typed reactive stores in core + a new Save IO instance built on them; snapshot system renamed to free the `Save*` namespace.
+  - `RendererPlugin`'s optional snapshot bridge now resolves the renamed `SnapshotServiceKey` (peer-dep dynamic import), tracking the rename in `@yagejs/save`.
+
+- Updated dependencies [[`1126143`](https://github.com/marco-lepore/yage/commit/11261436719fed28472cec3143281632f082add5), [`fe4aabc`](https://github.com/marco-lepore/yage/commit/fe4aabcf25525d078e584ab96e69dd907d96bc7c)]:
+  - @yagejs/core@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes

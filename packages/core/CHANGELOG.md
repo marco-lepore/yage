@@ -1,5 +1,19 @@
 # @yagejs/core
 
+## 0.6.0
+
+### Minor Changes
+
+- [#56](https://github.com/marco-lepore/yage/pull/56) [`1126143`](https://github.com/marco-lepore/yage/commit/11261436719fed28472cec3143281632f082add5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add opt-in stable entity identity. Pass `{ key }` as the trailing arg to `scene.spawn(...)` or `entity.spawnChild(...)` to register a per-scene identity key, then look the entity up via `scene.findByKey(key)`. Use `entity.requireKey()` inside component `setup()` when the component depends on identity (e.g. reading from a `defineSet<string>` keyed by entity id).
+
+  The index is lazy (zero cost when unused), per-scene, hides destroyed entities, and clears on scene teardown. Duplicate keys throw at spawn time without leaving an orphan entity. Identity is independent of `@yagejs/save` — it's a primitive game code threads through stores when state should persist.
+
+- [#55](https://github.com/marco-lepore/yage/pull/55) [`e4d8823`](https://github.com/marco-lepore/yage/commit/e4d882380e37a02c8fd259c5019c576a46f9aa89) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Typed reactive stores in core + a new Save IO instance built on them; snapshot system renamed to free the `Save*` namespace.
+  - New `core/src/state` module: `Atom<T>` (signal-shaped reactive cell), `Store<T>` (object-shaped, shallow-merge, frozen snapshots), and persistent variants `defineStore<T>` / `defineSet<K>` / `defineMap<K, V>` / `defineCounter` with id, version, migrate, codec, serialize, hydrate.
+  - Codec primitives: `Codec<T>`, `jsonCodec`, `setCodec`, `mapCodec`, `dateCodec`.
+  - Explicit migration errors: `StoreVersionTooNewError`, `StoreMigrationMissingError`.
+  - Internal store registry + `_resetAllStoresForTesting` / `_clearStoreRegistryForTesting` test helpers.
+
 ## 0.5.0
 
 ### Minor Changes
