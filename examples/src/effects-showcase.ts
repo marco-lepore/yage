@@ -607,10 +607,21 @@ class ShowcaseScene extends Scene {
         showToast("Toggle shockwave on first");
         return;
       }
-      // Hero position in scene-pixel space; shockwave's center uniform is
-      // in pixels of the scene's render texture.
+      // Shockwave's `center` uniform is in pixels of the input filter frame
+      // — for a scene-scope filter that's the rasterized scene texture,
+      // sized in *renderer screen pixels* (canvas px × resolution). Hero
+      // position is in *virtual* pixels. Pass virtual coords directly and
+      // the ripple drifts off-hero as soon as `fit` scales the canvas
+      // (e.g. on a narrow viewport). Scale by the renderer's
+      // virtual→canvas ratio so the trigger lines up at any size.
       const pos = this.hero?.tryGet(Transform)?.position;
-      h.trigger(pos?.x ?? STAGE_WIDTH / 2, pos?.y ?? STAGE_HEIGHT / 2);
+      const vx = pos?.x ?? STAGE_WIDTH / 2;
+      const vy = pos?.y ?? STAGE_HEIGHT / 2;
+      const vSize = renderer.virtualSize;
+      const cSize = renderer.canvasSize;
+      const sx = cSize.width / vSize.width;
+      const sy = cSize.height / vSize.height;
+      h.trigger(vx * sx, vy * sy);
     });
 
     // ---- Screen (covers UI too) ----

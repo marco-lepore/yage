@@ -99,8 +99,14 @@ ray.setAngle(45);            // tweak ray angle in degrees
 ray.setGain(0.8);            // rebases full strength; preserves intensity ratio
 
 const sw = scene.fx.addEffect(shockwave({ speed: 600, amplitude: 40 }));
-sw.trigger(heroX, heroY);    // arms a ripple at given local-space pixels;
-                             // re-trigger cancels any in-flight ramp
+// `center` is in pixels of the filter's input texture, which Pixi sizes
+// in canvas pixels (post fit transform on _worldRoot) — NOT virtual
+// pixels. Convert before triggering or the ripple drifts off-target the
+// moment `fit` scales the canvas (narrow viewport, mobile, etc.):
+const sx = renderer.canvasSize.width / renderer.virtualSize.width;
+const sy = renderer.canvasSize.height / renderer.virtualSize.height;
+sw.trigger(heroX * sx, heroY * sy);
+// Re-trigger cancels any in-flight ramp.
 
 const mb = sprite.fx.addEffect(motionBlur({ velocity: { x: 30, y: 0 } }));
 mb.setVelocity(50, 12);      // rebases full vector; preserves intensity ratio
