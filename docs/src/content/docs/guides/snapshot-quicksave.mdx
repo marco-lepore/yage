@@ -22,8 +22,10 @@ engine.use(new SnapshotPlugin({
 
 Provide `storage` when you need a backend other than `localStorage` — e.g.
 a Node test harness, an in-memory cache for headless runs, or a custom
-filesystem/IndexedDB implementation. It must satisfy the synchronous
-`SnapshotStorage` contract (`load`, `save`, `delete`, `list`).
+synchronous filesystem implementation. It must satisfy the synchronous
+`SnapshotStorage` contract (`load`, `save`, `delete`, `list`). Async-only
+backends like IndexedDB don't fit this contract directly; they'd need a
+sync wrapper (e.g. an in-memory cache that flushes asynchronously).
 
 ## Bundler setup (Vite 8+)
 

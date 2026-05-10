@@ -229,7 +229,8 @@ spawn keyed entities straight from the level file:
 ```typescript
 tilemap.forEachObject("interactables", (obj, key) => {
   if (obj.class === "Chest") {
-    scene.spawn(Chest, { content: obj.properties.content ?? [] }, { key });
+    const content = tilemap.getPropertyArray<string>(obj, "content") ?? [];
+    scene.spawn(Chest, { content }, { key });
   }
 });
 ```
