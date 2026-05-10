@@ -55,6 +55,16 @@ Three presets read best at scene scope (or higher) rather than on a single compo
 
 The `examples/src/effects-showcase.ts` demo wires each of these at the recommended scope — copy that as the worked-out reference.
 
+## Unit reference (and a known limitation)
+
+Pixel-valued options on every preset *except `shockwave` and `bulgePinch.center`* are in **input-texture pixels** — i.e. the rasterized region's pixel size, post fit + camera transforms. With responsive `fit`, that means a `bloom.blur: 8` is 8/900 = 0.89% of canvas width on a desktop-native viewport but 8/382 = 2.10% on a mobile-sized one. Effects visibly "scale up" on smaller canvases. This is a known cross-package issue, not specific to any one preset.
+
+Two presets ship with built-in resolution-stability today:
+- `bulgePinch.center` is normalized 0..1 (resolution-independent by construction).
+- `shockwave` accepts container-local coords for `trigger(x, y)` AND for every dimensional option, and converts each frame against the filter target's live `worldTransform`. **This wrapper pattern is experimental** — it's the working answer for one preset, not the committed answer for the package. Don't depend on `shockwave`'s exact unit story across versions; whichever direction the broader fix takes, the API may shift.
+
+If you need resolution-stable visual output today on the other presets, scale your option values by `renderer.canvasSize.width / renderer.virtualSize.width` at the call site.
+
 ## Per-preset handle extras
 
 ```ts
