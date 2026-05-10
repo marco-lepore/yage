@@ -67,8 +67,8 @@ import {
 import type { HitFlashHandle, ShockwaveHandle } from "@yagejs/effects";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
-const STAGE_WIDTH = 900;
-const STAGE_HEIGHT = 640;
+const VIRTUAL_WIDTH = 900;
+const VIRTUAL_HEIGHT = 640;
 const SIDEBAR_WIDTH = 248;
 
 injectStyles(`
@@ -167,7 +167,7 @@ class BackgroundEntity extends Entity {
           { offset: 1, color: 0x065f46 },
         ],
       });
-      ctx.rect(0, 0, STAGE_WIDTH, STAGE_HEIGHT).fill(sky);
+      ctx.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).fill(sky);
 
       const sun = radialGradient({
         center: { x: 0.25, y: 0.25 },
@@ -178,21 +178,21 @@ class BackgroundEntity extends Entity {
         ],
         space: "local",
       });
-      ctx.rect(0, 0, STAGE_WIDTH, STAGE_HEIGHT).fill(sun);
+      ctx.rect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT).fill(sun);
 
       // Grid lines so pixelate / chromaticAberration / CRT / halftone /
       // wave have geometry to chew on.
       const gridStep = 40;
-      for (let x = 0; x <= STAGE_WIDTH; x += gridStep) {
+      for (let x = 0; x <= VIRTUAL_WIDTH; x += gridStep) {
         ctx
           .moveTo(x, 0)
-          .lineTo(x, STAGE_HEIGHT)
+          .lineTo(x, VIRTUAL_HEIGHT)
           .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
       }
-      for (let y = 0; y <= STAGE_HEIGHT; y += gridStep) {
+      for (let y = 0; y <= VIRTUAL_HEIGHT; y += gridStep) {
         ctx
           .moveTo(0, y)
-          .lineTo(STAGE_WIDTH, y)
+          .lineTo(VIRTUAL_WIDTH, y)
           .stroke({ color: 0xffffff, width: 1, alpha: 0.06 });
       }
 
@@ -203,8 +203,8 @@ class BackgroundEntity extends Entity {
         return seed / 233280;
       };
       for (let i = 0; i < 60; i++) {
-        const x = rand() * STAGE_WIDTH;
-        const y = rand() * STAGE_HEIGHT;
+        const x = rand() * VIRTUAL_WIDTH;
+        const y = rand() * VIRTUAL_HEIGHT;
         const r = 1 + rand() * 2.5;
         const color = palette[Math.floor(rand() * palette.length)] ?? 0xffffff;
         ctx.circle(x, y, r).fill({ color, alpha: 0.65 });
@@ -406,7 +406,7 @@ class ShowcaseScene extends Scene {
         // anchor offset on top + bottom) and clip the overflow. Sections
         // expanded enough to overflow the cap are scrollable via the wheel
         // handler installed in main() — it offsets `scroller`'s top margin.
-        maxHeight: STAGE_HEIGHT - 16,
+        maxHeight: VIRTUAL_HEIGHT - 16,
         overflow: "hidden",
         background: { color: 0x000000, alpha: 0.85, radius: 6 },
       }),
@@ -607,21 +607,11 @@ class ShowcaseScene extends Scene {
         showToast("Toggle shockwave on first");
         return;
       }
-      // Shockwave's `center` uniform is in pixels of the input filter frame
-      // — for a scene-scope filter that's the rasterized scene texture,
-      // sized in *renderer screen pixels* (canvas px × resolution). Hero
-      // position is in *virtual* pixels. Pass virtual coords directly and
-      // the ripple drifts off-hero as soon as `fit` scales the canvas
-      // (e.g. on a narrow viewport). Scale by the renderer's
-      // virtual→canvas ratio so the trigger lines up at any size.
+      // `trigger` accepts coords in the filter target's local space —
+      // virtual pixels for scene-scope. The wrapper handles the canvas /
+      // fit / camera conversion internally each frame.
       const pos = this.hero?.tryGet(Transform)?.position;
-      const vx = pos?.x ?? STAGE_WIDTH / 2;
-      const vy = pos?.y ?? STAGE_HEIGHT / 2;
-      const vSize = renderer.virtualSize;
-      const cSize = renderer.canvasSize;
-      const sx = cSize.width / vSize.width;
-      const sy = cSize.height / vSize.height;
-      h.trigger(vx * sx, vy * sy);
+      h.trigger(pos?.x ?? VIRTUAL_WIDTH / 2, pos?.y ?? VIRTUAL_HEIGHT / 2);
     });
 
     // ---- Screen (covers UI too) ----
@@ -789,11 +779,11 @@ let sidebarScrollY = 0;
 async function main(): Promise<void> {
   const engine = new Engine({ debug: false });
 
-  const container = setupGameContainer(STAGE_WIDTH, STAGE_HEIGHT);
+  const container = setupGameContainer(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
   engine.use(
     new RendererPlugin({
-      width: STAGE_WIDTH,
-      height: STAGE_HEIGHT,
+      width: VIRTUAL_WIDTH,
+      height: VIRTUAL_HEIGHT,
       backgroundColor: 0x000000,
       container,
     }),
@@ -814,10 +804,10 @@ async function main(): Promise<void> {
       const canvas = container.querySelector("canvas");
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
-      const cx = ((e.clientX - rect.left) * STAGE_WIDTH) / rect.width;
-      const cy = ((e.clientY - rect.top) * STAGE_HEIGHT) / rect.height;
-      const left = STAGE_WIDTH - SIDEBAR_WIDTH - 8;
-      if (cx < left || cx > STAGE_WIDTH - 8 || cy < 8 || cy > STAGE_HEIGHT - 8) {
+      const cx = ((e.clientX - rect.left) * VIRTUAL_WIDTH) / rect.width;
+      const cy = ((e.clientY - rect.top) * VIRTUAL_HEIGHT) / rect.height;
+      const left = VIRTUAL_WIDTH - SIDEBAR_WIDTH - 8;
+      if (cx < left || cx > VIRTUAL_WIDTH - 8 || cy < 8 || cy > VIRTUAL_HEIGHT - 8) {
         return;
       }
       const visibleH = sidebar.yogaNode.getComputedHeight();
