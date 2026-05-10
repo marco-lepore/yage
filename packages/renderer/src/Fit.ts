@@ -103,17 +103,21 @@ export class FitController {
     this.observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      // Use borderBoxSize to match `measure()`'s `getBoundingClientRect()`
-      // (also border-box). Mixing box models here was shipping slight resize
-      // drift on hosts with padding or a border.
-      const size = entry.borderBoxSize?.[0];
+      // Read the host's content box, not its border box. The Pixi canvas is
+      // a block-level child laid out inside the content box; sizing it to
+      // the host's border-box (`hostW + borderX`, `hostH + borderY`) on a
+      // host with no explicit height makes the canvas push the host's
+      // intrinsic block-size up by 2× the border each apply, the observer
+      // re-fires with the new larger border-box, and the loop only stops
+      // when the host hits a parent-driven cap (e.g. `max-height: 100%`).
+      const size = entry.contentBoxSize?.[0];
       const w = size ? size.inlineSize : entry.contentRect.width;
       const h = size ? size.blockSize : entry.contentRect.height;
       if (w <= 0 || h <= 0) return;
       if (w === this.canvasW && h === this.canvasH) return;
       this.apply(w, h);
     });
-    this.observer.observe(this.target, { box: "border-box" });
+    this.observer.observe(this.target);
   }
 
   /**
@@ -348,8 +352,33 @@ export class FitController {
   }
 
   private measure(el: HTMLElement): { width: number; height: number } {
+    // Match the ResizeObserver path: return the content box, not the
+    // border-box. `getBoundingClientRect()` always reports border-box, so
+    // subtract padding + border via computed style. Without this, the
+    // initial synchronous apply (before any observer fire) sizes the canvas
+    // to the host's outer rect; on a host without an explicit height that
+    // pushes the host taller, and the observer then chases it.
     const rect = el.getBoundingClientRect();
-    return { width: rect.width, height: rect.height };
+    if (typeof getComputedStyle === "undefined") {
+      return { width: rect.width, height: rect.height };
+    }
+    const style = getComputedStyle(el);
+    const padX =
+      (parseFloat(style.paddingLeft) || 0) +
+      (parseFloat(style.paddingRight) || 0);
+    const padY =
+      (parseFloat(style.paddingTop) || 0) +
+      (parseFloat(style.paddingBottom) || 0);
+    const borderX =
+      (parseFloat(style.borderLeftWidth) || 0) +
+      (parseFloat(style.borderRightWidth) || 0);
+    const borderY =
+      (parseFloat(style.borderTopWidth) || 0) +
+      (parseFloat(style.borderBottomWidth) || 0);
+    return {
+      width: Math.max(0, rect.width - padX - borderX),
+      height: Math.max(0, rect.height - padY - borderY),
+    };
   }
 
   private apply(hostW: number, hostH: number): void {
