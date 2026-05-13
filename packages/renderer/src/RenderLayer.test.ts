@@ -10,6 +10,7 @@ const { MockContainer } = vi.hoisted(() => {
     alpha = 1;
     parent: MockContainer | null = null;
     sortableChildren = false;
+    isRenderGroup = false;
     zIndex = 0;
     label = "";
     eventMode = "passive";
@@ -159,5 +160,48 @@ describe("RenderLayerManager", () => {
       (layer.container as unknown as InstanceType<typeof MockContainer>)
         .eventMode,
     ).toBe("static");
+  });
+
+  describe("isRenderGroup", () => {
+    it("defaults to false on a freshly created layer", () => {
+      const layer = manager.create("plain", 10);
+      expect(
+        (layer.container as unknown as InstanceType<typeof MockContainer>)
+          .isRenderGroup,
+      ).toBe(false);
+    });
+
+    it("promotes the container when create() opts in", () => {
+      const layer = manager.create("isolated", 10, { isRenderGroup: true });
+      expect(
+        (layer.container as unknown as InstanceType<typeof MockContainer>)
+          .isRenderGroup,
+      ).toBe(true);
+    });
+
+    it("createFromDef forwards isRenderGroup from the LayerDef", () => {
+      const layer = manager.createFromDef({
+        name: "canopy",
+        order: 200,
+        isRenderGroup: true,
+      });
+      expect(
+        (layer.container as unknown as InstanceType<typeof MockContainer>)
+          .isRenderGroup,
+      ).toBe(true);
+    });
+
+    it("LayerDef.isRenderGroup overrides the runtime opts default", () => {
+      // Opts say `false`; the def's explicit `true` wins because plugin-side
+      // overrides shouldn't downgrade a scene's authoritative declaration.
+      const layer = manager.createFromDef(
+        { name: "filtered", order: 10, isRenderGroup: true },
+        { isRenderGroup: false },
+      );
+      expect(
+        (layer.container as unknown as InstanceType<typeof MockContainer>)
+          .isRenderGroup,
+      ).toBe(true);
+    });
   });
 });

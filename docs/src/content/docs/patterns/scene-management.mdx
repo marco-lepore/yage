@@ -18,8 +18,11 @@ engine.scenes.pop();                      // remove top scene
 engine.scenes.replace(new MenuScene());   // swap top scene
 ```
 
-Only the topmost scene receives input and updates by default. Scenes below
-continue rendering unless occluded.
+Only the topmost scene receives input and updates by default. By default
+scenes below are hidden too: `transparentBelow` defaults to `false`, so
+the renderer skips every below-stack tree (world layers AND screen-space
+UI/HUD). Opt the lower scene back in by setting `transparentBelow = true`
+on the scene you push on top — see the pause-menu pattern below.
 
 ## Pause Menu Pattern
 

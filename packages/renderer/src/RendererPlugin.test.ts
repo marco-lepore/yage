@@ -118,6 +118,9 @@ import {
   GameLoopKey,
   ProcessSystem,
   ProcessSystemKey,
+  Scene,
+  SceneManager,
+  SceneManagerKey,
   SystemScheduler,
   SystemSchedulerKey,
   QueryCache,
@@ -375,6 +378,71 @@ describe("RendererPlugin", () => {
       await plugin.install(context);
 
       expect(plugin.sceneRenderTrees).toBeDefined();
+    });
+  });
+
+  describe("transparentBelow visibility", () => {
+    function makeScene(name: string, transparentBelow = false): Scene {
+      // Bypass the `readonly` compile-time guard so tests can spin up scenes
+      // with arbitrary flag combinations without dedicated subclasses.
+      class TestScene extends Scene {
+        readonly name = name;
+      }
+      const scene = new TestScene();
+      (scene as { transparentBelow: boolean }).transparentBelow = transparentBelow;
+      return scene;
+    }
+
+    async function setupWithSceneManager(): Promise<{
+      plugin: RendererPlugin;
+      scenes: SceneManager;
+    }> {
+      const { context } = createInstallContext();
+      const scenes = new SceneManager();
+      context.register(SceneManagerKey, scenes);
+      scenes._setContext(context);
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      return { plugin, scenes };
+    }
+
+    it("hides the below scene when an opaque scene is pushed on top", async () => {
+      const { plugin, scenes } = await setupWithSceneManager();
+      const below = makeScene("below");
+      const top = makeScene("top", false);
+
+      await scenes.push(below);
+      const belowTree = plugin.sceneRenderTrees.getTree(below)!;
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
+
+      await scenes.push(top);
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
+    });
+
+    it("keeps the below scene visible when the top scene is transparentBelow=true", async () => {
+      const { plugin, scenes } = await setupWithSceneManager();
+      const below = makeScene("below");
+      const top = makeScene("top", true);
+
+      await scenes.push(below);
+      await scenes.push(top);
+
+      const belowTree = plugin.sceneRenderTrees.getTree(below)!;
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
+    });
+
+    it("re-shows a hidden below scene when the opaque cover is popped", async () => {
+      const { plugin, scenes } = await setupWithSceneManager();
+      const below = makeScene("below");
+      const top = makeScene("top", false);
+
+      await scenes.push(below);
+      await scenes.push(top);
+      const belowTree = plugin.sceneRenderTrees.getTree(below)!;
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
+
+      await scenes.pop();
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
     });
   });
 

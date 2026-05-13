@@ -171,6 +171,8 @@ Scene hooks: `onEnter`, `onExit`, `onPause` (scene pushed on top), `onResume` (s
 
 Properties: `pauseBelow` (default true), `transparentBelow` (default false), `paused`, `timeScale`.
 
+`transparentBelow` controls whether scenes below this one render. `false` (default) hides every below-stack tree — world AND screen-space (UI/HUD). `true` keeps them visible (pause menus, dialog overlays). The flag composes: a below scene stays visible only while every scene above it is `transparentBelow: true`. During a `SceneManager` transition both outgoing and incoming scenes render regardless (so e.g. `crossFade` works); the chain is reapplied when the transition ends.
+
 Asset preloading: declare `readonly preload` array of `AssetHandle` -- loaded before `onEnter()`.
 
 Entity queries: `scene.findEntity(name)`, `scene.findEntitiesByTag(tag)`, `scene.findEntities(filter)`.

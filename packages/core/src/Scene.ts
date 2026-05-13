@@ -78,7 +78,20 @@ export abstract class Scene {
   /** Whether scenes below this one in the stack should be paused. Default: true. */
   readonly pauseBelow: boolean = true;
 
-  /** Whether scenes below this one should still render. Default: false. */
+  /**
+   * Whether scenes below this one should still render. Default: `false`.
+   *
+   * When `false` (the default), the renderer hides every below-stack scene
+   * tree — both world-space layers AND screen-space layers (HUD, UI panels,
+   * dialogs). Set `true` for pause menus, dialog overlays, or any scene
+   * that should be drawn on top of a still-visible game world.
+   *
+   * The chain composes: a below scene stays visible only while every scene
+   * above it has `transparentBelow = true`. While a scene transition is
+   * running, both the outgoing and incoming scenes render regardless of
+   * this flag so transitions like crossFade keep working; the chain is
+   * reapplied when the transition ends.
+   */
   readonly transparentBelow: boolean = false;
 
   /** Asset handles to load before onEnter(). Override in subclasses. */

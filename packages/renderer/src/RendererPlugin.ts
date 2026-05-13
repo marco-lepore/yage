@@ -7,6 +7,7 @@ import {
   ProcessSystemKey,
   RendererAdapterKey,
   SceneHookRegistryKey,
+  SceneManagerKey,
   Vec2,
 } from "@yagejs/core";
 import type {
@@ -104,6 +105,7 @@ export class RendererPlugin implements Plugin {
   private _unregisterSaveContributor: (() => void) | null = null;
   private _unregisterFullscreenListener: (() => void) | null = null;
   private _unregisterOrientationListener: (() => void) | null = null;
+  private _unregisterSceneVisibility: (() => void) | null = null;
 
   constructor(config: RendererConfig) {
     this._config = config;
@@ -192,6 +194,16 @@ export class RendererPlugin implements Plugin {
         this._provider.destroyForScene(scene);
       },
     });
+
+    // 7b. Apply `Scene.transparentBelow` to the visibility of every below-stack
+    //     scene tree. The flag was previously documented but unenforced — UI
+    //     in a below scene (and any world content) painted through even when
+    //     the topmost scene was meant to fully cover it. Walking the stack on
+    //     every stack mutation hides scenes underneath a `transparentBelow:
+    //     false` neighbour. While a scene transition is running we re-show
+    //     every tree so both the outgoing and incoming scenes can render
+    //     (e.g. crossFade); the chain is reapplied on `scene:transition:ended`.
+    this.installSceneVisibilityListeners(context);
 
     // 8. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
@@ -294,6 +306,8 @@ export class RendererPlugin implements Plugin {
     this._unregisterFullscreenListener = null;
     this._unregisterOrientationListener?.();
     this._unregisterOrientationListener = null;
+    this._unregisterSceneVisibility?.();
+    this._unregisterSceneVisibility = null;
     this._unregisterHooks?.();
     this._unregisterHooks = null;
     if (this._installed.fit) this._fitController.stop();
@@ -542,6 +556,28 @@ export class RendererPlugin implements Plugin {
     if (this._config.container) return this._config.container;
     if (this._installed.app) return this._app.canvas;
     return null;
+  }
+
+  private installSceneVisibilityListeners(context: EngineContext): void {
+    const sceneManager = context.tryResolve(SceneManagerKey);
+    // SceneManager is engine-globally registered before plugin install in
+    // production. The tryResolve path covers minimal test fixtures that
+    // exercise the plugin without standing up an Engine.
+    if (!sceneManager) return;
+    const bus = context.resolve(EventBusKey);
+    const recompute = (): void =>
+      this._provider.applyTransparentBelow(sceneManager.all);
+    const showAll = (): void => this._provider.resetVisibility();
+    const unsubs = [
+      bus.on("scene:pushed", recompute),
+      bus.on("scene:popped", recompute),
+      bus.on("scene:replaced", recompute),
+      bus.on("scene:transition:started", showAll),
+      bus.on("scene:transition:ended", recompute),
+    ];
+    this._unregisterSceneVisibility = () => {
+      for (const u of unsubs) u();
+    };
   }
 
   private installFullscreenListener(bus: EventBus<EngineEvents>): void {
