@@ -81,14 +81,17 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
           const x = margin + col * (tw + spacing);
           const y = margin + row * (th + spacing);
 
+          // Store subtexture in PixiJS cache with a key like "tileset-name:id".
+          // Guard the set — re-loading the same map (or two maps sharing a
+          // tileset) hits the same keys and Pixi warns on duplicates.
+          const cacheKey = `${tileset.name}:${id}`;
+          if (Assets.cache.has(cacheKey)) continue;
+
           const frame = new Rectangle(x, y, tw, th);
           const subtex = new Texture({
             source: baseTexture.source,
             frame,
           });
-
-          // Store subtexture in PixiJS cache with a key like "tileset-name:id"
-          const cacheKey = `${tileset.name}:${id}`;
           Assets.cache.set(cacheKey, subtex);
         }
       }

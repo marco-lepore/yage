@@ -74,4 +74,32 @@ describe("parseArgs", () => {
     const result = parseArgs(["first", "second"]);
     expect(result.error).toContain("Unexpected argument: second");
   });
+
+  it("parses --features with comma-separated list", () => {
+    const result = parseArgs(["--features", "ui,save"]);
+    expect(result.features).toEqual(["ui", "save"]);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("parses --features with equals syntax and trims whitespace", () => {
+    const result = parseArgs(["--features=ui, effects ,save"]);
+    expect(result.features).toEqual(["ui", "effects", "save"]);
+  });
+
+  it("dedupes repeated feature ids", () => {
+    expect(parseArgs(["--features", "ui,ui,save"]).features).toEqual([
+      "ui",
+      "save",
+    ]);
+  });
+
+  it("rejects unknown feature ids", () => {
+    expect(parseArgs(["--features", "nope"]).error).toContain(
+      "Unknown feature: nope",
+    );
+  });
+
+  it("rejects --features without a value", () => {
+    expect(parseArgs(["--features"]).error).toContain("requires a value");
+  });
 });

@@ -57,8 +57,15 @@ export interface PanelProps extends LayoutProps {
   visible?: boolean;
 }
 
-export interface TextProps {
+export interface TextProps extends LayoutProps {
   style?: Partial<TextStyle>;
+  /**
+   * Overflow behavior when the rendered text is wider than the layout slot.
+   * Omitted → wrap to the layout width.
+   * `"clip"` → single line, visually clipped by the parent panel's `overflow`.
+   * `"ellipsis"` → single line truncated with `…`.
+   */
+  truncate?: "clip" | "ellipsis";
   children?: string;
 }
 

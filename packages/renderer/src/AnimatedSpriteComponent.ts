@@ -6,6 +6,7 @@ import {
   unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
+import type { Vec2Like } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
@@ -26,6 +27,16 @@ export interface AnimatedSpriteComponentOptions {
   textures?: readonly TextureInput[];
   /** Render layer name. Default: "default". */
   layer?: string;
+  /**
+   * Default sprite anchor (0,0 = top-left, 0.5,0.5 = center, 1,1 = bottom-right).
+   * Per-{@link AnimationController} `AnimationDef.anchor` overrides this when set.
+   */
+  anchor?: Vec2Like | readonly [number, number];
+  /**
+   * Tint applied to the sprite. Pixi v8 accepts a numeric color
+   * (`0xff0000`) or any string color it understands (`"#ff0000"`, `"red"`).
+   */
+  tint?: number | string;
   /**
    * Make the sprite interactive. See {@link SpriteComponentOptions.interactive}
    * — the shape and semantics are identical here.
@@ -84,6 +95,17 @@ export class AnimatedSpriteComponent extends Component {
       throw new Error(
         "AnimatedSpriteComponent requires either `source` or `textures`.",
       );
+    }
+
+    if (options.anchor) {
+      const a = options.anchor;
+      const ax = Array.isArray(a) ? (a[0] as number) : (a as Vec2Like).x;
+      const ay = Array.isArray(a) ? (a[1] as number) : (a as Vec2Like).y;
+      this.animatedSprite.anchor.set(ax, ay);
+    }
+
+    if (options.tint !== undefined) {
+      this.animatedSprite.tint = options.tint;
     }
 
     if (options.interactive) {

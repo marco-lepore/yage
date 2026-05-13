@@ -170,6 +170,15 @@ export interface ConsumeInputProps {
 export interface UITextProps extends LayoutProps, ConsumeInputProps {
   children?: string;
   style?: Partial<TextStyle>;
+  /**
+   * Overflow behavior when the rendered text is wider than the layout slot:
+   *   - omitted: wrap to the layout width (default)
+   *   - `"clip"`: render a single line; visible overflow is cut by the
+   *     parent panel's `overflow` setting.
+   *   - `"ellipsis"`: render a single line truncated with `…` so the text
+   *     fits within the layout width.
+   */
+  truncate?: "clip" | "ellipsis";
 }
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */

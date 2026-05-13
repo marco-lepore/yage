@@ -1,9 +1,12 @@
 import type { TemplateId } from "./templates.js";
 import { isTemplateId } from "./templates.js";
+import type { FeatureId } from "./features.js";
+import { FEATURE_IDS, parseFeatureList } from "./features.js";
 
 export interface ParsedArgs {
   targetDir?: string;
   template?: TemplateId;
+  features?: readonly FeatureId[];
   install?: boolean;
   git?: boolean;
   overwrite?: boolean;
@@ -98,6 +101,25 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       i++;
       continue;
     }
+    if (arg === "--features") {
+      const next = argv[i + 1];
+      if (!next) {
+        return { ...result, error: "--features requires a value" };
+      }
+      const parsed = parseFeatureList(next);
+      if ("error" in parsed) return { ...result, error: parsed.error };
+      result.features = parsed.features;
+      i += 2;
+      continue;
+    }
+    if (arg.startsWith("--features=")) {
+      const value = arg.slice("--features=".length);
+      const parsed = parseFeatureList(value);
+      if ("error" in parsed) return { ...result, error: parsed.error };
+      result.features = parsed.features;
+      i++;
+      continue;
+    }
     if (arg.startsWith("-")) {
       return { ...result, error: `Unknown flag: ${arg}` };
     }
@@ -123,6 +145,7 @@ Usage:
 
 Options:
   -t, --template <id>    Template to use: recommended | minimal
+      --features <list>  Comma-separated extras: ${FEATURE_IDS.join(", ")}
       --no-install       Skip \`npm install\`
       --no-git           Skip \`git init\`
   -f, --force            Overwrite non-empty target directory without prompting
@@ -134,4 +157,5 @@ Examples:
   npm create yage@latest my-game
   npm create yage@latest my-game -- --template minimal --yes
   npx create-yage . --template recommended --no-install
+  npx create-yage my-game --features ui,save
 `;

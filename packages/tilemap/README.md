@@ -27,6 +27,10 @@ const map = await assets.load(tiledMap("level1.json"));
 entity.add(new TilemapComponent({ map }));
 ```
 
+> **Tileset format:** export tilesets as **JSON** (`.tsj` or `.json`).
+> Tiled's default XML `.tsx` format is not supported by the loader. In Tiled,
+> use *Edit Tileset → File → Export As → JSON*.
+
 ## What's in the box
 
 - **TilemapPlugin / TilemapComponent** - tile-based map rendering

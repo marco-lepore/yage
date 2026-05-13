@@ -49,6 +49,15 @@ const { mocks } = vi.hoisted(() => {
     loop = true;
     playing = false;
     onComplete: (() => void) | null = null;
+    tint: number | string = 0xffffff;
+    anchor = {
+      x: 0,
+      y: 0,
+      set(ax: number, ay: number) {
+        this.x = ax;
+        this.y = ay;
+      },
+    };
 
     constructor(textures: unknown[]) {
       super();
@@ -121,6 +130,29 @@ describe("AnimatedSpriteComponent", () => {
   it("accepts custom layer name", () => {
     const comp = new AnimatedSpriteComponent({ textures, layer: "fx" });
     expect(comp.layerName).toBe("fx");
+  });
+
+  it("applies component-level anchor from a Vec2-like option", () => {
+    const comp = new AnimatedSpriteComponent({
+      textures,
+      anchor: { x: 0.5, y: 1 },
+    });
+    expect(comp.animatedSprite.anchor.x).toBe(0.5);
+    expect(comp.animatedSprite.anchor.y).toBe(1);
+  });
+
+  it("applies component-level anchor from a tuple", () => {
+    const comp = new AnimatedSpriteComponent({ textures, anchor: [0.5, 0.5] });
+    expect(comp.animatedSprite.anchor.x).toBe(0.5);
+    expect(comp.animatedSprite.anchor.y).toBe(0.5);
+  });
+
+  it("applies tint when provided (numeric and string)", () => {
+    const num = new AnimatedSpriteComponent({ textures, tint: 0xff0000 });
+    expect(num.animatedSprite.tint).toBe(0xff0000);
+
+    const str = new AnimatedSpriteComponent({ textures, tint: "#00ff00" });
+    expect(str.animatedSprite.tint).toBe("#00ff00");
   });
 
   it("play() starts the animation", () => {

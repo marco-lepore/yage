@@ -1,8 +1,13 @@
 import type { DebugContributor, WorldDebugApi } from "@yagejs/debug/api";
 import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
 
-/** Rapier ShapeType enum values. */
-const ShapeType = { Ball: 0, Cuboid: 1, Capsule: 2 } as const;
+/** Rapier ShapeType enum values (mirrored to avoid pulling the wasm runtime). */
+const ShapeType = {
+  Ball: 0,
+  Cuboid: 1,
+  Capsule: 2,
+  ConvexPolygon: 9,
+} as const;
 
 const COLOR_DYNAMIC = 0x00ff00;
 const COLOR_KINEMATIC = 0x4488ff;
@@ -63,6 +68,19 @@ export class PhysicsDebugContributor implements DebugContributor {
               .moveTo(r, -hh)
               .lineTo(r, hh)
               .stroke(strokeStyle);
+            break;
+          }
+          case ShapeType.ConvexPolygon: {
+            // vertices() yields a flat Float32Array of (x, y) pairs in
+            // meter-space. Trace the hull and close it.
+            const verts = collider.vertices();
+            if (verts.length >= 4) {
+              g.moveTo(verts[0]! * ppm, verts[1]! * ppm);
+              for (let i = 2; i < verts.length; i += 2) {
+                g.lineTo(verts[i]! * ppm, verts[i + 1]! * ppm);
+              }
+              g.lineTo(verts[0]! * ppm, verts[1]! * ppm).stroke(strokeStyle);
+            }
             break;
           }
         }

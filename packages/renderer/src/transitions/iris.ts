@@ -1,6 +1,5 @@
 import type { SceneTransition, SceneTransitionContext } from "@yagejs/core";
-import { Graphics } from "pixi.js";
-import type { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import { RendererKey } from "../types.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
@@ -49,7 +48,7 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
   const color = opts.color ?? 0x000000;
   const coverScreen = opts.coverScreen ?? false;
 
-  let overlay: Graphics | undefined;
+  let overlay: Container | undefined;
   let maskGfx: Graphics | undefined;
   let cx = 0;
   let cy = 0;
@@ -98,10 +97,14 @@ export function iris(opts: IrisOptions = {}): SceneTransition {
       const farY = Math.max(cy - ry, ry + rh - cy);
       maxRadius = Math.hypot(farX, farY);
 
-      overlay = new Graphics();
-      overlay.rect(rx, ry, rw, rh).fill({ color, alpha: 1 });
+      // Pixi v8: Graphics is no longer a Container — children must live on
+      // a real Container. The overlay holds the color fill + mask geometry.
+      overlay = new Container();
+      const fill = new Graphics();
+      fill.rect(rx, ry, rw, rh).fill({ color, alpha: 1 });
       maskGfx = new Graphics();
       drawCircleMask(maskGfx, cx, cy, maxRadius);
+      overlay.addChild(fill);
       overlay.addChild(maskGfx);
       overlay.setMask({ mask: maskGfx, inverse: true });
       if (coverScreen) {

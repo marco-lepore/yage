@@ -435,6 +435,17 @@ describe("SceneManager", () => {
       expect(scene._resolveScoped(key)).toBeUndefined();
     });
 
+    it("public registerScoped auto-clears on scene exit", async () => {
+      const { manager } = setupWithHooks();
+      const key = new ServiceKey<string>("scoped-public", { scope: "scene" });
+      const scene = new GameScene("g");
+      await manager.push(scene);
+      scene.registerScoped(key, "world");
+      expect(scene._resolveScoped(key)).toBe("world");
+      await manager.pop();
+      expect(scene._resolveScoped(key)).toBeUndefined();
+    });
+
     it("_mountDetached runs hooks + onEnter without mutating the stack", async () => {
       const { manager, hooks } = setupWithHooks();
       let beforeCount = 0;
