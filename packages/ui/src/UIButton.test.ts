@@ -342,5 +342,21 @@ describe("UIButton", () => {
       btn.setText("Now Labeled");
       expect(btn.children).toHaveLength(1);
     });
+
+    it("insertElementBefore reorders an already-mounted child without duplicating it", () => {
+      const btn = new UIButton({});
+      const a = new UIText({ children: "A" });
+      const b = new UIText({ children: "B" });
+      btn.addElement(a);
+      btn.addElement(b);
+
+      // Move `b` ahead of `a` — should rearrange in place, not duplicate.
+      btn.insertElementBefore(b, a);
+
+      expect(btn.children).toHaveLength(2);
+      expect(btn.children[0]).toBe(b);
+      expect(btn.children[1]).toBe(a);
+      expect(btn.yogaNode.getChildCount()).toBe(2);
+    });
   });
 });

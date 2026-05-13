@@ -212,10 +212,15 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
         : PositionType.Relative,
     );
   }
-  if (props.left !== undefined) node.setPosition(Edge.Left, props.left);
-  if (props.top !== undefined) node.setPosition(Edge.Top, props.top);
-  if (props.right !== undefined) node.setPosition(Edge.Right, props.right);
-  if (props.bottom !== undefined) node.setPosition(Edge.Bottom, props.bottom);
+  // Edge offsets are meaningful only in absolute mode — gating them here
+  // mirrors the documented prop contract and avoids accidentally nudging
+  // relative-flow elements when stale values linger across updates.
+  if (props.position === "absolute") {
+    if (props.left !== undefined) node.setPosition(Edge.Left, props.left);
+    if (props.top !== undefined) node.setPosition(Edge.Top, props.top);
+    if (props.right !== undefined) node.setPosition(Edge.Right, props.right);
+    if (props.bottom !== undefined) node.setPosition(Edge.Bottom, props.bottom);
+  }
 
   if (props.visible === false) {
     node.setDisplay(Display.None);
