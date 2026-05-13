@@ -7,11 +7,16 @@ export interface RapierModule {
     ball(radius: number): RapierColliderDesc;
     capsule(halfHeight: number, radius: number): RapierColliderDesc;
     convexHull(vertices: Float32Array): RapierColliderDesc | null;
+    polyline(
+      vertices: Float32Array,
+      indices?: Uint32Array | null,
+    ): RapierColliderDesc;
   };
 }
 
 export interface RapierColliderDesc {
   setTranslation(x: number, y: number): RapierColliderDesc;
+  setRotation(angle: number): RapierColliderDesc;
 }
 
 /**
@@ -51,11 +56,16 @@ function buildDesc(
       );
     case "circle":
       return rapier.ColliderDesc.ball(toMeters(shape.radius));
-    case "capsule":
-      return rapier.ColliderDesc.capsule(
+    case "capsule": {
+      const desc = rapier.ColliderDesc.capsule(
         toMeters(shape.halfHeight),
         toMeters(shape.radius),
       );
+      if (shape.axis === "x") {
+        desc.setRotation(Math.PI / 2);
+      }
+      return desc;
+    }
     case "polygon": {
       const verts = shape.vertices.flatMap((v) => [toMeters(v.x), toMeters(v.y)]);
       const result = rapier.ColliderDesc.convexHull(new Float32Array(verts));
@@ -63,6 +73,10 @@ function buildDesc(
         throw new Error("Failed to create convex hull from vertices.");
       }
       return result;
+    }
+    case "polyline": {
+      const verts = shape.vertices.flatMap((v) => [toMeters(v.x), toMeters(v.y)]);
+      return rapier.ColliderDesc.polyline(new Float32Array(verts));
     }
   }
 }

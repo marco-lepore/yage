@@ -18,7 +18,7 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Object layers (spawns, triggers, collision shapes) | Supported   |
 | Custom properties on objects                       | Supported   |
 | Object-reference resolution (Tiled object refs)    | Supported   |
-| Collision-shape extraction (raw rects/polygons)    | Supported   |
+| Collision-shape extraction (rect / ellipse / capsule / polygon → polyline) | Supported   |
 | `toPhysicsColliders()` adapter for Rapier          | Supported   |
 | Tileset-image and collection-of-images tilesets    | Supported   |
 | Animated tiles                                     | Not yet     |
@@ -35,14 +35,14 @@ example — it parses a Tiled JSON, renders the layers, calls
 through the debug overlay. Two distinct steps make up the Tiled-collision-to-Rapier workflow:
 
 1. **Extraction** — `tilemap.getCollisionShapes("walls")` returns raw
-   shape data in Tiled's coordinate system (top-left-origin rects and
-   polygons).
+   shape data in Tiled's coordinate system (top-left-origin
+   `rect` / `circle` / `capsule` / `polygon` / `polyline` configs).
 2. **Physics conversion** — `toPhysicsColliders(shapes)` adapts those
    raw shapes into Rapier `ColliderConfig`s with the offsets baked in.
-   Rect shapes become center-origin `box` configs (offset =
-   `x + width/2, y + height/2`); polygon shapes keep their original
-   vertices and a top-left-based offset (`offset = { x, y }`), since
-   Rapier polygons are vertex-defined and don't need centering.
+   Bounding-box shapes (rect, circle, capsule) become center-origin
+   configs (offset = `x + width/2, y + height/2`); polygons and
+   polylines keep their original vertices with a top-left-based offset
+   (`offset = { x, y }`), since vertex-defined shapes don't need centering.
 
 The wiring (extracted shapes → `toPhysicsColliders()` → static
 `RigidBodyComponent` + per-shape `ColliderComponent`) is shown inline
@@ -361,32 +361,55 @@ resolveObjectRefArray(obj, "path", allObjs);
 
 ## Collision Extraction
 
-Extract collision shapes from a Tiled object layer and create physics colliders:
+Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
+
+| Tiled object                  | Emitted shape                                                                                        |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Rectangle                     | `{ type: "rect", x, y, width, height }`                                                              |
+| Ellipse (`width === height`)  | `{ type: "circle", x, y, width, height, radius }`                                                    |
+| Ellipse (`width !== height`)  | `{ type: "circle", ..., radius: max(w, h) / 2 }` + dev warning (Rapier has no real ellipse — author it as a capsule for a true non-circular round shape) |
+| Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis }` (oriented along the longer axis)|
+| Polygon                       | `{ type: "polyline", x, y, vertices }` (Tiled polygons are outlines; may be concave)                 |
+| Point                         | Skipped                                                                                              |
+
+Because Tiled polygons are emitted as **polylines** (chain of line
+segments), they support concave outlines such as a winding water edge
+or a U-shaped wall. The trade-off: polylines are **static-only** — they
+must be attached to a `type: "static"` rigid body (no mass/inertia is
+computed). For dynamic concave bodies, decompose the outline into
+convex pieces manually.
+
+Wire extracted shapes through `toPhysicsColliders()` to spawn one static
+body with one `ColliderComponent` per shape:
 
 ```typescript
-const shapes = tilemap.getCollisionShapes("walls");
-// Returns: TilemapColliderConfig[] — rects and polygons
+import { toPhysicsColliders } from "@yagejs/tilemap";
+import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
 
-for (const shape of shapes) {
-  const wall = this.spawn("wall");
+const walls = this.spawn("walls");
+walls.add(new Transform());
+walls.add(new RigidBodyComponent({ type: "static" }));
 
-  if (shape.type === "rect") {
-    const cx = shape.x + shape.width / 2;
-    const cy = shape.y + shape.height / 2;
-    wall.add(new Transform({ position: new Vec2(cx, cy) }));
-    wall.add(new RigidBodyComponent({ type: "static" }));
-    wall.add(new ColliderComponent({
-      shape: { type: "box", width: shape.width, height: shape.height },
-    }));
-  }
+for (const cfg of toPhysicsColliders(tilemap.getCollisionShapes("walls"))) {
+  walls.add(new ColliderComponent(cfg));
 }
 ```
 
-For convenience, you can also use the standalone extraction functions:
+The component-method shortcut wraps two standalone functions for the
+same workflow:
 
 ```typescript
 import { extractCollisionShapes, toPhysicsColliders } from "@yagejs/tilemap";
 ```
+
+:::caution[Convex-only `polygon` shape]
+The physics-side `shape: { type: "polygon", ... }` collider runs input
+through Rapier's `convexHull`. Concave vertex lists are silently
+widened to their convex hull (a dev warning is logged). Use
+`shape: { type: "polyline", ... }` for non-convex static boundaries
+— this is what `toPhysicsColliders()` does automatically for Tiled
+polygons.
+:::
 
 ## Camera Bounds
 

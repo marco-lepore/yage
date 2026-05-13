@@ -16,6 +16,19 @@ const DEFAULT_PIXELS_PER_METER = 50;
 const DEFAULT_GRAVITY_X = 0;
 const DEFAULT_GRAVITY_Y = 980; // pixels/s²
 
+function flattenVertices(
+  vertices: ReadonlyArray<Vec2Like>,
+  transform: (v: number) => number,
+): Float32Array {
+  const flat = new Float32Array(vertices.length * 2);
+  for (let i = 0; i < vertices.length; i++) {
+    const v = vertices[i] as Vec2Like;
+    flat[i * 2] = transform(v.x);
+    flat[i * 2 + 1] = transform(v.y);
+  }
+  return flat;
+}
+
 /**
  * Central Rapier2D wrapper. All public API values are in pixels.
  * Pixel-to-meter conversion is handled internally.
@@ -463,23 +476,27 @@ export class PhysicsWorld {
         );
       case "circle":
         return RAPIER.ColliderDesc.ball(this.toMeters(shape.radius));
-      case "capsule":
-        return RAPIER.ColliderDesc.capsule(
+      case "capsule": {
+        const desc = RAPIER.ColliderDesc.capsule(
           this.toMeters(shape.halfHeight),
           this.toMeters(shape.radius),
         );
-      case "polygon": {
-        const flat = new Float32Array(shape.vertices.length * 2);
-        for (let i = 0; i < shape.vertices.length; i++) {
-          const v = shape.vertices[i] as { x: number; y: number };
-          flat[i * 2] = this.toMeters(v.x);
-          flat[i * 2 + 1] = this.toMeters(v.y);
+        if (shape.axis === "x") {
+          desc.setRotation(Math.PI / 2);
         }
+        return desc;
+      }
+      case "polygon": {
+        const flat = flattenVertices(shape.vertices, (v) => this.toMeters(v));
         const desc = RAPIER.ColliderDesc.convexHull(flat);
         if (!desc) {
           throw new Error("Failed to create convex hull from vertices.");
         }
         return desc;
+      }
+      case "polyline": {
+        const flat = flattenVertices(shape.vertices, (v) => this.toMeters(v));
+        return RAPIER.ColliderDesc.polyline(flat);
       }
     }
   }

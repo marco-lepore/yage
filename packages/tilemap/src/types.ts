@@ -35,6 +35,8 @@ export interface MapObject {
   visible: boolean;
   point?: boolean;
   polygon?: { x: number; y: number }[];
+  ellipse?: boolean;
+  capsule?: boolean;
   properties?: MapObjectProperty[];
 }
 
@@ -51,6 +53,12 @@ export interface HasProperties {
 
 // ─── Collision Shape Types (physics-agnostic) ───────────────────────
 
+/**
+ * All shape configs store `x`/`y` as the top-left corner of the object's
+ * bounding box (matching Tiled's coordinate convention). `toPhysicsColliders`
+ * converts to the center-origin offsets that Rapier expects.
+ */
+
 export interface RectColliderConfig {
   type: "rect";
   x: number;
@@ -59,6 +67,31 @@ export interface RectColliderConfig {
   height: number;
 }
 
+export interface CircleColliderConfig {
+  type: "circle";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+}
+
+export interface CapsuleColliderConfig {
+  type: "capsule";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  halfHeight: number;
+  radius: number;
+  /** Orientation of the capsule's long axis. */
+  axis: "x" | "y";
+}
+
+/**
+ * Closed convex outline (still passed through Rapier's `convexHull`).
+ * Use `polyline` for non-convex shapes; see `PolylineColliderConfig`.
+ */
 export interface PolygonColliderConfig {
   type: "polygon";
   x: number;
@@ -66,4 +99,20 @@ export interface PolygonColliderConfig {
   vertices: { x: number; y: number }[];
 }
 
-export type TilemapColliderConfig = RectColliderConfig | PolygonColliderConfig;
+/**
+ * Chain of line segments. Non-convex, static-only (no inertia computed).
+ * Best for tilemap-driven world boundaries authored as Tiled polygons.
+ */
+export interface PolylineColliderConfig {
+  type: "polyline";
+  x: number;
+  y: number;
+  vertices: { x: number; y: number }[];
+}
+
+export type TilemapColliderConfig =
+  | RectColliderConfig
+  | CircleColliderConfig
+  | CapsuleColliderConfig
+  | PolygonColliderConfig
+  | PolylineColliderConfig;

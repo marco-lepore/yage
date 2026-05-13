@@ -71,8 +71,23 @@ export interface RigidBodyConfig {
 export type ColliderShape =
   | { type: "box"; width: number; height: number }
   | { type: "circle"; radius: number }
-  | { type: "capsule"; halfHeight: number; radius: number }
-  | { type: "polygon"; vertices: Vec2Like[] };
+  | {
+      type: "capsule";
+      halfHeight: number;
+      radius: number;
+      /** Orientation of the long axis. Default: `"y"` (vertical). */
+      axis?: "x" | "y";
+    }
+  /**
+   * Closed convex shape. Rapier silently widens concave input to its convex
+   * hull; use `polyline` for non-convex outlines.
+   */
+  | { type: "polygon"; vertices: Vec2Like[] }
+  /**
+   * Chain of line segments. Supports non-convex shapes but is static-only
+   * (no mass/inertia computed). Best for world boundaries.
+   */
+  | { type: "polyline"; vertices: Vec2Like[] };
 
 /** Configuration for creating a collider. */
 export interface ColliderConfig {

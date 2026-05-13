@@ -70,8 +70,9 @@ import { ColliderComponent } from "@yagejs/physics";
 entity.add(new ColliderComponent({
   shape: { type: "box", width: 64, height: 32 },
   // shape: { type: "circle", radius: 16 },
-  // shape: { type: "capsule", halfHeight: 20, radius: 10 },
-  // shape: { type: "polygon", vertices: [{x,y}, ...] },
+  // shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },   // axis defaults to "y" (vertical); "x" rotates 90°
+  // shape: { type: "polygon", vertices: [{x,y}, ...] },                  // closed convex; concave input is silently widened by Rapier (dev warning logged)
+  // shape: { type: "polyline", vertices: [{x,y}, ...] },                 // chain of segments; supports non-convex; static-only (no inertia)
   restitution: 0.5,
   friction: 0.3,
   density: 1,
