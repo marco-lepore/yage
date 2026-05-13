@@ -58,6 +58,18 @@ export abstract class Component {
    * `beforeEnter` hook.
    */
   protected use<T>(key: ServiceKey<T>): T {
+    // `this.entity` is set by Entity.add(...) AFTER the component instance is
+    // constructed. Calling `use()` in a field initializer (which runs during
+    // construction) hits this with `this.entity === undefined` and crashes
+    // deep inside `tryScene` access. Fail with a named, actionable error
+    // pointing at `this.service(Key)` (the lazy alternative) instead.
+    if (!this.entity) {
+      throw new Error(
+        `Component.use(${key.id}) called before the component is bound to an entity. ` +
+          `Use this.service(Key) for lazy resolution at field-declaration time, ` +
+          `or move the .use() call into onAdd()/update().`,
+      );
+    }
     this._serviceCache ??= new Map();
     const cached = this._serviceCache.get(key.id);
     if (cached !== undefined) return cached as T;

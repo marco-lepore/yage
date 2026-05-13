@@ -654,4 +654,155 @@ describe("PhysicsWorld", () => {
       expect(pw.colliderMap.size).toBe(0);
     });
   });
+
+  describe("asymmetric collision-mask dev warning", () => {
+    it("warns on first asymmetric collider pair", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      const a = new Entity("a");
+      const b = new Entity("b");
+      const bodyA = pw.createBody(a, { type: "dynamic" });
+      const bodyB = pw.createBody(b, { type: "dynamic" });
+      const compA = createMockColliderComponent();
+      const compB = createMockColliderComponent();
+      pw.createCollider(a, bodyA, {
+        shape: { type: "box", width: 10, height: 10 },
+        layers: 0x0001,
+        mask: 0x0002,
+      }, compA);
+      pw.createCollider(b, bodyB, {
+        shape: { type: "box", width: 10, height: 10 },
+        layers: 0x0004,
+        mask: 0x0001,
+      }, compB);
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("Asymmetric collision masks"),
+      );
+      expect(matching.length).toBe(1);
+      warn.mockRestore();
+    });
+
+    it("does not warn on symmetric mask pairing", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      const a = new Entity("a");
+      const b = new Entity("b");
+      const bodyA = pw.createBody(a, { type: "dynamic" });
+      const bodyB = pw.createBody(b, { type: "dynamic" });
+      const compA = createMockColliderComponent();
+      const compB = createMockColliderComponent();
+      pw.createCollider(a, bodyA, {
+        shape: { type: "box", width: 10, height: 10 },
+        layers: 0x0001,
+        mask: 0x0002,
+      }, compA);
+      pw.createCollider(b, bodyB, {
+        shape: { type: "box", width: 10, height: 10 },
+        layers: 0x0002,
+        mask: 0x0001,
+      }, compB);
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("Asymmetric collision masks"),
+      );
+      expect(matching.length).toBe(0);
+      warn.mockRestore();
+    });
+
+    it("dedupes by (layers, mask) tuple across multiple offenders", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      const a = new Entity("a");
+      const bodyA = pw.createBody(a, { type: "dynamic" });
+      const compA = createMockColliderComponent();
+      pw.createCollider(a, bodyA, {
+        shape: { type: "box", width: 10, height: 10 },
+        layers: 0x0001,
+        mask: 0x0002,
+      }, compA);
+      for (let i = 0; i < 3; i++) {
+        const e = new Entity(`b${i}`);
+        const body = pw.createBody(e, { type: "dynamic" });
+        const comp = createMockColliderComponent();
+        pw.createCollider(e, body, {
+          shape: { type: "box", width: 10, height: 10 },
+          layers: 0x0004,
+          mask: 0x0001,
+        }, comp);
+      }
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("Asymmetric collision masks"),
+      );
+      expect(matching.length).toBe(1);
+      warn.mockRestore();
+    });
+  });
+
+  describe("convex-hull vertex-drop dev warning", () => {
+    it("warns when the resulting hull has fewer vertices than the input", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const origCreate = world.createCollider.bind(world);
+      world.createCollider = (desc, parent) => {
+        const c = origCreate(desc, parent);
+        (c as unknown as { vertices: () => Float32Array }).vertices = () =>
+          new Float32Array([0, 0, 1, 0, 0, 1]); // 3 vertices
+        return c;
+      };
+
+      const entity = new Entity("concave");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      pw.createCollider(entity, bodyHandle, {
+        shape: {
+          type: "polygon",
+          vertices: [
+            new Vec2(0, 0),
+            new Vec2(1, 0),
+            new Vec2(1, 1),
+            new Vec2(0.5, 0.3),
+            new Vec2(0, 1),
+          ],
+        },
+      }, comp);
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("reduced to 3 after convex hull"),
+      );
+      expect(matching.length).toBe(1);
+      warn.mockRestore();
+    });
+
+    it("does not warn when hull preserves all input vertices", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const pw = new PhysicsWorld();
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const origCreate = world.createCollider.bind(world);
+      world.createCollider = (desc, parent) => {
+        const c = origCreate(desc, parent);
+        (c as unknown as { vertices: () => Float32Array }).vertices = () =>
+          new Float32Array([0, 0, 1, 0, 0, 1]); // 3 vertices
+        return c;
+      };
+
+      const entity = new Entity("convex");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      pw.createCollider(entity, bodyHandle, {
+        shape: {
+          type: "polygon",
+          vertices: [new Vec2(0, 0), new Vec2(1, 0), new Vec2(0, 1)],
+        },
+      }, comp);
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("after convex hull"),
+      );
+      expect(matching.length).toBe(0);
+      warn.mockRestore();
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { Component, filterEntities, serializable } from "@yagejs/core";
+import { Component, devWarn, filterEntities, serializable } from "@yagejs/core";
 import type { Entity, ComponentClass, EntityFilter, TraitToken } from "@yagejs/core";
 import type { PhysicsWorld } from "./PhysicsWorld.js";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
@@ -27,6 +27,7 @@ export class ColliderComponent extends Component {
   private physicsWorld!: PhysicsWorld;
   private collisionHandlers: Array<(e: CollisionEvent) => void> = [];
   private triggerHandlers: Array<(e: TriggerEvent) => void> = [];
+  private _warnedSensorMismatch = false;
 
   constructor(config: ColliderConfig) {
     super();
@@ -51,6 +52,7 @@ export class ColliderComponent extends Component {
 
   /** Subscribe to collision events. Returns an unsubscribe function. */
   onCollision(handler: (e: CollisionEvent) => void): () => void {
+    this._warnSensorMismatch("onCollision");
     this.collisionHandlers.push(handler);
     return () => {
       const idx = this.collisionHandlers.indexOf(handler);
@@ -60,11 +62,32 @@ export class ColliderComponent extends Component {
 
   /** Subscribe to trigger events (sensor). Returns an unsubscribe function. */
   onTrigger(handler: (e: TriggerEvent) => void): () => void {
+    this._warnSensorMismatch("onTrigger");
     this.triggerHandlers.push(handler);
     return () => {
       const idx = this.triggerHandlers.indexOf(handler);
       if (idx !== -1) this.triggerHandlers.splice(idx, 1);
     };
+  }
+
+  private _warnSensorMismatch(handler: "onCollision" | "onTrigger"): void {
+    if (this._warnedSensorMismatch) return;
+    const sensor = this.config.sensor === true;
+    if (sensor && handler === "onCollision") {
+      this._warnedSensorMismatch = true;
+      const name = this.entity?.name ?? "<unbound>";
+      devWarn(
+        `ColliderComponent at ${name}: sensor: true colliders fire onTrigger, ` +
+          `not onCollision. Did you mean .onTrigger(...)?`,
+      );
+    } else if (!sensor && handler === "onTrigger") {
+      this._warnedSensorMismatch = true;
+      const name = this.entity?.name ?? "<unbound>";
+      devWarn(
+        `ColliderComponent at ${name}: solid colliders fire onCollision, ` +
+          `not onTrigger. Did you mean .onCollision(...), or set sensor: true on the collider?`,
+      );
+    }
   }
 
   /** Return all entities whose colliders currently overlap this one, optionally filtered. */

@@ -188,6 +188,9 @@ export {
   advanceFrames,
 } from "./test-utils.js";
 
+/** @internal - exposed for sibling @yagejs packages, not for public consumption. */
+export { isDev, devWarn } from "./internal/dev.js";
+
 export {
   createAtom,
   createStore,
