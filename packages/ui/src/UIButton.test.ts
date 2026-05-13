@@ -150,9 +150,10 @@ vi.mock("pixi.js", () => ({
   TilingSprite: mocks.MockTilingSprite,
 }));
 
-import Yoga from "yoga-layout";
+import Yoga, { Direction } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
+import { UIText } from "./UIText.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -280,5 +281,66 @@ describe("UIButton", () => {
     container.emit("pointerup");
     expect(onClick1).not.toHaveBeenCalled();
     expect(onClick2).toHaveBeenCalledTimes(1);
+  });
+
+  describe("auto-size", () => {
+    it("shrinks to its string content when width and height are omitted", () => {
+      const btn = new UIButton({ children: "Hello" });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      // MockText reports width=50, height=14. Defaults add 12px horizontal
+      // and 6px vertical padding on each side around the label.
+      expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
+      expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
+
+    it("respects explicit width and height when provided", () => {
+      const btn = new UIButton({ children: "Hello", width: 200, height: 50 });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(btn.yogaNode.getComputedWidth()).toBe(200);
+      expect(btn.yogaNode.getComputedHeight()).toBe(50);
+    });
+
+    it("treats width: 'auto' the same as omitted (shrink-to-content)", () => {
+      const btn = new UIButton({ children: "Hi", width: "auto", height: "auto" });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
+      expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
+  });
+
+  describe("container mode", () => {
+    it("can host multiple UIElement children via addElement", () => {
+      // Mirrors what the React reconciler does when <Button> receives
+      // ReactNode children (e.g. <Text> + <Image>): each is added as a
+      // Yoga child of the button container.
+      const btn = new UIButton({});
+      const a = new UIText({ children: "Label" });
+      const b = new UIText({ children: "Icon" });
+      btn.addElement(a);
+      btn.addElement(b);
+
+      expect(btn.children).toHaveLength(2);
+      expect(btn.children).toContain(a);
+      expect(btn.children).toContain(b);
+      expect(btn.yogaNode.getChildCount()).toBe(2);
+    });
+
+    it("removeElement detaches a child from both trees", () => {
+      const btn = new UIButton({});
+      const a = new UIText({ children: "Label" });
+      btn.addElement(a);
+      btn.removeElement(a);
+
+      expect(btn.children).not.toContain(a);
+      expect(btn.yogaNode.getChildCount()).toBe(0);
+    });
+
+    it("setText promotes a button with no label by adding a UIText child", () => {
+      const btn = new UIButton({});
+      expect(btn.children).toHaveLength(0);
+      btn.setText("Now Labeled");
+      expect(btn.children).toHaveLength(1);
+    });
   });
 });

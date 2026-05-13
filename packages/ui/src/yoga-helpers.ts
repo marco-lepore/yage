@@ -4,6 +4,7 @@ import {
   Align,
   Display,
   Edge,
+  PositionType,
 } from "yoga-layout";
 import type { LayoutProps, LayoutValue } from "./types.js";
 
@@ -203,6 +204,18 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
         node.setMargin(Edge.Left, props.margin.left);
     }
   }
+
+  if (props.position !== undefined) {
+    node.setPositionType(
+      props.position === "absolute"
+        ? PositionType.Absolute
+        : PositionType.Relative,
+    );
+  }
+  if (props.left !== undefined) node.setPosition(Edge.Left, props.left);
+  if (props.top !== undefined) node.setPosition(Edge.Top, props.top);
+  if (props.right !== undefined) node.setPosition(Edge.Right, props.right);
+  if (props.bottom !== undefined) node.setPosition(Edge.Bottom, props.bottom);
 
   if (props.visible === false) {
     node.setDisplay(Display.None);

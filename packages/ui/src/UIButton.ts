@@ -1,10 +1,16 @@
-import { Container, Text } from "pixi.js";
+import { Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
-import { Display } from "yoga-layout";
-import type { BackgroundOptions, UIElement, UIButtonProps } from "./types.js";
+import { Align, Display, Edge, Justify } from "yoga-layout";
+import type {
+  BackgroundOptions,
+  UIContainerElement,
+  UIElement,
+  UIButtonProps,
+} from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { UIText } from "./UIText.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
 
@@ -13,6 +19,10 @@ const DEFAULT_BG: ColorBackground = { color: 0x444444, alpha: 1, radius: 4 };
 const DEFAULT_HOVER_BG: ColorBackground = { color: 0x555555, alpha: 1, radius: 4 };
 const DEFAULT_PRESS_BG: ColorBackground = { color: 0x333333, alpha: 1, radius: 4 };
 
+/** Default padding so auto-sized buttons have breathing room around their content. */
+const DEFAULT_PAD_X = 12;
+const DEFAULT_PAD_Y = 6;
+
 /** Merge background options: use as-is for texture backgrounds, spread defaults for color. */
 function mergeBg(def: ColorBackground, override?: BackgroundOptions): BackgroundOptions {
   if (!override) return def;
@@ -20,8 +30,16 @@ function mergeBg(def: ColorBackground, override?: BackgroundOptions): Background
   return { ...def, ...override };
 }
 
-/** Lightweight interactive button for UI panels. */
-export class UIButton implements UIElement {
+/**
+ * Interactive button for UI panels. Acts as a Yoga flex container — any
+ * UIElement (UIText, UIImage, nested panels) can be added as a child via
+ * `addElement`. When constructed with a string `children`, an internal
+ * `UIText` is auto-added so the builder API (`panel.button("Label", ...)`)
+ * and React JSX strings (`<Button>Label</Button>`) keep working with no
+ * extra setup. Pass `width` / `height` explicitly to fix the size, or omit
+ * them to let Yoga shrink-to-fit the content.
+ */
+export class UIButton implements UIContainerElement {
   readonly container: Container;
   readonly yogaNode: YogaNode;
 
@@ -30,12 +48,13 @@ export class UIButton implements UIElement {
   }
 
   private bgRenderer: BackgroundRenderer;
-  private label: Text;
+  private _children: UIElement[] = [];
+  private _label: UIText | undefined;
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;
-  private _width: number;
-  private _height: number;
+  private _computedWidth = 0;
+  private _computedHeight = 0;
   private bgOpts: BackgroundOptions;
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
@@ -43,9 +62,22 @@ export class UIButton implements UIElement {
 
   constructor(p: UIButtonProps) {
     this.yogaNode = createYogaNode();
+    this.yogaNode.setJustifyContent(Justify.Center);
+    this.yogaNode.setAlignItems(Align.Center);
 
-    this._width = typeof p.width === "number" ? p.width : 100;
-    this._height = typeof p.height === "number" ? p.height : 40;
+    // Default padding gives auto-sized buttons breathing room around their
+    // content. Skip when the caller has pinned both dimensions explicitly —
+    // they already know the size they want and surprise padding would
+    // clamp Yoga's outer box up to the padding minimum.
+    const hasExplicitWidth = typeof p.width === "number";
+    const hasExplicitHeight = typeof p.height === "number";
+    if (!(hasExplicitWidth && hasExplicitHeight)) {
+      this.yogaNode.setPadding(Edge.Left, DEFAULT_PAD_X);
+      this.yogaNode.setPadding(Edge.Right, DEFAULT_PAD_X);
+      this.yogaNode.setPadding(Edge.Top, DEFAULT_PAD_Y);
+      this.yogaNode.setPadding(Edge.Bottom, DEFAULT_PAD_Y);
+    }
+
     this.onClick = p.onClick;
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
@@ -58,24 +90,22 @@ export class UIButton implements UIElement {
 
     this.bgRenderer = new BackgroundRenderer();
     this.bgRenderer.set(this.bgOpts, this.container, 0);
-    this.bgRenderer.resize(this._width, this._height);
 
-    this.label = new Text({
-      text: p.children ?? "",
-      style: { fontSize: 14, fill: 0xffffff, ...p.textStyle },
-    });
-    this.label.anchor.set(0.5, 0.5);
-    this.label.position.set(this._width / 2, this._height / 2);
-    this.container.addChild(this.label);
-
-    this.yogaNode.setWidth(this._width);
-    this.yogaNode.setHeight(this._height);
     applyLayoutProps(this.yogaNode, p);
+
+    // Auto-wrap a string child in a UIText so the builder API and React
+    // JSX-string children both produce a centered label without callers
+    // having to construct a UIText themselves.
+    if (typeof p.children === "string" && p.children.length > 0) {
+      this._label = new UIText(
+        p.textStyle ? { children: p.children, style: p.textStyle } : { children: p.children },
+      );
+      this.addElement(this._label);
+    }
 
     if (p.disabled) this.setDisabled(true);
     if (p.visible === false) this.visible = false;
 
-    // Interaction handlers — read from mutable fields so update() changes work
     this.container.on("pointerover", () => {
       if (this._disabled) return;
       this._isHovered = true;
@@ -100,9 +130,58 @@ export class UIButton implements UIElement {
     });
   }
 
+  get children(): readonly UIElement[] {
+    return this._children;
+  }
+
+  addElement(child: UIElement): void {
+    this._children.push(child);
+    this.container.addChild(child.displayObject);
+    this.yogaNode.insertChild(child.yogaNode, this.yogaNode.getChildCount());
+  }
+
+  removeElement(child: UIElement): void {
+    const idx = this._children.indexOf(child);
+    if (idx === -1) return;
+    this._children.splice(idx, 1);
+    this.container.removeChild(child.displayObject);
+    this.yogaNode.removeChild(child.yogaNode);
+    if (child === this._label) this._label = undefined;
+  }
+
+  insertElementBefore(child: UIElement, before: UIElement): void {
+    const beforeIdx = this._children.indexOf(before);
+    if (beforeIdx === -1) {
+      this.addElement(child);
+      return;
+    }
+    this._children.splice(beforeIdx, 0, child);
+    const pixiIdx = this.container.children.indexOf(before.displayObject);
+    if (pixiIdx !== -1) {
+      this.container.addChildAt(child.displayObject, pixiIdx);
+    } else {
+      this.container.addChild(child.displayObject);
+    }
+    this.yogaNode.insertChild(child.yogaNode, beforeIdx);
+  }
+
+  /** Apply Yoga-computed positions to children and resize background. */
+  applyLayout(): void {
+    for (const child of this._children) {
+      const layout = child.yogaNode.getComputedLayout();
+      child.displayObject.position.set(layout.left, layout.top);
+      child.applyLayout?.();
+    }
+    this._computedWidth = this.yogaNode.getComputedWidth();
+    this._computedHeight = this.yogaNode.getComputedHeight();
+    this.bgRenderer.resize(this._computedWidth, this._computedHeight);
+  }
+
   private applyBg(opts: BackgroundOptions): void {
     this.bgRenderer.set(opts, this.container, 0);
-    this.bgRenderer.resize(this._width, this._height);
+    if (this._computedWidth > 0 || this._computedHeight > 0) {
+      this.bgRenderer.resize(this._computedWidth, this._computedHeight);
+    }
   }
 
   private applyCurrentBg(): void {
@@ -112,7 +191,14 @@ export class UIButton implements UIElement {
   }
 
   setText(s: string): void {
-    this.label.text = s;
+    if (this._label) {
+      this._label.setText(s);
+      return;
+    }
+    // Promote: caller constructed without a string child, but now wants a
+    // label — create one and add it as the first child.
+    this._label = new UIText({ children: s });
+    this.addElement(this._label);
   }
 
   setDisabled(v: boolean): void {
@@ -141,7 +227,12 @@ export class UIButton implements UIElement {
   }
 
   update(p: Partial<UIButtonProps>): void {
-    if (p.children !== undefined) this.label.text = p.children;
+    if (p.children !== undefined && typeof p.children === "string") {
+      this.setText(p.children);
+    }
+    if (p.textStyle && this._label) {
+      this._label.setStyle(p.textStyle);
+    }
     if (p.onClick !== undefined) this.onClick = p.onClick;
     if (p.disabled !== undefined) this.setDisabled(p.disabled);
     if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
@@ -168,9 +259,13 @@ export class UIButton implements UIElement {
 
   destroy(): void {
     clearConsumeInput(this.container);
+    for (const child of this._children) {
+      child.destroy();
+    }
+    this._children.length = 0;
+    this._label = undefined;
     this.yogaNode.free();
     this.bgRenderer.destroy();
-    this.label.destroy();
     this.container.destroy();
   }
 }

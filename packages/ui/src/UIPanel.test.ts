@@ -415,6 +415,59 @@ describe("UIPanel", () => {
       expect(children[0]!.displayObject.position.y).toBe(20);
     });
 
+    it("absolute-positioned child resolves against the parent (left/top)", () => {
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 200,
+      });
+      const child = parent.panel({
+        position: "absolute",
+        left: 10,
+        top: 20,
+        width: 50,
+        height: 30,
+      });
+
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      expect(child.displayObject.position.x).toBe(10);
+      expect(child.displayObject.position.y).toBe(20);
+      expect(child.yogaNode.getComputedWidth()).toBe(50);
+      expect(child.yogaNode.getComputedHeight()).toBe(30);
+    });
+
+    it("absolute-positioned child is lifted out of flex flow", () => {
+      const parent = new UIPanel({
+        direction: "column",
+        gap: 10,
+        width: 200,
+      });
+      // Two normal children plus an absolute overlay — the overlay should not
+      // contribute to the parent's main-axis advance.
+      parent.button("A", { width: 100, height: 30 });
+      parent.button("B", { width: 100, height: 30 });
+      const overlay = parent.panel({
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: 200,
+        height: 200,
+      });
+
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      const children = parent._node.children;
+      // The flex-flow children remain stacked vertically with the original
+      // 10px gap — the absolute overlay does not push them around.
+      expect(children[0]!.displayObject.position.y).toBe(0);
+      expect(children[1]!.displayObject.position.y).toBe(40);
+      expect(overlay.displayObject.position.x).toBe(0);
+      expect(overlay.displayObject.position.y).toBe(0);
+    });
+
     it("hidden elements are skipped in layout (collapse)", () => {
       const panel = new UIPanel({ direction: "column", gap: 10 });
       const a = panel.button("A", { width: 100, height: 30 });

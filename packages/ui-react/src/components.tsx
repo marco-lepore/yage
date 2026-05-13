@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from "react";
+import type { PropsWithChildren, ReactNode } from "react";
 import type {
   ColorValue,
   DisplayContainer,
@@ -70,15 +70,30 @@ export interface TextProps extends LayoutProps {
 }
 
 export interface ButtonProps extends LayoutProps {
-  width: number;
-  height: number;
+  /**
+   * Fixed width in pixels, or `"auto"` to shrink-to-fit the button's content
+   * (text + any icon / nested elements). Omit to let Yoga measure.
+   */
+  width?: number | "auto";
+  /**
+   * Fixed height in pixels, or `"auto"` to shrink-to-fit the button's content.
+   * Omit to let Yoga measure.
+   */
+  height?: number | "auto";
   onClick?: () => void;
   bg?: BackgroundOptions;
   hoverBg?: BackgroundOptions;
   pressBg?: BackgroundOptions;
+  /** Style applied to the auto-wrapped text node when `children` is a string. */
   textStyle?: Partial<TextStyle>;
   disabled?: boolean;
-  children?: string;
+  /**
+   * String for the common labeled-button case — auto-wrapped in a centered
+   * `<Text>` with `textStyle` applied. Pass `ReactNode`s (Text + Image rows,
+   * nested panels) for richer button content; those render as flex children
+   * of the button.
+   */
+  children?: ReactNode;
 }
 
 export interface ImageProps extends LayoutProps {
@@ -125,6 +140,24 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   return <ui-element _ctor={PanelNode} {...rest} background={bg}>{children}</ui-element>;
 }
 
+/**
+ * Overlay primitive: a `Panel` that defaults to filling its parent and acts
+ * as the containing block for absolute-positioned children. Drop children
+ * inside with `position="absolute"` (plus `left` / `top` / `right` /
+ * `bottom`) to stack them on top of each other — modal backdrops, HUD
+ * layers, badge markers, etc. Defaults can be overridden via props.
+ */
+export function Stack(props: PropsWithChildren<PanelProps>): React.JSX.Element {
+  return (
+    <Panel
+      width="100%"
+      height="100%"
+      position="relative"
+      {...props}
+    />
+  );
+}
+
 /** A text label. */
 export function UIText(props: TextProps): React.JSX.Element {
   const { children, ...rest } = props;
@@ -134,9 +167,17 @@ export function UIText(props: TextProps): React.JSX.Element {
 
 /** An interactive button. */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, bg, hoverBg, pressBg, ...rest } = props;
+  const { children, bg, hoverBg, pressBg, textStyle, ...rest } = props;
+  // Auto-wrap a string child in a <Text> so the underlying UIButton always
+  // operates in container mode and the JSX-string case still picks up
+  // textStyle. Element children pass through and become flex children of
+  // the button.
+  const content =
+    typeof children === "string"
+      ? <UIText {...(textStyle ? { style: textStyle } : {})}>{children}</UIText>
+      : children;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIButtonNode} _consumesText {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{children}</ui-element>;
+  return <ui-element _ctor={UIButtonNode} {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
 }
 
 /** An image element displaying a texture. */

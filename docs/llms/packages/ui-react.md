@@ -39,11 +39,20 @@ For entity-anchored React UI (nameplates, health bars), pair `positioning: "tran
 ## JSX Components
 
 ```tsx
-import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
+import { Panel, Stack, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
 
 <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
   <Text style={{ fontSize: 24, fill: 0xffffff }}>Hello</Text>
-  <Button width={150} height={40} bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
+
+  {/* width/height are optional — omit to shrink-to-content */}
+  <Button bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
+
+  {/* Button accepts ReactNode children for icon + label compositions */}
+  <Button onClick={() => {}}>
+    <Image texture={iconTex} width={16} height={16} />
+    <Text>Save</Text>
+  </Button>
+
   <ProgressBar width={200} height={16} value={0.75} fillBackground={{ color: 0x44cc44 }} />
   <Checkbox label="Mute" checked={false} onChange={(v) => {}} />
   <Image texture={iconTex} width={32} height={32} />
@@ -51,6 +60,37 @@ import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-re
 ```
 
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`.
+
+### Stack (overlay primitive)
+
+`<Stack>` is a `<Panel>` that defaults to filling its parent (`width: "100%"`,
+`height: "100%"`) with `position: "relative"`, so children declared
+`position="absolute"` stack on top of each other. Useful for modal
+backdrops, HUD layers, and badge markers.
+
+```tsx
+<Stack>
+  <Panel position="absolute" left={0} top={0} bg={{ color: 0x000000, alpha: 0.6 }} />
+  <Panel position="absolute" top={16} right={16} padding={4}>
+    <Text>Score: 42</Text>
+  </Panel>
+</Stack>
+```
+
+### Absolute positioning
+
+`LayoutProps` (every component) now accepts `position`, `left`, `top`,
+`right`, `bottom`:
+
+```tsx
+<Panel position="relative" width={400} height={300}>
+  <Panel position="absolute" left={10} top={20} width={50} height={30} />
+</Panel>
+```
+
+`position` defaults to `"relative"`. Set `"absolute"` to lift the element out
+of the flex flow; `left` / `top` / `right` / `bottom` are pixel offsets
+against the nearest relative ancestor.
 
 ## Hooks
 

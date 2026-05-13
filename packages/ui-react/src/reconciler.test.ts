@@ -114,6 +114,7 @@ import Yoga from "yoga-layout";
 import { setYoga, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
+import { Button, UIText as Text } from "./components.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -212,6 +213,42 @@ describe("reconciler", () => {
     // so it won't propagate — but the container should remain empty.
     root.render(createElement("ui-element" as never, null));
     expect(container.children.length).toBe(0);
+  });
+
+  it("Button with a string child renders an auto-wrapped Text child", () => {
+    // The React <Button> wraps string children in <Text> so the underlying
+    // UIButton always operates in container mode. We verify it has exactly
+    // one Yoga child after render.
+    const root = createRoot(container as never);
+    root.render(createElement(Button, { onClick: () => {} }, "Click"));
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as {
+      children: readonly unknown[];
+      yogaNode: { getChildCount(): number };
+    };
+    expect(btn.children.length).toBe(1);
+    expect(btn.yogaNode.getChildCount()).toBe(1);
+  });
+
+  it("Button with multiple ReactNode children renders them as flex children", () => {
+    const root = createRoot(container as never);
+    root.render(
+      createElement(
+        Button,
+        { onClick: () => {} },
+        createElement(Text, null, "Label"),
+        createElement(Text, null, "Icon"),
+      ),
+    );
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as {
+      children: readonly unknown[];
+      yogaNode: { getChildCount(): number };
+    };
+    expect(btn.children.length).toBe(2);
+    expect(btn.yogaNode.getChildCount()).toBe(2);
   });
 
   it("commitUpdate calls instance.update()", () => {
