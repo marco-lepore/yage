@@ -343,6 +343,10 @@ describe("ColliderComponent", () => {
 
   describe("onDestroy", () => {
     it("clears all handlers", async () => {
+      // Intentionally mix sensor/non-sensor channels on the same collider to
+      // verify both handler arrays are cleared on destroy. Silence the
+      // resulting dev mismatch warning so test output stays clean.
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const { scene } = await createPhysicsTestContext();
       const entity = spawnEntityInScene(scene, "test");
       entity.add(new Transform());
@@ -375,6 +379,7 @@ describe("ColliderComponent", () => {
 
       expect(handler).not.toHaveBeenCalled();
       expect(triggerHandler).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
   });
 
@@ -394,6 +399,90 @@ describe("ColliderComponent", () => {
 
       const rapierCollider = physicsWorld.getCollider(col._colliderHandle) as unknown as InstanceType<typeof mocks.MockCollider>;
       expect(rapierCollider?.setSensorSpy).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe("sensor/callback mismatch dev warning", () => {
+    it("warns once when onCollision is registered on a sensor collider", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "trigger-zone");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+          sensor: true,
+        }),
+      );
+
+      col.onCollision(() => {});
+      col.onCollision(() => {});
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes(
+          "sensor: true colliders fire onTrigger, not onCollision",
+        ),
+      );
+      expect(matching.length).toBe(1);
+      expect(String(matching[0]?.[0])).toContain("trigger-zone");
+      warn.mockRestore();
+    });
+
+    it("warns once when onTrigger is registered on a solid collider", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "wall");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+
+      col.onTrigger(() => {});
+      col.onTrigger(() => {});
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes(
+          "solid colliders fire onCollision, not onTrigger",
+        ),
+      );
+      expect(matching.length).toBe(1);
+      warn.mockRestore();
+    });
+
+    it("does not warn when the handler matches the collider kind", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { scene } = await createPhysicsTestContext();
+
+      const solid = spawnEntityInScene(scene, "solid");
+      solid.add(new Transform());
+      solid.add(new RigidBodyComponent({ type: "dynamic" }));
+      const solidCol = solid.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+      solidCol.onCollision(() => {});
+
+      const sensor = spawnEntityInScene(scene, "sensor");
+      sensor.add(new Transform());
+      sensor.add(new RigidBodyComponent({ type: "dynamic" }));
+      const sensorCol = sensor.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+          sensor: true,
+        }),
+      );
+      sensorCol.onTrigger(() => {});
+
+      const matching = warn.mock.calls.filter((args) =>
+        String(args[0]).includes("ColliderComponent at"),
+      );
+      expect(matching.length).toBe(0);
+      warn.mockRestore();
     });
   });
 

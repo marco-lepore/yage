@@ -1,5 +1,5 @@
 import RAPIER from "@dimforge/rapier2d";
-import { Vec2 } from "@yagejs/core";
+import { devWarn, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import { CollisionLayers } from "./CollisionLayers.js";
 import type {
@@ -34,6 +34,11 @@ export class PhysicsWorld {
 
   private readonly world: RAPIER.World;
   private readonly eventQueue: RAPIER.EventQueue;
+  private readonly _layerInfo = new Map<
+    number,
+    { layers: number; mask: number }
+  >();
+  private readonly _warnedAsymmetricPairs = new Set<string>();
 
   constructor(config?: PhysicsConfig) {
     this.pixelsPerMeter = config?.pixelsPerMeter ?? DEFAULT_PIXELS_PER_METER;
@@ -178,9 +183,9 @@ export class PhysicsWorld {
     }
 
     // Set collision groups
+    const membership = config.layers ?? 0xffff;
+    const filter = config.mask ?? 0xffff;
     if (config.layers !== undefined || config.mask !== undefined) {
-      const membership = config.layers ?? 0xffff;
-      const filter = config.mask ?? 0xffff;
       desc.setCollisionGroups(
         CollisionLayers.interactionGroups(membership, filter),
       );
@@ -196,7 +201,72 @@ export class PhysicsWorld {
     const collider = this.world.createCollider(desc, body);
     this.colliderMap.set(collider.handle, entity);
     this._colliderComponents.set(collider.handle, component);
+    this._layerInfo.set(collider.handle, { layers: membership, mask: filter });
+    this._checkAsymmetricMasks(collider.handle, entity, membership, filter);
+    this._checkConvexHullVertexDrop(collider, config.shape, entity);
     return collider.handle;
+  }
+
+  /**
+   * Dev-mode check: a polygon collider built via Rapier's convex-hull
+   * helper silently drops vertices when the input is concave. Compare
+   * input vs. resulting vertex counts and warn on a mismatch.
+   */
+  private _checkConvexHullVertexDrop(
+    collider: RAPIER.Collider,
+    shape: ColliderShape,
+    entity: Entity,
+  ): void {
+    if (shape.type !== "polygon") return;
+    let resultCount: number;
+    try {
+      resultCount = collider.vertices().length / 2;
+    } catch {
+      return;
+    }
+    const inputCount = shape.vertices.length;
+    if (resultCount >= inputCount) return;
+    devWarn(
+      `Polygon collider on <${entity.name}> with ${inputCount} input vertices ` +
+        `reduced to ${resultCount} after convex hull — input was concave. ` +
+        `Decompose to convex pieces, or use a polyline collider.`,
+    );
+  }
+
+  /**
+   * Dev-mode check: when a new collider lands with explicit layers/mask,
+   * scan existing colliders for asymmetric filtering (one direction
+   * passes the layer test, the other doesn't). Rapier silently drops
+   * collision events for those pairs, so without this warning the user
+   * sees a trigger that never fires.
+   */
+  private _checkAsymmetricMasks(
+    newHandle: number,
+    newEntity: Entity,
+    newLayers: number,
+    newMask: number,
+  ): void {
+    for (const [otherHandle, info] of this._layerInfo) {
+      if (otherHandle === newHandle) continue;
+      const aSeesB = (newLayers & info.mask) !== 0;
+      const bSeesA = (info.layers & newMask) !== 0;
+      if (aSeesB === bSeesA) continue;
+      const a = `${newLayers}:${newMask}`;
+      const b = `${info.layers}:${info.mask}`;
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (this._warnedAsymmetricPairs.has(key)) continue;
+      this._warnedAsymmetricPairs.add(key);
+      const otherEntity = this.colliderMap.get(otherHandle);
+      const aName = newEntity.name;
+      const bName = otherEntity?.name ?? "<unknown>";
+      const blocked = aSeesB ? bName : aName;
+      const blocker = aSeesB ? aName : bName;
+      devWarn(
+        `Asymmetric collision masks: <${blocker}> has layer in <${blocked}>'s ` +
+          `mask, but <${blocked}>'s layer is not in <${blocker}>'s mask. ` +
+          `Trigger will never fire.`,
+      );
+    }
   }
 
   /** Remove a rigid body and all its colliders from the world. */
@@ -210,6 +280,7 @@ export class PhysicsWorld {
       const collider = body.collider(i);
       this.colliderMap.delete(collider.handle);
       this._colliderComponents.delete(collider.handle);
+      this._layerInfo.delete(collider.handle);
     }
 
     this.world.removeRigidBody(body);
@@ -377,6 +448,8 @@ export class PhysicsWorld {
     this.bodyMap.clear();
     this.colliderMap.clear();
     this._colliderComponents.clear();
+    this._layerInfo.clear();
+    this._warnedAsymmetricPairs.clear();
   }
 
   // ---- Internal helpers ----

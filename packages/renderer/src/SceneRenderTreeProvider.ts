@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import type { Scene, ProcessSystem } from "@yagejs/core";
-import { makeSceneScopedQueue } from "@yagejs/core";
+import { devWarn, makeSceneScopedQueue } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
 import type {
   SceneRenderTree,
@@ -140,6 +140,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
 
     for (const def of scene.layers ?? []) {
       if (manager.tryGet(def.name)) continue;
+      warnUiLayerShadow(def);
       manager.createFromDef(def);
     }
 
@@ -292,6 +293,24 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       }
     }
   }
+}
+
+// String-duplicated from @yagejs/ui's `UI_DEFAULT_LAYER` ("ui") to avoid a
+// reverse import (renderer is below ui in the dep graph). Kept in sync via
+// the dev warning + a co-located test that pins the literal.
+const UI_DEFAULT_LAYER_NAME = "ui";
+const warnedShadowScenes = new WeakSet<LayerDef>();
+
+function warnUiLayerShadow(def: LayerDef): void {
+  if (def.name !== UI_DEFAULT_LAYER_NAME) return;
+  if (def.space !== undefined) return;
+  if (warnedShadowScenes.has(def)) return;
+  warnedShadowScenes.add(def);
+  devWarn(
+    `Layer 'ui' is the canonical UI layer name; declaring it without ` +
+      `space: 'screen' replaces the auto-screen-space layer with a ` +
+      `world-space one. Add \`space: 'screen'\` or rename the layer.`,
+  );
 }
 
 /** @internal — emitted by `SceneRenderTreeProviderImpl.serializeAll`. */

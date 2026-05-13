@@ -201,6 +201,21 @@ describe("Component", () => {
       expect(c.getValue()).toBe("scoped-value");
     });
 
+    it("throws a named error when called at field-init (entity unbound)", () => {
+      const key = new ServiceKey<string>("infra");
+
+      class FieldInitComponent extends Component {
+        readonly value = this.use(key);
+      }
+
+      expect(() => new FieldInitComponent()).toThrow(
+        /Component\.use\(infra\) called before the component is bound to an entity/,
+      );
+      expect(() => new FieldInitComponent()).toThrow(
+        /Use this\.service\(Key\) for lazy resolution/,
+      );
+    });
+
     it("warns when a scene-scoped key falls back to engine scope", () => {
       const ctx = new EngineContext();
       const logger = new Logger();
