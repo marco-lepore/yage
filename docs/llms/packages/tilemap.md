@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Capabilities & Limits
 
-Supported: orthogonal Tiled JSON, multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction (raw `rect` / `polygon` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets.
+Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction (raw `rect` / `polygon` / `polyline` / `circle` (Tiled ellipse) / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets.
 
 Not supported: animated tiles, infinite/chunked maps, isometric/hex/staggered orientations, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
 
@@ -112,7 +112,7 @@ interface ObjectLayerData {
 }
 ```
 
-`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, an optional `point` flag, an optional `polygon`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
+`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
 
 ## Object Layers
 
@@ -187,17 +187,21 @@ The component-method variants of `resolveRef` / `resolveRefArray` walk every obj
 
 ```ts
 const shapes = tilemap.getCollisionShapes("walls");
-// TilemapColliderConfig[] — { type: "rect", x, y, width, height } | { type: "polygon", x, y, vertices }
-
-// Convert to physics:
-for (const s of shapes) {
-  if (s.type === "rect") {
-    wall.add(new ColliderComponent({
-      shape: { type: "box", width: s.width, height: s.height },
-    }));
-  }
-}
+// TilemapColliderConfig[]:
+//   { type: "rect",     x, y, width, height }
+//   { type: "circle",   x, y, width, height, radius }                 // Tiled ellipse
+//   { type: "capsule",  x, y, width, height, halfHeight, radius, axis }
+//   { type: "polygon",  x, y, vertices }                              // closed convex
+//   { type: "polyline", x, y, vertices }                              // chain; may be non-convex (emitted from Tiled polygons)
 ```
+
+Mapping from Tiled object → emitted shape:
+- Rectangle → `rect`.
+- Ellipse (w === h) → `circle`.
+- Ellipse (w !== h) → `circle` with `radius = max(w, h) / 2` and a dev-warning (Rapier has no real ellipse primitive — author it as a capsule for a true non-circular round shape).
+- Capsule → `capsule` with `halfHeight = (max(w,h) - min(w,h)) / 2`, `radius = min(w,h) / 2`, `axis = "y"` if taller than wide else `"x"`.
+- Polygon → `polyline` (Tiled polygons are outlines, not solid hulls).
+- Point → skipped.
 
 Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
 
@@ -219,7 +223,9 @@ for (const cfg of configs) {
 }
 ```
 
-`toPhysicsColliders` handles both `rect` and `polygon` shapes — rects become `box` shapes with the offset baked in; polygons stay as `polygon` shapes with an offset matching the Tiled origin.
+`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. The offset is baked in so the Rapier collider sits at the Tiled object's bounding-box center.
+
+Polylines are static-only (no inertia is computed). Attach them to a `RigidBodyComponent({ type: "static" })`.
 
 ## Camera Bounds
 

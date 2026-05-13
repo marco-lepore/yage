@@ -6,6 +6,7 @@ import type { ColliderConfig } from "./types.js";
 function mockRapier(): RapierModule {
   const makeDesc = (): RapierColliderDesc => ({
     setTranslation: vi.fn().mockReturnThis(),
+    setRotation: vi.fn().mockReturnThis(),
   });
 
   return {
@@ -14,6 +15,7 @@ function mockRapier(): RapierModule {
       ball: vi.fn(makeDesc),
       capsule: vi.fn(makeDesc),
       convexHull: vi.fn(makeDesc),
+      polyline: vi.fn(makeDesc),
     },
   };
 }
@@ -49,7 +51,7 @@ describe("toRapierColliders", () => {
     expect(rapier.ColliderDesc.ball).toHaveBeenCalledWith(0.5); // 25/50
   });
 
-  it("converts capsule config", () => {
+  it("converts vertical capsule (no rotation by default)", () => {
     const rapier = mockRapier();
     const configs: ColliderConfig[] = [
       { shape: { type: "capsule", halfHeight: 50, radius: 25 } },
@@ -59,6 +61,20 @@ describe("toRapierColliders", () => {
 
     expect(result).toHaveLength(1);
     expect(rapier.ColliderDesc.capsule).toHaveBeenCalledWith(1, 0.5); // 50/50, 25/50
+    expect(result[0]!.setRotation).not.toHaveBeenCalled();
+  });
+
+  it("rotates capsule when axis is 'x'", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      { shape: { type: "capsule", halfHeight: 50, radius: 25, axis: "x" } },
+    ];
+
+    const result = toRapierColliders(rapier, configs, PPM);
+
+    expect(result).toHaveLength(1);
+    expect(rapier.ColliderDesc.capsule).toHaveBeenCalledWith(1, 0.5);
+    expect(result[0]!.setRotation).toHaveBeenCalledWith(Math.PI / 2);
   });
 
   it("converts polygon config to convex hull with offset", () => {
@@ -84,6 +100,34 @@ describe("toRapierColliders", () => {
       new Float32Array([0, 0, 1, 0, 1, 1]),
     );
     expect(result[0]!.setTranslation).toHaveBeenCalledWith(2, 4);
+  });
+
+  it("converts polyline config without convex-hull processing", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      {
+        shape: {
+          type: "polyline",
+          vertices: [
+            { x: 0, y: 0 },
+            { x: 64, y: 0 },
+            { x: 64, y: 16 },
+            { x: 16, y: 16 },
+            { x: 16, y: 48 },
+          ],
+        },
+        offset: { x: 10, y: 20 },
+      },
+    ];
+
+    const result = toRapierColliders(rapier, configs, PPM);
+
+    expect(result).toHaveLength(1);
+    expect(rapier.ColliderDesc.polyline).toHaveBeenCalledWith(
+      new Float32Array([0, 0, 64 / 50, 0, 64 / 50, 16 / 50, 16 / 50, 16 / 50, 16 / 50, 48 / 50]),
+    );
+    expect(rapier.ColliderDesc.convexHull).not.toHaveBeenCalled();
+    expect(result[0]!.setTranslation).toHaveBeenCalledWith(10 / 50, 20 / 50);
   });
 
   it("throws on failed convex hull", () => {

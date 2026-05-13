@@ -71,16 +71,34 @@ entity.add(new ColliderComponent({
   shape: { type: "circle", radius: 16 },
 }));
 
-// Capsule
+// Capsule (vertical by default — pass axis: "x" for horizontal)
 entity.add(new ColliderComponent({
-  shape: { type: "capsule", halfHeight: 20, radius: 10 },
+  shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "y" },
 }));
 
-// Convex polygon
+// Convex polygon. Rapier silently widens concave input to its convex
+// hull; a dev warning is logged. Use polyline for non-convex outlines.
 entity.add(new ColliderComponent({
   shape: {
     type: "polygon",
     vertices: [{ x: 0, y: -20 }, { x: 20, y: 20 }, { x: -20, y: 20 }],
+  },
+}));
+
+// Polyline — chain of line segments. Supports non-convex shapes but is
+// static-only (no mass/inertia). Best for tilemap-driven world boundaries
+// such as winding water edges or U-shaped walls.
+entity.add(new RigidBodyComponent({ type: "static" }));
+entity.add(new ColliderComponent({
+  shape: {
+    type: "polyline",
+    vertices: [
+      { x: 0, y: 0 },
+      { x: 64, y: 0 },
+      { x: 64, y: 16 },
+      { x: 16, y: 16 },
+      { x: 16, y: 48 },
+    ],
   },
 }));
 ```

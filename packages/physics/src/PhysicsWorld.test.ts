@@ -152,9 +152,18 @@ const { mocks } = vi.hoisted(() => {
     static convexHull(): MockColliderDesc | null {
       return new MockColliderDesc();
     }
+    static polyline() {
+      return new MockColliderDesc();
+    }
+
+    _rotation = 0;
 
     setTranslation(x: number, y: number) {
       this._translation = { x, y };
+      return this;
+    }
+    setRotation(angle: number) {
+      this._rotation = angle;
       return this;
     }
     setRestitution(r: number) {

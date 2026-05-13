@@ -55,6 +55,8 @@ export interface RectangleObject {
   visible: boolean;
   point?: undefined | false;
   polygon?: undefined;
+  ellipse?: undefined | false;
+  capsule?: undefined | false;
   properties?: TileObjectProperty[];
 }
 
@@ -71,6 +73,8 @@ export interface PolygonObject {
   visible: boolean;
   point?: undefined | false;
   polygon: { x: number; y: number }[];
+  ellipse?: undefined | false;
+  capsule?: undefined | false;
   properties?: TileObjectProperty[];
 }
 
@@ -87,10 +91,53 @@ export interface PointObject {
   visible: boolean;
   point: true;
   polygon?: undefined;
+  ellipse?: undefined | false;
+  capsule?: undefined | false;
   properties?: TileObjectProperty[];
 }
 
-export type TileObject = RectangleObject | PointObject | PolygonObject;
+export interface EllipseObject {
+  id: number;
+  name: string;
+  class?: string;
+  type?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  visible: boolean;
+  ellipse: true;
+  point?: undefined | false;
+  polygon?: undefined;
+  capsule?: undefined | false;
+  properties?: TileObjectProperty[];
+}
+
+export interface CapsuleObject {
+  id: number;
+  name: string;
+  class?: string;
+  type?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  visible: boolean;
+  capsule: true;
+  point?: undefined | false;
+  polygon?: undefined;
+  ellipse?: undefined | false;
+  properties?: TileObjectProperty[];
+}
+
+export type TileObject =
+  | RectangleObject
+  | PointObject
+  | PolygonObject
+  | EllipseObject
+  | CapsuleObject;
 
 export interface TileObjectProperty {
   name: string;

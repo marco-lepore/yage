@@ -39,7 +39,10 @@ export type {
   HasProperties,
   TilemapColliderConfig,
   RectColliderConfig,
+  CircleColliderConfig,
+  CapsuleColliderConfig,
   PolygonColliderConfig,
+  PolylineColliderConfig,
 } from "./types.js";
 
 // Tiled-specific (re-exported for backward compatibility)
@@ -57,6 +60,8 @@ export type {
   RectangleObject,
   PolygonObject,
   PointObject,
+  EllipseObject,
+  CapsuleObject,
   TileObjectProperty,
   TilesetRef,
   TilesetData,
