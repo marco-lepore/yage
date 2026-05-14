@@ -26,7 +26,7 @@ import type { SnapshotContributor } from "@yagejs/save";
 // dynamic-import variable below.
 import type * as SaveModule from "@yagejs/save";
 import { Application, Assets, Container, Graphics, TextureStyle } from "pixi.js";
-import type { Spritesheet } from "pixi.js";
+import type { Spritesheet, SCALE_MODE } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -106,6 +106,19 @@ export class RendererPlugin implements Plugin {
   private _unregisterFullscreenListener: (() => void) | null = null;
   private _unregisterOrientationListener: (() => void) | null = null;
   private _unregisterSceneVisibility: (() => void) | null = null;
+  /**
+   * Snapshot of `TextureStyle.defaultOptions.scaleMode` captured before
+   * `pixelArtPreset` flips it to `"nearest"`. Pixi's defaults live on a
+   * module-level singleton, so without restoring this on destroy the
+   * mutation leaks across plugin lifecycles — any later `RendererPlugin`
+   * instance (or any texture loaded after teardown) silently inherits
+   * nearest sampling even with `pixelArtPreset: false`. The companion
+   * `_scaleModeCaptured` flag distinguishes "preset was off, leave the
+   * field alone" from "preset was on and the original value was
+   * `undefined`" — both round-trip back through the same restore.
+   */
+  private _originalScaleMode: SCALE_MODE | undefined = undefined;
+  private _scaleModeCaptured = false;
 
   constructor(config: RendererConfig) {
     this._config = config;
@@ -117,8 +130,12 @@ export class RendererPlugin implements Plugin {
     // 1. Apply pixel-art preset BEFORE Application.init so the texture-style
     //    default propagates to every texture/spritesheet loaded by Assets
     //    afterward. User-passed `pixi.roundPixels` still wins via the spread
-    //    order below.
+    //    order below. `TextureStyle.defaultOptions` is a module-level
+    //    singleton, so we capture the previous value and restore it in
+    //    `onDestroy` to keep the mutation scoped to this plugin's lifetime.
     if (this._config.pixelArtPreset) {
+      this._originalScaleMode = TextureStyle.defaultOptions.scaleMode;
+      this._scaleModeCaptured = true;
       TextureStyle.defaultOptions.scaleMode = "nearest";
     }
 
@@ -163,14 +180,14 @@ export class RendererPlugin implements Plugin {
       this._config.container.appendChild(this._app.canvas);
     }
 
-    // 2b. Insert the world-root container between `app.stage` and every
-    //     per-scene tree. The fit transform lives here, not on stage —
-    //     see the field-level comment on `_worldRoot` for why.
+    // 4. Insert the world-root container between `app.stage` and every
+    //    per-scene tree. The fit transform lives here, not on stage —
+    //    see the field-level comment on `_worldRoot` for why.
     this._worldRoot = new Container();
     this._worldRoot.label = "yage:worldRoot";
     this._app.stage.addChild(this._worldRoot);
 
-    // 3. FitController owns the world-root transform. When `fit` is
+    // 5. FitController owns the world-root transform. When `fit` is
     //    configured (or defaulted), it observes a host element and re-maps
     //    the virtual rectangle on each resize. In environments without a
     //    DOM target (tests, headless), it applies the transform once against
@@ -178,12 +195,12 @@ export class RendererPlugin implements Plugin {
     this.startFit(this._config.fit ?? { mode: "letterbox" });
     this._installed.fit = true;
 
-    // 4. Resolve ProcessSystem so layer/scene/screen-scope effects can
+    // 6. Resolve ProcessSystem so layer/scene/screen-scope effects can
     //    schedule fade tweens. Already registered by Engine before plugin
     //    install runs.
     this._processSystem = context.resolve(ProcessSystemKey);
 
-    // 4b. Build the screen-scope EffectsHost over `app.stage`. The underlying
+    // 6b. Build the screen-scope EffectsHost over `app.stage`. The underlying
     //     EffectStack is created lazily on first `addEffect`/`restore` so a
     //     game with no screen-scope filters pays nothing.
     const ps = this._processSystem;
@@ -193,7 +210,7 @@ export class RendererPlugin implements Plugin {
       () => makeGlobalScopedQueue(ps),
     );
 
-    // 5. Create the per-scene render tree provider.
+    // 7. Create the per-scene render tree provider.
     //    Each scene gets one root container as a direct child of `_worldRoot`
     //    (which is itself the only world-space child of `app.stage`).
     this._provider = new SceneRenderTreeProviderImpl(
@@ -202,7 +219,7 @@ export class RendererPlugin implements Plugin {
     );
     this._installed.provider = true;
 
-    // 6. Register services
+    // 8. Register services
     context.register(RendererKey, this);
     // Also register under the cross-package adapter key so @yagejs/input
     // (and other renderer-agnostic consumers) can auto-wire to the canvas
@@ -210,7 +227,7 @@ export class RendererPlugin implements Plugin {
     context.register(RendererAdapterKey, this);
     context.register(SceneRenderTreeProviderKey, this._provider);
 
-    // 7. Register scene hooks: materialize a tree per scene on enter,
+    // 9. Register scene hooks: materialize a tree per scene on enter,
     //    tear it down on exit.
     const hookRegistry = context.resolve(SceneHookRegistryKey);
     this._unregisterHooks = hookRegistry.register({
@@ -223,7 +240,7 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 7b. Apply `Scene.transparentBelow` to the visibility of every below-stack
+    // 9b. Apply `Scene.transparentBelow` to the visibility of every below-stack
     //     scene tree. The flag was previously documented but unenforced — UI
     //     in a below scene (and any world content) painted through even when
     //     the topmost scene was meant to fully cover it. Walking the stack on
@@ -233,7 +250,7 @@ export class RendererPlugin implements Plugin {
     //     (e.g. crossFade); the chain is reapplied on `scene:transition:ended`.
     this.installSceneVisibilityListeners(context);
 
-    // 8. Attach PixiJS ticker to GameLoop
+    // 10. Attach PixiJS ticker to GameLoop
     const gameLoop = context.resolve(GameLoopKey);
     gameLoop.attachTicker((callback) => {
       const fn = () => callback(this._app.ticker.deltaMS);
@@ -242,7 +259,7 @@ export class RendererPlugin implements Plugin {
       return () => this._app.ticker.remove(fn);
     });
 
-    // 8b. Wire viewport-lifecycle listeners (fullscreen + orientation).
+    // 10b. Wire viewport-lifecycle listeners (fullscreen + orientation).
     //     Both emit onto the engine event bus. Gated behind environment
     //     checks so node-environment tests that don't stub the globals
     //     skip the wiring without crashing.
@@ -250,7 +267,7 @@ export class RendererPlugin implements Plugin {
     this.installFullscreenListener(bus);
     this.installOrientationListener(bus);
 
-    // 9. Register asset loaders (if AssetManager is available)
+    // 11. Register asset loaders (if AssetManager is available)
     const am = context.tryResolve(AssetManagerKey);
     am?.registerLoader("texture", {
       load: (path: string) => Assets.load<TextureResource>(path),
@@ -271,7 +288,7 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 10. Stash the context for use in onStart, where the snapshot bridge is
+    // 12. Stash the context for use in onStart, where the snapshot bridge is
     //     wired up — we need to wait for every plugin to install before
     //     resolving SnapshotServiceKey, otherwise registration order matters.
     this._engineContext = context;
@@ -348,6 +365,18 @@ export class RendererPlugin implements Plugin {
     this.fx?.destroy();
     if (this._installed.provider) this._provider.destroyAll();
     if (this._installed.app) this._app.destroy();
+    // Restore the global TextureStyle default the pixel-art preset
+    // mutated on install. Skipped when nothing was captured (preset was
+    // off, leave the field alone) — assigning `undefined` to
+    // `defaultOptions.scaleMode` would TS-error and is the wrong shape
+    // anyway, since the preset never ran.
+    if (this._scaleModeCaptured) {
+      if (this._originalScaleMode !== undefined) {
+        TextureStyle.defaultOptions.scaleMode = this._originalScaleMode;
+      }
+      this._scaleModeCaptured = false;
+      this._originalScaleMode = undefined;
+    }
   }
 
   /** The PixiJS Application instance. */

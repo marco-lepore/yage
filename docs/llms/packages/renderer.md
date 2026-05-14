@@ -421,7 +421,7 @@ readonly layers: readonly LayerDef[] = [
 const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
 ```
 
-Setting `sort` also flips `container.sortableChildren = true` on the layer so the relationship is visible to anyone inspecting the Pixi tree. The actual reorder is done in `DisplaySystem` by mutating `container.children` directly — Pixi v8's built-in `sortChildren()` only sorts by `zIndex`, which can't see position changes.
+The reorder is done in `DisplaySystem` by mutating `container.children` directly — Pixi v8's built-in `sortChildren()` only sorts by `zIndex`, which can't see position changes. Setting `sort` deliberately does NOT flip `container.sortableChildren = true`: if it did, Pixi's render-time `sortChildren()` would re-order by `zIndex` after `DisplaySystem.applyLayerSort`, undoing our custom sort on any frame where a child was just added (sortDirty). Set `sortableChildren: true` on the layer only when you actually want Pixi's zIndex auto-sort *instead* of the custom comparator.
 
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 

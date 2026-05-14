@@ -199,10 +199,15 @@ describe("DisplaySystem layer sort", () => {
     expect(layer.children).toEqual([b.sprite, a.sprite]);
   });
 
-  it("flips sortableChildren on a layer with a sort comparator", () => {
+  it("leaves sortableChildren untouched on a layer with a custom sort comparator", () => {
+    // Pixi v8's render pipeline calls `sortChildren()` on sortableChildren
+    // containers, which only orders by `zIndex` and would undo our custom
+    // sort on any frame where a child was just added (sortDirty=true).
+    // RenderLayer deliberately leaves the flag alone so the manual
+    // `children`-array mutation in DisplaySystem stays authoritative.
     const { tree } = setup();
     tree.ensureLayer({ name: "characters", order: 0, sort: ySort });
     const layer = tree.get("characters").container;
-    expect(layer.sortableChildren).toBe(true);
+    expect(layer.sortableChildren).toBe(false);
   });
 });

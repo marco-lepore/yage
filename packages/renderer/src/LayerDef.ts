@@ -58,16 +58,23 @@ export interface LayerDef {
   /** Whether children should self-sort by their `zIndex`. Default: false. */
   sortableChildren?: boolean;
   /**
-   * Comparator applied to the layer's children before each render. Setting
-   * a `sort` function flips `container.sortableChildren = true` and orders
-   * children by the comparator's result each frame — `DisplaySystem`
-   * re-sorts after syncing transforms so position-based comparisons see
-   * the current frame's values.
+   * Comparator applied to the layer's children before each render.
+   * `DisplaySystem` mutates `container.children` directly with this
+   * comparator each frame, after syncing transforms so position-based
+   * comparisons see the current frame's values, before camera
+   * transforms.
    *
    * Default: unset (insertion order). Use `ySort` for the classic
    * top-down depth rule, or `ySortBy(getOffset)` to anchor each sprite's
    * sort key at a per-entity Y offset (think Godot's `y_sort_origin` —
    * matches a sprite's apparent "footprint" instead of its top-left).
+   *
+   * Note: this hook does NOT flip `sortableChildren`. Pixi v8's render
+   * pipeline would otherwise call `container.sortChildren()` at render
+   * time and re-order by `zIndex`, undoing our custom sort on any frame
+   * where a child was just added. Set `sortableChildren: true` only if
+   * you actually want Pixi's zIndex-based auto-sort INSTEAD of the
+   * custom comparator.
    */
   sort?: LayerSortFn;
   /**

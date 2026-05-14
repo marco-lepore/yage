@@ -747,6 +747,42 @@ describe("RendererPlugin", () => {
       const canvas = plugin.canvas as unknown as { style: { cssText: string } };
       expect(canvas.style.cssText).toBe("");
     });
+
+    it("restores TextureStyle.defaultOptions.scaleMode on destroy", async () => {
+      // Pixi's TextureStyle.defaultOptions is a module-level singleton; if
+      // we don't restore it, later plugin instances and any texture loaded
+      // after teardown inherit nearest sampling silently.
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      pixi.TextureStyle.defaultOptions.scaleMode = "linear";
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixelArtPreset: true,
+      });
+      await plugin.install(context);
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("nearest");
+
+      plugin.onDestroy();
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("linear");
+    });
+
+    it("does not touch TextureStyle on destroy when preset was off", async () => {
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      pixi.TextureStyle.defaultOptions.scaleMode = "nearest"; // simulate a value set externally
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      plugin.onDestroy();
+
+      // Plugin had no preset on, so destroy shouldn't clobber externally-set values.
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("nearest");
+    });
   });
 
   describe("orientation", () => {

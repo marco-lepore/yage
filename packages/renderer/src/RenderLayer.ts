@@ -164,11 +164,15 @@ export class RenderLayerManager {
     if (eventMode) container.eventMode = eventMode;
     if (opts?.sortableChildren) container.sortableChildren = true;
     if (opts?.isRenderGroup) container.isRenderGroup = true;
-    // `sortableChildren = true` is a no-op without dirty management here —
-    // the actual per-frame sort happens in `DisplaySystem`. We still flip
-    // the flag so the relationship is explicit to anyone inspecting the
-    // container.
-    if (opts?.sort) container.sortableChildren = true;
+    // NOTE: a custom `sort` comparator deliberately does NOT flip
+    // `container.sortableChildren = true`. Pixi v8's
+    // `RenderGroupSystem.execute` calls `container.sortChildren()` at
+    // render time on sortableChildren containers, which only orders by
+    // `zIndex`. On any frame where a child was just added (sortDirty),
+    // Pixi's render-time sort would run AFTER `DisplaySystem.applyLayerSort`
+    // and re-order the children by zIndex, undoing our custom sort for
+    // that frame. Leaving `sortableChildren = false` keeps our
+    // direct `children`-array mutation authoritative.
 
     const layer = new RenderLayer(
       name,
