@@ -1,3 +1,5 @@
+import type { ReactiveRecord } from "./reactive.js";
+
 /**
  * Store — object-shaped reactive store with shallow merge.
  *
@@ -6,17 +8,16 @@
  * changed (Object.is per key). Mutation through the snapshot bypasses
  * subscribers — TypeScript's `Readonly<T>` enforces the contract; do not reach
  * into nested objects to mutate them, use `set` instead.
+ *
+ * Implements `ReactiveRecord<T>` — pluggable into `useStore` directly.
  */
-export interface Store<T extends object> {
-  get(): Readonly<T>;
-  set(partial: Partial<T>): void;
-  subscribe(listener: () => void): () => void;
-}
+export type Store<T extends object> = ReactiveRecord<T>;
 
 export function createStore<T extends object>(initial: T): Store<T> {
   let snapshot: T = { ...initial };
   const listeners = new Set<() => void>();
 
+  // Brand on ReactiveRecord is phantom (declare-only); cast through unknown.
   return {
     get(): Readonly<T> {
       return snapshot;
@@ -40,5 +41,5 @@ export function createStore<T extends object>(initial: T): Store<T> {
         listeners.delete(listener);
       };
     },
-  };
+  } as unknown as Store<T>;
 }

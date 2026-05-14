@@ -133,14 +133,28 @@ import { useEngine, useScene, useStore, useQuery, useSceneSelector } from "@yage
 const engine = useEngine();
 const scene = useScene();
 
-// Reactive store
-const score = useStore(store, (s) => s.score);
+// Reactive store — one overload per Reactive* shape, plus a selector escape hatch.
+useStore(record);           // ReactiveRecord<T>      → Readonly<T>
+useStore(counter);          // ReactiveCounter        → number
+useStore(map);              // ReactiveMap<K, V>      → Array<[K, V]>
+useStore(set);              // ReactiveSet<K>         → K[]
+useStore(list);             // ReactiveList<T>        → T[]
+useStore(value);            // ReactiveValue<T>       → T
+useStore(source, select);   // selector receives the source itself, not a snapshot
 
 // ECS query (polled each frame)
 const count = useQuery([EnemyTag], (result) => result.size);
 
 // Scene selector (polled each frame)
 const entityCount = useSceneSelector((scene) => scene.getEntities().length);
+```
+
+`useStore(compound)` (the compound returned by `defineStore`) is intentionally **not** supported — read individual leaves so subscription granularity stays per-leaf. For a record-shaped store, the selector still receives the source; call `.get()` inside:
+
+```ts
+const inv  = useStore(game.inventory);                          // entries snapshot
+const gold = useStore(game.gold);                               // number
+const lang = useStore(game.settings, (s) => s.get().lang);      // selector
 ```
 
 ## createStore
@@ -154,7 +168,7 @@ const store = createStore({ score: 0, health: 100 });
 store.set({ score: store.get().score + 10 });
 
 // React side: read (auto-rerenders)
-const score = useStore(store, (s) => s.score);
+const score = useStore(store, (src) => src.get().score);
 
 // Manual subscribe
 const unsub = store.subscribe(() => console.log(store.get()));

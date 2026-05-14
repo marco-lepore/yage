@@ -1,8 +1,19 @@
 import { createContext, useContext, useCallback, useRef, useMemo } from "react";
 import { useSyncExternalStore } from "react";
-import type { EngineContext, Scene, ComponentClass, QueryResult } from "@yagejs/core";
+import type {
+  EngineContext,
+  Scene,
+  ComponentClass,
+  QueryResult,
+  Reactive,
+  ReactiveValue,
+  ReactiveCounter,
+  ReactiveRecord,
+  ReactiveMap,
+  ReactiveSet,
+  ReactiveList,
+} from "@yagejs/core";
 import { QueryCacheKey } from "@yagejs/core";
-import type { Store } from "./store.js";
 import { shallowEqual } from "./shallowEqual.js";
 
 // ---------------------------------------------------------------------------
@@ -62,48 +73,108 @@ function subscribeFrame(listener: () => void): () => void {
 // ---------------------------------------------------------------------------
 
 /**
- * Read from a reactive store with optional selector.
+ * Read a reactive store inside React. One overload per `Reactive*` shape;
+ * each returns a snapshot of the leaf's natural value and re-renders when
+ * the leaf notifies.
  *
- * Push-based via `useSyncExternalStore` — re-renders only when the selected
- * value changes.
+ * The selector overload is the escape hatch for partial reads (e.g. one map
+ * key, one record field). The selector receives the source itself, not a
+ * snapshot — call the source's accessors inside.
+ *
+ * The compound `defineStore` result is intentionally not accepted — read
+ * individual leaves so subscription granularity stays per-leaf.
  */
-export function useStore<T extends object>(store: Store<T>): Readonly<T>;
-export function useStore<T extends object, R>(
-  store: Store<T>,
-  selector: (state: Readonly<T>) => R,
+export function useStore<T extends object>(
+  source: ReactiveRecord<T>,
+): Readonly<T>;
+export function useStore(source: ReactiveCounter): number;
+export function useStore<K, V>(source: ReactiveMap<K, V>): Array<[K, V]>;
+export function useStore<K>(source: ReactiveSet<K>): K[];
+export function useStore<T>(source: ReactiveList<T>): T[];
+export function useStore<T>(source: ReactiveValue<T>): T;
+export function useStore<S extends Reactive, R>(
+  source: S,
+  select: (s: S) => R,
   isEqual?: (a: R, b: R) => boolean,
 ): R;
-export function useStore<T extends object, R = Readonly<T>>(
-  store: Store<T>,
-  selector?: (state: Readonly<T>) => R,
-  isEqual: (a: R, b: R) => boolean = shallowEqual as (a: R, b: R) => boolean,
-): R {
-  const sel = selector ?? ((s: Readonly<T>) => s as unknown as R);
+export function useStore(
+  source: Reactive,
+  select?: (s: Reactive) => unknown,
+  isEqual: (a: unknown, b: unknown) => boolean = shallowEqual as (
+    a: unknown,
+    b: unknown,
+  ) => boolean,
+): unknown {
+  const reader = select ?? defaultSnapshotReader(source);
 
-  // Cache the last result to skip re-renders when isEqual says same
-  const cache = useRef<{ value: R; snap: Readonly<T> } | null>(null);
+  // Cache invalidated by the source's subscribe callback. Several readers
+  // (map.entries(), set.values(), list(), arbitrary selectors) produce a
+  // fresh value object on each call; without caching, getSnapshot would
+  // never be referentially stable and useSyncExternalStore would loop.
+  // shallowEqual still preserves the previous reference across equivalent
+  // selector outputs so React's bail-out works on partial reads.
+  const cache = useRef<{ value: unknown; valid: boolean } | null>(null);
 
-  const getSnapshot = useCallback((): R => {
-    const snap = store.get();
-    if (cache.current && cache.current.snap === snap) {
+  const getSnapshot = useCallback((): unknown => {
+    if (cache.current && cache.current.valid) {
       return cache.current.value;
     }
-    const next = sel(snap);
+    const next = reader(source);
     if (cache.current && isEqual(cache.current.value, next)) {
-      // Value unchanged — return stable reference
-      cache.current = { value: cache.current.value, snap };
+      cache.current.valid = true;
       return cache.current.value;
     }
-    cache.current = { value: next, snap };
+    cache.current = { value: next, valid: true };
     return next;
-  }, [store, sel, isEqual]);
+  }, [source, reader, isEqual]);
 
   const subscribe = useCallback(
-    (onStoreChange: () => void) => store.subscribe(onStoreChange),
-    [store],
+    (onChange: () => void) =>
+      source.subscribe(() => {
+        if (cache.current) cache.current.valid = false;
+        onChange();
+      }),
+    [source],
   );
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Pick the natural snapshot reader for each Reactive* shape. We dispatch by
+ * which method the source exposes — every leaf is one shape exactly, so
+ * checking for the shape-defining method is sufficient and avoids a brand.
+ */
+function defaultSnapshotReader(
+  source: Reactive,
+): (s: Reactive) => unknown {
+  const s = source as Partial<
+    ReactiveCounter &
+      ReactiveMap<unknown, unknown> &
+      ReactiveSet<unknown> &
+      ReactiveList<unknown> &
+      ReactiveValue<unknown> &
+      ReactiveRecord<object>
+  >;
+  if (typeof s.value === "function" && typeof s.increment === "function") {
+    return (x) => (x as ReactiveCounter).value();
+  }
+  if (typeof s.entries === "function") {
+    return (x) => (x as ReactiveMap<unknown, unknown>).entries();
+  }
+  if (typeof s.values === "function" && typeof s.add === "function") {
+    return (x) => (x as ReactiveSet<unknown>).values();
+  }
+  if (typeof s.list === "function") {
+    return (x) => (x as ReactiveList<unknown>).list();
+  }
+  if (typeof s.get === "function") {
+    // ReactiveRecord and ReactiveValue both expose get(). They differ in arity
+    // but both return their natural snapshot when called with no arg.
+    return (x) =>
+      (x as ReactiveValue<unknown> & ReactiveRecord<object>).get() as unknown;
+  }
+  throw new Error("useStore: source is not a recognised Reactive* shape.");
 }
 
 // ---------------------------------------------------------------------------

@@ -249,7 +249,7 @@ Two persistence paths in one package:
 | `src/adapters/localStorage.ts`      | `localStorageAdapter()` — browser default                     |
 | `src/adapters/memory.ts`            | `memoryAdapter()` — tests + Node                              |
 
-Stores themselves (`defineStore` / `defineSet` / `defineMap` / `defineCounter` / `Atom`) live in `@yagejs/core` under `src/state/` and are re-exported from `@yagejs/save`.
+Stores themselves (the compound `defineStore` + standalone `defineRecord` / `defineValue` / `defineSet` / `defineMap` / `defineCounter` / `defineList` / `Atom`) live in `@yagejs/core` under `src/state/` and are re-exported from `@yagejs/save`. The `Reactive*` subscription interfaces in `state/reactive.ts` are the React-facing contracts that `useStore` reads through.
 
 **Snapshot path** (advanced — full-scene `@serializable` quicksave):
 
@@ -682,26 +682,33 @@ Two paths — pick by use case.
 
 ```typescript
 import {
-  defineStore, defineSet, createSave, SavePlugin,
+  defineStore, defineRecord, createSave, SavePlugin,
   localStorageAdapter, SaveServiceKey,
 } from "@yagejs/save";
 
-// Define stores at module scope
-const settings = defineStore<{ volume: number }>("settings", {
+// Compound — many leaves, one save target.
+const game = defineStore("game", (s) => ({
+  run: s.record<{ chapter: number }>({ defaults: () => ({ chapter: 1 }) }),
+  opened: s.set<string>(),
+  gold: s.counter({ default: 0 }),
+}));
+
+// Standalone for things that persist on a different cadence.
+const settings = defineRecord<{ volume: number }>("settings", {
   defaults: () => ({ volume: 0.8 }),
 });
-const opened = defineSet<string>("world.opened");
 
 // Construct Save in main; register via plugin
 const save = createSave({ adapter: localStorageAdapter() });
-await save.restoreAll([settings, opened]);
+await save.restoreAll([game, settings]);
+save.autoPersist(game);
 save.autoPersist(settings);
 engine.use(new SavePlugin({ save }));
 
 // In game code:
 const save = this.service(SaveServiceKey);
-await save.saveSlot(saves, "manual-1", { metadata: { /* ... */ } });
-await save.loadSlot(saves, "manual-1");
+await save.saveSlot(game, "manual-1", { metadata: { /* ... */ } });
+await save.loadSlot(game, "manual-1");
 ```
 
 **Snapshot path** (advanced — full-scene quicksave):

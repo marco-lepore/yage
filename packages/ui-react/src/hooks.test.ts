@@ -15,7 +15,16 @@ import {
   notifyFrame,
 } from "./hooks.js";
 import { createStore } from "./store.js";
-import { EngineContext, QueryCacheKey, QueryCache } from "@yagejs/core";
+import {
+  EngineContext,
+  QueryCacheKey,
+  QueryCache,
+  defineValue,
+  defineCounter,
+  defineMap,
+  defineSet,
+  defineList,
+} from "@yagejs/core";
 
 beforeAll(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -127,7 +136,7 @@ describe("useStore", () => {
     const renders: number[] = [];
 
     function Comp() {
-      const s = useStore(store, (s) => s.score);
+      const s = useStore(store, (src) => src.get().score);
       renders.push(s);
       return null;
     }
@@ -144,7 +153,7 @@ describe("useStore", () => {
     let renderCount = 0;
 
     function Comp() {
-      useStore(store, (s) => ({ a: s.a }));
+      useStore(store, (src) => ({ a: src.get().a }));
       renderCount++;
       return null;
     }
@@ -155,6 +164,111 @@ describe("useStore", () => {
     // Change b only — selector returns { a: 1 } both times (shallowEqual)
     act(() => store.set({ b: 99 }));
     expect(renderCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useStore — shape overloads
+// ---------------------------------------------------------------------------
+
+describe("useStore overloads (per Reactive* shape)", () => {
+  let container: HTMLDivElement;
+  let root: ReturnType<typeof createDomRoot>;
+
+  beforeEach(() => {
+    container = createContainer();
+    root = createDomRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("reads a ReactiveValue", () => {
+    const v = defineValue<string>(`hk.val.${Math.random()}`, {
+      defaults: () => "hi",
+    });
+    let result: unknown;
+    function Comp() {
+      result = useStore(v);
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toBe("hi");
+    act(() => v.set("yo"));
+    expect(result).toBe("yo");
+  });
+
+  it("reads a ReactiveCounter as a number", () => {
+    const c = defineCounter(`hk.ctr.${Math.random()}`, { defaults: () => 3 });
+    let result: unknown;
+    function Comp() {
+      result = useStore(c);
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toBe(3);
+    act(() => c.increment(2));
+    expect(result).toBe(5);
+  });
+
+  it("reads a ReactiveMap as entries", () => {
+    const m = defineMap<string, number>(`hk.map.${Math.random()}`);
+    m.set("a", 1);
+    let result: Array<[string, number]> | undefined;
+    function Comp() {
+      result = useStore(m);
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toEqual([["a", 1]]);
+    act(() => m.set("b", 2));
+    expect(result?.sort()).toEqual([
+      ["a", 1],
+      ["b", 2],
+    ]);
+  });
+
+  it("reads a ReactiveSet as an array", () => {
+    const s = defineSet<string>(`hk.set.${Math.random()}`);
+    s.add("x");
+    let result: string[] | undefined;
+    function Comp() {
+      result = useStore(s);
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toEqual(["x"]);
+    act(() => s.add("y"));
+    expect(result?.sort()).toEqual(["x", "y"]);
+  });
+
+  it("reads a ReactiveList as an array", () => {
+    const l = defineList<string>(`hk.list.${Math.random()}`);
+    l.add("a");
+    l.add("b");
+    let result: string[] | undefined;
+    function Comp() {
+      result = useStore(l);
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toEqual(["a", "b"]);
+  });
+
+  it("selector escape hatch reads one map key", () => {
+    const m = defineMap<string, number>(`hk.sel.${Math.random()}`);
+    m.set("a", 1);
+    let result: number | undefined;
+    function Comp() {
+      result = useStore(m, (src) => src.get("a"));
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toBe(1);
+    act(() => m.set("a", 7));
+    expect(result).toBe(7);
   });
 });
 

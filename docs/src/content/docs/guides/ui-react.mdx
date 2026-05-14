@@ -294,33 +294,66 @@ function PauseButton() {
 
 ### useStore
 
-Bridge ECS state into React with reactive stores:
+`useStore` is the single React entry for every reactive primitive — counters,
+records, maps, sets, lists, single-cell values, and `createStore` records.
+One overload per shape, plus a selector escape hatch.
 
 ```tsx
-import { createStore } from "@yagejs/ui-react";
-import { useStore } from "@yagejs/ui-react";
+import { createStore, useStore } from "@yagejs/ui-react";
 
-// Create a store (typically at scene level)
+// Plain record (object with shallow merge)
 const gameStore = createStore({ score: 0, health: 100 });
 
 // Write from ECS (systems, components, event handlers)
 gameStore.set({ score: gameStore.get().score + 10 });
 
-// Read from React (auto-rerenders on change)
+// Read from React — auto-rerenders on change
 function ScoreDisplay() {
-  const score = useStore(gameStore, (s) => s.score);
+  const { score } = useStore(gameStore);
   return <Text style={{ fontSize: 32 }}>{`Score: ${score}`}</Text>;
 }
 ```
 
-The optional selector and equality function prevent unnecessary re-renders:
+Each `useStore(source)` returns the leaf's natural snapshot:
 
 ```tsx
-// Only re-render when score changes
-const score = useStore(store, (s) => s.score);
+useStore(record);   // ReactiveRecord<T>  → Readonly<T>
+useStore(counter);  // ReactiveCounter    → number
+useStore(map);      // ReactiveMap<K, V>  → Array<[K, V]>
+useStore(set);      // ReactiveSet<K>     → K[]
+useStore(list);     // ReactiveList<T>    → T[]
+useStore(value);    // ReactiveValue<T>   → T
+```
+
+The compound returned by `defineStore` is intentionally not accepted — read
+individual leaves instead, so subscription granularity stays per-leaf:
+
+```tsx
+const game = defineStore("game", (s) => ({
+  gold: s.counter({ default: 0 }),
+  inventory: s.map<string, number>(),
+}));
+
+function HUD() {
+  const gold = useStore(game.gold);            // number
+  const entries = useStore(game.inventory);    // Array<[string, number]>
+  return <Text>{`${gold} gold · ${entries.length} items`}</Text>;
+}
+```
+
+For partial reads, use the selector escape hatch. The selector receives the
+**source itself**, not a snapshot — call its accessors inside:
+
+```tsx
+// One map entry only — re-renders only when "moonleaf" changes
+const moonleafQty = useStore(game.inventory, (m) => m.get("moonleaf") ?? 0);
 
 // Custom equality check
-const pos = useStore(store, (s) => s.position, (a, b) => a.x === b.x && a.y === b.y);
+const pos = useStore(
+  store,
+  (src) => src.get().position,
+  (a, b) => a.x === b.x && a.y === b.y,
+);
 ```
 
 ### useQuery

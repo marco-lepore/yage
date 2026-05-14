@@ -518,7 +518,7 @@ this.context.register(GameStateKey, { score: 0, health: 100 });
 ```ts
 const store = createStore({ score: 0 });
 store.set({ score: 10 }); // ECS writes
-const score = useStore(store, (s) => s.score); // React reads
+const score = useStore(store, (src) => src.get().score); // React reads (selector takes source)
 ```
 
 ### Event-driven state

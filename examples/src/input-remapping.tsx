@@ -313,7 +313,7 @@ function GroupSection({
 function ConflictModal() {
   const ctx = useEngine();
   const input = useMemo(() => ctx.resolve(InputManagerKey), [ctx]);
-  const conflict = useStore(conflictStore, (s) => s.conflict);
+  const conflict = useStore(conflictStore, (s) => s.get().conflict);
 
   if (!conflict) return null;
 
@@ -415,7 +415,7 @@ function RebindPanel() {
   useEffect(() => input.onActivePadChanged(setActivePad), [input]);
 
   // Re-render when a conflict is resolved via "Replace" in the modal.
-  const resolveVersion = useStore(conflictStore, (s) => s.resolveVersion);
+  const resolveVersion = useStore(conflictStore, (s) => s.get().resolveVersion);
 
   // Force re-read of bindings from InputManager after mutations.
   void (version + resolveVersion);
