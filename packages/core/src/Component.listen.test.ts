@@ -25,7 +25,7 @@ class SceneListenerComponent extends Component {
 
   onAdd() {
     this.listenScene(Hit, (data, entity) => {
-      this.received.push({ data, entityName: entity.name });
+      this.received.push({ data, entityName: entity?.name ?? "<scene>" });
     });
   }
 }

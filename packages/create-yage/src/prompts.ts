@@ -12,6 +12,7 @@ import {
 import pc from "picocolors";
 import type { TemplateId } from "./templates.js";
 import { DEFAULT_TEMPLATE, TEMPLATES } from "./templates.js";
+import type { FeatureId } from "./features.js";
 import type { DirectoryState } from "./utils.js";
 import { deriveProjectName, validateProjectName } from "./utils.js";
 
@@ -19,6 +20,7 @@ export interface ResolvedOptions {
   targetDir: string;
   projectName: string;
   template: TemplateId;
+  features: readonly FeatureId[];
   overwrite: boolean;
   install: boolean;
   git: boolean;
@@ -27,6 +29,7 @@ export interface ResolvedOptions {
 export interface PartialOptions {
   targetDirArg?: string;
   template?: TemplateId;
+  features?: readonly FeatureId[];
   install?: boolean;
   git?: boolean;
   overwrite?: boolean;
@@ -154,7 +157,15 @@ export async function runPrompts(
     }
   }
 
-  return { targetDir, projectName, template, overwrite, install, git };
+  return {
+    targetDir,
+    projectName,
+    template,
+    features: initial.features ?? [],
+    overwrite,
+    install,
+    git,
+  };
 }
 
 function cancelFlow(): null {

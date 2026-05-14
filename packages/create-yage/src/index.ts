@@ -29,6 +29,7 @@ async function main(): Promise<number> {
     {
       ...(parsed.targetDir !== undefined && { targetDirArg: parsed.targetDir }),
       ...(parsed.template !== undefined && { template: parsed.template }),
+      ...(parsed.features !== undefined && { features: parsed.features }),
       ...(parsed.install !== undefined && { install: parsed.install }),
       ...(parsed.git !== undefined && { git: parsed.git }),
       ...(parsed.overwrite !== undefined && { overwrite: parsed.overwrite }),
@@ -49,6 +50,7 @@ async function main(): Promise<number> {
       targetDir: options.targetDir,
       projectName: options.projectName,
       template: options.template,
+      features: options.features,
       templatesRoot,
       overwrite: options.overwrite,
       install: options.install,

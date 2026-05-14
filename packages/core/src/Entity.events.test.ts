@@ -180,6 +180,45 @@ describe("Entity events", () => {
     });
   });
 
+  describe("scene.emit", () => {
+    it("dispatches scene-emitted events to scene.on handlers", () => {
+      const { scene } = createMockScene();
+      const Hit = defineEvent<{ damage: number }>("hit");
+      const handler = vi.fn();
+
+      scene.on(Hit, handler);
+      scene.emit(Hit, { damage: 7 });
+
+      expect(handler).toHaveBeenCalledWith({ damage: 7 }, undefined);
+    });
+
+    it("supports void events", () => {
+      const { scene } = createMockScene();
+      const Ping = defineEvent("ping");
+      const handler = vi.fn();
+
+      scene.on(Ping, handler);
+      scene.emit(Ping);
+
+      expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it("does not deliver scene-emitted events to entity.on listeners", () => {
+      const { scene } = createMockScene();
+      const entity = scene.spawn("test");
+      const Ping = defineEvent("ping");
+      const entityHandler = vi.fn();
+      const sceneHandler = vi.fn();
+
+      entity.on(Ping, entityHandler);
+      scene.on(Ping, sceneHandler);
+      scene.emit(Ping);
+
+      expect(entityHandler).not.toHaveBeenCalled();
+      expect(sceneHandler).toHaveBeenCalledOnce();
+    });
+  });
+
   describe("event handlers cleared on destroy", () => {
     it("_performDestroy clears event handlers", () => {
       const { entity } = createMockEntity();

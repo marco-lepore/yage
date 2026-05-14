@@ -162,10 +162,14 @@ export abstract class Component {
     this.addCleanup(unsub);
   }
 
-  /** Subscribe to scene-level bubbled events, auto-unsubscribe on removal. */
+  /**
+   * Subscribe to scene-level events, auto-unsubscribe on removal. Handlers
+   * fire for bubbled entity events (entity = source) and `scene.emit`
+   * events (entity = undefined).
+   */
   protected listenScene<T>(
     token: EventToken<T>,
-    handler: (data: T, entity: Entity) => void,
+    handler: (data: T, entity?: Entity) => void,
   ): void {
     const unsub = this.scene.on(token, handler);
     this.addCleanup(unsub);

@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { TemplateId } from "./templates.js";
+import type { FeatureId } from "./features.js";
+import { FEATURES } from "./features.js";
 import { copyTemplateDirectory, rewriteJson } from "./utils.js";
 
 export interface ScaffoldOptions {
@@ -9,6 +11,8 @@ export interface ScaffoldOptions {
   projectName: string;
   template: TemplateId;
   templatesRoot: string;
+  /** Optional feature add-ons (see `features.ts`). */
+  features?: readonly FeatureId[];
   /** If true, delete the target directory before copying (overwrite mode). */
   overwrite: boolean;
   install: boolean;
@@ -35,10 +39,18 @@ export async function scaffold(
   const templateDir = join(options.templatesRoot, options.template);
   await copyTemplateDirectory(templateDir, options.targetDir);
 
-  await rewriteJson<{ name: string; [key: string]: unknown }>(
+  const features = options.features ?? [];
+  await rewriteJson<PackageJson>(
     join(options.targetDir, "package.json"),
-    (pkg) => ({ ...pkg, name: options.projectName }),
+    (pkg) => applyFeaturesToPackageJson({ ...pkg, name: options.projectName }, features),
   );
+
+  if (features.length > 0) {
+    await rewriteJson<TsConfigJson>(
+      join(options.targetDir, "tsconfig.json"),
+      (cfg) => applyFeaturesToTsConfig(cfg, features),
+    );
+  }
 
   const installSucceeded = options.install
     ? await runCommand("npm", ["install"], options.targetDir)
@@ -61,6 +73,80 @@ async function initGit(cwd: string): Promise<boolean> {
     ["commit", "-q", "-m", "chore: initial commit from create-yage"],
     cwd,
   );
+}
+
+interface PackageJson {
+  name: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+interface TsConfigJson {
+  compilerOptions?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Merges feature deps into `package.json`, preserving any existing entries.
+ * Sorted alphabetically per npm convention so diffs stay stable.
+ */
+export function applyFeaturesToPackageJson(
+  pkg: PackageJson,
+  features: readonly FeatureId[],
+): PackageJson {
+  if (features.length === 0) return pkg;
+
+  const deps: Record<string, string> = { ...(pkg.dependencies ?? {}) };
+  const devDeps: Record<string, string> = { ...(pkg.devDependencies ?? {}) };
+
+  for (const id of features) {
+    const spec = FEATURES[id];
+    for (const [name, range] of Object.entries(spec.dependencies)) {
+      deps[name] = range;
+    }
+    if (spec.devDependencies) {
+      for (const [name, range] of Object.entries(spec.devDependencies)) {
+        devDeps[name] = range;
+      }
+    }
+  }
+
+  // Suppress empty `devDependencies` for templates/features that don't
+  // need any — emitting `"devDependencies": {}` is harmless to npm but
+  // unexpected noise in a fresh project. Keep the key if the template
+  // already declared one so we never quietly drop user-visible state.
+  const sortedDev = sortObject(devDeps);
+  const hasDev =
+    Object.keys(sortedDev).length > 0 || pkg.devDependencies !== undefined;
+  return {
+    ...pkg,
+    dependencies: sortObject(deps),
+    ...(hasDev ? { devDependencies: sortedDev } : {}),
+  };
+}
+
+/** Merges feature compilerOptions into `tsconfig.json`. */
+export function applyFeaturesToTsConfig(
+  cfg: TsConfigJson,
+  features: readonly FeatureId[],
+): TsConfigJson {
+  const compilerOptions: Record<string, unknown> = { ...(cfg.compilerOptions ?? {}) };
+  for (const id of features) {
+    const opts = FEATURES[id].tsconfigOptions;
+    if (!opts) continue;
+    for (const [key, value] of Object.entries(opts)) {
+      compilerOptions[key] = value;
+    }
+  }
+  return { ...cfg, compilerOptions };
+}
+
+function sortObject<T>(obj: Record<string, T>): Record<string, T> {
+  const keys = Object.keys(obj).sort();
+  const sorted: Record<string, T> = {};
+  for (const k of keys) sorted[k] = obj[k] as T;
+  return sorted;
 }
 
 function runCommand(

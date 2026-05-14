@@ -80,10 +80,14 @@ whatever your scene preload declares.
 
 ## If you add `@yagejs/save` later
 
-The Vite config already has `oxc.decorator.legacy: true` so `@serializable`
-decorators on your own classes will work immediately. You'll also want to
-add `build.rollupOptions.output.keepNames: true` at that point so the save
-system can match classes by name after minification.
+The Vite config already has both the bits `@yagejs/save` needs:
+
+- `oxc.decorator.legacy: true` so `@serializable` decorators on your own
+  classes work without a config change.
+- `build.rollupOptions.output.keepNames: true` so the save system can match
+  classes by name after minification.
+
+Drop in `@yagejs/save`, decorate your classes, and you're set.
 
 ## Full YAGE documentation
 

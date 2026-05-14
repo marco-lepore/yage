@@ -8,6 +8,7 @@ import {
 } from "pixi.js";
 import type { LoaderParser, ResolvedAsset, Loader } from "pixi.js";
 import type { TiledMapData, TilesetData, TilesetRef } from "./types.js";
+import { subtextureCacheKey } from "./cacheKey.js";
 
 /**
  * PixiJS loader extension that detects Tiled map JSON files and resolves
@@ -81,14 +82,18 @@ const tiledMapLoaderParser: LoaderParser<TiledMapData> = {
           const x = margin + col * (tw + spacing);
           const y = margin + row * (th + spacing);
 
+          // Keep the cache key globally unique by anchoring it to the
+          // tileset's image path — two tilesets sharing a display name
+          // would otherwise collide, and with the has-guard below the
+          // second load would silently return the first's subtextures.
+          const cacheKey = subtextureCacheKey(tileset.image, id);
+          if (Assets.cache.has(cacheKey)) continue;
+
           const frame = new Rectangle(x, y, tw, th);
           const subtex = new Texture({
             source: baseTexture.source,
             frame,
           });
-
-          // Store subtexture in PixiJS cache with a key like "tileset-name:id"
-          const cacheKey = `${tileset.name}:${id}`;
           Assets.cache.set(cacheKey, subtex);
         }
       }

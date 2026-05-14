@@ -405,10 +405,14 @@ export abstract class Scene {
     return filterEntities(this.entities, filter);
   }
 
-  /** Subscribe to bubbled entity events at the scene level. Handler receives (data, emittingEntity). */
+  /**
+   * Subscribe to scene-level events. Handlers fire for both:
+   *   - bubbled events from any entity (via `entity.emit`) — `entity` is the source
+   *   - scene-emitted events (via `scene.emit`) — `entity` is `undefined`
+   */
   on<T>(
     token: EventToken<T>,
-    handler: (data: T, entity: Entity) => void,
+    handler: (data: T, entity?: Entity) => void,
   ): () => void {
     this._entityEventHandlers ??= new Map();
     let handlers = this._entityEventHandlers.get(token.name);
@@ -416,11 +420,27 @@ export abstract class Scene {
       handlers = new Set();
       this._entityEventHandlers.set(token.name, handlers);
     }
-    handlers.add(handler as (data: never, entity: Entity) => void);
+    handlers.add(handler as (data: never, entity?: Entity) => void);
 
     return () => {
-      handlers.delete(handler as (data: never, entity: Entity) => void);
+      handlers.delete(handler as (data: never, entity?: Entity) => void);
     };
+  }
+
+  /**
+   * Emit a typed event at the scene level. Scene-level `on` handlers fire
+   * with `entity = undefined` to indicate there's no emitting entity.
+   * Symmetric to `Entity.emit` but for scene-scoped signalling.
+   */
+  emit(token: EventToken<void>): void;
+  emit<T>(token: EventToken<T>, data: T): void;
+  emit<T>(token: EventToken<T>, data?: T): void {
+    const handlers = this._entityEventHandlers?.get(token.name);
+    if (handlers) {
+      for (const handler of [...handlers]) {
+        (handler as (data: unknown, entity?: Entity) => void)(data, undefined);
+      }
+    }
   }
 
   /**
@@ -431,7 +451,7 @@ export abstract class Scene {
     const handlers = this._entityEventHandlers?.get(eventName);
     if (handlers) {
       for (const handler of [...handlers]) {
-        (handler as (data: unknown, entity: Entity) => void)(data, entity);
+        (handler as (data: unknown, entity?: Entity) => void)(data, entity);
       }
     }
   }
@@ -471,14 +491,26 @@ export abstract class Scene {
   // ---- Internal methods ----
 
   /**
-   * Register a scene-scoped service. Called from a plugin's `beforeEnter`
-   * hook to make per-scene state (render tree, physics world) resolvable via
-   * `Component.use(key)`.
+   * Register a scene-scoped service. Plugins call this from their
+   * `beforeEnter` hook to expose per-scene state (render tree, physics
+   * world, …) resolvable via `Component.use(key)`. Game code can also use
+   * it to attach scene-local services without needing a plugin.
+   *
+   * Auto-cleared on scene exit — every key registered here is unregistered
+   * after `onExit` runs (and after plugin `afterExit` hooks see them).
+   */
+  registerScoped<T>(key: ServiceKey<T>, value: T): void {
+    this._scopedServices ??= new Map();
+    this._scopedServices.set(key.id, value);
+  }
+
+  /**
+   * Internal alias for `registerScoped` kept so existing plugin/test code
+   * doesn't churn. Prefer `registerScoped` in new code.
    * @internal
    */
   _registerScoped<T>(key: ServiceKey<T>, value: T): void {
-    this._scopedServices ??= new Map();
-    this._scopedServices.set(key.id, value);
+    this.registerScoped(key, value);
   }
 
   /**

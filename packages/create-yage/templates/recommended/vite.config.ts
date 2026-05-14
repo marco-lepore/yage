@@ -15,4 +15,14 @@ export default defineConfig({
       legacy: true,
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Preserve class/function names through minification. @yagejs/save
+        // matches classes by name when restoring snapshots; without this the
+        // production build would silently break save/load.
+        keepNames: true,
+      },
+    },
+  },
 });
