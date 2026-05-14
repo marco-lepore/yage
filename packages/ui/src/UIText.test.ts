@@ -181,6 +181,18 @@ describe("UIText.measure", () => {
     expect(renderedText(t)).toBe("loooong unbroken string");
   });
 
+  it('truncate: "clip" reports the constrained width so its slot does not inflate the parent', () => {
+    const t = new UIText({
+      children: "loooong unbroken string",
+      truncate: "clip",
+    });
+    // Intrinsic is 23 * 10 = 230px; the slot must clamp to the constraint
+    // (50px) so the parent panel's `overflow: hidden` cuts at the slot edge
+    // rather than at the inflated panel's outer border.
+    const out = layoutInContainer(t, 50);
+    expect(out.width).toBe(50);
+  });
+
   it("update({ truncate: undefined }) restores wrap behavior", () => {
     const t = new UIText({
       children: "the quick brown fox jumps",

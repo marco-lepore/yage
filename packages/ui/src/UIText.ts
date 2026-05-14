@@ -39,7 +39,20 @@ export class UIText implements UIElement {
       // `clip` / `ellipsis` are single-line, so wordWrap stays off and the
       // intrinsic text dimensions are what Yoga should see.
       if (this._truncate === "clip") {
-        return { width: this.text.width, height: this.text.height };
+        // Report the constrained width — not the intrinsic — so the slot
+        // doesn't inflate its parent. The text itself still renders
+        // unwrapped and visually overflows the slot, but the parent
+        // panel's `overflow: hidden` then clips it at the slot edge
+        // (i.e. inside the panel's padding) instead of at the panel's
+        // outer border.
+        const w = this.text.width;
+        let measuredWidth = w;
+        if (widthMode === MeasureMode.Exactly) {
+          measuredWidth = width;
+        } else if (widthMode === MeasureMode.AtMost) {
+          measuredWidth = Math.min(w, width);
+        }
+        return { width: measuredWidth, height: this.text.height };
       }
 
       if (this._truncate === "ellipsis") {
