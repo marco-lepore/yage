@@ -422,16 +422,40 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
           "createList.hydrate: expected { items: [], nextId: number }",
         );
       }
+      // ids are factory-assigned safe integers ≥ 1 and monotonic; nextId must
+      // sit strictly above the largest existing id so future `add()` calls
+      // don't collide with hydrated rows. Reject anything that would put the
+      // list into a self-inconsistent state — `findIndex` would silently
+      // return the wrong row, or `update(id)` would shadow an existing entry.
+      if (!Number.isSafeInteger(obj.nextId) || obj.nextId < 1) {
+        throw new Error(
+          `createList.hydrate: nextId must be a safe integer ≥ 1, got ${obj.nextId}`,
+        );
+      }
+      const seenIds = new Set<number>();
+      let maxId = 0;
       const items = obj.items.map((entry) => {
         if (entry == null || typeof entry !== "object") {
           throw new Error("createList.hydrate: malformed item");
         }
         const e = entry as { id?: unknown; value?: unknown };
-        if (typeof e.id !== "number") {
-          throw new Error("createList.hydrate: item missing numeric id");
+        if (typeof e.id !== "number" || !Number.isSafeInteger(e.id) || e.id < 1) {
+          throw new Error(
+            `createList.hydrate: item id must be a safe integer ≥ 1, got ${String(e.id)}`,
+          );
         }
+        if (seenIds.has(e.id)) {
+          throw new Error(`createList.hydrate: duplicate item id ${e.id}`);
+        }
+        seenIds.add(e.id);
+        if (e.id > maxId) maxId = e.id;
         return { id: e.id, value: e.value as T };
       });
+      if (obj.nextId <= maxId) {
+        throw new Error(
+          `createList.hydrate: nextId (${obj.nextId}) must be greater than the largest item id (${maxId})`,
+        );
+      }
       state = { items, nextId: obj.nextId };
       notify();
     },

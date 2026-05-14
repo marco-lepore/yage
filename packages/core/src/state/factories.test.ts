@@ -421,6 +421,64 @@ describe("createList", () => {
     expect(l.size()).toBe(2);
   });
 
+  describe("hydrate validation", () => {
+    it("rejects NaN nextId", () => {
+      const l = createList<string>();
+      expect(() =>
+        l.hydrate({ items: [], nextId: Number.NaN }),
+      ).toThrow(/nextId/);
+    });
+
+    it("rejects fractional nextId", () => {
+      const l = createList<string>();
+      expect(() => l.hydrate({ items: [], nextId: 1.5 })).toThrow(/nextId/);
+    });
+
+    it("rejects nextId ≤ 0", () => {
+      const l = createList<string>();
+      expect(() => l.hydrate({ items: [], nextId: 0 })).toThrow(/nextId/);
+    });
+
+    it("rejects NaN / fractional / non-positive item ids", () => {
+      const l = createList<string>();
+      expect(() =>
+        l.hydrate({
+          items: [{ id: Number.NaN, value: "a" }],
+          nextId: 2,
+        }),
+      ).toThrow(/item id/);
+      expect(() =>
+        l.hydrate({ items: [{ id: 1.5, value: "a" }], nextId: 2 }),
+      ).toThrow(/item id/);
+      expect(() =>
+        l.hydrate({ items: [{ id: 0, value: "a" }], nextId: 2 }),
+      ).toThrow(/item id/);
+    });
+
+    it("rejects duplicate item ids", () => {
+      const l = createList<string>();
+      expect(() =>
+        l.hydrate({
+          items: [
+            { id: 1, value: "a" },
+            { id: 1, value: "b" },
+          ],
+          nextId: 2,
+        }),
+      ).toThrow(/duplicate/);
+    });
+
+    it("rejects nextId ≤ the largest item id", () => {
+      const l = createList<string>();
+      expect(() =>
+        l.hydrate({
+          items: [{ id: 5, value: "a" }],
+          nextId: 5,
+        }),
+      ).toThrow(/nextId/);
+    });
+  });
+
   it("carries the 'list' STATE_KIND brand", () => {
     expect(createList<string>()[STATE_KIND]).toBe("list");
   });
