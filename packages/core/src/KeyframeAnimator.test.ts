@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { KeyframeAnimator } from "./KeyframeAnimator.js";
+import type { KeyframeAnimationDef } from "./KeyframeAnimator.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Entity } from "./Entity.js";
 
@@ -285,7 +286,7 @@ describe("KeyframeAnimator", () => {
     // record flows into the constructor unchanged.
     const { entity, pc } = setup();
     let value = 0;
-    const defs: Record<"bob", import("./KeyframeAnimator.js").KeyframeAnimationDef<number>> = {
+    const defs: Record<"bob", KeyframeAnimationDef<number>> = {
       bob: {
         keyframes: [
           { time: 0, data: 0 },

@@ -86,9 +86,14 @@ export class LayeredAnimationController<
   /** Play a one-shot on every layer with a shared lock duration.
    *
    * If `options.duration` is omitted, the duration is computed once from the
-   * first controller via {@link AnimationController.calcDuration} and passed
-   * to each child — so all layers unlock together even if some layers have
-   * fewer frames than others. */
+   * first controller via {@link AnimationController.calcDuration} and stored
+   * on this wrapper as the single source of truth. Children are given an
+   * `Infinity` per-controller duration so their own lock timers never expire
+   * independently — clearing them happens through this wrapper's
+   * {@link unlock} when the master timer fires. This avoids a race where a
+   * child's `update()` could tick out a frame before the wrapper's (e.g. if
+   * components are ordered differently in the scheduler, or accumulated
+   * float drift makes one timer cross the threshold a frame earlier). */
   playOneShot(
     name: T,
     options?: { duration?: number; onComplete?: () => void },
@@ -101,9 +106,11 @@ export class LayeredAnimationController<
     this._lockTimer = 0;
     this._lockDuration = duration;
     this._onComplete = options?.onComplete;
-    // Pass shared duration to each child; suppress per-child onComplete so we
-    // fire the user's callback once at the master timer's expiry.
-    for (const c of this._controllers) c.playOneShot(name, { duration });
+    // Children lock indefinitely (Infinity > finite for all finite _lockTimer
+    // values), so only the master timer expires. `unlock()` clears them.
+    for (const c of this._controllers) {
+      c.playOneShot(name, { duration: Number.POSITIVE_INFINITY });
+    }
   }
 
   /** Clear the lock and force-switch every layer to the given animation. */

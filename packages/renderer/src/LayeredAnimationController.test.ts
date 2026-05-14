@@ -113,6 +113,7 @@ vi.mock("pixi.js", () => {
 });
 
 import { Transform } from "@yagejs/core";
+import type { Scene } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { AnimationController } from "./AnimationController.js";
 import type { AnimationDef } from "./AnimationController.js";
@@ -133,7 +134,7 @@ const attackFrames5 = frames(5);
 const attackFrames10 = frames(10);
 
 function makeLayer(
-  scene: import("@yagejs/core").Scene,
+  scene: Scene,
   attackFrameCount: number,
 ): AnimationController<Anim> {
   const entity = spawnEntityInScene(scene);
@@ -204,6 +205,36 @@ describe("LayeredAnimationController", () => {
     expect(layered.locked).toBe(false);
     expect(short.locked).toBe(false);
     expect(long.locked).toBe(false);
+  });
+
+  it("children never auto-expire on their own ticks — only the master timer or unlock() releases them", () => {
+    // The wrapper passes Number.POSITIVE_INFINITY as the per-child lock
+    // duration so child controllers can never tick out independently. This
+    // guarantees the master timer is the single source of truth even if
+    // children and the wrapper land in different ticker groups or accumulate
+    // a one-frame float drift.
+    const { scene } = createRendererTestContext();
+    const a = makeLayer(scene, 5);
+    const b = makeLayer(scene, 5);
+    const host = spawnEntityInScene(scene);
+    const layered = host.add(
+      new LayeredAnimationController<Anim>({ controllers: [a, b] }),
+    );
+
+    layered.playOneShot("attack", { duration: 100 });
+    // Tick the children far past what would naturally expire their own locks
+    // (5 frames * (1000/60) / 0.4 ≈ 208 ms) without touching the master.
+    a.update!(10_000);
+    b.update!(10_000);
+    expect(a.locked).toBe(true);
+    expect(b.locked).toBe(true);
+    expect(layered.locked).toBe(true);
+
+    // Only when the wrapper's timer expires do the children release.
+    layered.update(101);
+    expect(layered.locked).toBe(false);
+    expect(a.locked).toBe(false);
+    expect(b.locked).toBe(false);
   });
 
   it("playOneShot accepts an explicit duration override", () => {
