@@ -110,9 +110,9 @@ function HUD() {
     <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
       <Text style={{ fontSize: 24, fill: 0xffffff }}>Score: {score}</Text>
 
+      {/* width/height are optional — omit them and the button shrinks to
+          fit its content. */}
       <Button
-        width={150}
-        height={40}
         bg={{ color: 0x4444aa }}
         hoverBg={{ color: 0x5555cc }}
         textStyle={{ fontSize: 16, fill: 0xffffff }}
@@ -139,17 +139,74 @@ function HUD() {
 }
 ```
 
+### Buttons with rich content
+
+`<Button>` accepts any `ReactNode` as children. Pass a string for the common
+labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
+`textStyle`), or pass JSX children to compose icons and text:
+
+```tsx
+<Button onClick={() => save()}>
+  <Image texture={saveIcon} width={16} height={16} />
+  <Text style={{ fontSize: 14, fill: 0xffffff }}>Save</Text>
+</Button>
+```
+
 ### Available Components
 
 | Component | Description |
 |---|---|
 | `<Panel>` | Flexbox container with `direction`, `gap`, `padding`, `bg` |
+| `<ZStack>` | Z-axis overlay panel — fills its parent, children layer via `position="absolute"` |
 | `<Text>` | Text label with `style` |
 | `<Button>` | Clickable button with `onClick`, `bg`, `hoverBg`, `pressBg` |
 | `<Image>` | Texture display with `texture`, `tint`, `alpha` |
 | `<NineSlice>` | Nine-slice scalable texture |
 | `<ProgressBar>` | Progress bar (`value` 0–1) |
 | `<Checkbox>` | Checkbox with `checked`, `onChange`, `label` |
+
+### Absolute positioning
+
+Every component accepts the shared layout props `position`, `left`, `top`,
+`right`, `bottom`. Combine them with a relative parent to overlay elements:
+
+```tsx
+<Panel position="relative" width={400} height={300}>
+  <ProgressBar width={400} height={300} value={progress} />
+  <Panel position="absolute" top={8} right={8} padding={4} bg={{ color: 0x000000, alpha: 0.6 }}>
+    <Text style={{ fontSize: 12 }}>{Math.round(progress * 100)}%</Text>
+  </Panel>
+</Panel>
+```
+
+### `<ZStack>` — Z-axis overlay primitive
+
+`<ZStack>` is a `<Panel>` that defaults to `width: "100%"`, `height: "100%"`,
+and `position: "relative"`. Drop absolute-positioned children inside to
+layer them at (0, 0) on the Z axis — modal backdrops, HUD layers, and
+badge markers. The name follows the SwiftUI convention (`VStack` /
+`HStack` for flow layout, `ZStack` for depth); for column / row stacking
+in YAGE use `<Panel direction="column" | "row">`.
+
+```tsx
+<ZStack>
+  {/* Dimmed backdrop fills the stack */}
+  <Panel position="absolute" left={0} top={0} width="100%" height="100%"
+         bg={{ color: 0x000000, alpha: 0.6 }} />
+
+  {/* Centered modal */}
+  <Panel position="absolute" left={0} top={0} width="100%" height="100%"
+         alignItems="center" justifyContent="center">
+    <Panel padding={24} gap={12} bg={{ color: 0x222222, radius: 8 }}>
+      <Text style={{ fontSize: 20 }}>Are you sure?</Text>
+      <Panel direction="row" gap={8}>
+        <Button onClick={onConfirm}>Confirm</Button>
+        <Button onClick={onCancel}>Cancel</Button>
+      </Panel>
+    </Panel>
+  </Panel>
+</ZStack>
+```
 
 ### PixiUI Components
 
@@ -165,6 +222,55 @@ import {
   PixiScrollBox,
 } from "@yagejs/ui-react";
 ```
+
+### Scrolling lists with `PixiScrollBox`
+
+Any list whose length you can't bound at design time — inventories,
+quest logs, chat, order tickets, leaderboards — should live inside a
+`PixiScrollBox`. A plain `<Panel>` simply clips overflow without
+scrolling, so once the list outgrows its container the extra entries
+disappear silently. `PixiScrollBox` is a Yoga-aware wrapper around
+[`@pixi/ui`'s `ScrollBox`](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox)
+that adds drag + wheel scrolling while still participating in the
+flexbox layout tree.
+
+```tsx
+import { PixiScrollBox, Panel, Text } from "@yagejs/ui-react";
+
+interface Order { id: string; label: string }
+
+function OrdersPanel({ orders }: { orders: Order[] }) {
+  return (
+    <Panel direction="column" gap={4} padding={8} bg={{ color: 0x000000, alpha: 0.7 }}>
+      <Text style={{ fontSize: 14, fill: 0xffffff }}>Orders</Text>
+
+      <PixiScrollBox
+        scrollWidth={240}
+        scrollHeight={160}
+        type="vertical"
+        elementsMargin={4}
+        background={0x111111}
+        radius={6}
+      >
+        {orders.map((o) => (
+          <Panel key={o.id} padding={8} bg={{ color: 0x222233 }}>
+            <Text style={{ fontSize: 12, fill: 0xffffff }}>{o.label}</Text>
+          </Panel>
+        ))}
+      </PixiScrollBox>
+    </Panel>
+  );
+}
+```
+
+`scrollWidth` and `scrollHeight` define the visible viewport; the JSX
+children stack vertically inside it and scroll if they overflow. Switch
+`type` to `"horizontal"` for a row, or `"both"` for free 2D panning.
+`elementsMargin` adds spacing between items, and `globalScroll: true`
+makes the wheel scroll the box from anywhere over it (not just when the
+pointer is directly over a child). For the underlying widget's
+advanced props — mask shape, drag inertia, snapping — see the
+[`@pixi/ui` ScrollBox documentation](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox).
 
 ## Hooks
 

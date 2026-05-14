@@ -8,6 +8,26 @@ Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), m
 
 Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
 
+### Staging Tiled assets
+
+The loader resolves a single-image tileset's `image` field **relative to the tileset JSON file** (`basePath + tileset.image`, where `basePath = path.dirname(tilesetSrc)`). Tiled writes that field as the relative path *from where the tileset was authored*, which is usually somewhere on your filesystem outside the project (e.g. `../../Downloads/spr_tileset.png`). Copying the tileset JSON into `public/` without rewriting `image` produces a silent 404 in the browser — the tileset loads, the texture doesn't, tiles render as blanks.
+
+When you stage a Tiled tileset into `public/assets/maps/`, rewrite `image` to a sibling-relative path:
+
+```diff
+ // public/assets/maps/dungeon.tsj
+ {
+   "tilewidth": 16,
+   "tileheight": 16,
+   "tilecount": 256,
+-  "image": "../../Downloads/tiled-projects/dungeon/spr_tileset.png",
++  "image": "spr_tileset.png",
+   ...
+ }
+```
+
+…and put `spr_tileset.png` next to the JSON. Same rule for embedded tilesets inside a map JSON — the `image` field is resolved relative to the *map* file's directory.
+
 Not supported: animated tiles, infinite/chunked maps, isometric/hex/staggered orientations, dynamic tile editing at runtime, built-in parallax layers (use a regular render layer with a scrolling sprite).
 
 Workflow: parse Tiled JSON → `tilemap.getCollisionShapes("walls")` returns raw top-left-origin shapes → `toPhysicsColliders(shapes)` converts to center-origin Rapier configs → spawn a static body with one `ColliderComponent` per config.

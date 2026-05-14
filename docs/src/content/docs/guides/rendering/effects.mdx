@@ -76,7 +76,7 @@ tears down each scope's `EffectStack` for you.
 
 ## Hero presets
 
-Seventeen presets ship in `@yagejs/effects`, all save-aware and all using
+Eighteen presets ship in `@yagejs/effects`, all save-aware and all using
 the same handle protocol:
 
 ```ts
@@ -87,6 +87,8 @@ import {
   // Added in 0.5.x
   godRay, shockwave, motionBlur, oldFilm, bulgePinch,
   halftone, wave,
+  // Added in 0.6.x
+  colorize,
 } from "@yagejs/effects";
 ```
 
@@ -109,21 +111,48 @@ import {
 | `bulgePinch` | Lens distortion — sign-preserving (negative pinches, positive bulges) | `strength` (sign preserved) |
 | `halftone` | Comic-print dot grid via custom WebGL+WGSL shader pair | `amount` (cross-fades back to source) |
 | `wave` | Sinusoidal x-displacement via custom shader; scene-time animator | configured `amplitude` |
+| `colorize` | Luminance-to-colour recolour via custom WebGL+WGSL shader pair — the replace-style alternative to `sprite.tint`'s multiply | `strength` (cross-fades back to source) |
 
 `setIntensity` doubles as the "how strong is this effect right now" dial —
 use it for fades AND for gameplay-driven scaling (HP-linked tinting,
 heartbeat glow, breathing vignette). The `set*` setters that change a
 preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`,
 `outline.setThickness`, `godRay.setGain`, `motionBlur.setVelocity`,
-`bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, etc.)
-preserve the current intensity ratio, so adjusting the ceiling mid-pulse
-raises the pulse height instead of snapping the visible effect back to 1.
+`bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`,
+`colorize.setStrength`, etc.) preserve the current intensity ratio, so
+adjusting the ceiling mid-pulse raises the pulse height instead of
+snapping the visible effect back to 1.
 
 Most presets wrap either a built-in `ColorMatrixFilter` or a `pixi-filters`
-filter and expose typed extras specific to it. Two — `halftone` and `wave`
-— ship as custom WebGL + WGSL shader pairs with no `pixi-filters` dep,
-which makes them the smallest reference implementations to copy when
-authoring an effect from scratch.
+filter and expose typed extras specific to it. Three — `halftone`, `wave`,
+and `colorize` — ship as custom WebGL + WGSL shader pairs with no
+`pixi-filters` dep, which makes them the smallest reference implementations
+to copy when authoring an effect from scratch.
+
+### Replace-style recolour (`colorize`)
+
+`sprite.tint` is the cheap built-in way to tint a sprite, but it
+**multiplies** the source RGB by the tint colour. That works for
+darken/desaturate/multiply-with-a-colour effects, but on saturated source
+art it produces muddy mid-axis colours — a blue mushroom × a yellow tint
+reads as olive, not yellow. `colorize` is the replace-style answer:
+black stays black, white reaches the target colour, midtones blend
+proportionally, source alpha is preserved unchanged.
+
+```ts
+import { colorize } from "@yagejs/effects";
+
+const recolour = sprite.fx.addEffect(colorize({ color: 0xf2c14e }));
+recolour.setColor("#d94a4a");  // numbers or strings ("#…", "red", "rgb(…)")
+recolour.setStrength(0.6);     // rebases full ceiling; preserves ratio
+recolour.fadeOut(200);         // strength → 0 cross-fades back to the source
+```
+
+Output per pixel is `mix(sourceRGB, tintColor * L, strength)` where `L`
+is Rec. 601 luminance (`0.299·R + 0.587·G + 0.114·B`). Pick `colorize`
+over `sprite.tint` whenever the source art has saturated colours and you
+want the recolour to read as the target hue rather than the multiply of
+the two.
 
 ### Triggerable + animated presets
 

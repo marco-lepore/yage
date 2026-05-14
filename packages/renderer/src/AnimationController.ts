@@ -50,18 +50,18 @@ interface ResolvedAnimDef {
  * names via the generic parameter.
  *
  * **Narrowing the animation-name type** — `entity.get(AnimationController)`
- * returns `AnimationController<string>` (the default `T`). To preserve the
- * narrow union you instantiated with, either pass the type explicitly or
- * cast at the boundary:
+ * returns `AnimationController<string>` (the default `T`); the runtime class
+ * isn't generic, and a string-typed instance can't substitute for a narrower
+ * one (the `current: T | ""` getter is covariant on `T`). Cast at the field
+ * declaration so every consumer downstream sees the narrow type:
  *
  * ```ts
  * type Anim = "idle" | "walk" | "shoot";
  *
- * // Field initializer (lazy sibling):
- * readonly anim = this.sibling<AnimationController<Anim>>(AnimationController);
- *
- * // One-off lookup:
- * const anim = entity.get(AnimationController) as AnimationController<Anim>;
+ * class HeroController extends Component {
+ *   private readonly _anim = this.sibling(AnimationController) as
+ *     AnimationController<Anim>;
+ * }
  * ```
  *
  * For multi-sprite (head + body + outfit) characters, see

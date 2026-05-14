@@ -192,8 +192,8 @@ label.setStyle({ fill: 0x00ff00 });
 
 ```typescript
 const btn = panel.button("Start Game", {
-  width: 200,
-  height: 50,
+  width: 200,       // optional — omit to shrink-to-content
+  height: 50,       // optional — omit to shrink-to-content
   background: { color: 0x4444aa, radius: 6 },
   hoverBackground: { color: 0x5555cc, radius: 6 },
   pressBackground: { color: 0x333388, radius: 6 },
@@ -211,6 +211,21 @@ btn.setText("Loading...");
 ```
 
 Buttons support three background states: default, hover, and press.
+
+Omitting `width` and/or `height` lets Yoga shrink the button to fit its
+content, with a small default padding around the label. Pass explicit
+dimensions when you need a fixed-size button (e.g. for a grid of
+equally-sized toolbar buttons).
+
+`UIButton` is itself a flex container — `.addElement()` accepts any
+`UIElement` (text, image, nested panels) for icon + label compositions:
+
+```typescript
+import { UIImage } from "@yagejs/ui";
+
+const saveBtn = panel.button("Save", { onClick: () => {} });
+saveBtn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
+```
 
 ### Nine-Slice Buttons
 
@@ -330,6 +345,35 @@ Child elements also support visibility:
 label.visible = false;
 btn.visible = true;
 ```
+
+## Absolute Positioning
+
+Every element accepts `position`, `left`, `top`, `right`, `bottom` via the
+shared `LayoutProps`. Use them to lift an element out of its parent's flex
+flow and pin it against the parent's content box — handy for overlays,
+badges, and HUD markers.
+
+```typescript
+// Pin a notification badge to the top-right of its parent.
+const badge = panel.panel({
+  position: "absolute",
+  top: 8,
+  right: 8,
+  padding: 4,
+  background: { color: 0xff3344, radius: 8 },
+});
+badge.text("3", { fontSize: 12, fill: 0xffffff });
+```
+
+The parent must be `position: "relative"` (the default) for absolute
+children to resolve against it. `position: "absolute"` children do not
+contribute to the parent's main-axis advance, so siblings keep their
+original layout.
+
+| Property | Type | Description |
+|---|---|---|
+| `position` | `"relative" \| "absolute"` | Default `"relative"`. |
+| `left` / `top` / `right` / `bottom` | `number` | Pixel offset from the named edge of the parent's content box. |
 
 ## Background Options
 

@@ -17,7 +17,26 @@ engine.use(new RendererPlugin({
   virtualHeight: 240,
   resolution: window.devicePixelRatio,
   fit: { mode: "cover" }, // override default letterbox (see below)
+  pixelArtPreset: true,   // crisp, non-blurred pixel art (see below)
 }));
+```
+
+### `pixelArtPreset`
+
+One flag for pixel-art games. When `true`, the plugin:
+
+- Sets `TextureStyle.defaultOptions.scaleMode = "nearest"` before `Application.init` so textures loaded by `Assets` sample without bilinear blur.
+- Passes `roundPixels: true` into the Pixi `Application` so subpixel transforms don't smear sprite edges.
+- Writes `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` onto the canvas `style.cssText` so the browser scales the backing store with nearest-neighbor (the Safari fallback is the first declaration; modern browsers pick the second from the cascade).
+
+Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. Per-texture overrides (`source.scaleMode = "linear"` on a specific texture) keep working — the preset only sets the *default*.
+
+```ts
+new RendererPlugin({
+  width: 320, height: 240,
+  container: host,
+  pixelArtPreset: true,
+});
 ```
 
 Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
@@ -160,7 +179,9 @@ entity.add(new SpriteComponent({
 }));
 ```
 
-**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available, including `sprite.tint`. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+
+> `sprite.tint` multiplies the source RGB by the tint colour. That's free on the GPU and right for "darken / desaturate / multiply with a colour" effects, but it turns saturated source colours into mud (a blue mushroom × yellow tint reads as olive). For replace-style recolour — where black stays black, white reaches the target colour, and midtones blend proportionally — use the `colorize` effect from `@yagejs/effects` instead.
 
 ### GraphicsComponent
 
@@ -236,30 +257,28 @@ anim.play("walk");
 anim.playOneShot("attack"); // locks until complete, then reverts
 ```
 
-`entity.get(AnimationController)` returns `AnimationController<string>` (the
-default `T`). To keep the narrow union, pass the type explicitly:
+### Typing the controller
+
+`AnimationController<T extends string = string>` is generic on the animation-name union — `play("walk")` autocompletes, and a typo like `play("wal")` is a compile error. But the runtime class isn't generic: there's no `AnimationController<HeroAnim>` expression to pass to `entity.get()` or `Component.sibling()`, and a default `AnimationController<string>` isn't sound-assignable to `AnimationController<HeroAnim>` (the `current: T | ""` getter is covariant on `T`, so a string-returning instance can't substitute for one promising the narrow union). Annotate the field with an `as` cast — the cast is required because the type parameter is type-only, and the field annotation makes every downstream call site narrow for free:
 
 ```ts
-type Anim = "idle" | "walk" | "attack";
+type HeroAnim = "idle" | "walk" | "attack";
 
-// Field initializer (lazy sibling):
-readonly anim = this.sibling<AnimationController<Anim>>(AnimationController);
+class HeroController extends Component {
+  private readonly _anim = this.sibling(AnimationController) as
+    AnimationController<HeroAnim>;
 
-// One-off lookup:
-const anim = entity.get(AnimationController) as AnimationController<Anim>;
+  update(): void {
+    this._anim.play("walk");   // typed — typo here is a compile error
+  }
+}
 ```
 
-`playOneShot(name, options?)` — `options.duration` overrides the auto-computed
-lock duration; the wall-clock fallback uses `(frames * 1000 / 60) / speed`.
-Pass an explicit `duration` when synchronising lock release across multiple
-controllers (see `LayeredAnimationController` below).
+`playOneShot(name, options?)` — `options.duration` overrides the auto-computed lock duration; the wall-clock fallback uses `(frames * 1000 / 60) / speed`. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
 
 ### LayeredAnimationController
 
-Fans `play()` / `playOneShot()` across N sibling `AnimationController`
-instances with a single shared lock timer. Use this when a character is
-composed of multiple sprite layers (head + body + outfit) that must animate
-in lockstep:
+Fans `play()` / `playOneShot()` across N sibling `AnimationController` instances with a single shared lock timer. Use this when a character is composed of multiple sprite layers (head + body + outfit) that must animate in lockstep:
 
 ```ts
 import {
@@ -288,12 +307,32 @@ layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
 ```
 
 - `play(name)` forwards to every child.
-- `playOneShot(name, opts)` computes one shared duration (from the first
-  controller, or `opts.duration` if given) and passes it to each child — so
-  all layers unlock on the same frame regardless of per-layer frame count.
-- The wrapper owns the master lock timer and fires `onComplete` exactly once.
-- Not save/load-aware (`serialize()` returns `null`) — rebuild via the same
-  `setup()` path on restore.
+- `playOneShot(name, opts)` computes one shared duration (from the first controller, or `opts.duration` if given) and passes `Number.POSITIVE_INFINITY` to each child so child timers can never expire independently — the wrapper owns the master timer and cascades `unlock()` when it fires. `onComplete` runs exactly once.
+- Not save/load-aware (`serialize()` returns `null`) — rebuild via the same `setup()` path on restore.
+
+### Layered characters: one-shot lock drift (the underlying problem)
+
+`LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same insight can live as a one-line helper. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (rounded to whole frame-ms). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the tail of every attack animation.
+
+Precompute the duration on a designated "lead" controller and broadcast it via `options.duration`:
+
+```ts
+function playOneShotLayered(
+  controllers: AnimationController<string>[],
+  name: string,
+  onComplete?: () => void,
+): void {
+  const duration = controllers[0]!.calcDuration(name);
+  controllers[0]!.playOneShot(name, { duration, onComplete });
+  for (let i = 1; i < controllers.length; i++) {
+    controllers[i]!.playOneShot(name, { duration });
+  }
+}
+
+playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
+```
+
+`calcDuration(name)` is public on `AnimationController` — `LayeredAnimationController` calls it internally for exactly this reason.
 
 ## Gradient fills
 
@@ -362,7 +401,7 @@ const screen = cam.worldToScreen(entity.x, entity.y);
 
 Camera position `(0, 0)` places the **world origin at the center of the viewport**, not the top-left. Entities rendered at `(0, 0)` appear centered. This is the standard convention for camera-driven 2D games (scrolling shooters, platformers).
 
-For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner:
+For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner — or use `fitTo` (below) to frame the whole level in one call.
 
 ```ts
 class GameScene extends Scene {
@@ -374,6 +413,20 @@ class GameScene extends Scene {
   }
 }
 ```
+
+### `fitTo` — frame a world rectangle
+
+`fitTo: { x, y, width, height }` is the fixed-camera primitive: it positions the camera at the rect's centre AND sets `zoom` so the entire rect fits inside the viewport (`contain` semantics, `zoom = min(viewportW / rect.w, viewportH / rect.h)`). Overrides explicit `position` and `zoom` when supplied. Applied once at setup against the renderer's current `virtualSize`.
+
+Use for puzzle boards, arcade-style single-screen layouts, dialog-scene insets — anywhere the framed area is known up front. Pair with no `follow` and the camera never moves; pair with `follow` and the camera starts framing the rect, then tracks the target from there.
+
+```ts
+this.spawn(CameraEntity, {
+  fitTo: { x: 0, y: 0, width: 800, height: 600 },
+});
+```
+
+For runtime re-framing, set `position` and `zoomTo()` directly on the camera — `fitTo` is a one-shot, not a responsive binding.
 
 ## Render Layers
 
@@ -422,6 +475,31 @@ zooms with the camera.
 To override: pass explicit `bindings` on the camera. Explicit bindings
 ignore `space` and target exactly the layers named, which is how you
 bind a screen-space layer to a second camera or build parallax.
+
+### `LayerDef.sort` — per-frame paint order
+
+Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(container) => number` and `DisplaySystem` writes the result to `container.zIndex` for every child each frame; Pixi's render pipeline then orders the layer by zIndex. The hook also flips `container.sortableChildren = true` so Pixi knows to honour the zIndex.
+
+Two built-in helpers cover the common cases:
+
+| Helper | Returns |
+|---|---|
+| `ySort` | `c.position.y` — classic top-down depth, characters with higher y paint on top. |
+| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can advertise a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+
+```ts
+import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
+
+readonly layers: readonly LayerDef[] = [
+  { name: "ground", order: -10 },
+  { name: "characters", order: 0, sort: ySort },
+];
+
+// Per-sprite offset variant — read off a custom field on the display object:
+const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
+```
+
+Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 

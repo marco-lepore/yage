@@ -12,8 +12,17 @@ import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 import { CameraZoom } from "./CameraZoom.js";
+import { RendererKey } from "./types.js";
 
 export type { CameraBinding } from "./CameraComponent.js";
+
+/** Axis-aligned rectangle in world space, used by `CameraEntityParams.fitTo`. */
+export interface CameraFitToRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface CameraEntityParams {
   /** Initial position. */
@@ -36,6 +45,17 @@ export interface CameraEntityParams {
   priority?: number;
   /** Camera name (for multi-camera lookup). */
   name?: string;
+  /**
+   * Frame an axis-aligned world rectangle: position the camera on the
+   * rect's centre and zoom so the entire rect fits inside the viewport
+   * (`contain` semantics — `zoom = min(viewportW / rect.w, viewportH /
+   * rect.h)`). Wins over `position` and `zoom` when supplied. Applied
+   * once at setup against the current renderer viewport — for fixed
+   * cameras where the framed area is known up front (puzzle boards,
+   * arcade levels, dialog-scene insets). For runtime re-framing, set
+   * `position` + `zoom` directly on the camera.
+   */
+  fitTo?: CameraFitToRect;
 }
 
 /**
@@ -62,6 +82,22 @@ export class CameraEntity extends Entity {
     const camOpts: CameraComponentOptions = {};
     if (params.position !== undefined) camOpts.position = params.position;
     if (params.zoom !== undefined) camOpts.zoom = params.zoom;
+    // `fitTo` computes position + zoom together from the supplied rect
+    // and the current viewport — wins over both. Resolve the renderer
+    // off the scene context so the viewport read happens at setup
+    // (snapshotting the framed area against the *current* viewport;
+    // fitTo is a one-shot, not a responsive binding).
+    if (params.fitTo !== undefined) {
+      const viewport = this.scene.context.resolve(RendererKey).virtualSize;
+      camOpts.position = new Vec2(
+        params.fitTo.x + params.fitTo.width / 2,
+        params.fitTo.y + params.fitTo.height / 2,
+      );
+      camOpts.zoom = Math.min(
+        viewport.width / params.fitTo.width,
+        viewport.height / params.fitTo.height,
+      );
+    }
     if (params.bindings !== undefined) camOpts.bindings = params.bindings;
     if (params.priority !== undefined) camOpts.priority = params.priority;
     if (params.name !== undefined) camOpts.name = params.name;

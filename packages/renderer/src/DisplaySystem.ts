@@ -69,8 +69,38 @@ export class DisplaySystem extends System {
       this.syncDisplayObject(transform, text.text);
     }
 
-    // 2. Apply camera transforms to layers
+    // 2. Apply per-layer depth keys. Runs AFTER transform sync so
+    //    position-based depth keys see the frame's current values.
+    //    Order vs. camera transforms doesn't matter — we're writing
+    //    `zIndex`, which Pixi's render-time `sortChildren()` consumes;
+    //    the camera transform on the layer container is independent.
+    this.applyLayerSort();
+
+    // 3. Apply camera transforms to layers
     this.applyCameraTransforms();
+  }
+
+  /**
+   * Per-frame depth-key hook. For every layer with a `sort` fn, writes
+   * `child.zIndex = sort(child)` on every direct child. The layer's
+   * container already has `sortableChildren = true` (set in `RenderLayer`),
+   * so Pixi's render-pipeline sort runs at frame end and orders the
+   * children by zIndex — no custom sort path on our side. Pixi's
+   * `zIndex` setter marks `sortDirty` automatically, so we don't need
+   * to flip it ourselves.
+   *
+   * Layers without a `sort` keep insertion order.
+   */
+  private applyLayerSort(): void {
+    for (const [, tree] of this.treeProvider.allTrees()) {
+      for (const layer of tree.getAll()) {
+        const sort = layer.sort;
+        if (!sort) continue;
+        for (const child of layer.container.children) {
+          child.zIndex = sort(child);
+        }
+      }
+    }
   }
 
   /**

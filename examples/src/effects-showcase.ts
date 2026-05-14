@@ -312,7 +312,6 @@ class ShowcaseScene extends Scene {
   private hero: HeroEntity | null = null;
   private block: BlockEntity | null = null;
   private gem: GemEntity | null = null;
-  private scroller: PanelNode | null = null;
 
   onEnter(): void {
     this.spawn(BackgroundEntity);
@@ -422,7 +421,6 @@ class ShowcaseScene extends Scene {
       direction: "column",
       gap: 4,
     });
-    this.scroller = scroller;
     activeScroller = scroller;
     activeSidebar = sidebar._node;
     // After a rebuild (initial spawn or afterRestore), reset scroll so the

@@ -39,11 +39,20 @@ For entity-anchored React UI (nameplates, health bars), pair `positioning: "tran
 ## JSX Components
 
 ```tsx
-import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
+import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-react";
 
 <Panel direction="column" gap={8} padding={16} bg={{ color: 0x000000, alpha: 0.7 }}>
   <Text style={{ fontSize: 24, fill: 0xffffff }}>Hello</Text>
-  <Button width={150} height={40} bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
+
+  {/* width/height are optional — omit to shrink-to-content */}
+  <Button bg={{ color: 0x4444aa }} onClick={() => {}}>Click</Button>
+
+  {/* Button accepts ReactNode children for icon + label compositions */}
+  <Button onClick={() => {}}>
+    <Image texture={iconTex} width={16} height={16} />
+    <Text>Save</Text>
+  </Button>
+
   <ProgressBar width={200} height={16} value={0.75} fillBackground={{ color: 0x44cc44 }} />
   <Checkbox label="Mute" checked={false} onChange={(v) => {}} />
   <Image texture={iconTex} width={32} height={32} />
@@ -51,6 +60,69 @@ import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-re
 ```
 
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`.
+
+## Scrolling lists
+
+Reach for `PixiScrollBox` for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently; `PixiScrollBox` adds drag + wheel scrolling and works inside the Yoga layout tree.
+
+```tsx
+import { PixiScrollBox } from "@yagejs/ui-react";
+import { Panel, Text } from "@yagejs/ui-react";
+
+function OrdersPanel({ orders }: { orders: Order[] }) {
+  return (
+    <PixiScrollBox
+      scrollWidth={240}
+      scrollHeight={160}
+      type="vertical"
+      elementsMargin={4}
+      background={0x111111}
+      radius={6}
+    >
+      {orders.map((o) => (
+        <Panel key={o.id} padding={8} bg={{ color: 0x222233 }}>
+          <Text style={{ fontSize: 12, fill: 0xffffff }}>{o.label}</Text>
+        </Panel>
+      ))}
+    </PixiScrollBox>
+  );
+}
+```
+
+`scrollWidth` / `scrollHeight` fix the viewport; children stack inside it and scroll if they overflow. `type` is `"vertical"` (default), `"horizontal"`, or `"both"`. `elementsMargin` is the gap between items, `globalScroll` enables wheel scrolling anywhere over the box. For the underlying widget's full prop surface (mask shape, drag inertia, etc.) see the [`@pixi/ui` ScrollBox docs](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox).
+
+### ZStack (Z-axis overlay primitive)
+
+`<ZStack>` is a `<Panel>` that defaults to filling its parent
+(`width: "100%"`, `height: "100%"`) with `position: "relative"`, so
+children declared `position="absolute"` layer on the Z axis. Useful for
+modal backdrops, HUD layers, and badge markers. The name follows the
+SwiftUI convention (`VStack` / `HStack` / `ZStack`); for column / row
+stacking use `<Panel direction="column" | "row">`.
+
+```tsx
+<ZStack>
+  <Panel position="absolute" left={0} top={0} bg={{ color: 0x000000, alpha: 0.6 }} />
+  <Panel position="absolute" top={16} right={16} padding={4}>
+    <Text>Score: 42</Text>
+  </Panel>
+</ZStack>
+```
+
+### Absolute positioning
+
+`LayoutProps` (every component) now accepts `position`, `left`, `top`,
+`right`, `bottom`:
+
+```tsx
+<Panel position="relative" width={400} height={300}>
+  <Panel position="absolute" left={10} top={20} width={50} height={30} />
+</Panel>
+```
+
+`position` defaults to `"relative"`. Set `"absolute"` to lift the element out
+of the flex flow; `left` / `top` / `right` / `bottom` are pixel offsets
+against the nearest relative ancestor.
 
 ## Hooks
 

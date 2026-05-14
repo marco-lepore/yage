@@ -118,6 +118,26 @@ export interface LayoutProps {
     | "flex-end"
     | "stretch"
     | "baseline";
+  /**
+   * Positioning mode for this element relative to its parent. Defaults to
+   * `"relative"` — the element flows in the parent's flex layout. Set to
+   * `"absolute"` to lift the element out of the flow and pin it via
+   * `left` / `top` / `right` / `bottom` against the parent's content box.
+   *
+   * A `position: "relative"` ancestor acts as the containing block for any
+   * absolute-positioned descendants — useful for HUD overlays, modal
+   * backdrops, and badge markers. See `<ZStack>` in `@yagejs/ui-react` for
+   * an opinionated overlay primitive.
+   */
+  position?: "relative" | "absolute";
+  /** Pixel offset from the parent's left edge (only applies to `position: "absolute"`). */
+  left?: number;
+  /** Pixel offset from the parent's top edge (only applies to `position: "absolute"`). */
+  top?: number;
+  /** Pixel offset from the parent's right edge (only applies to `position: "absolute"`). */
+  right?: number;
+  /** Pixel offset from the parent's bottom edge (only applies to `position: "absolute"`). */
+  bottom?: number;
   visible?: boolean;
 }
 

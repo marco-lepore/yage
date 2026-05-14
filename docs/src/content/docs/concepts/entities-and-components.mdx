@@ -59,6 +59,49 @@ if (player.tags.has("friendly")) {
 
 Tags are useful for fast filtering without creating empty marker components.
 
+### Transform inheritance
+
+A child entity's `Transform` composes against its parent's: position is
+rotated and scaled by the parent before being added, rotation sums, and
+**scale multiplies through the chain**. `DisplaySystem` reads each
+entity's `worldScale` every Render phase, so changing a parent's scale
+reaches every descendant sprite without any per-child bookkeeping.
+
+The canonical use is a facing-flip on a multi-layer character. Set the
+parent's scale to `(-1, 1)` and every child sprite — body, head, outfit,
+weapon — mirrors together via `worldScale`:
+
+```typescript
+import { Entity, Transform, Vec2 } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+class Character extends Entity {
+  setup() {
+    this.add(new Transform());                              // parent — drives facing
+
+    const body = this.spawnChild("body");
+    body.add(new Transform());
+    body.add(new SpriteComponent({ texture: "body.png" }));
+
+    const head = this.spawnChild("head");
+    head.add(new Transform({ position: new Vec2(0, -20) }));
+    head.add(new SpriteComponent({ texture: "head.png" }));
+  }
+
+  faceLeft(): void {
+    this.get(Transform).setScale(-1, 1);                    // mirrors body + head together
+  }
+  faceRight(): void {
+    this.get(Transform).setScale(1, 1);
+  }
+}
+```
+
+Negative scale composes through nested entities too — a child at
+`(-1, 1)` under a parent already at `(-1, 1)` ends up at
+`worldScale = (1, 1)` (the mirrors cancel out). Positive non-unit scale
+behaves the same way: a parent at `2x` zooms its whole subtree.
+
 ### Deferred Destruction
 
 Destroying an entity does not happen immediately. Instead the entity is marked

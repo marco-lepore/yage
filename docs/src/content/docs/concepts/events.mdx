@@ -145,3 +145,51 @@ class DamageFlash extends Component {
 
 Entity events are automatically cleaned up when the entity is destroyed — no
 manual unsubscribe needed.
+
+## Scene-Level Event Subscription
+
+A scene can subscribe to an `EventToken` and pick up **both** events it
+emits itself and events emitted by any of its entities. The handler
+takes an optional second argument — the source `Entity` for bubbled
+events, or `undefined` for scene-emitted ones — so a single handler can
+distinguish the two cases:
+
+```typescript
+import { defineEvent, type Entity } from "@yagejs/core";
+
+const DamagedEvent = defineEvent<{ amount: number }>("damaged");
+
+class GameScene extends Scene {
+  readonly name = "game";
+
+  onEnter() {
+    this.on(DamagedEvent, (data, entity?: Entity) => {
+      if (entity) {
+        // Bubbled — the source called `entity.emit(DamagedEvent, ...)`
+        console.log(`${entity.name} took ${data.amount} damage`);
+      } else {
+        // Scene-emitted via `scene.emit(DamagedEvent, ...)`
+        console.log(`scene-wide damage broadcast: ${data.amount}`);
+      }
+    });
+
+    // Triggers the `entity = undefined` branch above
+    this.emit(DamagedEvent, { amount: 5 });
+
+    // Triggers the bubbled branch with `entity = enemy`
+    const enemy = this.spawn("enemy");
+    enemy.emit(DamagedEvent, { amount: 10 });
+  }
+}
+```
+
+`Scene.on` returns an unsubscribe function. The handler signature is
+`(data, entity?)` for every subscription — check `entity` to decide
+whether you can read source state (`entity.get(Health)`, etc.) or
+you're handling a scene-wide broadcast.
+
+This is the canonical way to react to per-entity events at the scene
+level — for example, when a `Health` component on any entity emits
+`DamagedEvent`, a scene-level subscriber can roll those into a global
+damage feed, trigger a screen-shake, or update an aggregate UI store
+without each entity having to know who's listening.

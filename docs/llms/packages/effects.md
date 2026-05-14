@@ -38,12 +38,13 @@ Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enab
 | `bulgePinch` | `{ strength?, radius?, center? }` | `pixi-filters` `BulgePinchFilter` | configured `strength` (sign preserved) |
 | `halftone` | `{ size?, amount?, angle? }` | custom WebGL+WGSL | `amount` (cross-fades back to source) |
 | `wave` | `{ amplitude?, wavelength?, speed? }` | custom WebGL+WGSL | configured `amplitude` |
+| `colorize` | `{ color, strength? }` | custom WebGL+WGSL | `strength` (cross-fades back to source) |
 
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
 `motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges; `setIntensity` scales magnitude while preserving the sign so a pinch fades flat → pinch (not flat → bulge → pinch). `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
 
-`setIntensity` is the canonical "how strong is this effect right now" dial — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all go through it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
+`setIntensity` is the canonical "how strong is this effect right now" dial — fades, gameplay-driven scaling (HP-linked tinting), and looping animation (heartbeat glow, breathing vignette) all go through it. The `set*` setters that change a preset's "full" value (`bloom.setBloomScale`, `glow.setOuterStrength`, `outline.setThickness`, `dropShadow.setAlpha`, `vignette.setStrength`, `chromaticAberration.setSeparation`, `pixelate.setSize`, `glow.setInnerStrength`, `godRay.setGain`, `motionBlur.setVelocity`, `bulgePinch.setStrength`, `halftone.setAmount`, `wave.setAmplitude`, `colorize.setStrength`) preserve the current intensity ratio — adjusting the ceiling mid-pulse raises the pulse height instead of snapping the visible effect back to 1.
 
 ## Scope rationale
 
@@ -142,6 +143,14 @@ const wv = layer.fx.addEffect(wave({ amplitude: 6, wavelength: 40 }));
 wv.setAmplitude(12);         // rebases full amplitude; preserves intensity ratio
 wv.setWavelength(60);        // clamped to ≥ 1
 wv.setSpeed(2);              // cycles/second; advances `uTime` from scene time
+
+// Recolour a sprite without the multiply-tint trap — black stays black,
+// white reaches the target colour, midtones blend proportionally, and
+// source alpha is preserved unchanged.
+const recolour = sprite.fx.addEffect(colorize({ color: 0xf2c14e }));
+recolour.setColor(0xd94a4a);  // accepts numbers or strings ("#d94a4a", "red")
+recolour.setStrength(0.6);    // rebases full ceiling; preserves intensity ratio
+recolour.fadeOut(200);        // strength → 0 cross-fades back to the source
 ```
 
 ## Fade behavior
@@ -168,4 +177,4 @@ pc.run(Tween.custom(...));   // entity-scoped, NOT bound to any one effect
 
 ## Save/load
 
-All seventeen presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades and one-shot ramps (`hitFlash.trigger()`, `shockwave.trigger()`) are not preserved.
+All eighteen presets register a stable `yage:<name>` string with `defineEffect`, so any `EffectStack` they're added to round-trips through `SaveService.saveSnapshot` / `loadSnapshot` — the snapshot records the preset's name + options + steady-state intensity + enabled flag, and on load the preset's factory is re-invoked to rebuild the filter. In-flight fades and one-shot ramps (`hitFlash.trigger()`, `shockwave.trigger()`) are not preserved.

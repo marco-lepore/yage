@@ -4,6 +4,7 @@ import {
   CameraEntity,
   GraphicsComponent,
   renderAsset,
+  ySort,
   type LayerDef,
 } from "@yagejs/renderer";
 import {
@@ -218,7 +219,9 @@ class TilemapScene extends Scene {
   readonly preload = [DungeonMap];
   readonly layers: readonly LayerDef[] = [
     { name: "map", order: -10 },
-    { name: "actors", order: 0 },
+    // Top-down depth: lower-y sprites paint behind higher-y ones so the
+    // player walking south of an enemy correctly draws over them.
+    { name: "actors", order: 0, sort: ySort },
   ];
 
   onEnter(): void {

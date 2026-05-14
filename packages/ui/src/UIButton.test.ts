@@ -150,9 +150,11 @@ vi.mock("pixi.js", () => ({
   TilingSprite: mocks.MockTilingSprite,
 }));
 
-import Yoga from "yoga-layout";
+import Yoga, { Direction } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
+import { UIText } from "./UIText.js";
+import { PanelNode } from "./UIPanel.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -280,5 +282,127 @@ describe("UIButton", () => {
     container.emit("pointerup");
     expect(onClick1).not.toHaveBeenCalled();
     expect(onClick2).toHaveBeenCalledTimes(1);
+  });
+
+  describe("auto-size", () => {
+    it("shrinks to its string content when width and height are omitted", () => {
+      const btn = new UIButton({ children: "Hello" });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+
+      // MockText reports width=50, height=14. Defaults add 12px horizontal
+      // and 6px vertical padding on each side around the label.
+      expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
+      expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
+
+    it("respects explicit width and height when provided", () => {
+      const btn = new UIButton({ children: "Hello", width: 200, height: 50 });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(btn.yogaNode.getComputedWidth()).toBe(200);
+      expect(btn.yogaNode.getComputedHeight()).toBe(50);
+    });
+
+    it("treats width: 'auto' the same as omitted (shrink-to-content)", () => {
+      const btn = new UIButton({ children: "Hi", width: "auto", height: "auto" });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
+      expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
+
+    it("treats percent dimensions as explicit (no default padding)", () => {
+      // `width: "100%"` is concrete enough that the caller owns the box —
+      // surprise padding inside a 100%-stretch button would shrink the
+      // content area, which is the same footgun explicit pixels avoid.
+      const parent = new PanelNode({
+        direction: "column",
+        width: 200,
+        height: 60,
+      });
+      const btn = new UIButton({ children: "Hi", width: "100%", height: "100%" });
+      parent.addElement(btn);
+
+      parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.applyLayout();
+
+      expect(btn.yogaNode.getComputedWidth()).toBe(200);
+      expect(btn.yogaNode.getComputedHeight()).toBe(60);
+      // MockText 50×14 centered in 200×60 → (200-50)/2 = 75, (60-14)/2 = 23.
+      expect(btn.children[0]!.displayObject.position.x).toBe(75);
+      expect(btn.children[0]!.displayObject.position.y).toBe(23);
+    });
+
+    it("clears default padding when update() promotes to explicit dimensions", () => {
+      const btn = new UIButton({ children: "Hello" });
+      btn.update({ width: 200, height: 50 });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      btn.applyLayout();
+      expect(btn.yogaNode.getComputedWidth()).toBe(200);
+      expect(btn.yogaNode.getComputedHeight()).toBe(50);
+      // With padding cleared, the centered label resolves against the
+      // full outer box: MockText is 50×14, so x = (200-50)/2 = 75,
+      // y = (50-14)/2 = 18.
+      const children = btn.children;
+      expect(children[0]!.displayObject.position.x).toBe(75);
+      expect(children[0]!.displayObject.position.y).toBe(18);
+    });
+
+    it("re-applies default padding when update() demotes back to auto", () => {
+      const btn = new UIButton({ children: "Hi", width: 200, height: 50 });
+      btn.update({ width: "auto", height: "auto" });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
+      expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
+  });
+
+  describe("container mode", () => {
+    it("can host multiple UIElement children via addElement", () => {
+      // Mirrors what the React reconciler does when <Button> receives
+      // ReactNode children (e.g. <Text> + <Image>): each is added as a
+      // Yoga child of the button container.
+      const btn = new UIButton({});
+      const a = new UIText({ children: "Label" });
+      const b = new UIText({ children: "Icon" });
+      btn.addElement(a);
+      btn.addElement(b);
+
+      expect(btn.children).toHaveLength(2);
+      expect(btn.children).toContain(a);
+      expect(btn.children).toContain(b);
+      expect(btn.yogaNode.getChildCount()).toBe(2);
+    });
+
+    it("removeElement detaches a child from both trees", () => {
+      const btn = new UIButton({});
+      const a = new UIText({ children: "Label" });
+      btn.addElement(a);
+      btn.removeElement(a);
+
+      expect(btn.children).not.toContain(a);
+      expect(btn.yogaNode.getChildCount()).toBe(0);
+    });
+
+    it("setText promotes a button with no label by adding a UIText child", () => {
+      const btn = new UIButton({});
+      expect(btn.children).toHaveLength(0);
+      btn.setText("Now Labeled");
+      expect(btn.children).toHaveLength(1);
+    });
+
+    it("insertElementBefore reorders an already-mounted child without duplicating it", () => {
+      const btn = new UIButton({});
+      const a = new UIText({ children: "A" });
+      const b = new UIText({ children: "B" });
+      btn.addElement(a);
+      btn.addElement(b);
+
+      // Move `b` ahead of `a` — should rearrange in place, not duplicate.
+      btn.insertElementBefore(b, a);
+
+      expect(btn.children).toHaveLength(2);
+      expect(btn.children[0]).toBe(b);
+      expect(btn.children[1]).toBe(a);
+      expect(btn.yogaNode.getChildCount()).toBe(2);
+    });
   });
 });

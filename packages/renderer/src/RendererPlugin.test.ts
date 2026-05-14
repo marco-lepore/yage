@@ -53,7 +53,11 @@ const { mocks } = vi.hoisted(() => {
   class MockApplication {
     stage = new MockContainer();
     ticker = new MockTicker();
-    canvas: unknown = { tagName: "CANVAS" };
+    canvas: unknown = {
+      tagName: "CANVAS",
+      style: { cssText: "" } as { cssText: string },
+    };
+    initOptions: Record<string, unknown> = {};
     renderer = {
       width: 800,
       height: 600,
@@ -65,8 +69,9 @@ const { mocks } = vi.hoisted(() => {
     initialized = false;
     destroyCalled = false;
 
-    async init(): Promise<void> {
+    async init(opts: Record<string, unknown> = {}): Promise<void> {
       this.initialized = true;
+      this.initOptions = opts;
     }
 
     destroy(): void {
@@ -109,6 +114,7 @@ vi.mock("pixi.js", () => {
         this.alpha = opts?.alpha ?? 1;
       }
     },
+    TextureStyle: { defaultOptions: { scaleMode: "linear" } },
   };
 });
 
@@ -647,6 +653,135 @@ describe("RendererPlugin", () => {
       );
       expect(detached).toContain("fullscreenchange");
       expect(detached).toContain("webkitfullscreenchange");
+    });
+  });
+
+  describe("pixelArtPreset", () => {
+    // The mocked TextureStyle module is shared across tests in this file —
+    // every assertion below either resets it explicitly or only inspects
+    // values it just wrote. Without the reset, an earlier test setting
+    // `nearest` would make the "doesn't touch defaults" assertion in the
+    // next test trivially pass.
+    beforeEach(async () => {
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      pixi.TextureStyle.defaultOptions.scaleMode = "linear";
+    });
+
+    it("flips TextureStyle.defaultOptions.scaleMode to 'nearest' when enabled", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixelArtPreset: true,
+      });
+      await plugin.install(context);
+
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("nearest");
+    });
+
+    it("leaves TextureStyle.defaultOptions alone when disabled (default)", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("linear");
+    });
+
+    it("passes roundPixels: true to Application.init when enabled", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixelArtPreset: true,
+      });
+      await plugin.install(context);
+
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      expect(app.initOptions.roundPixels).toBe(true);
+    });
+
+    it("lets explicit pixi.roundPixels override the preset", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixelArtPreset: true,
+        pixi: { roundPixels: false },
+      });
+      await plugin.install(context);
+
+      const app = plugin.application as unknown as InstanceType<
+        typeof mocks.MockApplication
+      >;
+      expect(app.initOptions.roundPixels).toBe(false);
+    });
+
+    it("applies image-rendering CSS to the canvas when enabled", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixelArtPreset: true,
+      });
+      await plugin.install(context);
+
+      const canvas = plugin.canvas as unknown as { style: { cssText: string } };
+      // Both declarations land in order — Safari keeps the optimize-contrast
+      // value, modern browsers keep `pixelated`. Asserting on substrings
+      // avoids over-specifying whitespace.
+      expect(canvas.style.cssText).toContain("-webkit-optimize-contrast");
+      expect(canvas.style.cssText).toContain("pixelated");
+    });
+
+    it("leaves the canvas style untouched when disabled", async () => {
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+
+      const canvas = plugin.canvas as unknown as { style: { cssText: string } };
+      expect(canvas.style.cssText).toBe("");
+    });
+
+    it("restores TextureStyle.defaultOptions.scaleMode on destroy", async () => {
+      // Pixi's TextureStyle.defaultOptions is a module-level singleton; if
+      // we don't restore it, later plugin instances and any texture loaded
+      // after teardown inherit nearest sampling silently.
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      pixi.TextureStyle.defaultOptions.scaleMode = "linear";
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin({
+        ...defaultConfig,
+        pixelArtPreset: true,
+      });
+      await plugin.install(context);
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("nearest");
+
+      plugin.onDestroy();
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("linear");
+    });
+
+    it("does not touch TextureStyle on destroy when preset was off", async () => {
+      const pixi = (await import("pixi.js")) as unknown as {
+        TextureStyle: { defaultOptions: { scaleMode: string } };
+      };
+      pixi.TextureStyle.defaultOptions.scaleMode = "nearest"; // simulate a value set externally
+
+      const { context } = createInstallContext();
+      const plugin = new RendererPlugin(defaultConfig);
+      await plugin.install(context);
+      plugin.onDestroy();
+
+      // Plugin had no preset on, so destroy shouldn't clobber externally-set values.
+      expect(pixi.TextureStyle.defaultOptions.scaleMode).toBe("nearest");
     });
   });
 
