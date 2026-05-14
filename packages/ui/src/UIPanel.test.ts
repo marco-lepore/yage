@@ -438,6 +438,30 @@ describe("UIPanel", () => {
       expect(child.yogaNode.getComputedHeight()).toBe(30);
     });
 
+    it("alignItems 'stretch' grows short auto children to the widest sibling", () => {
+      // The pause-scene pattern: a shrink-to-fit column panel where every
+      // button auto-sizes to its label. The widest button defines the
+      // panel's content width and the shorter ones grow to match — clean
+      // uniform stack without the caller pinning a width.
+      const panel = new UIPanel({
+        direction: "column",
+        gap: 4,
+        alignItems: "stretch",
+      });
+      const short = panel.button("OK", {});
+      const longer = panel.button("Settings (transparentBelow=false)", {});
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      const longerW = longer.yogaNode.getComputedWidth();
+      const shortW = short.yogaNode.getComputedWidth();
+      // Both children share the same width — driven by the longer label.
+      expect(shortW).toBe(longerW);
+      // The panel itself shrank to fit that widest natural width.
+      expect(panel._node.yogaNode.getComputedWidth()).toBe(longerW);
+    });
+
     it("partial imperative update on an already-absolute node moves it", () => {
       // Animation / repositioning code typically pokes a single edge
       // without re-specifying `position` each frame. The Yoga node is
