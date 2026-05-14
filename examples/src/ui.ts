@@ -199,9 +199,13 @@ class UIExampleScene extends Scene {
     // ---- Text overflow demo (bottom-right) ----
     // Three UIText nodes inside a fixed-width slot, each using a different
     // overflow mode. The same long string renders three ways so the wrap /
-    // clip / ellipsis paths are visually testable side-by-side.
-    const SAMPLE = "The quick brown fox jumps over the lazy dog repeatedly.";
-    const SLOT_WIDTH = 220;
+    // clip / ellipsis paths are visually testable side-by-side. Kept narrow
+    // so the panel doesn't collide with the settings sub-panel from the
+    // centered menu.
+    const SAMPLE = "The quick brown fox jumps over the lazy dog.";
+    const SLOT_WIDTH = 160;
+    const captionStyle = textStyle("caption", { fontSize: 11 });
+    const bodyStyle = textStyle("body", { fontSize: 13 });
 
     const overflowEntity = this.spawn("overflow-demo");
     const overflowPanel = overflowEntity.add(
@@ -209,8 +213,8 @@ class UIExampleScene extends Scene {
         anchor: Anchor.BottomRight,
         offset: { x: -16, y: -16 },
         direction: "column",
-        gap: 8,
-        padding: 16,
+        gap: 4,
+        padding: 12,
         background: panelBg,
         // Outer panel is intentionally hidden-overflow so `clip` shows the
         // single-line cutoff cleanly instead of bleeding past the slot.
@@ -218,30 +222,30 @@ class UIExampleScene extends Scene {
       }),
     );
     overflowPanel.text(
-      "Text overflow (truncate prop)",
-      textStyle("subtitle", { fontSize: 14 }),
+      "truncate prop",
+      textStyle("subtitle", { fontSize: 13 }),
     );
 
     const wrapLabel = new UIText({
       children: "default (wrap):",
-      style: textStyle("caption"),
+      style: captionStyle,
     });
     overflowPanel.addElement(wrapLabel);
     const wrap = new UIText({
       children: SAMPLE,
-      style: textStyle("body"),
+      style: bodyStyle,
       width: SLOT_WIDTH,
     });
     overflowPanel.addElement(wrap);
 
     const clipLabel = new UIText({
       children: "truncate: \"clip\":",
-      style: textStyle("caption"),
+      style: captionStyle,
     });
     overflowPanel.addElement(clipLabel);
     const clip = new UIText({
       children: SAMPLE,
-      style: textStyle("body"),
+      style: bodyStyle,
       width: SLOT_WIDTH,
       truncate: "clip",
     });
@@ -249,12 +253,12 @@ class UIExampleScene extends Scene {
 
     const ellipsisLabel = new UIText({
       children: "truncate: \"ellipsis\":",
-      style: textStyle("caption"),
+      style: captionStyle,
     });
     overflowPanel.addElement(ellipsisLabel);
     const ellipsis = new UIText({
       children: SAMPLE,
-      style: textStyle("body"),
+      style: bodyStyle,
       width: SLOT_WIDTH,
       truncate: "ellipsis",
     });
