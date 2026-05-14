@@ -51,6 +51,15 @@ describe("parseFeatureList", () => {
     const result = parseFeatureList("ui,nope");
     expect("error" in result && result.error).toContain("Unknown feature");
   });
+
+  it("errors on empty or whitespace-only input", () => {
+    const empty = parseFeatureList("");
+    expect("error" in empty && empty.error).toContain("No features specified");
+    const whitespace = parseFeatureList(" , ,");
+    expect("error" in whitespace && whitespace.error).toContain(
+      "No features specified",
+    );
+  });
 });
 
 describe("applyFeaturesToPackageJson", () => {
@@ -78,6 +87,26 @@ describe("applyFeaturesToPackageJson", () => {
       "@yagejs/effects",
       "@yagejs/save",
     ]);
+  });
+
+  it("does not add an empty devDependencies key when none are needed", () => {
+    const result = applyFeaturesToPackageJson(
+      { name: "x", dependencies: { "@yagejs/core": "^0.6.0" } },
+      ["save"],
+    );
+    expect("devDependencies" in result).toBe(false);
+  });
+
+  it("preserves an existing devDependencies key even with no feature devDeps", () => {
+    const result = applyFeaturesToPackageJson(
+      {
+        name: "x",
+        dependencies: { "@yagejs/core": "^0.6.0" },
+        devDependencies: { typescript: "^5.9.0" },
+      },
+      ["save"],
+    );
+    expect(result.devDependencies).toEqual({ typescript: "^5.9.0" });
   });
 
   it("adds React deps and @types/react to devDependencies for ui", () => {

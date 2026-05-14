@@ -54,7 +54,10 @@ export const FEATURES: Readonly<Record<FeatureId, FeatureSpec>> = {
   },
 };
 
-export const FEATURE_IDS: readonly FeatureId[] = ["ui", "save", "effects"];
+/** Derived from `FEATURES` so adding a feature there auto-extends the CLI. */
+export const FEATURE_IDS: readonly FeatureId[] = Object.freeze(
+  Object.keys(FEATURES) as FeatureId[],
+);
 
 export function isFeatureId(value: string): value is FeatureId {
   return (FEATURE_IDS as readonly string[]).includes(value);
@@ -62,8 +65,9 @@ export function isFeatureId(value: string): value is FeatureId {
 
 /**
  * Parses a comma-separated list of feature ids. Returns `{ error }` on
- * the first unknown id; whitespace around items is trimmed and empty
- * segments are ignored.
+ * the first unknown id (or an empty list, which is almost always a typo
+ * — `--features=` with no value); whitespace around items is trimmed and
+ * empty segments are ignored.
  */
 export function parseFeatureList(
   raw: string,
@@ -78,6 +82,11 @@ export function parseFeatureList(
       };
     }
     if (!out.includes(id)) out.push(id);
+  }
+  if (out.length === 0) {
+    return {
+      error: `No features specified. Valid options: ${FEATURE_IDS.join(", ")}`,
+    };
   }
   return { features: out };
 }

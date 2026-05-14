@@ -251,6 +251,24 @@ describe("AnimatedSpriteComponent", () => {
       expect(restored.serialize()).toEqual(data);
     });
 
+    it("round-trips anchor and tint", () => {
+      const source = { sheet: "player.png", frameWidth: 48 };
+      const original = new AnimatedSpriteComponent({
+        source,
+        anchor: { x: 0.5, y: 1 },
+        tint: 0xff0000,
+      });
+      const data = original.serialize()!;
+      expect(data.anchor).toEqual({ x: 0.5, y: 1 });
+      expect(data.tint).toBe(0xff0000);
+
+      const restored = AnimatedSpriteComponent.fromSnapshot(data);
+      expect(restored.animatedSprite.anchor.x).toBe(0.5);
+      expect(restored.animatedSprite.anchor.y).toBe(1);
+      expect(restored.animatedSprite.tint).toBe(0xff0000);
+      expect(restored.serialize()).toEqual(data);
+    });
+
     it("throws when neither source nor textures provided", () => {
       expect(() => new AnimatedSpriteComponent({} as never)).toThrow(
         /requires either/,

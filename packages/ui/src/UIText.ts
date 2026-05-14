@@ -109,10 +109,14 @@ export class UIText implements UIElement {
     if (p.style) {
       this.setStyle(p.style);
     }
-    if (p.truncate !== undefined && p.truncate !== this._truncate) {
+    // Use `"truncate" in p` rather than `!== undefined` so an explicit
+    // `{ truncate: undefined }` payload (e.g. removing the prop in the
+    // React reconciler) clears the mode back to default wrap behavior.
+    if ("truncate" in p && p.truncate !== this._truncate) {
       this._truncate = p.truncate;
-      // Restore source — applyTruncateStyle resets wordWrap and the next
-      // measure pass re-applies ellipsis truncation if needed.
+      // Restore source so a previous ellipsis pass doesn't bleed through;
+      // the next measure pass re-applies wordWrap / ellipsis based on the
+      // new mode.
       this.text.text = this._source;
       this.applyTruncateStyle();
       this.yogaNode.markDirty();

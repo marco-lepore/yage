@@ -51,6 +51,10 @@ export interface AnimatedSpriteComponentOptions {
 export interface AnimatedSpriteData {
   source: FrameSource;
   layer: string;
+  /** Persisted component-level anchor; an active animation's anchor may still override at runtime. */
+  anchor?: { x: number; y: number };
+  /** Persisted component-level tint. */
+  tint?: number | string;
   /** See {@link SpriteData.interactive} — same shape, same persistence semantics. */
   interactive?: {
     eventMode?: "static" | "dynamic";
@@ -74,6 +78,9 @@ export class AnimatedSpriteComponent extends Component {
   private readonly _source: FrameSource | null;
   private _mask: MaskHandle | undefined;
   private _interactive: AnimatedSpriteComponentOptions["interactive"];
+  /** Captured for `serialize()` — keeps Vec2-like and tuple inputs round-trippable. */
+  private readonly _anchor: { x: number; y: number } | undefined;
+  private readonly _tint: number | string | undefined;
 
   constructor(options: AnimatedSpriteComponentOptions) {
     super();
@@ -101,11 +108,17 @@ export class AnimatedSpriteComponent extends Component {
       const a = options.anchor;
       const ax = Array.isArray(a) ? (a[0] as number) : (a as Vec2Like).x;
       const ay = Array.isArray(a) ? (a[1] as number) : (a as Vec2Like).y;
+      this._anchor = { x: ax, y: ay };
       this.animatedSprite.anchor.set(ax, ay);
+    } else {
+      this._anchor = undefined;
     }
 
     if (options.tint !== undefined) {
+      this._tint = options.tint;
       this.animatedSprite.tint = options.tint;
+    } else {
+      this._tint = undefined;
     }
 
     if (options.interactive) {
@@ -159,6 +172,8 @@ export class AnimatedSpriteComponent extends Component {
       source: this._source,
       layer: this.layerName,
     };
+    if (this._anchor) data.anchor = { x: this._anchor.x, y: this._anchor.y };
+    if (this._tint !== undefined) data.tint = this._tint;
     if (this._interactive) data.interactive = { ...this._interactive };
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;

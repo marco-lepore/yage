@@ -112,10 +112,17 @@ export function applyFeaturesToPackageJson(
     }
   }
 
+  // Suppress empty `devDependencies` for templates/features that don't
+  // need any — emitting `"devDependencies": {}` is harmless to npm but
+  // unexpected noise in a fresh project. Keep the key if the template
+  // already declared one so we never quietly drop user-visible state.
+  const sortedDev = sortObject(devDeps);
+  const hasDev =
+    Object.keys(sortedDev).length > 0 || pkg.devDependencies !== undefined;
   return {
     ...pkg,
     dependencies: sortObject(deps),
-    devDependencies: sortObject(devDeps),
+    ...(hasDev ? { devDependencies: sortedDev } : {}),
   };
 }
 

@@ -13,6 +13,7 @@ import type {
   ObjectLayerData,
   MapObject,
 } from "../types.js";
+import { subtextureCacheKey } from "./cacheKey.js";
 
 // ─── Generic adapter ────────────────────────────────────────────────
 
@@ -120,7 +121,7 @@ function resolveTileTexture(
 
   if (data.image) {
     // Single-image tileset: sub-textures were created by the loader
-    const cacheKey = `${data.name}:${localId}`;
+    const cacheKey = subtextureCacheKey(data.image, localId);
     const tex = Assets.get<Texture>(cacheKey);
     if (tex) return tex;
 

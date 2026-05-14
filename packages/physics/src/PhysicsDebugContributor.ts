@@ -72,9 +72,11 @@ export class PhysicsDebugContributor implements DebugContributor {
           }
           case ShapeType.ConvexPolygon: {
             // vertices() yields a flat Float32Array of (x, y) pairs in
-            // meter-space. Trace the hull and close it.
+            // meter-space. Trace the hull and close it. The even-length
+            // check makes the invariant explicit — an odd count would
+            // silently produce NaN coordinates on the trailing read.
             const verts = collider.vertices();
-            if (verts.length >= 4) {
+            if (verts.length >= 4 && verts.length % 2 === 0) {
               g.moveTo(verts[0]! * ppm, verts[1]! * ppm);
               for (let i = 2; i < verts.length; i += 2) {
                 g.lineTo(verts[i]! * ppm, verts[i + 1]! * ppm);

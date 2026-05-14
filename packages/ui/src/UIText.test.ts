@@ -180,4 +180,18 @@ describe("UIText.measure", () => {
     expect(out.height).toBe(16);
     expect(renderedText(t)).toBe("loooong unbroken string");
   });
+
+  it("update({ truncate: undefined }) restores wrap behavior", () => {
+    const t = new UIText({
+      children: "the quick brown fox jumps",
+      truncate: "ellipsis",
+    });
+    layoutInContainer(t, 80);
+    expect(renderedText(t).endsWith("…")).toBe(true);
+
+    t.update({ truncate: undefined });
+    const out = layoutInContainer(t, 100);
+    expect(out.height).toBeGreaterThan(16); // wrapped again
+    expect(renderedText(t)).toBe("the quick brown fox jumps");
+  });
 });
