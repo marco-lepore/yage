@@ -21,7 +21,7 @@ describe("createRecord", () => {
     sfx: number;
   }
   const make = () =>
-    createRecord<Settings>({ defaults: () => ({ music: 0.8, sfx: 1.0 }) });
+    createRecord<Settings>({ default: () => ({ music: 0.8, sfx: 1.0 }) });
 
   it("starts with defaults", () => {
     const s = make();
@@ -60,9 +60,12 @@ describe("createRecord", () => {
     interface DateBag {
       when: Date;
     }
+    interface DateBagEncoded {
+      when: string;
+    }
     const dc = dateCodec();
-    const s = createRecord<DateBag>({
-      defaults: () => ({ when: new Date("2026-01-01T00:00:00.000Z") }),
+    const s = createRecord<DateBag, DateBagEncoded>({
+      default: () => ({ when: new Date("2026-01-01T00:00:00.000Z") }),
       codec: {
         encode: (v) => ({ when: dc.encode(v.when) }),
         decode: (raw) => {
@@ -76,6 +79,18 @@ describe("createRecord", () => {
     expect(payload).toEqual({ when: "2026-05-03T00:00:00.000Z" });
   });
 
+  it("accepts a direct value for `default` (no factory function)", () => {
+    const s = createRecord<Settings>({
+      default: { music: 0.4, sfx: 0.5 },
+    });
+    expect(s.get()).toEqual({ music: 0.4, sfx: 0.5 });
+    // Mutating the live snapshot must not bleed back into the user's seed
+    // on reset — `set()` always allocates a fresh object internally.
+    s.set({ music: 0.9 });
+    s.reset();
+    expect(s.get()).toEqual({ music: 0.4, sfx: 0.5 });
+  });
+
   it("carries the 'record' STATE_KIND brand", () => {
     expect(make()[STATE_KIND]).toBe("record");
   });
@@ -87,7 +102,7 @@ describe("createRecord", () => {
 
 describe("createValue", () => {
   it("get/set/subscribe", () => {
-    const v = createValue<string>({ defaults: () => "hello" });
+    const v = createValue<string>({ default: "hello" });
     expect(v.get()).toBe("hello");
     const listener = vi.fn();
     v.subscribe(listener);
@@ -97,14 +112,30 @@ describe("createValue", () => {
   });
 
   it("reset() restores default", () => {
-    const v = createValue<number>({ defaults: () => 42 });
+    const v = createValue<number>({ default: 42 });
     v.set(99);
     v.reset();
     expect(v.get()).toBe(42);
   });
 
+  it("accepts a factory for `default`", () => {
+    let calls = 0;
+    const v = createValue<number>({
+      default: () => {
+        calls += 1;
+        return 7;
+      },
+    });
+    expect(v.get()).toBe(7);
+    expect(calls).toBe(1);
+    v.set(99);
+    v.reset();
+    expect(v.get()).toBe(7);
+    expect(calls).toBe(2);
+  });
+
   it("set with identical value does not notify", () => {
-    const v = createValue<number>({ defaults: () => 0 });
+    const v = createValue<number>({ default: 0 });
     const listener = vi.fn();
     v.subscribe(listener);
     v.set(5);
@@ -113,20 +144,36 @@ describe("createValue", () => {
   });
 
   it("persists as { value: T } and round-trips", () => {
-    const a = createValue<string>({ defaults: () => "x" });
+    const a = createValue<string>({ default: "x" });
     a.set("yo");
     const payload = a.serialize();
     expect(payload).toEqual({ value: "yo" });
 
-    const b = createValue<string>({ defaults: () => "x" });
+    const b = createValue<string>({ default: "x" });
     b.hydrate(payload);
     expect(b.get()).toBe("yo");
   });
 
+  it("propagates codec-encoded type through serialize", () => {
+    const dc = dateCodec();
+    const v = createValue<Date, string>({
+      default: () => new Date("2026-01-01T00:00:00.000Z"),
+      codec: dc,
+    });
+    v.set(new Date("2026-05-03T00:00:00.000Z"));
+    const payload = v.serialize();
+    // payload is statically `{ value: string }`; round-trip preserves the Date.
+    expect(payload).toEqual({ value: "2026-05-03T00:00:00.000Z" });
+    const v2 = createValue<Date, string>({
+      default: () => new Date("2026-01-01T00:00:00.000Z"),
+      codec: dc,
+    });
+    v2.hydrate(payload);
+    expect(v2.get().toISOString()).toBe("2026-05-03T00:00:00.000Z");
+  });
+
   it("carries the 'value' STATE_KIND brand", () => {
-    expect(createValue<number>({ defaults: () => 0 })[STATE_KIND]).toBe(
-      "value",
-    );
+    expect(createValue<number>({ default: 0 })[STATE_KIND]).toBe("value");
   });
 });
 
@@ -176,8 +223,8 @@ describe("createSet", () => {
     expect(b.values().sort()).toEqual(["a", "b"]);
   });
 
-  it("respects defaults factory", () => {
-    const s = createSet<string>({ defaults: () => ["seed"] });
+  it("respects default factory", () => {
+    const s = createSet<string>({ default: () => ["seed"] });
     expect(s.has("seed")).toBe(true);
   });
 
@@ -368,8 +415,8 @@ describe("createList", () => {
     expect(b.add("d")).toBe(4);
   });
 
-  it("respects defaults factory", () => {
-    const l = createList<string>({ defaults: () => ["seed-a", "seed-b"] });
+  it("respects default factory", () => {
+    const l = createList<string>({ default: () => ["seed-a", "seed-b"] });
     expect(l.list()).toEqual(["seed-a", "seed-b"]);
     expect(l.size()).toBe(2);
   });
@@ -398,7 +445,7 @@ describe("createStore (compound)", () => {
       shelf: s.list<Potion>(),
       day: s.value<number>({ default: 1 }),
       settings: s.record<{ volume: number; lang: string }>({
-        defaults: () => ({ volume: 0.8, lang: "en" }),
+        default: () => ({ volume: 0.8, lang: "en" }),
       }),
     }));
 

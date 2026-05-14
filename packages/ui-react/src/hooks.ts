@@ -90,14 +90,14 @@ function subscribeFrame(listener: () => void): () => void {
  * picks the right default reader. New shapes added to the public API must
  * extend the dispatch table below.
  */
-export function useStore<T extends object>(
-  source: ReactiveRecord<T>,
+export function useStore<T extends object, TE>(
+  source: ReactiveRecord<T, TE>,
 ): Readonly<T>;
 export function useStore(source: ReactiveCounter): number;
 export function useStore<K, V>(source: ReactiveMap<K, V>): Array<[K, V]>;
 export function useStore<K>(source: ReactiveSet<K>): K[];
 export function useStore<T>(source: ReactiveList<T>): T[];
-export function useStore<T>(source: ReactiveValue<T>): T;
+export function useStore<T, TE>(source: ReactiveValue<T, TE>): T;
 export function useStore<L extends StoreLeaves>(
   source: ReactiveStore<L>,
 ): EncodedStore<L>;

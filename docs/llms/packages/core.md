@@ -471,11 +471,11 @@ import {
 } from "@yagejs/core";
 
 // Leaf factories — usable on their own.
-const settings = createRecord<Settings>({ defaults: () => ({ music: 0.8, sfx: 1.0 }) });
+const settings = createRecord<Settings>({ default: () => ({ music: 0.8, sfx: 1.0 }) });
 const opened    = createSet<string>();
 const enemies   = createMap<string, number>();
 const restEpoch = createCounter();
-const day       = createValue<number>({ defaults: () => 1 });
+const day       = createValue<number>({ default: 1 });
 const journal   = createList<{ at: number; text: string }>();
 
 // Compound — bundle leaves so they serialise/restore atomically.
@@ -485,7 +485,7 @@ const game = createStore((s) => ({
   gold:      s.counter({ default: 0 }),
   shelf:     s.list<Potion>(),
   day:       s.value<number>({ default: 1 }),
-  settings:  s.record<Settings>({ defaults: () => ({ volume: 0.8, lang: "en" }) }),
+  settings:  s.record<Settings>({ default: () => ({ volume: 0.8, lang: "en" }) }),
 }));
 game.gold.increment(10);
 game.inventory.set("moonleaf", 3);

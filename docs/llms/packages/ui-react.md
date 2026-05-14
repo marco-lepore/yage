@@ -167,7 +167,7 @@ For ECS↔UI bridges that don't need persistence, use `createRecord` from `@yage
 import { createRecord } from "@yagejs/core";
 import { useStore } from "@yagejs/ui-react";
 
-const ui = createRecord({ defaults: () => ({ score: 0, health: 100 }) });
+const ui = createRecord({ default: () => ({ score: 0, health: 100 }) });
 
 // ECS side: write
 ui.set({ score: ui.get().score + 10 });

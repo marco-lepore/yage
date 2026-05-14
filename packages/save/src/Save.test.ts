@@ -26,13 +26,13 @@ describe("Save — unslotted persist/restore", () => {
     }
 
     const a = createRecord<Settings>({
-      defaults: () => ({ music: 0.8, sfx: 1.0 }),
+      default: () => ({ music: 0.8, sfx: 1.0 }),
     });
     a.set({ music: 0.3 });
     await save.persist("settings", a);
 
     const b = createRecord<Settings>({
-      defaults: () => ({ music: 0.8, sfx: 1.0 }),
+      default: () => ({ music: 0.8, sfx: 1.0 }),
     });
     expect(b.get()).toEqual({ music: 0.8, sfx: 1.0 });
     await save.restore("settings", b);
@@ -41,7 +41,7 @@ describe("Save — unslotted persist/restore", () => {
 
   it("restore is a no-op when no document exists", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = createRecord<{ a: number }>({ defaults: () => ({ a: 1 }) });
+    const s = createRecord<{ a: number }>({ default: () => ({ a: 1 }) });
     await save.restore("none", s);
     expect(s.get()).toEqual({ a: 1 });
   });
@@ -50,14 +50,14 @@ describe("Save — unslotted persist/restore", () => {
     const adapter = memoryAdapter();
     const save = createSave({ adapter });
 
-    const a = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
-    const b = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 7 });
     b.set({ v: 9 });
     await Promise.all([save.persist("a", a), save.persist("b", b)]);
 
-    const a2 = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
-    const b2 = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const a2 = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const b2 = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await Promise.all([save.restore("a", a2), save.restore("b", b2)]);
     expect(a2.get().v).toBe(7);
     expect(b2.get().v).toBe(9);
@@ -107,7 +107,7 @@ describe("Save — slots", () => {
     coins: number;
   }
   const make = () =>
-    createRecord<Run>({ defaults: () => ({ chapter: 1, coins: 0 }) });
+    createRecord<Run>({ default: () => ({ chapter: 1, coins: 0 }) });
 
   it("saves and loads a slot round-trip", async () => {
     const save = createSave({ adapter: memoryAdapter() });
@@ -213,7 +213,7 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     const stop = save.autoPersist("ap1", s);
 
     s.set({ v: 1 });
@@ -229,7 +229,7 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     const stop = save.autoPersist("ap2", s);
 
     s.set({ v: 1 });
@@ -244,14 +244,14 @@ describe("Save — autoPersist", () => {
   it("writes the latest value after coalescing", async () => {
     const save = createSave({ adapter: memoryAdapter() });
 
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     const stop = save.autoPersist("ap3", s);
 
     s.set({ v: 1 });
     s.set({ v: 7 });
     await flushMicrotasks();
 
-    const t = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const t = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await save.restore("ap3", t);
     expect(t.get().v).toBe(7);
     stop();
@@ -261,7 +261,7 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     const stop = save.autoPersist("ap4", s);
     s.set({ v: 1 });
     stop();
@@ -327,11 +327,11 @@ describe("Save — migration on load", () => {
       level: number;
     }
 
-    const a = createRecord<V1>({ defaults: () => ({ score: 0 }) });
+    const a = createRecord<V1>({ default: () => ({ score: 0 }) });
     a.set({ score: 5 });
     await save.persist("g", a, { version: 1 });
 
-    const b = createRecord<V2>({ defaults: () => ({ score: 0, level: 1 }) });
+    const b = createRecord<V2>({ default: () => ({ score: 0, level: 1 }) });
     await save.restore("g", b, {
       version: 2,
       migrate: (old) => {
@@ -353,12 +353,12 @@ describe("Save — migration on load", () => {
       multiplier: number;
     }
 
-    const a = createRecord<V1>({ defaults: () => ({ score: 0 }) });
+    const a = createRecord<V1>({ default: () => ({ score: 0 }) });
     a.set({ score: 11 });
     await save.saveSlot("slot-mig", "manual-1", a, { version: 1 });
 
     const b = createRecord<V2>({
-      defaults: () => ({ score: 0, multiplier: 1 }),
+      default: () => ({ score: 0, multiplier: 1 }),
     });
     await save.loadSlot("slot-mig", "manual-1", b, {
       version: 2,
@@ -372,11 +372,11 @@ describe("Save — migration on load", () => {
 
   it("throws StoreVersionTooNewError when stored version > current", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 1 });
     await save.persist("too-new", a, { version: 2 });
 
-    const b = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await expect(
       save.restore("too-new", b, { version: 1 }),
     ).rejects.toBeInstanceOf(StoreVersionTooNewError);
@@ -439,7 +439,7 @@ describe("Save — corrupt payloads", () => {
     // payload or a key written by something other than `Save`.
     await adapter.write("corrupt/d", JSON.stringify({ unrelated: 1 }));
     const save = createSave({ adapter });
-    const r = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const r = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await expect(save.restore("corrupt", r)).rejects.toBeInstanceOf(
       CorruptPayloadError,
     );
@@ -449,7 +449,7 @@ describe("Save — corrupt payloads", () => {
     const adapter = memoryAdapter();
     await adapter.write("nullpay/d", "null");
     const save = createSave({ adapter });
-    const r = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const r = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await expect(save.restore("nullpay", r)).rejects.toBeInstanceOf(
       CorruptPayloadError,
     );
@@ -471,12 +471,12 @@ describe("Save — listSlots / deleteSlot edge cases", () => {
 describe("Save — key disambiguation", () => {
   it("a doc and a same-named slot don't collide", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 1 });
     await save.persist("collide.a", a);
     await save.saveSlot("collide.a", "v", a);
 
-    const b = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 99 });
     await save.persist("collide.a", a);
     await save.loadSlot("collide.a", "v", b);
@@ -485,34 +485,34 @@ describe("Save — key disambiguation", () => {
 
   it("store ids and slot names with reserved characters round-trip", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 7 });
     await save.saveSlot("alice/profile:v2", "alice/manual:1", a);
 
-    const b = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await save.loadSlot("alice/profile:v2", "alice/manual:1", b);
     expect(b.get().v).toBe(7);
   });
 
   it("slot named the same as the manifest tag works", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 5 });
     await save.saveSlot("sn", "m", a);
     const slots = await save.listSlots("sn");
     expect(slots.map((s) => s.name)).toContain("m");
 
-    const b = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await save.loadSlot("sn", "m", b);
     expect(b.get().v).toBe(5);
   });
 
   it("rejects empty store id and empty slot name", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const empty = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const empty = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await expect(save.persist("", empty)).rejects.toThrow(/non-empty/i);
 
-    const ok = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const ok = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await expect(save.saveSlot("ok", "", ok)).rejects.toThrow(/non-empty/i);
   });
 });
@@ -520,7 +520,7 @@ describe("Save — key disambiguation", () => {
 describe("Save — manifest serialization across concurrent updates", () => {
   it("concurrent saveSlots both land in the manifest", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await Promise.all([
       save.saveSlot("concur", "a", s, { metadata: { tag: "a" } }),
       save.saveSlot("concur", "b", s, { metadata: { tag: "b" } }),
@@ -533,7 +533,7 @@ describe("Save — manifest serialization across concurrent updates", () => {
 
   it("concurrent saveSlot + deleteSlot serialize correctly", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await save.saveSlot("concur-del", "old", s);
     await Promise.all([
       save.deleteSlot("concur-del", "old"),
@@ -561,7 +561,7 @@ describe("Save — autoPersist serialization", () => {
     };
     const save = createSave({ adapter: slowAdapter });
 
-    const s = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     const stop = save.autoPersist("ap-slow", s);
 
     const flushMicrotasks = async (): Promise<void> => {

@@ -120,7 +120,7 @@ describe("useStore", () => {
   });
 
   it("reads the full record state without a selector", () => {
-    const store = createRecord({ defaults: () => ({ score: 42, hp: 100 }) });
+    const store = createRecord({ default: () => ({ score: 42, hp: 100 }) });
     let result: unknown;
 
     function Comp() {
@@ -133,7 +133,7 @@ describe("useStore", () => {
   });
 
   it("re-renders when record value changes", () => {
-    const store = createRecord({ defaults: () => ({ score: 0 }) });
+    const store = createRecord({ default: () => ({ score: 0 }) });
     const renders: number[] = [];
 
     function Comp() {
@@ -150,7 +150,7 @@ describe("useStore", () => {
   });
 
   it("skips re-render when selector result is shallowEqual", () => {
-    const store = createRecord({ defaults: () => ({ a: 1, b: 2 }) });
+    const store = createRecord({ default: () => ({ a: 1, b: 2 }) });
     let renderCount = 0;
 
     function Comp() {
@@ -186,7 +186,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("reads a ReactiveValue", () => {
-    const v = createValue<string>({ defaults: () => "hi" });
+    const v = createValue<string>({ default: () => "hi" });
     let result: unknown;
     function Comp() {
       result = useStore(v);

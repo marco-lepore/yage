@@ -141,7 +141,7 @@ type ConflictState = {
 };
 
 const conflictStore: ReactiveRecord<ConflictState> = createRecord<ConflictState>({
-  defaults: () => ({
+  default: () => ({
     conflict: null,
     resolveVersion: 0,
   }),

@@ -1,15 +1,20 @@
 /**
- * A codec converts a value between its in-memory representation and a JSON-safe
- * representation that adapters can stringify. Codecs are pure functions; they
- * don't read or write storage.
+ * A codec converts a value between its in-memory representation `T` and a
+ * JSON-safe encoded form `TEncoded` that adapters can stringify. `encode`
+ * always returns the encoded form; `decode` takes `unknown` because the input
+ * is whatever an adapter produced from storage (which may be corrupt or
+ * legacy) and must be validated/coerced.
+ *
+ * `TEncoded` defaults to `T` so identity codecs (most callers) need only one
+ * type parameter.
  */
-export interface Codec<T> {
-  encode(value: T): unknown;
+export interface Codec<T, TEncoded = T> {
+  encode(value: T): TEncoded;
   decode(raw: unknown): T;
 }
 
 /** Identity codec — pass-through for plain JSON-serializable values. */
-export function jsonCodec<T>(): Codec<T> {
+export function jsonCodec<T>(): Codec<T, T> {
   return {
     encode: (value) => value,
     decode: (raw) => raw as T,
@@ -17,7 +22,7 @@ export function jsonCodec<T>(): Codec<T> {
 }
 
 /** Set ↔ array. */
-export function setCodec<K>(): Codec<Set<K>> {
+export function setCodec<K>(): Codec<Set<K>, K[]> {
   return {
     encode: (value) => Array.from(value),
     decode: (raw) => {
@@ -30,7 +35,7 @@ export function setCodec<K>(): Codec<Set<K>> {
 }
 
 /** Map ↔ entries array. */
-export function mapCodec<K, V>(): Codec<Map<K, V>> {
+export function mapCodec<K, V>(): Codec<Map<K, V>, Array<[K, V]>> {
   return {
     encode: (value) => Array.from(value.entries()),
     decode: (raw) => {
@@ -43,7 +48,7 @@ export function mapCodec<K, V>(): Codec<Map<K, V>> {
 }
 
 /** Date ↔ ISO string. */
-export function dateCodec(): Codec<Date> {
+export function dateCodec(): Codec<Date, string> {
   return {
     encode: (value) => value.toISOString(),
     decode: (raw) => {

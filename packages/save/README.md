@@ -26,14 +26,14 @@ interface RunData { chapter: number; position: { x: number; y: number } }
 // Compound store — bundles many typed leaves into one save document.
 const game = createStore((s) => ({
   run: s.record<RunData>({
-    defaults: () => ({ chapter: 1, position: { x: 0, y: 0 } }),
+    default: () => ({ chapter: 1, position: { x: 0, y: 0 } }),
   }),
   opened: s.set<string>(),
 }));
 
 // Leaf factory for one-offs (different save target — separate document).
 const settings = createRecord<{ music: number; sfx: number }>({
-  defaults: () => ({ music: 0.8, sfx: 1.0 }),
+  default: () => ({ music: 0.8, sfx: 1.0 }),
 });
 
 const save = createSave({ adapter: localStorageAdapter() });

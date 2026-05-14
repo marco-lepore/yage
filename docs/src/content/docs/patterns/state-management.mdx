@@ -57,7 +57,7 @@ When bridging ECS state to React UI, use `createRecord`:
 import { createRecord } from "@yagejs/core";
 
 const uiStore = createRecord({
-  defaults: () => ({
+  default: () => ({
     score: 0,
     health: 100,
     message: "",
@@ -140,7 +140,7 @@ A typical game combines all three:
 const GameStateKey = new ServiceKey<GameState>("gameState");
 
 // 2. UI store for React binding
-const uiStore = createRecord({ defaults: () => ({ score: 0, health: 100 }) });
+const uiStore = createRecord({ default: () => ({ score: 0, health: 100 }) });
 
 // 3. Events for decoupled communication
 const CoinCollected = defineEvent("coin:collected");

@@ -44,7 +44,7 @@ const game = createStore((s) => ({
   shelf:      s.list<Potion>(),
   day:        s.value<number>({ default: 1 }),
   settings:   s.record<{ volume: number; lang: string }>({
-    defaults: () => ({ volume: 0.8, lang: "en" }),
+    default: () => ({ volume: 0.8, lang: "en" }),
   }),
 }));
 game.gold.increment(10);
@@ -56,13 +56,13 @@ save.autoPersist("save-stores.run", game);
 
 // Leaf factories — usable on their own:
 export const settings = createRecord<SettingsData>({
-  defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
+  default: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
 export const opened   = createSet<string>();
 export const defeated = createMap<string, number>();
 ```
 
-Leaf builder methods on the compound: `s.value<T>({ default, codec? })`, `s.counter({ default? })`, `s.record<T>({ defaults, codec? })`, `s.map<K,V>({ defaults? })`, `s.set<K>({ defaults? })`, `s.list<T>({ defaults? })`. Reserved leaf keys: `subscribe`, `serialize`, `hydrate`, `reset` — collisions throw at construction.
+Leaf builder methods on the compound: `s.value<T>({ default, codec? })`, `s.counter({ default? })`, `s.record<T>({ default, codec? })`, `s.map<K,V>({ default? })`, `s.set<K>({ default? })`, `s.list<T>({ default? })`. Reserved leaf keys: `subscribe`, `serialize`, `hydrate`, `reset` — collisions throw at construction.
 
 Shape APIs (every leaf also exposes `subscribe(fn)`, `serialize()`, `hydrate(raw)`, `reset()`):
 
@@ -77,7 +77,7 @@ Shape APIs (every leaf also exposes `subscribe(fn)`, `serialize()`, `hydrate(raw
 
 ```ts
 // Before — three save documents, three autoPersist calls.
-const progression = createRecord<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) });
+const progression = createRecord<RunData>({ default: () => ({ chapter: 1, coins: 0 }) });
 const deaths      = createCounter();
 const flags       = createSet<string>();
 save.autoPersist("run.progression", progression);
@@ -86,7 +86,7 @@ save.autoPersist("run.flags", flags);
 
 // After — one document, one autoPersist call, atomic serialize/hydrate.
 const game = createStore((s) => ({
-  progression: s.record<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) }),
+  progression: s.record<RunData>({ default: () => ({ chapter: 1, coins: 0 }) }),
   deaths:      s.counter({ default: 0 }),
   flags:       s.set<string>(),
 }));
@@ -187,18 +187,18 @@ class CheckpointOnRest extends Component {
 
 ## Codecs
 
-Stores accept a `Codec<T>` for non-JSON-native value types. Built-ins live in `@yagejs/core`:
+Stores accept a `Codec<T, TEncoded>` for non-JSON-native value types. `TEncoded` defaults to `T` for identity codecs and surfaces in `serialize()`/`hydrate()` and `RestoreOptions.migrate` so migrations get the right type. Built-ins live in `@yagejs/core`:
 
 ```ts
 import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
 
-jsonCodec<T>()       // identity (default)
-setCodec<K>()        // Set<K>     <-> K[]
-mapCodec<K, V>()     // Map<K, V>  <-> [K, V][]
-dateCodec()          // Date       <-> ISO string
+jsonCodec<T>()       // Codec<T, T>            — identity (default)
+setCodec<K>()        // Codec<Set<K>, K[]>
+mapCodec<K, V>()     // Codec<Map<K,V>, [K,V][]>
+dateCodec()          // Codec<Date, string>    — ISO string
 ```
 
-`createSet`/`createMap`/`createCounter`/`createList` bundle codecs internally — you only specify a codec for `createRecord<T>` / `createValue<T>` (and the compound `s.record`/`s.value` leaves) when `T` contains exotic types.
+`createSet`/`createMap`/`createCounter`/`createList` bundle codecs internally — you only specify a codec for `createRecord<T>` / `createValue<T>` (and the compound `s.record`/`s.value` leaves) when `T` contains exotic types. When a custom codec changes the encoded shape (e.g. `Date → string`), declare both generics: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec() })`.
 
 ## Adapters
 
@@ -241,7 +241,7 @@ saves/m                    ← slot manifest (savedAt + metadata)
 
 ```ts
 // Single record:
-const saves = createRecord<RunData>({ defaults: () => initialRun() });
+const saves = createRecord<RunData>({ default: () => initialRun() });
 await save.restore("saves", saves, {
   version: 3,
   migrate: (old, fromVersion) => {

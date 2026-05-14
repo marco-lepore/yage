@@ -33,10 +33,15 @@ export interface Resettable {
 /** Runtime + compile-time dispatch tag for reactive shapes. */
 export const STATE_KIND: unique symbol = Symbol.for("yagejs.state.kind");
 
-/** Single typed cell. */
-export interface ReactiveValue<T>
+/**
+ * Single typed cell. `TEncoded` is the codec-encoded form (defaults to `T` for
+ * identity codecs). With a custom codec like `dateCodec()`, `T = Date` and
+ * `TEncoded = string` — `serialize()` returns `{ value: string }`, and any
+ * `migrate` callback returning the new encoded form sees the same shape.
+ */
+export interface ReactiveValue<T, TEncoded = T>
   extends Reactive,
-    Serializable<{ value: T }>,
+    Serializable<{ value: TEncoded }>,
     Resettable {
   readonly [STATE_KIND]: "value";
   get(): T;
@@ -57,10 +62,14 @@ export interface ReactiveCounter
   clamp(value: number, min: number, max: number): void;
 }
 
-/** Object-shaped store with shallow merge on `set`. */
-export interface ReactiveRecord<T extends object>
+/**
+ * Object-shaped store with shallow merge on `set`. `TEncoded` is the
+ * codec-encoded form (defaults to `T` for identity codecs); with a custom
+ * codec, `serialize()` returns `TEncoded` and `hydrate` receives the same.
+ */
+export interface ReactiveRecord<T extends object, TEncoded = T>
   extends Reactive,
-    Serializable<T>,
+    Serializable<TEncoded>,
     Resettable {
   readonly [STATE_KIND]: "record";
   get(): Readonly<T>;

@@ -76,14 +76,14 @@ const SETTINGS_ID = "save-stores.settings";
 
 const game = createStore((s) => ({
   progression: s.record<{ chapter: number; coins: number }>({
-    defaults: () => ({ chapter: 1, coins: 0 }),
+    default: () => ({ chapter: 1, coins: 0 }),
   }),
   deaths: s.counter({ default: 0 }),
 }));
 
 const settings = createStore((s) => ({
   audio: s.record<{ music: number; sfx: number }>({
-    defaults: () => ({ music: 0.8, sfx: 1.0 }),
+    default: () => ({ music: 0.8, sfx: 1.0 }),
   }),
   vsync: s.value<boolean>({ default: true }),
 }));

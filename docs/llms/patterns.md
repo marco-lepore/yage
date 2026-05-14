@@ -519,7 +519,7 @@ this.context.register(GameStateKey, { score: 0, health: 100 });
 import { createRecord } from "@yagejs/core";
 import { useStore } from "@yagejs/ui-react";
 
-const store = createRecord({ defaults: () => ({ score: 0 }) });
+const store = createRecord({ default: () => ({ score: 0 }) });
 store.set({ score: 10 }); // ECS writes
 const score = useStore(store, (src) => src.get().score); // React reads (selector takes source)
 ```

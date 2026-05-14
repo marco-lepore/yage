@@ -49,7 +49,7 @@ export const game = createStore((s) => ({
   shelf:      s.list<Potion>(),
   day:        s.value<number>({ default: 1 }),
   settings:   s.record<{ volume: number; lang: string }>({
-    defaults: () => ({ volume: 0.8, lang: "en" }),
+    default: () => ({ volume: 0.8, lang: "en" }),
   }),
 }));
 
@@ -67,10 +67,10 @@ Leaf builder methods on `s`:
 
 - `s.value<T>({ default, codec? })` — single typed cell.
 - `s.counter({ default? })` — number with `value`, `set`, `increment`, `decrement`, `clamp(value, min, max)`.
-- `s.record<T>({ defaults, codec? })` — object with shallow merge.
-- `s.map<K, V>({ defaults? })` — key→value.
-- `s.set<K>({ defaults? })` — keys.
-- `s.list<T>({ defaults? })` — ordered list with stable monotonic ids.
+- `s.record<T>({ default, codec? })` — object with shallow merge.
+- `s.map<K, V>({ default? })` — key→value.
+- `s.set<K>({ default? })` — keys.
+- `s.list<T>({ default? })` — ordered list with stable monotonic ids.
 
 The compound bundles every leaf so they serialise/restore atomically as one
 document. Reserved leaf keys — `subscribe`, `serialize`, `hydrate`, `reset`
@@ -91,13 +91,13 @@ import {
 } from "@yagejs/core";
 
 export const settings = createRecord<SettingsData>({
-  defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
+  default: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
 
 export const opened    = createSet<string>();
 export const defeated  = createMap<string, number>();
 export const restEpoch = createCounter();
-export const day       = createValue<number>({ defaults: () => 1 });
+export const day       = createValue<number>({ default: 1 });
 export const journal   = createList<{ at: number; text: string }>();
 ```
 
@@ -123,7 +123,7 @@ them into one save target with atomic writes:
 
 ```typescript
 // Before — three save documents, three autoPersist calls.
-const progression = createRecord<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) });
+const progression = createRecord<RunData>({ default: () => ({ chapter: 1, coins: 0 }) });
 const deaths      = createCounter();
 const flags       = createSet<string>();
 save.autoPersist("run.progression", progression);
@@ -132,7 +132,7 @@ save.autoPersist("run.flags", flags);
 
 // After — one document, one autoPersist call, atomic serialize/hydrate.
 const game = createStore((s) => ({
-  progression: s.record<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) }),
+  progression: s.record<RunData>({ default: () => ({ chapter: 1, coins: 0 }) }),
   deaths:      s.counter({ default: 0 }),
   flags:       s.set<string>(),
 }));
@@ -266,7 +266,7 @@ inside a compound is not supported — migrate the tree as a whole.
 
 ```typescript
 // Single record — migrate the record value.
-const saves = createRecord<RunData>({ defaults: () => initialRun() });
+const saves = createRecord<RunData>({ default: () => initialRun() });
 await save.restore("saves", saves, {
   version: 3,
   migrate: (old, fromVersion) => {
@@ -297,20 +297,25 @@ without a `migrate` throw `StoreMigrationMissingError`.
 
 ## Codecs
 
-Stores serialize via a `Codec<T>`. Built-ins:
+Stores serialize via a `Codec<T, TEncoded>`. `TEncoded` defaults to `T` for
+identity codecs, and surfaces in `serialize()`/`hydrate()` and
+`RestoreOptions.migrate` so migrations get the right type. Built-ins:
 
 ```typescript
 import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
 
-jsonCodec<T>()    // identity (default)
-setCodec<K>()     // Set<K>     <-> K[]
-mapCodec<K, V>()  // Map<K, V>  <-> [K, V][]
-dateCodec()       // Date       <-> ISO string
+jsonCodec<T>()    // Codec<T, T>             — identity (default)
+setCodec<K>()     // Codec<Set<K>, K[]>
+mapCodec<K, V>()  // Codec<Map<K,V>, [K,V][]>
+dateCodec()       // Codec<Date, string>     — ISO string
 ```
 
 `createSet`/`createMap`/`createCounter`/`createList` bundle the right codec —
 you only specify a codec for `createRecord<T>` / `createValue<T>` (or the
 matching `s.record`/`s.value` leaves) when the type contains exotic values.
+When a custom codec changes the encoded shape (e.g. `Date → string`), pass
+both generics so the change shows up in `serialize()` and `migrate` return
+types: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec() })`.
 
 ## Adapters
 
@@ -336,11 +341,11 @@ import { createSave, memoryAdapter } from "@yagejs/save";
 const save = createSave({ adapter: memoryAdapter() });
 
 it("round-trips a record", async () => {
-  const settings = createRecord({ defaults: () => ({ music: 0.8, sfx: 1.0 }) });
+  const settings = createRecord({ default: () => ({ music: 0.8, sfx: 1.0 }) });
   settings.set({ music: 0.3 });
   await save.persist("settings", settings);
 
-  const next = createRecord({ defaults: () => ({ music: 0.8, sfx: 1.0 }) });
+  const next = createRecord({ default: () => ({ music: 0.8, sfx: 1.0 }) });
   await save.restore("settings", next);
   expect(next.get().music).toBe(0.3);
 });

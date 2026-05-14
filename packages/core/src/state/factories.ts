@@ -12,6 +12,12 @@
  *    own.
  *  - **Compound factory** (`createStore`) — bundles a set of leaves so they
  *    serialise/restore atomically.
+ *
+ * Every factory takes a `default` option that accepts either a value or a
+ * `() => value` factory function. The function form is preferred for mutable
+ * defaults (records, maps, sets, lists) so each reset yields a fresh instance
+ * rather than sharing one reference; for primitives the value form is fine.
+ * If your value itself is a function, wrap it: `default: () => myFn`.
  */
 
 import { createAtom, type Atom } from "./Atom.js";
@@ -30,25 +36,38 @@ import {
   type Serializable,
 } from "./reactive.js";
 
+/**
+ * Normalise a `T | (() => T)` default to a factory function. Disambiguation
+ * relies on `typeof === "function"`; if you intend to store a function as the
+ * value, wrap it: `default: () => myFn`.
+ */
+function toFactory<T>(d: T | (() => T)): () => T {
+  return typeof d === "function" ? (d as () => T) : () => d;
+}
+
 // ---------------------------------------------------------------------------
 // createValue
 // ---------------------------------------------------------------------------
 
-export interface CreateValueOptions<T> {
-  defaults: () => T;
-  codec?: Codec<T>;
+export interface CreateValueOptions<T, TEncoded = T> {
+  default: T | (() => T);
+  codec?: Codec<T, TEncoded>;
 }
 
-export function createValue<T>(opts: CreateValueOptions<T>): ReactiveValue<T> {
-  const codec = opts.codec ?? jsonCodec<T>();
-  const atom: Atom<T> = createAtom<T>(opts.defaults());
+export function createValue<T, TEncoded = T>(
+  opts: CreateValueOptions<T, TEncoded>,
+): ReactiveValue<T, TEncoded> {
+  const codec =
+    opts.codec ?? (jsonCodec<T>() as unknown as Codec<T, TEncoded>);
+  const makeDefault = toFactory(opts.default);
+  const atom: Atom<T> = createAtom<T>(makeDefault());
 
-  const api: ReactiveValue<T> = {
+  const api: ReactiveValue<T, TEncoded> = {
     [STATE_KIND]: "value",
     get: () => atom.get(),
     set: (next) => atom.set(next),
     subscribe: (fn) => atom.subscribe(() => fn()),
-    serialize: () => ({ value: codec.encode(atom.get()) as T }),
+    serialize: () => ({ value: codec.encode(atom.get()) }),
     hydrate: (raw) => {
       if (raw == null || typeof raw !== "object" || !("value" in raw)) {
         throw new Error(
@@ -57,7 +76,7 @@ export function createValue<T>(opts: CreateValueOptions<T>): ReactiveValue<T> {
       }
       atom.set(codec.decode((raw as { value: unknown }).value));
     },
-    reset: () => atom.set(opts.defaults()),
+    reset: () => atom.set(makeDefault()),
   };
   return api;
 }
@@ -67,12 +86,13 @@ export function createValue<T>(opts: CreateValueOptions<T>): ReactiveValue<T> {
 // ---------------------------------------------------------------------------
 
 export interface CreateCounterOptions {
-  default?: number;
+  default?: number | (() => number);
 }
 
 export function createCounter(opts?: CreateCounterOptions): ReactiveCounter {
-  const defaults = (): number => opts?.default ?? 0;
-  const atom = createAtom<number>(defaults());
+  const makeDefault =
+    opts?.default !== undefined ? toFactory(opts.default) : () => 0;
+  const atom = createAtom<number>(makeDefault());
 
   const api: ReactiveCounter = {
     [STATE_KIND]: "counter",
@@ -94,7 +114,7 @@ export function createCounter(opts?: CreateCounterOptions): ReactiveCounter {
       }
       atom.set(raw);
     },
-    reset: () => atom.set(defaults()),
+    reset: () => atom.set(makeDefault()),
   };
   return api;
 }
@@ -103,23 +123,25 @@ export function createCounter(opts?: CreateCounterOptions): ReactiveCounter {
 // createRecord
 // ---------------------------------------------------------------------------
 
-export interface CreateRecordOptions<T extends object> {
-  defaults: () => T;
-  codec?: Codec<T>;
+export interface CreateRecordOptions<T extends object, TEncoded = T> {
+  default: T | (() => T);
+  codec?: Codec<T, TEncoded>;
 }
 
-export function createRecord<T extends object>(
-  opts: CreateRecordOptions<T>,
-): ReactiveRecord<T> {
-  const codec = opts.codec ?? jsonCodec<T>();
-  let snapshot: T = { ...opts.defaults() };
+export function createRecord<T extends object, TEncoded = T>(
+  opts: CreateRecordOptions<T, TEncoded>,
+): ReactiveRecord<T, TEncoded> {
+  const codec =
+    opts.codec ?? (jsonCodec<T>() as unknown as Codec<T, TEncoded>);
+  const makeDefault = toFactory(opts.default);
+  let snapshot: T = { ...makeDefault() };
   const listeners = new Set<() => void>();
 
   const notify = (): void => {
     for (const fn of listeners) fn();
   };
 
-  const api: ReactiveRecord<T> = {
+  const api: ReactiveRecord<T, TEncoded> = {
     [STATE_KIND]: "record",
     get: () => snapshot as Readonly<T>,
     set: (partial) => {
@@ -140,7 +162,7 @@ export function createRecord<T extends object>(
         listeners.delete(fn);
       };
     },
-    serialize: () => codec.encode(snapshot) as T,
+    serialize: () => codec.encode(snapshot),
     hydrate: (raw) => {
       const next = codec.decode(raw);
       // Mirror `set()`'s change check: only notify when at least one key
@@ -164,7 +186,7 @@ export function createRecord<T extends object>(
       notify();
     },
     reset: () => {
-      snapshot = { ...opts.defaults() };
+      snapshot = { ...makeDefault() };
       notify();
     },
   };
@@ -176,15 +198,19 @@ export function createRecord<T extends object>(
 // ---------------------------------------------------------------------------
 
 export interface CreateMapOptions<K, V> {
-  defaults?: () => Iterable<[K, V]>;
+  default?: Iterable<[K, V]> | (() => Iterable<[K, V]>);
 }
 
 export function createMap<K, V>(
   opts?: CreateMapOptions<K, V>,
 ): ReactiveMap<K, V> {
-  const defaults = (): Map<K, V> => new Map<K, V>(opts?.defaults?.() ?? []);
+  const makeDefault =
+    opts?.default !== undefined
+      ? toFactory(opts.default)
+      : (): Iterable<[K, V]> => [];
+  const buildDefault = (): Map<K, V> => new Map<K, V>(makeDefault());
   const codec = mapCodec<K, V>();
-  const atom = createAtom<Map<K, V>>(defaults());
+  const atom = createAtom<Map<K, V>>(buildDefault());
 
   // Memoise the entries snapshot so repeated reads (e.g. React renders) return
   // the same array reference between mutations.
@@ -224,9 +250,9 @@ export function createMap<K, V>(
       replace(new Map());
     },
     subscribe: (fn) => atom.subscribe(() => fn()),
-    serialize: () => codec.encode(atom.get()) as Array<[K, V]>,
+    serialize: () => codec.encode(atom.get()),
     hydrate: (raw) => replace(codec.decode(raw)),
-    reset: () => replace(defaults()),
+    reset: () => replace(buildDefault()),
   };
   return api;
 }
@@ -236,13 +262,17 @@ export function createMap<K, V>(
 // ---------------------------------------------------------------------------
 
 export interface CreateSetOptions<K> {
-  defaults?: () => Iterable<K>;
+  default?: Iterable<K> | (() => Iterable<K>);
 }
 
 export function createSet<K>(opts?: CreateSetOptions<K>): ReactiveSet<K> {
-  const defaults = (): Set<K> => new Set<K>(opts?.defaults?.() ?? []);
+  const makeDefault =
+    opts?.default !== undefined
+      ? toFactory(opts.default)
+      : (): Iterable<K> => [];
+  const buildDefault = (): Set<K> => new Set<K>(makeDefault());
   const codec = setCodec<K>();
-  const atom = createAtom<Set<K>>(defaults());
+  const atom = createAtom<Set<K>>(buildDefault());
 
   let valuesSnapshot: K[] | null = null;
   const replace = (next: Set<K>): void => {
@@ -279,9 +309,9 @@ export function createSet<K>(opts?: CreateSetOptions<K>): ReactiveSet<K> {
       replace(new Set());
     },
     subscribe: (fn) => atom.subscribe(() => fn()),
-    serialize: () => codec.encode(atom.get()) as K[],
+    serialize: () => codec.encode(atom.get()),
     hydrate: (raw) => replace(codec.decode(raw)),
-    reset: () => replace(defaults()),
+    reset: () => replace(buildDefault()),
   };
   return api;
 }
@@ -291,7 +321,7 @@ export function createSet<K>(opts?: CreateSetOptions<K>): ReactiveSet<K> {
 // ---------------------------------------------------------------------------
 
 export interface CreateListOptions<T> {
-  defaults?: () => Iterable<T>;
+  default?: Iterable<T> | (() => Iterable<T>);
 }
 
 interface ListState<T> {
@@ -300,10 +330,15 @@ interface ListState<T> {
 }
 
 export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
+  const makeDefault =
+    opts?.default !== undefined
+      ? toFactory(opts.default)
+      : (): Iterable<T> => [];
+
   const buildDefault = (): ListState<T> => {
     const items: Array<{ id: number; value: T }> = [];
     let nextId = 1;
-    for (const value of opts?.defaults?.() ?? []) {
+    for (const value of makeDefault()) {
       items.push({ id: nextId, value });
       nextId += 1;
     }
@@ -418,15 +453,24 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
  * the compound owns the save contract for the tree.
  */
 export interface LeafBuilder {
-  value<T>(opts: { default: T; codec?: Codec<T> }): ReactiveValue<T>;
-  counter(opts?: { default?: number }): ReactiveCounter;
-  record<T extends object>(opts: {
-    defaults: () => T;
-    codec?: Codec<T>;
-  }): ReactiveRecord<T>;
-  map<K, V>(opts?: { defaults?: () => Iterable<[K, V]> }): ReactiveMap<K, V>;
-  set<K>(opts?: { defaults?: () => Iterable<K> }): ReactiveSet<K>;
-  list<T>(opts?: { defaults?: () => Iterable<T> }): ReactiveList<T>;
+  value<T, TEncoded = T>(opts: {
+    default: T | (() => T);
+    codec?: Codec<T, TEncoded>;
+  }): ReactiveValue<T, TEncoded>;
+  counter(opts?: { default?: number | (() => number) }): ReactiveCounter;
+  record<T extends object, TEncoded = T>(opts: {
+    default: T | (() => T);
+    codec?: Codec<T, TEncoded>;
+  }): ReactiveRecord<T, TEncoded>;
+  map<K, V>(opts?: {
+    default?: Iterable<[K, V]> | (() => Iterable<[K, V]>);
+  }): ReactiveMap<K, V>;
+  set<K>(opts?: {
+    default?: Iterable<K> | (() => Iterable<K>);
+  }): ReactiveSet<K>;
+  list<T>(opts?: {
+    default?: Iterable<T> | (() => Iterable<T>);
+  }): ReactiveList<T>;
 }
 
 /** Reserved compound member names — leaf keys cannot collide with these. */
@@ -443,19 +487,20 @@ export type StoreLeaves = {
  * Encoded form a single leaf consumes during `hydrate`. Drives `EncodedStore`
  * so migrate return types stay type-safe per leaf shape.
  */
-export type EncodedForLeaf<L> = L extends ReactiveValue<infer T>
-  ? { value: T }
-  : L extends ReactiveCounter
-    ? number
-    : L extends ReactiveMap<infer K, infer V>
-      ? Array<[K, V]>
-      : L extends ReactiveSet<infer K>
-        ? K[]
-        : L extends ReactiveList<infer T>
-          ? ListEncoded<T>
-          : L extends ReactiveRecord<infer T>
-            ? T
-            : unknown;
+export type EncodedForLeaf<L> =
+  L extends ReactiveValue<unknown, infer TE>
+    ? { value: TE }
+    : L extends ReactiveCounter
+      ? number
+      : L extends ReactiveMap<infer K, infer V>
+        ? Array<[K, V]>
+        : L extends ReactiveSet<infer K>
+          ? K[]
+          : L extends ReactiveList<infer T>
+            ? ListEncoded<T>
+            : L extends ReactiveRecord<object, infer TE>
+              ? TE
+              : unknown;
 
 /** Encoded payload for a compound — one entry per leaf, in encoded form. */
 export type EncodedStore<L extends StoreLeaves> = {
@@ -512,7 +557,7 @@ export function createStore<L extends StoreLeaves>(
     value: (o) =>
       collect(
         createValue({
-          defaults: () => o.default,
+          default: o.default,
           ...(o.codec !== undefined ? { codec: o.codec } : {}),
         }),
       ),
@@ -523,16 +568,22 @@ export function createStore<L extends StoreLeaves>(
     record: (o) =>
       collect(
         createRecord({
-          defaults: o.defaults,
+          default: o.default,
           ...(o.codec !== undefined ? { codec: o.codec } : {}),
         }),
       ),
     map: (o) =>
-      collect(createMap(o?.defaults !== undefined ? { defaults: o.defaults } : {})),
+      collect(
+        createMap(o?.default !== undefined ? { default: o.default } : {}),
+      ),
     set: (o) =>
-      collect(createSet(o?.defaults !== undefined ? { defaults: o.defaults } : {})),
+      collect(
+        createSet(o?.default !== undefined ? { default: o.default } : {}),
+      ),
     list: (o) =>
-      collect(createList(o?.defaults !== undefined ? { defaults: o.defaults } : {})),
+      collect(
+        createList(o?.default !== undefined ? { default: o.default } : {}),
+      ),
   };
 
   const leavesDict = build(builder);
