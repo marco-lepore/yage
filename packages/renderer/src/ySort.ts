@@ -2,9 +2,10 @@ import type { Container } from "pixi.js";
 import type { LayerSortFn } from "./LayerDef.js";
 
 /**
- * Built-in y-sort comparator: lower-y renders first (behind), higher-y on top.
- * Matches the classic top-down 2D depth rule — characters "in front of" a
- * tree (higher `position.y`) draw over it.
+ * Built-in y-depth key: a container's `position.y` becomes its paint
+ * order. Lower y renders first (behind); higher y renders on top —
+ * matches the classic top-down 2D depth rule, where a character "in
+ * front of" a tree (higher `position.y`) draws over it.
  *
  * ```ts
  * import { ySort } from "@yagejs/renderer";
@@ -16,21 +17,20 @@ import type { LayerSortFn } from "./LayerDef.js";
  * }
  * ```
  */
-export const ySort: LayerSortFn = (a: Container, b: Container) =>
-  a.position.y - b.position.y;
+export const ySort: LayerSortFn = (c: Container) => c.position.y;
 
 /**
- * Y-sort with a per-container offset, the way Godot's `y_sort_origin`
- * shifts a sprite's apparent "footprint" for depth comparisons. Use when
- * a sprite's anchor is set to its top (so the visual base sits well
- * below `position.y`) and the raw `position.y` produces wrong overlaps —
- * a player whose feet are at the bottom of the sprite should pass
- * *behind* a tree whose trunk is at the bottom of its own sprite, not
- * be sorted by the headtop.
+ * Y-depth key with a per-container offset, the way Godot's
+ * `y_sort_origin` shifts a sprite's apparent "footprint" for depth
+ * comparisons. Use when a sprite's anchor is set to its top (so the
+ * visual base sits well below `position.y`) and the raw `position.y`
+ * produces wrong overlaps — a player whose feet are at the bottom of
+ * the sprite should pass *behind* a tree whose trunk is at the bottom
+ * of its own sprite, not be sorted by the headtop.
  *
  * `offsetOf(container)` is called once per child per frame; cheap data
  * (a getter / a property read) keeps the per-frame cost negligible. The
- * comparator falls through to plain `position.y` when `offsetOf` returns
+ * key falls back to plain `position.y` when `offsetOf` returns
  * `undefined`, so mixed-content layers work without every child having
  * a depth offset.
  *
@@ -47,9 +47,5 @@ export const ySort: LayerSortFn = (a: Container, b: Container) =>
 export function ySortBy(
   offsetOf: (c: Container) => number | undefined,
 ): LayerSortFn {
-  return (a, b) => {
-    const ay = a.position.y + (offsetOf(a) ?? 0);
-    const by = b.position.y + (offsetOf(b) ?? 0);
-    return ay - by;
-  };
+  return (c) => c.position.y + (offsetOf(c) ?? 0);
 }

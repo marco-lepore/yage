@@ -17,8 +17,6 @@ export type EffectQueueFactory = () => ScopedProcessQueue;
 export interface CreateLayerOptions {
   /** Per-layer override for PixiJS event mode. Falls back to the manager default. */
   eventMode?: EventMode;
-  /** Whether the container should sort children by their own zIndex. */
-  sortableChildren?: boolean;
   /**
    * Coordinate space. `"world"` (default) layers are picked up by cameras
    * spawned without explicit `bindings`; `"screen"` layers are skipped so
@@ -33,9 +31,10 @@ export interface CreateLayerOptions {
    */
   isRenderGroup?: boolean;
   /**
-   * Custom child sort comparator. See `LayerDef.sort` — when set,
-   * `DisplaySystem` re-sorts the layer's children with this comparator
-   * each frame before render. Default: undefined (insertion order).
+   * Depth-key function. See `LayerDef.sort` — when set, `DisplaySystem`
+   * writes `child.zIndex = sort(child)` on every child each frame, and
+   * flips `container.sortableChildren = true` so Pixi orders the layer
+   * by zIndex at render time. Default: undefined (insertion order).
    */
   sort?: LayerSortFn;
 }
@@ -162,17 +161,14 @@ export class RenderLayerManager {
 
     const eventMode = opts?.eventMode ?? this._defaultEventMode;
     if (eventMode) container.eventMode = eventMode;
-    if (opts?.sortableChildren) container.sortableChildren = true;
     if (opts?.isRenderGroup) container.isRenderGroup = true;
-    // NOTE: a custom `sort` comparator deliberately does NOT flip
-    // `container.sortableChildren = true`. Pixi v8's
-    // `RenderGroupSystem.execute` calls `container.sortChildren()` at
-    // render time on sortableChildren containers, which only orders by
-    // `zIndex`. On any frame where a child was just added (sortDirty),
-    // Pixi's render-time sort would run AFTER `DisplaySystem.applyLayerSort`
-    // and re-order the children by zIndex, undoing our custom sort for
-    // that frame. Leaving `sortableChildren = false` keeps our
-    // direct `children`-array mutation authoritative.
+    // `sort` is a depth-key fn — DisplaySystem writes the result to each
+    // child's zIndex every frame, and Pixi's render pipeline orders the
+    // layer by zIndex when `sortableChildren` is true. Set the flag once
+    // here so the relationship is explicit; Pixi's `zIndex` setter marks
+    // `sortDirty` on the parent automatically, so we don't need to
+    // re-sort manually.
+    if (opts?.sort) container.sortableChildren = true;
 
     const layer = new RenderLayer(
       name,
@@ -199,9 +195,6 @@ export class RenderLayerManager {
    */
   createFromDef(def: LayerDef, opts?: CreateLayerOptions): RenderLayer {
     const merged: CreateLayerOptions = { ...opts };
-    if (def.sortableChildren !== undefined) {
-      merged.sortableChildren = def.sortableChildren;
-    }
     if (def.space !== undefined) merged.space = def.space;
     if (def.isRenderGroup !== undefined) {
       merged.isRenderGroup = def.isRenderGroup;

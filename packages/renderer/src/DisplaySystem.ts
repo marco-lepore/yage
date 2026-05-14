@@ -69,10 +69,11 @@ export class DisplaySystem extends System {
       this.syncDisplayObject(transform, text.text);
     }
 
-    // 2. Apply per-layer sort functions. Runs AFTER transform sync so
-    //    y-based comparators see the frame's current positions, and
-    //    BEFORE camera transforms so reordering doesn't fight any
-    //    cumulative scale/translation we're about to write.
+    // 2. Apply per-layer depth keys. Runs AFTER transform sync so
+    //    position-based depth keys see the frame's current values.
+    //    Order vs. camera transforms doesn't matter — we're writing
+    //    `zIndex`, which Pixi's render-time `sortChildren()` consumes;
+    //    the camera transform on the layer container is independent.
     this.applyLayerSort();
 
     // 3. Apply camera transforms to layers
@@ -80,22 +81,24 @@ export class DisplaySystem extends System {
   }
 
   /**
-   * Per-frame y-sort hook. Pixi v8's built-in `sortChildren` only orders by
-   * `zIndex`, so position-based comparators have to mutate `children`
-   * ourselves. We sort the array in place; the next render iterates it in
-   * the new order. Layers without a `sort` keep insertion order (current
-   * default behavior).
+   * Per-frame depth-key hook. For every layer with a `sort` fn, writes
+   * `child.zIndex = sort(child)` on every direct child. The layer's
+   * container already has `sortableChildren = true` (set in `RenderLayer`),
+   * so Pixi's render-pipeline sort runs at frame end and orders the
+   * children by zIndex — no custom sort path on our side. Pixi's
+   * `zIndex` setter marks `sortDirty` automatically, so we don't need
+   * to flip it ourselves.
+   *
+   * Layers without a `sort` keep insertion order.
    */
   private applyLayerSort(): void {
     for (const [, tree] of this.treeProvider.allTrees()) {
       for (const layer of tree.getAll()) {
-        if (!layer.sort) continue;
-        // Cast: Pixi v8 types `Container.children` as `readonly`-ish to
-        // discourage external mutation, but `Container` itself sorts the
-        // array in place inside `sortChildren()` — the in-place sort
-        // here is the same shape and is the documented escape hatch for
-        // custom comparators.
-        (layer.container.children as Container[]).sort(layer.sort);
+        const sort = layer.sort;
+        if (!sort) continue;
+        for (const child of layer.container.children) {
+          child.zIndex = sort(child);
+        }
       }
     }
   }

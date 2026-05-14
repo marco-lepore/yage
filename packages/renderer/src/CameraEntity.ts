@@ -12,8 +12,17 @@ import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
 import { CameraZoom } from "./CameraZoom.js";
+import { RendererKey } from "./types.js";
 
 export type { CameraBinding } from "./CameraComponent.js";
+
+/** Axis-aligned rectangle in world space, used by `CameraEntityParams.fitTo`. */
+export interface CameraFitToRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface CameraEntityParams {
   /** Initial position. */
@@ -37,24 +46,16 @@ export interface CameraEntityParams {
   /** Camera name (for multi-camera lookup). */
   name?: string;
   /**
-   * Tracking mode. Default: `"follow"`.
-   *
-   * - `"follow"` — track a `follow` target each frame (or stay idle when
-   *   none is set).
-   * - `"static"` — never auto-track; the camera stays at whatever
-   *   `position` was supplied (or `centerOn` computed). Passes `follow` /
-   *   `smoothing` / `offset` / `deadzone` are ignored. Use for arcade-style
-   *   single-screen layouts, puzzle grids, and any scene whose camera is
-   *   placed once and never moves.
+   * Frame an axis-aligned world rectangle: position the camera on the
+   * rect's centre and zoom so the entire rect fits inside the viewport
+   * (`contain` semantics — `zoom = min(viewportW / rect.w, viewportH /
+   * rect.h)`). Wins over `position` and `zoom` when supplied. Applied
+   * once at setup against the current renderer viewport — for fixed
+   * cameras where the framed area is known up front (puzzle boards,
+   * arcade levels, dialog-scene insets). For runtime re-framing, set
+   * `position` + `zoom` directly on the camera.
    */
-  fit?: "follow" | "static";
-  /**
-   * Center the camera on an area's midpoint. Convenience for `position:
-   * new Vec2(width / 2, height / 2)`. Applied after `position`, so passing
-   * both makes `centerOn` win. Useful for top-left-origin layouts where
-   * the level dimensions are known up front.
-   */
-  centerOn?: { width: number; height: number };
+  fitTo?: CameraFitToRect;
 }
 
 /**
@@ -80,16 +81,23 @@ export class CameraEntity extends Entity {
   setup(params: CameraEntityParams = {}): void {
     const camOpts: CameraComponentOptions = {};
     if (params.position !== undefined) camOpts.position = params.position;
-    // `centerOn` overrides `position` when both are supplied — the explicit
-    // "put the camera at the center of this rect" intent is more specific
-    // than the raw vector, so we honour it last.
-    if (params.centerOn !== undefined) {
+    if (params.zoom !== undefined) camOpts.zoom = params.zoom;
+    // `fitTo` computes position + zoom together from the supplied rect
+    // and the current viewport — wins over both. Resolve the renderer
+    // off the scene context so the viewport read happens at setup
+    // (snapshotting the framed area against the *current* viewport;
+    // fitTo is a one-shot, not a responsive binding).
+    if (params.fitTo !== undefined) {
+      const viewport = this.scene.context.resolve(RendererKey).virtualSize;
       camOpts.position = new Vec2(
-        params.centerOn.width / 2,
-        params.centerOn.height / 2,
+        params.fitTo.x + params.fitTo.width / 2,
+        params.fitTo.y + params.fitTo.height / 2,
+      );
+      camOpts.zoom = Math.min(
+        viewport.width / params.fitTo.width,
+        viewport.height / params.fitTo.height,
       );
     }
-    if (params.zoom !== undefined) camOpts.zoom = params.zoom;
     if (params.bindings !== undefined) camOpts.bindings = params.bindings;
     if (params.priority !== undefined) camOpts.priority = params.priority;
     if (params.name !== undefined) camOpts.name = params.name;
@@ -100,9 +108,7 @@ export class CameraEntity extends Entity {
     this.add(new CameraShake());
     this.add(new CameraZoom());
 
-    // `fit: "static"` is the explicit "never auto-track" mode — drop any
-    // follow-related params on the floor instead of silently honouring them.
-    if (params.fit !== "static" && params.follow) {
+    if (params.follow) {
       const followOpts: CameraFollowOptions = {};
       if (params.smoothing !== undefined) followOpts.smoothing = params.smoothing;
       if (params.offset !== undefined) followOpts.offset = params.offset;

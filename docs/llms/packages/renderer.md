@@ -322,7 +322,7 @@ const screen = cam.worldToScreen(entity.x, entity.y);
 
 Camera position `(0, 0)` places the **world origin at the center of the viewport**, not the top-left. Entities rendered at `(0, 0)` appear centered. This is the standard convention for camera-driven 2D games (scrolling shooters, platformers).
 
-For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner:
+For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner — or use `fitTo` (below) to frame the whole level in one call.
 
 ```ts
 class GameScene extends Scene {
@@ -331,24 +331,23 @@ class GameScene extends Scene {
   onEnter() {
     // Top-left-origin: world (0,0) maps to screen (0,0)
     this.spawn(CameraEntity, { position: new Vec2(400, 300) }); // viewport is 800×600
-    // Or, equivalently — let the renderer compute the center for you:
-    this.spawn(CameraEntity, { centerOn: { width: 800, height: 600 } });
   }
 }
 ```
 
-### `fit: "static"` and `centerOn`
+### `fitTo` — frame a world rectangle
 
-`CameraEntity` defaults to `fit: "follow"` — the classic "track a target each frame" behavior. Pass `fit: "static"` when the camera should be placed once and never move (puzzle grids, arcade-style single-screen layouts, debug fly-overs). Static mode silently drops any `follow` / `smoothing` / `offset` / `deadzone` so a half-finished refactor that still passes those values doesn't accidentally re-enable tracking.
+`fitTo: { x, y, width, height }` is the fixed-camera primitive: it positions the camera at the rect's centre AND sets `zoom` so the entire rect fits inside the viewport (`contain` semantics, `zoom = min(viewportW / rect.w, viewportH / rect.h)`). Overrides explicit `position` and `zoom` when supplied. Applied once at setup against the renderer's current `virtualSize`.
 
-`centerOn: { width, height }` is a convenience: it computes the midpoint and applies it as the camera's initial position, overriding any explicit `position`. Useful for top-left-origin layouts where the level dimensions are known up front.
+Use for puzzle boards, arcade-style single-screen layouts, dialog-scene insets — anywhere the framed area is known up front. Pair with no `follow` and the camera never moves; pair with `follow` and the camera starts framing the rect, then tracks the target from there.
 
 ```ts
 this.spawn(CameraEntity, {
-  fit: "static",
-  centerOn: { width: 800, height: 600 },
+  fitTo: { x: 0, y: 0, width: 800, height: 600 },
 });
 ```
+
+For runtime re-framing, set `position` and `zoomTo()` directly on the camera — `fitTo` is a one-shot, not a responsive binding.
 
 ## Render Layers
 
@@ -400,14 +399,14 @@ bind a screen-space layer to a second camera or build parallax.
 
 ### `LayerDef.sort` — per-frame paint order
 
-Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a comparator and `DisplaySystem` re-sorts the layer's children with that comparator each frame, after transform sync, before camera transforms.
+Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(container) => number` and `DisplaySystem` writes the result to `container.zIndex` for every child each frame; Pixi's render pipeline then orders the layer by zIndex. The hook also flips `container.sortableChildren = true` so Pixi knows to honour the zIndex.
 
 Two built-in helpers cover the common cases:
 
-| Helper | Use for |
+| Helper | Returns |
 |---|---|
-| `ySort` | Top-down 2D depth — characters with higher `position.y` paint over those with lower y. |
-| `ySortBy(offsetOf)` | Same, but each container can advertise a per-sprite Y offset (à la Godot's `y_sort_origin`) so the sort key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+| `ySort` | `c.position.y` — classic top-down depth, characters with higher y paint on top. |
+| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can advertise a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
 
 ```ts
 import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
@@ -421,7 +420,7 @@ readonly layers: readonly LayerDef[] = [
 const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
 ```
 
-The reorder is done in `DisplaySystem` by mutating `container.children` directly — Pixi v8's built-in `sortChildren()` only sorts by `zIndex`, which can't see position changes. Setting `sort` deliberately does NOT flip `container.sortableChildren = true`: if it did, Pixi's render-time `sortChildren()` would re-order by `zIndex` after `DisplaySystem.applyLayerSort`, undoing our custom sort on any frame where a child was just added (sortDirty). Set `sortableChildren: true` on the layer only when you actually want Pixi's zIndex auto-sort *instead* of the custom comparator.
+Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 

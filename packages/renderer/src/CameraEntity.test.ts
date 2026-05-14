@@ -60,7 +60,6 @@ import { Transform, Vec2 } from "@yagejs/core";
 import { CameraEntity } from "./CameraEntity.js";
 import { CameraComponent } from "./CameraComponent.js";
 import { CameraBoundsComponent } from "./CameraBoundsComponent.js";
-import { CameraFollow } from "./CameraFollow.js";
 import { CameraShake } from "./CameraShake.js";
 import { createRendererTestContext } from "./test-helpers.js";
 import { RendererKey } from "./types.js";
@@ -183,65 +182,46 @@ describe("CameraEntity", () => {
     expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
   });
 
-  describe("fit: \"static\"", () => {
-    it("ignores a follow target so the camera stays at `position`", () => {
-      const { scene } = createRendererTestContext();
-      const player = scene.spawn("player");
-      const t = player.add(new Transform({ position: new Vec2(500, 500) }));
-      const cam = scene.spawn(CameraEntity, {
-        position: new Vec2(100, 100),
-        follow: t,
-        fit: "static",
-      });
-
-      // CameraFollow.update would normally lerp toward (500, 500). Static
-      // mode never calls `start()` on the follow component, so the camera
-      // stays put even after a frame of update.
-      cam.get(CameraFollow).update(16);
-
-      expect(cam.position.x).toBe(100);
-      expect(cam.position.y).toBe(100);
-    });
-
-    it("defaults to fit: 'follow' when no fit is specified", () => {
-      const { scene } = createRendererTestContext();
-      const player = scene.spawn("player");
-      const t = player.add(new Transform({ position: new Vec2(500, 500) }));
-      const cam = scene.spawn(CameraEntity, {
-        position: new Vec2(0, 0),
-        follow: t,
-        smoothing: 1, // instant snap so we can assert without lerp math
-      });
-
-      cam.get(CameraFollow).update(16);
-
-      expect(cam.position.x).toBe(500);
-      expect(cam.position.y).toBe(500);
-    });
-  });
-
-  describe("centerOn", () => {
-    it("centers the camera on the area's midpoint", () => {
+  describe("fitTo", () => {
+    it("centres the camera on the rect's midpoint", () => {
+      // Default test viewport from createRendererTestContext: 800 × 600.
       const { scene } = createRendererTestContext();
       const cam = scene.spawn(CameraEntity, {
-        centerOn: { width: 2000, height: 1000 },
+        fitTo: { x: 100, y: 200, width: 400, height: 300 },
       });
 
-      expect(cam.position.x).toBe(1000);
-      expect(cam.position.y).toBe(500);
+      expect(cam.position.x).toBe(300); // 100 + 400/2
+      expect(cam.position.y).toBe(350); // 200 + 300/2
     });
 
-    it("overrides an explicit position", () => {
+    it("zooms to fit the rect inside the viewport (contain semantics)", () => {
+      const { scene } = createRendererTestContext();
+      // 800/400 = 2, 600/300 = 2 — both axes match, zoom = 2.
+      const camMatched = scene.spawn(CameraEntity, {
+        fitTo: { x: 0, y: 0, width: 400, height: 300 },
+      });
+      expect(camMatched.zoom).toBe(2);
+
+      // 800/200 = 4, 600/300 = 2 — height is the limiting axis, zoom = 2.
+      const camWide = scene.spawn(CameraEntity, {
+        fitTo: { x: 0, y: 0, width: 200, height: 300 },
+      });
+      expect(camWide.zoom).toBe(2);
+    });
+
+    it("overrides explicit `position` and `zoom`", () => {
       const { scene } = createRendererTestContext();
       const cam = scene.spawn(CameraEntity, {
         position: new Vec2(10, 10),
-        centerOn: { width: 800, height: 600 },
+        zoom: 5,
+        fitTo: { x: 0, y: 0, width: 800, height: 600 },
       });
 
-      // centerOn wins — the explicit "center of this rect" intent is more
-      // specific than the bare position vector.
+      // fitTo on a 800×600 rect against an 800×600 viewport: position
+      // at centre, zoom at 1.
       expect(cam.position.x).toBe(400);
       expect(cam.position.y).toBe(300);
+      expect(cam.zoom).toBe(1);
     });
   });
 });

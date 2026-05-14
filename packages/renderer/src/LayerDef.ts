@@ -4,17 +4,23 @@ import type { Container } from "pixi.js";
 export type LayerSpace = "world" | "screen";
 
 /**
- * Comparator applied to a layer's children before each render. Receives
- * the bare Pixi `Container`s sitting directly inside the layer; return a
- * negative number to render `a` first (behind), positive to render
- * `b` first.
+ * Depth-key function applied to a layer's children before each render.
+ * Receives a Pixi `Container` and returns the **paint order key** — lower
+ * values render first (behind), higher values render on top. Identical
+ * semantics to writing `container.zIndex = key` by hand, but applied to
+ * every child of the layer each frame.
  *
  * Default behaviour (no `sort`) is **insertion order** — entities render
  * in the order their visual containers were added. Use `ySort` for the
- * classic top-down 2D depth rule, or compose your own comparator for
+ * classic top-down 2D depth rule, or compose your own depth-key for
  * isometric / layered-depth setups.
+ *
+ * The key is written to `container.zIndex` by `DisplaySystem` after
+ * transform sync, then Pixi's own render-time `sortChildren()` orders
+ * the layer by zIndex — so the resulting paint order is exactly what
+ * Pixi shows for any manually-zIndexed scene, no separate sort path.
  */
-export type LayerSortFn = (a: Container, b: Container) => number;
+export type LayerSortFn = (c: Container) => number;
 
 /**
  * Declarative layer definition attached to a Scene subclass via
@@ -55,26 +61,23 @@ export interface LayerDef {
    *   can still opt in explicitly by naming the layer in their `bindings`.
    */
   space?: LayerSpace;
-  /** Whether children should self-sort by their `zIndex`. Default: false. */
-  sortableChildren?: boolean;
   /**
-   * Comparator applied to the layer's children before each render.
-   * `DisplaySystem` mutates `container.children` directly with this
-   * comparator each frame, after syncing transforms so position-based
-   * comparisons see the current frame's values, before camera
-   * transforms.
+   * Depth-key function applied to the layer's children. When set,
+   * `DisplaySystem` writes `child.zIndex = sort(child)` for every child
+   * each frame, and flips `container.sortableChildren = true` so Pixi's
+   * render pipeline orders the layer by zIndex. Default: unset (insertion
+   * order).
    *
-   * Default: unset (insertion order). Use `ySort` for the classic
-   * top-down depth rule, or `ySortBy(getOffset)` to anchor each sprite's
-   * sort key at a per-entity Y offset (think Godot's `y_sort_origin` —
-   * matches a sprite's apparent "footprint" instead of its top-left).
+   * Use `ySort` for the classic top-down depth rule, or
+   * `ySortBy(getOffset)` to anchor each sprite's sort key at a per-entity
+   * Y offset (Godot's `y_sort_origin` pattern — matches a sprite's
+   * apparent "footprint" instead of its top-left).
    *
-   * Note: this hook does NOT flip `sortableChildren`. Pixi v8's render
-   * pipeline would otherwise call `container.sortChildren()` at render
-   * time and re-order by `zIndex`, undoing our custom sort on any frame
-   * where a child was just added. Set `sortableChildren: true` only if
-   * you actually want Pixi's zIndex-based auto-sort INSTEAD of the
-   * custom comparator.
+   * Game code that manually writes `child.zIndex` on individual sprites
+   * doesn't need `sort` — Pixi already sorts them once `sortableChildren`
+   * is on. `sort` is for the common case where the key is a function of
+   * the sprite's current state (position, depth offset, etc.) and needs
+   * to be recomputed each frame.
    */
   sort?: LayerSortFn;
   /**

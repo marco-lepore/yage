@@ -49,31 +49,33 @@ The camera never changes; you're just choosing which world point sits under
 the viewport's top-left corner. Follow-a-target cameras work identically with
 either convention — they just move to frame the target.
 
-`centerOn: { width, height }` does the half-viewport math for you and is
-the cleaner way to spell the same thing:
+### Frame a world rectangle (`fitTo`)
 
-```typescript
-this.spawn(CameraEntity, { centerOn: { width: 800, height: 600 } });
-```
-
-### Static cameras (`fit: "static"`)
-
-By default a `CameraEntity` is `fit: "follow"` — it tracks a target each
-frame, smooths into deadzones, runs bounds, etc. For arcade-style
-single-screen games, puzzle grids, or any layout where the camera is
-placed once and never moves, set `fit: "static"`:
+For fixed-camera scenes — puzzle boards, arcade-style single-screen
+games, dialog-scene insets — the ergonomic gap is "frame this
+rectangle": position **and** zoom together so a known world area fills
+the viewport. `fitTo: { x, y, width, height }` does both in one call:
 
 ```typescript
 this.spawn(CameraEntity, {
-  fit: "static",
-  centerOn: { width: 800, height: 600 },
+  fitTo: { x: 0, y: 0, width: 800, height: 600 },
 });
 ```
 
-Static cameras silently drop `follow` / `smoothing` / `offset` / `deadzone`
-on the floor, so a half-finished refactor that still passes those values
-doesn't accidentally re-enable tracking. Shake, zoom, and bounds still
-work — `fit` only controls the per-frame *position* follow loop.
+The camera centres on the rect's midpoint and sets `zoom = min(viewportW /
+rect.w, viewportH / rect.h)` — `contain` semantics, so the entire rect is
+always visible (any spare viewport space along the off-aspect axis stays
+empty, exactly like CSS `object-fit: contain`). Overrides any explicit
+`position` and `zoom` you pass alongside.
+
+`fitTo` is applied **once at setup** against the renderer's current
+viewport. For runtime re-framing (entering a sub-area, transition
+between rooms), set `position` and call `zoomTo()` directly on the
+camera — `fitTo` isn't a responsive binding.
+
+Want a fixed camera that doesn't auto-track? Just don't pass `follow` —
+that's already the "don't move" state. The previous `fit: "static"`
+mode was redundant with that and has been dropped.
 
 ### Following a Target
 
@@ -266,9 +268,9 @@ By default, sprites within a layer paint in the order their containers
 were added (insertion order). For top-down 2D games you almost always
 want characters with a higher `position.y` to paint over those with a
 lower y, so the "in front of" relationship looks right. Set
-`LayerDef.sort` to a comparator and `DisplaySystem` re-sorts the layer's
-children with it every frame, after transform sync, before camera
-transforms:
+`LayerDef.sort` to a **depth-key function** `(container) => number` and
+`DisplaySystem` writes the result to each child's `zIndex` every frame;
+Pixi's render pipeline then orders the layer by zIndex:
 
 ```typescript
 import { ySort, type LayerDef } from "@yagejs/renderer";
@@ -280,11 +282,11 @@ readonly layers: readonly LayerDef[] = [
 ];
 ```
 
-`ySort` is `(a, b) => a.position.y - b.position.y` — terse enough that
-you can write your own comparator if you'd rather drive depth from a
-different axis or off a custom field on the sprite.
+`ySort` is just `(c) => c.position.y` — terse enough that you can write
+your own depth-key if you'd rather drive paint order from a different
+axis or off a custom field on the sprite.
 
-#### Sort offsets (`ySortBy`) — Godot's `y_sort_origin` pattern
+#### Depth offsets (`ySortBy`) — Godot's `y_sort_origin` pattern
 
 A sprite's `position.y` is its **anchor's** y in the world. If your
 sprites are anchored at the top, the visual "footprint" (where the
@@ -295,8 +297,8 @@ the bottom of *its* sprite, even though the player's feet are
 geometrically in front of the tree's trunk.
 
 `ySortBy(offsetOf)` lets each container advertise a per-sprite Y offset
-that gets added to `position.y` before comparison. This is the same
-idea as Godot's `y_sort_origin`:
+that gets added to `position.y` before the depth-key is computed. This
+is the same idea as Godot's `y_sort_origin`:
 
 ```typescript
 import { ySortBy } from "@yagejs/renderer";
@@ -306,12 +308,23 @@ const sort = ySortBy(
 );
 
 // On each sprite that should sort by its visual base:
-sprite.sprite.depthOffset = 32; // sort key is `position.y + 32`
+sprite.sprite.depthOffset = 32; // depth key is `position.y + 32`
 ```
 
 `offsetOf` returns `undefined` to fall through to plain `position.y`,
 so mixed-content layers work without every child carrying a depth
 offset.
+
+#### Manual zIndex still works alongside `sort`
+
+Because `sort` writes to `zIndex`, anything that manually sets
+`child.zIndex = N` between frames composes naturally — the next
+`DisplaySystem.update` overwrites it from the depth-key fn, but
+between updates Pixi sees whatever you wrote. For occasional one-off
+biasing (a "pop to front" highlight, a brief "behind everything" fade),
+just don't depend on the manual value surviving the next frame. For
+permanent per-sprite biasing, fold it into the depth-key fn itself via
+`ySortBy`.
 
 ### Pixi render groups with `isRenderGroup`
 

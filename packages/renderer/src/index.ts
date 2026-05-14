@@ -68,7 +68,7 @@ export type {
 
 // Camera — entity-based system
 export { CameraEntity } from "./CameraEntity.js";
-export type { CameraEntityParams } from "./CameraEntity.js";
+export type { CameraEntityParams, CameraFitToRect } from "./CameraEntity.js";
 export { CameraComponent } from "./CameraComponent.js";
 export type {
   CameraBounds,
