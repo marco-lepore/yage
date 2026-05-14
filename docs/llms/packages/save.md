@@ -25,49 +25,92 @@ engine.use(new SavePlugin({ save }));
 
 ## Defining stores
 
-Stores are typed singletons declared at module scope. Re-exported from `@yagejs/save` for convenience; originals live in `@yagejs/core`.
+Two factories: the **compound** `defineStore` (primary — collects typed leaves under one save target) and the **standalone** `defineRecord`/`defineValue`/`defineCounter`/`defineMap`/`defineSet`/`defineList` for one-offs. Re-exported from `@yagejs/save` for convenience; originals live in `@yagejs/core`.
+
+### Compound: `defineStore(id, builder, opts?)`
 
 ```ts
-import { defineStore, defineSet, defineMap, defineCounter } from "@yagejs/save";
+import { defineStore } from "@yagejs/save";
 
-interface SettingsData {
-  audio: { music: number; sfx: number };
-  vsync: boolean;
-}
+interface Potion { name: string; quality: number }
 
-export const settings = defineStore<SettingsData>("settings", {
-  version: 1,
+const game = defineStore("save-stores.run", (s) => ({
+  inventory:  s.map<string, number>(),
+  recipes:    s.set<string>(),
+  gold:       s.counter({ default: 0 }),
+  reputation: s.counter({ default: 50 }),
+  shelf:      s.list<Potion>(),
+  day:        s.value<number>({ default: 1 }),
+  settings:   s.record<{ volume: number; lang: string }>({
+    defaults: () => ({ volume: 0.8, lang: "en" }),
+  }),
+}));
+
+// Idiomatic per-shape ops on each leaf:
+game.gold.increment(10);
+game.inventory.set("moonleaf", 3);
+game.recipes.add("brew-1");
+
+// Save the whole tree as one document:
+save.autoPersist(game);
+```
+
+Leaf builder methods: `s.value<T>({ default, codec? })`, `s.counter({ default? })`, `s.record<T>({ defaults, codec? })`, `s.map<K,V>({ defaults? })`, `s.set<K>({ defaults? })`, `s.list<T>({ defaults? })`.
+
+The compound implements `PersistentLike`: one storage key per compound; `serialize()` walks all leaves; `hydrate(payload)` fans the payload out to each leaf. Per-tree `version` and `migrate(old, fromVersion)` are passed in `opts`.
+
+Reserved leaf keys: `id`, `version`, `subscribe`, `serialize`, `hydrate`, `reset` — leaf names that collide throw at definition time.
+
+`useStore(compound)` is intentionally **not** supported — read individual leaves so React subscription granularity stays per-leaf.
+
+### Standalone factories (one-offs)
+
+```ts
+import {
+  defineRecord, defineValue, defineCounter, defineMap, defineSet, defineList,
+} from "@yagejs/save";
+
+export const settings = defineRecord<SettingsData>("settings", {
   defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
-});
-
-export const saves = defineStore<RunData>("saves", {
-  version: 2,
-  defaults: () => ({ chapter: 1, position: { x: 0, y: 0 }, inventory: [] }),
-  migrate: (old, fromVersion) => {
-    if (fromVersion < 2) return { ...(old as RunData), inventory: [] };
-    return old as RunData;
-  },
 });
 
 export const opened   = defineSet<string>("world.opened");
 export const defeated = defineMap<string, number>("world.defeated");
 export const restEpoch = defineCounter("world.restEpoch");
+export const day       = defineValue<number>("world.day", { defaults: () => 1 });
+export const journal   = defineList<{ at: number; text: string }>("world.journal");
 ```
 
-Store API:
+Shape APIs (each leaf also exposes `.subscribe(fn)`):
+
+- `defineRecord<T>` / leaf `s.record`: `get(): Readonly<T>`, `set(partial: Partial<T>)`, `reset()` (standalone only).
+- `defineValue<T>` / leaf `s.value`: `get(): T`, `set(v: T)`.
+- `defineCounter` / leaf `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
+- `defineMap<K, V>` / leaf `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries(): Array<[K, V]>`, `size()`, `clear()`.
+- `defineSet<K>` / leaf `s.set`: `add(k)`, `delete(k)`, `has(k)`, `values(): K[]`, `size()`, `clear()`.
+- `defineList<T>` / leaf `s.list`: `add(item): number` (returns id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list(): T[]` (insertion order), `size()`, `clear()`. Ids are monotonic and stable across save/restore.
+
+Re-defining a store with the same id silently replaces the previous registry entry — intentional so dev-server hot reloads don't throw on the second `defineX` call. Treat ids as unique within a single non-HMR runtime; collisions across modules will quietly overwrite.
+
+### Migrating N standalone stores to one compound
 
 ```ts
-store.get(): Readonly<T>           // stable reference between sets
-store.set(partial: Partial<T>): void  // shallow merge
-store.subscribe(listener): () => void
-store.reset(): void                // restore defaults
+// Before — three save documents, three autoPersist calls.
+const progression = defineRecord<RunData>("run", { defaults: () => ({ chapter: 1, coins: 0 }) });
+const deaths      = defineCounter("deaths");
+const flags       = defineSet<string>("flags");
+save.autoPersist(progression);
+save.autoPersist(deaths);
+save.autoPersist(flags);
+
+// After — one document, one autoPersist call, atomic serialize/hydrate.
+const game = defineStore("run", (s) => ({
+  progression: s.record<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) }),
+  deaths:      s.counter({ default: 0 }),
+  flags:       s.set<string>(),
+}));
+save.autoPersist(game);
 ```
-
-`defineSet<K>`: `has`, `add`, `remove`, `clear`, `size`, `values`.
-`defineMap<K, V>`: `has`, `get`, `set`, `remove`, `clear`, `size`, `entries`.
-`defineCounter`: `value`, `set`, `increment`, `decrement`.
-
-Re-defining a store with the same id silently replaces the previous registry entry — this is intentional so dev-server hot reloads don't throw on the second `defineX` call. Treat ids as unique within a single non-HMR runtime; collisions across modules will quietly overwrite.
 
 ## Save instance API
 
@@ -100,7 +143,7 @@ await save.listSlots(saves, { prefix: `${profile}/` });
 Errors:
 
 - `SlotNotFoundError` — `loadSlot` on a slot that doesn't exist.
-- `StoreVersionTooNewError` — stored version is greater than `defineStore`'s `version`.
+- `StoreVersionTooNewError` — stored version is greater than the store's current `version`.
 - `StoreMigrationMissingError` — stored version is older and no `migrate` configured.
 - `InvalidKeyError` — empty store id or slot name passed to `Save` methods. Thrown synchronously before the adapter is touched.
 
@@ -158,7 +201,7 @@ mapCodec<K, V>()     // Map<K, V>  <-> [K, V][]
 dateCodec()          // Date       <-> ISO string
 ```
 
-`defineSet`/`defineMap`/`defineCounter` bundle codecs internally — you only specify a codec for `defineStore<T>` when `T` contains exotic types.
+`defineSet`/`defineMap`/`defineCounter`/`defineList` bundle codecs internally — you only specify a codec for `defineRecord<T>` / `defineValue<T>` (and the compound `s.record`/`s.value` leaves) when `T` contains exotic types.
 
 ## Adapters
 
@@ -197,8 +240,11 @@ saves/m                    ← slot manifest (savedAt + metadata)
 
 ## Migration
 
+Per-store (standalone) and per-tree (compound). Per-leaf migration is not supported in v1.
+
 ```ts
-defineStore<RunData>("saves", {
+// Standalone:
+defineRecord<RunData>("saves", {
   version: 3,
   defaults: () => initialRun(),
   migrate: (old, fromVersion) => {
@@ -206,6 +252,19 @@ defineStore<RunData>("saves", {
     if (fromVersion < 2) v = { ...v, inventory: [] };
     if (fromVersion < 3) v = { ...v, position: v.startPos ?? { x: 0, y: 0 } };
     return v as RunData;
+  },
+});
+
+// Compound — migrate the whole tree at once. Returns the new-format `data`
+// dict that gets dispatched to each leaf's hydrate.
+defineStore("run", (s) => ({
+  gold: s.counter({ default: 0 }),
+  day:  s.value<number>({ default: 1 }),
+}), {
+  version: 2,
+  migrate: (old, fromVersion) => {
+    const v1 = old as { gold: number };
+    return { gold: v1.gold, day: { value: 7 } };
   },
 });
 ```

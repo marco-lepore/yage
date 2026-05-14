@@ -3,21 +3,14 @@
  *
  * A small "real" game with menu / gameplay / settings / pause scenes, where
  * every persistence call goes through the engine's DI: the React UI binds to
- * stores via `useStore`, and the scenes' own Components resolve the registered
- * Save instance through `SaveServiceKey`.
+ * leaves via `useStore`, and the scenes' own Components resolve the
+ * registered Save instance through `SaveServiceKey`.
  *
- * What it covers:
- *   - `defineStore` / `defineCounter` / `defineSet` at module scope
- *   - `createSave` + `SavePlugin` registration
- *   - `useStore` for reactive UI bindings
- *   - `this.use(SaveServiceKey)` from inside a Component (PauseScene's save
- *     buttons, MenuScene's Continue/New Game buttons)
- *   - Slot list with typed metadata (chapter, coins, timestamp)
- *   - Settings auto-persisted as a single document
- *   - Scene stack: Menu → Gameplay → Pause / Settings overlays
- *
- * For the snapshot path (full-scene serialization via @serializable) see
- * `save-load.ts`.
+ * This example showcases the **compound** store pattern: a single
+ * `defineStore("game", (s) => …)` collects every run-state leaf (counters,
+ * a record, a value), and a separate compound stores settings. Two
+ * `save.autoPersist` registrations cover the whole game state — one storage
+ * key per compound — with atomic serialize/hydrate.
  */
 
 import { useEffect, useState } from "react";
@@ -29,9 +22,6 @@ import {
   Vec2,
   SceneManagerKey,
   defineStore,
-  defineCounter,
-  type PersistentCounter,
-  type PersistentLike,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -60,6 +50,7 @@ import {
   localStorageAdapter,
   type SlotInfo,
   type Save,
+  type PersistentLike,
 } from "@yagejs/save";
 import {
   textStyle,
@@ -75,31 +66,25 @@ import { injectStyles, setupGameContainer } from "./shared.js";
 injectStyles();
 
 // ---------------------------------------------------------------------------
-// 1. Stores — typed singletons at module scope.
+// 1. Compound stores
+//
+// `game` collects every run-state leaf into one save document. `settings` is
+// its own compound because it persists separately (across runs).
 // ---------------------------------------------------------------------------
 
-interface SettingsData {
-  music: number;
-  sfx: number;
-  vsync: boolean;
-}
+const game = defineStore("save-stores.run", (s) => ({
+  progression: s.record<{ chapter: number; coins: number }>({
+    defaults: () => ({ chapter: 1, coins: 0 }),
+  }),
+  deaths: s.counter({ default: 0 }),
+}));
 
-const settings = defineStore<SettingsData>("save-stores.settings", {
-  version: 1,
-  defaults: () => ({ music: 0.8, sfx: 1.0, vsync: true }),
-});
-
-interface RunData {
-  chapter: number;
-  coins: number;
-}
-
-const progression = defineStore<RunData>("save-stores.run", {
-  version: 1,
-  defaults: () => ({ chapter: 1, coins: 0 }),
-});
-
-const deaths = defineCounter("save-stores.deaths");
+const settings = defineStore("save-stores.settings", (s) => ({
+  audio: s.record<{ music: number; sfx: number }>({
+    defaults: () => ({ music: 0.8, sfx: 1.0 }),
+  }),
+  vsync: s.value<boolean>({ default: true }),
+}));
 
 interface RunMeta {
   chapter: number;
@@ -117,35 +102,22 @@ const save = createSave({
 });
 
 function snapshotRunMeta(label?: string): RunMeta {
-  const p = progression.get();
+  const p = game.progression.get();
   const meta: RunMeta = {
     chapter: p.chapter,
     coins: p.coins,
-    deaths: deaths.value(),
+    deaths: game.deaths.value(),
   };
   if (label !== undefined) meta.label = label;
   return meta;
 }
 
 function newRun(): void {
-  progression.reset();
-  deaths.reset();
+  game.reset();
 }
 
-// `defineCounter` exposes `value()`/`subscribe()` rather than `get()`, so it
-// doesn't fit `useStore` directly. Tiny example-local hook bridges the gap.
-function useCounter(c: PersistentCounter): number {
-  const [v, setV] = useState(c.value());
-  useEffect(() => c.subscribe(() => setV(c.value())), [c]);
-  return v;
-}
-
-// `useSlots` re-reads `save.listSlots(saves)` whenever the underlying store
-// changes (or when an explicit `bumpVersion` is called from a save/delete).
-// In a real game you'd plumb this through a small "save events" emitter; for
-// the example, subscribing to `progression` is good enough — every save is
-// preceded by a progression change or follows a button click that triggers
-// re-render via state below.
+// `useSlots` re-reads `save.listSlots(target)` whenever `refreshKey` bumps
+// (called explicitly from save/delete handlers).
 function useSlots(
   saveInstance: Save,
   store: PersistentLike,
@@ -221,7 +193,7 @@ function MainMenuPanel(props: {
   onOpenSettings: () => void;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const slots = useSlots(save, progression, refreshKey);
+  const slots = useSlots(save, game, refreshKey);
   const latest = slots[0];
 
   return (
@@ -296,21 +268,14 @@ class MenuScene extends Scene {
     const startGame = (loadSlot?: SlotInfo<RunMeta>): void => {
       void (async () => {
         if (loadSlot) {
-          await save.loadSlot(progression, loadSlot.name);
+          await save.loadSlot(game, loadSlot.name);
         } else {
           newRun();
         }
-        // `replace` swaps the menu out so its UI fully unmounts before the
-        // gameplay scene mounts. The default `transparentBelow=false` would
-        // also hide the menu under a push, but replace tears it down for
-        // good — no point keeping the listener tree alive once gameplay owns
-        // the screen.
         await sm.replace(new GameplayScene());
       })();
     };
     const openSettings = (): void => {
-      // Settings is a full-screen swap, not an overlay — UI from a scene
-      // below the stack still renders above any dim layer.
       void sm.replace(new SettingsScene());
     };
 
@@ -319,7 +284,7 @@ class MenuScene extends Scene {
         onStartNew={() => startGame()}
         onContinue={(slot) => startGame(slot)}
         onDeleteSlot={async (slot) => {
-          await save.deleteSlot(progression, slot.name);
+          await save.deleteSlot(game, slot.name);
         }}
         onOpenSettings={openSettings}
       />,
@@ -346,10 +311,12 @@ class CoinDisplay extends Component {
 
   onAdd(): void {
     const apply = (): void => {
-      this.graphics.draw((g) => CoinDisplay.draw(g, progression.get().coins));
+      this.graphics.draw((g) => CoinDisplay.draw(g, game.progression.get().coins));
     };
     apply();
-    this.unsub = progression.subscribe(apply);
+    // Subscribe to the leaf rather than the whole compound — keeps the redraw
+    // out of the path of unrelated leaves' mutations.
+    this.unsub = game.progression.subscribe(apply);
   }
 
   onRemove(): void {
@@ -370,8 +337,8 @@ class PauseToggleComponent extends Component {
 }
 
 function GameplayHUD() {
-  const run = useStore(progression);
-  const deathCount = useCounter(deaths);
+  const run = useStore(game.progression);
+  const deathCount = useStore(game.deaths);
   return (
     <Panel
       anchor="top-left"
@@ -404,20 +371,26 @@ function GameplayActions() {
         label="Collect"
         width={90}
         onClick={() =>
-          progression.set({ coins: progression.get().coins + 1 })
+          game.progression.set({
+            coins: game.progression.get().coins + 1,
+          })
         }
       />
       <SmallButton
         label="Next Ch."
         width={90}
         onClick={() =>
-          progression.set({
-            chapter: progression.get().chapter + 1,
+          game.progression.set({
+            chapter: game.progression.get().chapter + 1,
             coins: 0,
           })
         }
       />
-      <SmallButton label="Die" width={70} onClick={() => deaths.increment()} />
+      <SmallButton
+        label="Die"
+        width={70}
+        onClick={() => game.deaths.increment()}
+      />
     </Panel>
   );
 }
@@ -427,18 +400,15 @@ class GameplayScene extends Scene {
   readonly preload = allAssets;
 
   onEnter(): void {
-    // Centerpiece: the coin sprite scales with coins collected.
     const coin = this.spawn("coin-display");
     coin.add(new Transform({ position: new Vec2(400, 300) }));
     coin.add(new GraphicsComponent());
     coin.add(new CoinDisplay());
 
-    // Hidden helper entity that listens for Esc and pushes the PauseScene.
     const pauseToggle = this.spawn("pause-toggle");
     pauseToggle.add(new Transform());
     pauseToggle.add(new PauseToggleComponent());
 
-    // HUD + action buttons rendered via UIRoot.
     const hud = this.spawn("hud");
     hud.add(new UIRoot({ anchor: Anchor.TopLeft })).render(<GameplayHUD />);
 
@@ -460,7 +430,7 @@ function PauseMenuPanel(props: {
   onMainMenu: () => void;
   refreshKey: number;
 }) {
-  const slots = useSlots(save, progression, props.refreshKey);
+  const slots = useSlots(save, game, props.refreshKey);
   const slotByName = new Map(slots.map((s) => [s.name, s]));
 
   return (
@@ -513,7 +483,6 @@ class PauseSaveComponent extends Component {
   private save = this.service(SaveServiceKey);
   private input = this.service(InputManagerKey);
   private scenes = this.service(SceneManagerKey);
-  // Tiny re-render bump for the React UI when a save happens.
   private bumpRefresh: (() => void) | null = null;
 
   setRefreshHook(bump: () => void): void {
@@ -521,7 +490,7 @@ class PauseSaveComponent extends Component {
   }
 
   async saveSlot(name: SlotName): Promise<void> {
-    await this.save.saveSlot<RunMeta>(progression, name, {
+    await this.save.saveSlot<RunMeta>(game, name, {
       metadata: snapshotRunMeta(name),
     });
     this.bumpRefresh?.();
@@ -540,7 +509,6 @@ class PauseScene extends Scene {
   readonly transparentBelow = true;
 
   onEnter(): void {
-    // Dim background so the gameplay scene is still visible underneath.
     const dim = this.spawn("pause-dim");
     dim.add(new Transform({ position: new Vec2(400, 300) }));
     dim.add(
@@ -549,13 +517,10 @@ class PauseScene extends Scene {
       }),
     );
 
-    // Component owning the save flow. UI calls into it instead of touching
-    // `save` / SaveServiceKey directly.
     const pauseEntity = this.spawn("pause-host");
     pauseEntity.add(new Transform());
     const pauseComp = pauseEntity.add(new PauseSaveComponent());
 
-    // UI panel.
     const ui = this.spawn("pause-ui");
     const root = ui.add(new UIRoot({ anchor: Anchor.Center }));
 
@@ -568,9 +533,6 @@ class PauseScene extends Scene {
         pauseComp.setRefreshHook(bump);
       }, []);
       const goMainMenu = (): void => {
-        // Pop the pause overlay, then replace gameplay with a fresh
-        // MenuScene. (Using replace keeps the stack clean — no leftover
-        // GameplayScene underneath.)
         void (async () => {
           await sm.pop();
           await sm.replace(new MenuScene());
@@ -601,8 +563,6 @@ function VolumeRow(props: {
   value: number;
   onChange: (v: number) => void;
 }) {
-  // Custom step buttons since PixiSlider needs nineslice handle assets we'd
-  // rather not require here.
   return (
     <Panel direction="row" gap={10} alignItems="center">
       <Text style={textStyle("body", { fontSize: 13 })}>
@@ -634,7 +594,8 @@ function VolumeRow(props: {
 }
 
 function SettingsPanel(props: { onBack: () => void }) {
-  const s = useStore(settings);
+  const audio = useStore(settings.audio);
+  const vsync = useStore(settings.vsync);
   return (
     <Panel
       anchor="center"
@@ -649,20 +610,20 @@ function SettingsPanel(props: { onBack: () => void }) {
 
       <VolumeRow
         label="Music"
-        value={s.music}
-        onChange={(v) => settings.set({ music: v })}
+        value={audio.music}
+        onChange={(v) => settings.audio.set({ music: v })}
       />
       <VolumeRow
         label="SFX  "
-        value={s.sfx}
-        onChange={(v) => settings.set({ sfx: v })}
+        value={audio.sfx}
+        onChange={(v) => settings.audio.set({ sfx: v })}
       />
 
       <Checkbox
         label="VSync"
         labelStyle={textStyle("body")}
-        checked={s.vsync}
-        onChange={(v) => settings.set({ vsync: v })}
+        checked={vsync}
+        onChange={(v) => settings.vsync.set(v)}
       />
 
       <MenuButton label="Back" onClick={props.onBack} />
@@ -681,7 +642,6 @@ class SettingsScene extends Scene {
     function SettingsRoot() {
       const scene = useScene();
       const onBack = (): void => {
-        // Replace back to the menu so the slot list reflects fresh state.
         void scene.context.resolve(SceneManagerKey).replace(new MenuScene());
       };
       return <SettingsPanel onBack={onBack} />;
@@ -697,12 +657,12 @@ class SettingsScene extends Scene {
 
 async function main(): Promise<void> {
   // Pre-engine: restore stored data so the menu reflects last-saved state.
-  await save.restoreAll([settings, progression, deaths]);
+  await save.restoreAll([game, settings]);
 
-  // Stream settings + run state to disk (microtask-coalesced).
+  // Stream both compounds to disk (microtask-coalesced). Mutations to any
+  // leaf trigger one debounced write per compound — not per leaf.
+  save.autoPersist(game);
   save.autoPersist(settings);
-  save.autoPersist(progression);
-  save.autoPersist(deaths);
 
   const engine = new Engine({ debug: true });
 

@@ -28,51 +28,119 @@ what each store contains.
 
 ## Defining stores
 
-Stores are typed singletons declared at module scope. They live in
-`@yagejs/core` and are re-exported from `@yagejs/save` for convenience.
+YAGE gives you a **compound** store (the primary surface — one save target
+with many typed leaves) and a set of **standalone** factories for one-offs.
+Both live in `@yagejs/core` and are re-exported from `@yagejs/save` for
+convenience.
+
+### Compound `defineStore` (primary)
 
 ```typescript
 // game/persistence/stores.ts
-import { defineStore, defineSet, defineMap, defineCounter } from "@yagejs/save";
+import { defineStore } from "@yagejs/save";
 
-export interface SettingsData {
-  audio: { music: number; sfx: number };
-  vsync: boolean;
-}
+export interface Potion { name: string; quality: number }
 
-export const settings = defineStore<SettingsData>("settings", {
+export const game = defineStore("game", (s) => ({
+  inventory:  s.map<string, number>(),
+  recipes:    s.set<string>(),
+  gold:       s.counter({ default: 0 }),
+  reputation: s.counter({ default: 50 }),
+  shelf:      s.list<Potion>(),
+  day:        s.value<number>({ default: 1 }),
+  settings:   s.record<{ volume: number; lang: string }>({
+    defaults: () => ({ volume: 0.8, lang: "en" }),
+  }),
+}));
+
+// Idiomatic per-shape ops on each leaf:
+game.gold.increment(10);
+game.inventory.set("moonleaf", 3);
+game.recipes.add("brew-1");
+const potionId = game.shelf.add({ name: "Cure", quality: 7 });
+
+// Save the whole tree as one document:
+save.autoPersist(game);
+```
+
+Leaf builder methods on `s`:
+
+- `s.value<T>({ default, codec? })` — single typed cell.
+- `s.counter({ default? })` — number with `value`, `set`, `increment`, `decrement`, `clamp(value, min, max)`.
+- `s.record<T>({ defaults, codec? })` — object with shallow merge.
+- `s.map<K, V>({ defaults? })` — key→value.
+- `s.set<K>({ defaults? })` — keys.
+- `s.list<T>({ defaults? })` — ordered list with stable monotonic ids.
+
+The compound is one `PersistentLike`: a single storage key, atomic
+`serialize`/`hydrate`, and one `autoPersist` debounce covering every leaf.
+Reserved leaf keys — `id`, `version`, `subscribe`, `serialize`, `hydrate`,
+`reset` — collide at definition time.
+
+`useStore(compound)` is intentionally **not** supported. Read individual
+leaves so React subscription granularity stays per-leaf.
+
+### Standalone factories (one-offs)
+
+When a single primitive doesn't belong inside a larger tree, the standalone
+factories give you the same shape APIs with their own id, version, and
+save target:
+
+```typescript
+import {
+  defineRecord, defineValue, defineCounter,
+  defineMap, defineSet, defineList,
+} from "@yagejs/save";
+
+export const settings = defineRecord<SettingsData>("settings", {
   version: 1,
   defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
 
-export interface RunData {
-  chapter: number;
-  position: { x: number; y: number };
-  inventory: string[];
-}
-
-export const saves = defineStore<RunData>("saves", {
-  version: 1,
-  defaults: () => ({ chapter: 1, position: { x: 0, y: 0 }, inventory: [] }),
-});
-
-// Specialized helpers — sets, maps, and counters
 export const opened    = defineSet<string>("world.opened");
 export const defeated  = defineMap<string, number>("world.defeated");
 export const restEpoch = defineCounter("world.restEpoch");
+export const day       = defineValue<number>("world.day", { defaults: () => 1 });
+export const journal   = defineList<{ at: number; text: string }>("world.journal");
 ```
 
-The store API:
+Shape APIs (every leaf and standalone also has `.subscribe(fn): () => void`):
+
+- `defineRecord<T>` / `s.record`: `get(): Readonly<T>`, `set(partial: Partial<T>)`.
+- `defineValue<T>` / `s.value`: `get(): T`, `set(v: T)`.
+- `defineCounter` / `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
+- `defineMap<K, V>` / `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries(): Array<[K, V]>`, `size()`, `clear()`.
+- `defineSet<K>` / `s.set`: `add(k)`, `delete(k)`, `has(k)`, `values(): K[]`, `size()`, `clear()`.
+- `defineList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list(): T[]`, `size()`, `clear()`.
+
+Standalone factories additionally expose `.reset()` to restore defaults.
+Codecs are bundled for the typed shapes (Set/Map/Counter/List) — you only
+specify a custom `codec` on `defineRecord<T>` / `defineValue<T>` (or the
+matching leaves) when `T` contains exotic types.
+
+### Migrating from many standalones to one compound
+
+If your game grew a `defineRecord` here, a `defineCounter` there, and
+several `defineSet`s — each with its own `autoPersist` call — the compound
+collapses them into one save target with atomic writes:
 
 ```typescript
-store.get()                         // Readonly<T> — stable ref between sets
-store.set(partial)                  // shallow merge for object stores
-store.subscribe(listener)           // returns unsubscribe
-store.reset()                       // restore defaults
-```
+// Before — three save documents, three autoPersist calls.
+const progression = defineRecord<RunData>("run", { defaults: () => ({ chapter: 1, coins: 0 }) });
+const deaths      = defineCounter("deaths");
+const flags       = defineSet<string>("flags");
+save.autoPersist(progression);
+save.autoPersist(deaths);
+save.autoPersist(flags);
 
-`defineSet`, `defineMap`, `defineCounter` add typed convenience methods
-(`add`, `has`, `remove`, `increment`, etc.) and bundle codecs internally.
+// After — one document, one autoPersist call, atomic serialize/hydrate.
+const game = defineStore("run", (s) => ({
+  progression: s.record<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) }),
+  deaths:      s.counter({ default: 0 }),
+  flags:       s.set<string>(),
+}));
+save.autoPersist(game);
+```
 
 ## Creating the Save instance
 
@@ -192,10 +260,12 @@ class CheckpointOnRest extends Component {
 ## Migration & versioning
 
 Bump `version` when the data shape changes; provide `migrate` to transform
-older payloads:
+older payloads. Versioning is **per-store** for standalones and **per-tree**
+for the compound — per-leaf migration is not supported in v1.
 
 ```typescript
-defineStore<RunData>("saves", {
+// Standalone — migrate the record value.
+defineRecord<RunData>("saves", {
   version: 3,
   defaults: () => initialRun(),
   migrate: (old, fromVersion) => {
@@ -203,6 +273,19 @@ defineStore<RunData>("saves", {
     if (fromVersion < 2) v = { ...v, inventory: [] };
     if (fromVersion < 3) v = { ...v, position: v.startPos ?? { x: 0, y: 0 } };
     return v as RunData;
+  },
+});
+
+// Compound — one migrate on the tree. Receives the raw payload `data`
+// dict and returns the new-format dict that gets dispatched to each leaf.
+defineStore("run", (s) => ({
+  gold: s.counter({ default: 0 }),
+  day:  s.value<number>({ default: 1 }),
+}), {
+  version: 2,
+  migrate: (old, fromVersion) => {
+    const v1 = old as { gold: number };
+    return { gold: v1.gold, day: { value: 7 } };
   },
 });
 ```
@@ -217,14 +300,15 @@ Stores serialize via a `Codec<T>`. Built-ins:
 ```typescript
 import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/save";
 
-jsonCodec<T>()    // identity (default for defineStore)
+jsonCodec<T>()    // identity (default)
 setCodec<K>()     // Set<K>     <-> K[]
 mapCodec<K, V>()  // Map<K, V>  <-> [K, V][]
 dateCodec()       // Date       <-> ISO string
 ```
 
-`defineSet`/`defineMap`/`defineCounter` bundle the right codec — you only
-specify a codec for `defineStore<T>` when the type contains exotic values.
+`defineSet`/`defineMap`/`defineCounter`/`defineList` bundle the right codec —
+you only specify a codec for `defineRecord<T>` / `defineValue<T>` (or the
+matching `s.record`/`s.value` leaves) when the type contains exotic values.
 
 ## Adapters
 

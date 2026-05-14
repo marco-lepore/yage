@@ -18,24 +18,29 @@ instance, register it via the plugin.
 ```ts
 import { Engine } from "@yagejs/core";
 import {
-  defineStore, defineSet,
+  defineStore, defineRecord, defineSet,
   createSave, SavePlugin, localStorageAdapter,
 } from "@yagejs/save";
 
-interface Settings { music: number; sfx: number }
 interface RunData { chapter: number; position: { x: number; y: number } }
 
-const settings = defineStore<Settings>("settings", {
+// Compound store — one save target, many typed leaves.
+const game = defineStore("saves", (s) => ({
+  run: s.record<RunData>({
+    defaults: () => ({ chapter: 1, position: { x: 0, y: 0 } }),
+  }),
+  opened: s.set<string>(),
+}));
+
+// Standalone for one-offs (different save target — separate document).
+const settings = defineRecord<{ music: number; sfx: number }>("settings", {
   defaults: () => ({ music: 0.8, sfx: 1.0 }),
-});
-const opened = defineSet<string>("world.opened");
-const saves = defineStore<RunData>("saves", {
-  defaults: () => ({ chapter: 1, position: { x: 0, y: 0 } }),
 });
 
 const save = createSave({ adapter: localStorageAdapter() });
 
-await save.restoreAll([settings, opened, saves]);
+await save.restoreAll([game, settings]);
+save.autoPersist(game);
 save.autoPersist(settings);
 
 const engine = new Engine();
@@ -51,7 +56,7 @@ class CheckpointOnRest extends Component {
   setup() {
     this.entity.on(Rested, async () => {
       const save = this.use(SaveServiceKey);
-      await save.saveSlot(saves, "auto");
+      await save.saveSlot(game, "auto");
     });
   }
 }
@@ -61,9 +66,9 @@ Save slots with typed metadata:
 
 ```ts
 interface RunMeta { location: string; playtime: number }
-await save.saveSlot<RunMeta>(saves, "manual-1", { metadata: { /* … */ } });
-const slots = await save.listSlots<RunMeta>(saves);
-await save.loadSlot(saves, "manual-1");
+await save.saveSlot<RunMeta>(game, "manual-1", { metadata: { /* … */ } });
+const slots = await save.listSlots<RunMeta>(game);
+await save.loadSlot(game, "manual-1");
 ```
 
 ## Snapshot path (advanced)
@@ -86,7 +91,7 @@ await snap.loadSnapshot("slot-1");
 
 ## What's in the box
 
-- **Stores** — `defineStore`, `defineSet`, `defineMap`, `defineCounter`
+- **Stores** — compound `defineStore` + standalone `defineRecord`, `defineValue`, `defineSet`, `defineMap`, `defineCounter`, `defineList`
   (re-exported from `@yagejs/core`).
 - **Save** — `createSave({ adapter })` with `persist`, `restore`, `saveSlot`,
   `loadSlot`, `listSlots`, `deleteSlot`, `autoPersist`.

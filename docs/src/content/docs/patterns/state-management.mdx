@@ -76,7 +76,7 @@ uiStore.set({ score: uiStore.get().score + 10 });
 import { useStore } from "@yagejs/ui-react";
 
 function HUD() {
-  const score = useStore(uiStore, (s) => s.score);
+  const score = useStore(uiStore, (src) => src.get().score);
   return <Text>{`Score: ${score}`}</Text>;
 }
 ```
