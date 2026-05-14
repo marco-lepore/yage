@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { KeyframeAnimator } from "./KeyframeAnimator.js";
+import type { KeyframeAnimationDef } from "./KeyframeAnimator.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { Entity } from "./Entity.js";
 
@@ -255,5 +256,50 @@ describe("KeyframeAnimator", () => {
     // Should not throw
     anim.stop("bob");
     expect(anim.isPlaying("bob")).toBe(false);
+  });
+
+  it("setter is optional — keyframe `event` callbacks still fire (pure-timeline use case)", () => {
+    const { entity, pc } = setup();
+    const onMid = vi.fn();
+    const anim = entity.add(
+      new KeyframeAnimator({
+        beat: {
+          keyframes: [
+            { time: 0, data: 0 },
+            { time: 50, data: 1, event: onMid },
+            { time: 100, data: 0 },
+          ],
+        },
+      }),
+    );
+
+    anim.play("beat");
+    pc._tick(60);
+    expect(onMid).toHaveBeenCalledOnce();
+    pc._tick(100); // past completion
+    expect(anim.isPlaying("beat")).toBe(false);
+  });
+
+  it("accepts a Record<string, KeyframeAnimationDef<number>> without per-key casts", () => {
+    // Compile-time check: the def is typed with a narrow setter parameter
+    // (`number`, not `Interpolatable`). With method-syntax bivariance the
+    // record flows into the constructor unchanged.
+    const { entity, pc } = setup();
+    let value = 0;
+    const defs: Record<"bob", KeyframeAnimationDef<number>> = {
+      bob: {
+        keyframes: [
+          { time: 0, data: 0 },
+          { time: 100, data: 10 },
+        ],
+        setter(v: number) {
+          value = v;
+        },
+      },
+    };
+    const anim = entity.add(new KeyframeAnimator(defs));
+    anim.play("bob");
+    pc._tick(50);
+    expect(value).toBeCloseTo(5);
   });
 });

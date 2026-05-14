@@ -10,7 +10,16 @@ import { serializable } from "./Serializable.js";
 /** Definition for a named keyframe animation. */
 export interface KeyframeAnimationDef<T extends Interpolatable = Interpolatable> {
   keyframes: Keyframe<T>[];
-  setter: (value: T) => void;
+  /**
+   * Receives the interpolated value each frame. Optional — when omitted the
+   * animator only fires keyframe `event` callbacks (pure-timeline use case).
+   *
+   * Declared as a method signature (rather than a `(value: T) => void`
+   * property) so the parameter type is bivariant — this is what lets a
+   * `Record<string, KeyframeAnimationDef<number>>` literal flow into the
+   * `KeyframeAnimator` constructor without per-key casts.
+   */
+  setter?(value: T): void;
   loop?: boolean;
   speed?: number;
   duration?: number;
@@ -51,12 +60,12 @@ export class KeyframeAnimator<T extends string = string> extends Component {
 
     const opts: KeyframeTrackOptions<Interpolatable> = {
       keyframes: def.keyframes,
-      setter: def.setter,
       onComplete: () => {
         this.active.delete(name);
         def.onExit?.(true);
       },
     };
+    if (def.setter) opts.setter = def.setter;
     if (def.loop !== undefined) opts.loop = def.loop;
     if (def.speed !== undefined) opts.speed = def.speed;
     if (def.duration !== undefined) opts.duration = def.duration;

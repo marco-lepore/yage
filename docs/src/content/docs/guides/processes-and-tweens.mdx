@@ -335,7 +335,7 @@ Each `KeyframeAnimationDef` accepts the same options you'd expect:
 | Option | Purpose |
 |---|---|
 | `keyframes` | The array of `{ time, data, easing?, event? }` control points |
-| `setter` | Function called every frame with the interpolated value |
+| `setter` | Optional — function called every frame with the interpolated value. Omit for pure-timeline tracks that only fire `event` callbacks |
 | `loop` | Restart at time 0 when the track finishes (default `false`) |
 | `speed` | Multiplier on track time (default `1`) |
 | `duration` | Override the auto-computed track length |
@@ -344,6 +344,24 @@ Each `KeyframeAnimationDef` accepts the same options you'd expect:
 
 You can also fire discrete events from within a track using the `event`
 property on a keyframe — useful for syncing sound or VFX to animation beats.
+
+#### Pure-timeline tracks (no setter)
+
+When all you need is a sequence of time-aligned side-effects — cutscene
+beats, gameplay-rhythm cues, audio one-shots — leave `setter` off:
+
+```typescript
+new KeyframeAnimator({
+  intro: {
+    keyframes: [
+      { time: 0,   data: 0, event: () => audio.play("step") },
+      { time: 250, data: 0, event: () => audio.play("step") },
+      { time: 500, data: 0, event: () => audio.play("door") },
+    ],
+    // no setter — the values aren't read, only the events matter
+  },
+});
+```
 
 ### Lower-Level Primitives
 

@@ -259,7 +259,7 @@ anim.playOneShot("attack"); // locks until complete, then reverts
 
 ### Typing the controller
 
-`AnimationController<T extends string = string>` is generic on the animation name union, but the runtime class isn't — there's no `AnimationController<MyAnim>` expression to pass to `sibling()`. `Component.sibling(AnimationController)` therefore returns `AnimationController<unknown>`. Cast at the field declaration so every consumer sees the narrow type:
+`AnimationController<T extends string = string>` is generic on the animation-name union — `play("walk")` autocompletes, and a typo like `play("wal")` is a compile error. But the runtime class isn't generic: there's no `AnimationController<HeroAnim>` expression to pass to `entity.get()` or `Component.sibling()`, and a default `AnimationController<string>` isn't sound-assignable to `AnimationController<HeroAnim>` (the `current: T | ""` getter is covariant on `T`, so a string-returning instance can't substitute for one promising the narrow union). Annotate the field with an `as` cast — the cast is required because the type parameter is type-only, and the field annotation makes every downstream call site narrow for free:
 
 ```ts
 type HeroAnim = "idle" | "walk" | "attack";
@@ -274,13 +274,47 @@ class HeroController extends Component {
 }
 ```
 
-The cast is required because the type parameter is type-only; `sibling()` can only narrow by the runtime class. Annotate the field, not every call site.
+`playOneShot(name, options?)` — `options.duration` overrides the auto-computed lock duration; the wall-clock fallback uses `(frames * 1000 / 60) / speed`. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
 
-### Layered characters: one-shot lock drift
+### LayeredAnimationController
 
-`playOneShot` computes its lock duration from `frames.length / speed` (rounded to whole frame-ms). When a single character is composed of several layers — head + body + outfit — each layer owns its own `AnimationController`, and each computes its own duration. Because frame counts and speeds may not be identical across layers (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on slightly different frames and one layer can pop back to idle while the others are still mid-swing.
+Fans `play()` / `playOneShot()` across N sibling `AnimationController` instances with a single shared lock timer. Use this when a character is composed of multiple sprite layers (head + body + outfit) that must animate in lockstep:
 
-Workaround: precompute the duration once from a designated "lead" controller, then pass `options.duration` to every other controller's `playOneShot` so they all unlock on the same frame:
+```ts
+import {
+  AnimatedSpriteComponent,
+  AnimationController,
+  LayeredAnimationController,
+} from "@yagejs/renderer";
+
+class Hero extends Entity {
+  setup() {
+    this.add(new Transform());
+    const body = this.spawnChild("body", HeroLayer, { sheet: "body.png" });
+    const head = this.spawnChild("head", HeroLayer, { sheet: "head.png" });
+    this.add(new LayeredAnimationController<"idle" | "attack">({
+      controllers: [
+        body.get(AnimationController) as AnimationController<"idle" | "attack">,
+        head.get(AnimationController) as AnimationController<"idle" | "attack">,
+      ],
+    }));
+  }
+}
+
+const layered = hero.get(LayeredAnimationController);
+layered.play("idle");
+layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
+```
+
+- `play(name)` forwards to every child.
+- `playOneShot(name, opts)` computes one shared duration (from the first controller, or `opts.duration` if given) and passes `Number.POSITIVE_INFINITY` to each child so child timers can never expire independently — the wrapper owns the master timer and cascades `unlock()` when it fires. `onComplete` runs exactly once.
+- Not save/load-aware (`serialize()` returns `null`) — rebuild via the same `setup()` path on restore.
+
+### Layered characters: one-shot lock drift (the underlying problem)
+
+`LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same insight can live as a one-line helper. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (rounded to whole frame-ms). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the tail of every attack animation.
+
+Precompute the duration on a designated "lead" controller and broadcast it via `options.duration`:
 
 ```ts
 function playOneShotLayered(
@@ -298,7 +332,7 @@ function playOneShotLayered(
 playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
 ```
 
-`calcDuration(name)` is public on `AnimationController` — use it to compute once, share everywhere.
+`calcDuration(name)` is public on `AnimationController` — `LayeredAnimationController` calls it internally for exactly this reason.
 
 ## Gradient fills
 

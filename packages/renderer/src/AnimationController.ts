@@ -48,6 +48,25 @@ interface ResolvedAnimDef {
  *
  * Provides one-shot locking, per-animation anchors, and type-safe animation
  * names via the generic parameter.
+ *
+ * **Narrowing the animation-name type** — `entity.get(AnimationController)`
+ * returns `AnimationController<string>` (the default `T`); the runtime class
+ * isn't generic, and a string-typed instance can't substitute for a narrower
+ * one (the `current: T | ""` getter is covariant on `T`). Cast at the field
+ * declaration so every consumer downstream sees the narrow type:
+ *
+ * ```ts
+ * type Anim = "idle" | "walk" | "shoot";
+ *
+ * class HeroController extends Component {
+ *   private readonly _anim = this.sibling(AnimationController) as
+ *     AnimationController<Anim>;
+ * }
+ * ```
+ *
+ * For multi-sprite (head + body + outfit) characters, see
+ * {@link LayeredAnimationController} — it fans `play()`/`playOneShot()` across
+ * a list of sibling controllers with a single shared lock timer.
  */
 @serializable
 export class AnimationController<
@@ -129,7 +148,12 @@ export class AnimationController<
   }
 
   /** Play an animation as a one-shot, locking out other plays until complete.
-   *  No-op if already locked on the same animation (prevents restart flicker). */
+   *  No-op if already locked on the same animation (prevents restart flicker).
+   *
+   *  When `options.duration` is omitted, the lock duration is auto-calculated
+   *  from this controller's own frame count and speed via {@link calcDuration}.
+   *  Pass an explicit `duration` to synchronise lock release across multiple
+   *  controllers (see {@link LayeredAnimationController}). */
   playOneShot(
     name: T,
     options?: { duration?: number; onComplete?: () => void },

@@ -377,6 +377,28 @@ describe("Transform dirty-flag propagation", () => {
     expect(t.worldRotation).toBe(1.5);
     expect(t.worldScale.equals(Vec2.ONE)).toBe(true);
   });
+
+  it("freshly constructed transform: first worldPosition read returns local", () => {
+    // Regression guard for the constructor `_dirty = true` change: an
+    // unparented transform should still report worldPosition == local on the
+    // very first read, with no intermediate state mutation.
+    const t = new Transform({ position: new Vec2(10, 0) });
+    expect(t.worldPosition.equals(new Vec2(10, 0))).toBe(true);
+  });
+
+  it("freshly constructed transform: worldPosition recomputes after parenting with no manual markDirty", () => {
+    // The constructor leaves `_dirty = true` so the first read picks up the
+    // parent established by `addChild` without any explicit invalidation.
+    const parent = new Entity("parent");
+    parent.add(new Transform({ position: new Vec2(100, 0) }));
+    const child = new Entity("child");
+    child.add(new Transform({ position: new Vec2(10, 0) }));
+    parent.addChild("c", child);
+
+    expect(child.get(Transform).worldPosition.equals(new Vec2(110, 0))).toBe(
+      true,
+    );
+  });
 });
 
 describe("Entity hierarchy", () => {

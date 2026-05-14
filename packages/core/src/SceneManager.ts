@@ -6,6 +6,7 @@ import { EventBusKey, AssetManagerKey, LoggerKey } from "./EngineContext.js";
 import type { SceneHookRegistry } from "./SceneHooks.js";
 import { SceneHookRegistryKey } from "./SceneHooks.js";
 import type { Logger } from "./Logger.js";
+import { devWarn } from "./internal/dev.js";
 import {
   resolveTransition,
   type SceneTransition,
@@ -138,9 +139,14 @@ export class SceneManager {
   /**
    * Push a scene onto the stack. Scenes below may receive onPause().
    * If the scene declares a `preload` array, assets are loaded before onEnter().
+   *
+   * Safe to call reentrantly from a lifecycle hook (e.g. `onEnter`): the call
+   * is queued on the internal pending chain and runs after the current
+   * mutation finishes. The returned promise resolves once that deferred run
+   * completes.
    */
   async push(scene: Scene, opts?: SceneTransitionOptions): Promise<void> {
-    this._assertNotMutating("push");
+    this._warnIfMutating("push");
     await this._enqueue(async () => {
       const fromScene = this.active;
       await this._pushScene(scene);
@@ -152,9 +158,11 @@ export class SceneManager {
     });
   }
 
-  /** Pop the top scene. Scenes below may receive onResume(). */
+  /** Pop the top scene. Scenes below may receive onResume().
+   *
+   * Safe to call reentrantly — see {@link push}. */
   async pop(opts?: SceneTransitionOptions): Promise<Scene | undefined> {
-    this._assertNotMutating("pop");
+    this._warnIfMutating("pop");
     return this._enqueue(async () => {
       if (this.stack.length === 0) return undefined;
 
@@ -176,9 +184,14 @@ export class SceneManager {
    * then the new scene enters. With a transition the new scene is pushed
    * first, both scenes coexist for the transition duration, then the old
    * scene is removed at the end.
+   *
+   * Safe to call reentrantly from a lifecycle hook (e.g. `onEnter`): the call
+   * is queued on the internal pending chain and runs after the current
+   * mutation finishes. The returned promise resolves once that deferred run
+   * completes.
    */
   async replace(scene: Scene, opts?: SceneTransitionOptions): Promise<void> {
-    this._assertNotMutating("replace");
+    this._warnIfMutating("replace");
     await this._enqueue(async () => {
       const transition = resolveTransition(opts?.transition, scene);
 
@@ -205,9 +218,11 @@ export class SceneManager {
    * Pop every scene on the stack, top to bottom. Each receives onExit().
    * Queued like push/pop/replace — runs after any in-flight transition.
    * Use for "restart from menu"-style flows. Does not run transitions.
+   *
+   * Safe to call reentrantly — see {@link push}.
    */
   async popAll(): Promise<void> {
-    this._assertNotMutating("popAll");
+    this._warnIfMutating("popAll");
     await this._enqueue(async () => {
       this._withMutationSync(() => {
         while (this.stack.length > 0) {
@@ -512,12 +527,19 @@ export class SceneManager {
     );
   }
 
-  private _assertNotMutating(method: string): void {
+  private _warnIfMutating(method: string): void {
     if (this._mutationDepth === 0) return;
-    throw new Error(
+    // The call is safe — _enqueue chains it onto _pendingChain, so it runs
+    // after the in-flight mutation completes. We still surface a dev-mode
+    // warning because reentrant scene swaps are usually a smell: an onEnter
+    // that immediately replaces the scene is rarely what was intended, and
+    // the dropped-on-the-floor promise can hide errors. Suppressed in
+    // production via isDev().
+    devWarn(
       `SceneManager.${method}() called reentrantly from a scene lifecycle hook ` +
         "(onEnter/onExit/onPause/onResume or a beforeEnter/afterExit hook). " +
-        "Defer the call outside the hook, e.g. via queueMicrotask() or from a component update().",
+        "It will run after the current hook returns. Prefer scheduling from a " +
+        "component update() or a one-shot Process if you didn't mean to chain.",
     );
   }
 

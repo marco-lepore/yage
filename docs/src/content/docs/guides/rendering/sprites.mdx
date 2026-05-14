@@ -91,9 +91,12 @@ anim.play("jump", { onComplete: () => anim.play("idle") });
 animation-name union, which gives `play()` / `playOneShot()` strict
 autocomplete and typo-checking. But the runtime class is non-generic —
 `AnimationController<HeroAnim>` doesn't exist as a value at runtime, so
-there's nothing to pass to `Component.sibling()`. The sibling lookup
-returns `AnimationController<unknown>`, and you have to cast at the
-field declaration to recover the narrow type:
+there's nothing to pass to `Component.sibling()` or `entity.get()`. A
+default `AnimationController<string>` isn't sound-assignable to
+`AnimationController<HeroAnim>` either: the `current: T | ""` getter is
+covariant on `T`, so a string-returning instance can't substitute for one
+promising the narrow union. Cast at the field declaration to recover the
+narrow type — every call site downstream picks it up for free:
 
 ```typescript
 import { Component } from "@yagejs/core";
@@ -111,24 +114,67 @@ class HeroController extends Component {
 }
 ```
 
-Annotate the field once; every call site downstream picks up the
-narrow union for free.
+Annotate the field once; the cast is required because the type parameter is
+type-only and `sibling()` can only narrow by the runtime class.
 
-### Layered characters: keeping one-shot locks in sync
+### Layered characters (head + body + outfit)
 
-If a character is built from multiple sprite layers — head + body +
+When a character is built from multiple sprite layers — head + body +
 outfit, each with its own `AnimatedSpriteComponent` and
 `AnimationController` — every `playOneShot` call computes its lock
 duration from `frames.length / speed`, rounded to whole frame-ms. When
 the layers have different frame counts or speeds, those durations
 disagree by a millisecond or two, the locks expire on different
-frames, and one sprite will snap back to idle while the others are
-still mid-swing. The visual giveaway is a single layer flickering at
-the tail of every attack animation.
+frames, and one sprite snaps back to idle while the others are still
+mid-swing. The visual giveaway is a single layer flickering at the
+tail of every attack animation.
 
-Decide the duration once on a "lead" controller, then pass
-`options.duration` to every other controller so they all unlock on the
-same frame:
+The recommended fix is `LayeredAnimationController`, which wraps the
+per-layer controllers, computes the duration once on a lead controller,
+and cascades lock release via a single master timer:
+
+```typescript
+import {
+  AnimatedSpriteComponent,
+  AnimationController,
+  LayeredAnimationController,
+} from "@yagejs/renderer";
+
+class Hero extends Entity {
+  setup() {
+    this.add(new Transform());
+    const body = this.spawnChild("body", HeroLayer, { sheet: "body.png" });
+    const head = this.spawnChild("head", HeroLayer, { sheet: "head.png" });
+
+    this.add(
+      new LayeredAnimationController<"idle" | "attack">({
+        controllers: [
+          body.get(AnimationController) as AnimationController<"idle" | "attack">,
+          head.get(AnimationController) as AnimationController<"idle" | "attack">,
+        ],
+      }),
+    );
+  }
+}
+
+// Call once, both layers stay in sync:
+hero.get(LayeredAnimationController).playOneShot("attack", {
+  onComplete: () => hero.get(LayeredAnimationController).play("idle"),
+});
+```
+
+The wrapper computes a single lock duration (from the first controller, or an
+explicit `duration` option), passes `Number.POSITIVE_INFINITY` to each child
+so child timers can never expire independently, and fires `onComplete`
+exactly once when the master timer expires. All layers unlock together
+regardless of per-layer frame counts.
+
+#### Manual workaround (when you don't want a wrapper)
+
+For prototypes — or when each layer already has its own custom controller
+managing more than just animation — the same insight can live as a one-line
+helper. Precompute the duration on a "lead" controller and broadcast via
+`options.duration`:
 
 ```typescript
 import { AnimationController } from "@yagejs/renderer";
@@ -151,8 +197,9 @@ playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack", () => {
 ```
 
 `AnimationController.calcDuration(name)` is the same calculation
-`playOneShot` does internally — calling it once and broadcasting the
-result is the cheapest way to keep layered characters in lockstep.
+`playOneShot` does internally — calling it once and broadcasting the result
+is the cheapest way to keep layered characters in lockstep without bringing
+in `LayeredAnimationController`.
 
 ## Asset Factories
 

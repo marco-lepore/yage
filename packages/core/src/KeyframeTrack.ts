@@ -20,8 +20,12 @@ export interface Keyframe<T extends Interpolatable> {
 export interface KeyframeTrackOptions<T extends Interpolatable> {
   /** At least 2 keyframes, sorted by time. */
   keyframes: Keyframe<T>[];
-  /** Called each frame with the interpolated value. */
-  setter: (value: T) => void;
+  /**
+   * Called each frame with the interpolated value. Optional — omit to run
+   * the track purely for its keyframe `event` callbacks (a "timeline" of
+   * side-effects with no per-frame value).
+   */
+  setter?: (value: T) => void;
   /** Total duration in ms. Defaults to the last keyframe's time. */
   duration?: number;
   /** Whether to loop the track. */
@@ -76,7 +80,7 @@ export function createKeyframeTrack<T extends Interpolatable>(
           return;
         } else {
           // Clamp to final value
-          setter(keyframes[keyframes.length - 1]!.data);
+          setter?.(keyframes[keyframes.length - 1]!.data);
           // Fire any remaining events
           for (let i = 0; i < keyframes.length; i++) {
             if (!firedEvents.has(i) && keyframes[i]!.event) {
@@ -117,7 +121,7 @@ export function createKeyframeTrack<T extends Interpolatable>(
           : 1;
       const segEasing = kfA.easing ?? defaultEasing;
 
-      setter(interpolate(kfA.data, kfB.data, segT, segEasing));
+      setter?.(interpolate(kfA.data, kfB.data, segT, segEasing));
     },
   };
   if (onComplete) processOpts.onComplete = onComplete;
