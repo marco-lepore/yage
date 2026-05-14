@@ -238,6 +238,49 @@ anim.play("walk");
 anim.playOneShot("attack"); // locks until complete, then reverts
 ```
 
+### Typing the controller
+
+`AnimationController<T extends string = string>` is generic on the animation name union, but the runtime class isn't — there's no `AnimationController<MyAnim>` expression to pass to `sibling()`. `Component.sibling(AnimationController)` therefore returns `AnimationController<unknown>`. Cast at the field declaration so every consumer sees the narrow type:
+
+```ts
+type HeroAnim = "idle" | "walk" | "attack";
+
+class HeroController extends Component {
+  private readonly _anim = this.sibling(AnimationController) as
+    AnimationController<HeroAnim>;
+
+  update(): void {
+    this._anim.play("walk");   // typed — typo here is a compile error
+  }
+}
+```
+
+The cast is required because the type parameter is type-only; `sibling()` can only narrow by the runtime class. Annotate the field, not every call site.
+
+### Layered characters: one-shot lock drift
+
+`playOneShot` computes its lock duration from `frames.length / speed` (rounded to whole frame-ms). When a single character is composed of several layers — head + body + outfit — each layer owns its own `AnimationController`, and each computes its own duration. Because frame counts and speeds may not be identical across layers (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on slightly different frames and one layer can pop back to idle while the others are still mid-swing.
+
+Workaround: precompute the duration once from a designated "lead" controller, then pass `options.duration` to every other controller's `playOneShot` so they all unlock on the same frame:
+
+```ts
+function playOneShotLayered(
+  controllers: AnimationController<string>[],
+  name: string,
+  onComplete?: () => void,
+): void {
+  const duration = controllers[0]!.calcDuration(name);
+  controllers[0]!.playOneShot(name, { duration, onComplete });
+  for (let i = 1; i < controllers.length; i++) {
+    controllers[i]!.playOneShot(name, { duration });
+  }
+}
+
+playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
+```
+
+`calcDuration(name)` is public on `AnimationController` — use it to compute once, share everywhere.
+
 ## Gradient fills
 
 `linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` under the hood) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.

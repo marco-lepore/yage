@@ -85,6 +85,75 @@ anim.play("jump", { onComplete: () => anim.play("idle") });
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
+### Typing the controller
+
+`AnimationController<T extends string = string>` is generic on the
+animation-name union, which gives `play()` / `playOneShot()` strict
+autocomplete and typo-checking. But the runtime class is non-generic —
+`AnimationController<HeroAnim>` doesn't exist as a value at runtime, so
+there's nothing to pass to `Component.sibling()`. The sibling lookup
+returns `AnimationController<unknown>`, and you have to cast at the
+field declaration to recover the narrow type:
+
+```typescript
+import { Component } from "@yagejs/core";
+import { AnimationController } from "@yagejs/renderer";
+
+type HeroAnim = "idle" | "walk" | "attack";
+
+class HeroController extends Component {
+  private readonly _anim = this.sibling(AnimationController) as
+    AnimationController<HeroAnim>;
+
+  update() {
+    this._anim.play("walk");      // typed — a typo here is a compile error
+  }
+}
+```
+
+Annotate the field once; every call site downstream picks up the
+narrow union for free.
+
+### Layered characters: keeping one-shot locks in sync
+
+If a character is built from multiple sprite layers — head + body +
+outfit, each with its own `AnimatedSpriteComponent` and
+`AnimationController` — every `playOneShot` call computes its lock
+duration from `frames.length / speed`, rounded to whole frame-ms. When
+the layers have different frame counts or speeds, those durations
+disagree by a millisecond or two, the locks expire on different
+frames, and one sprite will snap back to idle while the others are
+still mid-swing. The visual giveaway is a single layer flickering at
+the tail of every attack animation.
+
+Decide the duration once on a "lead" controller, then pass
+`options.duration` to every other controller so they all unlock on the
+same frame:
+
+```typescript
+import { AnimationController } from "@yagejs/renderer";
+
+function playOneShotLayered(
+  controllers: AnimationController<string>[],
+  name: string,
+  onComplete?: () => void,
+) {
+  const duration = controllers[0]!.calcDuration(name);
+  controllers[0]!.playOneShot(name, { duration, onComplete });
+  for (let i = 1; i < controllers.length; i++) {
+    controllers[i]!.playOneShot(name, { duration });
+  }
+}
+
+playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack", () => {
+  // every layer is back from the one-shot at the same instant
+});
+```
+
+`AnimationController.calcDuration(name)` is the same calculation
+`playOneShot` does internally — calling it once and broadcasting the
+result is the cheapest way to keep layered characters in lockstep.
+
 ## Asset Factories
 
 YAGE provides helper functions to load and define render assets:
