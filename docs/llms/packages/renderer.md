@@ -160,7 +160,9 @@ entity.add(new SpriteComponent({
 }));
 ```
 
-**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+**Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available, including `sprite.tint`. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
+
+> `sprite.tint` multiplies the source RGB by the tint colour. That's free on the GPU and right for "darken / desaturate / multiply with a colour" effects, but it turns saturated source colours into mud (a blue mushroom × yellow tint reads as olive). For replace-style recolour — where black stays black, white reaches the target colour, and midtones blend proportionally — use the `colorize` effect from `@yagejs/effects` instead.
 
 ### GraphicsComponent
 

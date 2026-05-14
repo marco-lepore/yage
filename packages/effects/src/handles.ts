@@ -25,6 +25,14 @@ export interface OutlineHandle extends EffectHandle {
   setColor(color: number): void;
 }
 
+/** Handle returned by `colorize`. */
+export interface ColorizeHandle extends EffectHandle {
+  /** Update the target colour at runtime. */
+  setColor(color: number | string): void;
+  /** Rebase the recolour ceiling; preserves the current intensity ratio. */
+  setStrength(value: number): void;
+}
+
 /** Handle returned by `dropShadow`. */
 export interface DropShadowHandle extends EffectHandle {
   setOffset(x: number, y: number): void;

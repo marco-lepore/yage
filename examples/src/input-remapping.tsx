@@ -22,6 +22,7 @@ import {
   UIReactPlugin,
   UIRoot,
   Panel,
+  ZStack,
   Text,
   Button,
   Anchor,
@@ -193,10 +194,12 @@ function SlotButton({
   onClick: () => void;
   muted?: boolean;
 }) {
+  // No explicit width / height — Yoga shrinks the button to fit whichever
+  // key label is currently bound (short like "W", long like "ArrowLeft").
+  // `minWidth` keeps a stable hit-target for unbound / 1-character slots.
   return (
     <Button
-      width={90}
-      height={26}
+      minWidth={56}
       textStyle={{
         fontSize: 12,
         fill: listening ? 0xfacc15 : muted ? 0x64748b : 0xffffff,
@@ -245,7 +248,9 @@ function GroupSection({
 
   return (
     <Panel direction="column" gap={6}>
-      {/* Header */}
+      {/* Header — auto-sized buttons. The toggle uses a ReactNode child
+          (status dot + label) instead of a bare string, courtesy of
+          Button accepting any ReactNode. */}
       <Panel direction="row" gap={8} alignItems="center">
         <Panel
           width={10}
@@ -256,18 +261,26 @@ function GroupSection({
           {meta.label}
         </Text>
         <Button
-          width={50}
-          height={22}
-          textStyle={{ fontSize: 10, fill: 0xcccccc }}
           bg={{ color: 0x334155, alpha: 1, radius: 3 }}
           hoverBg={{ color: 0x475569, alpha: 1, radius: 3 }}
           onClick={() => onToggle(group)}
         >
-          {enabled ? "Off" : "On"}
+          <Panel direction="row" gap={4} alignItems="center">
+            <Panel
+              width={6}
+              height={6}
+              bg={{
+                color: enabled ? 0x16a34a : 0x64748b,
+                alpha: 1,
+                radius: 3,
+              }}
+            />
+            <Text style={{ fontSize: 10, fill: 0xcccccc }}>
+              {enabled ? "Off" : "On"}
+            </Text>
+          </Panel>
         </Button>
         <Button
-          width={50}
-          height={22}
           textStyle={{ fontSize: 10, fill: 0xcccccc }}
           bg={{ color: 0x334155, alpha: 1, radius: 3 }}
           hoverBg={{ color: 0x475569, alpha: 1, radius: 3 }}
@@ -308,50 +321,73 @@ function ConflictModal() {
   const conflictLabel =
     ACTION_LABELS[conflict.conflictAction] ?? conflict.conflictAction;
 
+  // <ZStack> layers absolute children on the Z axis at (0, 0). Sized to
+  // the viewport so the backdrop covers the whole screen — the canonical
+  // modal pattern.
   return (
-    <Panel
-      direction="column"
-      gap={10}
-      padding={20}
-      alignItems="center"
-      bg={{ color: 0x451a1a, alpha: 0.97, radius: 8 }}
-    >
-      <Text style={{ fontSize: 14, fill: 0xf87171 }}>Key Conflict</Text>
-      <Text style={{ fontSize: 12, fill: 0xdddddd }}>
-        {`"${keyName}" is already bound to "${conflictLabel}"`}
-      </Text>
-      <Panel direction="row" gap={8}>
-        <Button
-          width={90}
-          height={28}
-          textStyle={{ fontSize: 11, fill: 0xffffff }}
-          bg={{ color: 0x991b1b, alpha: 1, radius: 4 }}
-          hoverBg={{ color: 0xb91c1c, alpha: 1, radius: 4 }}
-          onClick={() => {
-            input.rebind(conflict.targetAction, conflict.key, {
-              slot: conflict.slot,
-              conflict: "replace",
-            });
-            conflictStore.set({
-              conflict: null,
-              resolveVersion: conflictStore.get().resolveVersion + 1,
-            });
-          }}
+    <ZStack width="100vw" height="100vh">
+      <Panel
+        position="absolute"
+        left={0}
+        top={0}
+        width="100%"
+        height="100%"
+        bg={{ color: 0x000000, alpha: 0.55 }}
+      />
+      <Panel
+        position="absolute"
+        left={0}
+        top={0}
+        width="100%"
+        height="100%"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <Panel
+          direction="column"
+          gap={10}
+          padding={20}
+          alignItems="center"
+          bg={{ color: 0x451a1a, alpha: 0.97, radius: 8 }}
         >
-          Replace
-        </Button>
-        <Button
-          width={90}
-          height={28}
-          textStyle={{ fontSize: 11, fill: 0xcccccc }}
-          bg={{ color: 0x334155, alpha: 1, radius: 4 }}
-          hoverBg={{ color: 0x475569, alpha: 1, radius: 4 }}
-          onClick={() => conflictStore.set({ conflict: null })}
-        >
-          Cancel
-        </Button>
+          <Text style={{ fontSize: 14, fill: 0xf87171 }}>Key Conflict</Text>
+          <Text style={{ fontSize: 12, fill: 0xdddddd }}>
+            {`"${keyName}" is already bound to "${conflictLabel}"`}
+          </Text>
+          {/* Auto-sized confirm/cancel — equal min-width keeps the pair
+              visually balanced regardless of label length. */}
+          <Panel direction="row" gap={8}>
+            <Button
+              minWidth={80}
+              textStyle={{ fontSize: 11, fill: 0xffffff }}
+              bg={{ color: 0x991b1b, alpha: 1, radius: 4 }}
+              hoverBg={{ color: 0xb91c1c, alpha: 1, radius: 4 }}
+              onClick={() => {
+                input.rebind(conflict.targetAction, conflict.key, {
+                  slot: conflict.slot,
+                  conflict: "replace",
+                });
+                conflictStore.set({
+                  conflict: null,
+                  resolveVersion: conflictStore.get().resolveVersion + 1,
+                });
+              }}
+            >
+              Replace
+            </Button>
+            <Button
+              minWidth={80}
+              textStyle={{ fontSize: 11, fill: 0xcccccc }}
+              bg={{ color: 0x334155, alpha: 1, radius: 4 }}
+              hoverBg={{ color: 0x475569, alpha: 1, radius: 4 }}
+              onClick={() => conflictStore.set({ conflict: null })}
+            >
+              Cancel
+            </Button>
+          </Panel>
+        </Panel>
       </Panel>
-    </Panel>
+    </ZStack>
   );
 }
 

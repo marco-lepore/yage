@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from "react";
+import type { PropsWithChildren, ReactNode } from "react";
 import type {
   ColorValue,
   DisplayContainer,
@@ -27,6 +27,8 @@ import type {
   BackgroundOptions,
   FancyButtonAnimations,
   LayoutProps,
+  LayoutValue,
+  Padding,
   PixiViewType,
 } from "@yagejs/ui";
 
@@ -38,7 +40,8 @@ export interface PanelProps extends LayoutProps {
   anchor?: string;
   direction?: "row" | "column";
   gap?: number;
-  padding?: number;
+  /** Single number or per-side object — matches `@yagejs/ui` `PanelProps.padding`. */
+  padding?: Padding;
   bg?: BackgroundOptions;
   alignItems?:
     | "flex-start"
@@ -70,15 +73,40 @@ export interface TextProps extends LayoutProps {
 }
 
 export interface ButtonProps extends LayoutProps {
-  width: number;
-  height: number;
+  /**
+   * Fixed width — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
+   * `"auto"` to shrink-to-fit the button's content (text + any icon /
+   * nested elements). Omit to let Yoga measure.
+   */
+  width?: LayoutValue;
+  /**
+   * Fixed height — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
+   * `"auto"` to shrink-to-fit the button's content. Omit to let Yoga
+   * measure.
+   */
+  height?: LayoutValue;
   onClick?: () => void;
   bg?: BackgroundOptions;
   hoverBg?: BackgroundOptions;
   pressBg?: BackgroundOptions;
+  /** Style applied to the auto-wrapped text node when `children` is a string. */
   textStyle?: Partial<TextStyle>;
+  /**
+   * Overflow behavior for the auto-wrapped label when `children` is a
+   * string / number. Forwarded straight to the inner `<Text>` so a
+   * fixed-width button can ellipsize long labels instead of wrapping or
+   * overflowing. No effect when `children` is a React element (compose
+   * with a `<Text truncate="...">` directly).
+   */
+  truncate?: "clip" | "ellipsis";
   disabled?: boolean;
-  children?: string;
+  /**
+   * String for the common labeled-button case — auto-wrapped in a centered
+   * `<Text>` with `textStyle` applied. Pass `ReactNode`s (Text + Image rows,
+   * nested panels) for richer button content; those render as flex children
+   * of the button.
+   */
+  children?: ReactNode;
 }
 
 export interface ImageProps extends LayoutProps {
@@ -125,6 +153,26 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   return <ui-element _ctor={PanelNode} {...rest} background={bg}>{children}</ui-element>;
 }
 
+/**
+ * Z-axis stacking primitive: a `Panel` that defaults to filling its parent
+ * and acts as the containing block for absolute-positioned children. Drop
+ * children inside with `position="absolute"` (plus `left` / `top` / `right`
+ * / `bottom`) to layer them on top of each other on the Z axis — modal
+ * backdrops, HUD layers, badge markers, etc. The name mirrors SwiftUI's
+ * `ZStack` (contrast with `VStack` / `HStack`, which are the flex column /
+ * row directions on `<Panel>`). Defaults can be overridden via props.
+ */
+export function ZStack(props: PropsWithChildren<PanelProps>): React.JSX.Element {
+  return (
+    <Panel
+      width="100%"
+      height="100%"
+      position="relative"
+      {...props}
+    />
+  );
+}
+
 /** A text label. */
 export function UIText(props: TextProps): React.JSX.Element {
   const { children, ...rest } = props;
@@ -132,11 +180,31 @@ export function UIText(props: TextProps): React.JSX.Element {
   return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
 }
 
-/** An interactive button. */
+/**
+ * An interactive button.
+ *
+ * Children are treated as follows:
+ * - `string` / `number` — auto-wrapped in a centered `<Text>` styled with
+ *   `textStyle`.
+ * - React elements — render as flex children of the button container.
+ * - `null` / `undefined` / `boolean` / arrays — handled by React's standard
+ *   ReactNode semantics. Bare primitives other than `string`/`number` are
+ *   dropped (this reconciler has no `createTextInstance`).
+ */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, bg, hoverBg, pressBg, ...rest } = props;
+  const { children, bg, hoverBg, pressBg, textStyle, truncate, ...rest } = props;
+  const isPrimitiveLabel =
+    typeof children === "string" || typeof children === "number";
+  const content = isPrimitiveLabel
+    ? <UIText
+        {...(textStyle ? { style: textStyle } : {})}
+        {...(truncate ? { truncate } : {})}
+      >
+        {String(children)}
+      </UIText>
+    : children;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIButtonNode} _consumesText {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{children}</ui-element>;
+  return <ui-element _ctor={UIButtonNode} {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
 }
 
 /** An image element displaying a texture. */

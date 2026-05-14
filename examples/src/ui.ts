@@ -170,12 +170,11 @@ class UIExampleScene extends Scene {
 
     hud.text("Score: 0", textStyle("body", { fontSize: 16, fill: 0xfacc15 }));
 
-    // Damage / Heal buttons
+    // Damage / Heal buttons — width / height omitted so each shrinks to fit
+    // its own label (Yoga shrink-to-content + small default padding).
     let hp = 0.8;
     const hudBtns = hud.panel({ direction: "row", gap: 6 });
     hudBtns.button("Take Damage", {
-      width: 110,
-      height: 28,
       background: { color: 0x661111, alpha: 1, radius: 4 },
       hoverBackground: { color: 0x882222, alpha: 1, radius: 4 },
       textStyle: textStyle("caption"),
@@ -185,8 +184,6 @@ class UIExampleScene extends Scene {
       },
     });
     hudBtns.button("Heal", {
-      width: 60,
-      height: 28,
       background: { color: 0x115511, alpha: 1, radius: 4 },
       hoverBackground: { color: 0x228822, alpha: 1, radius: 4 },
       textStyle: textStyle("caption"),

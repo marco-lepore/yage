@@ -30,6 +30,18 @@ entity.add(
 All properties are optional except `texture`. The `layer` property controls
 z-ordering — see [Camera & Layers](/guides/rendering/camera/#render-layers).
 
+:::tip[`tint` multiplies — for replace-style recolour, use the `colorize` effect]
+`sprite.tint` is the cheap built-in way to tint a sprite, but it
+**multiplies** the source RGB by the tint colour. That's fine for
+darkening, desaturating, or "multiply with a colour" looks, but on
+saturated source art it produces muddy mid-axis colours (a blue mushroom
+× a yellow tint reads as olive). For replace-style recolour — black
+stays black, white reaches the target colour, midtones blend
+proportionally — use the
+[`colorize` effect](/guides/rendering/effects/#replace-style-recolour-colorize)
+from `@yagejs/effects` instead.
+:::
+
 **Escape hatch:** `.sprite` is the underlying pixi `Sprite`. Reach for it
 when you need a pixi feature `SpriteComponent` doesn't surface — full pixi
 API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).

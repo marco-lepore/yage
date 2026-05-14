@@ -114,6 +114,7 @@ import Yoga from "yoga-layout";
 import { setYoga, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
+import { Button, UIText as Text } from "./components.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -212,6 +213,76 @@ describe("reconciler", () => {
     // so it won't propagate — but the container should remain empty.
     root.render(createElement("ui-element" as never, null));
     expect(container.children.length).toBe(0);
+  });
+
+  it("Button with a string child renders an auto-wrapped Text child", () => {
+    // The React <Button> wraps string children in <Text> so the underlying
+    // UIButton always operates in container mode. We verify it has exactly
+    // one Yoga child after render.
+    const root = createRoot(container as never);
+    root.render(createElement(Button, { onClick: () => {} }, "Click"));
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as {
+      children: readonly unknown[];
+      yogaNode: { getChildCount(): number };
+    };
+    expect(btn.children.length).toBe(1);
+    expect(btn.yogaNode.getChildCount()).toBe(1);
+  });
+
+  it("Button with a numeric child auto-wraps it via String() into a Text", () => {
+    const root = createRoot(container as never);
+    root.render(createElement(Button, { onClick: () => {} }, 42));
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as {
+      children: readonly unknown[];
+      yogaNode: { getChildCount(): number };
+    };
+    expect(btn.children.length).toBe(1);
+    expect(btn.yogaNode.getChildCount()).toBe(1);
+  });
+
+  it("Button with multiple ReactNode children renders them as flex children", () => {
+    const root = createRoot(container as never);
+    root.render(
+      createElement(
+        Button,
+        { onClick: () => {} },
+        createElement(Text, null, "Label"),
+        createElement(Text, null, "Icon"),
+      ),
+    );
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as {
+      children: readonly unknown[];
+      yogaNode: { getChildCount(): number };
+    };
+    expect(btn.children.length).toBe(2);
+    expect(btn.yogaNode.getChildCount()).toBe(2);
+  });
+
+  it("Button forwards `truncate` into the auto-wrapped Text", () => {
+    // Composes with @yagejs/ui's UIText truncation: a fixed-width Button
+    // with a long string label can ellipsize instead of wrapping.
+    const root = createRoot(container as never);
+    root.render(
+      createElement(
+        Button,
+        { onClick: () => {}, truncate: "ellipsis", width: 80 },
+        "A very long label that doesn't fit",
+      ),
+    );
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as { children: readonly unknown[] };
+    expect(btn.children.length).toBe(1);
+    // Peek through the JSX wrapper into the UIText that the Button auto-
+    // created and confirm the truncate mode landed on the underlying node.
+    const label = btn.children[0] as { _truncate: unknown };
+    expect(label._truncate).toBe("ellipsis");
   });
 
   it("commitUpdate calls instance.update()", () => {

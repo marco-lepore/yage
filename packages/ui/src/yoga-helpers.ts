@@ -4,6 +4,7 @@ import {
   Align,
   Display,
   Edge,
+  PositionType,
 } from "yoga-layout";
 import type { LayoutProps, LayoutValue } from "./types.js";
 
@@ -202,6 +203,37 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
       if (props.margin.left !== undefined)
         node.setMargin(Edge.Left, props.margin.left);
     }
+  }
+
+  if (props.position !== undefined) {
+    if (props.position === "absolute") {
+      node.setPositionType(PositionType.Absolute);
+    } else {
+      node.setPositionType(PositionType.Relative);
+      // Clear any edges left over from a prior absolute layout pass —
+      // Yoga still honors `setPosition` on a Relative node as CSS-style
+      // flow nudges, so stale offsets would silently shift the element.
+      node.setPosition(Edge.Left, undefined);
+      node.setPosition(Edge.Top, undefined);
+      node.setPosition(Edge.Right, undefined);
+      node.setPosition(Edge.Bottom, undefined);
+    }
+  }
+  // Edge offsets are meaningful only in absolute mode — gating them here
+  // mirrors the documented prop contract and avoids accidentally nudging
+  // relative-flow elements when stale values linger across updates.
+  // We accept either an explicit `position: "absolute"` in this update,
+  // or an already-absolute node (so partial imperative updates like
+  // `badge.update({ top: newY })` still reposition correctly).
+  const isAbsolute =
+    props.position === "absolute" ||
+    (props.position === undefined &&
+      node.getPositionType() === PositionType.Absolute);
+  if (isAbsolute) {
+    if (props.left !== undefined) node.setPosition(Edge.Left, props.left);
+    if (props.top !== undefined) node.setPosition(Edge.Top, props.top);
+    if (props.right !== undefined) node.setPosition(Edge.Right, props.right);
+    if (props.bottom !== undefined) node.setPosition(Edge.Bottom, props.bottom);
   }
 
   if (props.visible === false) {

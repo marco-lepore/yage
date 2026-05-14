@@ -155,13 +155,17 @@ class PauseScene extends Scene {
     game?.statusText.setText("Status: PAUSED");
 
     const entity = this.spawn("pause-ui");
+    // alignItems: "stretch" with auto-sized buttons: the widest button's
+    // natural label (Settings + the parenthetical) defines the panel's
+    // content width, and the shorter buttons stretch to match — uniform
+    // stack without picking an explicit width that risks overflowing.
     const panel = entity.add(
       new UIPanel({
         anchor: Anchor.Center,
         direction: "column",
         gap: 12,
         padding: 32,
-        alignItems: "center",
+        alignItems: "stretch",
         background: panelBg,
       }),
     );
@@ -170,14 +174,12 @@ class PauseScene extends Scene {
     panel.text("Physics and game logic are frozen", textStyle("subtitle"));
 
     panel.button("Resume", {
-      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => void engine.scenes.pop(),
       ...nineSliceBtn,
     });
 
     panel.button("Resume in Slow-Mo (0.25x)", {
-      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => {
         if (game) game.timeScale = 0.25;
@@ -187,7 +189,6 @@ class PauseScene extends Scene {
     });
 
     panel.button("Resume at Normal Speed", {
-      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => {
         if (game) game.timeScale = 1;
@@ -197,7 +198,6 @@ class PauseScene extends Scene {
     });
 
     panel.button("Settings (transparentBelow=false)", {
-      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => {
         // Pushing a scene with the default `transparentBelow=false` hides
@@ -259,7 +259,7 @@ class SettingsScene extends Scene {
         direction: "column",
         gap: 12,
         padding: 32,
-        alignItems: "center",
+        alignItems: "stretch",
         background: panelBg,
       }),
     );
@@ -271,7 +271,6 @@ class SettingsScene extends Scene {
     );
 
     panel.button("Back", {
-      width: 280, height: 40,
       textStyle: textStyle("button"),
       onClick: () => void engine.scenes.pop(),
       ...nineSliceBtn,

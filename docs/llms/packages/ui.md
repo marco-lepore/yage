@@ -59,17 +59,21 @@ const label = panel.text("Score: 0", { fontSize: 24, fill: 0xffffff });
 label.setText("Score: 100");
 label.setStyle({ fill: 0x00ff00 });
 
-// Button
+// Button — width/height are optional; omit them to shrink-to-content
 const btn = panel.button("Start", {
-  width: 200, height: 50,
+  width: 200, height: 50,                           // optional
   background: { color: 0x4444aa },
   hoverBackground: { color: 0x5555cc },
   pressBackground: { color: 0x333388 },
   textStyle: { fontSize: 18, fill: 0xffffff },
   onClick: () => { /* ... */ },
 });
+const autoBtn = panel.button("Auto-sized", { onClick: () => {} }); // shrinks to label
 btn.setText("Loading...");
 btn.setDisabled(true);
+
+// Button is a flex container — addElement on it for icon + label rows etc.
+btn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
 
 // Nested panel
 const row = panel.panel({ direction: "row", gap: 12 });
@@ -108,6 +112,25 @@ Pass `backdrop` when the loading scene is transitioned into — without it the s
 panel.visible = false; // hide
 label.visible = true;
 ```
+
+## Absolute Positioning
+
+Every element accepts `position`, `left`, `top`, `right`, `bottom` via `LayoutProps`:
+
+```ts
+// Pin a badge to the top-right of its parent. The parent must be
+// `position: "relative"` (the default) so it acts as the containing block.
+const badge = panel.panel({
+  position: "absolute",
+  top: 8,
+  right: 8,
+  background: { color: 0xff0000, radius: 12 },
+});
+```
+
+Absolute children are lifted out of the flex flow and resolved against the
+parent's content box. `left` / `top` / `right` / `bottom` are pixel offsets
+(omit unused edges).
 
 ## Background Options
 
