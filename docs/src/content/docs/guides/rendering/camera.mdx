@@ -234,6 +234,38 @@ See the [UI guide](/guides/ui/#layer-space-and-positioning) for how
 `UIPanel`/`UIRoot` pick between viewport-anchored and Transform-pinned
 positioning.
 
+### Pixi render groups with `isRenderGroup`
+
+`LayerDef.isRenderGroup: true` promotes the layer's container to a Pixi
+v8 render group. Render groups render as a separate pass with their own
+instruction set and have their transforms processed on the GPU rather
+than the CPU, which can be useful for isolating large, slow-changing
+subtrees.
+
+```typescript
+readonly layers: readonly LayerDef[] = [
+  { name: "ground",  order: -10 },
+  // Stable mid-scene actors — promote to a render group so transform
+  // updates above this layer don't re-walk its children every frame.
+  { name: "actors",  order: 0,   isRenderGroup: true },
+  { name: "ui",      order: 100, space: "screen" },
+];
+```
+
+Render groups carry a small fixed cost (their own render pass and
+instruction set), so flip the flag on only where you've measured a
+benefit. Default: `false`.
+
+:::note
+**Not** required for filter isolation around tilemaps. `@yagejs/tilemap`
+ships a runtime patch for `@pixi/tilemap`'s `TilemapPipe.execute` that
+reads the currently-bound uniform group (instead of the stale
+`globalUniforms._activeUniforms.at(-1)` push log) and uses
+`tilemap.groupTransform` (instead of `tilemap.worldTransform`), so a
+filtered sibling layer no longer drifts the canopy regardless of
+render-group configuration.
+:::
+
 ## Display System
 
 The built-in display system automatically synchronizes each entity's `Transform`

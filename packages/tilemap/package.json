@@ -50,7 +50,7 @@
   "dependencies": {
     "@yagejs/core": "^0.6.0",
     "@yagejs/renderer": "^0.6.0",
-    "@pixi/tilemap": "^5.0.0",
+    "@pixi/tilemap": "5.0.2",
     "pixi.js": "^8.5.0"
   },
   "devDependencies": {

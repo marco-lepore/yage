@@ -364,6 +364,32 @@ To override: pass explicit `bindings` on the camera. Explicit bindings
 ignore `space` and target exactly the layers named, which is how you
 bind a screen-space layer to a second camera or build parallax.
 
+### `LayerDef.isRenderGroup` — Pixi render-group opt-in
+
+`isRenderGroup: true` promotes the layer's container to a Pixi v8 render
+group. Render groups render as a separate pass with their own instruction
+set and have their transforms handled on the GPU, which can be useful for
+isolating large, slow-changing subtrees from per-frame transform updates.
+
+Default: `false`. Render groups carry a small fixed cost (their own
+render pass + instruction set) — only flip on layers where you've
+measured a benefit.
+
+```ts
+readonly layers: readonly LayerDef[] = [
+  { name: "ground",  order: -10 },
+  { name: "actors",  order: 0,   isRenderGroup: true },
+  { name: "hud",     order: 100, space: "screen" },
+];
+```
+
+**Not** required for filter isolation around tilemaps. `@yagejs/tilemap`'s
+`TilemapPlugin` already runtime-patches `@pixi/tilemap`'s `TilemapPipe`
+to read the currently-bound uniform group (not the stale push log) and
+to use `tilemap.groupTransform` (not `worldTransform`), so a filtered
+sibling layer no longer drifts the canopy regardless of render-group
+configuration. See `packages/tilemap/src/patch-tilemap-pipe.ts`.
+
 ### CameraBinding — per-axis ratios
 
 Each binding has three independent ratios, all defaulting to `1` (full

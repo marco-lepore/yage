@@ -26,6 +26,12 @@ export interface CreateLayerOptions {
    * screen-space layers by naming them in `bindings`.
    */
   space?: LayerSpace;
+  /**
+   * Promote the layer's container to a Pixi v8 render group. See
+   * `LayerDef.isRenderGroup` for the full rationale — isolates filter
+   * uniforms from sibling layers that read `globalUniforms` directly.
+   */
+  isRenderGroup?: boolean;
 }
 
 /** A named rendering layer — a pixi container at a given draw order. */
@@ -143,6 +149,7 @@ export class RenderLayerManager {
     const eventMode = opts?.eventMode ?? this._defaultEventMode;
     if (eventMode) container.eventMode = eventMode;
     if (opts?.sortableChildren) container.sortableChildren = true;
+    if (opts?.isRenderGroup) container.isRenderGroup = true;
 
     const layer = new RenderLayer(
       name,
@@ -172,6 +179,9 @@ export class RenderLayerManager {
       merged.sortableChildren = def.sortableChildren;
     }
     if (def.space !== undefined) merged.space = def.space;
+    if (def.isRenderGroup !== undefined) {
+      merged.isRenderGroup = def.isRenderGroup;
+    }
     return this.create(def.name, def.order, merged);
   }
 

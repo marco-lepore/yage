@@ -1,3 +1,14 @@
+/**
+ * Scene stack demo — also doubles as the manual-test fixture for the
+ * `Scene.transparentBelow` semantics:
+ *
+ * - GameScene (bottom) — bouncing physics balls with a HUD panel.
+ * - PauseScene (Esc on game) — `transparentBelow=true`; the game stays
+ *   visible behind the menu, paused.
+ * - SettingsScene (Settings button on pause) — default
+ *   `transparentBelow=false`; both the game HUD and the pause menu are
+ *   hidden by the renderer while this is on top, then re-shown on pop.
+ */
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
@@ -185,6 +196,19 @@ class PauseScene extends Scene {
       ...nineSliceBtn,
     });
 
+    panel.button("Settings (transparentBelow=false)", {
+      width: 280, height: 40,
+      textStyle: textStyle("button"),
+      onClick: () => {
+        // Pushing a scene with the default `transparentBelow=false` hides
+        // every below-stack scene's render tree — game HUD AND this pause
+        // menu. Compare with the Resume button above which pops the pause
+        // overlay and uncovers the running game.
+        engine.scenes.push(new SettingsScene()).catch(() => {});
+      },
+      ...nineSliceBtn,
+    });
+
     // Escape to resume
     const esc = this.spawn("esc-handler");
     esc.add(new Transform());
@@ -204,6 +228,58 @@ class PauseEscHandler extends Component {
     if (this.input.isJustPressed("pause")) {
       void engine.scenes.pop();
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SettingsScene — full-screen overlay using DEFAULT transparentBelow=false
+// ---------------------------------------------------------------------------
+// Pushed from the pause menu via `engine.scenes.push(new SettingsScene())`.
+// Because `transparentBelow` defaults to `false`, the renderer hides every
+// below-stack scene's tree while this scene is on top — the game's HUD and
+// the pause menu BOTH stop rendering. Pop to reveal them again.
+//
+// This is the manual-test fixture for PR #66: before that change, the
+// `transparentBelow=false` contract was documented but unenforced and the
+// pause menu would bleed through. The expected behaviour now is a clean
+// black canvas behind the settings panel until pop.
+// ---------------------------------------------------------------------------
+class SettingsScene extends Scene {
+  readonly name = "settings";
+  override readonly pauseBelow = true;
+  // `transparentBelow` is left at the default `false` deliberately —
+  // declaring it here just for the demo's visibility.
+  override readonly transparentBelow = false;
+
+  onEnter(): void {
+    const entity = this.spawn("settings-ui");
+    const panel = entity.add(
+      new UIPanel({
+        anchor: Anchor.Center,
+        direction: "column",
+        gap: 12,
+        padding: 32,
+        alignItems: "center",
+        background: panelBg,
+      }),
+    );
+
+    panel.text("SETTINGS", textStyle("title", { fontSize: 28 }));
+    panel.text(
+      "transparentBelow = false ⇒ pause menu + game HUD are hidden",
+      textStyle("subtitle"),
+    );
+
+    panel.button("Back", {
+      width: 280, height: 40,
+      textStyle: textStyle("button"),
+      onClick: () => void engine.scenes.pop(),
+      ...nineSliceBtn,
+    });
+
+    const esc = this.spawn("settings-esc");
+    esc.add(new Transform());
+    esc.add(new PauseEscHandler());
   }
 }
 

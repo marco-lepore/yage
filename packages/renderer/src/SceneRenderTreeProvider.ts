@@ -1,5 +1,5 @@
 import { Container } from "pixi.js";
-import type { Scene, ProcessSystem } from "@yagejs/core";
+import type { ProcessSystem, Scene } from "@yagejs/core";
 import { devWarn, makeSceneScopedQueue } from "@yagejs/core";
 import type { LayerDef } from "./LayerDef.js";
 import type {
@@ -183,6 +183,42 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
     if (parent) {
       parent.removeChild(entry.root);
       parent.addChild(entry.root);
+    }
+  }
+
+  /**
+   * Hide below-stack scene trees whose top neighbour has
+   * `transparentBelow = false`. The topmost scene is always visible; below
+   * neighbours stay visible only while every scene above them is
+   * `transparentBelow = true`. Detached scenes (mounted via
+   * `_mountDetached`, e.g. the debug overlay) are not in the stack and
+   * their visibility is left alone.
+   * @internal
+   */
+  applyTransparentBelow(stack: readonly Scene[]): void {
+    let visible = true;
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const scene = stack[i]!;
+      const entry = this.entries.get(scene);
+      if (entry) entry.root.visible = visible;
+      if (!scene.transparentBelow) visible = false;
+    }
+  }
+
+  /**
+   * Restore in-stack scene roots to visible. Used while a scene transition
+   * runs so both the outgoing and incoming scenes can render even when the
+   * new topmost scene has `transparentBelow = false`; the visibility chain
+   * is reapplied when the transition ends. Detached scenes (mounted via
+   * `_mountDetached`, e.g. the debug overlay) are left alone — same
+   * contract as `applyTransparentBelow`, so callers can hide a detached
+   * root without it being silently un-hidden on every transition start.
+   * @internal
+   */
+  resetVisibility(stack: readonly Scene[]): void {
+    for (const scene of stack) {
+      const entry = this.entries.get(scene);
+      if (entry) entry.root.visible = true;
     }
   }
 

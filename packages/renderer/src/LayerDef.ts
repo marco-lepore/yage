@@ -42,4 +42,22 @@ export interface LayerDef {
   space?: LayerSpace;
   /** Whether children should self-sort by their `zIndex`. Default: false. */
   sortableChildren?: boolean;
+  /**
+   * Promote the layer's container to a Pixi v8 render group boundary so its
+   * children render as a separate pass with their own uniform scope. Default:
+   * `false`.
+   *
+   * Why this exists: when a filter is applied to anything inside a render
+   * group, Pixi composes the filter's `uWorldTransformMatrix` from the active
+   * render group's transform and leaves it on the global uniform stack until
+   * the group ends. Sibling render passes that read `globalUniforms` directly —
+   * notably `@pixi/tilemap`'s `TilemapPipe.execute` (which pulls
+   * `_activeUniforms.at(-1)`) — pick up that polluted matrix and visibly drift.
+   *
+   * Set `isRenderGroup: true` on layers that contain filtered content AND on
+   * any sibling layer whose contents must stay unaffected (e.g. a canopy
+   * tilemap above filtered entities). Both layers then sit inside their own
+   * uniform scope, and the filter's transform stays scoped to its source.
+   */
+  isRenderGroup?: boolean;
 }

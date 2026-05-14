@@ -47,12 +47,22 @@ class GameplayScene extends Scene {
 |---|---|---|
 | `name` | — | Unique identifier for the scene |
 | `pauseBelow` | `true`  | When `true`, scenes below this one stop updating. Set to `false` for HUD or overlay scenes that should let the underlying scene keep running. |
-| `transparentBelow` | `false` | When `true`, scenes below this one still render |
+| `transparentBelow` | `false` | When `true`, scenes below this one still render. When `false` (the default), below-stack scene trees are hidden — both world layers **and** screen-space UI/HUD. (Detached scenes mounted via `_mountDetached`, e.g. the debug overlay, are not affected.) |
 
 A pause menu inherits the default `pauseBelow: true` and adds
 `transparentBelow: true` — the game world is visible but frozen
 underneath. A HUD overlay typically sets `pauseBelow: false` and
 `transparentBelow: true` so gameplay continues to tick under it.
+
+`transparentBelow` composes through the stack: a below scene stays
+visible only while every scene above it has `transparentBelow: true`. As
+soon as one scene above is opaque (`transparentBelow: false`, the
+default), everything underneath it is hidden — world layers and any
+screen-space UI alike. While a scene transition is running both the
+outgoing and incoming scenes render regardless of the flag, so a
+`crossFade` push from a menu into a `transparentBelow: false` gameplay
+scene still dissolves cleanly; the visibility chain is reapplied when
+the transition ends.
 
 ## Scene Stack Management
 

@@ -301,9 +301,10 @@ class MenuScene extends Scene {
           newRun();
         }
         // `replace` swaps the menu out so its UI fully unmounts before the
-        // gameplay scene mounts. Pushing on top would leave the menu visible
-        // underneath, since `transparentBelow=false` doesn't hide below-stack
-        // UI in the current renderer.
+        // gameplay scene mounts. The default `transparentBelow=false` would
+        // also hide the menu under a push, but replace tears it down for
+        // good — no point keeping the listener tree alive once gameplay owns
+        // the screen.
         await sm.replace(new GameplayScene());
       })();
     };
