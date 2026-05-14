@@ -28,6 +28,7 @@ import type {
   FancyButtonAnimations,
   LayoutProps,
   LayoutValue,
+  Padding,
   PixiViewType,
 } from "@yagejs/ui";
 
@@ -39,7 +40,8 @@ export interface PanelProps extends LayoutProps {
   anchor?: string;
   direction?: "row" | "column";
   gap?: number;
-  padding?: number;
+  /** Single number or per-side object — matches `@yagejs/ui` `PanelProps.padding`. */
+  padding?: Padding;
   bg?: BackgroundOptions;
   alignItems?:
     | "flex-start"
