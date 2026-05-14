@@ -276,8 +276,7 @@ function playOneShotLayered(
   }
 }
 
-playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack",
-  () => playLayered([bodyAnim, headAnim, outfitAnim], "idle"));
+playOneShotLayered([bodyAnim, headAnim, outfitAnim], "attack");
 ```
 
 `calcDuration(name)` is public on `AnimationController` — use it to compute once, share everywhere.
