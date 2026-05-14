@@ -72,6 +72,16 @@ export class StoreVersionTooNewError extends Error {
   }
 }
 
+/** Thrown by `restore`/`loadSlot` when the persisted payload doesn't match the version envelope shape (corrupt, legacy, or written by something other than `Save`). */
+export class CorruptPayloadError extends Error {
+  readonly storeId: string;
+  constructor(storeId: string, detail: string) {
+    super(`Save: payload for "${storeId}" is not a valid version envelope (${detail}).`);
+    this.name = "CorruptPayloadError";
+    this.storeId = storeId;
+  }
+}
+
 /** Thrown by `restore`/`loadSlot` when stored data is older and no `migrate` was provided. */
 export class StoreMigrationMissingError extends Error {
   readonly storeId: string;
@@ -198,6 +208,22 @@ function applyEnvelope<T>(
   currentVersion: number,
   migrate: ((old: unknown, fromVersion: number) => T) | undefined,
 ): void {
+  // The envelope comes from JSON.parse on adapter-stored bytes — anything could
+  // be on disk (corrupt save, a legacy payload from before this layer existed,
+  // a key written by another app sharing the same namespace). Surface a typed
+  // save-domain error rather than letting `envelope.version` throw a TypeError
+  // or silently feeding `undefined` into hydrate.
+  if (
+    envelope === null ||
+    typeof envelope !== "object" ||
+    typeof (envelope as { version?: unknown }).version !== "number" ||
+    !("data" in envelope)
+  ) {
+    throw new CorruptPayloadError(
+      id,
+      `expected { version: number, data: unknown }, got ${envelope === null ? "null" : typeof envelope}`,
+    );
+  }
   if (envelope.version > currentVersion) {
     throw new StoreVersionTooNewError(id, envelope.version, currentVersion);
   }

@@ -143,6 +143,23 @@ export function createRecord<T extends object>(
     serialize: () => codec.encode(snapshot) as T,
     hydrate: (raw) => {
       const next = codec.decode(raw);
+      // Mirror `set()`'s change check: only notify when at least one key
+      // differs. Keeps compound `hydrate` rollback from firing spurious
+      // notifications when an untouched leaf is restored to its prior snapshot.
+      let changed = false;
+      for (const key of Object.keys(next) as Array<keyof T>) {
+        if (!Object.is(snapshot[key], next[key])) {
+          changed = true;
+          break;
+        }
+      }
+      for (const key of Object.keys(snapshot) as Array<keyof T>) {
+        if (!(key in next)) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
       snapshot = { ...next };
       notify();
     },
@@ -608,17 +625,24 @@ export function createStore<L extends StoreLeaves>(
       );
     }
     const dict = raw as Record<string, unknown>;
-    // Best-effort atomic hydrate: snapshot every leaf, attempt each decode; on
-    // first failure roll every leaf back to its pre-hydrate snapshot.
+    // Best-effort atomic hydrate: snapshot every leaf upfront, attempt each
+    // decode; on the first failure, roll back only the leaves we actually
+    // wrote to. Leaves whose key was absent from `dict` (partial payload, or a
+    // newer version that added leaves) were never touched and don't need a
+    // restore — re-hydrating them would just fire spurious change events.
     const snapshots = internalLeaves.map(({ leaf }) => leaf.serialize());
+    const written: number[] = [];
     try {
-      for (const { key, leaf } of internalLeaves) {
-        if (Object.prototype.hasOwnProperty.call(dict, key)) {
-          leaf.hydrate(dict[key]);
+      for (let i = 0; i < internalLeaves.length; i += 1) {
+        const entry = internalLeaves[i];
+        if (entry === undefined) continue;
+        if (Object.prototype.hasOwnProperty.call(dict, entry.key)) {
+          entry.leaf.hydrate(dict[entry.key]);
+          written.push(i);
         }
       }
     } catch (err) {
-      for (let i = 0; i < internalLeaves.length; i += 1) {
+      for (const i of written) {
         const entry = internalLeaves[i];
         if (entry !== undefined) entry.leaf.hydrate(snapshots[i]);
       }

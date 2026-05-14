@@ -136,6 +136,7 @@ Errors:
 - `SlotNotFoundError` — `loadSlot` on a slot that doesn't exist.
 - `StoreVersionTooNewError` — stored version is greater than the read's `version`.
 - `StoreMigrationMissingError` — stored version is older and no `migrate` configured.
+- `CorruptPayloadError` — the stored payload isn't a valid version envelope (corrupt, legacy, or written by something other than `Save`).
 - `InvalidKeyError` — empty store id or slot name passed to `Save` methods.
 
 ## Boot pattern

@@ -11,6 +11,7 @@ export {
   InvalidKeyError,
   StoreVersionTooNewError,
   StoreMigrationMissingError,
+  CorruptPayloadError,
 } from "./Save.js";
 export type {
   SaveAdapter,

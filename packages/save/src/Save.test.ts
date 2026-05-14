@@ -11,6 +11,7 @@ import {
   SlotNotFoundError,
   StoreMigrationMissingError,
   StoreVersionTooNewError,
+  CorruptPayloadError,
 } from "./Save.js";
 import { memoryAdapter } from "./adapters/memory.js";
 
@@ -408,16 +409,50 @@ describe("Save — migration on load", () => {
     expect(b.value()).toBe(70);
   });
 
-  it("compound migrate return type is enforced per leaf shape (compile-time)", () => {
+  it("compound migrate return type is enforced per leaf shape", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    // Sanity check: well-typed migrate compiles and runs.
+    // Seed a v1 payload so restore actually invokes migrate (otherwise the
+    // missing-document branch returns early and the assertion below is a lie).
+    const seed = createStore((s) => ({
+      flag: s.value<boolean>({ default: false }),
+    }));
+    await save.persist("compile-check", seed, { version: 1 });
+
     const game = createStore((s) => ({
       flag: s.value<boolean>({ default: false }),
     }));
-    return save.restore("compile-check", game, {
+    await save.restore("compile-check", game, {
       version: 2,
+      // Return type matches each leaf's encoded form — `{ value: boolean }`
+      // for a value leaf, not bare boolean. TS catches mis-shaped returns at
+      // this call site.
       migrate: () => ({ flag: { value: true } }),
     });
+    expect(game.flag.get()).toBe(true);
+  });
+});
+
+describe("Save — corrupt payloads", () => {
+  it("restore throws CorruptPayloadError on a payload missing version/data", async () => {
+    const adapter = memoryAdapter();
+    // Write a raw value that isn't a version envelope — simulates a legacy
+    // payload or a key written by something other than `Save`.
+    await adapter.write("corrupt/d", JSON.stringify({ unrelated: 1 }));
+    const save = createSave({ adapter });
+    const r = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    await expect(save.restore("corrupt", r)).rejects.toBeInstanceOf(
+      CorruptPayloadError,
+    );
+  });
+
+  it("restore throws CorruptPayloadError on a non-object payload", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write("nullpay/d", "null");
+    const save = createSave({ adapter });
+    const r = createRecord<{ v: number }>({ defaults: () => ({ v: 0 }) });
+    await expect(save.restore("nullpay", r)).rejects.toBeInstanceOf(
+      CorruptPayloadError,
+    );
   });
 });
 
