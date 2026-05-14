@@ -28,6 +28,35 @@ engine.use(
 The plugin creates the PixiJS application, sets up the render loop, and
 registers all rendering systems.
 
+### Pixel-art preset
+
+If you're shipping pixel art, set `pixelArtPreset: true`. One flag flips
+the three settings that otherwise need to be tracked down individually:
+
+- `TextureStyle.defaultOptions.scaleMode = "nearest"` — freshly loaded
+  textures sample without bilinear blur.
+- `roundPixels: true` on the Pixi `Application` — subpixel transforms
+  don't smear sprite edges.
+- `image-rendering: pixelated` (with a `-webkit-optimize-contrast`
+  Safari fallback) on the canvas element — the browser scales the
+  backing store with nearest-neighbor instead of bicubic.
+
+```typescript
+engine.use(
+  new RendererPlugin({
+    width: 320,
+    height: 240,
+    container: host,
+    pixelArtPreset: true,
+  }),
+);
+```
+
+The preset composes with `pixi: {...}` — explicit options win, so
+`pixi: { roundPixels: false }` overrides the preset's default. Per-texture
+overrides (`source.scaleMode = "linear"`) keep working too — the preset
+only changes the *default* sampling mode.
+
 ## Where to go next
 
 - **[Responsive Canvas](/guides/rendering/responsive/)** — fit modes (`letterbox`, `expand`, `cover`, `stretch`), drawing into the bars, DOM-overlay positioning, HUD anchoring under `cover`.

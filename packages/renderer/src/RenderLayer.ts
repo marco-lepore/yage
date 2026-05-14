@@ -1,7 +1,7 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
 import type { ScopedProcessQueue } from "@yagejs/core";
-import type { LayerDef, LayerSpace } from "./LayerDef.js";
+import type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
@@ -32,6 +32,12 @@ export interface CreateLayerOptions {
    * uniforms from sibling layers that read `globalUniforms` directly.
    */
   isRenderGroup?: boolean;
+  /**
+   * Custom child sort comparator. See `LayerDef.sort` — when set,
+   * `DisplaySystem` re-sorts the layer's children with this comparator
+   * each frame before render. Default: undefined (insertion order).
+   */
+  sort?: LayerSortFn;
 }
 
 /** A named rendering layer — a pixi container at a given draw order. */
@@ -41,6 +47,12 @@ export class RenderLayer {
   readonly container: Container;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
+  /**
+   * Per-frame sort comparator, or `undefined` for insertion-order rendering.
+   * Set via `LayerDef.sort` / `CreateLayerOptions.sort`. `DisplaySystem`
+   * re-sorts `container.children` with this each Render phase.
+   */
+  readonly sort: LayerSortFn | undefined;
   /**
    * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
    * entity rendered through this layer (one full-screen render pass per
@@ -58,11 +70,13 @@ export class RenderLayer {
     container: Container,
     space: LayerSpace = "world",
     queueFactory?: EffectQueueFactory,
+    sort?: LayerSortFn,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
+    this.sort = sort;
     this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
   }
 
@@ -150,6 +164,11 @@ export class RenderLayerManager {
     if (eventMode) container.eventMode = eventMode;
     if (opts?.sortableChildren) container.sortableChildren = true;
     if (opts?.isRenderGroup) container.isRenderGroup = true;
+    // `sortableChildren = true` is a no-op without dirty management here —
+    // the actual per-frame sort happens in `DisplaySystem`. We still flip
+    // the flag so the relationship is explicit to anyone inspecting the
+    // container.
+    if (opts?.sort) container.sortableChildren = true;
 
     const layer = new RenderLayer(
       name,
@@ -157,6 +176,7 @@ export class RenderLayerManager {
       container,
       opts?.space ?? "world",
       this._queueFactory,
+      opts?.sort,
     );
     this.layers.set(name, layer);
 
@@ -182,6 +202,7 @@ export class RenderLayerManager {
     if (def.isRenderGroup !== undefined) {
       merged.isRenderGroup = def.isRenderGroup;
     }
+    if (def.sort !== undefined) merged.sort = def.sort;
     return this.create(def.name, def.order, merged);
   }
 

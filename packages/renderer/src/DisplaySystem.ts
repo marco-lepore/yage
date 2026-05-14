@@ -69,8 +69,35 @@ export class DisplaySystem extends System {
       this.syncDisplayObject(transform, text.text);
     }
 
-    // 2. Apply camera transforms to layers
+    // 2. Apply per-layer sort functions. Runs AFTER transform sync so
+    //    y-based comparators see the frame's current positions, and
+    //    BEFORE camera transforms so reordering doesn't fight any
+    //    cumulative scale/translation we're about to write.
+    this.applyLayerSort();
+
+    // 3. Apply camera transforms to layers
     this.applyCameraTransforms();
+  }
+
+  /**
+   * Per-frame y-sort hook. Pixi v8's built-in `sortChildren` only orders by
+   * `zIndex`, so position-based comparators have to mutate `children`
+   * ourselves. We sort the array in place; the next render iterates it in
+   * the new order. Layers without a `sort` keep insertion order (current
+   * default behavior).
+   */
+  private applyLayerSort(): void {
+    for (const [, tree] of this.treeProvider.allTrees()) {
+      for (const layer of tree.getAll()) {
+        if (!layer.sort) continue;
+        // Cast: Pixi v8 types `Container.children` as `readonly`-ish to
+        // discourage external mutation, but `Container` itself sorts the
+        // array in place inside `sortChildren()` — the in-place sort
+        // here is the same shape and is the documented escape hatch for
+        // custom comparators.
+        (layer.container.children as Container[]).sort(layer.sort);
+      }
+    }
   }
 
   /**

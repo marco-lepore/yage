@@ -17,7 +17,26 @@ engine.use(new RendererPlugin({
   virtualHeight: 240,
   resolution: window.devicePixelRatio,
   fit: { mode: "cover" }, // override default letterbox (see below)
+  pixelArtPreset: true,   // crisp, non-blurred pixel art (see below)
 }));
+```
+
+### `pixelArtPreset`
+
+One flag for pixel-art games. When `true`, the plugin:
+
+- Sets `TextureStyle.defaultOptions.scaleMode = "nearest"` before `Application.init` so textures loaded by `Assets` sample without bilinear blur.
+- Passes `roundPixels: true` into the Pixi `Application` so subpixel transforms don't smear sprite edges.
+- Writes `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` onto the canvas `style.cssText` so the browser scales the backing store with nearest-neighbor (the Safari fallback is the first declaration; modern browsers pick the second from the cascade).
+
+Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. Per-texture overrides (`source.scaleMode = "linear"` on a specific texture) keep working — the preset only sets the *default*.
+
+```ts
+new RendererPlugin({
+  width: 320, height: 240,
+  container: host,
+  pixelArtPreset: true,
+});
 ```
 
 Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
@@ -312,8 +331,23 @@ class GameScene extends Scene {
   onEnter() {
     // Top-left-origin: world (0,0) maps to screen (0,0)
     this.spawn(CameraEntity, { position: new Vec2(400, 300) }); // viewport is 800×600
+    // Or, equivalently — let the renderer compute the center for you:
+    this.spawn(CameraEntity, { centerOn: { width: 800, height: 600 } });
   }
 }
+```
+
+### `fit: "static"` and `centerOn`
+
+`CameraEntity` defaults to `fit: "follow"` — the classic "track a target each frame" behavior. Pass `fit: "static"` when the camera should be placed once and never move (puzzle grids, arcade-style single-screen layouts, debug fly-overs). Static mode silently drops any `follow` / `smoothing` / `offset` / `deadzone` so a half-finished refactor that still passes those values doesn't accidentally re-enable tracking.
+
+`centerOn: { width, height }` is a convenience: it computes the midpoint and applies it as the camera's initial position, overriding any explicit `position`. Useful for top-left-origin layouts where the level dimensions are known up front.
+
+```ts
+this.spawn(CameraEntity, {
+  fit: "static",
+  centerOn: { width: 800, height: 600 },
+});
 ```
 
 ## Render Layers
@@ -363,6 +397,31 @@ zooms with the camera.
 To override: pass explicit `bindings` on the camera. Explicit bindings
 ignore `space` and target exactly the layers named, which is how you
 bind a screen-space layer to a second camera or build parallax.
+
+### `LayerDef.sort` — per-frame paint order
+
+Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a comparator and `DisplaySystem` re-sorts the layer's children with that comparator each frame, after transform sync, before camera transforms.
+
+Two built-in helpers cover the common cases:
+
+| Helper | Use for |
+|---|---|
+| `ySort` | Top-down 2D depth — characters with higher `position.y` paint over those with lower y. |
+| `ySortBy(offsetOf)` | Same, but each container can advertise a per-sprite Y offset (à la Godot's `y_sort_origin`) so the sort key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+
+```ts
+import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
+
+readonly layers: readonly LayerDef[] = [
+  { name: "ground", order: -10 },
+  { name: "characters", order: 0, sort: ySort },
+];
+
+// Per-sprite offset variant — read off a custom field on the display object:
+const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
+```
+
+Setting `sort` also flips `container.sortableChildren = true` on the layer so the relationship is visible to anyone inspecting the Pixi tree. The actual reorder is done in `DisplaySystem` by mutating `container.children` directly — Pixi v8's built-in `sortChildren()` only sorts by `zIndex`, which can't see position changes.
 
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 

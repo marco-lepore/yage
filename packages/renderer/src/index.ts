@@ -99,7 +99,8 @@ export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 export type { CreateLayerOptions } from "./RenderLayer.js";
 
 // Per-scene render tree
-export type { LayerDef, LayerSpace } from "./LayerDef.js";
+export type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
+export { ySort, ySortBy } from "./ySort.js";
 export type {
   EnsureLayerOptions,
   SceneRenderTree,

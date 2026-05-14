@@ -49,6 +49,32 @@ The camera never changes; you're just choosing which world point sits under
 the viewport's top-left corner. Follow-a-target cameras work identically with
 either convention — they just move to frame the target.
 
+`centerOn: { width, height }` does the half-viewport math for you and is
+the cleaner way to spell the same thing:
+
+```typescript
+this.spawn(CameraEntity, { centerOn: { width: 800, height: 600 } });
+```
+
+### Static cameras (`fit: "static"`)
+
+By default a `CameraEntity` is `fit: "follow"` — it tracks a target each
+frame, smooths into deadzones, runs bounds, etc. For arcade-style
+single-screen games, puzzle grids, or any layout where the camera is
+placed once and never moves, set `fit: "static"`:
+
+```typescript
+this.spawn(CameraEntity, {
+  fit: "static",
+  centerOn: { width: 800, height: 600 },
+});
+```
+
+Static cameras silently drop `follow` / `smoothing` / `offset` / `deadzone`
+on the floor, so a half-finished refactor that still passes those values
+doesn't accidentally re-enable tracking. Shake, zoom, and bounds still
+work — `fit` only controls the per-frame *position* follow loop.
+
 ### Following a Target
 
 ```typescript
@@ -233,6 +259,59 @@ work without any layer wiring.
 See the [UI guide](/guides/ui/#layer-space-and-positioning) for how
 `UIPanel`/`UIRoot` pick between viewport-anchored and Transform-pinned
 positioning.
+
+### Per-frame paint order with `sort`
+
+By default, sprites within a layer paint in the order their containers
+were added (insertion order). For top-down 2D games you almost always
+want characters with a higher `position.y` to paint over those with a
+lower y, so the "in front of" relationship looks right. Set
+`LayerDef.sort` to a comparator and `DisplaySystem` re-sorts the layer's
+children with it every frame, after transform sync, before camera
+transforms:
+
+```typescript
+import { ySort, type LayerDef } from "@yagejs/renderer";
+
+readonly layers: readonly LayerDef[] = [
+  { name: "ground", order: -10 },
+  { name: "characters", order: 0, sort: ySort },
+  { name: "ui", order: 100, space: "screen" },
+];
+```
+
+`ySort` is `(a, b) => a.position.y - b.position.y` — terse enough that
+you can write your own comparator if you'd rather drive depth from a
+different axis or off a custom field on the sprite.
+
+#### Sort offsets (`ySortBy`) — Godot's `y_sort_origin` pattern
+
+A sprite's `position.y` is its **anchor's** y in the world. If your
+sprites are anchored at the top, the visual "footprint" (where the
+sprite *appears* to touch the ground) sits well below `position.y`, and
+plain `ySort` will produce wrong overlaps: a player whose feet are at
+the bottom of the sprite will sort *behind* a tree whose trunk is at
+the bottom of *its* sprite, even though the player's feet are
+geometrically in front of the tree's trunk.
+
+`ySortBy(offsetOf)` lets each container advertise a per-sprite Y offset
+that gets added to `position.y` before comparison. This is the same
+idea as Godot's `y_sort_origin`:
+
+```typescript
+import { ySortBy } from "@yagejs/renderer";
+
+const sort = ySortBy(
+  (c) => (c as { depthOffset?: number }).depthOffset,
+);
+
+// On each sprite that should sort by its visual base:
+sprite.sprite.depthOffset = 32; // sort key is `position.y + 32`
+```
+
+`offsetOf` returns `undefined` to fall through to plain `position.y`,
+so mixed-content layers work without every child carrying a depth
+offset.
 
 ### Pixi render groups with `isRenderGroup`
 

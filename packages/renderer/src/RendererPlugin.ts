@@ -25,7 +25,7 @@ import type { SnapshotContributor } from "@yagejs/save";
 // save package while letting us reference `typeof SaveModule` for the
 // dynamic-import variable below.
 import type * as SaveModule from "@yagejs/save";
-import { Application, Assets, Container, Graphics } from "pixi.js";
+import { Application, Assets, Container, Graphics, TextureStyle } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
@@ -114,7 +114,15 @@ export class RendererPlugin implements Plugin {
   }
 
   async install(context: EngineContext): Promise<void> {
-    // 1. Create & init PixiJS Application
+    // 1. Apply pixel-art preset BEFORE Application.init so the texture-style
+    //    default propagates to every texture/spritesheet loaded by Assets
+    //    afterward. User-passed `pixi.roundPixels` still wins via the spread
+    //    order below.
+    if (this._config.pixelArtPreset) {
+      TextureStyle.defaultOptions.scaleMode = "nearest";
+    }
+
+    // 2. Create & init PixiJS Application
     this._app = new Application();
     const resolution =
       this._config.resolution ??
@@ -125,12 +133,32 @@ export class RendererPlugin implements Plugin {
       backgroundColor: this._config.backgroundColor ?? 0x000000,
       resolution,
       autoDensity: true,
+      ...(this._config.pixelArtPreset ? { roundPixels: true } : undefined),
       ...this._config.pixi,
       ...(this._config.canvas ? { canvas: this._config.canvas } : undefined),
     });
     this._installed.app = true;
 
-    // 2. Append canvas to container if specified
+    // 2b. Tell the browser to scale the canvas backing store with
+    //     nearest-neighbor when it's CSS-scaled past 1:1 (e.g. on a HiDPI
+    //     monitor, under fit, or when the host CSS-sizes the canvas larger
+    //     than its backing store). Without this the browser bicubic-blurs
+    //     the pixel art back into mush. We write both declarations via
+    //     `cssText` because the CSS cascade only keeps the LAST
+    //     `image-rendering` value the browser understands — Safari falls
+    //     through `pixelated` (which it ignores) to the older
+    //     `-webkit-optimize-contrast`; everywhere else `pixelated` wins.
+    //     Guarded for headless test runs that stub `canvas` as a plain
+    //     object without a `style`.
+    if (this._config.pixelArtPreset) {
+      const style = (this._app.canvas as { style?: CSSStyleDeclaration }).style;
+      if (style) {
+        style.cssText +=
+          "image-rendering:-webkit-optimize-contrast;image-rendering:pixelated;";
+      }
+    }
+
+    // 3. Append canvas to container if specified
     if (this._config.container) {
       this._config.container.appendChild(this._app.canvas);
     }

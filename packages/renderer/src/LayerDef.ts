@@ -1,5 +1,20 @@
+import type { Container } from "pixi.js";
+
 /** Coordinate space a layer lives in. See `LayerDef.space`. */
 export type LayerSpace = "world" | "screen";
+
+/**
+ * Comparator applied to a layer's children before each render. Receives
+ * the bare Pixi `Container`s sitting directly inside the layer; return a
+ * negative number to render `a` first (behind), positive to render
+ * `b` first.
+ *
+ * Default behaviour (no `sort`) is **insertion order** — entities render
+ * in the order their visual containers were added. Use `ySort` for the
+ * classic top-down 2D depth rule, or compose your own comparator for
+ * isometric / layered-depth setups.
+ */
+export type LayerSortFn = (a: Container, b: Container) => number;
 
 /**
  * Declarative layer definition attached to a Scene subclass via
@@ -42,6 +57,19 @@ export interface LayerDef {
   space?: LayerSpace;
   /** Whether children should self-sort by their `zIndex`. Default: false. */
   sortableChildren?: boolean;
+  /**
+   * Comparator applied to the layer's children before each render. Setting
+   * a `sort` function flips `container.sortableChildren = true` and orders
+   * children by the comparator's result each frame — `DisplaySystem`
+   * re-sorts after syncing transforms so position-based comparisons see
+   * the current frame's values.
+   *
+   * Default: unset (insertion order). Use `ySort` for the classic
+   * top-down depth rule, or `ySortBy(getOffset)` to anchor each sprite's
+   * sort key at a per-entity Y offset (think Godot's `y_sort_origin` —
+   * matches a sprite's apparent "footprint" instead of its top-left).
+   */
+  sort?: LayerSortFn;
   /**
    * Promote the layer's container to a Pixi v8 render group boundary so its
    * children render as a separate pass with their own uniform scope. Default:

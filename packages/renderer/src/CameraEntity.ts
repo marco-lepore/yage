@@ -36,6 +36,25 @@ export interface CameraEntityParams {
   priority?: number;
   /** Camera name (for multi-camera lookup). */
   name?: string;
+  /**
+   * Tracking mode. Default: `"follow"`.
+   *
+   * - `"follow"` — track a `follow` target each frame (or stay idle when
+   *   none is set).
+   * - `"static"` — never auto-track; the camera stays at whatever
+   *   `position` was supplied (or `centerOn` computed). Passes `follow` /
+   *   `smoothing` / `offset` / `deadzone` are ignored. Use for arcade-style
+   *   single-screen layouts, puzzle grids, and any scene whose camera is
+   *   placed once and never moves.
+   */
+  fit?: "follow" | "static";
+  /**
+   * Center the camera on an area's midpoint. Convenience for `position:
+   * new Vec2(width / 2, height / 2)`. Applied after `position`, so passing
+   * both makes `centerOn` win. Useful for top-left-origin layouts where
+   * the level dimensions are known up front.
+   */
+  centerOn?: { width: number; height: number };
 }
 
 /**
@@ -61,6 +80,15 @@ export class CameraEntity extends Entity {
   setup(params: CameraEntityParams = {}): void {
     const camOpts: CameraComponentOptions = {};
     if (params.position !== undefined) camOpts.position = params.position;
+    // `centerOn` overrides `position` when both are supplied — the explicit
+    // "put the camera at the center of this rect" intent is more specific
+    // than the raw vector, so we honour it last.
+    if (params.centerOn !== undefined) {
+      camOpts.position = new Vec2(
+        params.centerOn.width / 2,
+        params.centerOn.height / 2,
+      );
+    }
     if (params.zoom !== undefined) camOpts.zoom = params.zoom;
     if (params.bindings !== undefined) camOpts.bindings = params.bindings;
     if (params.priority !== undefined) camOpts.priority = params.priority;
@@ -72,7 +100,9 @@ export class CameraEntity extends Entity {
     this.add(new CameraShake());
     this.add(new CameraZoom());
 
-    if (params.follow) {
+    // `fit: "static"` is the explicit "never auto-track" mode — drop any
+    // follow-related params on the floor instead of silently honouring them.
+    if (params.fit !== "static" && params.follow) {
       const followOpts: CameraFollowOptions = {};
       if (params.smoothing !== undefined) followOpts.smoothing = params.smoothing;
       if (params.offset !== undefined) followOpts.offset = params.offset;
