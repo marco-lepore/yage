@@ -52,6 +52,36 @@ import { Panel, Text, Button, Image, ProgressBar, Checkbox } from "@yagejs/ui-re
 
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`.
 
+## Scrolling lists
+
+Reach for `PixiScrollBox` for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently; `PixiScrollBox` adds drag + wheel scrolling and works inside the Yoga layout tree.
+
+```tsx
+import { PixiScrollBox } from "@yagejs/ui-react";
+import { Panel, Text } from "@yagejs/ui-react";
+
+function OrdersPanel({ orders }: { orders: Order[] }) {
+  return (
+    <PixiScrollBox
+      scrollWidth={240}
+      scrollHeight={160}
+      type="vertical"
+      elementsMargin={4}
+      background={0x111111}
+      radius={6}
+    >
+      {orders.map((o) => (
+        <Panel key={o.id} padding={8} bg={{ color: 0x222233 }}>
+          <Text style={{ fontSize: 12, fill: 0xffffff }}>{o.label}</Text>
+        </Panel>
+      ))}
+    </PixiScrollBox>
+  );
+}
+```
+
+`scrollWidth` / `scrollHeight` fix the viewport; children stack inside it and scroll if they overflow. `type` is `"vertical"` (default), `"horizontal"`, or `"both"`. `elementsMargin` is the gap between items, `globalScroll` enables wheel scrolling anywhere over the box. For the underlying widget's full prop surface (mask shape, drag inertia, etc.) see the [`@pixi/ui` ScrollBox docs](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox).
+
 ## Hooks
 
 ```ts

@@ -76,6 +76,32 @@ class Entity {
 | `screen:fullscreen` | `{ active: boolean }` — emitted by `RendererPlugin` on `fullscreenchange` / `webkitfullscreenchange` |
 | `screen:orientation` | `{ type: OrientationType }` — emitted by `RendererPlugin` on `screen.orientation.change` (or `orientationchange` fallback) |
 
+### Scene Events
+
+`Scene.on(token, handler)` subscribes to a typed event at the scene level. Handlers fire for **both** scene-emitted events (`scene.emit(token, data)`) and entity events that bubble up (`entity.emit(token, data)`). The handler signature distinguishes the two via an optional second arg:
+
+```ts
+import { defineEvent, type Entity } from "@yagejs/core";
+
+const DamagedEvent = defineEvent<{ amount: number }>("damaged");
+
+// Inside a scene:
+scene.on(DamagedEvent, (data: { amount: number }, entity?: Entity) => {
+  if (entity) {
+    // bubbled — `entity` is the source that called entity.emit(DamagedEvent, ...)
+    console.log(`${entity.name} took ${data.amount}`);
+  } else {
+    // scene-emitted via scene.emit(DamagedEvent, ...)
+    console.log(`scene-wide damage event: ${data.amount}`);
+  }
+});
+
+scene.emit(DamagedEvent, { amount: 5 });          // handler runs with entity = undefined
+someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = someEntity
+```
+
+`Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
+
 ### Math
 
 | Export | Purpose |
@@ -109,6 +135,36 @@ Vec2.moveTowards(current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2
 For `smoothDamp`, pass the returned `velocity` into the next frame. `smoothTime`
 and `deltaTime` must use the same unit; `maxSpeed` is in units per that same
 time base.
+
+### Scale inheritance
+
+`Transform.worldScale` composes through the parent chain (`parent.worldScale * local.scale`), the same way `worldPosition` and `worldRotation` do. `DisplaySystem` reads `worldScale` each Render phase, so flipping a parent flips every descendant sprite for free — useful for multi-layer characters (head + body + outfit) where every layer must mirror in lockstep.
+
+```ts
+import { Entity, Transform } from "@yagejs/core";
+import { SpriteComponent } from "@yagejs/renderer";
+
+class Character extends Entity {
+  setup() {
+    this.add(new Transform());                      // parent — drives facing
+    const body = this.spawnChild("body");
+    body.add(new Transform());
+    body.add(new SpriteComponent({ texture: "body.png" }));
+    const head = this.spawnChild("head");
+    head.add(new Transform({ position: { x: 0, y: -20 } }));
+    head.add(new SpriteComponent({ texture: "head.png" }));
+  }
+
+  faceLeft(): void {
+    this.get(Transform).setScale(-1, 1);            // mirrors body + head together
+  }
+  faceRight(): void {
+    this.get(Transform).setScale(1, 1);
+  }
+}
+```
+
+Negative scale on a child still composes — a child with `setScale(-1, 1)` under a parent already at `(-1, 1)` ends up at `worldScale = (1, 1)` (un-mirrored). The same composition applies to positive non-unit scales (a parent at `2x` zooms its whole subtree).
 
 ### Processes
 

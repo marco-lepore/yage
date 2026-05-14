@@ -166,6 +166,55 @@ import {
 } from "@yagejs/ui-react";
 ```
 
+### Scrolling lists with `PixiScrollBox`
+
+Any list whose length you can't bound at design time — inventories,
+quest logs, chat, order tickets, leaderboards — should live inside a
+`PixiScrollBox`. A plain `<Panel>` simply clips overflow without
+scrolling, so once the list outgrows its container the extra entries
+disappear silently. `PixiScrollBox` is a Yoga-aware wrapper around
+[`@pixi/ui`'s `ScrollBox`](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox)
+that adds drag + wheel scrolling while still participating in the
+flexbox layout tree.
+
+```tsx
+import { PixiScrollBox, Panel, Text } from "@yagejs/ui-react";
+
+interface Order { id: string; label: string }
+
+function OrdersPanel({ orders }: { orders: Order[] }) {
+  return (
+    <Panel direction="column" gap={4} padding={8} bg={{ color: 0x000000, alpha: 0.7 }}>
+      <Text style={{ fontSize: 14, fill: 0xffffff }}>Orders</Text>
+
+      <PixiScrollBox
+        scrollWidth={240}
+        scrollHeight={160}
+        type="vertical"
+        elementsMargin={4}
+        background={0x111111}
+        radius={6}
+      >
+        {orders.map((o) => (
+          <Panel key={o.id} padding={8} bg={{ color: 0x222233 }}>
+            <Text style={{ fontSize: 12, fill: 0xffffff }}>{o.label}</Text>
+          </Panel>
+        ))}
+      </PixiScrollBox>
+    </Panel>
+  );
+}
+```
+
+`scrollWidth` and `scrollHeight` define the visible viewport; the JSX
+children stack vertically inside it and scroll if they overflow. Switch
+`type` to `"horizontal"` for a row, or `"both"` for free 2D panning.
+`elementsMargin` adds spacing between items, and `globalScroll: true`
+makes the wheel scroll the box from anywhere over it (not just when the
+pointer is directly over a child). For the underlying widget's
+advanced props — mask shape, drag inertia, snapping — see the
+[`@pixi/ui` ScrollBox documentation](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox).
+
 ## Hooks
 
 ### useEngine / useScene

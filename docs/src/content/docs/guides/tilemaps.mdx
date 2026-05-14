@@ -48,6 +48,40 @@ The wiring (extracted shapes → `toPhysicsColliders()` → static
 `RigidBodyComponent` + per-shape `ColliderComponent`) is shown inline
 in the [Collision Extraction](#collision-extraction) section below.
 
+## Staging Tiled Assets
+
+Tiled's "Export As JSON" dumps the tileset wherever you point it, but
+the JSON itself still references its source PNG by **path-relative-to-
+the-JSON**. The loader resolves it as
+`dirname(tilesetSrc) + tileset.image`. Tiled writes that field exactly
+as it was authored — typically a path that walks out of the project
+(`"../../Downloads/tiled-projects/dungeon/spr_tileset.png"`). The
+moment you copy the JSON into `public/`, that path no longer resolves
+in the browser and you get a silent 404: the tileset object loads, the
+texture doesn't, and tiles render as blank rectangles.
+
+The fix is mechanical — rewrite `image` to a sibling-relative path
+whenever you stage a tileset:
+
+```diff
+// public/assets/maps/dungeon.tsj
+{
+  "tilewidth": 16,
+  "tileheight": 16,
+  "tilecount": 256,
+- "image": "../../Downloads/tiled-projects/dungeon/spr_tileset.png",
++ "image": "spr_tileset.png",
+  ...
+}
+```
+
+…and drop `spr_tileset.png` next to `dungeon.tsj` in
+`public/assets/maps/`. The same rule applies to embedded tilesets
+inside a map JSON: the `image` field is resolved relative to the *map*
+file's directory, so the PNG needs to sit next to the map (or at any
+sibling path you reference). Watching for this saves a frustrating
+"why is my map blank?" debugging cycle.
+
 ## TilemapPlugin Setup
 
 ```typescript
