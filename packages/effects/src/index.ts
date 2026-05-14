@@ -49,6 +49,9 @@ export type { HalftoneOptions } from "./halftone.js";
 export { wave } from "./wave.js";
 export type { WaveOptions } from "./wave.js";
 
+export { colorize } from "./colorize.js";
+export type { ColorizeOptions } from "./colorize.js";
+
 export type {
   HitFlashHandle,
   BloomHandle,
@@ -68,4 +71,5 @@ export type {
   BulgePinchHandle,
   HalftoneHandle,
   WaveHandle,
+  ColorizeHandle,
 } from "./handles.js";

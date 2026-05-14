@@ -17,6 +17,7 @@ import {
   bulgePinch,
   halftone,
   wave,
+  colorize,
 } from "./index.js";
 
 // Smoke tests live here. End-to-end attach + serialize round-trip is
@@ -45,11 +46,12 @@ describe("@yagejs/effects presets", () => {
       bulgePinch,
       halftone,
       wave,
+      colorize,
     ]) {
       expect(preset.name).toMatch(/^yage:/);
       names.add(preset.name);
     }
-    expect(names.size).toBe(17);
+    expect(names.size).toBe(18);
   });
 
   it("calling a preset with options returns a callable factory", () => {
@@ -63,5 +65,6 @@ describe("@yagejs/effects presets", () => {
     expect(typeof bulgePinch({ strength: 0.5 })).toBe("function");
     expect(typeof halftone({ size: 6 })).toBe("function");
     expect(typeof wave({ amplitude: 6 })).toBe("function");
+    expect(typeof colorize({ color: 0xf2c14e })).toBe("function");
   });
 });
