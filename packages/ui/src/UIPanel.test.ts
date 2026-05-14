@@ -415,6 +415,137 @@ describe("UIPanel", () => {
       expect(children[0]!.displayObject.position.y).toBe(20);
     });
 
+    it("absolute-positioned child resolves against the parent (left/top)", () => {
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 200,
+      });
+      const child = parent.panel({
+        position: "absolute",
+        left: 10,
+        top: 20,
+        width: 50,
+        height: 30,
+      });
+
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      expect(child.displayObject.position.x).toBe(10);
+      expect(child.displayObject.position.y).toBe(20);
+      expect(child.yogaNode.getComputedWidth()).toBe(50);
+      expect(child.yogaNode.getComputedHeight()).toBe(30);
+    });
+
+    it("alignItems 'stretch' grows short auto children to the widest sibling", () => {
+      // The pause-scene pattern: a shrink-to-fit column panel where every
+      // button auto-sizes to its label. The widest button defines the
+      // panel's content width and the shorter ones grow to match — clean
+      // uniform stack without the caller pinning a width.
+      const panel = new UIPanel({
+        direction: "column",
+        gap: 4,
+        alignItems: "stretch",
+      });
+      const short = panel.button("OK", {});
+      const longer = panel.button("Settings (transparentBelow=false)", {});
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      const longerW = longer.yogaNode.getComputedWidth();
+      const shortW = short.yogaNode.getComputedWidth();
+      // Both children share the same width — driven by the longer label.
+      expect(shortW).toBe(longerW);
+      // The panel itself shrank to fit that widest natural width.
+      expect(panel._node.yogaNode.getComputedWidth()).toBe(longerW);
+    });
+
+    it("partial imperative update on an already-absolute node moves it", () => {
+      // Animation / repositioning code typically pokes a single edge
+      // without re-specifying `position` each frame. The Yoga node is
+      // already Absolute, so the new edge value must still take effect.
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 200,
+      });
+      const child = parent.panel({
+        position: "absolute",
+        left: 10,
+        top: 20,
+        width: 40,
+        height: 20,
+      });
+
+      child.update({ top: 80 });
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      expect(child.displayObject.position.x).toBe(10);
+      expect(child.displayObject.position.y).toBe(80);
+    });
+
+    it("clears stale edge offsets when transitioning from absolute to relative", () => {
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 200,
+      });
+      const child = parent.panel({
+        position: "absolute",
+        left: 100,
+        top: 50,
+        width: 40,
+        height: 20,
+      });
+
+      // First layout — child pinned via absolute positioning.
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+      expect(child.displayObject.position.x).toBe(100);
+      expect(child.displayObject.position.y).toBe(50);
+
+      // Demote to relative. The stale left/top must NOT linger — Yoga
+      // applies them as CSS-style flow nudges on a Relative node.
+      child.update({ position: "relative" });
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+      expect(child.displayObject.position.x).toBe(0);
+      expect(child.displayObject.position.y).toBe(0);
+    });
+
+    it("absolute-positioned child is lifted out of flex flow", () => {
+      const parent = new UIPanel({
+        direction: "column",
+        gap: 10,
+        width: 200,
+      });
+      // Two normal children plus an absolute overlay — the overlay should not
+      // contribute to the parent's main-axis advance.
+      parent.button("A", { width: 100, height: 30 });
+      parent.button("B", { width: 100, height: 30 });
+      const overlay = parent.panel({
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: 200,
+        height: 200,
+      });
+
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      const children = parent._node.children;
+      // The flex-flow children remain stacked vertically with the original
+      // 10px gap — the absolute overlay does not push them around.
+      expect(children[0]!.displayObject.position.y).toBe(0);
+      expect(children[1]!.displayObject.position.y).toBe(40);
+      expect(overlay.displayObject.position.x).toBe(0);
+      expect(overlay.displayObject.position.y).toBe(0);
+    });
+
     it("hidden elements are skipped in layout (collapse)", () => {
       const panel = new UIPanel({ direction: "column", gap: 10 });
       const a = panel.button("A", { width: 100, height: 30 });
