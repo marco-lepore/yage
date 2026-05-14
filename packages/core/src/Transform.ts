@@ -20,7 +20,13 @@ export class Transform extends Component {
   private _worldPosition: Vec2;
   private _worldRotation: number;
   private _worldScale: Vec2;
-  private _dirty = false;
+  // Start dirty so the first `worldPosition` (or rotation/scale) read recomputes
+  // against the parent chain, whatever it is. If we cached local-as-world up
+  // front and `addChild` runs AFTER the read (rare but legal — e.g. a debug
+  // probe that touches `worldPosition` before parenting completes), we'd serve
+  // the stale init value forever. `addChild` still calls `_markDirty()`, which
+  // becomes a no-op here but is the right marker for later mutations.
+  private _dirty = true;
 
   constructor(options?: {
     position?: Vec2Like;
@@ -35,6 +41,8 @@ export class Transform extends Component {
     this._scale = options?.scale
       ? new Vec2(options.scale.x, options.scale.y)
       : Vec2.ONE;
+    // Seed world fields with local values so strict initialization is happy.
+    // These are overwritten on the next read via _recompute().
     this._worldPosition = this._position;
     this._worldRotation = this._rotation;
     this._worldScale = this._scale;

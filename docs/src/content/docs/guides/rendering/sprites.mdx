@@ -73,6 +73,64 @@ anim.play("jump", { onComplete: () => anim.play("idle") });
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
+### Narrowing the animation-name type
+
+`entity.get(AnimationController)` returns `AnimationController<string>` —
+TypeScript can't carry the narrow union (`"idle" | "run" | "jump"`) through
+the class lookup. Pass the type explicitly to keep it:
+
+```typescript
+type Anim = "idle" | "run" | "jump";
+
+// In a component, as a lazy sibling proxy:
+readonly anim = this.sibling<AnimationController<Anim>>(AnimationController);
+
+// One-off lookup:
+const anim = entity.get(AnimationController) as AnimationController<Anim>;
+```
+
+### Layered characters (head + body + outfit)
+
+When a character is composed of multiple sprite layers that should animate
+together, give each layer its own `AnimatedSpriteComponent` +
+`AnimationController` on a child entity, then orchestrate them with
+`LayeredAnimationController`:
+
+```typescript
+import {
+  AnimatedSpriteComponent,
+  AnimationController,
+  LayeredAnimationController,
+} from "@yagejs/renderer";
+
+class Hero extends Entity {
+  setup() {
+    this.add(new Transform());
+    const body = this.spawnChild("body", HeroLayer, { sheet: "body.png" });
+    const head = this.spawnChild("head", HeroLayer, { sheet: "head.png" });
+
+    this.add(
+      new LayeredAnimationController<"idle" | "attack">({
+        controllers: [
+          body.get(AnimationController) as AnimationController<"idle" | "attack">,
+          head.get(AnimationController) as AnimationController<"idle" | "attack">,
+        ],
+      }),
+    );
+  }
+}
+
+// Call once, both layers stay in sync:
+hero.get(LayeredAnimationController).playOneShot("attack", {
+  onComplete: () => hero.get(LayeredAnimationController).play("idle"),
+});
+```
+
+The wrapper computes a single lock duration (from the first controller, or an
+explicit `duration` option), passes it to each child, and fires `onComplete`
+exactly once when the shared timer expires — so all layers unlock on the
+same frame regardless of per-layer frame counts.
+
 ## Asset Factories
 
 YAGE provides helper functions to load and define render assets:

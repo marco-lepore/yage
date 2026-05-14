@@ -236,6 +236,65 @@ anim.play("walk");
 anim.playOneShot("attack"); // locks until complete, then reverts
 ```
 
+`entity.get(AnimationController)` returns `AnimationController<string>` (the
+default `T`). To keep the narrow union, pass the type explicitly:
+
+```ts
+type Anim = "idle" | "walk" | "attack";
+
+// Field initializer (lazy sibling):
+readonly anim = this.sibling<AnimationController<Anim>>(AnimationController);
+
+// One-off lookup:
+const anim = entity.get(AnimationController) as AnimationController<Anim>;
+```
+
+`playOneShot(name, options?)` — `options.duration` overrides the auto-computed
+lock duration; the wall-clock fallback uses `(frames * 1000 / 60) / speed`.
+Pass an explicit `duration` when synchronising lock release across multiple
+controllers (see `LayeredAnimationController` below).
+
+### LayeredAnimationController
+
+Fans `play()` / `playOneShot()` across N sibling `AnimationController`
+instances with a single shared lock timer. Use this when a character is
+composed of multiple sprite layers (head + body + outfit) that must animate
+in lockstep:
+
+```ts
+import {
+  AnimatedSpriteComponent,
+  AnimationController,
+  LayeredAnimationController,
+} from "@yagejs/renderer";
+
+class Hero extends Entity {
+  setup() {
+    this.add(new Transform());
+    const body = this.spawnChild("body", HeroLayer, { sheet: "body.png" });
+    const head = this.spawnChild("head", HeroLayer, { sheet: "head.png" });
+    this.add(new LayeredAnimationController<"idle" | "attack">({
+      controllers: [
+        body.get(AnimationController) as AnimationController<"idle" | "attack">,
+        head.get(AnimationController) as AnimationController<"idle" | "attack">,
+      ],
+    }));
+  }
+}
+
+const layered = hero.get(LayeredAnimationController);
+layered.play("idle");
+layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
+```
+
+- `play(name)` forwards to every child.
+- `playOneShot(name, opts)` computes one shared duration (from the first
+  controller, or `opts.duration` if given) and passes it to each child — so
+  all layers unlock on the same frame regardless of per-layer frame count.
+- The wrapper owns the master lock timer and fires `onComplete` exactly once.
+- Not save/load-aware (`serialize()` returns `null`) — rebuild via the same
+  `setup()` path on restore.
+
 ## Gradient fills
 
 `linearGradient` and `radialGradient` return a `GradientFill` (pixi `FillGradient` under the hood) usable anywhere a graphics fill style is accepted. Stops use yage-style numeric color + alpha pairs — no CSS color strings needed.

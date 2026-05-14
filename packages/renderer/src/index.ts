@@ -52,6 +52,8 @@ export type {
   AnimationDef,
   AnimationControllerData,
 } from "./AnimationController.js";
+export { LayeredAnimationController } from "./LayeredAnimationController.js";
+export type { LayeredAnimationControllerOptions } from "./LayeredAnimationController.js";
 
 // Spritesheet utilities
 export {

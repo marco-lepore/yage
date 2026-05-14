@@ -145,3 +145,30 @@ class TitleScene extends Scene {
 engine.scenes.push(new TitleScene());
 ```
 
+## Reentrant scene swaps
+
+`push`, `pop`, `replace`, and `popAll` are safe to call from inside any scene
+lifecycle hook — `onEnter`, `onExit`, `onPause`, `onResume`, or a registered
+`beforeEnter` / `afterExit` hook. The call is queued on the manager's
+internal pending chain and runs after the current mutation finishes. The
+returned promise resolves once the deferred operation completes.
+
+```typescript
+class TitleScene extends Scene {
+  readonly name = "title";
+
+  onEnter() {
+    // Skip the title screen if a saved game exists — fully safe inside onEnter.
+    if (saveSystem.hasAutosave()) {
+      this.context.resolve(SceneManagerKey).replace(new GameplayScene());
+    }
+  }
+}
+```
+
+In dev builds you'll see a `console.warn` when this fires. Reentrant swaps
+are usually a smell (an `onEnter` that immediately replaces the scene rarely
+matches intent, and the dropped-on-the-floor promise can hide errors), so the
+engine flags it — but it works correctly. Prefer doing the redirect from a
+component's `update()` or a one-shot `Process` for new code.
+

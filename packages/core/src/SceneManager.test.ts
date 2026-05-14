@@ -520,21 +520,58 @@ describe("SceneManager", () => {
     });
   });
 
-  describe("reentrant guard", () => {
-    it("throws when push is called reentrantly from a lifecycle hook", async () => {
-      const { manager, hooks } = setupWithHooks();
-      hooks.register({
-        beforeEnter: async () => {
-          // Attempt reentrant push inside a hook
-          await expect(
-            manager.push(new GameScene("reentrant")),
-          ).rejects.toThrow("called reentrantly from a scene lifecycle hook");
-        },
-      });
-      await manager.push(new GameScene("main"));
+  describe("reentrant calls", () => {
+    it("defers a reentrant push from a lifecycle hook to after the current mutation", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager } = setup();
+      const outer = new GameScene("outer");
+      const reentrant = new GameScene("reentrant");
+      let reentrantPushed = false;
+      let depthAtReentryCall = -1;
+      outer.onEnter = function () {
+        this.enterCalled = true;
+        // Reentrant call from inside onEnter — should be queued, not throw.
+        // Read depth via the SceneManager's private state through a public probe:
+        depthAtReentryCall = manager.all.length;
+        manager.push(reentrant).then(() => {
+          reentrantPushed = true;
+        });
+      };
+      await manager.push(outer);
+      // outer.onEnter ran while outer was already on the stack (length 1).
+      expect(depthAtReentryCall).toBe(1);
+      // Drain by awaiting another op; the reentrant push completes first.
+      await manager.push(new GameScene("after"));
+      expect(reentrantPushed).toBe(true);
+      expect(manager.all).toEqual([
+        outer,
+        reentrant,
+        manager.all[2],
+      ]);
+      expect((manager.all[2] as GameScene).name).toBe("after");
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
-    it("rejects when pop is called reentrantly from a lifecycle hook", async () => {
+    it("eventually completes a reentrant replace called from onEnter", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { manager } = setup();
+      const first = new GameScene("first");
+      const second = new GameScene("second");
+      let replacePromise: Promise<void> | undefined;
+      first.onEnter = function () {
+        this.enterCalled = true;
+        replacePromise = manager.replace(second);
+      };
+      await manager.push(first);
+      await replacePromise;
+      expect(manager.active).toBe(second);
+      expect(manager.all.length).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it("defers a reentrant pop from a lifecycle hook", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const { manager, hooks } = setupWithHooks();
       await manager.push(new GameScene("base"));
       let popPromise: Promise<unknown> | undefined;
@@ -544,9 +581,11 @@ describe("SceneManager", () => {
         },
       });
       await manager.push(new GameScene("trigger"));
-      await expect(popPromise).rejects.toThrow(
-        "called reentrantly from a scene lifecycle hook",
-      );
+      const popped = await popPromise;
+      // The trigger scene was popped — base remains active.
+      expect((popped as GameScene).name).toBe("trigger");
+      expect((manager.active as GameScene).name).toBe("base");
+      warnSpy.mockRestore();
     });
   });
 

@@ -81,7 +81,7 @@ class Entity {
 | Export | Purpose |
 |---|---|
 | `Vec2` | Immutable 2D vector (`add`, `sub`, `scale`, `normalize`, `lerp`, `dot`, `distance`, static `moveTowards`) |
-| `Transform` | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`) |
+| `Transform` | Mutable position/rotation/scale component (`setPosition`, `translate`, `rotate`); `worldPosition` / `worldRotation` / `worldScale` are lazily computed and cache-invalidate on local mutation or reparenting |
 | `MathUtils` | `lerp`, `inverseLerp`, `lerpAngle`, `shortestAngleBetween`, `pingPong`, `smoothDamp`, `clamp`, etc. |
 | `SmoothDampResult` | `{ value, velocity }` returned by `MathUtils.smoothDamp()` |
 
@@ -145,7 +145,7 @@ Keyframe-based property animation on top of `ProcessComponent`. Runs multiple na
 |---|---|
 | `KeyframeAnimator<T>` | Component hosting named keyframe animations (`play`, `stop`, `stopAll`, `isPlaying`) |
 | `Keyframe<T>` | `{ time, data, easing?, event? }` — single control point |
-| `KeyframeAnimationDef<T>` | `{ keyframes, setter, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
+| `KeyframeAnimationDef<T>` | `{ keyframes, setter?, loop?, speed?, duration?, easing?, onEnter?, onExit? }` |
 | `createKeyframeTrack<T>(options)` | Factory that returns a `Process` driving a single track |
 | `interpolate<T>(from, to, t, easing?)` | Blend two `Interpolatable` values |
 | `Interpolatable` | `number \| Vec2Like` — registered interpolation types |
@@ -169,6 +169,26 @@ anim.play("bob");
 ```
 
 `KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in milliseconds along the track.
+
+`setter` is **optional** — omit it for "pure timeline" animations that only
+fire keyframe `event` callbacks (cutscenes, audio cues, gameplay beats):
+
+```ts
+new KeyframeAnimator({
+  intro: {
+    keyframes: [
+      { time: 0,    data: 0, event: () => audio.play("step") },
+      { time: 250,  data: 0, event: () => audio.play("step") },
+      { time: 500,  data: 0, event: () => audio.play("door") },
+    ],
+    // no setter — only the events matter
+  },
+});
+```
+
+`KeyframeAnimationDef.setter` is declared with method syntax so it's
+contravariance-friendly: a `Record<string, KeyframeAnimationDef<number>>`
+flows into the constructor unchanged, no `as` cast or widening helper needed.
 
 ### Pause on Tab Blur
 
@@ -197,6 +217,29 @@ Core ships the transition contract + orchestration only. Concrete transitions (`
 Events: `scene:transition:started { kind, fromScene, toScene }`, `scene:transition:ended { kind, fromScene, toScene }` (fromScene/toScene may be `undefined`).
 
 **Breaking:** `SceneManager.pop()` returns `Promise<Scene | undefined>`.
+
+#### Reentrant scene swaps
+
+`push`/`pop`/`replace`/`popAll` are safe to call from inside a lifecycle hook
+(`onEnter`, `onExit`, `onPause`, `onResume`, or a `beforeEnter`/`afterExit`
+hook). The call is queued on the manager's internal pending chain and runs
+after the current mutation finishes; the returned promise resolves when the
+deferred operation completes.
+
+```ts
+class TitleScene extends Scene {
+  onEnter() {
+    // Safe — `replace` is queued and runs after TitleScene's onEnter returns.
+    if (saveSystem.hasAutosave()) {
+      this.context.resolve(SceneManagerKey).replace(new GameScene());
+    }
+  }
+}
+```
+
+Dev builds emit a `console.warn` because reentrant swaps are usually a smell
+(an `onEnter` that immediately replaces the scene rarely matches intent, and
+a dropped promise can hide errors). Production builds suppress the warning.
 
 ### Easing
 
