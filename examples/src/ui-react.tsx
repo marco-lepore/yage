@@ -58,12 +58,25 @@ function MainMenu() {
       alignItems="center"
       bg={panelBg}
     >
+      {/* Absolute-positioned badge — pinned to the menu's top-right corner */}
+      <Panel
+        position="absolute"
+        top={8}
+        right={8}
+        padding={{ left: 6, right: 6, top: 2, bottom: 2 }}
+        bg={{ color: 0x6366f1, alpha: 1, radius: 4 }}
+      >
+        <Text style={textStyle("caption", { fontSize: 10, fill: 0xffffff })}>
+          v0.6
+        </Text>
+      </Panel>
+
       <Image texture={Logo} width={180} height={58} />
 
       <Text style={textStyle("title", { fontSize: 28 })}>UI Demo</Text>
       <Text style={textStyle("subtitle")}>React API</Text>
 
-      {/* HP bar with controls */}
+      {/* HP bar with controls — the buttons shrink-to-fit their labels */}
       <Panel direction="column" gap={4} alignItems="center">
         <Text style={textStyle("body", { fill: 0x22c55e })}>
           {`HP: ${Math.round(hp * 100)}%`}
@@ -78,8 +91,6 @@ function MainMenu() {
         />
         <Panel direction="row" gap={6}>
           <Button
-            width={110}
-            height={28}
             bg={{ color: 0x661111, alpha: 1, radius: 4 }}
             hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
             textStyle={textStyle("caption")}
@@ -88,8 +99,6 @@ function MainMenu() {
             Take Damage
           </Button>
           <Button
-            width={60}
-            height={28}
             bg={{ color: 0x115511, alpha: 1, radius: 4 }}
             hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
             textStyle={textStyle("caption")}
