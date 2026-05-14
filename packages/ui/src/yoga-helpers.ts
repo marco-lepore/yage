@@ -222,7 +222,14 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
   // Edge offsets are meaningful only in absolute mode — gating them here
   // mirrors the documented prop contract and avoids accidentally nudging
   // relative-flow elements when stale values linger across updates.
-  if (props.position === "absolute") {
+  // We accept either an explicit `position: "absolute"` in this update,
+  // or an already-absolute node (so partial imperative updates like
+  // `badge.update({ top: newY })` still reposition correctly).
+  const isAbsolute =
+    props.position === "absolute" ||
+    (props.position === undefined &&
+      node.getPositionType() === PositionType.Absolute);
+  if (isAbsolute) {
     if (props.left !== undefined) node.setPosition(Edge.Left, props.left);
     if (props.top !== undefined) node.setPosition(Edge.Top, props.top);
     if (props.right !== undefined) node.setPosition(Edge.Right, props.right);

@@ -438,6 +438,31 @@ describe("UIPanel", () => {
       expect(child.yogaNode.getComputedHeight()).toBe(30);
     });
 
+    it("partial imperative update on an already-absolute node moves it", () => {
+      // Animation / repositioning code typically pokes a single edge
+      // without re-specifying `position` each frame. The Yoga node is
+      // already Absolute, so the new edge value must still take effect.
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 200,
+      });
+      const child = parent.panel({
+        position: "absolute",
+        left: 10,
+        top: 20,
+        width: 40,
+        height: 20,
+      });
+
+      child.update({ top: 80 });
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      expect(child.displayObject.position.x).toBe(10);
+      expect(child.displayObject.position.y).toBe(80);
+    });
+
     it("clears stale edge offsets when transitioning from absolute to relative", () => {
       const parent = new UIPanel({
         direction: "column",
