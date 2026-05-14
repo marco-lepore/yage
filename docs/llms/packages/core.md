@@ -424,61 +424,62 @@ Emits `scene:loading:progress` and `scene:loading:done` on `EventBusKey`. Set `a
 
 Typed reactive primitives for game-wide singleton state. Used by `@yagejs/ui-react`'s `useStore` and the save layer.
 
-### Reactive interfaces
+### Contracts
 
-Every reactive primitive implements one of these (`Reactive*` types are exported from `@yagejs/core`):
+Three orthogonal interfaces; every `Reactive*` shape implements all three:
 
 ```ts
-interface Reactive { subscribe(fn: () => void): () => void }
-interface ReactiveValue<T>          extends Reactive { get(): T; set(v: T): void }
-interface ReactiveCounter           extends Reactive {
+interface Reactive            { subscribe(fn: () => void): () => void }
+interface Serializable<TEnc>  { serialize(): TEnc; hydrate(raw: TEnc): void }
+interface Resettable          { reset(): void }
+```
+
+Each shape also carries a `[STATE_KIND]` symbol-brand (`"value" | "counter" | "record" | "map" | "set" | "list" | "store"`) — `useStore` dispatches on it.
+
+```ts
+interface ReactiveValue<T>          extends Reactive, Serializable<{value:T}>, Resettable { get(): T; set(v: T): void }
+interface ReactiveCounter           extends Reactive, Serializable<number>,     Resettable {
   value(): number; set(n: number): void; increment(by?: number): void;
   decrement(by?: number): void; clamp(value: number, min: number, max: number): void;
 }
-interface ReactiveRecord<T extends object> extends Reactive {
+interface ReactiveRecord<T extends object> extends Reactive, Serializable<T>, Resettable {
   get(): Readonly<T>; set(partial: Partial<T>): void;
 }
-interface ReactiveMap<K, V>         extends Reactive {
+interface ReactiveMap<K, V>         extends Reactive, Serializable<Array<[K,V]>>, Resettable {
   get(k: K): V | undefined; set(k: K, v: V): void; delete(k: K): void;
   has(k: K): boolean; entries(): Array<[K, V]>; size(): number; clear(): void;
 }
-interface ReactiveSet<K>            extends Reactive {
+interface ReactiveSet<K>            extends Reactive, Serializable<K[]>, Resettable {
   add(k: K): void; delete(k: K): void; has(k: K): boolean;
   values(): K[]; size(): number; clear(): void;
 }
-interface ReactiveList<T>           extends Reactive {
+interface ReactiveList<T>           extends Reactive, Serializable<ListEncoded<T>>, Resettable {
   add(item: T): number;            // returns assigned id
   remove(id: number): boolean;     // by id, not delete — semantically distinct
   get(id: number): T | undefined; update(id: number, partial: Partial<T>): boolean;
   list(): T[]; size(): number; clear(): void;
 }
+interface ReactiveStore<L>          extends Reactive, Serializable<EncodedStore<L>>, Resettable { /* plus L's leaves */ }
 ```
 
-### Primitives
-
-```ts
-import { createAtom, createStore } from "@yagejs/core";
-
-// Minimal reactive cell (signal-shaped)
-const a = createAtom(0);
-a.get(); a.set(1); a.subscribe(v => …);
-
-// Object-shaped reactive record (shallow merge). Implements ReactiveRecord<T>.
-const store = createStore({ score: 0, hp: 100 });
-store.get();                  // Readonly<{score, hp}>, stable ref between sets
-store.set({ score: 5 });      // shallow merge, only notifies on change
-```
-
-### Persistent stores — compound + standalone
+### Factories
 
 ```ts
 import {
-  defineStore, defineRecord, defineValue,
-  defineCounter, defineMap, defineSet, defineList,
+  createValue, createCounter, createRecord,
+  createMap, createSet, createList, createStore,
 } from "@yagejs/core";
 
-// Compound — one save target, many leaves. Primary surface.
-const game = defineStore("game", (s) => ({
+// Leaf factories — usable on their own.
+const settings = createRecord<Settings>({ defaults: () => ({ music: 0.8, sfx: 1.0 }) });
+const opened    = createSet<string>();
+const enemies   = createMap<string, number>();
+const restEpoch = createCounter();
+const day       = createValue<number>({ defaults: () => 1 });
+const journal   = createList<{ at: number; text: string }>();
+
+// Compound — bundle leaves so they serialise/restore atomically.
+const game = createStore((s) => ({
   inventory: s.map<string, number>(),
   recipes:   s.set<string>(),
   gold:      s.counter({ default: 0 }),
@@ -488,24 +489,13 @@ const game = defineStore("game", (s) => ({
 }));
 game.gold.increment(10);
 game.inventory.set("moonleaf", 3);
-
-// Standalone (one-offs) — same shape APIs as the leaves; each carries its
-// own id/version/migrate and registers as one save target.
-const settings = defineRecord<Settings>("settings", {
-  version: 1, defaults: () => ({ music: 0.8, sfx: 1.0 }),
-});
-const opened    = defineSet<string>("world.opened");
-const enemies   = defineMap<string, number>("world.enemies");
-const restEpoch = defineCounter("world.rest");
-const day       = defineValue<number>("world.day", { defaults: () => 1 });
-const journal   = defineList<{ at: number; text: string }>("world.journal");
 ```
 
-Compound `defineStore` collects leaves under one id; per-tree `version` + `migrate(old, fromVersion)` live on the compound. `useStore(compound)` is intentionally not supported — read individual leaves so React subscription granularity stays per-leaf.
+Factories take no id and no version — they return fresh, pure data instances. Ids and version envelopes live at the save call site (`@yagejs/save`); `useStore(compound)` works (returns the encoded snapshot), though reading individual leaves keeps subscription granularity per-leaf.
 
-Codecs for non-JSON-native types: `jsonCodec()`, `setCodec<K>()`, `mapCodec<K,V>()`, `dateCodec()`. Set/Map/Counter/List wrappers bundle codecs internally; you only specify a codec on `defineRecord<T>` / `defineValue<T>` (or the matching `s.record`/`s.value` leaves) for exotic types.
+Codecs for non-JSON-native types: `jsonCodec()`, `setCodec<K>()`, `mapCodec<K,V>()`, `dateCodec()`. Set/Map/Counter/List bundle codecs internally; you only specify a codec on `createRecord<T>` / `createValue<T>` (or the matching `s.record`/`s.value` leaves) for exotic types.
 
-Test reset: `_resetAllStoresForTesting()` resets every defined store to defaults. See `@yagejs/save` docs for the IO layer that consumes these.
+See `@yagejs/save` docs for the IO layer that consumes any `Serializable<T>`.
 
 ## Core Types
 

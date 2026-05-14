@@ -1,63 +1,25 @@
 export { VERSION } from "@yagejs/core";
 
 // ---------------------------------------------------------------------------
-// Stores + save IO (primary persistence path — typed reactive stores)
+// Save IO
 // ---------------------------------------------------------------------------
-
-// Re-exported store primitives so users can `import { defineStore } from "@yagejs/save"`
-// when they prefer to read it as a save concern. Originals live in @yagejs/core.
-export {
-  defineStore,
-  defineRecord,
-  defineValue,
-  defineSet,
-  defineMap,
-  defineCounter,
-  defineList,
-  jsonCodec,
-  setCodec,
-  mapCodec,
-  dateCodec,
-  StoreVersionTooNewError,
-  StoreMigrationMissingError,
-} from "@yagejs/core";
-export type {
-  Reactive,
-  ReactiveValue,
-  ReactiveCounter,
-  ReactiveRecord,
-  ReactiveMap,
-  ReactiveSet,
-  ReactiveList,
-  PersistentLike,
-  PersistentRecord,
-  PersistentValue,
-  PersistentSet,
-  PersistentMap,
-  PersistentCounter,
-  PersistentList,
-  DefineRecordOptions,
-  DefineValueOptions,
-  DefineSetOptions,
-  DefineMapOptions,
-  DefineCounterOptions,
-  DefineListOptions,
-  DefineStoreOptions,
-  CompoundLeaves,
-  CompoundStore,
-  CompoundDataFor,
-  EncodedForLeaf,
-  LeafBuilder,
-  Codec,
-} from "@yagejs/core";
 
 export {
   Save,
   createSave,
   SlotNotFoundError,
   InvalidKeyError,
+  StoreVersionTooNewError,
+  StoreMigrationMissingError,
 } from "./Save.js";
-export type { SaveAdapter, SlotInfo, CreateSaveOptions } from "./Save.js";
+export type {
+  SaveAdapter,
+  SlotInfo,
+  CreateSaveOptions,
+  PersistOptions,
+  RestoreOptions,
+  SaveSlotOptions,
+} from "./Save.js";
 
 export { SavePlugin } from "./SavePlugin.js";
 export type { SavePluginOptions } from "./SavePlugin.js";

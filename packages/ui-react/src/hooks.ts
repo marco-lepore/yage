@@ -6,14 +6,18 @@ import type {
   ComponentClass,
   QueryResult,
   Reactive,
+  Serializable,
   ReactiveValue,
   ReactiveCounter,
   ReactiveRecord,
   ReactiveMap,
   ReactiveSet,
   ReactiveList,
+  ReactiveStore,
+  StoreLeaves,
+  EncodedStore,
 } from "@yagejs/core";
-import { QueryCacheKey } from "@yagejs/core";
+import { QueryCacheKey, STATE_KIND } from "@yagejs/core";
 import { shallowEqual } from "./shallowEqual.js";
 
 // ---------------------------------------------------------------------------
@@ -73,16 +77,18 @@ function subscribeFrame(listener: () => void): () => void {
 // ---------------------------------------------------------------------------
 
 /**
- * Read a reactive store inside React. One overload per `Reactive*` shape;
- * each returns a snapshot of the leaf's natural value and re-renders when
- * the leaf notifies.
+ * Read a reactive source inside React. One overload per `Reactive*` shape;
+ * each returns a snapshot of the source's natural value and re-renders when
+ * the source notifies.
  *
  * The selector overload is the escape hatch for partial reads (e.g. one map
- * key, one record field). The selector receives the source itself, not a
- * snapshot — call the source's accessors inside.
+ * key, one record field, a derived value off a compound). The selector
+ * receives the source itself, not a snapshot — call the source's accessors
+ * inside.
  *
- * The compound `defineStore` result is intentionally not accepted — read
- * individual leaves so subscription granularity stays per-leaf.
+ * Dispatch is symbol-driven: each shape exposes a `[STATE_KIND]` brand which
+ * picks the right default reader. New shapes added to the public API must
+ * extend the dispatch table below.
  */
 export function useStore<T extends object>(
   source: ReactiveRecord<T>,
@@ -92,6 +98,9 @@ export function useStore<K, V>(source: ReactiveMap<K, V>): Array<[K, V]>;
 export function useStore<K>(source: ReactiveSet<K>): K[];
 export function useStore<T>(source: ReactiveList<T>): T[];
 export function useStore<T>(source: ReactiveValue<T>): T;
+export function useStore<L extends StoreLeaves>(
+  source: ReactiveStore<L>,
+): EncodedStore<L>;
 export function useStore<S extends Reactive, R>(
   source: S,
   select: (s: S) => R,
@@ -140,40 +149,36 @@ export function useStore(
 }
 
 /**
- * Pick the natural snapshot reader for each Reactive* shape. We dispatch by
- * which method the source exposes — every leaf is one shape exactly, so
- * checking for the shape-defining method is sufficient and avoids a brand.
+ * Pick the natural snapshot reader for each `Reactive*` shape, keyed by the
+ * source's `[STATE_KIND]` brand. Throws if the source has no brand — every
+ * source produced by a `create*` factory carries one.
  */
 function defaultSnapshotReader(
   source: Reactive,
 ): (s: Reactive) => unknown {
-  const s = source as Partial<
-    ReactiveCounter &
-      ReactiveMap<unknown, unknown> &
-      ReactiveSet<unknown> &
-      ReactiveList<unknown> &
-      ReactiveValue<unknown> &
-      ReactiveRecord<object>
-  >;
-  if (typeof s.value === "function" && typeof s.increment === "function") {
-    return (x) => (x as ReactiveCounter).value();
+  const kind = (source as { [STATE_KIND]?: string })[STATE_KIND];
+  switch (kind) {
+    case "counter":
+      return (x) => (x as ReactiveCounter).value();
+    case "map":
+      return (x) => (x as ReactiveMap<unknown, unknown>).entries();
+    case "set":
+      return (x) => (x as ReactiveSet<unknown>).values();
+    case "list":
+      return (x) => (x as ReactiveList<unknown>).list();
+    case "value":
+      return (x) => (x as ReactiveValue<unknown>).get();
+    case "record":
+      return (x) => (x as ReactiveRecord<object>).get();
+    case "store":
+      return (x) => (x as Reactive & Serializable<unknown>).serialize();
+    default:
+      throw new Error(
+        `useStore: source is not a recognised Reactive* shape (kind=${String(
+          kind,
+        )}).`,
+      );
   }
-  if (typeof s.entries === "function") {
-    return (x) => (x as ReactiveMap<unknown, unknown>).entries();
-  }
-  if (typeof s.values === "function" && typeof s.add === "function") {
-    return (x) => (x as ReactiveSet<unknown>).values();
-  }
-  if (typeof s.list === "function") {
-    return (x) => (x as ReactiveList<unknown>).list();
-  }
-  if (typeof s.get === "function") {
-    // ReactiveRecord and ReactiveValue both expose get(). They differ in arity
-    // but both return their natural snapshot when called with no arg.
-    return (x) =>
-      (x as ReactiveValue<unknown> & ReactiveRecord<object>).get() as unknown;
-  }
-  throw new Error("useStore: source is not a recognised Reactive* shape.");
 }
 
 // ---------------------------------------------------------------------------

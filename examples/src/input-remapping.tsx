@@ -28,9 +28,9 @@ import {
   Anchor,
   useEngine,
   useStore,
-  createStore,
 } from "@yagejs/ui-react";
-import type { Store } from "@yagejs/ui-react";
+import { createRecord } from "@yagejs/core";
+import type { ReactiveRecord } from "@yagejs/core";
 import { injectStyles, setupGameContainer } from "./shared";
 
 injectStyles();
@@ -140,9 +140,11 @@ type ConflictState = {
   resolveVersion: number;
 };
 
-const conflictStore: Store<ConflictState> = createStore<ConflictState>({
-  conflict: null,
-  resolveVersion: 0,
+const conflictStore: ReactiveRecord<ConflictState> = createRecord<ConflictState>({
+  defaults: () => ({
+    conflict: null,
+    resolveVersion: 0,
+  }),
 });
 
 // ---------------------------------------------------------------------------

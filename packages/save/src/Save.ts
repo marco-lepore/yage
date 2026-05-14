@@ -1,4 +1,4 @@
-import type { PersistentLike } from "@yagejs/core";
+import type { Reactive, Serializable } from "@yagejs/core";
 
 /**
  * Pluggable storage backend used by the Save instance. Adapters speak strings
@@ -55,8 +55,70 @@ export class InvalidKeyError extends Error {
   }
 }
 
+/** Thrown by `restore`/`loadSlot` when stored data is from a newer version than this build. */
+export class StoreVersionTooNewError extends Error {
+  readonly storeId: string;
+  readonly storedVersion: number;
+  readonly currentVersion: number;
+  constructor(storeId: string, storedVersion: number, currentVersion: number) {
+    super(
+      `Store "${storeId}" was saved at version ${storedVersion}, ` +
+        `but this build is at version ${currentVersion}. Cannot downgrade.`,
+    );
+    this.name = "StoreVersionTooNewError";
+    this.storeId = storeId;
+    this.storedVersion = storedVersion;
+    this.currentVersion = currentVersion;
+  }
+}
+
+/** Thrown by `restore`/`loadSlot` when stored data is older and no `migrate` was provided. */
+export class StoreMigrationMissingError extends Error {
+  readonly storeId: string;
+  readonly storedVersion: number;
+  readonly currentVersion: number;
+  constructor(storeId: string, storedVersion: number, currentVersion: number) {
+    super(
+      `Store "${storeId}" needs migration from version ${storedVersion} ` +
+        `to ${currentVersion}, but no migrate() was provided.`,
+    );
+    this.name = "StoreMigrationMissingError";
+    this.storeId = storeId;
+    this.storedVersion = storedVersion;
+    this.currentVersion = currentVersion;
+  }
+}
+
 export interface CreateSaveOptions {
   adapter: SaveAdapter;
+}
+
+/** Options for a versioned read (`restore`, `loadSlot`, `autoPersist`). */
+export interface RestoreOptions<T> {
+  /** Current schema version. Defaults to 1. */
+  version?: number;
+  /**
+   * Migrate previously-stored payload to the current encoded form. Receives
+   * the raw decoded payload (whatever shape the older version wrote) and the
+   * version it was written at. Return the new encoded form that this build's
+   * `Serializable.hydrate` accepts.
+   */
+  migrate?: (old: unknown, fromVersion: number) => T;
+}
+
+/** Options for a versioned write (`persist`, `saveSlot`). */
+export interface PersistOptions {
+  /** Current schema version. Defaults to 1. */
+  version?: number;
+}
+
+export interface SaveSlotOptions<M = unknown> extends PersistOptions {
+  metadata?: M;
+}
+
+interface VersionEnvelope {
+  version: number;
+  data: unknown;
 }
 
 // Each adapter key is built from URI-encoded segments joined by `/`. Encoding
@@ -122,10 +184,41 @@ async function writeManifest(
   await adapter.write(manifestKey(id), JSON.stringify(manifest));
 }
 
+function encodeEnvelope<T>(
+  thing: Serializable<T>,
+  version: number,
+): VersionEnvelope {
+  return { version, data: thing.serialize() };
+}
+
+function applyEnvelope<T>(
+  id: string,
+  thing: Serializable<T>,
+  envelope: VersionEnvelope,
+  currentVersion: number,
+  migrate: ((old: unknown, fromVersion: number) => T) | undefined,
+): void {
+  if (envelope.version > currentVersion) {
+    throw new StoreVersionTooNewError(id, envelope.version, currentVersion);
+  }
+  if (envelope.version < currentVersion) {
+    if (!migrate) {
+      throw new StoreMigrationMissingError(
+        id,
+        envelope.version,
+        currentVersion,
+      );
+    }
+    thing.hydrate(migrate(envelope.data, envelope.version));
+    return;
+  }
+  thing.hydrate(envelope.data as T);
+}
+
 /**
- * Save instance — IO over typed stores. Created with `createSave({ adapter })`
- * and registered in the engine via `SavePlugin` so components can resolve it
- * through `SaveServiceKey`.
+ * Save instance — IO over typed `Serializable` values. Created with
+ * `createSave({ adapter })` and registered in the engine via `SavePlugin` so
+ * components can resolve it through `SaveServiceKey`.
  */
 export class Save {
   readonly adapter: SaveAdapter;
@@ -145,38 +238,45 @@ export class Save {
     this.adapter = opts.adapter;
   }
 
-  /** Persist the store as an unslotted document. */
-  async persist(store: PersistentLike): Promise<void> {
-    const payload = store.serialize();
-    await this.adapter.write(docKey(store.id), JSON.stringify(payload));
-  }
-
-  /**
-   * Restore an unslotted document into the store. No-op when the document
-   * doesn't exist — the store keeps its current (default) value.
-   */
-  async restore(store: PersistentLike): Promise<void> {
-    const raw = await this.adapter.read(docKey(store.id));
-    if (raw == null) return;
-    store.hydrate(JSON.parse(raw));
-  }
-
-  /** Restore many stores in parallel. */
-  async restoreAll(stores: PersistentLike[]): Promise<void> {
-    await Promise.all(stores.map((s) => this.restore(s)));
-  }
-
-  /**
-   * Save the store into a named slot. The slot manifest is updated with the
-   * timestamp and optional metadata.
-   */
-  async saveSlot<M = unknown>(
-    store: PersistentLike,
-    slot: string,
-    opts?: { metadata?: M },
+  /** Persist the value as an unslotted document. */
+  async persist<T>(
+    id: string,
+    thing: Serializable<T>,
+    opts?: PersistOptions,
   ): Promise<void> {
-    const payload = store.serialize();
-    await this.adapter.write(slotKey(store.id, slot), JSON.stringify(payload));
+    const version = opts?.version ?? 1;
+    const payload = encodeEnvelope(thing, version);
+    await this.adapter.write(docKey(id), JSON.stringify(payload));
+  }
+
+  /**
+   * Restore an unslotted document. No-op when the document doesn't exist —
+   * the value keeps its current (default) state.
+   */
+  async restore<T>(
+    id: string,
+    thing: Serializable<T>,
+    opts?: RestoreOptions<T>,
+  ): Promise<void> {
+    const raw = await this.adapter.read(docKey(id));
+    if (raw == null) return;
+    const envelope = JSON.parse(raw) as VersionEnvelope;
+    applyEnvelope(id, thing, envelope, opts?.version ?? 1, opts?.migrate);
+  }
+
+  /**
+   * Save into a named slot. The slot manifest is updated with the timestamp
+   * and optional metadata.
+   */
+  async saveSlot<T, M = unknown>(
+    id: string,
+    slot: string,
+    thing: Serializable<T>,
+    opts?: SaveSlotOptions<M>,
+  ): Promise<void> {
+    const version = opts?.version ?? 1;
+    const payload = encodeEnvelope(thing, version);
+    await this.adapter.write(slotKey(id, slot), JSON.stringify(payload));
 
     // Slot data is written before the manifest. If the manifest write fails,
     // the slot data exists at its slot key but `listSlots` won't see it
@@ -189,24 +289,30 @@ export class Save {
       savedAt: Date.now(),
     };
     if (opts?.metadata !== undefined) entry.metadata = opts.metadata;
-    await this.updateManifest(store.id, (manifest) => {
+    await this.updateManifest(id, (manifest) => {
       manifest.slots[slot] = entry;
     });
   }
 
-  /** Load a slot into the store. Throws `SlotNotFoundError` when missing. */
-  async loadSlot(store: PersistentLike, slot: string): Promise<void> {
-    const raw = await this.adapter.read(slotKey(store.id, slot));
-    if (raw == null) throw new SlotNotFoundError(store.id, slot);
-    store.hydrate(JSON.parse(raw));
+  /** Load a slot. Throws `SlotNotFoundError` when missing. */
+  async loadSlot<T>(
+    id: string,
+    slot: string,
+    thing: Serializable<T>,
+    opts?: RestoreOptions<T>,
+  ): Promise<void> {
+    const raw = await this.adapter.read(slotKey(id, slot));
+    if (raw == null) throw new SlotNotFoundError(id, slot);
+    const envelope = JSON.parse(raw) as VersionEnvelope;
+    applyEnvelope(id, thing, envelope, opts?.version ?? 1, opts?.migrate);
   }
 
-  /** List slots for a store, optionally filtered by prefix. */
+  /** List slots for a store id, optionally filtered by prefix. */
   async listSlots<M = unknown>(
-    store: PersistentLike,
+    id: string,
     opts?: { prefix?: string },
   ): Promise<SlotInfo<M>[]> {
-    const manifest = await readManifest(this.adapter, store.id);
+    const manifest = await readManifest(this.adapter, id);
     const entries = Object.values(manifest.slots);
     const filtered =
       opts?.prefix !== undefined
@@ -220,14 +326,14 @@ export class Save {
   }
 
   /** Delete a slot. No-op when the slot doesn't exist. */
-  async deleteSlot(store: PersistentLike, slot: string): Promise<void> {
+  async deleteSlot(id: string, slot: string): Promise<void> {
     // Slot data is deleted before the manifest is updated. If the manifest
     // write fails, the manifest still references a slot whose data is gone
     // and a subsequent `loadSlot` will throw `SlotNotFoundError`. Acceptable
-    // for localStorage-class adapters; adapters with unreliable writes
-    // should retry the manifest update.
-    await this.adapter.delete(slotKey(store.id, slot));
-    await this.updateManifest(store.id, (manifest) => {
+    // for localStorage-class adapters; adapters with unreliable writes should
+    // retry the manifest update.
+    await this.adapter.delete(slotKey(id, slot));
+    await this.updateManifest(id, (manifest) => {
       if (!(slot in manifest.slots)) return;
       // Build a fresh slots map without the deleted entry — avoids dynamic
       // delete on a record (lint: no-dynamic-delete).
@@ -267,15 +373,15 @@ export class Save {
   }
 
   /**
-   * Subscribe to the store and persist on every change, coalesced to a single
-   * in-flight write per store. Returns a stop function — call it to
+   * Subscribe to a reactive value and persist on every change, coalesced to a
+   * single in-flight write per id. Returns a stop function — call it to
    * unsubscribe.
    *
    * Writes are serialized: while a `persist()` is in flight, further changes
-   * mark the store dirty and trigger one more write *after* the current one
+   * mark the value dirty and trigger one more write *after* the current one
    * resolves. The last-set state always wins, even on a slow async adapter,
-   * because each flush re-reads `store.serialize()` rather than capturing the
-   * value at scheduling time. Multiple synchronous `set` calls collapse into
+   * because each flush re-reads `thing.serialize()` rather than capturing the
+   * value at scheduling time. Multiple synchronous mutations collapse into
    * one write because the dirty flag is consumed atomically.
    *
    * `setTimeout` is intentionally not used here: `Save` runs alongside the
@@ -283,24 +389,23 @@ export class Save {
    * starts or after it stops (e.g. settings menus on a paused game). Using
    * engine-time processes here would tie persistence to a running scheduler.
    */
-  autoPersist(store: PersistentLike): () => void {
+  autoPersist<T>(
+    id: string,
+    thing: Serializable<T> & Reactive,
+    opts?: PersistOptions,
+  ): () => void {
     let inFlight = false;
     let dirty = false;
     let stopped = false;
 
     const flush = async (): Promise<void> => {
-      // Drain the dirty flag in a loop so any change that arrives while a
-      // write is in progress is captured by the next iteration. Snapshot the
-      // value at write time (via store.serialize, called inside persist) so
-      // we always commit the latest state — never an older one captured at
-      // schedule time.
       while (dirty && !stopped) {
         dirty = false;
         try {
-          await this.persist(store);
+          await this.persist(id, thing, opts);
         } catch (err) {
           console.error(
-            `autoPersist: failed to persist store "${store.id}":`,
+            `autoPersist: failed to persist store "${id}":`,
             err,
           );
         }
@@ -308,13 +413,13 @@ export class Save {
       inFlight = false;
     };
 
-    const off = store.subscribe(() => {
+    const off = thing.subscribe(() => {
       if (stopped) return;
       dirty = true;
       if (inFlight) return;
       inFlight = true;
       // Defer the first iteration to a microtask so multiple synchronous
-      // `set` calls collapse into one flush iteration.
+      // mutations collapse into one flush iteration.
       queueMicrotask(() => {
         if (stopped) {
           inFlight = false;

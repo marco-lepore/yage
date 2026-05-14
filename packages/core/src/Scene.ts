@@ -27,7 +27,7 @@ import {
 export interface SpawnOptions {
   /**
    * Stable per-scene identity key. Looked up via `Scene.findByKey` and used
-   * as a stable id in persistent stores (e.g. `defineSet<string>("world.opened")`).
+   * as a stable id in reactive stores (e.g. a `createSet<string>()` persisted under `"world.opened"`).
    *
    * Identity is opt-in — most entities (bullets, particles, transient enemies)
    * never need a key. Pass one only for entities whose state should persist

@@ -133,13 +133,14 @@ import { useEngine, useScene, useStore, useQuery, useSceneSelector } from "@yage
 const engine = useEngine();
 const scene = useScene();
 
-// Reactive store — one overload per Reactive* shape, plus a selector escape hatch.
+// Reactive source — one overload per Reactive* shape, plus a selector escape hatch.
 useStore(record);           // ReactiveRecord<T>      → Readonly<T>
 useStore(counter);          // ReactiveCounter        → number
 useStore(map);              // ReactiveMap<K, V>      → Array<[K, V]>
 useStore(set);              // ReactiveSet<K>         → K[]
 useStore(list);             // ReactiveList<T>        → T[]
 useStore(value);            // ReactiveValue<T>       → T
+useStore(compound);         // ReactiveStore<L>       → encoded snapshot
 useStore(source, select);   // selector receives the source itself, not a snapshot
 
 // ECS query (polled each frame)
@@ -149,27 +150,31 @@ const count = useQuery([EnemyTag], (result) => result.size);
 const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 ```
 
-`useStore(compound)` (the compound returned by `defineStore`) is intentionally **not** supported — read individual leaves so subscription granularity stays per-leaf. For a record-shaped store, the selector still receives the source; call `.get()` inside:
+`useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
 
 ```ts
 const inv  = useStore(game.inventory);                          // entries snapshot
 const gold = useStore(game.gold);                               // number
-const lang = useStore(game.settings, (s) => s.get().lang);      // selector
+const lang = useStore(game.settings, (s) => s.get().lang);      // selector on leaf
+const hp   = useStore(game, (s) => s.player.get().health);      // selector on compound
 ```
 
-## createStore
+## In-memory record for UI
+
+For ECS↔UI bridges that don't need persistence, use `createRecord` from `@yagejs/core`:
 
 ```ts
-import { createStore } from "@yagejs/ui-react";
+import { createRecord } from "@yagejs/core";
+import { useStore } from "@yagejs/ui-react";
 
-const store = createStore({ score: 0, health: 100 });
+const ui = createRecord({ defaults: () => ({ score: 0, health: 100 }) });
 
 // ECS side: write
-store.set({ score: store.get().score + 10 });
+ui.set({ score: ui.get().score + 10 });
 
 // React side: read (auto-rerenders)
-const score = useStore(store, (src) => src.get().score);
+const score = useStore(ui, (src) => src.get().score);
 
 // Manual subscribe
-const unsub = store.subscribe(() => console.log(store.get()));
+const unsub = ui.subscribe(() => console.log(ui.get()));
 ```

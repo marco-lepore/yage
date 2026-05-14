@@ -16,32 +16,34 @@ progression. Define typed stores at module scope, construct one `Save`
 instance, register it via the plugin.
 
 ```ts
-import { Engine } from "@yagejs/core";
+import { Engine, createStore, createRecord, createSet } from "@yagejs/core";
 import {
-  defineStore, defineRecord, defineSet,
   createSave, SavePlugin, localStorageAdapter,
 } from "@yagejs/save";
 
 interface RunData { chapter: number; position: { x: number; y: number } }
 
-// Compound store — one save target, many typed leaves.
-const game = defineStore("saves", (s) => ({
+// Compound store — bundles many typed leaves into one save document.
+const game = createStore((s) => ({
   run: s.record<RunData>({
     defaults: () => ({ chapter: 1, position: { x: 0, y: 0 } }),
   }),
   opened: s.set<string>(),
 }));
 
-// Standalone for one-offs (different save target — separate document).
-const settings = defineRecord<{ music: number; sfx: number }>("settings", {
+// Leaf factory for one-offs (different save target — separate document).
+const settings = createRecord<{ music: number; sfx: number }>({
   defaults: () => ({ music: 0.8, sfx: 1.0 }),
 });
 
 const save = createSave({ adapter: localStorageAdapter() });
 
-await save.restoreAll([game, settings]);
-save.autoPersist(game);
-save.autoPersist(settings);
+await Promise.all([
+  save.restore("saves", game),
+  save.restore("settings", settings),
+]);
+save.autoPersist("saves", game);
+save.autoPersist("settings", settings);
 
 const engine = new Engine();
 engine.use(new SavePlugin({ save }));
@@ -56,7 +58,7 @@ class CheckpointOnRest extends Component {
   setup() {
     this.entity.on(Rested, async () => {
       const save = this.use(SaveServiceKey);
-      await save.saveSlot(game, "auto");
+      await save.saveSlot("saves", "auto", game);
     });
   }
 }
@@ -66,9 +68,11 @@ Save slots with typed metadata:
 
 ```ts
 interface RunMeta { location: string; playtime: number }
-await save.saveSlot<RunMeta>(game, "manual-1", { metadata: { /* … */ } });
-const slots = await save.listSlots<RunMeta>(game);
-await save.loadSlot(game, "manual-1");
+await save.saveSlot<unknown, RunMeta>("saves", "manual-1", game, {
+  metadata: { /* … */ },
+});
+const slots = await save.listSlots<RunMeta>("saves");
+await save.loadSlot("saves", "manual-1", game);
 ```
 
 ## Snapshot path (advanced)
@@ -91,10 +95,12 @@ await snap.loadSnapshot("slot-1");
 
 ## What's in the box
 
-- **Stores** — compound `defineStore` + standalone `defineRecord`, `defineValue`, `defineSet`, `defineMap`, `defineCounter`, `defineList`
-  (re-exported from `@yagejs/core`).
-- **Save** — `createSave({ adapter })` with `persist`, `restore`, `saveSlot`,
-  `loadSlot`, `listSlots`, `deleteSlot`, `autoPersist`.
+- **State factories** — compound `createStore` + leaf `createRecord`, `createValue`, `createSet`, `createMap`, `createCounter`, `createList`
+  (live in `@yagejs/core`).
+- **Save** — `createSave({ adapter })` with `persist(id, thing)`,
+  `restore(id, thing, opts?)`, `saveSlot(id, slot, thing, opts?)`,
+  `loadSlot(id, slot, thing, opts?)`, `listSlots(id)`, `deleteSlot(id, slot)`,
+  `autoPersist(id, thing, opts?)`.
 - **Adapters** — `localStorageAdapter`, `memoryAdapter`. Implement
   `SaveAdapter` for IndexedDB, files, cloud, etc.
 - **Codecs** — `jsonCodec`, `setCodec`, `mapCodec`, `dateCodec`.

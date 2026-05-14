@@ -51,15 +51,17 @@ add `serialize()`/`fromSnapshot()` methods if the state needs to persist.
 
 ## Reactive Stores (for React UI)
 
-When bridging ECS state to React UI, use `createStore`:
+When bridging ECS state to React UI, use `createRecord`:
 
 ```typescript
-import { createStore } from "@yagejs/ui-react";
+import { createRecord } from "@yagejs/core";
 
-const uiStore = createStore({
-  score: 0,
-  health: 100,
-  message: "",
+const uiStore = createRecord({
+  defaults: () => ({
+    score: 0,
+    health: 100,
+    message: "",
+  }),
 });
 ```
 
@@ -138,7 +140,7 @@ A typical game combines all three:
 const GameStateKey = new ServiceKey<GameState>("gameState");
 
 // 2. UI store for React binding
-const uiStore = createStore({ score: 0, health: 100 });
+const uiStore = createRecord({ defaults: () => ({ score: 0, health: 100 }) });
 
 // 3. Events for decoupled communication
 const CoinCollected = defineEvent("coin:collected");

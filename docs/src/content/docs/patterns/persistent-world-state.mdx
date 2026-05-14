@@ -11,7 +11,7 @@ pattern (and most other world-fact patterns games need):
 - **Stable identity** — opt-in per-scene keys for entities whose state should
   persist across save/load or scene navigation. `scene.spawn(..., { key })`,
   `entity.key`, `scene.findByKey(key)`.
-- **Reactive stores** — `defineSet`, `defineMap`, `defineCounter` keyed by
+- **Reactive stores** — `createSet`, `createMap`, `createCounter` keyed by
   string IDs.
 
 Identity is just an enabler. The save layer doesn't see entity keys; it only
@@ -60,17 +60,19 @@ but `findByKey` returns `undefined` so callers don't act on a dying entity).
 
 A chest that remembers it has been opened. Three pieces:
 
-### 1. A persistent store, keyed by entity id
+### 1. A reactive set, keyed by entity id
 
 ```typescript
 // game/world/persistence.ts
-import { defineSet } from "@yagejs/core";
+import { createSet } from "@yagejs/core";
 
-export const opened = defineSet<string>("world.opened");
+export const opened = createSet<string>();
 ```
 
-The store is keyed by `string` — those strings are entity keys. Save/load
-serialises the store; identity is what makes the strings meaningful.
+The store is keyed by `string` — those strings are entity keys. The save
+layer serialises it under whatever id you choose at the call site
+(`save.persist("world.opened", opened)`); identity is what makes the strings
+meaningful.
 
 ### 2. A trait — an interface contract
 
@@ -157,7 +159,7 @@ The same composition handles more than chests.
 
 ```typescript
 // game/world/persistence.ts
-export const triggered = defineSet<string>("world.triggered");
+export const triggered = createSet<string>();
 
 // game/components/OneShot.ts
 class OneShotTrigger extends Component {
@@ -176,7 +178,7 @@ scene.spawn(StoryTrigger, { key: "intro/meet-elder" });
 
 ```typescript
 // "harvested at frame N" → respawns after some interval
-export const harvestedAt = defineMap<string, number>("world.harvestedAt");
+export const harvestedAt = createMap<string, number>();
 
 class RespawnableState extends Component {
   isHarvested(currentFrame: number, cooldown: number): boolean {

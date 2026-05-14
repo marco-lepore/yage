@@ -14,16 +14,17 @@ import {
   useSceneSelector,
   notifyFrame,
 } from "./hooks.js";
-import { createStore } from "./store.js";
 import {
   EngineContext,
   QueryCacheKey,
   QueryCache,
-  defineValue,
-  defineCounter,
-  defineMap,
-  defineSet,
-  defineList,
+  createRecord,
+  createValue,
+  createCounter,
+  createMap,
+  createSet,
+  createList,
+  createStore,
 } from "@yagejs/core";
 
 beforeAll(() => {
@@ -118,8 +119,8 @@ describe("useStore", () => {
     container.remove();
   });
 
-  it("reads the full store state without a selector", () => {
-    const store = createStore({ score: 42, hp: 100 });
+  it("reads the full record state without a selector", () => {
+    const store = createRecord({ defaults: () => ({ score: 42, hp: 100 }) });
     let result: unknown;
 
     function Comp() {
@@ -131,8 +132,8 @@ describe("useStore", () => {
     expect(result).toEqual({ score: 42, hp: 100 });
   });
 
-  it("re-renders when store value changes", () => {
-    const store = createStore({ score: 0 });
+  it("re-renders when record value changes", () => {
+    const store = createRecord({ defaults: () => ({ score: 0 }) });
     const renders: number[] = [];
 
     function Comp() {
@@ -149,7 +150,7 @@ describe("useStore", () => {
   });
 
   it("skips re-render when selector result is shallowEqual", () => {
-    const store = createStore({ a: 1, b: 2 });
+    const store = createRecord({ defaults: () => ({ a: 1, b: 2 }) });
     let renderCount = 0;
 
     function Comp() {
@@ -161,7 +162,6 @@ describe("useStore", () => {
     act(() => root.render(createElement(Comp)));
     expect(renderCount).toBe(1);
 
-    // Change b only — selector returns { a: 1 } both times (shallowEqual)
     act(() => store.set({ b: 99 }));
     expect(renderCount).toBe(1);
   });
@@ -186,9 +186,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("reads a ReactiveValue", () => {
-    const v = defineValue<string>(`hk.val.${Math.random()}`, {
-      defaults: () => "hi",
-    });
+    const v = createValue<string>({ defaults: () => "hi" });
     let result: unknown;
     function Comp() {
       result = useStore(v);
@@ -201,7 +199,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("reads a ReactiveCounter as a number", () => {
-    const c = defineCounter(`hk.ctr.${Math.random()}`, { defaults: () => 3 });
+    const c = createCounter({ default: 3 });
     let result: unknown;
     function Comp() {
       result = useStore(c);
@@ -214,7 +212,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("reads a ReactiveMap as entries", () => {
-    const m = defineMap<string, number>(`hk.map.${Math.random()}`);
+    const m = createMap<string, number>();
     m.set("a", 1);
     let result: Array<[string, number]> | undefined;
     function Comp() {
@@ -231,7 +229,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("reads a ReactiveSet as an array", () => {
-    const s = defineSet<string>(`hk.set.${Math.random()}`);
+    const s = createSet<string>();
     s.add("x");
     let result: string[] | undefined;
     function Comp() {
@@ -245,7 +243,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("reads a ReactiveList as an array", () => {
-    const l = defineList<string>(`hk.list.${Math.random()}`);
+    const l = createList<string>();
     l.add("a");
     l.add("b");
     let result: string[] | undefined;
@@ -262,7 +260,7 @@ describe("useStore overloads (per Reactive* shape)", () => {
   });
 
   it("selector escape hatch reads one map key", () => {
-    const m = defineMap<string, number>(`hk.sel.${Math.random()}`);
+    const m = createMap<string, number>();
     m.set("a", 1);
     let result: number | undefined;
     function Comp() {
@@ -273,6 +271,39 @@ describe("useStore overloads (per Reactive* shape)", () => {
     expect(result).toBe(1);
     act(() => m.set("a", 7));
     expect(result).toBe(7);
+  });
+
+  it("reads a compound ReactiveStore as the encoded snapshot", () => {
+    const game = createStore((s) => ({
+      gold: s.counter({ default: 0 }),
+      flags: s.set<string>(),
+    }));
+    let result: { gold: number; flags: string[] } | undefined;
+    function Comp() {
+      result = useStore(game);
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result?.gold).toBe(0);
+    expect(result?.flags).toEqual([]);
+    act(() => game.gold.increment(5));
+    expect(result?.gold).toBe(5);
+  });
+
+  it("selector on a compound source reads through a leaf", () => {
+    const game = createStore((s) => ({
+      gold: s.counter({ default: 0 }),
+      inv: s.map<string, number>(),
+    }));
+    let result: number | undefined;
+    function Comp() {
+      result = useStore(game, (src) => src.gold.value());
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toBe(0);
+    act(() => game.gold.set(42));
+    expect(result).toBe(42);
   });
 });
 

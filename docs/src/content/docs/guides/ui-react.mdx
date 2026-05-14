@@ -295,14 +295,16 @@ function PauseButton() {
 ### useStore
 
 `useStore` is the single React entry for every reactive primitive — counters,
-records, maps, sets, lists, single-cell values, and `createStore` records.
-One overload per shape, plus a selector escape hatch.
+records, maps, sets, lists, single-cell values, and compound stores. One
+overload per shape, plus a selector escape hatch. Dispatch is symbol-driven
+(each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
 
 ```tsx
-import { createStore, useStore } from "@yagejs/ui-react";
+import { createRecord } from "@yagejs/core";
+import { useStore } from "@yagejs/ui-react";
 
 // Plain record (object with shallow merge)
-const gameStore = createStore({ score: 0, health: 100 });
+const gameStore = createRecord({ defaults: () => ({ score: 0, health: 100 }) });
 
 // Write from ECS (systems, components, event handlers)
 gameStore.set({ score: gameStore.get().score + 10 });
@@ -314,7 +316,7 @@ function ScoreDisplay() {
 }
 ```
 
-Each `useStore(source)` returns the leaf's natural snapshot:
+Each `useStore(source)` returns the source's natural snapshot:
 
 ```tsx
 useStore(record);   // ReactiveRecord<T>  → Readonly<T>
@@ -323,13 +325,15 @@ useStore(map);      // ReactiveMap<K, V>  → Array<[K, V]>
 useStore(set);      // ReactiveSet<K>     → K[]
 useStore(list);     // ReactiveList<T>    → T[]
 useStore(value);    // ReactiveValue<T>   → T
+useStore(compound); // ReactiveStore<L>   → encoded snapshot
 ```
 
-The compound returned by `defineStore` is intentionally not accepted — read
-individual leaves instead, so subscription granularity stays per-leaf:
+Compounds returned by `createStore` are accepted too — `useStore(compound)`
+returns the encoded snapshot of the whole tree. For finer subscription
+granularity read individual leaves:
 
 ```tsx
-const game = defineStore("game", (s) => ({
+const game = createStore((s) => ({
   gold: s.counter({ default: 0 }),
   inventory: s.map<string, number>(),
 }));

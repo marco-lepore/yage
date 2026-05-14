@@ -20,10 +20,6 @@ export type {
   PixiInputReactProps, PixiScrollBoxReactProps, PixiSelectReactProps, PixiRadioGroupReactProps,
 } from "./components.js";
 
-// Store
-export { createStore } from "./store.js";
-export type { Store } from "./store.js";
-
 // Hooks
 export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hooks.js";
 
