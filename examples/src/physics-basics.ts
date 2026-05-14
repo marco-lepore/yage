@@ -36,7 +36,9 @@ class InputController extends Component {
     // Space — drop a random shape
     if (this.input.isJustPressed("spawn")) {
       this.shapeCount++;
-      const isCircle = Math.random() > 0.5;
+      const roll = Math.random();
+      const kind: "circle" | "box" | "triangle" =
+        roll < 0.34 ? "circle" : roll < 0.67 ? "box" : "triangle";
       const x = 100 + Math.random() * (WIDTH - 200);
       const restitution = 0.1 + Math.random() * 0.8;
       const color = randomColor();
@@ -45,7 +47,7 @@ class InputController extends Component {
       const e = scene.spawn(`shape-${this.shapeCount}`);
       e.add(new Transform({ position: new Vec2(x, 40) }));
 
-      if (isCircle) {
+      if (kind === "circle") {
         const radius = 12 + Math.random() * 18;
         e.add(
           new GraphicsComponent().draw((g) => {
@@ -65,7 +67,7 @@ class InputController extends Component {
             density: 1,
           }),
         );
-      } else {
+      } else if (kind === "box") {
         const hw = 10 + Math.random() * 20;
         const hh = 10 + Math.random() * 20;
         e.add(
@@ -81,6 +83,35 @@ class InputController extends Component {
         e.add(
           new ColliderComponent({
             shape: { type: "box", width: hw * 2, height: hh * 2 },
+            restitution,
+            friction: 0.3,
+            density: 1,
+          }),
+        );
+      } else {
+        // Equilateral-ish triangle — exercises the ConvexPolygon path so
+        // the physics debug overlay (toggle in the inspector) renders
+        // the polygon wireframe correctly.
+        const size = 16 + Math.random() * 16;
+        const verts: Vec2[] = [
+          new Vec2(0, -size),
+          new Vec2(size * 0.87, size * 0.5),
+          new Vec2(-size * 0.87, size * 0.5),
+        ];
+        e.add(
+          new GraphicsComponent().draw((g) => {
+            g.poly([verts[0]!.x, verts[0]!.y, verts[1]!.x, verts[1]!.y, verts[2]!.x, verts[2]!.y])
+              .fill({ color, alpha: 0.85 })
+              .stroke({
+                color: bouncy ? 0xffffff : 0x666666,
+                width: bouncy ? 2 : 1,
+              });
+          }),
+        );
+        e.add(new RigidBodyComponent({ type: "dynamic", ccd: true }));
+        e.add(
+          new ColliderComponent({
+            shape: { type: "polygon", vertices: verts },
             restitution,
             friction: 0.3,
             density: 1,
