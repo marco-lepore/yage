@@ -364,40 +364,31 @@ To override: pass explicit `bindings` on the camera. Explicit bindings
 ignore `space` and target exactly the layers named, which is how you
 bind a screen-space layer to a second camera or build parallax.
 
-### `LayerDef.isRenderGroup` — filter isolation
+### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 
 `isRenderGroup: true` promotes the layer's container to a Pixi v8 render
-group so its children render as a separate pass with their own uniform
-scope.
+group. Render groups render as a separate pass with their own instruction
+set and have their transforms handled on the GPU, which can be useful for
+isolating large, slow-changing subtrees from per-frame transform updates.
 
-Why: when a filter is applied to anything inside a render group, Pixi
-composes the filter's `uWorldTransformMatrix` from the active render
-group's transform and leaves it on the global uniform stack until the
-group ends. Sibling passes that read `globalUniforms` directly — most
-visibly `@pixi/tilemap`'s `TilemapPipe.execute` (which pulls
-`_activeUniforms.at(-1)`) — pick up the polluted matrix and drift onscreen.
-
-Set `isRenderGroup: true` on (a) layers that contain filtered content AND
-(b) any sibling layer whose contents must stay unaffected. Both layers
-then sit inside their own uniform scope and the filter's transform stays
-scoped to its source.
-
-Worked example — entities with hit-flash filters underneath a tilemap canopy:
+Default: `false`. Render groups carry a small fixed cost (their own
+render pass + instruction set) — only flip on layers where you've
+measured a benefit.
 
 ```ts
 readonly layers: readonly LayerDef[] = [
   { name: "ground",  order: -10 },
-  // Filtered actors (goblins, herbs) live here and apply per-entity filters
   { name: "actors",  order: 0,   isRenderGroup: true },
-  // Canopy reads from a tilemap pipe and would drift if we left the
-  // filter's transform on the global uniform stack — isolate it too.
-  { name: "canopy",  order: 10,  isRenderGroup: true },
   { name: "hud",     order: 100, space: "screen" },
 ];
 ```
 
-Default: `false`. Render groups have a small fixed cost (their own
-render pass + instruction set) — flip on only the layers that need it.
+**Not** required for filter isolation around tilemaps. `@yagejs/tilemap`'s
+`TilemapPlugin` already runtime-patches `@pixi/tilemap`'s `TilemapPipe`
+to read the currently-bound uniform group (not the stale push log) and
+to use `tilemap.groupTransform` (not `worldTransform`), so a filtered
+sibling layer no longer drifts the canopy regardless of render-group
+configuration. See `packages/tilemap/src/patch-tilemap-pipe.ts`.
 
 ### CameraBinding — per-axis ratios
 

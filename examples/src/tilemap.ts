@@ -1,18 +1,20 @@
 /**
- * Tilemap demo — also doubles as the manual-test fixture for
- * `LayerDef.isRenderGroup`.
+ * Tilemap demo — also doubles as the manual-test fixture for the
+ * "canopy drift when actors have filters" fix shipped by `@yagejs/tilemap`.
  *
  * Layout (top → bottom in draw order):
  *
- *   canopy   (Tiled "Details", isRenderGroup: true)
- *   actors   (player + enemies, isRenderGroup: true, hosts the bloom filter)
+ *   canopy   (Tiled "Details" — the upper foliage / decals)
+ *   actors   (player + enemies; hosts the bloom filter when toggled on)
  *   map      (Tiled "background" + "foreground")
  *
- * Press `F` to toggle a bloom filter on the player. With `isRenderGroup`
- * set on both `actors` and `canopy`, the canopy stays put when the filter
- * fires; flip either to `false` and the canopy will drift because
- * `@pixi/tilemap`'s pipe reads `globalUniforms._activeUniforms.at(-1)`
- * and picks up the polluted `uWorldTransformMatrix` left by the filter.
+ * Press `F` to toggle a bloom filter on the player. The canopy stays put
+ * through the filter pass because `TilemapPlugin.install` patches
+ * `@pixi/tilemap`'s `TilemapPipe.execute` to (a) read the currently-bound
+ * uniform group instead of `globalUniforms._activeUniforms.at(-1)` (which
+ * the filter system leaves stale) and (b) use `tilemap.groupTransform`
+ * instead of `tilemap.worldTransform` (which would double-apply any
+ * ancestor render-group transform). See `packages/tilemap/src/patch-tilemap-pipe.ts`.
  */
 import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
 import {
@@ -281,15 +283,8 @@ class TilemapScene extends Scene {
   readonly preload = [DungeonMap];
   readonly layers: readonly LayerDef[] = [
     { name: "map", order: -10 },
-    // Filtered content lives here. `isRenderGroup: true` gives the actors
-    // their own uniform scope so the bloom on the player doesn't leak
-    // `uWorldTransformMatrix` onto the canopy's tilemap pipe.
-    { name: "actors", order: 0, isRenderGroup: true },
-    // Canopy reads from a tilemap pipe and must stay unaffected by the
-    // filter's transform. Pair with the actors group above — both layers
-    // sit inside their own render group so the global uniform stack is
-    // clean when the canopy draws.
-    { name: "canopy", order: 10, isRenderGroup: true },
+    { name: "actors", order: 0 },
+    { name: "canopy", order: 10 },
   ];
 
   onEnter(): void {
