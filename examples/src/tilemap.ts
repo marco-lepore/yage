@@ -1,3 +1,19 @@
+/**
+ * Tilemap demo — also doubles as the manual-test fixture for
+ * `LayerDef.isRenderGroup`.
+ *
+ * Layout (top → bottom in draw order):
+ *
+ *   canopy   (Tiled "Details", isRenderGroup: true)
+ *   actors   (player + enemies, isRenderGroup: true, hosts the bloom filter)
+ *   map      (Tiled "background" + "foreground")
+ *
+ * Press `F` to toggle a bloom filter on the player. With `isRenderGroup`
+ * set on both `actors` and `canopy`, the canopy stays put when the filter
+ * fires; flip either to `false` and the canopy will drift because
+ * `@pixi/tilemap`'s pipe reads `globalUniforms._activeUniforms.at(-1)`
+ * and picks up the polluted `uWorldTransformMatrix` left by the filter.
+ */
 import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -6,6 +22,8 @@ import {
   renderAsset,
   type LayerDef,
 } from "@yagejs/renderer";
+import type { EffectHandle } from "@yagejs/renderer";
+import { bloom } from "@yagejs/effects";
 import {
   TilemapPlugin,
   TilemapComponent,
@@ -53,6 +71,7 @@ class Player extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly walls: readonly RectColliderConfig[];
   private readonly camera: CameraEntity;
+  private bloomHandle: EffectHandle | null = null;
 
   constructor(walls: readonly RectColliderConfig[], camera: CameraEntity) {
     super();
@@ -61,6 +80,18 @@ class Player extends Component {
   }
 
   update(dt: number): void {
+    if (this.input.isJustPressed("toggleFilter")) {
+      const g = this.entity.get(GraphicsComponent);
+      if (this.bloomHandle) {
+        this.bloomHandle.remove();
+        this.bloomHandle = null;
+      } else {
+        this.bloomHandle = g.fx.addEffect(
+          bloom({ bloomScale: 2.5, blur: 12, quality: 6 }),
+        );
+      }
+    }
+
     const dir = this.input.getVector("left", "right", "up", "down");
     if (dir.x === 0 && dir.y === 0) {
       this.camera.position = this.entity.get(Transform).position;
@@ -206,7 +237,39 @@ class TilemapInspector implements DebugContributor {
 class TilemapEntity extends Entity {
   setup(): void {
     this.add(new Transform());
-    this.add(new TilemapComponent({ source: DungeonMap, layer: "map" }));
+    // Base map — everything that should sit BELOW the actors.
+    this.add(
+      new TilemapComponent({
+        source: DungeonMap,
+        layer: "map",
+        layers: ["background", "foreground"],
+      }),
+    );
+  }
+}
+
+/**
+ * Canopy entity — the same Tiled map asset, but renders ONLY the "Details"
+ * tile layer onto the `"canopy"` YAGE layer above the actors. Hosts a
+ * separate TilemapComponent so the canopy gets its own `@pixi/tilemap`
+ * pipe pass, which is what makes the `isRenderGroup` isolation observable
+ * (canopy reads `uWorldTransformMatrix` at draw time, so without
+ * isolation the bloom-filter pass on the actors layer leaks its transform
+ * onto the canopy's read and drifts the tiles).
+ */
+class CanopyEntity extends Entity {
+  setup(): void {
+    this.add(new Transform());
+    this.add(
+      new TilemapComponent({
+        source: DungeonMap,
+        layer: "canopy",
+        layers: ["Details"],
+        // Disambiguate the auto-key prefix from the base TilemapEntity
+        // above so identity-keyed entities don't collide.
+        keyPrefix: "canopy",
+      }),
+    );
   }
 }
 
@@ -218,12 +281,22 @@ class TilemapScene extends Scene {
   readonly preload = [DungeonMap];
   readonly layers: readonly LayerDef[] = [
     { name: "map", order: -10 },
-    { name: "actors", order: 0 },
+    // Filtered content lives here. `isRenderGroup: true` gives the actors
+    // their own uniform scope so the bloom on the player doesn't leak
+    // `uWorldTransformMatrix` onto the canopy's tilemap pipe.
+    { name: "actors", order: 0, isRenderGroup: true },
+    // Canopy reads from a tilemap pipe and must stay unaffected by the
+    // filter's transform. Pair with the actors group above — both layers
+    // sit inside their own render group so the global uniform stack is
+    // clean when the canopy draws.
+    { name: "canopy", order: 10, isRenderGroup: true },
   ];
 
   onEnter(): void {
     const mapEntity = this.spawn(TilemapEntity);
     const tilemap = mapEntity.get(TilemapComponent);
+    // Canopy paints "Details" above actors on the dedicated canopy layer.
+    this.spawn(CanopyEntity);
 
     const mapW = tilemap.widthPx;
     const mapH = tilemap.heightPx;
@@ -292,6 +365,7 @@ async function main() {
         down: ["KeyS", "ArrowDown"],
         left: ["KeyA", "ArrowLeft"],
         right: ["KeyD", "ArrowRight"],
+        toggleFilter: ["KeyF"],
       },
     }),
   );
