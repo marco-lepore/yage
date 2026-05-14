@@ -27,6 +27,7 @@ import type {
   BackgroundOptions,
   FancyButtonAnimations,
   LayoutProps,
+  LayoutValue,
   PixiViewType,
 } from "@yagejs/ui";
 
@@ -71,15 +72,17 @@ export interface TextProps extends LayoutProps {
 
 export interface ButtonProps extends LayoutProps {
   /**
-   * Fixed width in pixels, or `"auto"` to shrink-to-fit the button's content
-   * (text + any icon / nested elements). Omit to let Yoga measure.
+   * Fixed width — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
+   * `"auto"` to shrink-to-fit the button's content (text + any icon /
+   * nested elements). Omit to let Yoga measure.
    */
-  width?: number | "auto";
+  width?: LayoutValue;
   /**
-   * Fixed height in pixels, or `"auto"` to shrink-to-fit the button's content.
-   * Omit to let Yoga measure.
+   * Fixed height — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
+   * `"auto"` to shrink-to-fit the button's content. Omit to let Yoga
+   * measure.
    */
-  height?: number | "auto";
+  height?: LayoutValue;
   onClick?: () => void;
   bg?: BackgroundOptions;
   hoverBg?: BackgroundOptions;

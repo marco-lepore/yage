@@ -3,6 +3,7 @@ import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
 import type {
   BackgroundOptions,
+  LayoutValue,
   UIContainerElement,
   UIElement,
   UIButtonProps,
@@ -28,6 +29,15 @@ function mergeBg(def: ColorBackground, override?: BackgroundOptions): Background
   if (!override) return def;
   if (isTextureBackground(override)) return override;
   return { ...def, ...override };
+}
+
+/**
+ * A dimension counts as "explicit" if the caller pinned it to a concrete
+ * value (px, %, vh / vw). `undefined` and `"auto"` both mean "shrink-to-
+ * content", which is what default padding is for.
+ */
+function isExplicitSize(v: LayoutValue | undefined): boolean {
+  return v !== undefined && v !== "auto";
 }
 
 /**
@@ -68,8 +78,8 @@ export class UIButton implements UIContainerElement {
     this.yogaNode.setJustifyContent(Justify.Center);
     this.yogaNode.setAlignItems(Align.Center);
 
-    this._hasExplicitWidth = typeof p.width === "number";
-    this._hasExplicitHeight = typeof p.height === "number";
+    this._hasExplicitWidth = isExplicitSize(p.width);
+    this._hasExplicitHeight = isExplicitSize(p.height);
     this._reconcileDefaultPadding();
 
     this.onClick = p.onClick;
@@ -273,8 +283,8 @@ export class UIButton implements UIContainerElement {
       this.applyCurrentBg();
     }
 
-    if (p.width !== undefined) this._hasExplicitWidth = typeof p.width === "number";
-    if (p.height !== undefined) this._hasExplicitHeight = typeof p.height === "number";
+    if (p.width !== undefined) this._hasExplicitWidth = isExplicitSize(p.width);
+    if (p.height !== undefined) this._hasExplicitHeight = isExplicitSize(p.height);
 
     applyLayoutProps(this.yogaNode, p);
     this._reconcileDefaultPadding();

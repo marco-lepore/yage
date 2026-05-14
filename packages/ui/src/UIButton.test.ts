@@ -154,6 +154,7 @@ import Yoga, { Direction } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
 import { UIText } from "./UIText.js";
+import { PanelNode } from "./UIPanel.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -306,6 +307,28 @@ describe("UIButton", () => {
       btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
       expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
       expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
+
+    it("treats percent dimensions as explicit (no default padding)", () => {
+      // `width: "100%"` is concrete enough that the caller owns the box —
+      // surprise padding inside a 100%-stretch button would shrink the
+      // content area, which is the same footgun explicit pixels avoid.
+      const parent = new PanelNode({
+        direction: "column",
+        width: 200,
+        height: 60,
+      });
+      const btn = new UIButton({ children: "Hi", width: "100%", height: "100%" });
+      parent.addElement(btn);
+
+      parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.applyLayout();
+
+      expect(btn.yogaNode.getComputedWidth()).toBe(200);
+      expect(btn.yogaNode.getComputedHeight()).toBe(60);
+      // MockText 50×14 centered in 200×60 → (200-50)/2 = 75, (60-14)/2 = 23.
+      expect(btn.children[0]!.displayObject.position.x).toBe(75);
+      expect(btn.children[0]!.displayObject.position.y).toBe(23);
     });
 
     it("clears default padding when update() promotes to explicit dimensions", () => {
