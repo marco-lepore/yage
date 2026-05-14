@@ -676,6 +676,24 @@ describe("defineStore (compound)", () => {
     expect(b.day.get()).toBe(7);
   });
 
+  it("migrate return type enforces encoded form per leaf shape (compile-time)", () => {
+    defineStore("g.mig.types", (s) => ({ flag: s.value<boolean>({ default: false }) }), {
+      version: 2,
+      // @ts-expect-error — value leaf expects { value: boolean }, not bare boolean.
+      migrate: () => ({ flag: true }),
+    });
+    defineStore("g.mig.types2", (s) => ({ flags: s.set<string>() }), {
+      version: 2,
+      // @ts-expect-error — set leaf expects K[], not Set<K>.
+      migrate: () => ({ flags: new Set(["a"]) }),
+    });
+    // Sanity: the right shape compiles.
+    defineStore("g.mig.types3", (s) => ({ flag: s.value<boolean>({ default: false }) }), {
+      version: 2,
+      migrate: () => ({ flag: { value: true } }),
+    });
+  });
+
   it("throws StoreVersionTooNewError on future payloads", () => {
     const s = defineStore("g.future", (s) => ({ ctr: s.counter() }));
     expect(() =>

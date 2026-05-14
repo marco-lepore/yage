@@ -45,6 +45,7 @@ export type {
   CompoundLeaves,
   CompoundStore,
   CompoundDataFor,
+  EncodedForLeaf,
   LeafBuilder,
 } from "./persistent.js";
 

@@ -238,5 +238,6 @@ export type {
   CompoundLeaves,
   CompoundStore,
   CompoundDataFor,
+  EncodedForLeaf,
   LeafBuilder,
 } from "./state/index.js";

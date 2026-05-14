@@ -793,16 +793,51 @@ export type CompoundStore<L extends CompoundLeaves> = L &
 export interface DefineStoreOptions<L extends CompoundLeaves> {
   version?: number;
   /**
-   * Migrate previously-stored payloads to the current tree shape. Receives the
-   * raw decoded `data` (the flat `{ leafKey: leafData }` dict) and the version
-   * it was written at. Return the new-format dict to be dispatched to leaves.
+   * Migrate previously-stored payloads to the current tree shape. Receives
+   * the raw decoded `data` (whatever shape the previous version wrote) and
+   * the version it was written at. Return the new-format dict to be
+   * dispatched to each leaf's `decode`.
+   *
+   * **Important: return each leaf's _encoded_ form, not its public-API
+   * value.** The return type derives the right shape per leaf:
+   *
+   * | Leaf shape  | Encoded value                                       |
+   * | ----------- | --------------------------------------------------- |
+   * | `value<T>`  | `{ value: T }`                                      |
+   * | `counter`   | `number`                                            |
+   * | `record<T>` | `T`                                                 |
+   * | `map<K,V>`  | `Array<[K, V]>`                                     |
+   * | `set<K>`    | `K[]`                                               |
+   * | `list<T>`   | `{ items: Array<{ id: number; value: T }>; nextId }`|
+   *
+   * A common mistake is returning `{ myFlag: false }` for a `value<boolean>`
+   * leaf — write `{ myFlag: { value: false } }`. TypeScript catches this
+   * at the migrate call site.
    */
   migrate?: (old: unknown, fromVersion: number) => CompoundDataFor<L>;
 }
 
-/** Raw data dict for a compound — one entry per leaf. */
+/**
+ * Encoded form a single leaf consumes during `hydrate`. Used by
+ * `CompoundDataFor` to type the `migrate` return value.
+ */
+export type EncodedForLeaf<L> = L extends ReactiveValue<infer T>
+  ? { value: T }
+  : L extends ReactiveCounter
+    ? number
+    : L extends ReactiveMap<infer K, infer V>
+      ? Array<[K, V]>
+      : L extends ReactiveSet<infer K>
+        ? K[]
+        : L extends ReactiveList<infer T>
+          ? { items: Array<{ id: number; value: T }>; nextId: number }
+          : L extends ReactiveRecord<infer T>
+            ? T
+            : unknown;
+
+/** Raw data dict for a compound — one entry per leaf, in encoded form. */
 export type CompoundDataFor<L extends CompoundLeaves> = {
-  [K in keyof L]?: unknown;
+  [K in keyof L]?: EncodedForLeaf<L[K]>;
 };
 
 const RESERVED: ReadonlySet<string> = new Set([

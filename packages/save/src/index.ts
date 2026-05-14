@@ -46,6 +46,7 @@ export type {
   CompoundLeaves,
   CompoundStore,
   CompoundDataFor,
+  EncodedForLeaf,
   LeafBuilder,
   Codec,
 } from "@yagejs/core";
