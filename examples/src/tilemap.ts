@@ -1,21 +1,3 @@
-/**
- * Tilemap demo — also doubles as the manual-test fixture for the
- * "canopy drift when actors have filters" fix shipped by `@yagejs/tilemap`.
- *
- * Layout (top → bottom in draw order):
- *
- *   canopy   (Tiled "Details" — the upper foliage / decals)
- *   actors   (player + enemies; hosts the bloom filter when toggled on)
- *   map      (Tiled "background" + "foreground")
- *
- * Press `F` to toggle a bloom filter on the player. The canopy stays put
- * through the filter pass because `TilemapPlugin.install` patches
- * `@pixi/tilemap`'s `TilemapPipe.execute` to (a) read the currently-bound
- * uniform group instead of `globalUniforms._activeUniforms.at(-1)` (which
- * the filter system leaves stale) and (b) use `tilemap.groupTransform`
- * instead of `tilemap.worldTransform` (which would double-apply any
- * ancestor render-group transform). See `packages/tilemap/src/patch-tilemap-pipe.ts`.
- */
 import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -24,8 +6,6 @@ import {
   renderAsset,
   type LayerDef,
 } from "@yagejs/renderer";
-import type { EffectHandle } from "@yagejs/renderer";
-import { bloom } from "@yagejs/effects";
 import {
   TilemapPlugin,
   TilemapComponent,
@@ -73,7 +53,6 @@ class Player extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly walls: readonly RectColliderConfig[];
   private readonly camera: CameraEntity;
-  private bloomHandle: EffectHandle | null = null;
 
   constructor(walls: readonly RectColliderConfig[], camera: CameraEntity) {
     super();
@@ -82,18 +61,6 @@ class Player extends Component {
   }
 
   update(dt: number): void {
-    if (this.input.isJustPressed("toggleFilter")) {
-      const g = this.entity.get(GraphicsComponent);
-      if (this.bloomHandle) {
-        this.bloomHandle.remove();
-        this.bloomHandle = null;
-      } else {
-        this.bloomHandle = g.fx.addEffect(
-          bloom({ bloomScale: 2.5, blur: 12, quality: 6 }),
-        );
-      }
-    }
-
     const dir = this.input.getVector("left", "right", "up", "down");
     if (dir.x === 0 && dir.y === 0) {
       this.camera.position = this.entity.get(Transform).position;
@@ -239,39 +206,7 @@ class TilemapInspector implements DebugContributor {
 class TilemapEntity extends Entity {
   setup(): void {
     this.add(new Transform());
-    // Base map — everything that should sit BELOW the actors.
-    this.add(
-      new TilemapComponent({
-        source: DungeonMap,
-        layer: "map",
-        layers: ["background", "foreground"],
-      }),
-    );
-  }
-}
-
-/**
- * Canopy entity — the same Tiled map asset, but renders ONLY the "Details"
- * tile layer onto the `"canopy"` YAGE layer above the actors. Hosts a
- * separate TilemapComponent so the canopy gets its own `@pixi/tilemap`
- * pipe pass, which is what makes the `isRenderGroup` isolation observable
- * (canopy reads `uWorldTransformMatrix` at draw time, so without
- * isolation the bloom-filter pass on the actors layer leaks its transform
- * onto the canopy's read and drifts the tiles).
- */
-class CanopyEntity extends Entity {
-  setup(): void {
-    this.add(new Transform());
-    this.add(
-      new TilemapComponent({
-        source: DungeonMap,
-        layer: "canopy",
-        layers: ["Details"],
-        // Disambiguate the auto-key prefix from the base TilemapEntity
-        // above so identity-keyed entities don't collide.
-        keyPrefix: "canopy",
-      }),
-    );
+    this.add(new TilemapComponent({ source: DungeonMap, layer: "map" }));
   }
 }
 
@@ -284,14 +219,11 @@ class TilemapScene extends Scene {
   readonly layers: readonly LayerDef[] = [
     { name: "map", order: -10 },
     { name: "actors", order: 0 },
-    { name: "canopy", order: 10 },
   ];
 
   onEnter(): void {
     const mapEntity = this.spawn(TilemapEntity);
     const tilemap = mapEntity.get(TilemapComponent);
-    // Canopy paints "Details" above actors on the dedicated canopy layer.
-    this.spawn(CanopyEntity);
 
     const mapW = tilemap.widthPx;
     const mapH = tilemap.heightPx;
@@ -360,7 +292,6 @@ async function main() {
         down: ["KeyS", "ArrowDown"],
         left: ["KeyA", "ArrowLeft"],
         right: ["KeyD", "ArrowRight"],
-        toggleFilter: ["KeyF"],
       },
     }),
   );
