@@ -134,7 +134,7 @@ import {
   SceneHookRegistry,
   SceneHookRegistryKey,
 } from "@yagejs/core";
-import type { EngineEvents } from "@yagejs/core";
+import type { EngineEvents, SceneTransition } from "@yagejs/core";
 import { RendererPlugin } from "./RendererPlugin.js";
 import { RendererKey } from "./types.js";
 import { SceneRenderTreeProviderKey } from "./SceneRenderTree.js";
@@ -443,6 +443,47 @@ describe("RendererPlugin", () => {
 
       await scenes.pop();
       expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(true);
+    });
+
+    it("keeps the outgoing scene visible during a push-with-transition", async () => {
+      // Pins the event-ordering invariant `installSceneVisibilityListeners`
+      // depends on: `scene:pushed` must fire BEFORE `scene:transition:started`
+      // for any push-with-transition, so the start-of-transition `resetVisibility`
+      // can re-show the outgoing scene that the prior `applyTransparentBelow`
+      // hid. If `SceneManager` ever flipped that order, this test would catch
+      // the regression — the outgoing scene would cut to black mid-transition
+      // instead of dissolving.
+      const { plugin, scenes } = await setupWithSceneManager();
+      const below = makeScene("below");
+      const top = makeScene("top", false);
+      await scenes.push(below);
+
+      const belowTree = plugin.sceneRenderTrees.getTree(below)!;
+
+      let visibleAtBegin: boolean | null = null;
+      const transition: SceneTransition = {
+        duration: 100,
+        begin: () => {
+          visibleAtBegin = (
+            belowTree.root as unknown as { visible: boolean }
+          ).visible;
+        },
+        tick: () => {},
+      };
+
+      const pushPromise = scenes.push(top, { transition });
+      // Flush microtasks so SceneManager.push gets past _pushScene's awaits
+      // and runs _runTransition's synchronous emit + begin().
+      await new Promise<void>((r) => setTimeout(r, 0));
+
+      expect(visibleAtBegin).toBe(true);
+
+      scenes._tickTransition(100);
+      await pushPromise;
+
+      // After scene:transition:ended fires recompute, the chain settles
+      // with `below` hidden under the opaque `top`.
+      expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
     });
   });
 

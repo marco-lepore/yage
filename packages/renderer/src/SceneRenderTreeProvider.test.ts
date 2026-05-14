@@ -222,7 +222,7 @@ describe("SceneRenderTreeProviderImpl", () => {
   });
 
   describe("resetVisibility", () => {
-    it("re-shows every tracked scene tree", () => {
+    it("re-shows every in-stack scene tree", () => {
       const a = makeScene("a");
       const b = makeScene("b", false);
       provider.createForScene(a);
@@ -231,8 +231,25 @@ describe("SceneRenderTreeProviderImpl", () => {
       provider.applyTransparentBelow([a, b]);
       expect(visibleOf(provider, a)).toBe(false);
 
-      provider.resetVisibility();
+      provider.resetVisibility([a, b]);
       expect(visibleOf(provider, a)).toBe(true);
+    });
+
+    it("leaves detached scene trees (not in stack) untouched", () => {
+      const stacked = makeScene("stacked");
+      const detached = makeScene("detached");
+      provider.createForScene(stacked);
+      provider.createForScene(detached);
+
+      // Mirror the contract on `applyTransparentBelow`: a detached scene's
+      // root visibility is owned by whoever mounted it, so a transition
+      // start mustn't silently re-show a deliberately hidden detached root.
+      const detachedTree = provider.getTree(detached)!;
+      (detachedTree.root as unknown as InstanceType<typeof MockContainer>).visible = false;
+
+      provider.resetVisibility([stacked]);
+
+      expect((detachedTree.root as unknown as InstanceType<typeof MockContainer>).visible).toBe(false);
     });
   });
 });

@@ -206,15 +206,19 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   }
 
   /**
-   * Restore every tracked scene's root container to visible. Used while a
-   * scene transition runs so both the outgoing and incoming scenes can
-   * render even when the new topmost scene has `transparentBelow = false`;
-   * the visibility chain is reapplied when the transition ends.
+   * Restore in-stack scene roots to visible. Used while a scene transition
+   * runs so both the outgoing and incoming scenes can render even when the
+   * new topmost scene has `transparentBelow = false`; the visibility chain
+   * is reapplied when the transition ends. Detached scenes (mounted via
+   * `_mountDetached`, e.g. the debug overlay) are left alone — same
+   * contract as `applyTransparentBelow`, so callers can hide a detached
+   * root without it being silently un-hidden on every transition start.
    * @internal
    */
-  resetVisibility(): void {
-    for (const entry of this.entries.values()) {
-      entry.root.visible = true;
+  resetVisibility(stack: readonly Scene[]): void {
+    for (const scene of stack) {
+      const entry = this.entries.get(scene);
+      if (entry) entry.root.visible = true;
     }
   }
 

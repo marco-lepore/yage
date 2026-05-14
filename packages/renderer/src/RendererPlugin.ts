@@ -567,7 +567,18 @@ export class RendererPlugin implements Plugin {
     const bus = context.resolve(EventBusKey);
     const recompute = (): void =>
       this._provider.applyTransparentBelow(sceneManager.all);
-    const showAll = (): void => this._provider.resetVisibility();
+    const showAll = (): void =>
+      this._provider.resetVisibility(sceneManager.all);
+    // Event-ordering invariant relied on for push-with-transition:
+    // `SceneManager.push` awaits `_pushScene` (which emits `scene:pushed`)
+    // BEFORE `_runTransition` (which emits `scene:transition:started`).
+    // So `recompute` runs first and may hide the outgoing scene; then
+    // `showAll` re-shows it for the transition's duration; then
+    // `scene:transition:ended` runs `recompute` again to settle the chain.
+    // If that order ever flipped, a cross-fade-on-push would cut the
+    // outgoing scene to black instead of dissolving — see the
+    // "keeps the outgoing scene visible during a push-with-transition"
+    // test in RendererPlugin.test.ts which pins the contract.
     const unsubs = [
       bus.on("scene:pushed", recompute),
       bus.on("scene:popped", recompute),
