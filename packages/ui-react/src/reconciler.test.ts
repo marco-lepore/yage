@@ -231,6 +231,19 @@ describe("reconciler", () => {
     expect(btn.yogaNode.getChildCount()).toBe(1);
   });
 
+  it("Button with a numeric child auto-wraps it via String() into a Text", () => {
+    const root = createRoot(container as never);
+    root.render(createElement(Button, { onClick: () => {} }, 42));
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as {
+      children: readonly unknown[];
+      yogaNode: { getChildCount(): number };
+    };
+    expect(btn.children.length).toBe(1);
+    expect(btn.yogaNode.getChildCount()).toBe(1);
+  });
+
   it("Button with multiple ReactNode children renders them as flex children", () => {
     const root = createRoot(container as never);
     root.render(

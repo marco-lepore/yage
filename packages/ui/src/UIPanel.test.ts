@@ -438,6 +438,35 @@ describe("UIPanel", () => {
       expect(child.yogaNode.getComputedHeight()).toBe(30);
     });
 
+    it("clears stale edge offsets when transitioning from absolute to relative", () => {
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 200,
+      });
+      const child = parent.panel({
+        position: "absolute",
+        left: 100,
+        top: 50,
+        width: 40,
+        height: 20,
+      });
+
+      // First layout — child pinned via absolute positioning.
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+      expect(child.displayObject.position.x).toBe(100);
+      expect(child.displayObject.position.y).toBe(50);
+
+      // Demote to relative. The stale left/top must NOT linger — Yoga
+      // applies them as CSS-style flow nudges on a Relative node.
+      child.update({ position: "relative" });
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+      expect(child.displayObject.position.x).toBe(0);
+      expect(child.displayObject.position.y).toBe(0);
+    });
+
     it("absolute-positioned child is lifted out of flex flow", () => {
       const parent = new UIPanel({
         direction: "column",

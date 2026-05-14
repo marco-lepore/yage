@@ -307,6 +307,29 @@ describe("UIButton", () => {
       expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
       expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
     });
+
+    it("clears default padding when update() promotes to explicit dimensions", () => {
+      const btn = new UIButton({ children: "Hello" });
+      btn.update({ width: 200, height: 50 });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      btn.applyLayout();
+      expect(btn.yogaNode.getComputedWidth()).toBe(200);
+      expect(btn.yogaNode.getComputedHeight()).toBe(50);
+      // With padding cleared, the centered label resolves against the
+      // full outer box: MockText is 50×14, so x = (200-50)/2 = 75,
+      // y = (50-14)/2 = 18.
+      const children = btn.children;
+      expect(children[0]!.displayObject.position.x).toBe(75);
+      expect(children[0]!.displayObject.position.y).toBe(18);
+    });
+
+    it("re-applies default padding when update() demotes back to auto", () => {
+      const btn = new UIButton({ children: "Hi", width: 200, height: 50 });
+      btn.update({ width: "auto", height: "auto" });
+      btn.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      expect(btn.yogaNode.getComputedWidth()).toBe(50 + 12 * 2);
+      expect(btn.yogaNode.getComputedHeight()).toBe(14 + 6 * 2);
+    });
   });
 
   describe("container mode", () => {

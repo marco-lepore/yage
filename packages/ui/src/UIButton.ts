@@ -55,6 +55,9 @@ export class UIButton implements UIContainerElement {
   private _isPressed = false;
   private _computedWidth = 0;
   private _computedHeight = 0;
+  private _hasExplicitWidth = false;
+  private _hasExplicitHeight = false;
+  private _defaultPaddingApplied = false;
   private bgOpts: BackgroundOptions;
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
@@ -65,18 +68,9 @@ export class UIButton implements UIContainerElement {
     this.yogaNode.setJustifyContent(Justify.Center);
     this.yogaNode.setAlignItems(Align.Center);
 
-    // Default padding gives auto-sized buttons breathing room around their
-    // content. Skip when the caller has pinned both dimensions explicitly —
-    // they already know the size they want and surprise padding would
-    // clamp Yoga's outer box up to the padding minimum.
-    const hasExplicitWidth = typeof p.width === "number";
-    const hasExplicitHeight = typeof p.height === "number";
-    if (!(hasExplicitWidth && hasExplicitHeight)) {
-      this.yogaNode.setPadding(Edge.Left, DEFAULT_PAD_X);
-      this.yogaNode.setPadding(Edge.Right, DEFAULT_PAD_X);
-      this.yogaNode.setPadding(Edge.Top, DEFAULT_PAD_Y);
-      this.yogaNode.setPadding(Edge.Bottom, DEFAULT_PAD_Y);
-    }
+    this._hasExplicitWidth = typeof p.width === "number";
+    this._hasExplicitHeight = typeof p.height === "number";
+    this._reconcileDefaultPadding();
 
     this.onClick = p.onClick;
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
@@ -187,6 +181,25 @@ export class UIButton implements UIContainerElement {
     this.bgRenderer.resize(this._computedWidth, this._computedHeight);
   }
 
+  /**
+   * Default padding gives auto-sized buttons breathing room around their
+   * content. Skip when the caller has pinned both dimensions explicitly —
+   * surprise padding would shrink the content area inside an otherwise
+   * fixed-size button. Re-evaluated on `update()` so dynamic dimension
+   * promotions / demotions keep the right padding state.
+   */
+  private _reconcileDefaultPadding(): void {
+    const want = !(this._hasExplicitWidth && this._hasExplicitHeight);
+    if (want === this._defaultPaddingApplied) return;
+    const padX = want ? DEFAULT_PAD_X : 0;
+    const padY = want ? DEFAULT_PAD_Y : 0;
+    this.yogaNode.setPadding(Edge.Left, padX);
+    this.yogaNode.setPadding(Edge.Right, padX);
+    this.yogaNode.setPadding(Edge.Top, padY);
+    this.yogaNode.setPadding(Edge.Bottom, padY);
+    this._defaultPaddingApplied = want;
+  }
+
   private applyBg(opts: BackgroundOptions): void {
     this.bgRenderer.set(opts, this.container, 0);
     if (this._computedWidth > 0 || this._computedHeight > 0) {
@@ -260,7 +273,11 @@ export class UIButton implements UIContainerElement {
       this.applyCurrentBg();
     }
 
+    if (p.width !== undefined) this._hasExplicitWidth = typeof p.width === "number";
+    if (p.height !== undefined) this._hasExplicitHeight = typeof p.height === "number";
+
     applyLayoutProps(this.yogaNode, p);
+    this._reconcileDefaultPadding();
 
     if (p.visible !== undefined) {
       this.visible = p.visible;

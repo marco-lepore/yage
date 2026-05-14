@@ -165,17 +165,24 @@ export function UIText(props: TextProps): React.JSX.Element {
   return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
 }
 
-/** An interactive button. */
+/**
+ * An interactive button.
+ *
+ * Children are treated as follows:
+ * - `string` / `number` — auto-wrapped in a centered `<Text>` styled with
+ *   `textStyle`.
+ * - React elements — render as flex children of the button container.
+ * - `null` / `undefined` / `boolean` / arrays — handled by React's standard
+ *   ReactNode semantics. Bare primitives other than `string`/`number` are
+ *   dropped (this reconciler has no `createTextInstance`).
+ */
 export function Button(props: ButtonProps): React.JSX.Element {
   const { children, bg, hoverBg, pressBg, textStyle, ...rest } = props;
-  // Auto-wrap a string child in a <Text> so the underlying UIButton always
-  // operates in container mode and the JSX-string case still picks up
-  // textStyle. Element children pass through and become flex children of
-  // the button.
-  const content =
-    typeof children === "string"
-      ? <UIText {...(textStyle ? { style: textStyle } : {})}>{children}</UIText>
-      : children;
+  const isPrimitiveLabel =
+    typeof children === "string" || typeof children === "number";
+  const content = isPrimitiveLabel
+    ? <UIText {...(textStyle ? { style: textStyle } : {})}>{String(children)}</UIText>
+    : children;
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={UIButtonNode} {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
 }
