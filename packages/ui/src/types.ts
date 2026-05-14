@@ -126,7 +126,7 @@ export interface LayoutProps {
    *
    * A `position: "relative"` ancestor acts as the containing block for any
    * absolute-positioned descendants — useful for HUD overlays, modal
-   * backdrops, and badge markers. See `<Stack>` in `@yagejs/ui-react` for
+   * backdrops, and badge markers. See `<ZStack>` in `@yagejs/ui-react` for
    * an opinionated overlay primitive.
    */
   position?: "relative" | "absolute";

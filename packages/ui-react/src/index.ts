@@ -10,7 +10,7 @@ export { UIRootLayoutSystem } from "./UIRootLayoutSystem.js";
 
 // JSX components
 export {
-  Panel, Stack, UIText as Text, Button, Image, NineSlice, ProgressBar, Checkbox,
+  Panel, ZStack, UIText as Text, Button, Image, NineSlice, ProgressBar, Checkbox,
   PixiFancyButton, PixiCheckbox, PixiProgressBar, PixiSlider,
   PixiInput, PixiScrollBox, PixiSelect, PixiRadioGroup,
 } from "./components.js";

@@ -157,7 +157,7 @@ labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
 | Component | Description |
 |---|---|
 | `<Panel>` | Flexbox container with `direction`, `gap`, `padding`, `bg` |
-| `<Stack>` | Overlay panel — fills its parent, children stack via `position="absolute"` |
+| `<ZStack>` | Z-axis overlay panel — fills its parent, children layer via `position="absolute"` |
 | `<Text>` | Text label with `style` |
 | `<Button>` | Clickable button with `onClick`, `bg`, `hoverBg`, `pressBg` |
 | `<Image>` | Texture display with `texture`, `tint`, `alpha` |
@@ -179,14 +179,17 @@ Every component accepts the shared layout props `position`, `left`, `top`,
 </Panel>
 ```
 
-### `<Stack>` — opinionated overlay primitive
+### `<ZStack>` — Z-axis overlay primitive
 
-`<Stack>` is a `<Panel>` that defaults to `width: "100%"`, `height: "100%"`,
+`<ZStack>` is a `<Panel>` that defaults to `width: "100%"`, `height: "100%"`,
 and `position: "relative"`. Drop absolute-positioned children inside to
-stack them at (0, 0) — modal backdrops, HUD layers, and badge markers:
+layer them at (0, 0) on the Z axis — modal backdrops, HUD layers, and
+badge markers. The name follows the SwiftUI convention (`VStack` /
+`HStack` for flow layout, `ZStack` for depth); for column / row stacking
+in YAGE use `<Panel direction="column" | "row">`.
 
 ```tsx
-<Stack>
+<ZStack>
   {/* Dimmed backdrop fills the stack */}
   <Panel position="absolute" left={0} top={0} width="100%" height="100%"
          bg={{ color: 0x000000, alpha: 0.6 }} />
@@ -202,7 +205,7 @@ stack them at (0, 0) — modal backdrops, HUD layers, and badge markers:
       </Panel>
     </Panel>
   </Panel>
-</Stack>
+</ZStack>
 ```
 
 ### PixiUI Components

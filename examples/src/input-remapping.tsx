@@ -22,7 +22,7 @@ import {
   UIReactPlugin,
   UIRoot,
   Panel,
-  Stack,
+  ZStack,
   Text,
   Button,
   Anchor,
@@ -321,10 +321,11 @@ function ConflictModal() {
   const conflictLabel =
     ACTION_LABELS[conflict.conflictAction] ?? conflict.conflictAction;
 
-  // <Stack> stacks absolute children at (0, 0). Sized to the viewport so
-  // the backdrop covers the whole screen — the canonical modal pattern.
+  // <ZStack> layers absolute children on the Z axis at (0, 0). Sized to
+  // the viewport so the backdrop covers the whole screen — the canonical
+  // modal pattern.
   return (
-    <Stack width="100vw" height="100vh">
+    <ZStack width="100vw" height="100vh">
       <Panel
         position="absolute"
         left={0}
@@ -386,7 +387,7 @@ function ConflictModal() {
           </Panel>
         </Panel>
       </Panel>
-    </Stack>
+    </ZStack>
   );
 }
 

@@ -264,6 +264,27 @@ describe("reconciler", () => {
     expect(btn.yogaNode.getChildCount()).toBe(2);
   });
 
+  it("Button forwards `truncate` into the auto-wrapped Text", () => {
+    // Composes with @yagejs/ui's UIText truncation: a fixed-width Button
+    // with a long string label can ellipsize instead of wrapping.
+    const root = createRoot(container as never);
+    root.render(
+      createElement(
+        Button,
+        { onClick: () => {}, truncate: "ellipsis", width: 80 },
+        "A very long label that doesn't fit",
+      ),
+    );
+
+    const instances = getRootInstances(container as never);
+    const btn = instances![0] as unknown as { children: readonly unknown[] };
+    expect(btn.children.length).toBe(1);
+    // Peek through the JSX wrapper into the UIText that the Button auto-
+    // created and confirm the truncate mode landed on the underlying node.
+    const label = btn.children[0] as { _truncate: unknown };
+    expect(label._truncate).toBe("ellipsis");
+  });
+
   it("commitUpdate calls instance.update()", () => {
     const root = createRoot(container as never);
     root.render(

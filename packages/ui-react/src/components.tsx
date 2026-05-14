@@ -89,6 +89,14 @@ export interface ButtonProps extends LayoutProps {
   pressBg?: BackgroundOptions;
   /** Style applied to the auto-wrapped text node when `children` is a string. */
   textStyle?: Partial<TextStyle>;
+  /**
+   * Overflow behavior for the auto-wrapped label when `children` is a
+   * string / number. Forwarded straight to the inner `<Text>` so a
+   * fixed-width button can ellipsize long labels instead of wrapping or
+   * overflowing. No effect when `children` is a React element (compose
+   * with a `<Text truncate="...">` directly).
+   */
+  truncate?: "clip" | "ellipsis";
   disabled?: boolean;
   /**
    * String for the common labeled-button case — auto-wrapped in a centered
@@ -144,13 +152,15 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
 }
 
 /**
- * Overlay primitive: a `Panel` that defaults to filling its parent and acts
- * as the containing block for absolute-positioned children. Drop children
- * inside with `position="absolute"` (plus `left` / `top` / `right` /
- * `bottom`) to stack them on top of each other — modal backdrops, HUD
- * layers, badge markers, etc. Defaults can be overridden via props.
+ * Z-axis stacking primitive: a `Panel` that defaults to filling its parent
+ * and acts as the containing block for absolute-positioned children. Drop
+ * children inside with `position="absolute"` (plus `left` / `top` / `right`
+ * / `bottom`) to layer them on top of each other on the Z axis — modal
+ * backdrops, HUD layers, badge markers, etc. The name mirrors SwiftUI's
+ * `ZStack` (contrast with `VStack` / `HStack`, which are the flex column /
+ * row directions on `<Panel>`). Defaults can be overridden via props.
  */
-export function Stack(props: PropsWithChildren<PanelProps>): React.JSX.Element {
+export function ZStack(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   return (
     <Panel
       width="100%"
@@ -180,11 +190,16 @@ export function UIText(props: TextProps): React.JSX.Element {
  *   dropped (this reconciler has no `createTextInstance`).
  */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, bg, hoverBg, pressBg, textStyle, ...rest } = props;
+  const { children, bg, hoverBg, pressBg, textStyle, truncate, ...rest } = props;
   const isPrimitiveLabel =
     typeof children === "string" || typeof children === "number";
   const content = isPrimitiveLabel
-    ? <UIText {...(textStyle ? { style: textStyle } : {})}>{String(children)}</UIText>
+    ? <UIText
+        {...(textStyle ? { style: textStyle } : {})}
+        {...(truncate ? { truncate } : {})}
+      >
+        {String(children)}
+      </UIText>
     : children;
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={UIButtonNode} {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
