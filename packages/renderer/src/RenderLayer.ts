@@ -1,7 +1,7 @@
 import { Container } from "pixi.js";
 import type { EventMode } from "pixi.js";
 import type { ScopedProcessQueue } from "@yagejs/core";
-import type { LayerDef, LayerSpace } from "./LayerDef.js";
+import type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
@@ -17,8 +17,6 @@ export type EffectQueueFactory = () => ScopedProcessQueue;
 export interface CreateLayerOptions {
   /** Per-layer override for PixiJS event mode. Falls back to the manager default. */
   eventMode?: EventMode;
-  /** Whether the container should sort children by their own zIndex. */
-  sortableChildren?: boolean;
   /**
    * Coordinate space. `"world"` (default) layers are picked up by cameras
    * spawned without explicit `bindings`; `"screen"` layers are skipped so
@@ -32,6 +30,13 @@ export interface CreateLayerOptions {
    * uniforms from sibling layers that read `globalUniforms` directly.
    */
   isRenderGroup?: boolean;
+  /**
+   * Depth-key function. See `LayerDef.sort` — when set, `DisplaySystem`
+   * writes `child.zIndex = sort(child)` on every child each frame, and
+   * flips `container.sortableChildren = true` so Pixi orders the layer
+   * by zIndex at render time. Default: undefined (insertion order).
+   */
+  sort?: LayerSortFn;
 }
 
 /** A named rendering layer — a pixi container at a given draw order. */
@@ -41,6 +46,12 @@ export class RenderLayer {
   readonly container: Container;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
+  /**
+   * Per-frame sort comparator, or `undefined` for insertion-order rendering.
+   * Set via `LayerDef.sort` / `CreateLayerOptions.sort`. `DisplaySystem`
+   * re-sorts `container.children` with this each Render phase.
+   */
+  readonly sort: LayerSortFn | undefined;
   /**
    * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
    * entity rendered through this layer (one full-screen render pass per
@@ -58,11 +69,13 @@ export class RenderLayer {
     container: Container,
     space: LayerSpace = "world",
     queueFactory?: EffectQueueFactory,
+    sort?: LayerSortFn,
   ) {
     this.name = name;
     this.order = order;
     this.container = container;
     this.space = space;
+    this.sort = sort;
     this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
   }
 
@@ -148,8 +161,14 @@ export class RenderLayerManager {
 
     const eventMode = opts?.eventMode ?? this._defaultEventMode;
     if (eventMode) container.eventMode = eventMode;
-    if (opts?.sortableChildren) container.sortableChildren = true;
     if (opts?.isRenderGroup) container.isRenderGroup = true;
+    // `sort` is a depth-key fn — DisplaySystem writes the result to each
+    // child's zIndex every frame, and Pixi's render pipeline orders the
+    // layer by zIndex when `sortableChildren` is true. Set the flag once
+    // here so the relationship is explicit; Pixi's `zIndex` setter marks
+    // `sortDirty` on the parent automatically, so we don't need to
+    // re-sort manually.
+    if (opts?.sort) container.sortableChildren = true;
 
     const layer = new RenderLayer(
       name,
@@ -157,6 +176,7 @@ export class RenderLayerManager {
       container,
       opts?.space ?? "world",
       this._queueFactory,
+      opts?.sort,
     );
     this.layers.set(name, layer);
 
@@ -175,13 +195,11 @@ export class RenderLayerManager {
    */
   createFromDef(def: LayerDef, opts?: CreateLayerOptions): RenderLayer {
     const merged: CreateLayerOptions = { ...opts };
-    if (def.sortableChildren !== undefined) {
-      merged.sortableChildren = def.sortableChildren;
-    }
     if (def.space !== undefined) merged.space = def.space;
     if (def.isRenderGroup !== undefined) {
       merged.isRenderGroup = def.isRenderGroup;
     }
+    if (def.sort !== undefined) merged.sort = def.sort;
     return this.create(def.name, def.order, merged);
   }
 

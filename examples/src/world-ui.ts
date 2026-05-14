@@ -11,6 +11,7 @@ import {
   GraphicsComponent,
   RendererPlugin,
   ScreenFollow,
+  ySort,
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
@@ -285,7 +286,9 @@ class DemoScene extends Scene {
 
   readonly layers: readonly LayerDef[] = [
     { name: "bg", order: -10 },
-    { name: "world", order: 0 },
+    // Top-down view: ySort means a Mage standing south of the Grunt
+    // correctly paints over them when their sprites overlap.
+    { name: "world", order: 0, sort: ySort },
     // The "ui" layer is auto-provisioned screen-space by @yagejs/ui on
     // first use — our nameplate + health bar entities land there.
   ];

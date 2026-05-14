@@ -30,6 +30,7 @@ import {
   RendererPlugin,
   GraphicsComponent,
   GraphicsContext,
+  ySort,
   type LayerDef,
 } from "@yagejs/renderer";
 import {
@@ -453,7 +454,10 @@ class SaveDemoScene extends Scene {
   readonly name = "save-demo";
   readonly layers: readonly LayerDef[] = [
     { name: "bg", order: -10 },
-    { name: "entities", order: 0 },
+    // Top-down depth: player, coins, and hazards live at varying y;
+    // ySort makes the player correctly draw over a coin they're
+    // physically in front of.
+    { name: "entities", order: 0, sort: ySort },
   ];
   private gs!: GameState;
 

@@ -68,7 +68,7 @@ export type {
 
 // Camera — entity-based system
 export { CameraEntity } from "./CameraEntity.js";
-export type { CameraEntityParams } from "./CameraEntity.js";
+export type { CameraEntityParams, CameraFitToRect } from "./CameraEntity.js";
 export { CameraComponent } from "./CameraComponent.js";
 export type {
   CameraBounds,
@@ -99,7 +99,8 @@ export { RenderLayer, RenderLayerManager } from "./RenderLayer.js";
 export type { CreateLayerOptions } from "./RenderLayer.js";
 
 // Per-scene render tree
-export type { LayerDef, LayerSpace } from "./LayerDef.js";
+export type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
+export { ySort, ySortBy } from "./ySort.js";
 export type {
   EnsureLayerOptions,
   SceneRenderTree,

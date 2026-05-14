@@ -1,5 +1,26 @@
+import type { Container } from "pixi.js";
+
 /** Coordinate space a layer lives in. See `LayerDef.space`. */
 export type LayerSpace = "world" | "screen";
+
+/**
+ * Depth-key function applied to a layer's children before each render.
+ * Receives a Pixi `Container` and returns the **paint order key** — lower
+ * values render first (behind), higher values render on top. Identical
+ * semantics to writing `container.zIndex = key` by hand, but applied to
+ * every child of the layer each frame.
+ *
+ * Default behaviour (no `sort`) is **insertion order** — entities render
+ * in the order their visual containers were added. Use `ySort` for the
+ * classic top-down 2D depth rule, or compose your own depth-key for
+ * isometric / layered-depth setups.
+ *
+ * The key is written to `container.zIndex` by `DisplaySystem` after
+ * transform sync, then Pixi's own render-time `sortChildren()` orders
+ * the layer by zIndex — so the resulting paint order is exactly what
+ * Pixi shows for any manually-zIndexed scene, no separate sort path.
+ */
+export type LayerSortFn = (c: Container) => number;
 
 /**
  * Declarative layer definition attached to a Scene subclass via
@@ -40,8 +61,25 @@ export interface LayerDef {
    *   can still opt in explicitly by naming the layer in their `bindings`.
    */
   space?: LayerSpace;
-  /** Whether children should self-sort by their `zIndex`. Default: false. */
-  sortableChildren?: boolean;
+  /**
+   * Depth-key function applied to the layer's children. When set,
+   * `DisplaySystem` writes `child.zIndex = sort(child)` for every child
+   * each frame, and flips `container.sortableChildren = true` so Pixi's
+   * render pipeline orders the layer by zIndex. Default: unset (insertion
+   * order).
+   *
+   * Use `ySort` for the classic top-down depth rule, or
+   * `ySortBy(getOffset)` to anchor each sprite's sort key at a per-entity
+   * Y offset (Godot's `y_sort_origin` pattern — matches a sprite's
+   * apparent "footprint" instead of its top-left).
+   *
+   * Game code that manually writes `child.zIndex` on individual sprites
+   * doesn't need `sort` — Pixi already sorts them once `sortableChildren`
+   * is on. `sort` is for the common case where the key is a function of
+   * the sprite's current state (position, depth offset, etc.) and needs
+   * to be recomputed each frame.
+   */
+  sort?: LayerSortFn;
   /**
    * Promote the layer's container to a Pixi v8 render group boundary so its
    * children render as a separate pass with their own uniform scope. Default:

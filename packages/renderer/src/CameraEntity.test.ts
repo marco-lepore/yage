@@ -181,4 +181,47 @@ describe("CameraEntity", () => {
 
     expect(shake.offset.equals(Vec2.ZERO)).toBe(true);
   });
+
+  describe("fitTo", () => {
+    it("centres the camera on the rect's midpoint", () => {
+      // Default test viewport from createRendererTestContext: 800 × 600.
+      const { scene } = createRendererTestContext();
+      const cam = scene.spawn(CameraEntity, {
+        fitTo: { x: 100, y: 200, width: 400, height: 300 },
+      });
+
+      expect(cam.position.x).toBe(300); // 100 + 400/2
+      expect(cam.position.y).toBe(350); // 200 + 300/2
+    });
+
+    it("zooms to fit the rect inside the viewport (contain semantics)", () => {
+      const { scene } = createRendererTestContext();
+      // 800/400 = 2, 600/300 = 2 — both axes match, zoom = 2.
+      const camMatched = scene.spawn(CameraEntity, {
+        fitTo: { x: 0, y: 0, width: 400, height: 300 },
+      });
+      expect(camMatched.zoom).toBe(2);
+
+      // 800/200 = 4, 600/300 = 2 — height is the limiting axis, zoom = 2.
+      const camWide = scene.spawn(CameraEntity, {
+        fitTo: { x: 0, y: 0, width: 200, height: 300 },
+      });
+      expect(camWide.zoom).toBe(2);
+    });
+
+    it("overrides explicit `position` and `zoom`", () => {
+      const { scene } = createRendererTestContext();
+      const cam = scene.spawn(CameraEntity, {
+        position: new Vec2(10, 10),
+        zoom: 5,
+        fitTo: { x: 0, y: 0, width: 800, height: 600 },
+      });
+
+      // fitTo on a 800×600 rect against an 800×600 viewport: position
+      // at centre, zoom at 1.
+      expect(cam.position.x).toBe(400);
+      expect(cam.position.y).toBe(300);
+      expect(cam.zoom).toBe(1);
+    });
+  });
 });

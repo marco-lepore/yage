@@ -57,4 +57,19 @@ export interface RendererConfig {
    * host. See {@link RendererFitOptions}.
    */
   fit?: RendererFitOptions;
+  /**
+   * One-flag preset for pixel-art games. When `true`, the plugin:
+   *
+   * - Sets `TextureStyle.defaultOptions.scaleMode = "nearest"` so freshly
+   *   loaded textures sample without bilinear blur.
+   * - Enables `roundPixels` on the Pixi `Application` so subpixel transforms
+   *   don't smear sprite edges.
+   * - Applies `image-rendering: pixelated` (with `-webkit-optimize-contrast`
+   *   for Safari) to the canvas element so the browser scales the backing
+   *   store with nearest-neighbor, not bicubic.
+   *
+   * Composes with `pixi`: explicit `pixi.roundPixels: false` wins over the
+   * preset. Default: `false`.
+   */
+  pixelArtPreset?: boolean;
 }

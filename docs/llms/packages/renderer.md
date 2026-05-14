@@ -17,7 +17,26 @@ engine.use(new RendererPlugin({
   virtualHeight: 240,
   resolution: window.devicePixelRatio,
   fit: { mode: "cover" }, // override default letterbox (see below)
+  pixelArtPreset: true,   // crisp, non-blurred pixel art (see below)
 }));
+```
+
+### `pixelArtPreset`
+
+One flag for pixel-art games. When `true`, the plugin:
+
+- Sets `TextureStyle.defaultOptions.scaleMode = "nearest"` before `Application.init` so textures loaded by `Assets` sample without bilinear blur.
+- Passes `roundPixels: true` into the Pixi `Application` so subpixel transforms don't smear sprite edges.
+- Writes `image-rendering: -webkit-optimize-contrast; image-rendering: pixelated;` onto the canvas `style.cssText` so the browser scales the backing store with nearest-neighbor (the Safari fallback is the first declaration; modern browsers pick the second from the cascade).
+
+Default: `false`. Composes with `pixi`: explicit `pixi: { roundPixels: false }` wins over the preset, so games can opt parts back out. Per-texture overrides (`source.scaleMode = "linear"` on a specific texture) keep working — the preset only sets the *default*.
+
+```ts
+new RendererPlugin({
+  width: 320, height: 240,
+  container: host,
+  pixelArtPreset: true,
+});
 ```
 
 Registers `RendererKey`, `SceneRenderTreeProviderKey`, and the cross-package `RendererAdapterKey` (from `@yagejs/core`, consumed by `@yagejs/input`) in `EngineContext`, plus a `beforeEnter` scene hook that materializes a per-scene `SceneRenderTree` (accessible via the scene-scoped `SceneRenderTreeKey`).
@@ -348,7 +367,7 @@ const screen = cam.worldToScreen(entity.x, entity.y);
 
 Camera position `(0, 0)` places the **world origin at the center of the viewport**, not the top-left. Entities rendered at `(0, 0)` appear centered. This is the standard convention for camera-driven 2D games (scrolling shooters, platformers).
 
-For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner:
+For top-left-origin games (tilemap editors, classic arcade layouts), offset the camera by half the viewport so that world `(0, 0)` aligns with the screen's top-left corner — or use `fitTo` (below) to frame the whole level in one call.
 
 ```ts
 class GameScene extends Scene {
@@ -360,6 +379,20 @@ class GameScene extends Scene {
   }
 }
 ```
+
+### `fitTo` — frame a world rectangle
+
+`fitTo: { x, y, width, height }` is the fixed-camera primitive: it positions the camera at the rect's centre AND sets `zoom` so the entire rect fits inside the viewport (`contain` semantics, `zoom = min(viewportW / rect.w, viewportH / rect.h)`). Overrides explicit `position` and `zoom` when supplied. Applied once at setup against the renderer's current `virtualSize`.
+
+Use for puzzle boards, arcade-style single-screen layouts, dialog-scene insets — anywhere the framed area is known up front. Pair with no `follow` and the camera never moves; pair with `follow` and the camera starts framing the rect, then tracks the target from there.
+
+```ts
+this.spawn(CameraEntity, {
+  fitTo: { x: 0, y: 0, width: 800, height: 600 },
+});
+```
+
+For runtime re-framing, set `position` and `zoomTo()` directly on the camera — `fitTo` is a one-shot, not a responsive binding.
 
 ## Render Layers
 
@@ -408,6 +441,31 @@ zooms with the camera.
 To override: pass explicit `bindings` on the camera. Explicit bindings
 ignore `space` and target exactly the layers named, which is how you
 bind a screen-space layer to a second camera or build parallax.
+
+### `LayerDef.sort` — per-frame paint order
+
+Default paint order within a layer is **insertion order** — sprites render in the order their containers were added. Set `LayerDef.sort` to a **depth-key function** `(container) => number` and `DisplaySystem` writes the result to `container.zIndex` for every child each frame; Pixi's render pipeline then orders the layer by zIndex. The hook also flips `container.sortableChildren = true` so Pixi knows to honour the zIndex.
+
+Two built-in helpers cover the common cases:
+
+| Helper | Returns |
+|---|---|
+| `ySort` | `c.position.y` — classic top-down depth, characters with higher y paint on top. |
+| `ySortBy(offsetOf)` | `c.position.y + offsetOf(c)` — each container can advertise a per-sprite Y offset (Godot's `y_sort_origin`) so the depth key tracks the visual "footprint" instead of the top-left. `offsetOf` returns `undefined` to fall through to plain `position.y`. |
+
+```ts
+import { ySort, ySortBy, type LayerDef } from "@yagejs/renderer";
+
+readonly layers: readonly LayerDef[] = [
+  { name: "ground", order: -10 },
+  { name: "characters", order: 0, sort: ySort },
+];
+
+// Per-sprite offset variant — read off a custom field on the display object:
+const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
+```
+
+Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 

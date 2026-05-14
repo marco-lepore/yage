@@ -118,10 +118,19 @@ describe("RenderLayerManager", () => {
     const layer = manager.createFromDef({
       name: "hud",
       order: 100,
-      sortableChildren: true,
     });
     expect(layer.name).toBe("hud");
+    expect(layer.order).toBe(100);
+  });
+
+  it("createFromDef with `sort` flips sortableChildren on the container", () => {
+    const layer = manager.createFromDef({
+      name: "characters",
+      order: 0,
+      sort: (c) => c.position.y,
+    });
     expect(layer.container.sortableChildren).toBe(true);
+    expect(layer.sort).toBeDefined();
   });
 
   it("layers propagate order to container zIndex", () => {
