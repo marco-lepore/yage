@@ -56,7 +56,7 @@ class CheckpointOnRest extends Component {
   setup() {
     this.entity.on(Rested, async () => {
       const save = this.use(SaveServiceKey);
-      await save.saveSlot(saves, "auto");
+      await save.saveSlot(game, "auto");
     });
   }
 }

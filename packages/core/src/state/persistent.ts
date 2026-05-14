@@ -242,7 +242,15 @@ function makeMapLeaf<K, V>(opts: MapLeafOptions<K, V>): Leaf<ReactiveMap<K, V>> 
   const codec = mapCodec<K, V>();
   const atom = createAtom<Map<K, V>>(defaults());
 
-  const replace = (next: Map<K, V>): void => atom.set(next);
+  // Memoise the entries snapshot so repeated reads (e.g. React renders) return
+  // the same array reference between mutations. Without this, every `useStore`
+  // render would see a fresh array and force a re-render even when nothing
+  // changed.
+  let entriesSnapshot: Array<[K, V]> | null = null;
+  const replace = (next: Map<K, V>): void => {
+    entriesSnapshot = null;
+    atom.set(next);
+  };
 
   const api: ReactiveMap<K, V> = {
     get: (k) => atom.get().get(k),
@@ -261,7 +269,12 @@ function makeMapLeaf<K, V>(opts: MapLeafOptions<K, V>): Leaf<ReactiveMap<K, V>> 
       replace(next);
     },
     has: (k) => atom.get().has(k),
-    entries: () => Array.from(atom.get().entries()),
+    entries: () => {
+      if (entriesSnapshot === null) {
+        entriesSnapshot = Array.from(atom.get().entries());
+      }
+      return entriesSnapshot;
+    },
     size: () => atom.get().size,
     clear: () => {
       if (atom.get().size === 0) return;
@@ -290,7 +303,12 @@ function makeSetLeaf<K>(opts: SetLeafOptions<K>): Leaf<ReactiveSet<K>> {
   const codec = setCodec<K>();
   const atom = createAtom<Set<K>>(defaults());
 
-  const replace = (next: Set<K>): void => atom.set(next);
+  // Memoise the values snapshot — see makeMapLeaf for the rationale.
+  let valuesSnapshot: K[] | null = null;
+  const replace = (next: Set<K>): void => {
+    valuesSnapshot = null;
+    atom.set(next);
+  };
 
   const api: ReactiveSet<K> = {
     add: (k) => {
@@ -308,7 +326,12 @@ function makeSetLeaf<K>(opts: SetLeafOptions<K>): Leaf<ReactiveSet<K>> {
       replace(next);
     },
     has: (k) => atom.get().has(k),
-    values: () => Array.from(atom.get().values()),
+    values: () => {
+      if (valuesSnapshot === null) {
+        valuesSnapshot = Array.from(atom.get().values());
+      }
+      return valuesSnapshot;
+    },
     size: () => atom.get().size,
     clear: () => {
       if (atom.get().size === 0) return;
@@ -351,7 +374,11 @@ function makeListLeaf<T>(opts: ListLeafOptions<T>): Leaf<ReactiveList<T>> {
   let state: ListSnapshot<T> = buildDefault();
   const listeners = new Set<() => void>();
 
+  // Memoise the values snapshot — see makeMapLeaf for the rationale.
+  let listSnapshot: T[] | null = null;
+
   const notify = (): void => {
+    listSnapshot = null;
     for (const fn of listeners) fn();
   };
 
@@ -392,7 +419,12 @@ function makeListLeaf<T>(opts: ListLeafOptions<T>): Leaf<ReactiveList<T>> {
       notify();
       return true;
     },
-    list: () => state.items.map((entry) => entry.value),
+    list: () => {
+      if (listSnapshot === null) {
+        listSnapshot = state.items.map((entry) => entry.value);
+      }
+      return listSnapshot;
+    },
     size: () => state.items.length,
     clear: () => {
       if (state.items.length === 0) return;
@@ -854,14 +886,31 @@ export function defineStore<L extends CompoundLeaves>(
   const leavesDict = build(builder);
 
   // Bind each public api to its key by matching identity against `pending`.
-  // Every leaf returned from a builder method must surface in the dict;
-  // otherwise it's a programming error (constructed but not assigned).
+  // Three invariants are enforced here, all of which would otherwise be silent
+  // footguns: reserved-name collisions, dict values that weren't produced by
+  // this builder (e.g. a stray Reactive from another scope), and the same
+  // leaf assigned to more than one key (serialize/hydrate would only see the
+  // last-bound key, leaving the other property's data orphaned).
+  const pendingApis = new Set<unknown>(pending.map((leaf) => leaf.api));
   const keyByApi = new Map<unknown, string>();
   for (const [key, api] of Object.entries(leavesDict)) {
     if (RESERVED.has(key)) {
       throw new Error(
         `defineStore("${id}"): leaf key "${key}" collides with a reserved member ` +
           `(${[...RESERVED].join(", ")}).`,
+      );
+    }
+    if (!pendingApis.has(api)) {
+      throw new Error(
+        `defineStore("${id}"): "${key}" was not created by this builder. ` +
+          `Every leaf must come from the s.* methods passed to the builder.`,
+      );
+    }
+    const prev = keyByApi.get(api);
+    if (prev !== undefined) {
+      throw new Error(
+        `defineStore("${id}"): the same leaf is assigned to both ` +
+          `"${prev}" and "${key}". Each leaf must appear under exactly one key.`,
       );
     }
     keyByApi.set(api, key);
@@ -912,10 +961,26 @@ export function defineStore<L extends CompoundLeaves>(
         );
       }
       const dict = data as Record<string, unknown>;
-      for (const { key, leaf } of internalLeaves) {
-        if (Object.prototype.hasOwnProperty.call(dict, key)) {
-          leaf[LEAF].decode(dict[key]);
+      // Best-effort atomic hydrate. Snapshot every leaf upfront, then attempt
+      // each decode; on the first failure, roll every leaf back to its
+      // pre-hydrate state. Subscribers still see the intermediate writes —
+      // making decode purely transactional would require a separate "stage
+      // then commit" hook in the leaf protocol — but the final state is
+      // consistent: either every leaf is at the new payload, or every leaf is
+      // back at its prior value.
+      const snapshots = internalLeaves.map(({ leaf }) => leaf[LEAF].encode());
+      try {
+        for (const { key, leaf } of internalLeaves) {
+          if (Object.prototype.hasOwnProperty.call(dict, key)) {
+            leaf[LEAF].decode(dict[key]);
+          }
         }
+      } catch (err) {
+        for (let i = 0; i < internalLeaves.length; i += 1) {
+          const entry = internalLeaves[i];
+          if (entry !== undefined) entry.leaf[LEAF].decode(snapshots[i]);
+        }
+        throw err;
       }
     },
     reset: () => {

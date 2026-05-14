@@ -255,6 +255,10 @@ describe("useStore overloads (per Reactive* shape)", () => {
     }
     act(() => root.render(createElement(Comp)));
     expect(result).toEqual(["a", "b"]);
+    act(() => {
+      l.add("c");
+    });
+    expect(result).toEqual(["a", "b", "c"]);
   });
 
   it("selector escape hatch reads one map key", () => {

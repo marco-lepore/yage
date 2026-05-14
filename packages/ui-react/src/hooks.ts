@@ -105,35 +105,34 @@ export function useStore(
     b: unknown,
   ) => boolean,
 ): unknown {
-  const reader = select ?? defaultSnapshotReader(source);
+  // Memoise the snapshot reader. Without this, `defaultSnapshotReader` runs
+  // unconditionally on every render and yields a new closure, which would
+  // give `getSnapshot` a fresh identity each render and force
+  // `useSyncExternalStore` to call it again to verify consistency.
+  const reader = useMemo(
+    () => select ?? defaultSnapshotReader(source),
+    [source, select],
+  );
 
-  // Cache invalidated by the source's subscribe callback. Several readers
-  // (map.entries(), set.values(), list(), arbitrary selectors) produce a
-  // fresh value object on each call; without caching, getSnapshot would
-  // never be referentially stable and useSyncExternalStore would loop.
-  // shallowEqual still preserves the previous reference across equivalent
-  // selector outputs so React's bail-out works on partial reads.
-  const cache = useRef<{ value: unknown; valid: boolean } | null>(null);
+  // Always recompute the snapshot before comparing — this keeps results
+  // current even when the selector changes between renders. The leaves
+  // memoise their snapshots internally (map.entries / set.values / list)
+  // and `Atom`-backed shapes return stable references between mutations,
+  // so `Object.is` / `shallowEqual` correctly bails out when nothing
+  // changed, and React's bail-out keeps the previous render reference.
+  const cache = useRef<{ value: unknown } | null>(null);
 
   const getSnapshot = useCallback((): unknown => {
-    if (cache.current && cache.current.valid) {
-      return cache.current.value;
-    }
     const next = reader(source);
     if (cache.current && isEqual(cache.current.value, next)) {
-      cache.current.valid = true;
       return cache.current.value;
     }
-    cache.current = { value: next, valid: true };
+    cache.current = { value: next };
     return next;
   }, [source, reader, isEqual]);
 
   const subscribe = useCallback(
-    (onChange: () => void) =>
-      source.subscribe(() => {
-        if (cache.current) cache.current.valid = false;
-        onChange();
-      }),
+    (onChange: () => void) => source.subscribe(onChange),
     [source],
   );
 

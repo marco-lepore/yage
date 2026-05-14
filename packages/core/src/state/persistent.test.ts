@@ -710,6 +710,46 @@ describe("defineStore (compound)", () => {
       } as never)),
     ).toThrow(/reserved/);
   });
+
+  it("rejects dict entries not produced by this builder", () => {
+    const foreign = defineCounter("foreign.leak");
+    expect(() =>
+      defineStore("g.stray", (s) => ({
+        gold: s.counter(),
+        leak: foreign,
+      })),
+    ).toThrow(/was not created by this builder/);
+  });
+
+  it("rejects the same leaf assigned to two keys", () => {
+    expect(() =>
+      defineStore("g.dupe", (s) => {
+        const ctr = s.counter();
+        return { a: ctr, b: ctr };
+      }),
+    ).toThrow(/assigned to both/);
+  });
+
+  it("rolls every leaf back to its prior state when hydrate fails partway", () => {
+    const a = defineStore("g.rollback", (s) => ({
+      gold: s.counter({ default: 5 }),
+      flags: s.set<string>(),
+    }));
+    a.gold.set(50);
+    a.flags.add("opened");
+
+    // Payload where the second leaf's data is malformed — set decoder throws.
+    expect(() =>
+      a.hydrate({
+        version: 1,
+        data: { gold: 99, flags: "not-an-array" },
+      }),
+    ).toThrow();
+
+    // Both leaves are back at their pre-hydrate values.
+    expect(a.gold.value()).toBe(50);
+    expect(a.flags.values().sort()).toEqual(["opened"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
