@@ -37,28 +37,14 @@ export class UIText implements UIElement {
 
     this.yogaNode.setMeasureFunc((width, widthMode) => {
       // `clip` / `ellipsis` are single-line, so wordWrap stays off and the
-      // intrinsic text dimensions are what Yoga should see.
-      if (this._truncate === "clip") {
-        // Report the constrained width — not the intrinsic — so the slot
-        // doesn't inflate its parent. The text itself still renders
-        // unwrapped and visually overflows the slot, but the parent
-        // panel's `overflow: hidden` then clips it at the slot edge
-        // (i.e. inside the panel's padding) instead of at the panel's
-        // outer border.
-        const w = this.text.width;
-        let measuredWidth = w;
-        if (widthMode === MeasureMode.Exactly) {
-          measuredWidth = width;
-        } else if (widthMode === MeasureMode.AtMost) {
-          measuredWidth = Math.min(w, width);
-        }
-        return { width: measuredWidth, height: this.text.height };
-      }
-
-      if (this._truncate === "ellipsis") {
+      // text is substring-truncated to fit the slot.
+      if (this._truncate === "clip" || this._truncate === "ellipsis") {
         const maxWidth =
-          widthMode === MeasureMode.Undefined ? Number.POSITIVE_INFINITY : width;
-        this.applyEllipsis(maxWidth);
+          widthMode === MeasureMode.Undefined
+            ? Number.POSITIVE_INFINITY
+            : width;
+        const suffix = this._truncate === "ellipsis" ? ELLIPSIS : "";
+        this.applyTruncate(maxWidth, suffix);
         const w = this.text.width;
         const measuredWidth =
           widthMode === MeasureMode.Exactly
@@ -160,12 +146,16 @@ export class UIText implements UIElement {
   }
 
   /**
-   * Truncate `_source` to the longest prefix whose width + `…` fits within
-   * `maxWidth`, then write the result into `text.text`. Falls back to the
-   * full source when it already fits. Uses a binary search since each
-   * width measurement traverses the Pixi text pipeline.
+   * Truncate `_source` to the longest prefix whose width + `suffix` fits
+   * within `maxWidth`, then write the result into `text.text`. Falls back
+   * to the full source when it already fits. Uses a binary search since
+   * each width measurement traverses the Pixi text pipeline.
+   *
+   * `"ellipsis"` mode passes `"…"` as the suffix; `"clip"` mode passes the
+   * empty string and so simply cuts at the character boundary — the text
+   * stays bounded by its yoga slot rather than relying on a parent mask.
    */
-  private applyEllipsis(maxWidth: number): void {
+  private applyTruncate(maxWidth: number, suffix: string): void {
     if (!Number.isFinite(maxWidth) || maxWidth <= 0) {
       this.text.text = this._source;
       return;
@@ -179,7 +169,7 @@ export class UIText implements UIElement {
     let best = "";
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      const candidate = this._source.slice(0, mid) + ELLIPSIS;
+      const candidate = this._source.slice(0, mid) + suffix;
       this.text.text = candidate;
       if (this.text.width <= maxWidth) {
         best = candidate;
@@ -189,8 +179,8 @@ export class UIText implements UIElement {
       }
     }
 
-    // Even a single `…` exceeded the width — render it anyway so something
-    // shows up; the parent's `overflow: hidden` clips visually.
-    this.text.text = best === "" ? ELLIPSIS : best;
+    // Even a single `suffix` char exceeded the width — render it (or an
+    // empty string for `"clip"`) so the slot stays clean.
+    this.text.text = best === "" ? suffix : best;
   }
 }

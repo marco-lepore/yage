@@ -171,26 +171,29 @@ describe("UIText.measure", () => {
     expect(out.width).toBeLessThanOrEqual(80);
   });
 
-  it('truncate: "clip" keeps the full string on one line', () => {
+  it('truncate: "clip" cuts the text at the slot edge without an ellipsis suffix', () => {
     const t = new UIText({
       children: "loooong unbroken string",
       truncate: "clip",
     });
+    // Intrinsic is 23 * 10 = 230px; the rendered text substrings to fit
+    // the slot so neither the slot nor the rendered pixels overflow.
     const out = layoutInContainer(t, 50);
     expect(out.height).toBe(16);
-    expect(renderedText(t)).toBe("loooong unbroken string");
+    expect(out.width).toBeLessThanOrEqual(50);
+    const rendered = renderedText(t);
+    expect(rendered.endsWith("…")).toBe(false);
+    expect("loooong unbroken string".startsWith(rendered)).toBe(true);
+    expect(rendered.length).toBeGreaterThan(0);
   });
 
-  it('truncate: "clip" reports the constrained width so its slot does not inflate the parent', () => {
+  it('truncate: "clip" leaves a fitting string untouched', () => {
     const t = new UIText({
-      children: "loooong unbroken string",
+      children: "short",
       truncate: "clip",
     });
-    // Intrinsic is 23 * 10 = 230px; the slot must clamp to the constraint
-    // (50px) so the parent panel's `overflow: hidden` cuts at the slot edge
-    // rather than at the inflated panel's outer border.
-    const out = layoutInContainer(t, 50);
-    expect(out.width).toBe(50);
+    layoutInContainer(t, 200);
+    expect(renderedText(t)).toBe("short");
   });
 
   it("update({ truncate: undefined }) restores wrap behavior", () => {
