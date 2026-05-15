@@ -7,7 +7,11 @@ export { RendererKey } from "./types.js";
 export type { RendererConfig, FitMode, RendererFitOptions } from "./types.js";
 export type { CanvasRect, VirtualRect } from "./Fit.js";
 export type {
+  BitmapFontHandle,
+  BitmapFontResource,
+  BitmapTextOption,
   ColorValue,
+  DisplayBitmapText,
   DisplayContainer,
   DisplaySprite,
   DisplayText,
@@ -35,6 +39,8 @@ export type {
 } from "./GraphicsComponent.js";
 export { TextComponent } from "./TextComponent.js";
 export type { TextComponentOptions, TextData } from "./TextComponent.js";
+/** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
+export { buildTextOptions } from "./internal/textConstruction.js";
 export { linearGradient, radialGradient } from "./gradient.js";
 export type {
   GradientStop,
@@ -119,12 +125,15 @@ export * from "./transitions/index.js";
 
 // Asset factories
 export {
+  bitmapFont,
+  installBitmapFont,
   renderAsset,
   resolveTextureInput,
   sliceTextureFrames,
   spritesheet,
   texture,
 } from "./assets.js";
+export type { InstallBitmapFontOptions } from "./assets.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";

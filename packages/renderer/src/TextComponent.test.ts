@@ -59,19 +59,29 @@ const { mocks } = vi.hoisted(() => {
   class MockText extends MockContainer {
     text: string;
     style: Record<string, unknown>;
-    constructor(init: { text: string; style?: Record<string, unknown> }) {
+    resolution: number | undefined;
+    constructor(init: {
+      text: string;
+      style?: Record<string, unknown>;
+      resolution?: number;
+    }) {
       super();
       this.text = init.text;
       this.style = init.style ?? {};
+      this.resolution = init.resolution;
     }
   }
 
-  return { mocks: { MockContainer, MockText } };
+  // Distinct subclass so tests can assert which Pixi class was constructed.
+  class MockBitmapText extends MockText {}
+
+  return { mocks: { MockContainer, MockText, MockBitmapText } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Text: mocks.MockText,
+  BitmapText: mocks.MockBitmapText,
 }));
 
 import { Transform } from "@yagejs/core";
@@ -263,5 +273,81 @@ describe("TextComponent", () => {
     const b = comp.serialize();
     expect(a.style).not.toBe(b.style);
     expect(a.style).toEqual(b.style);
+  });
+
+  it("constructs a canvas Text by default", () => {
+    const comp = new TextComponent({ text: "x" });
+    expect(comp.text).toBeInstanceOf(mocks.MockText);
+    expect(comp.text).not.toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("constructs a BitmapText when bitmap: true", () => {
+    const comp = new TextComponent({ text: "x", bitmap: true });
+    expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("bitmap: { font, size } folds into the constructed style", () => {
+    const comp = new TextComponent({
+      text: "x",
+      style: { fill: 0xff0000 },
+      bitmap: { font: "PressStart", size: 16 },
+    });
+    expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(comp.text.style).toEqual({
+      fill: 0xff0000,
+      fontFamily: "PressStart",
+      fontSize: 16,
+    });
+  });
+
+  it("forwards resolution to a canvas Text constructor", () => {
+    const comp = new TextComponent({ text: "x", resolution: 3 });
+    expect(
+      (comp.text as unknown as { resolution?: number }).resolution,
+    ).toBe(3);
+  });
+
+  it("does NOT forward resolution to a BitmapText (font-managed in v8)", () => {
+    const comp = new TextComponent({
+      text: "x",
+      bitmap: true,
+      resolution: 3,
+    });
+    expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(
+      (comp.text as unknown as { resolution?: number }).resolution,
+    ).toBeUndefined();
+  });
+
+  it("serialize/fromSnapshot round-trips bitmap and resolution", () => {
+    const comp = new TextComponent({
+      text: "hi",
+      bitmap: { font: "PressStart", size: 8 },
+      resolution: 2,
+    });
+    const data = comp.serialize();
+    expect(data.bitmap).toEqual({ font: "PressStart", size: 8 });
+    expect(data.resolution).toBe(2);
+
+    const restored = TextComponent.fromSnapshot(data);
+    expect(restored.text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(restored.text.style).toMatchObject({
+      fontFamily: "PressStart",
+      fontSize: 8,
+    });
+  });
+
+  it("decouples the cached bitmap option from the caller's object", () => {
+    const bitmap: { font: string; size?: number } = { font: "A" };
+    const comp = new TextComponent({ text: "x", bitmap });
+    bitmap.font = "B";
+    bitmap.size = 99;
+    expect(comp.serialize().bitmap).toEqual({ font: "A" });
+  });
+
+  it("omits bitmap and resolution from the snapshot when not provided", () => {
+    const data = new TextComponent({ text: "x" }).serialize();
+    expect(data.bitmap).toBeUndefined();
+    expect(data.resolution).toBeUndefined();
   });
 });

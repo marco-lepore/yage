@@ -3,14 +3,20 @@ import {
   makeEntityScopedQueue,
   serializable,
 } from "@yagejs/core";
-import { Text } from "pixi.js";
+import { BitmapText, Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
+import { buildTextOptions } from "./internal/textConstruction.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
-import type { DisplayText, TextStyle } from "./public-types.js";
+import type {
+  BitmapTextOption,
+  DisplayBitmapText,
+  DisplayText,
+  TextStyle,
+} from "./public-types.js";
 
 /** Options for creating a TextComponent. */
 export interface TextComponentOptions {
@@ -18,6 +24,21 @@ export interface TextComponentOptions {
   text: string;
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
   style?: TextStyle;
+  /**
+   * Render with a bitmap font instead of canvas-rasterised `Text` — the
+   * pixel-art escape hatch. `true` bakes a dynamic font from `style`;
+   * `{ font }` uses an installed/loaded font by name (`size` overrides the
+   * glyph size). See {@link BitmapTextOption}.
+   */
+  bitmap?: BitmapTextOption;
+  /**
+   * Per-text render resolution. Mirrors the Pixi v8 `Text` constructor
+   * option — note `resolution` is NOT a `TextStyle` property in v8, so
+   * setting it here is the only way to get crisp canvas text without a
+   * prototype patch. Ignored when `bitmap` is set (bitmap resolution is
+   * fixed at font-bake time).
+   */
+  resolution?: number;
   /** Anchor point (0-1). Default: { x: 0, y: 0 } (top-left). */
   anchor?: { x: number; y: number };
   /** Render layer name. Default: "default". */
@@ -34,6 +55,8 @@ export interface TextComponentOptions {
 export interface TextData {
   text: string;
   style?: TextStyle;
+  bitmap?: BitmapTextOption;
+  resolution?: number;
   layer: string;
   tint?: number;
   alpha?: number;
@@ -46,12 +69,16 @@ export interface TextData {
 /** Component that displays text on a render layer. */
 @serializable
 export class TextComponent extends Component {
-  readonly text: DisplayText;
+  readonly text: DisplayText | DisplayBitmapText;
   readonly layerName: string;
   // Raw style options as passed in — kept so `serialize()` emits a POJO, not
   // the live pixi `TextStyle` instance (which has non-enumerable getters and
   // would not round-trip through JSON).
   private _styleOptions?: TextStyle;
+  // Raw bitmap / resolution options, cached for the same round-trip reason:
+  // the pixi instance doesn't faithfully read them back.
+  private _bitmap?: BitmapTextOption;
+  private _resolution?: number;
   /** See {@link SpriteComponent.fx}. */
   readonly fx = new EffectsHost(
     () => this.text,
@@ -62,14 +89,28 @@ export class TextComponent extends Component {
 
   constructor(options: TextComponentOptions) {
     super();
-    this.text = new Text({
-      text: options.text,
-      ...(options.style ? { style: options.style } : {}),
-    });
+    const { options: textOptions, bitmap } = buildTextOptions(
+      options.text,
+      options.style,
+      options.bitmap,
+      options.resolution,
+    );
+    this.text = bitmap
+      ? new BitmapText(textOptions)
+      : new Text(textOptions);
     this.layerName = options.layer ?? "default";
     // Shallow-clone so external mutation of the caller's options object
     // doesn't drift our cached snapshot away from the live pixi state.
     if (options.style) this._styleOptions = { ...options.style };
+    if (options.bitmap !== undefined) {
+      this._bitmap =
+        typeof options.bitmap === "object"
+          ? { ...options.bitmap }
+          : options.bitmap;
+    }
+    if (options.resolution !== undefined) {
+      this._resolution = options.resolution;
+    }
 
     if (options.anchor) {
       this.text.anchor.set(options.anchor.x, options.anchor.y);
@@ -122,6 +163,13 @@ export class TextComponent extends Component {
       visible: this.text.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
+    if (this._bitmap !== undefined) {
+      data.bitmap =
+        typeof this._bitmap === "object"
+          ? { ...this._bitmap }
+          : this._bitmap;
+    }
+    if (this._resolution !== undefined) data.resolution = this._resolution;
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;
     const mask = this._mask?.serialize();
@@ -149,6 +197,8 @@ export class TextComponent extends Component {
       layer: data.layer,
     };
     if (data.style) opts.style = data.style;
+    if (data.bitmap !== undefined) opts.bitmap = data.bitmap;
+    if (data.resolution !== undefined) opts.resolution = data.resolution;
     if (data.tint !== undefined) opts.tint = data.tint;
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.anchor) opts.anchor = data.anchor;

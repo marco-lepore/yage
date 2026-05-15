@@ -51,10 +51,17 @@ const { mocks } = vi.hoisted(() => {
     static charWidth = 10;
     static lineHeight = 16;
 
-    constructor(opts?: { text?: string; style?: Record<string, unknown> }) {
+    resolution: number | undefined;
+
+    constructor(opts?: {
+      text?: string;
+      style?: Record<string, unknown>;
+      resolution?: number;
+    }) {
       super();
       this.style = opts?.style ?? {};
       this._text = opts?.text ?? "";
+      this.resolution = opts?.resolution;
     }
 
     get text(): string {
@@ -100,12 +107,18 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockText } };
+  // Distinct subclass so tests can assert which Pixi class was constructed;
+  // inherits MockText's measurement model so the wrap / truncate paths
+  // exercise identically under a bitmap font.
+  class MockBitmapText extends MockText {}
+
+  return { mocks: { MockContainer, MockText, MockBitmapText } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Text: mocks.MockText,
+  BitmapText: mocks.MockBitmapText,
 }));
 
 import Yoga, { Direction } from "yoga-layout";
@@ -208,5 +221,134 @@ describe("UIText.measure", () => {
     const out = layoutInContainer(t, 100);
     expect(out.height).toBeGreaterThan(16); // wrapped again
     expect(renderedText(t)).toBe("the quick brown fox jumps");
+  });
+});
+
+/** Read the private underlying pixi text object the UIText constructed. */
+function textObject(t: UIText): {
+  style: Record<string, unknown>;
+  resolution: number | undefined;
+} {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (t as any).text;
+}
+
+describe("UIText bitmap + resolution", () => {
+  it("constructs a canvas Text by default", () => {
+    const t = new UIText({ children: "hi" });
+    expect(textObject(t)).toBeInstanceOf(mocks.MockText);
+    expect(textObject(t)).not.toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("constructs a BitmapText when bitmap: true", () => {
+    const t = new UIText({ children: "hi", bitmap: true });
+    expect(textObject(t)).toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("bitmap: { font, size } folds into the constructed style", () => {
+    const t = new UIText({
+      children: "hi",
+      style: { fill: 0x00ff00 },
+      bitmap: { font: "PressStart", size: 8 },
+    });
+    expect(textObject(t)).toBeInstanceOf(mocks.MockBitmapText);
+    expect(textObject(t).style).toMatchObject({
+      fill: 0x00ff00,
+      fontFamily: "PressStart",
+      fontSize: 8,
+    });
+  });
+
+  it("honors PR #67 wrap semantics under a bitmap font", () => {
+    const t = new UIText({
+      children: "the quick brown fox jumps",
+      bitmap: true,
+    });
+    const out = layoutInContainer(t, 100);
+    expect(out.height).toBeGreaterThan(16); // wrapped to multiple lines
+    expect(out.width).toBeLessThanOrEqual(100);
+  });
+
+  it("honors truncate: ellipsis under a bitmap font", () => {
+    const t = new UIText({
+      children: "this string is far too long for the slot",
+      bitmap: true,
+      truncate: "ellipsis",
+    });
+    const out = layoutInContainer(t, 80);
+    expect(out.height).toBe(16); // single line
+    expect(renderedText(t).endsWith("…")).toBe(true);
+    expect(out.width).toBeLessThanOrEqual(80);
+  });
+
+  it("forwards resolution to a canvas Text", () => {
+    const t = new UIText({ children: "hi", resolution: 4 });
+    expect(textObject(t).resolution).toBe(4);
+  });
+
+  it("does NOT forward resolution to a BitmapText", () => {
+    const t = new UIText({ children: "hi", bitmap: true, resolution: 4 });
+    expect(textObject(t)).toBeInstanceOf(mocks.MockBitmapText);
+    expect(textObject(t).resolution).toBeUndefined();
+  });
+
+  it("warns (and keeps the constructed class) when update() changes bitmap", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = new UIText({ children: "hi" });
+    expect(textObject(t)).not.toBeInstanceOf(mocks.MockBitmapText);
+
+    t.update({ bitmap: true });
+
+    // Construction-only: the underlying Pixi class does not change…
+    expect(textObject(t)).toBeInstanceOf(mocks.MockText);
+    expect(textObject(t)).not.toBeInstanceOf(mocks.MockBitmapText);
+    // …but the dropped change is surfaced rather than silently ignored.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
+
+  it("warns when update() changes resolution", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = new UIText({ children: "hi", resolution: 1 });
+    t.update({ resolution: 2 });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
+
+  it("does not warn when update() repeats the same bitmap value", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = new UIText({ children: "hi", bitmap: { font: "A", size: 8 } });
+    t.update({ bitmap: { font: "A", size: 8 }, children: "ho" });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn when update() passes bitmap: false to a non-bitmap text", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // No `bitmap` at construction (_bitmap === undefined); the reconciler
+    // mounts <Text bitmap={false}>. Both mean canvas text — no warn.
+    const t = new UIText({ children: "hi" });
+    t.update({ bitmap: false });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("decouples the cached bitmap option from the caller's object", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bitmap: { font: string; size?: number } = { font: "A" };
+    // Caller mutates their object after construction. The cached snapshot
+    // must be a copy, so a later update() with the (now-stale) reference is
+    // correctly detected as a change from the constructed font.
+    const t = new UIText({ children: "hi", bitmap });
+    bitmap.font = "B";
+    t.update({ bitmap });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
   });
 });

@@ -1,8 +1,10 @@
 import { AssetHandle } from "@yagejs/core";
-import { Rectangle, Texture } from "pixi.js";
+import { Assets, BitmapFont, Rectangle, Texture } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type {
+  BitmapFontHandle,
   RendererAsset,
+  TextStyle,
   TextureHandle,
   TextureInput,
   TextureResource,
@@ -22,6 +24,92 @@ export function spritesheet(path: string): AssetHandle<Spritesheet> {
 /** Create a typed handle for an arbitrary renderer-managed asset. */
 export function renderAsset<T = unknown>(path: string): RendererAsset<T> {
   return new AssetHandle("render-asset", path);
+}
+
+/**
+ * Create a typed asset handle for a bitmap font — a BMFont `.fnt`/`.xml`
+ * descriptor plus its glyph atlas. Resolve it through the asset manager
+ * (`engine.assets`) like any other handle; the loaded font registers itself
+ * under the `fontFamily` declared in the descriptor, so pass that same name
+ * as the `bitmap.font` discriminator on `UIText` / `TextComponent`.
+ *
+ * For runtime-baked fonts from a `.ttf` instead, see {@link installBitmapFont}.
+ */
+export function bitmapFont(path: string): BitmapFontHandle {
+  return new AssetHandle("bitmap-font", path);
+}
+
+/** Options for {@link installBitmapFont}. */
+export interface InstallBitmapFontOptions {
+  /**
+   * Name to register the baked font under. This is what you pass as the
+   * `bitmap.font` discriminator on `UIText` / `TextComponent`, and what
+   * `installBitmapFont` returns.
+   */
+  name: string;
+  /** Glyph size (px) to bake the atlas at. Default `32`. */
+  size?: number;
+  /**
+   * Character set to bake. Accepts Pixi's range syntax, e.g.
+   * `[["a", "z"], ["A", "Z"], "0123456789 .,!?"]`. Defaults to Pixi's
+   * alphanumeric set — remember to include a space.
+   */
+  chars?: string | (string | string[])[];
+  /**
+   * Atlas resolution multiplier. `2` keeps glyphs crisp when the text is
+   * upscaled by a pixel-art camera. Default `2`.
+   */
+  resolution?: number;
+  /** Glyph padding in the atlas. Default `4`. */
+  padding?: number;
+  /**
+   * Extra `TextStyle` props baked into every glyph (fill, stroke, weight,
+   * drop shadow…). `fontFamily` / `fontSize` are managed by this helper.
+   */
+  style?: Partial<TextStyle>;
+  /**
+   * `@font-face` family the loaded `.ttf` registers under. Defaults to
+   * `name`, so the loaded face and the baked bitmap font share one
+   * coherent identifier.
+   */
+  family?: string;
+}
+
+/**
+ * Load a `.ttf`/`.woff` and bake a bitmap glyph atlas from it via Pixi v8's
+ * `BitmapFont.install`. Returns the registered font name, ready to hand to
+ * the `bitmap: { font }` option on `UIText` / `TextComponent`.
+ *
+ * ```ts
+ * const font = await installBitmapFont("fonts/PressStart2P.ttf", {
+ *   name: "PressStart",
+ *   size: 16,
+ * });
+ * entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+ * ```
+ */
+export async function installBitmapFont(
+  source: string | AssetHandle<unknown>,
+  opts: InstallBitmapFontOptions,
+): Promise<string> {
+  const path = typeof source === "string" ? source : source.path;
+  const family = opts.family ?? opts.name;
+
+  await Assets.load({ src: path, data: { family } });
+
+  BitmapFont.install({
+    name: opts.name,
+    style: {
+      ...opts.style,
+      fontFamily: family,
+      fontSize: opts.size ?? 32,
+    },
+    resolution: opts.resolution ?? 2,
+    padding: opts.padding ?? 4,
+    ...(opts.chars !== undefined ? { chars: opts.chars } : {}),
+  });
+
+  return opts.name;
 }
 
 /** Resolve a texture input into a concrete texture resource. */
