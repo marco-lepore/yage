@@ -162,7 +162,7 @@ typically do this from their `beforeEnter` hook, but game code can use it
 directly to attach scene-local services:
 
 ```typescript
-import { ServiceKey } from "@yagejs/core";
+import { Scene, ServiceKey } from "@yagejs/core";
 
 const LevelClockKey = ServiceKey<{ elapsed: number }>("LevelClock");
 
