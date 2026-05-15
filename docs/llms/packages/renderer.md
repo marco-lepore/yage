@@ -221,7 +221,27 @@ entity.add(new TextComponent({
 }));
 ```
 
-Serializable. **Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `.text` is the underlying pixi `Text`. See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
+Serializable. **Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions` (CSS-style font properties — `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`, `letterSpacing`, `lineHeight`, etc.). `.text` is the underlying pixi `Text` (or `BitmapText` when `bitmap` is set). See [pixi Text docs](https://pixijs.com/8.x/guides/components/scene-objects/text/) and [pixi TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style).
+
+**Pixel-art text — `bitmap`.** Canvas-rasterised `Text` is bilinear-sampled by the GPU, so it goes blurry at non-integer scale (camera zoom, pixel-art upscaling) on non-Retina displays. Set `bitmap` to draw pre-baked glyph quads instead:
+
+```ts
+// Dynamic bitmap font baked from this text's own style — zero-config.
+new TextComponent({ text: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
+
+// Use an installed / loaded bitmap font by name; `size` overrides glyph size.
+new TextComponent({ text: "READY", bitmap: { font: "PressStart", size: 16 } });
+```
+
+`bitmap` and `resolution` round-trip through serialization. Yoga/layout behaviour is unchanged.
+
+**`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property. Setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass it explicitly to get crisp canvas text without a prototype patch — or use `bitmap` for pixel-perfect rendering:
+
+```ts
+new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
+```
+
+`resolution` is ignored when `bitmap` is set — bitmap resolution is fixed when the font is baked (see `installBitmapFont({ resolution })`).
 
 ### AnimatedSpriteComponent
 
@@ -721,15 +741,34 @@ Effects and masks survive `SaveService.saveSnapshot` / `loadSnapshot` round-trip
 ## Asset Factories
 
 ```ts
-import { texture, spritesheet, renderAsset } from "@yagejs/renderer";
+import { texture, spritesheet, renderAsset, bitmapFont } from "@yagejs/renderer";
 
 // Returns AssetHandle<Texture> for preloading
 const heroTex = texture("hero.png");
 const sheet = spritesheet("characters.json");
 const asset = renderAsset("ui-atlas.json");
+// AssetHandle<BitmapFont> — a BMFont .fnt/.xml + atlas. The loaded font
+// registers under the fontFamily in the descriptor; pass that name as the
+// `bitmap.font` discriminator on TextComponent / UIText.
+const pixelFont = bitmapFont("fonts/press-start.fnt");
 
 // Use in Scene.preload:
 class MyScene extends Scene {
-  readonly preload = [heroTex, sheet];
+  readonly preload = [heroTex, sheet, pixelFont];
 }
+```
+
+**`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready for the `bitmap: { font }` option:
+
+```ts
+import { installBitmapFont, TextComponent } from "@yagejs/renderer";
+
+const font = await installBitmapFont("fonts/PressStart2P.ttf", {
+  name: "PressStart",
+  size: 16,            // glyph bake size (default 32)
+  resolution: 2,       // crisp when upscaled (default 2)
+  // chars: [["a","z"],["A","Z"],"0123456789 .,!?"],  // default: alphanumeric
+  // style: { fill: 0xffffff },                        // extra baked style
+});
+entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
 ```

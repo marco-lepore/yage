@@ -55,6 +55,65 @@ Specifically:
 `TextStyleOptions` — full set of CSS-style font properties available
 (`fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `fill`,
 `letterSpacing`, `lineHeight`, `dropShadow`, etc.). `.text` is the
-underlying pixi `Text` instance. See the [pixi Text guide](https://pixijs.com/8.x/guides/components/scene-objects/text/)
+underlying pixi `Text` instance (or `BitmapText` when `bitmap` is set).
+See the [pixi Text guide](https://pixijs.com/8.x/guides/components/scene-objects/text/)
 and [TextStyle reference](https://pixijs.com/8.x/guides/components/scene-objects/text/style)
 for every available option.
+
+## Pixel-art text (`bitmap`)
+
+Canvas-rasterised `Text` is bilinear-sampled by the GPU, so it goes
+**blurry the moment it's drawn at a non-integer scale** — a zoomed
+pixel-art camera, a 4× upscale — on a non-Retina display. `BitmapText`
+draws pre-baked glyph quads instead, so it stays crisp. Set the `bitmap`
+option (works on `TextComponent` and `UIText` alike):
+
+```typescript
+// Zero-config: bake a dynamic bitmap font from this text's own style.
+new TextComponent({
+  text: "SCORE",
+  bitmap: true,
+  style: { fontFamily: "monospace", fontSize: 12 },
+});
+
+// Render with an installed / loaded bitmap font by name. `size`
+// overrides the glyph size.
+new TextComponent({ text: "READY", bitmap: { font: "PressStart", size: 16 } });
+```
+
+To bake a bitmap atlas from a `.ttf` at runtime, use
+`installBitmapFont` — it loads the font and returns a name you hand
+straight to `bitmap: { font }`:
+
+```typescript
+import { installBitmapFont, TextComponent } from "@yagejs/renderer";
+
+const font = await installBitmapFont("fonts/PressStart2P.ttf", {
+  name: "PressStart",
+  size: 16,        // glyph bake size (default 32)
+  resolution: 2,   // keeps glyphs crisp when upscaled (default 2)
+});
+entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+```
+
+For a pre-built BMFont (`.fnt`/`.xml` + atlas), preload the
+`bitmapFont("fonts/x.fnt")` handle through a scene's `preload` and pass
+the `fontFamily` declared in the descriptor as `bitmap: { font }`.
+Bitmap text honours the same Yoga word-wrap / `truncate` behaviour as
+canvas text inside a `UIPanel`.
+
+## The Pixi v8 `resolution` gotcha
+
+In Pixi v8, `resolution` is a `Text` **constructor option, not a
+`TextStyle` property**. Setting `TextStyle.defaultTextStyle.resolution`
+does nothing — text stays rasterised at resolution 1 and blurs when
+scaled. There's no global toggle; pass `resolution` per text:
+
+```typescript
+new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
+```
+
+`resolution` is ignored when `bitmap` is set — a bitmap font's
+resolution is fixed when its atlas is baked
+(`installBitmapFont({ resolution })`). For genuinely pixel-perfect
+text at any zoom, prefer `bitmap` over chasing canvas `resolution`.

@@ -1,5 +1,6 @@
 import type { PropsWithChildren, ReactNode } from "react";
 import type {
+  BitmapTextOption,
   ColorValue,
   DisplayContainer,
   PointLike,
@@ -69,6 +70,19 @@ export interface TextProps extends LayoutProps {
    * `"ellipsis"` → single line truncated with `…`.
    */
   truncate?: "clip" | "ellipsis";
+  /**
+   * Render with a bitmap font instead of canvas-rasterised `Text` — the
+   * pixel-art escape hatch (canvas text blurs at non-integer scale on
+   * non-Retina displays). `true` bakes a dynamic font from `style`;
+   * `{ font }` uses an installed/loaded font by name.
+   */
+  bitmap?: BitmapTextOption;
+  /**
+   * Per-text render resolution. Pixi v8 `resolution` is a `Text`
+   * constructor option, not a `TextStyle` property — set it here for crisp
+   * canvas text. Ignored when `bitmap` is set.
+   */
+  resolution?: number;
   children?: string;
 }
 

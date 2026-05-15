@@ -7,7 +7,11 @@ export { RendererKey } from "./types.js";
 export type { RendererConfig, FitMode, RendererFitOptions } from "./types.js";
 export type { CanvasRect, VirtualRect } from "./Fit.js";
 export type {
+  BitmapFontHandle,
+  BitmapFontResource,
+  BitmapTextOption,
   ColorValue,
+  DisplayBitmapText,
   DisplayContainer,
   DisplaySprite,
   DisplayText,
@@ -119,12 +123,15 @@ export * from "./transitions/index.js";
 
 // Asset factories
 export {
+  bitmapFont,
+  installBitmapFont,
   renderAsset,
   resolveTextureInput,
   sliceTextureFrames,
   spritesheet,
   texture,
 } from "./assets.js";
+export type { InstallBitmapFontOptions } from "./assets.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";

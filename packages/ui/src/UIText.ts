@@ -1,4 +1,4 @@
-import { Text } from "pixi.js";
+import { BitmapText, Text } from "pixi.js";
 import type { TextStyleOptions, Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode } from "yoga-layout";
@@ -13,7 +13,7 @@ const ELLIPSIS = "…";
 export class UIText implements UIElement {
   readonly displayObject: Container;
   readonly yogaNode: YogaNode;
-  private readonly text: Text;
+  private readonly text: Text | BitmapText;
   private _truncate: "clip" | "ellipsis" | undefined;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
@@ -21,10 +21,31 @@ export class UIText implements UIElement {
   constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
 
-    const s = props.style ?? {};
     this._source = props.children ?? "";
     this._truncate = props.truncate;
-    this.text = new Text({ text: this._source, style: s });
+
+    const bitmap = props.bitmap;
+    const useBitmap =
+      bitmap === true || (!!bitmap && typeof bitmap === "object");
+    let s = props.style ?? {};
+    if (bitmap && typeof bitmap === "object") {
+      s = {
+        ...s,
+        ...(bitmap.font !== undefined ? { fontFamily: bitmap.font } : {}),
+        ...(bitmap.size !== undefined ? { fontSize: bitmap.size } : {}),
+      };
+    }
+    // `resolution` is a Pixi v8 `Text` constructor option (NOT a TextStyle
+    // property). `BitmapText` resolution is fixed at font-bake time and
+    // warns if set per-instance, so only forward it to canvas `Text`.
+    const opts = {
+      text: this._source,
+      style: s,
+      ...(!useBitmap && props.resolution !== undefined
+        ? { resolution: props.resolution }
+        : {}),
+    };
+    this.text = useBitmap ? new BitmapText(opts) : new Text(opts);
     this.applyTruncateStyle();
     applyLayoutProps(this.yogaNode, props);
 
