@@ -25,5 +25,9 @@ export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hoo
 
 // Re-export useful types from @yagejs/ui for convenience
 export { Anchor } from "@yagejs/ui";
-export type { PixiViewType, FancyButtonAnimations } from "@yagejs/ui";
+export type {
+  PixiViewType,
+  FancyButtonAnimations,
+  ScrollbarOptions,
+} from "@yagejs/ui";
 

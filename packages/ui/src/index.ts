@@ -25,6 +25,7 @@ export type {
   UICheckboxProps,
   PanelProps,
   ScrollViewProps,
+  ScrollbarOptions,
   PixiFancyButtonProps,
   PixiCheckboxProps,
   PixiProgressBarProps,

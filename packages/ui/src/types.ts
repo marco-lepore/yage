@@ -370,6 +370,22 @@ export interface PixiInputProps extends LayoutProps, ConsumeInputProps {
   onEnter?: (value: string) => void;
 }
 
+/** Size / style of the `ScrollView` scrollbar thumb. */
+export interface ScrollbarOptions {
+  /** Thumb thickness (cross-axis) in px. Default `4`. */
+  thickness?: number;
+  /** Thumb color. Default `0xffffff`. */
+  color?: number;
+  /** Thumb alpha. Default `0.4`. */
+  alpha?: number;
+  /** Thumb corner radius. Default `thickness / 2`. */
+  radius?: number;
+  /** Minimum thumb length along the scroll axis in px. Default `20`. */
+  minThumbLength?: number;
+  /** Gap between the thumb and the viewport edge in px. Default `2`. */
+  margin?: number;
+}
+
 /**
  * Props for `ScrollViewNode` / `<ScrollView>`.
  *
@@ -384,8 +400,13 @@ export interface ScrollViewProps extends LayoutProps, ConsumeInputProps {
   gap?: number;
   /** Padding inside the content stack. */
   padding?: Padding;
-  /** Show the auto-hiding scrollbar thumb. Default `true`. */
-  scrollbar?: boolean;
+  /**
+   * Scrollbar thumb. `true` (default) / omitted → default style; `false` →
+   * hidden (and no gutter reserved); an object → custom size / style. When
+   * shown, a gutter equal to the thumb's footprint is reserved on the
+   * scroll-cross edge so content never renders under the thumb.
+   */
+  scrollbar?: boolean | ScrollbarOptions;
   /** Background drawn behind the clipped content. */
   background?: BackgroundOptions;
   /** Called when the scroll offset changes. */

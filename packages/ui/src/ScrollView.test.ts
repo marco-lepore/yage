@@ -98,12 +98,22 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockGraphics } };
+  class MockRectangle {
+    constructor(
+      public x = 0,
+      public y = 0,
+      public width = 0,
+      public height = 0,
+    ) {}
+  }
+
+  return { mocks: { MockContainer, MockGraphics, MockRectangle } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Graphics: mocks.MockGraphics,
+  Rectangle: mocks.MockRectangle,
 }));
 
 import Yoga from "yoga-layout";
@@ -265,6 +275,54 @@ describe("ScrollViewNode", () => {
     expect(sv.scrollOffset).toBe(40);
     expect(content.container.position.x).toBe(-40);
     expect(content.container.position.y).toBe(0);
+  });
+
+  it("sets a viewport hitArea synced to the viewport box", () => {
+    const { sv } = buildScrollView(5, { height: 100 });
+    const hit = (
+      sv.displayObject as unknown as {
+        hitArea: { x: number; y: number; width: number; height: number };
+      }
+    ).hitArea;
+    // Independent of child coverage — wheel/drag work over gaps & gutter.
+    expect(hit).toBeDefined();
+    expect(hit.x).toBe(0);
+    expect(hit.y).toBe(0);
+    expect(hit.width).toBe(200);
+    expect(hit.height).toBe(100);
+  });
+
+  it("reserves a scrollbar gutter that insets content; none when disabled", () => {
+    const { sv } = buildScrollView(5, { height: 100 });
+    const content = (sv as unknown as { content: PanelNode }).content;
+    // Default thumb: thickness 4 + margin 2*2 = 8.
+    expect(sv.scrollbarGutter).toBe(8);
+    expect(content.yogaNode.getComputedWidth()).toBe(192); // 200 - gutter
+
+    const off = new ScrollViewNode({ width: 200, height: 100, scrollbar: false });
+    for (let i = 0; i < 5; i++) off.addElement(new PanelNode({ height: 30 }));
+    layout(off);
+    const offContent = (off as unknown as { content: PanelNode }).content;
+    expect(off.scrollbarGutter).toBe(0);
+    expect(offContent.yogaNode.getComputedWidth()).toBe(200);
+  });
+
+  it("honors custom scrollbar size and reconfigures on update()", () => {
+    const sv = new ScrollViewNode({
+      width: 200,
+      height: 100,
+      scrollbar: { thickness: 10, margin: 3 },
+    });
+    for (let i = 0; i < 5; i++) sv.addElement(new PanelNode({ height: 30 }));
+    layout(sv);
+    const content = (sv as unknown as { content: PanelNode }).content;
+    expect(sv.scrollbarGutter).toBe(16); // 10 + 3*2
+    expect(content.yogaNode.getComputedWidth()).toBe(184);
+
+    sv.update({ scrollbar: false });
+    layout(sv);
+    expect(sv.scrollbarGutter).toBe(0);
+    expect(content.yogaNode.getComputedWidth()).toBe(200);
   });
 
   it("survives destroy()", () => {

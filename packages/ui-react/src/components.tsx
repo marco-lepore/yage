@@ -31,6 +31,7 @@ import type {
   LayoutValue,
   Padding,
   PixiViewType,
+  ScrollbarOptions,
 } from "@yagejs/ui";
 
 // ---------------------------------------------------------------------------
@@ -352,8 +353,12 @@ export interface ScrollViewReactProps extends LayoutProps {
   gap?: number;
   /** Padding inside the scrollable content. */
   padding?: Padding;
-  /** Show the auto-hiding scrollbar thumb. Default `true`. */
-  scrollbar?: boolean;
+  /**
+   * Scrollbar thumb: `true` (default) / omitted → default style; `false` →
+   * hidden (no gutter); an object → custom size / style. A gutter equal to
+   * the thumb footprint is reserved so content never sits under the thumb.
+   */
+  scrollbar?: boolean | ScrollbarOptions;
   /** Background drawn behind the clipped content. */
   bg?: BackgroundOptions;
   /** Called when the scroll offset changes. */

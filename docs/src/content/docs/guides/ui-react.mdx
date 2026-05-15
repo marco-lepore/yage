@@ -273,11 +273,16 @@ function OrdersPanel({
 
 Size the viewport with the standard layout props — `height` for a fixed
 box, or `flexGrow={1}` to fill the space left by fixed siblings. Content
-overflowing the scroll axis is clipped and pannable by wheel or drag.
-Props: `direction` (`"vertical"` default, or `"horizontal"`), `gap`,
-`padding`, `scrollbar` (an auto-hiding thumb, on by default), `bg`, and
-`onScroll(offset)`. Keep anything that should stay fixed — a header, a
-footer button — as a **sibling** of `<ScrollView>`, never a child.
+overflowing the scroll axis is clipped and pannable by wheel or drag —
+anywhere over the box, including the gaps between cards and the
+scrollbar gutter (not just directly over a card). Props: `direction`
+(`"vertical"` default, or `"horizontal"`), `gap`, `padding`, `bg`,
+`onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a
+`ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`,
+`minThumbLength`, `margin`). When the thumb is shown a gutter equal to
+its footprint is auto-reserved so content never renders under it. Keep
+anything that should stay fixed — a header, a footer button — as a
+**sibling** of `<ScrollView>`, never a child.
 
 For imperative control, a `ref` to the node exposes `scrollBy()`,
 `scrollTo()`, `scrollOffset`, and `maxScroll`. The same element is

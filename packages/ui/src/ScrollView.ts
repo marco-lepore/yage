@@ -1,12 +1,13 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, Rectangle } from "pixi.js";
 import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
-import { Display, FlexDirection, Overflow } from "yoga-layout";
+import { Display, Edge, FlexDirection, Overflow } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { MaskHandle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
   Padding,
+  ScrollbarOptions,
   ScrollViewProps,
   UIContainerElement,
   UIElement,
@@ -16,9 +17,41 @@ import { PanelNode } from "./UIPanel.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
-const SCROLLBAR_THICKNESS = 4;
-const SCROLLBAR_MARGIN = 2;
-const MIN_THUMB = 20;
+interface ResolvedScrollbar {
+  enabled: boolean;
+  thickness: number;
+  color: number;
+  alpha: number;
+  radius: number;
+  minThumb: number;
+  margin: number;
+}
+
+const SCROLLBAR_DEFAULTS = {
+  thickness: 4,
+  color: 0xffffff,
+  alpha: 0.4,
+  minThumb: 20,
+  margin: 2,
+} as const;
+
+function resolveScrollbar(
+  prop: boolean | ScrollbarOptions | undefined,
+): ResolvedScrollbar {
+  const enabled = prop !== false;
+  const o: ScrollbarOptions =
+    prop && typeof prop === "object" ? prop : {};
+  const thickness = o.thickness ?? SCROLLBAR_DEFAULTS.thickness;
+  return {
+    enabled,
+    thickness,
+    color: o.color ?? SCROLLBAR_DEFAULTS.color,
+    alpha: o.alpha ?? SCROLLBAR_DEFAULTS.alpha,
+    radius: o.radius ?? thickness / 2,
+    minThumb: o.minThumbLength ?? SCROLLBAR_DEFAULTS.minThumb,
+    margin: o.margin ?? SCROLLBAR_DEFAULTS.margin,
+  };
+}
 
 /**
  * A clipped, scrollable viewport that owns a normal Yoga child subtree.
@@ -37,11 +70,17 @@ export class ScrollViewNode implements UIContainerElement {
   private readonly content: PanelNode;
   private vertical: boolean;
   private scrollbarGfx: Graphics | undefined;
-  private scrollbarEnabled: boolean;
+  private _sb: ResolvedScrollbar;
   private maskHandle: MaskHandle | undefined;
   private bgRenderer: BackgroundRenderer | undefined;
   private bgOpts: BackgroundOptions | undefined;
   private onScroll: ((offset: number) => void) | undefined;
+  // Explicit hit area so wheel/drag work over gaps, the scrollbar gutter,
+  // and empty space below the last card. A bare `eventMode:"static"`
+  // Container is only hit-tested where a descendant actually renders, so
+  // input would otherwise be dead anywhere a child isn't painted (unless a
+  // full-bleed `background` happens to cover it). Reused, synced in layout.
+  private readonly _hitArea = new Rectangle(0, 0, 0, 0);
 
   private _offset = 0;
   private _maxScroll = 0;
@@ -64,11 +103,12 @@ export class ScrollViewNode implements UIContainerElement {
 
   constructor(props: ScrollViewProps) {
     this.vertical = (props.direction ?? "vertical") === "vertical";
-    this.scrollbarEnabled = props.scrollbar !== false;
+    this._sb = resolveScrollbar(props.scrollbar);
     this.onScroll = props.onScroll;
 
     this.viewport = new Container();
     this.viewport.eventMode = "static";
+    this.viewport.hitArea = this._hitArea;
     applyConsumeInput(this.viewport, props.consumeInput);
 
     this.yogaNode = createYogaNode();
@@ -80,6 +120,7 @@ export class ScrollViewNode implements UIContainerElement {
     this.yogaNode.setFlexDirection(
       this.vertical ? FlexDirection.Column : FlexDirection.Row,
     );
+    this._applyGutter();
 
     this.content = new PanelNode({
       direction: this.vertical ? "column" : "row",
@@ -146,6 +187,25 @@ export class ScrollViewNode implements UIContainerElement {
     return this._maxScroll;
   }
 
+  /**
+   * Px reserved on the scroll-cross edge for the scrollbar so content never
+   * renders under the thumb. `0` when the scrollbar is hidden.
+   */
+  get scrollbarGutter(): number {
+    return this._sb.enabled ? this._sb.thickness + this._sb.margin * 2 : 0;
+  }
+
+  /**
+   * Reserve the gutter as padding on the viewport node's scroll-cross edge
+   * (right for vertical, bottom for horizontal) and clear the other edge so
+   * a direction flip cleans up. The thumb is drawn inside this gutter.
+   */
+  private _applyGutter(): void {
+    const g = this.scrollbarGutter;
+    this.yogaNode.setPadding(Edge.Right, this.vertical ? g : 0);
+    this.yogaNode.setPadding(Edge.Bottom, this.vertical ? 0 : g);
+  }
+
   /** Scroll to an absolute offset (clamped). */
   scrollTo(offset: number): void {
     this._setOffset(offset);
@@ -161,6 +221,8 @@ export class ScrollViewNode implements UIContainerElement {
   applyLayout(): void {
     this._vw = this.yogaNode.getComputedWidth();
     this._vh = this.yogaNode.getComputedHeight();
+    this._hitArea.width = this._vw;
+    this._hitArea.height = this._vh;
     this._contentLeft = this.content.yogaNode.getComputedLeft();
     this._contentTop = this.content.yogaNode.getComputedTop();
 
@@ -200,7 +262,7 @@ export class ScrollViewNode implements UIContainerElement {
   }
 
   private _drawScrollbar(viewportMain: number, contentMain: number): void {
-    if (!this.scrollbarEnabled || this._maxScroll <= 0) {
+    if (!this._sb.enabled || this._maxScroll <= 0) {
       if (this.scrollbarGfx) this.scrollbarGfx.visible = false;
       return;
     }
@@ -211,8 +273,9 @@ export class ScrollViewNode implements UIContainerElement {
     const g = this.scrollbarGfx;
     g.visible = true;
 
+    const { thickness, margin, radius, color, alpha, minThumb } = this._sb;
     const thumbLen = Math.max(
-      MIN_THUMB,
+      minThumb,
       (viewportMain / contentMain) * viewportMain,
     );
     const travel = viewportMain - thumbLen;
@@ -222,22 +285,22 @@ export class ScrollViewNode implements UIContainerElement {
     g.clear();
     if (this.vertical) {
       g.roundRect(
-        this._vw - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN,
+        this._vw - thickness - margin,
         pos,
-        SCROLLBAR_THICKNESS,
+        thickness,
         thumbLen,
-        SCROLLBAR_THICKNESS / 2,
+        radius,
       );
     } else {
       g.roundRect(
         pos,
-        this._vh - SCROLLBAR_THICKNESS - SCROLLBAR_MARGIN,
+        this._vh - thickness - margin,
         thumbLen,
-        SCROLLBAR_THICKNESS,
-        SCROLLBAR_THICKNESS / 2,
+        thickness,
+        radius,
       );
     }
-    g.fill({ color: 0xffffff, alpha: 0.4 });
+    g.fill({ color, alpha });
   }
 
   // -- Input ---------------------------------------------------------------
@@ -318,7 +381,9 @@ export class ScrollViewNode implements UIContainerElement {
 
   update(props: Partial<ScrollViewProps>): void {
     if (props.onScroll !== undefined) this.onScroll = props.onScroll;
-    if (props.scrollbar !== undefined) this.scrollbarEnabled = props.scrollbar;
+    if (props.scrollbar !== undefined) {
+      this._sb = resolveScrollbar(props.scrollbar);
+    }
     if (props.consumeInput !== undefined) {
       applyConsumeInput(this.viewport, props.consumeInput);
     }
@@ -357,6 +422,9 @@ export class ScrollViewNode implements UIContainerElement {
 
     applyLayoutProps(this.yogaNode, props);
     this.yogaNode.setOverflow(Overflow.Hidden);
+    // Re-reserve the gutter: covers a scrollbar style/visibility change, a
+    // direction flip (edges swap), and any padding reset by applyLayoutProps.
+    this._applyGutter();
 
     if (props.visible !== undefined) this.visible = props.visible;
   }
