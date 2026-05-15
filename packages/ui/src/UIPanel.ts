@@ -18,6 +18,7 @@ import {
 import type { MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
+import { ScrollViewNode } from "./ScrollView.js";
 import {
   UI_DEFAULT_LAYER,
   UI_DEFAULT_LAYER_ORDER,
@@ -30,6 +31,7 @@ import type {
   UIPanelOptions,
   UIButtonProps,
   PanelProps,
+  ScrollViewProps,
 } from "./types.js";
 import type { Anchor } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
@@ -152,6 +154,13 @@ export class PanelNode implements UIContainerElement {
     const p = new PanelNode(opts ?? {});
     this.addElement(p);
     return p;
+  }
+
+  /** Add a nested scrollable viewport. */
+  scrollView(opts?: ScrollViewProps): ScrollViewNode {
+    const sv = new ScrollViewNode(opts ?? {});
+    this.addElement(sv);
+    return sv;
   }
 
   // ---------------------------------------------------------------------------
@@ -344,6 +353,11 @@ export class UIPanel extends Component {
   /** Add a nested child panel. */
   panel(opts?: PanelProps): PanelNode {
     return this._node.panel(opts);
+  }
+
+  /** Add a nested scrollable viewport. */
+  scrollView(opts?: ScrollViewProps): ScrollViewNode {
+    return this._node.scrollView(opts);
   }
 
   /**

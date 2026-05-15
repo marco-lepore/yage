@@ -4,6 +4,5 @@ export { PixiCheckbox } from "./PixiCheckbox.js";
 export { PixiProgressBar } from "./PixiProgressBar.js";
 export { PixiSlider } from "./PixiSlider.js";
 export { PixiInput } from "./PixiInput.js";
-export { PixiScrollBox } from "./PixiScrollBox.js";
 export { PixiSelect } from "./PixiSelect.js";
 export { PixiRadioGroup } from "./PixiRadioGroup.js";

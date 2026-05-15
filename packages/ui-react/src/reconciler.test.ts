@@ -111,7 +111,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
-import { setYoga, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
+import { setYoga, createYogaNode, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
 import { Button, UIText as Text } from "./components.js";
@@ -298,5 +298,49 @@ describe("reconciler", () => {
 
     // Should not crash and text should be updated
     expect(container.children.length).toBe(1);
+  });
+});
+
+describe("reconciler dev-warnings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // A layout leaf: implements UIElement but has NO addElement, so the
+  // reconciler's child ops silently drop JSX children. Uniquely named so the
+  // once-per-type dedupe doesn't collide with other suites.
+  class SilentLeafWidget {
+    readonly yogaNode = createYogaNode();
+    private readonly _do = new mocks.MockContainer();
+    get displayObject(): never {
+      return this._do as never;
+    }
+    visible = true;
+    update(): void {}
+    destroy(): void {
+      this.yogaNode.free();
+    }
+  }
+
+  it("warns once when JSX children are appended to a non-container leaf", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const container = new mocks.MockContainer();
+    const root = createRoot(container as never);
+
+    root.render(
+      createElement(
+        "ui-element",
+        { _ctor: SilentLeafWidget },
+        createElement("ui-element", { _ctor: PanelNode }),
+        createElement("ui-element", { _ctor: PanelNode }),
+      ),
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const msg = String(warn.mock.calls[0]?.join(" "));
+    expect(msg).toContain("SilentLeafWidget");
+    expect(msg).toContain("layout leaf");
+    expect(msg).toContain("ScrollView");
+    warn.mockRestore();
   });
 });

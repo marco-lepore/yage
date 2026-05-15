@@ -59,37 +59,39 @@ import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yage
 </Panel>
 ```
 
-PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiScrollBox`, `PixiSelect`, `PixiRadioGroup`.
+PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiSelect`, `PixiRadioGroup`.
 
 ## Scrolling lists
 
-Reach for `PixiScrollBox` for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently; `PixiScrollBox` adds drag + wheel scrolling and works inside the Yoga layout tree.
+`<ScrollView>` is the scroll primitive for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently; `<ScrollView>` adds wheel + drag scrolling, is a true Yoga container (children are normal elements, not handed to a foreign widget), and **preserves scroll position across re-renders** — fulfilling/refilling a store-driven list does not jump the scroll.
 
 ```tsx
-import { PixiScrollBox } from "@yagejs/ui-react";
-import { Panel, Text } from "@yagejs/ui-react";
+import { ScrollView, Panel, Button, Text } from "@yagejs/ui-react";
 
-function OrdersPanel({ orders }: { orders: Order[] }) {
+function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
   return (
-    <PixiScrollBox
-      scrollWidth={240}
-      scrollHeight={160}
-      type="vertical"
-      elementsMargin={4}
-      background={0x111111}
-      radius={6}
-    >
-      {orders.map((o) => (
-        <Panel key={o.id} padding={8} bg={{ color: 0x222233 }}>
-          <Text style={{ fontSize: 12, fill: 0xffffff }}>{o.label}</Text>
-        </Panel>
-      ))}
-    </PixiScrollBox>
+    <Panel direction="column" width={300} height={220} gap={10} padding={10}>
+      <Text style={{ fontSize: 16, fill: 0x93c5fd }}>Orders</Text>
+
+      <ScrollView flexGrow={1} gap={6} bg={{ color: 0x0b1220 }}>
+        {orders.map((o) => (
+          <Panel key={o.id} direction="row" height={36} bg={{ color: 0x243042 }}>
+            <Text style={{ fontSize: 14, fill: 0xe5e7eb }}>{o.label}</Text>
+            <Button height={24} onClick={() => fulfill(o.id)}>Fulfill</Button>
+          </Panel>
+        ))}
+      </ScrollView>
+
+      {/* Sibling of <ScrollView> → stays fixed while the list scrolls. */}
+      <Button height={36} onClick={endDay}>End Day</Button>
+    </Panel>
   );
 }
 ```
 
-`scrollWidth` / `scrollHeight` fix the viewport; children stack inside it and scroll if they overflow. `type` is `"vertical"` (default), `"horizontal"`, or `"both"`. `elementsMargin` is the gap between items, `globalScroll` enables wheel scrolling anywhere over the box. For the underlying widget's full prop surface (mask shape, drag inertia, etc.) see the [`@pixi/ui` ScrollBox docs](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox).
+Size the viewport with `LayoutProps` (`height` / `flexGrow`); content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. The same node is available without React via the `PanelNode` / `UIPanel` `.scrollView(opts)` builder, and exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`.
+
+> Appending JSX children to a layout-leaf element (one with no `addElement`, e.g. `<PixiSelect>`) silently drops them; the reconciler now emits a one-shot dev `console.warn` pointing you at `<ScrollView>` / a container.
 
 ### ZStack (Z-axis overlay primitive)
 

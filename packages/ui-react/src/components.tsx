@@ -20,7 +20,7 @@ import {
   PixiProgressBar as PixiProgressBarNode,
   PixiSlider as PixiSliderNode,
   PixiInput as PixiInputNode,
-  PixiScrollBox as PixiScrollBoxNode,
+  ScrollViewNode,
   PixiSelect as PixiSelectNode,
   PixiRadioGroup as PixiRadioGroupNode,
 } from "@yagejs/ui";
@@ -31,6 +31,7 @@ import type {
   LayoutValue,
   Padding,
   PixiViewType,
+  ScrollbarOptions,
 } from "@yagejs/ui";
 
 // ---------------------------------------------------------------------------
@@ -345,21 +346,38 @@ export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
   return <ui-element _ctor={PixiInputNode} {...props} />;
 }
 
-export interface PixiScrollBoxReactProps extends LayoutProps {
-  scrollWidth?: number;
-  scrollHeight?: number;
-  background?: ColorValue;
-  radius?: number;
-  type?: "vertical" | "horizontal" | "both";
-  elementsMargin?: number;
-  globalScroll?: boolean;
-  onScroll?: (position: number | PointLike) => void;
+export interface ScrollViewReactProps extends LayoutProps {
+  /** Scroll/stack axis. Default `"vertical"`. */
+  direction?: "vertical" | "horizontal";
+  /** Gap between child cards. */
+  gap?: number;
+  /** Padding inside the scrollable content. */
+  padding?: Padding;
+  /**
+   * Scrollbar thumb: `true` (default) / omitted → default style; `false` →
+   * hidden (no gutter); an object → custom size / style. A gutter equal to
+   * the thumb footprint is reserved so content never sits under the thumb.
+   */
+  scrollbar?: boolean | ScrollbarOptions;
+  /** Background drawn behind the clipped content. */
+  bg?: BackgroundOptions;
+  /** Called when the scroll offset changes. */
+  onScroll?: (offset: number) => void;
 }
 
-/** @pixi/ui ScrollBox with Yoga layout. */
-export function PixiScrollBox(props: PixiScrollBoxReactProps): React.JSX.Element {
+/**
+ * A clipped, scrollable container. Children are normal Yoga elements stacked
+ * along `direction`; anything past the fixed viewport size scrolls via wheel
+ * or drag, and the scroll position is preserved across re-renders. Size the
+ * viewport with `height` / `flexGrow`; keep fixed siblings (e.g. a footer
+ * button) outside the `<ScrollView>`.
+ */
+export function ScrollView(
+  props: PropsWithChildren<ScrollViewReactProps>,
+): React.JSX.Element {
+  const { children, bg, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PixiScrollBoxNode} {...props} />;
+  return <ui-element _ctor={ScrollViewNode} {...rest} background={bg}>{children}</ui-element>;
 }
 
 export interface PixiSelectReactProps extends LayoutProps {

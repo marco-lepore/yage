@@ -6,6 +6,7 @@ import {
   UIReactPlugin,
   UIRoot,
   Panel,
+  ScrollView,
   Text,
   Button,
   Image,
@@ -53,12 +54,13 @@ function MainMenu() {
     <Panel
       anchor="center"
       direction="column"
-      gap={12}
       padding={24}
       alignItems="center"
       bg={panelBg}
+      maxHeight="90vh"
     >
-      {/* Absolute-positioned badge — pinned to the menu's top-right corner */}
+      {/* Absolute-positioned badge — pinned to the menu's top-right corner.
+          Stays outside the scroll area so it tracks the panel, not content. */}
       <Panel
         position="absolute"
         top={8}
@@ -71,6 +73,12 @@ function MainMenu() {
         </Text>
       </Panel>
 
+      {/* The menu grows as Continue (saves) and Settings expand. Cap the
+          panel at 90vh and let the content scroll so it never exceeds the
+          viewport. The inner panel keeps everything centered (the
+          ScrollView's content stack is start-aligned). */}
+      <ScrollView flexGrow={1}>
+      <Panel direction="column" gap={12} alignItems="center">
       <Image texture={Logo} width={180} height={58} />
 
       <Text style={textStyle("title", { fontSize: 28 })}>UI Demo</Text>
@@ -203,6 +211,8 @@ function MainMenu() {
       >
         Exit
       </Button>
+      </Panel>
+      </ScrollView>
     </Panel>
   );
 }
