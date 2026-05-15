@@ -277,6 +277,23 @@ describe("ScrollViewNode", () => {
     expect(content.container.position.y).toBe(0);
   });
 
+  it("notifies onScroll(0) when a direction flip resets the offset", () => {
+    const onScroll = vi.fn();
+    const sv = new ScrollViewNode({ width: 200, height: 100, onScroll });
+    for (let i = 0; i < 5; i++) sv.addElement(new PanelNode({ height: 30 }));
+    layout(sv);
+
+    sv.scrollTo(30);
+    expect(onScroll).toHaveBeenLastCalledWith(30);
+
+    sv.update({ direction: "horizontal" });
+    layout(sv);
+
+    // The reset must reach consumers mirroring scroll state.
+    expect(sv.scrollOffset).toBe(0);
+    expect(onScroll).toHaveBeenLastCalledWith(0);
+  });
+
   it("sets a viewport hitArea synced to the viewport box", () => {
     const { sv } = buildScrollView(5, { height: 100 });
     const hit = (

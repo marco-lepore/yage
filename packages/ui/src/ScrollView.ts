@@ -418,8 +418,9 @@ export class ScrollViewNode implements UIContainerElement {
         );
         this.content.update({ direction: vertical ? "column" : "row" });
         // The scroll axis changed — the old offset is meaningless on it.
+        // Leave _lastNotified untouched so the next _notify() (in
+        // applyLayout) emits the reset to onScroll consumers.
         this._offset = 0;
-        this._lastNotified = 0;
       }
     }
 
