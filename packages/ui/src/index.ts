@@ -24,12 +24,12 @@ export type {
   UIProgressBarProps,
   UICheckboxProps,
   PanelProps,
+  ScrollViewProps,
   PixiFancyButtonProps,
   PixiCheckboxProps,
   PixiProgressBarProps,
   PixiSliderProps,
   PixiInputProps,
-  PixiScrollBoxProps,
   PixiSelectProps,
   PixiRadioGroupProps,
   PixiViewType,
@@ -58,6 +58,7 @@ export { UIImage } from "./UIImage.js";
 export { UINineSlice } from "./UINineSlice.js";
 export { UIProgressBar } from "./UIProgressBar.js";
 export { UICheckbox } from "./UICheckbox.js";
+export { ScrollViewNode } from "./ScrollView.js";
 export { LoadingSceneProgressBar } from "./LoadingSceneProgressBar.js";
 export type { LoadingSceneProgressBarOptions } from "./LoadingSceneProgressBar.js";
 
@@ -69,7 +70,6 @@ export {
   PixiProgressBar,
   PixiSlider,
   PixiInput,
-  PixiScrollBox,
   PixiSelect,
   PixiRadioGroup,
 } from "./pixi-ui/index.js";

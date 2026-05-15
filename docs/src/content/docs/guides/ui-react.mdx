@@ -219,58 +219,77 @@ import {
   PixiInput,
   PixiSelect,
   PixiRadioGroup,
-  PixiScrollBox,
 } from "@yagejs/ui-react";
 ```
 
-### Scrolling lists with `PixiScrollBox`
+### Scrolling lists with `<ScrollView>`
 
 Any list whose length you can't bound at design time — inventories,
 quest logs, chat, order tickets, leaderboards — should live inside a
-`PixiScrollBox`. A plain `<Panel>` simply clips overflow without
+`<ScrollView>`. A plain `<Panel>` simply clips overflow without
 scrolling, so once the list outgrows its container the extra entries
-disappear silently. `PixiScrollBox` is a Yoga-aware wrapper around
-[`@pixi/ui`'s `ScrollBox`](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox)
-that adds drag + wheel scrolling while still participating in the
-flexbox layout tree.
+disappear silently. `<ScrollView>` is a true Yoga container: its
+children are ordinary elements laid out by the normal flexbox pass (not
+handed off to a foreign widget), it adds wheel + drag scrolling, and it
+**preserves scroll position across re-renders** — fulfilling or
+refilling a store-driven list never jumps the scroll back to the top.
 
 ```tsx
-import { PixiScrollBox, Panel, Text } from "@yagejs/ui-react";
+import { ScrollView, Panel, Button, Text } from "@yagejs/ui-react";
 
 interface Order { id: string; label: string }
 
-function OrdersPanel({ orders }: { orders: Order[] }) {
+function OrdersPanel({
+  orders,
+  fulfill,
+  endDay,
+}: {
+  orders: Order[];
+  fulfill: (id: string) => void;
+  endDay: () => void;
+}) {
   return (
-    <Panel direction="column" gap={4} padding={8} bg={{ color: 0x000000, alpha: 0.7 }}>
-      <Text style={{ fontSize: 14, fill: 0xffffff }}>Orders</Text>
+    <Panel direction="column" width={300} height={220} gap={10} padding={10}
+           bg={{ color: 0x000000, alpha: 0.7 }}>
+      <Text style={{ fontSize: 16, fill: 0x93c5fd }}>Orders</Text>
 
-      <PixiScrollBox
-        scrollWidth={240}
-        scrollHeight={160}
-        type="vertical"
-        elementsMargin={4}
-        background={0x111111}
-        radius={6}
-      >
+      <ScrollView flexGrow={1} gap={6} bg={{ color: 0x0b1220 }}>
         {orders.map((o) => (
-          <Panel key={o.id} padding={8} bg={{ color: 0x222233 }}>
-            <Text style={{ fontSize: 12, fill: 0xffffff }}>{o.label}</Text>
+          <Panel key={o.id} direction="row" height={36} padding={{ left: 8, right: 6 }}
+                 alignItems="center" justifyContent="space-between"
+                 bg={{ color: 0x243042, radius: 4 }}>
+            <Text style={{ fontSize: 14, fill: 0xe5e7eb }}>{o.label}</Text>
+            <Button height={24} onClick={() => fulfill(o.id)}>Fulfill</Button>
           </Panel>
         ))}
-      </PixiScrollBox>
+      </ScrollView>
+
+      {/* A sibling of <ScrollView>, so it stays put while the list scrolls. */}
+      <Button height={36} onClick={endDay}>End Day</Button>
     </Panel>
   );
 }
 ```
 
-`scrollWidth` and `scrollHeight` define the visible viewport; the JSX
-children stack vertically inside it and scroll if they overflow. Switch
-`type` to `"horizontal"` for a row, or `"both"` for free 2D panning.
-`elementsMargin` adds spacing between items, and `globalScroll: true`
-makes the wheel scroll the box from anywhere over it (not just when the
-pointer is directly over a child). For the underlying widget's
-advanced props — mask shape, drag inertia, snapping — see the
-[`@pixi/ui` ScrollBox documentation](https://pixijs.io/ui/storybook/?path=/story/components-scrollbox).
+Size the viewport with the standard layout props — `height` for a fixed
+box, or `flexGrow={1}` to fill the space left by fixed siblings. Content
+overflowing the scroll axis is clipped and pannable by wheel or drag.
+Props: `direction` (`"vertical"` default, or `"horizontal"`), `gap`,
+`padding`, `scrollbar` (an auto-hiding thumb, on by default), `bg`, and
+`onScroll(offset)`. Keep anything that should stay fixed — a header, a
+footer button — as a **sibling** of `<ScrollView>`, never a child.
+
+For imperative control, a `ref` to the node exposes `scrollBy()`,
+`scrollTo()`, `scrollOffset`, and `maxScroll`. The same element is
+available outside React via the `panel.scrollView(opts)` builder on
+`UIPanel` / `PanelNode`.
+
+:::note
+Appending JSX children to a layout *leaf* (an element with no
+`addElement`, such as `<PixiSelect>`) silently drops them. In dev builds
+the reconciler now emits a one-time `console.warn` naming the element
+and pointing you at `<ScrollView>` or another container.
+:::
 
 ## Hooks
 

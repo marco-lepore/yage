@@ -1,6 +1,7 @@
 import ReactReconciler from "react-reconciler";
 import type { Container } from "pixi.js";
 import type { UIElement, UIContainerElement } from "@yagejs/ui";
+import { devWarn } from "@yagejs/core";
 
 // ---------------------------------------------------------------------------
 // Root instance tracking
@@ -31,6 +32,25 @@ export function removeOnCommit(cb: () => void): void {
 
 function isContainer(el: UIElement): el is UIContainerElement {
   return "addElement" in el;
+}
+
+/**
+ * JSX children appended to a layout-leaf element (one with no `addElement`)
+ * are silently dropped by every child op below. That class of "why is my box
+ * empty?" bug is invisible without a warning — flag it once per offending
+ * element type in dev.
+ */
+const warnedLeafTypes = new Set<string>();
+
+function warnNonContainerChild(parent: UIElement): void {
+  const name = parent.constructor.name;
+  if (warnedLeafTypes.has(name)) return;
+  warnedLeafTypes.add(name);
+  devWarn(
+    `<${name}> is a layout leaf — it has no addElement(), so JSX children ` +
+      `are ignored. Use <ScrollView> (or another container) for a ` +
+      `declarative list, or drive this element imperatively via a ref.`,
+  );
 }
 
 /** Strip reconciler-internal props before forwarding to UI elements. */
@@ -143,15 +163,15 @@ const hostConfig = {
   },
 
   appendInitialChild(parent: UIElement, child: UIElement) {
-    if (child && isContainer(parent)) {
-      parent.addElement(child);
-    }
+    if (!child) return;
+    if (isContainer(parent)) parent.addElement(child);
+    else warnNonContainerChild(parent);
   },
 
   appendChild(parent: UIElement, child: UIElement) {
-    if (child && isContainer(parent)) {
-      parent.addElement(child);
-    }
+    if (!child) return;
+    if (isContainer(parent)) parent.addElement(child);
+    else warnNonContainerChild(parent);
   },
 
   appendChildToContainer(container: Container, child: UIElement) {
@@ -182,9 +202,9 @@ const hostConfig = {
   },
 
   insertBefore(parent: UIElement, child: UIElement, beforeChild: UIElement) {
-    if (child && isContainer(parent)) {
-      parent.insertElementBefore(child, beforeChild);
-    }
+    if (!child) return;
+    if (isContainer(parent)) parent.insertElementBefore(child, beforeChild);
+    else warnNonContainerChild(parent);
   },
 
   insertInContainerBefore(container: Container, child: UIElement, beforeChild: UIElement) {

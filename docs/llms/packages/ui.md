@@ -79,6 +79,12 @@ btn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
 const row = panel.panel({ direction: "row", gap: 12 });
 row.text("HP");
 
+// Scrollable viewport (clipped + wheel/drag pannable). Children are normal
+// Yoga elements; size the viewport via LayoutProps (height / flexGrow).
+const list = panel.scrollView({ flexGrow: 1, gap: 6 });
+list.addElement(new UIButton({ children: "Order #1", height: 36 }));
+list.scrollTo(0); // also: scrollBy(dy), .scrollOffset, .maxScroll
+
 // Other elements (UIImage, UIProgressBar, UICheckbox) — instantiate directly:
 import { UIProgressBar } from "@yagejs/ui";
 const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value 0–1

@@ -12,12 +12,12 @@ export { UIRootLayoutSystem } from "./UIRootLayoutSystem.js";
 export {
   Panel, ZStack, UIText as Text, Button, Image, NineSlice, ProgressBar, Checkbox,
   PixiFancyButton, PixiCheckbox, PixiProgressBar, PixiSlider,
-  PixiInput, PixiScrollBox, PixiSelect, PixiRadioGroup,
+  PixiInput, ScrollView, PixiSelect, PixiRadioGroup,
 } from "./components.js";
 export type {
   PanelProps, TextProps, ButtonProps, ImageProps, NineSliceProps, ProgressBarProps, CheckboxProps,
   PixiFancyButtonReactProps, PixiCheckboxReactProps, PixiProgressBarReactProps, PixiSliderReactProps,
-  PixiInputReactProps, PixiScrollBoxReactProps, PixiSelectReactProps, PixiRadioGroupReactProps,
+  PixiInputReactProps, ScrollViewReactProps, PixiSelectReactProps, PixiRadioGroupReactProps,
 } from "./components.js";
 
 // Hooks

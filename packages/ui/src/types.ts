@@ -354,16 +354,26 @@ export interface PixiInputProps extends LayoutProps, ConsumeInputProps {
   onEnter?: (value: string) => void;
 }
 
-/** Props for PixiScrollBox. */
-export interface PixiScrollBoxProps extends LayoutProps, ConsumeInputProps {
-  scrollWidth?: number;
-  scrollHeight?: number;
-  background?: ColorValue;
-  radius?: number;
-  type?: "vertical" | "horizontal" | "both";
-  elementsMargin?: number;
-  globalScroll?: boolean;
-  onScroll?: (position: number | PointLike) => void;
+/**
+ * Props for `ScrollViewNode` / `<ScrollView>`.
+ *
+ * The viewport box is sized via the inherited `LayoutProps` (`width` /
+ * `height` / `flexGrow` …). Content overflowing the scroll axis is clipped
+ * and pannable. `gap` / `padding` apply to the inner content stack.
+ */
+export interface ScrollViewProps extends LayoutProps, ConsumeInputProps {
+  /** Scroll/stack axis. Default `"vertical"`. */
+  direction?: "vertical" | "horizontal";
+  /** Gap between child cards (forwarded to the content stack). */
+  gap?: number;
+  /** Padding inside the content stack. */
+  padding?: Padding;
+  /** Show the auto-hiding scrollbar thumb. Default `true`. */
+  scrollbar?: boolean;
+  /** Background drawn behind the clipped content. */
+  background?: BackgroundOptions;
+  /** Called when the scroll offset changes. */
+  onScroll?: (offset: number) => void;
 }
 
 /** Props for PixiSelect. */
