@@ -135,7 +135,7 @@ interface Inventory {
   has(item: string): boolean;
 }
 
-export const InventoryKey = ServiceKey<Inventory>("Inventory");
+export const InventoryKey = new ServiceKey<Inventory>("Inventory");
 
 export function inventoryPlugin(): Plugin {
   return {
@@ -164,7 +164,7 @@ directly to attach scene-local services:
 ```typescript
 import { Scene, ServiceKey } from "@yagejs/core";
 
-const LevelClockKey = ServiceKey<{ elapsed: number }>("LevelClock");
+const LevelClockKey = new ServiceKey<{ elapsed: number }>("LevelClock");
 
 class LevelScene extends Scene {
   override onEnter() {
