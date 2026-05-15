@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { getComponentData, gotoFixture, stepFrames, waitForClock } from "./helpers";
 
 interface ProbeData {
@@ -9,7 +9,7 @@ interface ProbeData {
   footerY: number;
 }
 
-async function probe(page: import("@playwright/test").Page): Promise<ProbeData> {
+async function probe(page: Page): Promise<ProbeData> {
   const data = await getComponentData<ProbeData>(page, "ui-state", "ScrollProbe");
   if (!data) throw new Error("ScrollProbe data unavailable");
   return data;
@@ -61,7 +61,12 @@ test.describe("ScrollView fixture", () => {
     const before = afterDrag.offset;
     expect(before).toBeGreaterThan(0);
 
-    await canvas.click({ position: { x: 130, y: 205 } });
+    await canvas.click({
+      position: {
+        x: Math.round(afterDrag.footerX + 10),
+        y: Math.round(afterDrag.footerY + 10),
+      },
+    });
     await stepFrames(page, 2);
 
     const afterRefill = await probe(page);

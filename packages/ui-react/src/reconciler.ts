@@ -40,12 +40,13 @@ function isContainer(el: UIElement): el is UIContainerElement {
  * empty?" bug is invisible without a warning — flag it once per offending
  * element type in dev.
  */
-const warnedLeafTypes = new Set<string>();
+const warnedLeafTypes = new WeakSet<object>();
 
 function warnNonContainerChild(parent: UIElement): void {
-  const name = parent.constructor.name;
-  if (warnedLeafTypes.has(name)) return;
-  warnedLeafTypes.add(name);
+  const ctor = parent.constructor;
+  if (warnedLeafTypes.has(ctor)) return;
+  warnedLeafTypes.add(ctor);
+  const name = ctor.name || "AnonymousUIElement";
   devWarn(
     `<${name}> is a layout leaf — it has no addElement(), so JSX children ` +
       `are ignored. Use <ScrollView> (or another container) for a ` +

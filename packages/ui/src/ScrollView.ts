@@ -1,7 +1,7 @@
 import { Container, Graphics } from "pixi.js";
 import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
-import { Display, Overflow } from "yoga-layout";
+import { Display, FlexDirection, Overflow } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { MaskHandle } from "@yagejs/renderer";
 import type {
@@ -35,7 +35,7 @@ export class ScrollViewNode implements UIContainerElement {
   readonly yogaNode: YogaNode;
   private readonly viewport: Container;
   private readonly content: PanelNode;
-  private readonly vertical: boolean;
+  private vertical: boolean;
   private scrollbarGfx: Graphics | undefined;
   private scrollbarEnabled: boolean;
   private maskHandle: MaskHandle | undefined;
@@ -74,6 +74,12 @@ export class ScrollViewNode implements UIContainerElement {
     this.yogaNode = createYogaNode();
     this.yogaNode.setOverflow(Overflow.Hidden);
     applyLayoutProps(this.yogaNode, props);
+    // The scroll axis must be the viewport's MAIN axis: the content has
+    // flexShrink 0, so it keeps its natural size on the main axis and
+    // overflows (gets clipped + panned) while stretching on the cross axis.
+    this.yogaNode.setFlexDirection(
+      this.vertical ? FlexDirection.Column : FlexDirection.Row,
+    );
 
     this.content = new PanelNode({
       direction: this.vertical ? "column" : "row",
@@ -254,7 +260,15 @@ export class ScrollViewNode implements UIContainerElement {
 
   private readonly _onWheel = (e: FederatedWheelEvent): void => {
     if (this._maxScroll <= 0) return;
-    const unit = e.deltaMode === 1 ? 16 : 1;
+    // deltaMode: 0 = pixels, 1 = lines (~16px), 2 = pages (one viewport).
+    const unit =
+      e.deltaMode === 2
+        ? this.vertical
+          ? this._vh
+          : this._vw
+        : e.deltaMode === 1
+          ? 16
+          : 1;
     const delta = this.vertical ? e.deltaY : e.deltaX || e.deltaY;
     this._setOffset(this._offset + delta * unit);
   };
@@ -317,6 +331,20 @@ export class ScrollViewNode implements UIContainerElement {
       } else if (this.bgRenderer) {
         this.bgRenderer.destroy();
         this.bgRenderer = undefined;
+      }
+    }
+
+    if (props.direction !== undefined) {
+      const vertical = props.direction === "vertical";
+      if (vertical !== this.vertical) {
+        this.vertical = vertical;
+        this.yogaNode.setFlexDirection(
+          vertical ? FlexDirection.Column : FlexDirection.Row,
+        );
+        this.content.update({ direction: vertical ? "column" : "row" });
+        // The scroll axis changed — the old offset is meaningless on it.
+        this._offset = 0;
+        this._lastNotified = 0;
       }
     }
 

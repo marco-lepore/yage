@@ -247,6 +247,26 @@ describe("ScrollViewNode", () => {
     expect(onScroll).toHaveBeenLastCalledWith(20);
   });
 
+  it("update({ direction }) flips the scroll axis and resets the offset", () => {
+    const { sv } = buildScrollView(5, { height: 100, rowHeight: 30 });
+    const content = (sv as unknown as { content: PanelNode }).content;
+    sv.scrollTo(30);
+    expect(sv.scrollOffset).toBe(30);
+
+    sv.update({ direction: "horizontal" });
+    layout(sv);
+
+    // Axis changed → offset cleared; content now overflows on width
+    // (5 rows * 200px = 1000 vs 200px viewport).
+    expect(sv.scrollOffset).toBe(0);
+    expect(sv.maxScroll).toBe(800);
+
+    sv.scrollBy(40);
+    expect(sv.scrollOffset).toBe(40);
+    expect(content.container.position.x).toBe(-40);
+    expect(content.container.position.y).toBe(0);
+  });
+
   it("survives destroy()", () => {
     const { sv } = buildScrollView(3);
     expect(() => sv.destroy()).not.toThrow();
