@@ -1,3 +1,6 @@
+import { devWarn } from "@yagejs/core";
+import { buildTextOptions } from "@yagejs/renderer";
+import type { BitmapTextOption } from "@yagejs/renderer";
 import { BitmapText, Text } from "pixi.js";
 import type { TextStyleOptions, Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
@@ -17,35 +20,27 @@ export class UIText implements UIElement {
   private _truncate: "clip" | "ellipsis" | undefined;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
+  // `bitmap` / `resolution` are construction-only (Pixi v8 can't morph
+  // Text↔BitmapText or change resolution in place). Cached so `update()`
+  // can detect — and warn about — a change it cannot honor.
+  private readonly _bitmap: BitmapTextOption | undefined;
+  private readonly _resolution: number | undefined;
 
   constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
 
     this._source = props.children ?? "";
     this._truncate = props.truncate;
+    this._bitmap = props.bitmap;
+    this._resolution = props.resolution;
 
-    const bitmap = props.bitmap;
-    const useBitmap =
-      bitmap === true || (!!bitmap && typeof bitmap === "object");
-    let s = props.style ?? {};
-    if (bitmap && typeof bitmap === "object") {
-      s = {
-        ...s,
-        ...(bitmap.font !== undefined ? { fontFamily: bitmap.font } : {}),
-        ...(bitmap.size !== undefined ? { fontSize: bitmap.size } : {}),
-      };
-    }
-    // `resolution` is a Pixi v8 `Text` constructor option (NOT a TextStyle
-    // property). `BitmapText` resolution is fixed at font-bake time and
-    // warns if set per-instance, so only forward it to canvas `Text`.
-    const opts = {
-      text: this._source,
-      style: s,
-      ...(!useBitmap && props.resolution !== undefined
-        ? { resolution: props.resolution }
-        : {}),
-    };
-    this.text = useBitmap ? new BitmapText(opts) : new Text(opts);
+    const { options, bitmap } = buildTextOptions(
+      this._source,
+      props.style,
+      props.bitmap,
+      props.resolution,
+    );
+    this.text = bitmap ? new BitmapText(options) : new Text(options);
     this.applyTruncateStyle();
     applyLayoutProps(this.yogaNode, props);
 
@@ -140,6 +135,23 @@ export class UIText implements UIElement {
       this.text.text = this._source;
       this.applyTruncateStyle();
       this.yogaNode.markDirty();
+    }
+    // `bitmap` / `resolution` are baked into the Pixi object at construction
+    // and cannot be applied in place (Pixi v8 has no Text↔BitmapText morph,
+    // and `resolution` is a constructor-only option). Surface the dropped
+    // change instead of silently ignoring it so the React reconciler path
+    // doesn't fail mysteriously.
+    if (
+      ("bitmap" in p &&
+        JSON.stringify(p.bitmap) !== JSON.stringify(this._bitmap)) ||
+      ("resolution" in p && p.resolution !== this._resolution)
+    ) {
+      devWarn(
+        "UIText: `bitmap` / `resolution` are construction-only and were " +
+          "ignored on update(). Pixi v8 can't morph Text↔BitmapText or " +
+          "change resolution in place — remount the element (e.g. change " +
+          "its React `key`) to switch bitmap font or resolution.",
+      );
     }
     if (p.consumeInput !== undefined) applyConsumeInput(this.text, p.consumeInput);
     applyLayoutProps(this.yogaNode, p);

@@ -291,4 +291,39 @@ describe("UIText bitmap + resolution", () => {
     expect(textObject(t)).toBeInstanceOf(mocks.MockBitmapText);
     expect(textObject(t).resolution).toBeUndefined();
   });
+
+  it("warns (and keeps the constructed class) when update() changes bitmap", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = new UIText({ children: "hi" });
+    expect(textObject(t)).not.toBeInstanceOf(mocks.MockBitmapText);
+
+    t.update({ bitmap: true });
+
+    // Construction-only: the underlying Pixi class does not change…
+    expect(textObject(t)).toBeInstanceOf(mocks.MockText);
+    expect(textObject(t)).not.toBeInstanceOf(mocks.MockBitmapText);
+    // …but the dropped change is surfaced rather than silently ignored.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
+
+  it("warns when update() changes resolution", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = new UIText({ children: "hi", resolution: 1 });
+    t.update({ resolution: 2 });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
+
+  it("does not warn when update() repeats the same bitmap value", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = new UIText({ children: "hi", bitmap: { font: "A", size: 8 } });
+    t.update({ bitmap: { font: "A", size: 8 }, children: "ho" });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
