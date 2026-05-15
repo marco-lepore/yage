@@ -325,6 +325,28 @@ describe("ScrollViewNode", () => {
     expect(content.yogaNode.getComputedWidth()).toBe(200);
   });
 
+  it("is bounded by a flex parent so it scrolls when nested (flexGrow:1)", () => {
+    // Regression: the viewport is a flex child of a fixed-height panel and
+    // its own content (flexShrink:0) overflows. Without min-size 0 +
+    // flexShrink:1 the viewport grows to the content and maxScroll === 0.
+    const parent = new PanelNode({
+      direction: "column",
+      width: 200,
+      height: 100,
+    });
+    const sv = new ScrollViewNode({ flexGrow: 1 });
+    for (let i = 0; i < 8; i++) {
+      sv.addElement(new PanelNode({ height: 30, width: 200 })); // 240 total
+    }
+    parent.addElement(sv);
+    parent.addElement(new PanelNode({ height: 20 })); // fixed footer sibling
+    parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    parent.applyLayout();
+
+    expect(sv.maxScroll).toBeGreaterThan(0);
+    parent.destroy();
+  });
+
   it("survives destroy()", () => {
     const { sv } = buildScrollView(3);
     expect(() => sv.destroy()).not.toThrow();

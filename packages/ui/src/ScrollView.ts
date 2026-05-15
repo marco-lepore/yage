@@ -113,6 +113,16 @@ export class ScrollViewNode implements UIContainerElement {
 
     this.yogaNode = createYogaNode();
     this.yogaNode.setOverflow(Overflow.Hidden);
+    // Let a flex parent size the viewport smaller than its (overflowing)
+    // content — the Yoga equivalent of the CSS `min-height:0` scroll-
+    // container fix. A flex item's automatic min size is its content size,
+    // AND Yoga's default flexShrink is 0 (unlike web's 1), so without both
+    // of these the viewport grows to its flexShrink:0 content and never
+    // scrolls when nested (e.g. `flexGrow:1` in a fixed-height panel).
+    // Set before applyLayoutProps so explicit props still win.
+    this.yogaNode.setMinWidth(0);
+    this.yogaNode.setMinHeight(0);
+    this.yogaNode.setFlexShrink(1);
     applyLayoutProps(this.yogaNode, props);
     // The scroll axis must be the viewport's MAIN axis: the content has
     // flexShrink 0, so it keeps its natural size on the main axis and

@@ -49,7 +49,10 @@ test.describe("ScrollView fixture", () => {
     // 1. Content overflows the fixed-height viewport.
     const initial = await probe(page);
     expect(initial.orderCount).toBe(8);
-    expect(initial.maxScroll).toBeGreaterThan(0);
+    expect(
+      initial.maxScroll,
+      `content should overflow viewport: ${JSON.stringify(initial)}`,
+    ).toBeGreaterThan(0);
     expect(initial.offset).toBe(0);
     const scrollBtnY0 = initial.scrollBtnY;
     const endY0 = initial.endY;
