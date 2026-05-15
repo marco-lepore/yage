@@ -1,39 +1,59 @@
 /**
- * Reactive subscription contracts.
+ * Reactive state contracts.
  *
- * Every reactive primitive in `@yagejs/core/state` extends `Reactive`. Each
- * shape adds its own read/write methods. React's `useStore` reads through
- * these interfaces, the compound `defineStore` collects them as leaves, and
- * the save layer hydrates/dumps them as `PersistentLike`.
+ * Three primitive interfaces — {@link Reactive}, {@link Serializable},
+ * {@link Resettable} — describe the orthogonal facets every state factory
+ * implements. The save layer consumes any `Serializable<T>` (optionally with
+ * `Reactive` for `autoPersist`); React's `useStore` consumes any `Reactive*`
+ * shape. Ids and version envelopes live at the save call site, not on the
+ * primitive.
  *
- * `Reactive*` is the public subscription surface — it doesn't carry an id,
- * version, or serialize protocol. The persistent variants (`PersistentLike`
- * + concrete factories) sit on top of these.
+ * Every shape carries a `[STATE_KIND]` brand. The brand is a real exported
+ * symbol — leaf factories set it at construction time, and `useStore`
+ * dispatches on it for snapshot extraction. No more duck-typing on overlapping
+ * method names.
  */
+
+/** Subscribe to changes; returns an unsubscribe function. */
 export interface Reactive {
-  /** Subscribe to changes; returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }
 
-// Phantom brands disambiguate the two shapes that share `get`/`set` method
-// names but disagree on parameter types: `ReactiveValue<T>` (single cell)
-// and `ReactiveRecord<T>` (object with shallow merge). Without brands TS
-// overload resolution can pick the wrong one — e.g. `ReactiveValue<boolean>`
-// would otherwise match `ReactiveRecord<Boolean>`. The brands have no
-// runtime representation; leaf factories satisfy them via internal casts.
-declare const __ReactiveValueBrand: unique symbol;
-declare const __ReactiveRecordBrand: unique symbol;
+/** Serialise to / hydrate from a typed encoded form. */
+export interface Serializable<TEncoded = unknown> {
+  serialize(): TEncoded;
+  hydrate(raw: TEncoded): void;
+}
 
-/** Single typed cell. */
-export interface ReactiveValue<T> extends Reactive {
-  /** @internal phantom brand — do not access. */
-  readonly [__ReactiveValueBrand]: T;
+/** Restore to construction defaults. */
+export interface Resettable {
+  reset(): void;
+}
+
+/** Runtime + compile-time dispatch tag for reactive shapes. */
+export const STATE_KIND: unique symbol = Symbol.for("yagejs.state.kind");
+
+/**
+ * Single typed cell. `TEncoded` is the codec-encoded form (defaults to `T` for
+ * identity codecs). With a custom codec like `dateCodec()`, `T = Date` and
+ * `TEncoded = string` — `serialize()` returns `{ value: string }`, and any
+ * `migrate` callback returning the new encoded form sees the same shape.
+ */
+export interface ReactiveValue<T, TEncoded = T>
+  extends Reactive,
+    Serializable<{ value: TEncoded }>,
+    Resettable {
+  readonly [STATE_KIND]: "value";
   get(): T;
   set(value: T): void;
 }
 
 /** Integer counter with arithmetic helpers. */
-export interface ReactiveCounter extends Reactive {
+export interface ReactiveCounter
+  extends Reactive,
+    Serializable<number>,
+    Resettable {
+  readonly [STATE_KIND]: "counter";
   value(): number;
   set(n: number): void;
   increment(by?: number): void;
@@ -42,16 +62,26 @@ export interface ReactiveCounter extends Reactive {
   clamp(value: number, min: number, max: number): void;
 }
 
-/** Object-shaped store with shallow merge on `set`. */
-export interface ReactiveRecord<T extends object> extends Reactive {
-  /** @internal phantom brand — do not access. */
-  readonly [__ReactiveRecordBrand]: T;
+/**
+ * Object-shaped store with shallow merge on `set`. `TEncoded` is the
+ * codec-encoded form (defaults to `T` for identity codecs); with a custom
+ * codec, `serialize()` returns `TEncoded` and `hydrate` receives the same.
+ */
+export interface ReactiveRecord<T extends object, TEncoded = T>
+  extends Reactive,
+    Serializable<TEncoded>,
+    Resettable {
+  readonly [STATE_KIND]: "record";
   get(): Readonly<T>;
   set(partial: Partial<T>): void;
 }
 
 /** Key → value map. */
-export interface ReactiveMap<K, V> extends Reactive {
+export interface ReactiveMap<K, V>
+  extends Reactive,
+    Serializable<Array<[K, V]>>,
+    Resettable {
+  readonly [STATE_KIND]: "map";
   get(key: K): V | undefined;
   set(key: K, value: V): void;
   delete(key: K): void;
@@ -62,7 +92,11 @@ export interface ReactiveMap<K, V> extends Reactive {
 }
 
 /** Set of keys. */
-export interface ReactiveSet<K> extends Reactive {
+export interface ReactiveSet<K>
+  extends Reactive,
+    Serializable<K[]>,
+    Resettable {
+  readonly [STATE_KIND]: "set";
   add(key: K): void;
   delete(key: K): void;
   has(key: K): boolean;
@@ -72,10 +106,23 @@ export interface ReactiveSet<K> extends Reactive {
 }
 
 /**
+ * Encoded form for a `ReactiveList`: items in insertion order plus the
+ * monotonic `nextId` counter so ids stay stable across save/restore.
+ */
+export interface ListEncoded<T> {
+  items: Array<{ id: number; value: T }>;
+  nextId: number;
+}
+
+/**
  * Ordered list of items with monotonically-assigned numeric ids. Insertion
  * order is preserved across save/restore; ids are stable.
  */
-export interface ReactiveList<T> extends Reactive {
+export interface ReactiveList<T>
+  extends Reactive,
+    Serializable<ListEncoded<T>>,
+    Resettable {
+  readonly [STATE_KIND]: "list";
   /** Insert and return the assigned id. */
   add(item: T): number;
   /** Remove by id; returns true if the id was present. */

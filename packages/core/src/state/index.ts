@@ -1,53 +1,51 @@
-export { createAtom } from "./Atom.js";
-export type { Atom } from "./Atom.js";
+// ---------------------------------------------------------------------------
+// Contracts
+// ---------------------------------------------------------------------------
 
-export { createStore } from "./Store.js";
-export type { Store } from "./Store.js";
-
+export { STATE_KIND } from "./reactive.js";
 export type {
   Reactive,
+  Serializable,
+  Resettable,
   ReactiveValue,
   ReactiveCounter,
   ReactiveRecord,
   ReactiveMap,
   ReactiveSet,
   ReactiveList,
+  ListEncoded,
 } from "./reactive.js";
 
+// ---------------------------------------------------------------------------
+// Factories
+// ---------------------------------------------------------------------------
+
 export {
-  defineStore,
-  defineRecord,
-  defineValue,
-  defineSet,
-  defineMap,
-  defineCounter,
-  defineList,
-  StoreVersionTooNewError,
-  StoreMigrationMissingError,
-  _resetAllStoresForTesting,
-  _clearStoreRegistryForTesting,
-} from "./persistent.js";
+  createValue,
+  createCounter,
+  createRecord,
+  createMap,
+  createSet,
+  createList,
+  createStore,
+} from "./factories.js";
 export type {
-  PersistentLike,
-  PersistentRecord,
-  PersistentValue,
-  PersistentSet,
-  PersistentMap,
-  PersistentCounter,
-  PersistentList,
-  DefineRecordOptions,
-  DefineValueOptions,
-  DefineSetOptions,
-  DefineMapOptions,
-  DefineCounterOptions,
-  DefineListOptions,
-  DefineStoreOptions,
-  CompoundLeaves,
-  CompoundStore,
-  CompoundDataFor,
-  EncodedForLeaf,
+  CreateValueOptions,
+  CreateCounterOptions,
+  CreateRecordOptions,
+  CreateMapOptions,
+  CreateSetOptions,
+  CreateListOptions,
   LeafBuilder,
-} from "./persistent.js";
+  StoreLeaves,
+  ReactiveStore,
+  EncodedForLeaf,
+  EncodedStore,
+} from "./factories.js";
+
+// ---------------------------------------------------------------------------
+// Codecs
+// ---------------------------------------------------------------------------
 
 export { jsonCodec, setCodec, mapCodec, dateCodec } from "./codecs.js";
 export type { Codec } from "./codecs.js";

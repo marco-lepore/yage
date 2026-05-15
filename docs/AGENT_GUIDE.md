@@ -219,7 +219,6 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | ------------------- | ----------------------------------------------------------------------------- |
 | `src/UIRoot.ts`     | Component that hosts React tree in UI layer                                   |
 | `src/hooks.ts`      | `useEngine()`, `useScene()`, `useQuery()`, `useStore()`, `useSceneSelector()` |
-| `src/store.ts`      | `createStore()`, `Store<T>` reactive state                                    |
 | `src/reconciler.ts` | Custom React reconciler over Yoga + PixiJS                                    |
 | `src/components/`   | JSX wrappers: Panel, Text, Button, Image, etc.                                |
 
@@ -249,7 +248,7 @@ Two persistence paths in one package:
 | `src/adapters/localStorage.ts`      | `localStorageAdapter()` — browser default                     |
 | `src/adapters/memory.ts`            | `memoryAdapter()` — tests + Node                              |
 
-Stores themselves (the compound `defineStore` + standalone `defineRecord` / `defineValue` / `defineSet` / `defineMap` / `defineCounter` / `defineList` / `Atom`) live in `@yagejs/core` under `src/state/` and are re-exported from `@yagejs/save`. The `Reactive*` subscription interfaces in `state/reactive.ts` are the React-facing contracts that `useStore` reads through.
+The reactive state factories themselves (the compound `createStore` + leaf `createRecord` / `createValue` / `createSet` / `createMap` / `createCounter` / `createList`) live in `@yagejs/core` under `src/state/`. They implement three contracts — `Reactive`, `Serializable<T>`, `Resettable` — also defined in `state/reactive.ts` along with the `Reactive*` shape interfaces. The save layer consumes any `Serializable<T>` by id at the call site; primitives stay ignorant of persistence vocabulary.
 
 **Snapshot path** (advanced — full-scene `@serializable` quicksave):
 
@@ -681,34 +680,37 @@ Two paths — pick by use case.
 **Stores + Save instance** (primary — settings, slots, world facts, progression):
 
 ```typescript
+import { createStore, createRecord } from "@yagejs/core";
 import {
-  defineStore, defineRecord, createSave, SavePlugin,
-  localStorageAdapter, SaveServiceKey,
+  createSave, SavePlugin, localStorageAdapter, SaveServiceKey,
 } from "@yagejs/save";
 
-// Compound — many leaves, one save target.
-const game = defineStore("game", (s) => ({
+// Compound — bundles many leaves into one save document.
+const game = createStore((s) => ({
   run: s.record<{ chapter: number }>({ defaults: () => ({ chapter: 1 }) }),
   opened: s.set<string>(),
   gold: s.counter({ default: 0 }),
 }));
 
-// Standalone for things that persist on a different cadence.
-const settings = defineRecord<{ volume: number }>("settings", {
+// Leaf for things that persist on a different cadence.
+const settings = createRecord<{ volume: number }>({
   defaults: () => ({ volume: 0.8 }),
 });
 
-// Construct Save in main; register via plugin
+// Construct Save in main; register via plugin. Ids live at the call site.
 const save = createSave({ adapter: localStorageAdapter() });
-await save.restoreAll([game, settings]);
-save.autoPersist(game);
-save.autoPersist(settings);
+await Promise.all([
+  save.restore("game", game),
+  save.restore("settings", settings),
+]);
+save.autoPersist("game", game);
+save.autoPersist("settings", settings);
 engine.use(new SavePlugin({ save }));
 
 // In game code:
 const save = this.service(SaveServiceKey);
-await save.saveSlot(game, "manual-1", { metadata: { /* ... */ } });
-await save.loadSlot(game, "manual-1");
+await save.saveSlot("game", "manual-1", game, { metadata: { /* ... */ } });
+await save.loadSlot("game", "manual-1", game);
 ```
 
 **Snapshot path** (advanced — full-scene quicksave):
@@ -807,7 +809,7 @@ class InventoryUI extends Component {
 React components re-render from state — the entity bridges the store to the save system:
 
 ```typescript
-const inventoryStore = createStore({ selectedTab: 0, scrollY: 0 });
+const inventoryStore = createRecord({ defaults: () => ({ selectedTab: 0, scrollY: 0 }) });
 
 @serializable
 class InventoryEntity extends Entity {

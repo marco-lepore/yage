@@ -26,22 +26,22 @@ Stores also avoid the trap of accidentally persisting things you don't want —
 particle positions, animation phase, transient UI state — because you choose
 what each store contains.
 
-## Defining stores
+## Creating reactive state
 
-YAGE gives you a **compound** store (the primary surface — one save target
-with many typed leaves) and a set of **standalone** factories for one-offs.
-Both live in `@yagejs/core` and are re-exported from `@yagejs/save` for
-convenience.
+YAGE's state factories live in `@yagejs/core` and produce pure-data values
+implementing three contracts: `Reactive` (subscribe), `Serializable<T>`
+(serialize/hydrate), and `Resettable` (reset). The save layer consumes any
+`Serializable<T>`; ids and versioning live at the save call site.
 
-### Compound `defineStore` (primary)
+### Compound `createStore` (primary)
 
 ```typescript
 // game/persistence/stores.ts
-import { defineStore } from "@yagejs/save";
+import { createStore } from "@yagejs/core";
 
 export interface Potion { name: string; quality: number }
 
-export const game = defineStore("game", (s) => ({
+export const game = createStore((s) => ({
   inventory:  s.map<string, number>(),
   recipes:    s.set<string>(),
   gold:       s.counter({ default: 0 }),
@@ -49,7 +49,7 @@ export const game = defineStore("game", (s) => ({
   shelf:      s.list<Potion>(),
   day:        s.value<number>({ default: 1 }),
   settings:   s.record<{ volume: number; lang: string }>({
-    defaults: () => ({ volume: 0.8, lang: "en" }),
+    default: () => ({ volume: 0.8, lang: "en" }),
   }),
 }));
 
@@ -59,87 +59,84 @@ game.inventory.set("moonleaf", 3);
 game.recipes.add("brew-1");
 const potionId = game.shelf.add({ name: "Cure", quality: 7 });
 
-// Save the whole tree as one document:
-save.autoPersist(game);
+// Save the whole tree as one document — id at the save call site:
+save.autoPersist("game", game);
 ```
 
 Leaf builder methods on `s`:
 
 - `s.value<T>({ default, codec? })` — single typed cell.
 - `s.counter({ default? })` — number with `value`, `set`, `increment`, `decrement`, `clamp(value, min, max)`.
-- `s.record<T>({ defaults, codec? })` — object with shallow merge.
-- `s.map<K, V>({ defaults? })` — key→value.
-- `s.set<K>({ defaults? })` — keys.
-- `s.list<T>({ defaults? })` — ordered list with stable monotonic ids.
+- `s.record<T>({ default, codec? })` — object with shallow merge.
+- `s.map<K, V>({ default? })` — key→value.
+- `s.set<K>({ default? })` — keys.
+- `s.list<T>({ default? })` — ordered list with stable monotonic ids.
 
-The compound is one `PersistentLike`: a single storage key, atomic
-`serialize`/`hydrate`, and one `autoPersist` debounce covering every leaf.
-Reserved leaf keys — `id`, `version`, `subscribe`, `serialize`, `hydrate`,
-`reset` — collide at definition time.
+The compound bundles every leaf so they serialise/restore atomically as one
+document. Reserved leaf keys — `subscribe`, `serialize`, `hydrate`, `reset`
+— collide at construction time.
 
-`useStore(compound)` is intentionally **not** supported. Read individual
-leaves so React subscription granularity stays per-leaf.
+`useStore(compound)` returns the encoded snapshot of the whole tree; for
+fine-grained subscriptions read individual leaves.
 
-### Standalone factories (one-offs)
+### Leaf factories (one-offs)
 
-When a single primitive doesn't belong inside a larger tree, the standalone
-factories give you the same shape APIs with their own id, version, and
-save target:
+When a single primitive doesn't belong inside a larger tree, use the leaf
+factories directly:
 
 ```typescript
 import {
-  defineRecord, defineValue, defineCounter,
-  defineMap, defineSet, defineList,
-} from "@yagejs/save";
+  createRecord, createValue, createCounter,
+  createMap, createSet, createList,
+} from "@yagejs/core";
 
-export const settings = defineRecord<SettingsData>("settings", {
-  version: 1,
-  defaults: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
+export const settings = createRecord<SettingsData>({
+  default: () => ({ audio: { music: 0.8, sfx: 1.0 }, vsync: true }),
 });
 
-export const opened    = defineSet<string>("world.opened");
-export const defeated  = defineMap<string, number>("world.defeated");
-export const restEpoch = defineCounter("world.restEpoch");
-export const day       = defineValue<number>("world.day", { defaults: () => 1 });
-export const journal   = defineList<{ at: number; text: string }>("world.journal");
+export const opened    = createSet<string>();
+export const defeated  = createMap<string, number>();
+export const restEpoch = createCounter();
+export const day       = createValue<number>({ default: 1 });
+export const journal   = createList<{ at: number; text: string }>();
 ```
 
-Shape APIs (every leaf and standalone also has `.subscribe(fn): () => void`):
+Shape APIs (every value also exposes `subscribe(fn)`, `serialize()`,
+`hydrate(raw)`, `reset()`):
 
-- `defineRecord<T>` / `s.record`: `get(): Readonly<T>`, `set(partial: Partial<T>)`.
-- `defineValue<T>` / `s.value`: `get(): T`, `set(v: T)`.
-- `defineCounter` / `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
-- `defineMap<K, V>` / `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries(): Array<[K, V]>`, `size()`, `clear()`.
-- `defineSet<K>` / `s.set`: `add(k)`, `delete(k)`, `has(k)`, `values(): K[]`, `size()`, `clear()`.
-- `defineList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list(): T[]`, `size()`, `clear()`.
+- `createRecord<T>` / `s.record`: `get(): Readonly<T>`, `set(partial: Partial<T>)`.
+- `createValue<T>` / `s.value`: `get(): T`, `set(v: T)`.
+- `createCounter` / `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
+- `createMap<K, V>` / `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries()`, `size()`, `clear()`.
+- `createSet<K>` / `s.set`: `add(k)`, `delete(k)`, `has(k)`, `values()`, `size()`, `clear()`.
+- `createList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list()`, `size()`, `clear()`.
 
-Standalone factories additionally expose `.reset()` to restore defaults.
-Codecs are bundled for the typed shapes (Set/Map/Counter/List) — you only
-specify a custom `codec` on `defineRecord<T>` / `defineValue<T>` (or the
-matching leaves) when `T` contains exotic types.
+Codecs are bundled for Set/Map/Counter/List — you only specify a custom
+`codec` on `createRecord<T>` / `createValue<T>` (or the matching leaves)
+when `T` contains exotic types.
 
-### Migrating from many standalones to one compound
+### Migrating from many leaf factories to one compound
 
-If your game grew a `defineRecord` here, a `defineCounter` there, and
-several `defineSet`s — each with its own `autoPersist` call — the compound
-collapses them into one save target with atomic writes:
+If your game grew a `createRecord` here, a `createCounter` there, and several
+`createSet`s — each with its own `autoPersist` call — the compound collapses
+them into one save target with atomic writes:
 
 ```typescript
 // Before — three save documents, three autoPersist calls.
-const progression = defineRecord<RunData>("run", { defaults: () => ({ chapter: 1, coins: 0 }) });
-const deaths      = defineCounter("deaths");
-const flags       = defineSet<string>("flags");
-save.autoPersist(progression);
-save.autoPersist(deaths);
-save.autoPersist(flags);
+const progression = createRecord<RunData>({ default: () => ({ chapter: 1, coins: 0 }) });
+const deaths      = createCounter();
+const flags       = createSet<string>();
+save.autoPersist("run.progression", progression);
+save.autoPersist("run.deaths", deaths);
+save.autoPersist("run.flags", flags);
 
 // After — one document, one autoPersist call, atomic serialize/hydrate.
-const game = defineStore("run", (s) => ({
-  progression: s.record<RunData>({ defaults: () => ({ chapter: 1, coins: 0 }) }),
+const game = createStore((s) => ({
+  progression: s.record<RunData>({ default: () => ({ chapter: 1, coins: 0 }) }),
   deaths:      s.counter({ default: 0 }),
   flags:       s.set<string>(),
 }));
-save.autoPersist(game);
+save.autoPersist("run", game);
 ```
 
 ## Creating the Save instance
@@ -163,8 +160,11 @@ import { SavePlugin } from "@yagejs/save";
 import { save } from "./persistence/save.js";
 import { settings, saves } from "./persistence/stores.js";
 
-await save.restoreAll([settings, saves]);   // boot-time restore
-save.autoPersist(settings);                  // stream changes back to disk
+await Promise.all([
+  save.restore("settings", settings),
+  save.restore("saves", saves),
+]);
+save.autoPersist("settings", settings);   // stream changes back to disk
 
 const engine = new Engine();
 engine.use(new SavePlugin({ save }));
@@ -174,12 +174,12 @@ await engine.start();
 ## Settings — single document + auto-persist
 
 Settings change rarely and should write to disk on every change. `autoPersist`
-subscribes to the store and writes on every change, coalescing multiple
+subscribes to the value and writes on every change, coalescing multiple
 synchronous `set` calls into one write per microtask.
 
 ```typescript
-await save.restore(settings);                       // load on boot
-const stop = save.autoPersist(settings);
+await save.restore("settings", settings);            // load on boot
+const stop = save.autoPersist("settings", settings);
 
 // Anywhere in the game…
 settings.set({ audio: { ...settings.get().audio, music: 0.5 } });
@@ -188,11 +188,11 @@ settings.set({ audio: { ...settings.get().audio, music: 0.5 } });
 
 `stop()` removes the subscriber and cancels any pending write. For real
 time-based debouncing across user interactions (e.g. throttling a slider
-drag), wrap the store yourself.
+drag), wrap the value yourself.
 
 ## Save slots
 
-Slots are named instances of a store. Use them for "save game" semantics.
+Slots are named instances of a value. Use them for "save game" semantics.
 Each slot has optional metadata persisted alongside the value (timestamp,
 location, thumbnail, anything you want).
 
@@ -202,16 +202,16 @@ interface RunMeta {
   playtime: number;
 }
 
-await save.saveSlot<RunMeta>(saves, "manual-1", {
+await save.saveSlot<unknown, RunMeta>("saves", "manual-1", saves, {
   metadata: { location: "Forest Temple", playtime: 60 },
 });
 
-await save.loadSlot(saves, "manual-1");
+await save.loadSlot("saves", "manual-1", saves);
 
-const slots = await save.listSlots<RunMeta>(saves);
+const slots = await save.listSlots<RunMeta>("saves");
 // [{ name: "manual-1", savedAt: 1714…, metadata: { location, playtime } }, …]
 
-await save.deleteSlot(saves, "manual-1");
+await save.deleteSlot("saves", "manual-1");
 ```
 
 `loadSlot` throws `SlotNotFoundError` for missing slots.
@@ -219,10 +219,10 @@ await save.deleteSlot(saves, "manual-1");
 ### Continue (load latest)
 
 ```typescript
-const slots = await save.listSlots(saves);
+const slots = await save.listSlots("saves");
 if (slots.length > 0) {
   const latest = slots.sort((a, b) => b.savedAt - a.savedAt)[0];
-  await save.loadSlot(saves, latest.name);
+  await save.loadSlot("saves", latest.name, saves);
 }
 ```
 
@@ -232,8 +232,8 @@ If you have profiles (per-user save banks), use hierarchical slot names with
 the `prefix` filter:
 
 ```typescript
-await save.saveSlot(saves, `${profile}/manual-1`);
-const profileSlots = await save.listSlots(saves, { prefix: `${profile}/` });
+await save.saveSlot("saves", `${profile}/manual-1`, saves);
+const profileSlots = await save.listSlots("saves", { prefix: `${profile}/` });
 ```
 
 The engine doesn't formalize profile scopes — the convention lives in your
@@ -251,7 +251,7 @@ class CheckpointOnRest extends Component {
   setup() {
     this.entity.on(Rested, async () => {
       const save = this.use(SaveServiceKey);
-      await save.saveSlot(saves, "auto");
+      await save.saveSlot("saves", "auto", saves);
     });
   }
 }
@@ -259,15 +259,16 @@ class CheckpointOnRest extends Component {
 
 ## Migration & versioning
 
-Bump `version` when the data shape changes; provide `migrate` to transform
-older payloads. Versioning is **per-store** for standalones and **per-tree**
-for the compound — per-leaf migration is not supported in v1.
+`version` + `migrate` live on the read call (`restore` / `loadSlot` /
+`autoPersist`), not on the primitive. Bump `version` when the encoded shape
+changes and pass `migrate` to transform older payloads. Per-leaf migration
+inside a compound is not supported — migrate the tree as a whole.
 
 ```typescript
-// Standalone — migrate the record value.
-defineRecord<RunData>("saves", {
+// Single record — migrate the record value.
+const saves = createRecord<RunData>({ default: () => initialRun() });
+await save.restore("saves", saves, {
   version: 3,
-  defaults: () => initialRun(),
   migrate: (old, fromVersion) => {
     let v = old as Record<string, unknown>;
     if (fromVersion < 2) v = { ...v, inventory: [] };
@@ -276,39 +277,45 @@ defineRecord<RunData>("saves", {
   },
 });
 
-// Compound — one migrate on the tree. Receives the raw payload `data`
-// dict and returns the new-format dict that gets dispatched to each leaf.
-defineStore("run", (s) => ({
+// Compound — one migrate on the tree. Returns the new encoded form each
+// leaf consumes: `{ gold: number, day: { value: number } }` here.
+const game = createStore((s) => ({
   gold: s.counter({ default: 0 }),
   day:  s.value<number>({ default: 1 }),
-}), {
+}));
+await save.restore("run", game, {
   version: 2,
-  migrate: (old, fromVersion) => {
+  migrate: (old) => {
     const v1 = old as { gold: number };
     return { gold: v1.gold, day: { value: 7 } };
   },
 });
 ```
 
-`hydrate` calls `migrate` when stored version &lt; current. Newer-than-current
-payloads throw `StoreVersionTooNewError`.
+Newer-than-current payloads throw `StoreVersionTooNewError`; older payloads
+without a `migrate` throw `StoreMigrationMissingError`.
 
 ## Codecs
 
-Stores serialize via a `Codec<T>`. Built-ins:
+Stores serialize via a `Codec<T, TEncoded>`. `TEncoded` defaults to `T` for
+identity codecs, and surfaces in `serialize()`/`hydrate()` and
+`RestoreOptions.migrate` so migrations get the right type. Built-ins:
 
 ```typescript
-import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/save";
+import { jsonCodec, setCodec, mapCodec, dateCodec } from "@yagejs/core";
 
-jsonCodec<T>()    // identity (default)
-setCodec<K>()     // Set<K>     <-> K[]
-mapCodec<K, V>()  // Map<K, V>  <-> [K, V][]
-dateCodec()       // Date       <-> ISO string
+jsonCodec<T>()    // Codec<T, T>             — identity (default)
+setCodec<K>()     // Codec<Set<K>, K[]>
+mapCodec<K, V>()  // Codec<Map<K,V>, [K,V][]>
+dateCodec()       // Codec<Date, string>     — ISO string
 ```
 
-`defineSet`/`defineMap`/`defineCounter`/`defineList` bundle the right codec —
-you only specify a codec for `defineRecord<T>` / `defineValue<T>` (or the
+`createSet`/`createMap`/`createCounter`/`createList` bundle the right codec —
+you only specify a codec for `createRecord<T>` / `createValue<T>` (or the
 matching `s.record`/`s.value` leaves) when the type contains exotic values.
+When a custom codec changes the encoded shape (e.g. `Date → string`), pass
+both generics so the change shows up in `serialize()` and `migrate` return
+types: `createValue<Date, string>({ default: () => new Date(), codec: dateCodec() })`.
 
 ## Adapters
 
@@ -325,17 +332,23 @@ cloud sync) plug in here.
 
 ## Tests
 
-Reset every store between tests, swap in `memoryAdapter`:
+Construct fresh state per test, swap in `memoryAdapter`:
 
 ```typescript
-import { _resetAllStoresForTesting } from "@yagejs/core";
+import { createRecord } from "@yagejs/core";
 import { createSave, memoryAdapter } from "@yagejs/save";
 
-beforeEach(() => {
-  _resetAllStoresForTesting();
-});
-
 const save = createSave({ adapter: memoryAdapter() });
+
+it("round-trips a record", async () => {
+  const settings = createRecord({ default: () => ({ music: 0.8, sfx: 1.0 }) });
+  settings.set({ music: 0.3 });
+  await save.persist("settings", settings);
+
+  const next = createRecord({ default: () => ({ music: 0.8, sfx: 1.0 }) });
+  await save.restore("settings", next);
+  expect(next.get().music).toBe(0.3);
+});
 ```
 
 ## Per-frame updates: don't

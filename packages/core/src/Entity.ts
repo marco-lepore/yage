@@ -42,7 +42,7 @@ export class Entity {
    * Stable identity key, scene-scoped. Set at spawn-time when
    * `options.key` is passed to `scene.spawn` / `entity.spawnChild`;
    * `undefined` otherwise. Used with `scene.findByKey` and as a stable
-   * id in persistent stores (e.g. `defineSet<string>("world.opened")`).
+   * id in reactive stores (e.g. a `createSet<string>()` persisted under `"world.opened"`).
    */
   readonly key?: string;
 
@@ -397,7 +397,7 @@ export class Entity {
   /**
    * Return the stable key, or throw if this entity was spawned without one.
    * Use inside component `setup()` when the component depends on identity
-   * (e.g. reading from a `defineSet` keyed by entity id).
+   * (e.g. reading from a `createSet` keyed by entity key).
    */
   requireKey(): string {
     if (this.key === undefined) {

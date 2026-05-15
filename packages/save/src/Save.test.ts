@@ -1,18 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
-  defineRecord,
-  defineSet,
-  defineMap,
-  defineCounter,
-  defineStore,
-  _clearStoreRegistryForTesting,
+  createRecord,
+  createSet,
+  createMap,
+  createCounter,
+  createStore,
 } from "@yagejs/core";
-import { createSave, SlotNotFoundError } from "./Save.js";
+import {
+  createSave,
+  SlotNotFoundError,
+  StoreMigrationMissingError,
+  StoreVersionTooNewError,
+  CorruptPayloadError,
+} from "./Save.js";
 import { memoryAdapter } from "./adapters/memory.js";
-
-beforeEach(() => {
-  _clearStoreRegistryForTesting();
-});
 
 describe("Save — unslotted persist/restore", () => {
   it("persists and restores an object store", async () => {
@@ -24,83 +25,78 @@ describe("Save — unslotted persist/restore", () => {
       sfx: number;
     }
 
-    const a = defineRecord<Settings>("settings", {
-      defaults: () => ({ music: 0.8, sfx: 1.0 }),
+    const a = createRecord<Settings>({
+      default: () => ({ music: 0.8, sfx: 1.0 }),
     });
     a.set({ music: 0.3 });
-    await save.persist(a);
+    await save.persist("settings", a);
 
-    _clearStoreRegistryForTesting();
-    const b = defineRecord<Settings>("settings", {
-      defaults: () => ({ music: 0.8, sfx: 1.0 }),
+    const b = createRecord<Settings>({
+      default: () => ({ music: 0.8, sfx: 1.0 }),
     });
     expect(b.get()).toEqual({ music: 0.8, sfx: 1.0 });
-    await save.restore(b);
+    await save.restore("settings", b);
     expect(b.get()).toEqual({ music: 0.3, sfx: 1.0 });
   });
 
   it("restore is a no-op when no document exists", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = defineRecord<{ a: number }>("none", { defaults: () => ({ a: 1 }) });
-    await save.restore(s);
+    const s = createRecord<{ a: number }>({ default: () => ({ a: 1 }) });
+    await save.restore("none", s);
     expect(s.get()).toEqual({ a: 1 });
   });
 
-  it("restoreAll restores every store", async () => {
+  it("Promise.all restores every store", async () => {
     const adapter = memoryAdapter();
     const save = createSave({ adapter });
 
-    const a = defineRecord<{ v: number }>("a", { defaults: () => ({ v: 0 }) });
-    const b = defineRecord<{ v: number }>("b", { defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 7 });
     b.set({ v: 9 });
-    await Promise.all([save.persist(a), save.persist(b)]);
+    await Promise.all([save.persist("a", a), save.persist("b", b)]);
 
-    _clearStoreRegistryForTesting();
-    const a2 = defineRecord<{ v: number }>("a", { defaults: () => ({ v: 0 }) });
-    const b2 = defineRecord<{ v: number }>("b", { defaults: () => ({ v: 0 }) });
-    await save.restoreAll([a2, b2]);
+    const a2 = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const b2 = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await Promise.all([save.restore("a", a2), save.restore("b", b2)]);
     expect(a2.get().v).toBe(7);
     expect(b2.get().v).toBe(9);
   });
 
-  it("works with defineSet", async () => {
+  it("works with createSet", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const opened = defineSet<string>("world.opened");
+    const opened = createSet<string>();
     opened.add("chest-1");
     opened.add("chest-2");
-    await save.persist(opened);
+    await save.persist("world.opened", opened);
 
-    _clearStoreRegistryForTesting();
-    const opened2 = defineSet<string>("world.opened");
-    await save.restore(opened2);
+    const opened2 = createSet<string>();
+    await save.restore("world.opened", opened2);
     expect(opened2.has("chest-1")).toBe(true);
     expect(opened2.has("chest-2")).toBe(true);
   });
 
-  it("works with defineMap", async () => {
+  it("works with createMap", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const enemies = defineMap<string, number>("world.enemies");
+    const enemies = createMap<string, number>();
     enemies.set("a", 1);
     enemies.set("b", 2);
-    await save.persist(enemies);
+    await save.persist("world.enemies", enemies);
 
-    _clearStoreRegistryForTesting();
-    const enemies2 = defineMap<string, number>("world.enemies");
-    await save.restore(enemies2);
+    const enemies2 = createMap<string, number>();
+    await save.restore("world.enemies", enemies2);
     expect(enemies2.get("a")).toBe(1);
     expect(enemies2.get("b")).toBe(2);
   });
 
-  it("works with defineCounter", async () => {
+  it("works with createCounter", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const c = defineCounter("rest");
+    const c = createCounter();
     c.set(7);
-    await save.persist(c);
+    await save.persist("rest", c);
 
-    _clearStoreRegistryForTesting();
-    const c2 = defineCounter("rest");
-    await save.restore(c2);
+    const c2 = createCounter();
+    await save.restore("rest", c2);
     expect(c2.value()).toBe(7);
   });
 });
@@ -111,27 +107,24 @@ describe("Save — slots", () => {
     coins: number;
   }
   const make = () =>
-    defineRecord<Run>("run", {
-      defaults: () => ({ chapter: 1, coins: 0 }),
-    });
+    createRecord<Run>({ default: () => ({ chapter: 1, coins: 0 }) });
 
   it("saves and loads a slot round-trip", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const a = make();
     a.set({ chapter: 3, coins: 42 });
-    await save.saveSlot(a, "manual-1");
+    await save.saveSlot("run", "manual-1", a);
 
-    _clearStoreRegistryForTesting();
     const b = make();
     expect(b.get()).toEqual({ chapter: 1, coins: 0 });
-    await save.loadSlot(b, "manual-1");
+    await save.loadSlot("run", "manual-1", b);
     expect(b.get()).toEqual({ chapter: 3, coins: 42 });
   });
 
   it("loadSlot throws SlotNotFoundError for missing slot", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = make();
-    await expect(save.loadSlot(s, "nope")).rejects.toBeInstanceOf(
+    await expect(save.loadSlot("run", "nope", s)).rejects.toBeInstanceOf(
       SlotNotFoundError,
     );
   });
@@ -144,13 +137,13 @@ describe("Save — slots", () => {
       playtime: number;
     }
     const before = Date.now();
-    await save.saveSlot<Meta>(s, "manual-1", {
+    await save.saveSlot<Run, Meta>("run", "manual-1", s, {
       metadata: { label: "Forest", playtime: 60 },
     });
-    await save.saveSlot(s, "auto");
+    await save.saveSlot("run", "auto", s);
     const after = Date.now();
 
-    const slots = await save.listSlots<Meta>(s);
+    const slots = await save.listSlots<Meta>("run");
     expect(slots).toHaveLength(2);
 
     const named = slots.find((x) => x.name === "manual-1");
@@ -165,11 +158,11 @@ describe("Save — slots", () => {
   it("listSlots filters by prefix", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = make();
-    await save.saveSlot(s, "alice/manual-1");
-    await save.saveSlot(s, "alice/auto");
-    await save.saveSlot(s, "bob/manual-1");
+    await save.saveSlot("run", "alice/manual-1", s);
+    await save.saveSlot("run", "alice/auto", s);
+    await save.saveSlot("run", "bob/manual-1", s);
 
-    const aliceSlots = await save.listSlots(s, { prefix: "alice/" });
+    const aliceSlots = await save.listSlots("run", { prefix: "alice/" });
     expect(aliceSlots.map((x) => x.name).sort()).toEqual([
       "alice/auto",
       "alice/manual-1",
@@ -179,15 +172,15 @@ describe("Save — slots", () => {
   it("deleteSlot removes the slot data and manifest entry", async () => {
     const save = createSave({ adapter: memoryAdapter() });
     const s = make();
-    await save.saveSlot(s, "manual-1");
-    await save.saveSlot(s, "manual-2");
+    await save.saveSlot("run", "manual-1", s);
+    await save.saveSlot("run", "manual-2", s);
 
-    await save.deleteSlot(s, "manual-1");
+    await save.deleteSlot("run", "manual-1");
 
-    const slots = await save.listSlots(s);
+    const slots = await save.listSlots("run");
     expect(slots.map((x) => x.name)).toEqual(["manual-2"]);
 
-    await expect(save.loadSlot(s, "manual-1")).rejects.toBeInstanceOf(
+    await expect(save.loadSlot("run", "manual-1", s)).rejects.toBeInstanceOf(
       SlotNotFoundError,
     );
   });
@@ -198,12 +191,12 @@ describe("Save — slots", () => {
       const save = createSave({ adapter: memoryAdapter() });
       const s = make();
       vi.setSystemTime(new Date("2026-05-03T00:00:00Z"));
-      await save.saveSlot(s, "manual-1");
-      const first = (await save.listSlots(s))[0]?.savedAt;
+      await save.saveSlot("run", "manual-1", s);
+      const first = (await save.listSlots("run"))[0]?.savedAt;
 
       vi.setSystemTime(new Date("2026-05-03T00:01:00Z"));
-      await save.saveSlot(s, "manual-1");
-      const second = (await save.listSlots(s))[0]?.savedAt;
+      await save.saveSlot("run", "manual-1", s);
+      const second = (await save.listSlots("run"))[0]?.savedAt;
 
       expect(second).toBeGreaterThan(first as number);
     } finally {
@@ -220,8 +213,8 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const s = defineRecord<{ v: number }>("ap1", { defaults: () => ({ v: 0 }) });
-    const stop = save.autoPersist(s);
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const stop = save.autoPersist("ap1", s);
 
     s.set({ v: 1 });
     expect(writeSpy).not.toHaveBeenCalled();
@@ -236,8 +229,8 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const s = defineRecord<{ v: number }>("ap2", { defaults: () => ({ v: 0 }) });
-    const stop = save.autoPersist(s);
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const stop = save.autoPersist("ap2", s);
 
     s.set({ v: 1 });
     s.set({ v: 2 });
@@ -251,16 +244,15 @@ describe("Save — autoPersist", () => {
   it("writes the latest value after coalescing", async () => {
     const save = createSave({ adapter: memoryAdapter() });
 
-    const s = defineRecord<{ v: number }>("ap3", { defaults: () => ({ v: 0 }) });
-    const stop = save.autoPersist(s);
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const stop = save.autoPersist("ap3", s);
 
     s.set({ v: 1 });
     s.set({ v: 7 });
     await flushMicrotasks();
 
-    _clearStoreRegistryForTesting();
-    const t = defineRecord<{ v: number }>("ap3", { defaults: () => ({ v: 0 }) });
-    await save.restore(t);
+    const t = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await save.restore("ap3", t);
     expect(t.get().v).toBe(7);
     stop();
   });
@@ -269,8 +261,8 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const s = defineRecord<{ v: number }>("ap4", { defaults: () => ({ v: 0 }) });
-    const stop = save.autoPersist(s);
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const stop = save.autoPersist("ap4", s);
     s.set({ v: 1 });
     stop();
     await flushMicrotasks();
@@ -282,14 +274,13 @@ describe("Save — autoPersist", () => {
     const save = createSave({ adapter: memoryAdapter() });
     const writeSpy = vi.spyOn(save.adapter, "write");
 
-    const game = defineStore("ap.compound", (s) => ({
+    const game = createStore((s) => ({
       gold: s.counter({ default: 0 }),
       inv: s.map<string, number>(),
       flags: s.set<string>(),
     }));
-    const stop = save.autoPersist(game);
+    const stop = save.autoPersist("ap.compound", game);
 
-    // N rapid leaf mutations across several leaves — should collapse to one write.
     game.gold.increment(1);
     game.gold.increment(1);
     game.inv.set("a", 1);
@@ -305,20 +296,19 @@ describe("Save — autoPersist", () => {
 
   it("compound round-trip restores every leaf", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = defineStore("rt.compound", (s) => ({
+    const a = createStore((s) => ({
       gold: s.counter({ default: 0 }),
       flags: s.set<string>(),
     }));
     a.gold.set(42);
     a.flags.add("opened-chest");
-    await save.persist(a);
+    await save.persist("rt.compound", a);
 
-    _clearStoreRegistryForTesting();
-    const b = defineStore("rt.compound", (s) => ({
+    const b = createStore((s) => ({
       gold: s.counter({ default: 0 }),
       flags: s.set<string>(),
     }));
-    await save.restore(b);
+    await save.restore("rt.compound", b);
     expect(b.gold.value()).toBe(42);
     expect(b.flags.has("opened-chest")).toBe(true);
   });
@@ -337,30 +327,23 @@ describe("Save — migration on load", () => {
       level: number;
     }
 
-    const a = defineRecord<V1>("g", {
-      version: 1,
-      defaults: () => ({ score: 0 }),
-    });
+    const a = createRecord<V1>({ default: () => ({ score: 0 }) });
     a.set({ score: 5 });
-    await save.persist(a);
+    await save.persist("g", a, { version: 1 });
 
-    _clearStoreRegistryForTesting();
-
-    const b = defineRecord<V2>("g", {
+    const b = createRecord<V2>({ default: () => ({ score: 0, level: 1 }) });
+    await save.restore("g", b, {
       version: 2,
-      defaults: () => ({ score: 0, level: 1 }),
       migrate: (old) => {
         const o = old as V1;
         return { score: o.score, level: 1 };
       },
     });
-    await save.restore(b);
     expect(b.get()).toEqual({ score: 5, level: 1 });
   });
 
   it("runs migrate on loadSlot when stored version < current", async () => {
-    const adapter = memoryAdapter();
-    const save = createSave({ adapter });
+    const save = createSave({ adapter: memoryAdapter() });
 
     interface V1 {
       score: number;
@@ -370,180 +353,193 @@ describe("Save — migration on load", () => {
       multiplier: number;
     }
 
-    const a = defineRecord<V1>("slot-mig", {
-      version: 1,
-      defaults: () => ({ score: 0 }),
-    });
+    const a = createRecord<V1>({ default: () => ({ score: 0 }) });
     a.set({ score: 11 });
-    await save.saveSlot(a, "manual-1");
+    await save.saveSlot("slot-mig", "manual-1", a, { version: 1 });
 
-    _clearStoreRegistryForTesting();
-
-    const b = defineRecord<V2>("slot-mig", {
+    const b = createRecord<V2>({
+      default: () => ({ score: 0, multiplier: 1 }),
+    });
+    await save.loadSlot("slot-mig", "manual-1", b, {
       version: 2,
-      defaults: () => ({ score: 0, multiplier: 1 }),
       migrate: (old) => {
         const o = old as V1;
         return { score: o.score, multiplier: 2 };
       },
     });
-    await save.loadSlot(b, "manual-1");
     expect(b.get()).toEqual({ score: 11, multiplier: 2 });
   });
 
-  it("defineSet hydrate runs migrate on older version", async () => {
+  it("throws StoreVersionTooNewError when stored version > current", async () => {
     const save = createSave({ adapter: memoryAdapter() });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    a.set({ v: 1 });
+    await save.persist("too-new", a, { version: 2 });
 
-    const a = defineSet<string>("set-mig", { version: 1 });
-    a.add("a");
-    a.add("b");
-    await save.persist(a);
-
-    _clearStoreRegistryForTesting();
-
-    const b = defineSet<string>("set-mig", {
-      version: 2,
-      migrate: (old) => {
-        const arr = old as string[];
-        return new Set(arr.map((s) => s.toUpperCase()));
-      },
-    });
-    await save.restore(b);
-    expect([...b.values()].sort()).toEqual(["A", "B"]);
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await expect(
+      save.restore("too-new", b, { version: 1 }),
+    ).rejects.toBeInstanceOf(StoreVersionTooNewError);
   });
 
-  it("defineSet hydrate throws StoreMigrationMissingError on older version without migrate", async () => {
+  it("throws StoreMigrationMissingError on older payload without migrate", async () => {
     const save = createSave({ adapter: memoryAdapter() });
+    const a = createSet<string>();
+    a.add("x");
+    await save.persist("set-no-mig", a, { version: 1 });
 
-    const a = defineSet<string>("set-no-mig", { version: 1 });
-    await save.persist(a);
-
-    _clearStoreRegistryForTesting();
-    const b = defineSet<string>("set-no-mig", { version: 2 });
-    await expect(save.restore(b)).rejects.toThrow(/migration/i);
+    const b = createSet<string>();
+    await expect(
+      save.restore("set-no-mig", b, { version: 2 }),
+    ).rejects.toBeInstanceOf(StoreMigrationMissingError);
   });
 
-  it("defineCounter hydrate runs migrate on older version", async () => {
+  it("createCounter hydrate runs migrate on older version", async () => {
     const save = createSave({ adapter: memoryAdapter() });
 
-    const a = defineCounter("ctr-mig", { version: 1 });
+    const a = createCounter();
     a.set(7);
-    await save.persist(a);
+    await save.persist("ctr-mig", a, { version: 1 });
 
-    _clearStoreRegistryForTesting();
-    const b = defineCounter("ctr-mig", {
+    const b = createCounter();
+    await save.restore("ctr-mig", b, {
       version: 2,
       migrate: (old) => (old as number) * 10,
     });
-    await save.restore(b);
     expect(b.value()).toBe(70);
+  });
+
+  it("compound migrate return type is enforced per leaf shape", async () => {
+    const save = createSave({ adapter: memoryAdapter() });
+    // Seed a v1 payload so restore actually invokes migrate (otherwise the
+    // missing-document branch returns early and the assertion below is a lie).
+    const seed = createStore((s) => ({
+      flag: s.value<boolean>({ default: false }),
+    }));
+    await save.persist("compile-check", seed, { version: 1 });
+
+    const game = createStore((s) => ({
+      flag: s.value<boolean>({ default: false }),
+    }));
+    await save.restore("compile-check", game, {
+      version: 2,
+      // Return type matches each leaf's encoded form — `{ value: boolean }`
+      // for a value leaf, not bare boolean. TS catches mis-shaped returns at
+      // this call site.
+      migrate: () => ({ flag: { value: true } }),
+    });
+    expect(game.flag.get()).toBe(true);
+  });
+});
+
+describe("Save — corrupt payloads", () => {
+  it("restore throws CorruptPayloadError on a payload missing version/data", async () => {
+    const adapter = memoryAdapter();
+    // Write a raw value that isn't a version envelope — simulates a legacy
+    // payload or a key written by something other than `Save`.
+    await adapter.write("corrupt/d", JSON.stringify({ unrelated: 1 }));
+    const save = createSave({ adapter });
+    const r = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await expect(save.restore("corrupt", r)).rejects.toBeInstanceOf(
+      CorruptPayloadError,
+    );
+  });
+
+  it("restore throws CorruptPayloadError on a non-object payload", async () => {
+    const adapter = memoryAdapter();
+    await adapter.write("nullpay/d", "null");
+    const save = createSave({ adapter });
+    const r = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await expect(save.restore("nullpay", r)).rejects.toBeInstanceOf(
+      CorruptPayloadError,
+    );
   });
 });
 
 describe("Save — listSlots / deleteSlot edge cases", () => {
   it("listSlots returns empty array when no manifest exists", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = defineRecord<{ v: number }>("ls-empty", {
-      defaults: () => ({ v: 0 }),
-    });
-    expect(await save.listSlots(s)).toEqual([]);
+    expect(await save.listSlots("ls-empty")).toEqual([]);
   });
 
   it("deleteSlot is a no-op when slot doesn't exist", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = defineRecord<{ v: number }>("ds-missing", {
-      defaults: () => ({ v: 0 }),
-    });
-    await expect(save.deleteSlot(s, "nope")).resolves.toBeUndefined();
+    await expect(save.deleteSlot("ds-missing", "nope")).resolves.toBeUndefined();
   });
 });
 
 describe("Save — key disambiguation", () => {
   it("a doc and a same-named slot don't collide", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = defineRecord<{ v: number }>("collide.a", {
-      defaults: () => ({ v: 0 }),
-    });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 1 });
-    await save.persist(a);
-    await save.saveSlot(a, "v");
+    await save.persist("collide.a", a);
+    await save.saveSlot("collide.a", "v", a);
 
-    _clearStoreRegistryForTesting();
-    const b = defineRecord<{ v: number }>("collide.a", {
-      defaults: () => ({ v: 0 }),
-    });
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 99 });
-    await save.persist(a);
-    await save.loadSlot(b, "v");
+    await save.persist("collide.a", a);
+    await save.loadSlot("collide.a", "v", b);
     expect(b.get().v).toBe(1);
   });
 
   it("store ids and slot names with reserved characters round-trip", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = defineRecord<{ v: number }>("alice/profile:v2", {
-      defaults: () => ({ v: 0 }),
-    });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 7 });
-    await save.saveSlot(a, "alice/manual:1");
+    await save.saveSlot("alice/profile:v2", "alice/manual:1", a);
 
-    _clearStoreRegistryForTesting();
-    const b = defineRecord<{ v: number }>("alice/profile:v2", {
-      defaults: () => ({ v: 0 }),
-    });
-    await save.loadSlot(b, "alice/manual:1");
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await save.loadSlot("alice/profile:v2", "alice/manual:1", b);
     expect(b.get().v).toBe(7);
   });
 
   it("slot named the same as the manifest tag works", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const a = defineRecord<{ v: number }>("sn", { defaults: () => ({ v: 0 }) });
+    const a = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     a.set({ v: 5 });
-    await save.saveSlot(a, "m");
-    const slots = await save.listSlots(a);
+    await save.saveSlot("sn", "m", a);
+    const slots = await save.listSlots("sn");
     expect(slots.map((s) => s.name)).toContain("m");
 
-    _clearStoreRegistryForTesting();
-    const b = defineRecord<{ v: number }>("sn", { defaults: () => ({ v: 0 }) });
-    await save.loadSlot(b, "m");
+    const b = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await save.loadSlot("sn", "m", b);
     expect(b.get().v).toBe(5);
   });
 
   it("rejects empty store id and empty slot name", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const empty = defineRecord<{ v: number }>("", {
-      defaults: () => ({ v: 0 }),
-    });
-    await expect(save.persist(empty)).rejects.toThrow(/non-empty/i);
+    const empty = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await expect(save.persist("", empty)).rejects.toThrow(/non-empty/i);
 
-    const ok = defineRecord<{ v: number }>("ok", { defaults: () => ({ v: 0 }) });
-    await expect(save.saveSlot(ok, "")).rejects.toThrow(/non-empty/i);
+    const ok = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await expect(save.saveSlot("ok", "", ok)).rejects.toThrow(/non-empty/i);
   });
 });
 
 describe("Save — manifest serialization across concurrent updates", () => {
   it("concurrent saveSlots both land in the manifest", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = defineRecord<{ v: number }>("concur", {
-      defaults: () => ({ v: 0 }),
-    });
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
     await Promise.all([
-      save.saveSlot(s, "a", { metadata: { tag: "a" } }),
-      save.saveSlot(s, "b", { metadata: { tag: "b" } }),
-      save.saveSlot(s, "c", { metadata: { tag: "c" } }),
+      save.saveSlot("concur", "a", s, { metadata: { tag: "a" } }),
+      save.saveSlot("concur", "b", s, { metadata: { tag: "b" } }),
+      save.saveSlot("concur", "c", s, { metadata: { tag: "c" } }),
     ]);
-    const slots = await save.listSlots<{ tag: string }>(s);
+    const slots = await save.listSlots<{ tag: string }>("concur");
     expect(slots.map((x) => x.name).sort()).toEqual(["a", "b", "c"]);
     expect(slots.map((x) => x.metadata?.tag).sort()).toEqual(["a", "b", "c"]);
   });
 
   it("concurrent saveSlot + deleteSlot serialize correctly", async () => {
     const save = createSave({ adapter: memoryAdapter() });
-    const s = defineRecord<{ v: number }>("concur-del", {
-      defaults: () => ({ v: 0 }),
-    });
-    await save.saveSlot(s, "old");
-    await Promise.all([save.deleteSlot(s, "old"), save.saveSlot(s, "new")]);
-    const slots = await save.listSlots(s);
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    await save.saveSlot("concur-del", "old", s);
+    await Promise.all([
+      save.deleteSlot("concur-del", "old"),
+      save.saveSlot("concur-del", "new", s),
+    ]);
+    const slots = await save.listSlots("concur-del");
     expect(slots.map((x) => x.name)).toEqual(["new"]);
   });
 });
@@ -565,27 +561,22 @@ describe("Save — autoPersist serialization", () => {
     };
     const save = createSave({ adapter: slowAdapter });
 
-    const s = defineRecord<{ v: number }>("ap-slow", {
-      defaults: () => ({ v: 0 }),
-    });
-    const stop = save.autoPersist(s);
+    const s = createRecord<{ v: number }>({ default: () => ({ v: 0 }) });
+    const stop = save.autoPersist("ap-slow", s);
 
     const flushMicrotasks = async (): Promise<void> => {
       for (let i = 0; i < 5; i += 1) await Promise.resolve();
     };
 
     s.set({ v: 1 });
-    await flushMicrotasks(); // schedule + start first write
+    await flushMicrotasks();
 
     s.set({ v: 2 });
     s.set({ v: 3 });
 
-    // Release the first (in-flight) write — should re-flush with the latest
-    // dirty state (v: 3) rather than the captured v: 1.
     pending.shift()?.();
     await flushMicrotasks();
 
-    // Release the second write so the chain can settle.
     pending.shift()?.();
     await flushMicrotasks();
 

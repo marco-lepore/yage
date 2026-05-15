@@ -7,10 +7,10 @@
  * registered Save instance through `SaveServiceKey`.
  *
  * This example showcases the **compound** store pattern: a single
- * `defineStore("game", (s) => …)` collects every run-state leaf (counters,
+ * `createStore((s) => …)` bundles every run-state leaf (counters,
  * a record, a value), and a separate compound stores settings. Two
- * `save.autoPersist` registrations cover the whole game state — one storage
- * key per compound — with atomic serialize/hydrate.
+ * `save.autoPersist(id, store)` registrations cover the whole game state —
+ * one storage key per compound — with atomic serialize/hydrate.
  */
 
 import { useEffect, useState } from "react";
@@ -21,7 +21,7 @@ import {
   Transform,
   Vec2,
   SceneManagerKey,
-  defineStore,
+  createStore,
 } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -50,7 +50,6 @@ import {
   localStorageAdapter,
   type SlotInfo,
   type Save,
-  type PersistentLike,
 } from "@yagejs/save";
 import {
   textStyle,
@@ -72,16 +71,19 @@ injectStyles();
 // its own compound because it persists separately (across runs).
 // ---------------------------------------------------------------------------
 
-const game = defineStore("save-stores.run", (s) => ({
+const GAME_ID = "save-stores.run";
+const SETTINGS_ID = "save-stores.settings";
+
+const game = createStore((s) => ({
   progression: s.record<{ chapter: number; coins: number }>({
-    defaults: () => ({ chapter: 1, coins: 0 }),
+    default: () => ({ chapter: 1, coins: 0 }),
   }),
   deaths: s.counter({ default: 0 }),
 }));
 
-const settings = defineStore("save-stores.settings", (s) => ({
+const settings = createStore((s) => ({
   audio: s.record<{ music: number; sfx: number }>({
-    defaults: () => ({ music: 0.8, sfx: 1.0 }),
+    default: () => ({ music: 0.8, sfx: 1.0 }),
   }),
   vsync: s.value<boolean>({ default: true }),
 }));
@@ -116,23 +118,23 @@ function newRun(): void {
   game.reset();
 }
 
-// `useSlots` re-reads `save.listSlots(target)` whenever `refreshKey` bumps
+// `useSlots` re-reads `save.listSlots(id)` whenever `refreshKey` bumps
 // (called explicitly from save/delete handlers).
 function useSlots(
   saveInstance: Save,
-  store: PersistentLike,
+  id: string,
   refreshKey: number,
 ): SlotInfo<RunMeta>[] {
   const [slots, setSlots] = useState<SlotInfo<RunMeta>[]>([]);
   useEffect(() => {
     let cancelled = false;
-    void saveInstance.listSlots<RunMeta>(store).then((s) => {
+    void saveInstance.listSlots<RunMeta>(id).then((s) => {
       if (!cancelled) setSlots(s.sort((a, b) => b.savedAt - a.savedAt));
     });
     return () => {
       cancelled = true;
     };
-  }, [saveInstance, store, refreshKey]);
+  }, [saveInstance, id, refreshKey]);
   return slots;
 }
 
@@ -193,7 +195,7 @@ function MainMenuPanel(props: {
   onOpenSettings: () => void;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const slots = useSlots(save, game, refreshKey);
+  const slots = useSlots(save, GAME_ID, refreshKey);
   const latest = slots[0];
 
   return (
@@ -268,7 +270,7 @@ class MenuScene extends Scene {
     const startGame = (loadSlot?: SlotInfo<RunMeta>): void => {
       void (async () => {
         if (loadSlot) {
-          await save.loadSlot(game, loadSlot.name);
+          await save.loadSlot(GAME_ID, loadSlot.name, game);
         } else {
           newRun();
         }
@@ -284,7 +286,7 @@ class MenuScene extends Scene {
         onStartNew={() => startGame()}
         onContinue={(slot) => startGame(slot)}
         onDeleteSlot={async (slot) => {
-          await save.deleteSlot(game, slot.name);
+          await save.deleteSlot(GAME_ID, slot.name);
         }}
         onOpenSettings={openSettings}
       />,
@@ -430,7 +432,7 @@ function PauseMenuPanel(props: {
   onMainMenu: () => void;
   refreshKey: number;
 }) {
-  const slots = useSlots(save, game, props.refreshKey);
+  const slots = useSlots(save, GAME_ID, props.refreshKey);
   const slotByName = new Map(slots.map((s) => [s.name, s]));
 
   return (
@@ -490,7 +492,7 @@ class PauseSaveComponent extends Component {
   }
 
   async saveSlot(name: SlotName): Promise<void> {
-    await this.save.saveSlot<RunMeta>(game, name, {
+    await this.save.saveSlot<unknown, RunMeta>(GAME_ID, name, game, {
       metadata: snapshotRunMeta(name),
     });
     this.bumpRefresh?.();
@@ -657,12 +659,15 @@ class SettingsScene extends Scene {
 
 async function main(): Promise<void> {
   // Pre-engine: restore stored data so the menu reflects last-saved state.
-  await save.restoreAll([game, settings]);
+  await Promise.all([
+    save.restore(GAME_ID, game),
+    save.restore(SETTINGS_ID, settings),
+  ]);
 
   // Stream both compounds to disk (microtask-coalesced). Mutations to any
   // leaf trigger one debounced write per compound — not per leaf.
-  save.autoPersist(game);
-  save.autoPersist(settings);
+  save.autoPersist(GAME_ID, game);
+  save.autoPersist(SETTINGS_ID, settings);
 
   const engine = new Engine({ debug: true });
 

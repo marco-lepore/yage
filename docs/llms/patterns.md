@@ -503,7 +503,7 @@ game.timeScale = 0.25;
 
 ## State Management Patterns
 
-Do not use module-level `let` variables for game state (e.g. `let score = 0`). Module-level state breaks save/load, prevents scene isolation, and cannot be reset on restart. Use `ServiceKey` + DI registration or `createStore()` instead.
+Do not use module-level `let` variables for game state (e.g. `let score = 0`). Module-level state breaks save/load, prevents scene isolation, and cannot be reset on restart. Use `ServiceKey` + DI registration or `createRecord()` instead.
 
 ### DI service for game state
 
@@ -516,7 +516,10 @@ this.context.register(GameStateKey, { score: 0, health: 100 });
 ### Reactive store (for React UI)
 
 ```ts
-const store = createStore({ score: 0 });
+import { createRecord } from "@yagejs/core";
+import { useStore } from "@yagejs/ui-react";
+
+const store = createRecord({ default: () => ({ score: 0 }) });
 store.set({ score: 10 }); // ECS writes
 const score = useStore(store, (src) => src.get().score); // React reads (selector takes source)
 ```
