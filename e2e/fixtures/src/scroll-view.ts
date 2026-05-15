@@ -8,35 +8,41 @@ import { injectStyles, setupContainer } from "./shared.js";
 injectStyles();
 const container = setupContainer(360, 260);
 
-// Module refs the probe reads each frame (set in onEnter).
+// Module refs the probe reads each frame (set in onEnter). Scrolling is
+// driven by clicking the control buttons (federated pointer/click events are
+// the proven-reliable e2e input path — see ui-button.spec) rather than
+// synthetic wheel/drag; the wheel/drag handlers are unit-tested directly.
 let svNode: ScrollViewNode | null = null;
-let footerNode: UIButton | null = null;
+let scrollBtn: UIButton | null = null;
+let endBtn: UIButton | null = null;
 let orderSeq = 0;
+
+const CTRL_W = 110;
+const CTRL_H = 32;
 
 function fillOrders(sv: ScrollViewNode, n: number): void {
   for (const c of [...sv.children]) sv.removeElement(c);
   for (let i = 0; i < n; i++) {
     orderSeq += 1;
     sv.addElement(
-      new UIButton({
-        children: `Order #${orderSeq}`,
-        width: 220,
-        height: 36,
-      }),
+      new UIButton({ children: `Order #${orderSeq}`, width: 220, height: 36 }),
     );
   }
 }
 
 /**
- * Mirrors ScrollView state into inspectable component fields. Lives on the
- * UI entity; `Component.update()` runs each frame via ComponentUpdateSystem.
+ * Mirrors ScrollView state + control-button screen positions into
+ * inspectable fields. Lives on the UI entity; `Component.update()` runs each
+ * frame via ComponentUpdateSystem.
  */
 class ScrollProbe extends Component {
   offset = 0;
   maxScroll = 0;
   orderCount = 0;
-  footerX = 0;
-  footerY = 0;
+  scrollBtnX = 0;
+  scrollBtnY = 0;
+  endX = 0;
+  endY = 0;
 
   update(): void {
     if (svNode) {
@@ -44,10 +50,15 @@ class ScrollProbe extends Component {
       this.maxScroll = svNode.maxScroll;
       this.orderCount = svNode.children.length;
     }
-    if (footerNode) {
-      const p = footerNode.displayObject.getGlobalPosition();
-      this.footerX = p.x;
-      this.footerY = p.y;
+    if (scrollBtn) {
+      const p = scrollBtn.displayObject.getGlobalPosition();
+      this.scrollBtnX = p.x;
+      this.scrollBtnY = p.y;
+    }
+    if (endBtn) {
+      const p = endBtn.displayObject.getGlobalPosition();
+      this.endX = p.x;
+      this.endY = p.y;
     }
   }
 }
@@ -79,11 +90,26 @@ class ScrollViewScene extends Scene {
     svNode = sv;
     fillOrders(sv, 8);
 
-    // The fixed sibling. Clicking it simulates a store-driven refresh:
-    // the children are rebuilt on the SAME ScrollView instance, so the
-    // scroll offset must survive (re-clamped to the new content height).
-    footerNode = panel.button("End Day", {
-      height: 36,
+    // Fixed sibling control row. These buttons stay put while the list
+    // scrolls (position-invariance assertion) and drive scrolling via the
+    // public API on click.
+    const controls = panel.panel({ direction: "row", gap: 8 });
+    scrollBtn = controls.button("Scroll", {
+      width: CTRL_W,
+      height: CTRL_H,
+      onClick: () => sv.scrollBy(60),
+    });
+    controls.button("Top", {
+      width: CTRL_W,
+      height: CTRL_H,
+      onClick: () => sv.scrollTo(0),
+    });
+
+    // Rebuilds children on the SAME ScrollView instance — simulates a
+    // store-driven refresh; the scroll offset must survive (re-clamped).
+    endBtn = panel.button("End Day", {
+      width: CTRL_W,
+      height: CTRL_H,
       onClick: () => fillOrders(sv, 8),
     });
   }

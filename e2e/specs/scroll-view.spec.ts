@@ -5,9 +5,15 @@ interface ProbeData {
   offset: number;
   maxScroll: number;
   orderCount: number;
-  footerX: number;
-  footerY: number;
+  scrollBtnX: number;
+  scrollBtnY: number;
+  endX: number;
+  endY: number;
 }
+
+// Control buttons are CTRL_W x CTRL_H in the fixture; click their centers.
+const CTRL_W = 110;
+const CTRL_H = 32;
 
 async function probe(page: Page): Promise<ProbeData> {
   const data = await getComponentData<ProbeData>(page, "ui-state", "ScrollProbe");
@@ -24,55 +30,62 @@ test.describe("ScrollView fixture", () => {
     await stepFrames(page, 2);
 
     const canvas = page.locator("canvas");
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("canvas has no bounding box");
+
+    const clickScroll = async (p: ProbeData) =>
+      canvas.click({
+        position: {
+          x: Math.round(p.scrollBtnX + CTRL_W / 2),
+          y: Math.round(p.scrollBtnY + CTRL_H / 2),
+        },
+      });
+    const clickEnd = async (p: ProbeData) =>
+      canvas.click({
+        position: {
+          x: Math.round(p.endX + CTRL_W / 2),
+          y: Math.round(p.endY + CTRL_H / 2),
+        },
+      });
 
     // 1. Content overflows the fixed-height viewport.
     const initial = await probe(page);
     expect(initial.orderCount).toBe(8);
     expect(initial.maxScroll).toBeGreaterThan(0);
     expect(initial.offset).toBe(0);
-    const footerY0 = initial.footerY;
+    const scrollBtnY0 = initial.scrollBtnY;
+    const endY0 = initial.endY;
 
-    // 2. Wheel over the list scrolls it; the sibling footer does not move.
-    await page.mouse.move(box.x + 180, box.y + 90);
-    await page.mouse.wheel(0, 300);
+    // 2. Scrolling (public API via the control button) pans the list; the
+    //    sibling control/footer buttons do not move.
+    await clickScroll(initial);
     await stepFrames(page, 2);
 
-    const afterWheel = await probe(page);
-    expect(afterWheel.offset).toBeGreaterThan(0);
-    expect(afterWheel.offset).toBeLessThanOrEqual(afterWheel.maxScroll);
-    expect(Math.abs(afterWheel.footerY - footerY0)).toBeLessThan(1);
+    const afterScroll = await probe(page);
+    expect(afterScroll.offset).toBeGreaterThan(0);
+    expect(afterScroll.offset).toBeLessThanOrEqual(afterScroll.maxScroll);
+    expect(Math.abs(afterScroll.scrollBtnY - scrollBtnY0)).toBeLessThan(1);
+    expect(Math.abs(afterScroll.endY - endY0)).toBeLessThan(1);
 
-    // 3. Drag-scrolling also pans content, still within clamp.
-    await page.mouse.move(box.x + 180, box.y + 110);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 180, box.y + 60, { steps: 6 });
-    await page.mouse.up();
-    await stepFrames(page, 2);
-
-    const afterDrag = await probe(page);
-    expect(afterDrag.offset).toBeGreaterThanOrEqual(0);
-    expect(afterDrag.offset).toBeLessThanOrEqual(afterDrag.maxScroll);
-    expect(Math.abs(afterDrag.footerY - footerY0)).toBeLessThan(1);
+    // 3. Scrolling past the end clamps to maxScroll (never overshoots).
+    for (let i = 0; i < 8; i++) {
+      await clickScroll(await probe(page));
+      await stepFrames(page, 1);
+    }
+    const clamped = await probe(page);
+    expect(Math.abs(clamped.offset - clamped.maxScroll)).toBeLessThan(0.5);
+    expect(Math.abs(clamped.scrollBtnY - scrollBtnY0)).toBeLessThan(1);
 
     // 4. A store-driven re-render (rebuild children on the same node, via
     //    the End Day button) preserves the scroll offset.
-    const before = afterDrag.offset;
+    const before = clamped.offset;
     expect(before).toBeGreaterThan(0);
 
-    await canvas.click({
-      position: {
-        x: Math.round(afterDrag.footerX + 10),
-        y: Math.round(afterDrag.footerY + 10),
-      },
-    });
+    await clickEnd(clamped);
     await stepFrames(page, 2);
 
     const afterRefill = await probe(page);
     expect(afterRefill.orderCount).toBe(8);
-    expect(Math.abs(afterRefill.footerY - footerY0)).toBeLessThan(1);
-    // Same instance → offset retained (clamped to the unchanged max).
+    expect(Math.abs(afterRefill.endY - endY0)).toBeLessThan(1);
+    // Same instance, same content height → offset retained (clamped).
     expect(Math.abs(afterRefill.offset - before)).toBeLessThanOrEqual(1);
   });
 });
