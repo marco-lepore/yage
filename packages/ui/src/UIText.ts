@@ -12,6 +12,18 @@ import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 const ELLIPSIS = "…";
 
+/**
+ * Canonical key for a `bitmap` option so `update()` change-detection treats
+ * `false` and `undefined` as the same thing (both mean "canvas text") and
+ * compares object configs structurally. Avoids `JSON.stringify(false)` (a
+ * string) vs `JSON.stringify(undefined)` (the value `undefined`) spuriously
+ * differing on first mount of `<Text bitmap={false}>`.
+ */
+function normalizeBitmap(b: BitmapTextOption | undefined): string {
+  if (!b) return "";
+  return JSON.stringify(b);
+}
+
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
   readonly displayObject: Container;
@@ -31,7 +43,13 @@ export class UIText implements UIElement {
 
     this._source = props.children ?? "";
     this._truncate = props.truncate;
-    this._bitmap = props.bitmap;
+    // Shallow-clone the object form so a later caller-side mutation can't
+    // silently drift the cached snapshot (which would make update()'s
+    // change-detection a false negative). Mirrors TextComponent.
+    this._bitmap =
+      props.bitmap !== undefined && typeof props.bitmap === "object"
+        ? { ...props.bitmap }
+        : props.bitmap;
     this._resolution = props.resolution;
 
     const { options, bitmap } = buildTextOptions(
@@ -141,9 +159,11 @@ export class UIText implements UIElement {
     // and `resolution` is a constructor-only option). Surface the dropped
     // change instead of silently ignoring it so the React reconciler path
     // doesn't fail mysteriously.
+    const bitmapChanged =
+      "bitmap" in p &&
+      normalizeBitmap(p.bitmap) !== normalizeBitmap(this._bitmap);
     if (
-      ("bitmap" in p &&
-        JSON.stringify(p.bitmap) !== JSON.stringify(this._bitmap)) ||
+      bitmapChanged ||
       ("resolution" in p && p.resolution !== this._resolution)
     ) {
       devWarn(

@@ -326,4 +326,29 @@ describe("UIText bitmap + resolution", () => {
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
+
+  it("does not warn when update() passes bitmap: false to a non-bitmap text", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // No `bitmap` at construction (_bitmap === undefined); the reconciler
+    // mounts <Text bitmap={false}>. Both mean canvas text — no warn.
+    const t = new UIText({ children: "hi" });
+    t.update({ bitmap: false });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("decouples the cached bitmap option from the caller's object", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bitmap: { font: string; size?: number } = { font: "A" };
+    // Caller mutates their object after construction. The cached snapshot
+    // must be a copy, so a later update() with the (now-stale) reference is
+    // correctly detected as a change from the constructed font.
+    const t = new UIText({ children: "hi", bitmap });
+    bitmap.font = "B";
+    t.update({ bitmap });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
 });
