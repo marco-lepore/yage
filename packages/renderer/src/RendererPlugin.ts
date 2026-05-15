@@ -26,7 +26,7 @@ import type { SnapshotContributor } from "@yagejs/save";
 // dynamic-import variable below.
 import type * as SaveModule from "@yagejs/save";
 import { Application, Assets, Container, Graphics, TextureStyle } from "pixi.js";
-import type { Spritesheet, SCALE_MODE } from "pixi.js";
+import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
@@ -283,6 +283,12 @@ export class RendererPlugin implements Plugin {
     });
     am?.registerLoader("spritesheet", {
       load: (path: string) => Assets.load<Spritesheet>(path),
+      unload: (path: string) => {
+        Assets.unload(path);
+      },
+    });
+    am?.registerLoader("bitmap-font", {
+      load: (path: string) => Assets.load<BitmapFont>(path),
       unload: (path: string) => {
         Assets.unload(path);
       },

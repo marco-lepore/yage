@@ -1,4 +1,7 @@
-import { Text } from "pixi.js";
+import { devWarn } from "@yagejs/core";
+import { buildTextOptions } from "@yagejs/renderer";
+import type { BitmapTextOption } from "@yagejs/renderer";
+import { BitmapText, Text } from "pixi.js";
 import type { TextStyleOptions, Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode } from "yoga-layout";
@@ -9,22 +12,53 @@ import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
 const ELLIPSIS = "…";
 
+/**
+ * Canonical key for a `bitmap` option so `update()` change-detection treats
+ * `false` and `undefined` as the same thing (both mean "canvas text") and
+ * compares object configs structurally. Avoids `JSON.stringify(false)` (a
+ * string) vs `JSON.stringify(undefined)` (the value `undefined`) spuriously
+ * differing on first mount of `<Text bitmap={false}>`.
+ */
+function normalizeBitmap(b: BitmapTextOption | undefined): string {
+  if (!b) return "";
+  return JSON.stringify(b);
+}
+
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
   readonly displayObject: Container;
   readonly yogaNode: YogaNode;
-  private readonly text: Text;
+  private readonly text: Text | BitmapText;
   private _truncate: "clip" | "ellipsis" | undefined;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
+  // `bitmap` / `resolution` are construction-only (Pixi v8 can't morph
+  // Text↔BitmapText or change resolution in place). Cached so `update()`
+  // can detect — and warn about — a change it cannot honor.
+  private readonly _bitmap: BitmapTextOption | undefined;
+  private readonly _resolution: number | undefined;
 
   constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
 
-    const s = props.style ?? {};
     this._source = props.children ?? "";
     this._truncate = props.truncate;
-    this.text = new Text({ text: this._source, style: s });
+    // Shallow-clone the object form so a later caller-side mutation can't
+    // silently drift the cached snapshot (which would make update()'s
+    // change-detection a false negative). Mirrors TextComponent.
+    this._bitmap =
+      props.bitmap !== undefined && typeof props.bitmap === "object"
+        ? { ...props.bitmap }
+        : props.bitmap;
+    this._resolution = props.resolution;
+
+    const { options, bitmap } = buildTextOptions(
+      this._source,
+      props.style,
+      props.bitmap,
+      props.resolution,
+    );
+    this.text = bitmap ? new BitmapText(options) : new Text(options);
     this.applyTruncateStyle();
     applyLayoutProps(this.yogaNode, props);
 
@@ -119,6 +153,25 @@ export class UIText implements UIElement {
       this.text.text = this._source;
       this.applyTruncateStyle();
       this.yogaNode.markDirty();
+    }
+    // `bitmap` / `resolution` are baked into the Pixi object at construction
+    // and cannot be applied in place (Pixi v8 has no Text↔BitmapText morph,
+    // and `resolution` is a constructor-only option). Surface the dropped
+    // change instead of silently ignoring it so the React reconciler path
+    // doesn't fail mysteriously.
+    const bitmapChanged =
+      "bitmap" in p &&
+      normalizeBitmap(p.bitmap) !== normalizeBitmap(this._bitmap);
+    if (
+      bitmapChanged ||
+      ("resolution" in p && p.resolution !== this._resolution)
+    ) {
+      devWarn(
+        "UIText: `bitmap` / `resolution` are construction-only and were " +
+          "ignored on update(). Pixi v8 can't morph Text↔BitmapText or " +
+          "change resolution in place — remount the element (e.g. change " +
+          "its React `key`) to switch bitmap font or resolution.",
+      );
     }
     if (p.consumeInput !== undefined) applyConsumeInput(this.text, p.consumeInput);
     applyLayoutProps(this.yogaNode, p);

@@ -91,6 +91,25 @@ const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value
 row.addElement(bar);
 ```
 
+## UIText: bitmap & resolution
+
+`UIText` (and the `panel.text(...)` builder, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
+
+```ts
+// Dynamic bitmap font baked from the text's own style (zero-config).
+new UIText({ children: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
+
+// An installed / loaded bitmap font by name; `size` overrides glyph size.
+new UIText({ children: "READY", bitmap: { font: "PressStart", size: 16 } });
+
+// Per-text canvas resolution (see gotcha below).
+new UIText({ children: "HUD", resolution: window.devicePixelRatio });
+```
+
+Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obtain a font name for `bitmap: { font }`.
+
+**`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property — setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass `resolution` explicitly per text for crisp canvas output without a prototype patch, or use `bitmap` for pixel-perfect rendering. `resolution` is ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
+
 ## LoadingSceneProgressBar
 
 Drop-in progress bar for a `LoadingScene` (in `@yagejs/core`). Subscribes to `scene:loading:progress` internally and updates a `UIProgressBar`. Spawn inside a `LoadingScene` (throws otherwise). Full contract: `loading-scene.md`.

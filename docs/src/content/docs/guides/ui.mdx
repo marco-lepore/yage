@@ -188,6 +188,37 @@ label.setText("Score: 100");
 label.setStyle({ fill: 0x00ff00 });
 ```
 
+### Pixel-art text & the `resolution` gotcha
+
+For a `UIText` directly (or via the React `<Text>`), two extra props
+control rasterisation:
+
+```typescript
+import { UIText } from "@yagejs/ui";
+
+// Crisp pixel-art text — draws pre-baked glyph quads instead of a
+// blurry bilinear-sampled canvas texture. `true` bakes a dynamic font
+// from the style; `{ font }` uses an installed/loaded bitmap font.
+new UIText({ children: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
+new UIText({ children: "READY", bitmap: { font: "PressStart", size: 16 } });
+
+// Per-text canvas resolution.
+new UIText({ children: "HUD", resolution: window.devicePixelRatio });
+```
+
+:::caution[Pixi v8 `resolution`]
+`resolution` is a Pixi `Text` **constructor** option, **not** a
+`TextStyle` property — setting `TextStyle.defaultTextStyle.resolution`
+does nothing. Pass `resolution` explicitly per text for crisp canvas
+output, or use `bitmap` for pixel-perfect rendering at any zoom.
+`resolution` is ignored when `bitmap` is set (bitmap resolution is
+fixed when the font atlas is baked). Use `installBitmapFont(...)` /
+`bitmapFont(...)` from `@yagejs/renderer` to obtain a font name.
+:::
+
+Word-wrap and the `truncate?: "clip" | "ellipsis"` overflow modes work
+the same on the bitmap path as on canvas text.
+
 ## Buttons
 
 ```typescript

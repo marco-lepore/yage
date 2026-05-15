@@ -1,4 +1,5 @@
 import type {
+  BitmapTextOption,
   ColorValue,
   DisplayContainer,
   DisplaySprite,
@@ -199,6 +200,21 @@ export interface UITextProps extends LayoutProps, ConsumeInputProps {
    *     fits within the layout width.
    */
   truncate?: "clip" | "ellipsis";
+  /**
+   * Render with a bitmap font instead of canvas-rasterised `Text`. Pixel-art
+   * escape hatch — canvas text blurs at non-integer scale on non-Retina
+   * displays. `true` bakes a dynamic font from `style`; `{ font }` uses an
+   * installed/loaded font by name. See {@link BitmapTextOption}. Yoga
+   * measurement (wrap / truncate) is unchanged.
+   */
+  bitmap?: BitmapTextOption;
+  /**
+   * Per-text render resolution. Mirrors the Pixi v8 `Text` constructor
+   * option — `resolution` is NOT a `TextStyle` property in v8, so this is
+   * the only way to get crisp canvas text without a prototype patch.
+   * Ignored when `bitmap` is set.
+   */
+  resolution?: number;
 }
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */
