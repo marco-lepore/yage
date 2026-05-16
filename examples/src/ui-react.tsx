@@ -10,6 +10,7 @@ import {
   Text,
   Button,
   Image,
+  Tooltip,
   PixiProgressBar,
   Checkbox,
   Anchor,
@@ -79,7 +80,10 @@ function MainMenu() {
           ScrollView's content stack is start-aligned). */}
       <ScrollView flexGrow={1}>
       <Panel direction="column" gap={12} alignItems="center">
-      <Image texture={Logo} width={180} height={58} />
+      {/* Tooltip: a string `content` auto-wraps in a styled <Text>. */}
+      <Tooltip content="YAGE — Yet Another Game Engine" placement="bottom">
+        <Image texture={Logo} width={180} height={58} />
+      </Tooltip>
 
       <Text style={textStyle("title", { fontSize: 28 })}>UI Demo</Text>
       <Text style={textStyle("subtitle")}>React API</Text>
@@ -98,22 +102,26 @@ function MainMenu() {
           height={12}
         />
         <Panel direction="row" gap={6}>
-          <Button
-            bg={{ color: 0x661111, alpha: 1, radius: 4 }}
-            hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
-            textStyle={textStyle("caption")}
-            onClick={() => setHp((v) => Math.max(0, v - 0.15))}
-          >
-            Take Damage
-          </Button>
-          <Button
-            bg={{ color: 0x115511, alpha: 1, radius: 4 }}
-            hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
-            textStyle={textStyle("caption")}
-            onClick={() => setHp((v) => Math.min(1, v + 0.15))}
-          >
-            Heal
-          </Button>
+          <Tooltip content="-15% HP" placement="top">
+            <Button
+              bg={{ color: 0x661111, alpha: 1, radius: 4 }}
+              hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
+              textStyle={textStyle("caption")}
+              onClick={() => setHp((v) => Math.max(0, v - 0.15))}
+            >
+              Take Damage
+            </Button>
+          </Tooltip>
+          <Tooltip content="+15% HP" placement="top">
+            <Button
+              bg={{ color: 0x115511, alpha: 1, radius: 4 }}
+              hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
+              textStyle={textStyle("caption")}
+              onClick={() => setHp((v) => Math.min(1, v + 0.15))}
+            >
+              Heal
+            </Button>
+          </Tooltip>
         </Panel>
       </Panel>
 
@@ -169,15 +177,30 @@ function MainMenu() {
         </Panel>
       )}
 
-      <Button
-        width={200}
-        height={40}
-        textStyle={textStyle("button")}
-        onClick={() => setShowSettings((s) => !s)}
-        {...nineSliceBtnReact}
+      {/* Tooltip: `content` also takes arbitrary nodes for rich tooltips. */}
+      <Tooltip
+        placement="right"
+        content={
+          <Panel direction="column" gap={2}>
+            <Text style={textStyle("caption", { fill: 0xffffff })}>
+              Audio & display
+            </Text>
+            <Text style={textStyle("caption", { fontSize: 10, fill: 0x9ca3af })}>
+              Toggle to expand
+            </Text>
+          </Panel>
+        }
       >
-        Settings
-      </Button>
+        <Button
+          width={200}
+          height={40}
+          textStyle={textStyle("button")}
+          onClick={() => setShowSettings((s) => !s)}
+          {...nineSliceBtnReact}
+        >
+          Settings
+        </Button>
+      </Tooltip>
 
       {showSettings && (
         <Panel direction="column" gap={8} padding={8}>
