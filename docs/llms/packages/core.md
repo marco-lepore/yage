@@ -102,6 +102,8 @@ someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = 
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
 
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `_registerScoped` is a kept internal alias — prefer `registerScoped` in new code.
+
 ### Math
 
 | Export | Purpose |
@@ -347,7 +349,7 @@ const chest = scene.findByKey<Chest>("forest/chest-01");
 
 Routing for `spawn(Class, X)`: no `setup` declared → `X` is options. Setup declared and `X`'s own keys are exactly `{ key }` → `X` is options (covers `setup(params = {})` keyed without params, and `setup()` keyed). Otherwise → `X` is params. The 3-arg form `spawn(Class, params, options)` is always unambiguous. Don't name a top-level setup-params field `key`; if you must, use the 3-arg form.
 
-Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`defineSet<string>("world.opened")`).
+Duplicate keys throw at spawn time with no orphan side-effect — the entity is not added to `scene.entities` and `entity:created` is not emitted. Keys are immutable for an entity's lifetime; destroy + respawn to swap. The index is per-scene and clears on scene teardown. Identity is independent of `@yagejs/save` — game code uses `entity.key` as a stable id in persistent stores (`createSet<string>()`).
 
 ### Assets
 

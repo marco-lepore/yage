@@ -135,7 +135,7 @@ interface Inventory {
   has(item: string): boolean;
 }
 
-export const InventoryKey = ServiceKey<Inventory>("Inventory");
+export const InventoryKey = new ServiceKey<Inventory>("Inventory");
 
 export function inventoryPlugin(): Plugin {
   return {
@@ -153,3 +153,27 @@ export function inventoryPlugin(): Plugin {
 
 Any component or system can then `this.use(InventoryKey)` to access the shared
 inventory.
+
+## Scene-Scoped Services
+
+`context.register` services live for the engine's lifetime. For state that
+belongs to a single scene, call `scene.registerScoped(key, value)` — plugins
+typically do this from their `beforeEnter` hook, but game code can use it
+directly to attach scene-local services:
+
+```typescript
+import { Scene, ServiceKey } from "@yagejs/core";
+
+const LevelClockKey = new ServiceKey<{ elapsed: number }>("LevelClock");
+
+class LevelScene extends Scene {
+  override onEnter() {
+    this.registerScoped(LevelClockKey, { elapsed: 0 });
+  }
+}
+```
+
+Components resolve it the same way as any other service (`this.use(LevelClockKey)`).
+Every key registered this way is automatically unregistered when the scene
+exits (after `onExit` and plugin `afterExit` hooks run), so the next scene
+starts with a clean slate and there's no cross-scene leakage.

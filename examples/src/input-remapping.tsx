@@ -507,11 +507,11 @@ function RebindPanel() {
       <Panel direction="column" gap={2}>
         <Text style={{ fontSize: 10, fill: 0x94a3b8 }}>Active controller</Text>
         <Text
+          width={240}
           style={{
             fontSize: 11,
             fill: activePad ? 0x22d3ee : 0x64748b,
             wordWrap: true,
-            wordWrapWidth: 240,
             breakWords: true,
           }}
         >
@@ -533,11 +533,11 @@ function RebindPanel() {
       ))}
 
       <Text
+        width={240}
         style={{
           fontSize: 10,
           fill: 0x666666,
           wordWrap: true,
-          wordWrapWidth: 240,
         }}
       >
         Click a binding to rebind. Press any keyboard key, mouse button, or
