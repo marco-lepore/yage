@@ -38,14 +38,17 @@ export class PointerEvents {
   }
 
   /**
-   * Swap callbacks in place. Called from the primitive's `update()`. Follows
-   * the codebase's `!== undefined` convention (matching how `UIButton`
-   * re-binds `onClick`): an absent key leaves the current handler intact.
+   * Swap callbacks in place. Called from the primitive's `update()`. Uses a
+   * key-presence check (mirroring `UIText`'s `"truncate" in p` convention):
+   * a present key — including an explicit `undefined`, the shape the React
+   * reconciler emits when a JSX prop is removed — reassigns (and so can
+   * clear) the handler, while an absent key leaves it intact so partial
+   * imperative `update({ ... })` calls don't drop hover handlers.
    */
   set(props: PointerEventProps): void {
-    if (props.onPointerOver !== undefined) this._onPointerOver = props.onPointerOver;
-    if (props.onPointerOut !== undefined) this._onPointerOut = props.onPointerOut;
-    if (props.onHover !== undefined) this._onHover = props.onHover;
+    if ("onPointerOver" in props) this._onPointerOver = props.onPointerOver;
+    if ("onPointerOut" in props) this._onPointerOut = props.onPointerOut;
+    if ("onHover" in props) this._onHover = props.onHover;
   }
 
   private readonly _handleOver = (): void => {

@@ -84,6 +84,19 @@ describe("PointerEvents", () => {
     expect(second).toHaveBeenCalledWith(true);
   });
 
+  it("set() clears a handler when the key is present but undefined", () => {
+    // The shape the React reconciler emits when a JSX prop is removed:
+    // `{ onHover: undefined }`. Must stop the stale callback firing.
+    const { c, container } = setup();
+    const onHover = vi.fn();
+    const pe = new PointerEvents(container, { onHover });
+
+    pe.set({ onHover: undefined });
+    c.emit("pointerover");
+
+    expect(onHover).not.toHaveBeenCalled();
+  });
+
   it("set() leaves an untouched handler intact (absent key = keep)", () => {
     const { c, container } = setup();
     const onHover = vi.fn();
