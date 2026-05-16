@@ -161,8 +161,30 @@ const badge = panel.panel({
 ```
 
 Absolute children are lifted out of the flex flow and resolved against the
-parent's content box. `left` / `top` / `right` / `bottom` are pixel offsets
-(omit unused edges).
+parent's content box. `left` / `top` / `right` / `bottom` accept a number
+(px) or a `"<n>%"` string that resolves against the containing block — so
+`top: "100%"` is flush below the parent (powers edge-anchored overlays like
+tooltips without measuring). Omit unused edges.
+
+## Hover / pointer events
+
+`UIButton`, `PanelNode` / `UIPanel`, `UIText`, `UIImage`, `UINineSlice`,
+`UIProgressBar` accept `PointerEventProps` (shared, exported): independent,
+combinable `onPointerOver?()` / `onPointerOut?()` and a convenience
+`onHover?(hovering: boolean)` (`true` on enter, `false` on leave). Every UI
+primitive's container is already `eventMode: "static"` (consume-input
+fallback), so wiring is a fan-out. The shared `PointerEvents` helper (also
+exported) binds one listener pair and swaps callbacks in place on
+`update()`; `UIButton` suppresses callbacks while disabled.
+
+```ts
+new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
+panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
+```
+
+The React layer (`@yagejs/ui-react`) exposes these props on the matching
+JSX components plus a Mantine-style `<Tooltip content=…>` built on
+`onHover`.
 
 ## Background Options
 

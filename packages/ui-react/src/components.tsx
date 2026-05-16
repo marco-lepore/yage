@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
 import type {
   BitmapTextOption,
@@ -31,6 +32,7 @@ import type {
   LayoutValue,
   Padding,
   PixiViewType,
+  PointerEventProps,
   ScrollbarOptions,
 } from "@yagejs/ui";
 
@@ -38,7 +40,7 @@ import type {
 // Prop types for JSX elements
 // ---------------------------------------------------------------------------
 
-export interface PanelProps extends LayoutProps {
+export interface PanelProps extends LayoutProps, PointerEventProps {
   anchor?: string;
   direction?: "row" | "column";
   gap?: number;
@@ -62,7 +64,7 @@ export interface PanelProps extends LayoutProps {
   visible?: boolean;
 }
 
-export interface TextProps extends LayoutProps {
+export interface TextProps extends LayoutProps, PointerEventProps {
   style?: Partial<TextStyle>;
   /**
    * Overflow behavior when the rendered text is wider than the layout slot.
@@ -87,7 +89,7 @@ export interface TextProps extends LayoutProps {
   children?: string;
 }
 
-export interface ButtonProps extends LayoutProps {
+export interface ButtonProps extends LayoutProps, PointerEventProps {
   /**
    * Fixed width — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
    * `"auto"` to shrink-to-fit the button's content (text + any icon /
@@ -124,13 +126,13 @@ export interface ButtonProps extends LayoutProps {
   children?: ReactNode;
 }
 
-export interface ImageProps extends LayoutProps {
+export interface ImageProps extends LayoutProps, PointerEventProps {
   texture: TextureHandle;
   tint?: number;
   alpha?: number;
 }
 
-export interface NineSliceProps extends LayoutProps {
+export interface NineSliceProps extends LayoutProps, PointerEventProps {
   texture: TextureHandle;
   insets:
     | { left: number; top: number; right: number; bottom: number }
@@ -139,7 +141,7 @@ export interface NineSliceProps extends LayoutProps {
   alpha?: number;
 }
 
-export interface ProgressBarProps extends LayoutProps {
+export interface ProgressBarProps extends LayoutProps, PointerEventProps {
   value: number;
   trackBackground?: BackgroundOptions;
   fillBackground?: BackgroundOptions;
@@ -185,6 +187,106 @@ export function ZStack(props: PropsWithChildren<PanelProps>): React.JSX.Element 
       position="relative"
       {...props}
     />
+  );
+}
+
+export interface TooltipProps {
+  /**
+   * Tooltip body. A `string` / `number` is auto-wrapped in a `<Text>`
+   * styled with `textStyle`; pass `ReactNode`s for rich content (icon +
+   * text rows, stat blocks, …).
+   */
+  content: ReactNode;
+  /** Which side of the wrapped child the bubble appears on. Default `"top"`. */
+  placement?: "top" | "bottom" | "left" | "right";
+  /** Gap in px between the trigger and the bubble. Default `6`. */
+  offset?: number;
+  /** Bubble background. Default a dark, slightly translucent rounded panel. */
+  bg?: BackgroundOptions;
+  /** Padding inside the bubble. Default `{ left: 8, right: 8, top: 4, bottom: 4 }`. */
+  padding?: Padding;
+  /** Text style applied when `content` is a string / number. */
+  textStyle?: Partial<TextStyle>;
+  /**
+   * Force the bubble's visibility, bypassing hover. Omit for the default
+   * hover-driven behavior; pass a boolean to control it yourself (a pinned
+   * onboarding callout, a debug toggle, …).
+   */
+  opened?: boolean;
+  /** Render the children only — never show the bubble. */
+  disabled?: boolean;
+  /** The trigger element(s) the tooltip describes. */
+  children: ReactNode;
+}
+
+/**
+ * Hover-driven floating label, Mantine-style: one wrapper, content in a
+ * prop. Wraps `children` in a `position: "relative"` `<Panel>` that
+ * shrink-wraps the trigger and listens for hover (via the new `onHover`
+ * prop); while hovered it renders an absolutely-positioned bubble just
+ * outside the chosen `placement` edge.
+ *
+ * Positioning uses a `"100%"` edge offset against the wrapper (Yoga lays
+ * absolute children out against the parent's content box, and the wrapper
+ * hugs the trigger) — so the bubble anchors to the trigger with no size
+ * measurement. The bubble is start-aligned on the cross axis (not centered)
+ * since centering would need the measured bubble size; compose a custom
+ * overlay with `<ZStack>` if you need precise centering.
+ *
+ * The bubble is out of Yoga flow, so it never reflows siblings, and Panels
+ * don't clip by default, so it can extend past the trigger's bounds.
+ */
+export function Tooltip(props: TooltipProps): React.JSX.Element {
+  const {
+    content,
+    placement = "top",
+    offset = 6,
+    bg,
+    padding,
+    textStyle,
+    opened,
+    disabled,
+    children,
+  } = props;
+  const [hovered, setHovered] = useState(false);
+  const show = !disabled && (opened ?? hovered);
+
+  const body =
+    typeof content === "string" || typeof content === "number" ? (
+      <UIText {...(textStyle ? { style: textStyle } : {})}>
+        {String(content)}
+      </UIText>
+    ) : (
+      content
+    );
+
+  const edge: Partial<PanelProps> =
+    placement === "bottom"
+      ? { top: "100%", margin: { top: offset } }
+      : placement === "left"
+        ? { right: "100%", margin: { right: offset } }
+        : placement === "right"
+          ? { left: "100%", margin: { left: offset } }
+          : { bottom: "100%", margin: { bottom: offset } };
+
+  return (
+    <Panel
+      position="relative"
+      alignItems="flex-start"
+      {...(disabled ? {} : { onHover: setHovered })}
+    >
+      {children}
+      {show ? (
+        <Panel
+          position="absolute"
+          {...edge}
+          padding={padding ?? { left: 8, right: 8, top: 4, bottom: 4 }}
+          bg={bg ?? { color: 0x1a1a1a, alpha: 0.95, radius: 4 }}
+        >
+          {body}
+        </Panel>
+      ) : null}
+    </Panel>
   );
 }
 

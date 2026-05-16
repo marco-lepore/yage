@@ -123,8 +123,52 @@ stacking use `<Panel direction="column" | "row">`.
 ```
 
 `position` defaults to `"relative"`. Set `"absolute"` to lift the element out
-of the flex flow; `left` / `top` / `right` / `bottom` are pixel offsets
-against the nearest relative ancestor.
+of the flex flow; `left` / `top` / `right` / `bottom` are offsets against the
+nearest relative ancestor — a number is px, a `"<n>%"` string resolves
+against the containing block (so `top="100%"` is flush below it).
+
+### Hover events
+
+`Panel`, `Button`, `Text`, `Image`, `NineSlice`, `ProgressBar` accept hover
+callbacks (the container is already interactive — this is a fan-out, not new
+infra). Three independent, combinable props:
+
+- `onPointerOver?: () => void` / `onPointerOut?: () => void` — mirror Pixi
+  events and the existing `onClick` naming; use when enter / leave need
+  separate handlers.
+- `onHover?: (hovering: boolean) => void` — convenience: `true` on enter,
+  `false` on leave. Ideal for "show while hovered" toggles.
+
+```tsx
+<Button onClick={save} onHover={setGlow}>Save</Button>
+<Panel onPointerOver={preview} onPointerOut={clearPreview}>…</Panel>
+```
+
+Callbacks are suppressed while a `<Button disabled>`.
+
+### Tooltip
+
+`<Tooltip content={…}>` wraps a trigger and shows a floating bubble while
+hovered (Mantine-style: one wrapper, content in a prop). Built on `onHover` +
+absolute positioning; out of Yoga flow (never reflows siblings) and
+unclipped (extends past the trigger).
+
+```tsx
+<Tooltip content="Save your game" placement="top">
+  <Button onClick={save}>Save</Button>
+</Tooltip>
+
+<Tooltip content={<Panel gap={2}><Text>+5 ATK</Text><Text>Rare</Text></Panel>} placement="right">
+  <Image texture={swordIcon} />
+</Tooltip>
+```
+
+Props: `content` (string/number → auto `<Text>`; nodes for rich content),
+`placement` (`"top"` default / `"bottom"` / `"left"` / `"right"`), `offset`
+(px gap, default `6`), `bg`, `padding`, `textStyle`, `opened` (force
+visibility, bypass hover), `disabled` (render trigger only). The bubble is
+start-aligned on the cross axis (not centered — centering needs a measured
+size; use `<ZStack>` for precise placement).
 
 ## Hooks
 

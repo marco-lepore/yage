@@ -9,6 +9,7 @@ import { Display } from "yoga-layout";
 import type { UIElement, UITextProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { PointerEvents } from "./pointer-events.js";
 
 const ELLIPSIS = "…";
 
@@ -37,6 +38,7 @@ export class UIText implements UIElement {
   // can detect — and warn about — a change it cannot honor.
   private readonly _bitmap: BitmapTextOption | undefined;
   private readonly _resolution: number | undefined;
+  private readonly pointerEvents: PointerEvents;
 
   constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
@@ -68,6 +70,7 @@ export class UIText implements UIElement {
 
     this.displayObject = this.text;
     applyConsumeInput(this.text, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this.text, props);
 
     this.yogaNode.setMeasureFunc((width, widthMode) => {
       // `clip` / `ellipsis` are single-line, so wordWrap stays off and the
@@ -174,6 +177,7 @@ export class UIText implements UIElement {
       );
     }
     if (p.consumeInput !== undefined) applyConsumeInput(this.text, p.consumeInput);
+    this.pointerEvents.set(p);
     applyLayoutProps(this.yogaNode, p);
 
     if (p.visible !== undefined) {

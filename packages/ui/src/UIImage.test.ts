@@ -42,6 +42,16 @@ const { mocks } = vi.hoisted(() => {
 
     removeFromParent(): void { this.parent?.removeChild(this); }
 
+    private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+    on(event: string, fn: (...args: unknown[]) => void): this {
+      if (!this._listeners.has(event)) this._listeners.set(event, new Set());
+      this._listeners.get(event)!.add(fn);
+      return this;
+    }
+    emit(event: string, ...args: unknown[]): void {
+      for (const fn of this._listeners.get(event) ?? []) fn(...args);
+    }
+
     destroy(): void { this.destroyed = true; this.removeFromParent(); }
   }
 

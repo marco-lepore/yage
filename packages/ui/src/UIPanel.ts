@@ -37,6 +37,7 @@ import type { Anchor } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { PointerEvents } from "./pointer-events.js";
 
 // ---------------------------------------------------------------------------
 // Enum mapping helpers
@@ -80,11 +81,13 @@ export class PanelNode implements UIContainerElement {
   private maskHandle: MaskHandle | undefined;
   private _children: UIElement[] = [];
   private bgOpts: BackgroundOptions | undefined;
+  private readonly pointerEvents: PointerEvents;
 
   constructor(opts: PanelProps) {
     this.container = new Container();
     this.yogaNode = createYogaNode();
     applyConsumeInput(this.container, opts.consumeInput);
+    this.pointerEvents = new PointerEvents(this.container, opts);
     this._applyProps({ direction: "column", ...opts });
   }
 
@@ -209,6 +212,7 @@ export class PanelNode implements UIContainerElement {
 
   update(props: Partial<PanelProps>): void {
     this._applyProps(props);
+    this.pointerEvents.set(props);
   }
 
   // ---------------------------------------------------------------------------

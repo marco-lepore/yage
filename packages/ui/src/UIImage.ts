@@ -7,6 +7,7 @@ import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { PointerEvents } from "./pointer-events.js";
 
 /** Displays a texture as a UI element, scaling to fit Yoga-computed dimensions. */
 export class UIImage implements UIElement {
@@ -18,6 +19,7 @@ export class UIImage implements UIElement {
   }
 
   private textureHandle: AssetHandle<Texture>;
+  private readonly pointerEvents: PointerEvents;
 
   constructor(props: UIImageProps) {
     this.yogaNode = createYogaNode();
@@ -26,6 +28,7 @@ export class UIImage implements UIElement {
     const texture = resolveTexture(this.textureHandle);
     this.container = new Sprite(texture);
     applyConsumeInput(this.container, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this.container, props);
 
     if (props.tint !== undefined) this.container.tint = props.tint;
     if (props.alpha !== undefined) this.container.alpha = props.alpha;
@@ -92,6 +95,7 @@ export class UIImage implements UIElement {
     if (p.tint !== undefined) this.container.tint = p.tint;
     if (p.alpha !== undefined) this.container.alpha = p.alpha;
     if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 

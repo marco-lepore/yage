@@ -98,6 +98,17 @@ export type LayoutValue =
   | `${number}vw`
   | "auto";
 
+/**
+ * Offset for a `position: "absolute"` edge. A raw number is pixels; a
+ * `"<n>%"` string resolves against the containing block (the nearest
+ * `position: "relative"` ancestor's content box) — the same reference box
+ * CSS uses. So `top: "100%"` means "the containing block's full height down
+ * from its top edge", i.e. flush against its bottom. This is what lets
+ * edge-relative overlays (tooltips, dropdowns) anchor to a shrink-wrapped
+ * trigger without measuring it.
+ */
+export type PositionValue = number | `${number}%`;
+
 /** Common layout props every element can accept (applied to its Yoga node). */
 export interface LayoutProps {
   width?: LayoutValue;
@@ -131,14 +142,14 @@ export interface LayoutProps {
    * an opinionated overlay primitive.
    */
   position?: "relative" | "absolute";
-  /** Pixel offset from the parent's left edge (only applies to `position: "absolute"`). */
-  left?: number;
-  /** Pixel offset from the parent's top edge (only applies to `position: "absolute"`). */
-  top?: number;
-  /** Pixel offset from the parent's right edge (only applies to `position: "absolute"`). */
-  right?: number;
-  /** Pixel offset from the parent's bottom edge (only applies to `position: "absolute"`). */
-  bottom?: number;
+  /** Offset from the containing block's left edge — px or `"<n>%"` (only applies to `position: "absolute"`). */
+  left?: PositionValue;
+  /** Offset from the containing block's top edge — px or `"<n>%"` (only applies to `position: "absolute"`). */
+  top?: PositionValue;
+  /** Offset from the containing block's right edge — px or `"<n>%"` (only applies to `position: "absolute"`). */
+  right?: PositionValue;
+  /** Offset from the containing block's bottom edge — px or `"<n>%"` (only applies to `position: "absolute"`). */
+  bottom?: PositionValue;
   visible?: boolean;
 }
 
@@ -187,8 +198,33 @@ export interface ConsumeInputProps {
   consumeInput?: boolean;
 }
 
+/**
+ * Hover/pointer callbacks shared by the interactive UI primitives. Every UI
+ * primitive's Pixi container is already `eventMode: "static"` (the
+ * consume-input fallback), so wiring these is a small fan-out, not new infra.
+ *
+ * - `onPointerOver` / `onPointerOut` mirror the underlying Pixi events and
+ *   the existing `onClick` naming — reach for these when enter and leave
+ *   need independent handlers.
+ * - `onHover(hovering)` is the convenience form: called with `true` on
+ *   enter and `false` on leave. Ideal for "show while hovered" toggles
+ *   (tooltips, detail popovers) where one setter handles both edges.
+ *
+ * All three are independent and may be combined. Callbacks are suppressed
+ * while the element is disabled (currently only `UIButton` has a disabled
+ * state).
+ */
+export interface PointerEventProps {
+  onPointerOver?: () => void;
+  onPointerOut?: () => void;
+  onHover?: (hovering: boolean) => void;
+}
+
 /** Props for UIText (used by reconciler and props-driven constructor). */
-export interface UITextProps extends LayoutProps, ConsumeInputProps {
+export interface UITextProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
   children?: string;
   style?: Partial<TextStyle>;
   /**
@@ -218,7 +254,10 @@ export interface UITextProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */
-export interface UIButtonProps extends LayoutProps, ConsumeInputProps {
+export interface UIButtonProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
   children?: string;
   onClick?: () => void;
   background?: BackgroundOptions;
@@ -229,7 +268,10 @@ export interface UIButtonProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for PanelNode (used by reconciler and props-driven constructor). */
-export interface PanelProps extends LayoutProps, ConsumeInputProps {
+export interface PanelProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
   direction?: FlexDirection;
   gap?: number;
   padding?: Padding;
@@ -251,14 +293,20 @@ export interface PanelProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for UIImage. */
-export interface UIImageProps extends LayoutProps, ConsumeInputProps {
+export interface UIImageProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
   texture: TextureHandle;
   tint?: number;
   alpha?: number;
 }
 
 /** Props for UINineSlice. */
-export interface UINineSliceProps extends LayoutProps, ConsumeInputProps {
+export interface UINineSliceProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
   texture: TextureHandle;
   insets:
     | { left: number; top: number; right: number; bottom: number }
@@ -268,7 +316,10 @@ export interface UINineSliceProps extends LayoutProps, ConsumeInputProps {
 }
 
 /** Props for UIProgressBar. */
-export interface UIProgressBarProps extends LayoutProps, ConsumeInputProps {
+export interface UIProgressBarProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
   value: number;
   trackBackground?: BackgroundOptions;
   fillBackground?: BackgroundOptions;

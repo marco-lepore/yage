@@ -10,12 +10,12 @@ export { UIRootLayoutSystem } from "./UIRootLayoutSystem.js";
 
 // JSX components
 export {
-  Panel, ZStack, UIText as Text, Button, Image, NineSlice, ProgressBar, Checkbox,
+  Panel, ZStack, Tooltip, UIText as Text, Button, Image, NineSlice, ProgressBar, Checkbox,
   PixiFancyButton, PixiCheckbox, PixiProgressBar, PixiSlider,
   PixiInput, ScrollView, PixiSelect, PixiRadioGroup,
 } from "./components.js";
 export type {
-  PanelProps, TextProps, ButtonProps, ImageProps, NineSliceProps, ProgressBarProps, CheckboxProps,
+  PanelProps, TooltipProps, TextProps, ButtonProps, ImageProps, NineSliceProps, ProgressBarProps, CheckboxProps,
   PixiFancyButtonReactProps, PixiCheckboxReactProps, PixiProgressBarReactProps, PixiSliderReactProps,
   PixiInputReactProps, ScrollViewReactProps, PixiSelectReactProps, PixiRadioGroupReactProps,
 } from "./components.js";
@@ -29,5 +29,7 @@ export type {
   PixiViewType,
   FancyButtonAnimations,
   ScrollbarOptions,
+  PointerEventProps,
+  PositionValue,
 } from "@yagejs/ui";
 
