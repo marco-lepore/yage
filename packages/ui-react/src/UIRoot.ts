@@ -259,15 +259,19 @@ export class UIRoot extends Component {
       this._container.position.set(this._offset.x, this._offset.y);
     }
 
-    // Lay out the overlay (viewport-sized; absolute bubbles measure against
-    // it, so labels stay single-line) then re-anchor every bubble to its
-    // trigger's post-layout geometry. Kept at the container origin so its
+    // Lay out the overlay then re-anchor every bubble to its trigger's
+    // post-layout geometry. The overlay is sized to the renderer's virtual
+    // viewport (not `vw/vh`, which only the non-React UILayoutSystem feeds)
+    // so its `100%`-sized root gives absolute bubbles a screen-sized
+    // containing block — long labels stay on one line instead of wrapping
+    // into the trigger's width. Kept at the container origin so its
     // coordinate space matches the tree the triggers live in.
     const overlayInstances = getRootInstances(this._overlay);
     if (overlayInstances) {
+      const vs = this.use(RendererKey).virtualSize;
       for (const inst of overlayInstances) {
         if (!inst.displayObject.visible) continue;
-        inst.yogaNode.calculateLayout(undefined, undefined);
+        inst.yogaNode.calculateLayout(vs.width, vs.height);
         inst.applyLayout?.();
         inst.displayObject.position.set(0, 0);
       }
