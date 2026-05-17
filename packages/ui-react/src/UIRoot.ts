@@ -266,6 +266,14 @@ export class UIRoot extends Component {
     // containing block — long labels stay on one line instead of wrapping
     // into the trigger's width. Kept at the container origin so its
     // coordinate space matches the tree the triggers live in.
+    // The main reconciler root's initial mount calls `clearContainer`,
+    // which strips every child of `_container` — including `_overlay`.
+    // Re-attach it (this runs on every commit and every frame) so the
+    // overlay is restored right after the user's first `render()`.
+    if (this._overlay.parent !== this._container) {
+      this._container.addChild(this._overlay);
+    }
+
     const overlayInstances = getRootInstances(this._overlay);
     if (overlayInstances) {
       const vs = this.use(RendererKey).virtualSize;
