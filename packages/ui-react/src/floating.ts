@@ -71,6 +71,8 @@ export class FloatingOverlay {
     );
     layer.container.sortableChildren = true;
     this.layer = layer.container;
+    // Parent any slots acquired before attach (order-independent).
+    for (const e of this.entries) this.layer.addChild(e.container);
   }
 
   acquire(): FloatingHandle {

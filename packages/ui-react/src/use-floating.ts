@@ -1,4 +1,4 @@
-import { useContext, useRef, useEffect } from "react";
+import { useContext, useRef, useState, useEffect } from "react";
 import type { ReactNode, ReactPortal } from "react";
 import type { UIElement } from "@yagejs/ui";
 import { FloatingOverlayCtx } from "./floating.js";
@@ -35,27 +35,27 @@ export function useFloating(opts: UseFloatingOptions): UseFloatingResult {
   const overlay = useContext(FloatingOverlayCtx);
   const triggerRef = useRef<UIElement | null>(null);
 
-  // Acquire one slot for this component's lifetime (overlay is stable per
-  // scene). Released on unmount.
-  const handleRef = useRef<FloatingHandle | null | undefined>(undefined);
-  if (handleRef.current === undefined) {
-    handleRef.current = overlay ? overlay.acquire() : null;
-    handleRef.current?.setReference(() => triggerRef.current);
-  }
-  useEffect(
-    () => () => {
-      handleRef.current?.release();
-    },
-    [],
-  );
+  // Acquire a slot after commit (never during render — render must be pure;
+  // React may abort/replay it, which would leak handles). State, not a ref,
+  // so the portal renders once the slot exists.
+  const [handle, setHandle] = useState<FloatingHandle | null>(null);
+  useEffect(() => {
+    if (!overlay) return;
+    const h = overlay.acquire();
+    h.setReference(() => triggerRef.current);
+    setHandle(h);
+    return () => {
+      h.release();
+      setHandle(null);
+    };
+  }, [overlay]);
 
   const prevOpen = useRef(false);
   useEffect(() => {
-    const h = handleRef.current;
-    if (!h) return;
-    h.setConfig({ placement, offset, padding, maxWidth, flip, shift });
-    h.setActive(open);
-    if (open && !prevOpen.current) h.bringToFront();
+    if (!handle) return;
+    handle.setConfig({ placement, offset, padding, maxWidth, flip, shift });
+    handle.setActive(open);
+    if (open && !prevOpen.current) handle.bringToFront();
     prevOpen.current = open;
   });
 
@@ -63,10 +63,8 @@ export function useFloating(opts: UseFloatingOptions): UseFloatingResult {
     setReference: (el) => {
       triggerRef.current = el;
     },
-    renderFloating: (content) => {
-      const h = handleRef.current;
-      return h && open ? createPortal(content, h.container) : null;
-    },
+    renderFloating: (content) =>
+      handle && open ? createPortal(content, handle.container) : null,
     hasOverlay: overlay !== null,
   };
 }
