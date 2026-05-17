@@ -64,6 +64,23 @@ active mode. In headless environments (no DOM target) the plugin applies a
 one-shot transform against the initial `width × height` and installs no
 observer.
 
+:::caution[Give the fit container a bounded height]
+The host's measured size is fed back into the canvas on every resize, so a
+container that has **no height of its own** — one whose height is driven
+purely by its content — has no stable size, and the observer can grow it
+without bound. Browsers default `<canvas>` to `display:inline`, which adds
+a ~4px baseline gap below it that makes this loop kick in even with no
+other CSS. The renderer defends against this automatically by setting
+`display:block` on its canvas, so the common case converges with zero
+effort — but you should still give the fit container an explicit or bounded
+height: `height: 100%` under a sized ancestor, a fixed pixel height, or a
+`max-height`. If a genuine feedback loop is detected despite the
+`display:block` reset (e.g. a stray vertical margin on the canvas or
+sub-pixel rounding), `FitController` freezes auto-resize at the last good
+size and logs a one-time `console.warn` explaining the fix, rather than
+letting the page grow until it hangs.
+:::
+
 At runtime you can switch modes or observe a different element:
 
 ```typescript

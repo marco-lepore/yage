@@ -175,6 +175,21 @@ export class RendererPlugin implements Plugin {
       }
     }
 
+    // 2b. Force `display:block` on the canvas. The <canvas> UA default is
+    //     `display:inline`, which seats it on the text baseline and leaves a
+    //     ~4px line-box descender beneath it. On a fit host whose height is
+    //     content-driven (no explicit/bounded height) that descender makes
+    //     the host measure taller than the canvas the FitController just
+    //     sized to it, the ResizeObserver re-fires, the canvas grows, the
+    //     host grows again — an unbounded loop. `display:block` removes the
+    //     descender so the host content box equals the canvas height and the
+    //     controller reaches a fixed point. Canvas-local and overridable from
+    //     a developer stylesheet. Guarded for headless test runs that stub
+    //     `canvas` without a `style`.
+    const canvasStyle = (this._app.canvas as { style?: CSSStyleDeclaration })
+      .style;
+    if (canvasStyle) canvasStyle.display = "block";
+
     // 3. Append canvas to container if specified
     if (this._config.container) {
       this._config.container.appendChild(this._app.canvas);
