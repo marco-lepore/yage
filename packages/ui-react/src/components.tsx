@@ -256,8 +256,9 @@ const TOOLTIP_TEXT = { fill: 0xe5e7eb, fontSize: 13 } as const;
 
 /**
  * Hover-driven floating label, Mantine-style: one wrapper, content in a
- * prop. Wraps `children` in a `<Panel>` that shrink-wraps the trigger and
- * listens for hover (the `onHover` prop).
+ * prop. Wraps `children` in a layout-transparent `<Panel>` (no forced
+ * alignment — the trigger keeps its natural sizing) that listens for hover
+ * (the `onHover` prop).
  *
  * Under a `<UIRoot>` the bubble is hoisted into the root's top overlay (a
  * viewport-sized, top-most, unclipped container) and re-anchored to the
@@ -345,7 +346,6 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
   if (controller) {
     return (
       <RefPanel
-        alignItems="flex-start"
         ref={(el) => {
           triggerRef.current = el;
         }}
@@ -369,7 +369,6 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
   return (
     <Panel
       position="relative"
-      alignItems="flex-start"
       {...(disabled ? {} : { onHover: setHovered })}
     >
       {children}

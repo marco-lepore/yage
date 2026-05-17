@@ -127,6 +127,15 @@ of the flex flow; `left` / `top` / `right` / `bottom` are offsets against the
 nearest relative ancestor — a number is px, a `"<n>%"` string resolves
 against the containing block (so `top="100%"` is flush below it).
 
+`Panel` accepts `consumeInput?: boolean` (default `true`). The UI
+auto-consume fallback claims pointer events that land on the panel so they
+don't leak through to gameplay actions; set `false` for a decorative /
+pass-through container (e.g. a full-screen overlay) that should let clicks
+reach elements beneath it. It does not gate the panel's own
+hover/click callbacks (those still fire), and a `<Tooltip>` trigger placed
+under such a panel still works. The `<Tooltip>` overlay and its bubbles use
+`consumeInput={false}` so they never block input to the UI behind them.
+
 ### Hover events
 
 `Panel`, `Button`, `Text`, `Image`, `NineSlice`, `ProgressBar` accept hover
