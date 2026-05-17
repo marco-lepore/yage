@@ -4,6 +4,7 @@ import { PointerEvents } from "./pointer-events.js";
 
 /** Minimal Pixi-Container stand-in: just the EventEmitter surface used here. */
 class MockContainer {
+  eventMode = "passive"; // Pixi's default for a fresh Container
   private _listeners = new Map<string, Set<(...a: unknown[]) => void>>();
   on(event: string, fn: (...a: unknown[]) => void): this {
     if (!this._listeners.has(event)) this._listeners.set(event, new Set());
@@ -95,6 +96,23 @@ describe("PointerEvents", () => {
     c.emit("pointerover");
 
     expect(onHover).not.toHaveBeenCalled();
+  });
+
+  it("upgrades a passive container to static so it is hit-tested", () => {
+    // Regression: <Panel consumeInput={false} onHover> has no interactive
+    // children; a passive container is not a hit-test target itself, so the
+    // listener would silently never fire.
+    const { c, container } = setup();
+    expect(c.eventMode).toBe("passive");
+    new PointerEvents(container, { onHover: vi.fn() });
+    expect(c.eventMode).toBe("static");
+  });
+
+  it("leaves an explicit eventMode intact (e.g. a disabled button's none)", () => {
+    const { c, container } = setup();
+    c.eventMode = "none";
+    new PointerEvents(container, { onHover: vi.fn() });
+    expect(c.eventMode).toBe("none");
   });
 
   it("set() leaves an untouched handler intact (absent key = keep)", () => {

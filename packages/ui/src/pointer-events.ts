@@ -4,10 +4,13 @@ import type { PointerEventProps } from "./types.js";
 /**
  * Shared hover-event fan-out for the interactive UI primitives.
  *
- * The owning primitive already has an `eventMode: "static"` Pixi container
- * (the consume-input fallback marks every UI primitive that way), so this
- * just binds one `pointerover` / `pointerout` listener pair and routes them
- * to the caller's `onPointerOver` / `onPointerOut` / `onHover` callbacks.
+ * Binds one `pointerover` / `pointerout` listener pair and routes them to
+ * the caller's `onPointerOver` / `onPointerOut` / `onHover` callbacks. A
+ * pointer listener implies the element must be hit-testable, so a `passive`
+ * container (Pixi's default — not a hit-test target itself) is upgraded to
+ * `static`; without this a `consumeInput: false` primitive with no
+ * interactive children would silently never fire. Explicit modes are left
+ * alone (`UIButton` toggles `"none"` when disabled).
  *
  * Callbacks live in mutable fields swapped in place by {@link set}, so a
  * single listener pair survives the React reconciler's prop churn — no
@@ -33,6 +36,9 @@ export class PointerEvents {
     this._onPointerOut = props.onPointerOut;
     this._onHover = props.onHover;
     this.inert = inert;
+    if (container.eventMode === "passive" || container.eventMode === undefined) {
+      container.eventMode = "static";
+    }
     container.on("pointerover", this._handleOver);
     container.on("pointerout", this._handleOut);
   }
