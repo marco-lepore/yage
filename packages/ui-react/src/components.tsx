@@ -251,7 +251,7 @@ export interface TooltipProps {
 
 /** Neutral dark default bubble look (readable on light or dark game UIs). */
 const TOOLTIP_BG: BackgroundOptions = { color: 0x1f2430, alpha: 0.96, radius: 6 };
-const TOOLTIP_PAD: Padding = { left: 10, right: 10, top: 6, bottom: 6 };
+const TOOLTIP_PAD: Padding = { left: 14, right: 14, top: 9, bottom: 9 };
 const TOOLTIP_TEXT = { fill: 0xe5e7eb, fontSize: 13 } as const;
 
 /**
