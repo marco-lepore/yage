@@ -149,9 +149,12 @@ Callbacks are suppressed while a `<Button disabled>`.
 ### Tooltip
 
 `<Tooltip content={…}>` wraps a trigger and shows a floating bubble while
-hovered (Mantine-style: one wrapper, content in a prop). Built on `onHover` +
-absolute positioning; out of Yoga flow (never reflows siblings) and
-unclipped (extends past the trigger).
+hovered (Mantine-style: one wrapper, content in a prop). Under a `<UIRoot>`
+the bubble is hoisted into the root's top overlay — a viewport-sized,
+top-most, unclipped container re-anchored to the trigger every frame — so it
+always draws above other UI, escapes a `<ScrollView>` clip, and is sized to
+its own content (long labels stay one line). Without a `<UIRoot>` it falls
+back to an in-tree absolute bubble. Never reflows siblings.
 
 ```tsx
 <Tooltip content="Save your game" placement="top">

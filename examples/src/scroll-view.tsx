@@ -53,7 +53,12 @@ function OrderRow({
       bg={{ color: 0x243042, alpha: 1, radius: 4 }}
     >
       <Text style={{ fill: 0xe5e7eb, fontSize: 14 }}>{order.label}</Text>
-      <Tooltip content={`Fulfill ${order.label}`} placement="left">
+      <Tooltip
+        content={`Fulfill ${order.label}`}
+        placement="left"
+        bg={{ color: 0x243042, alpha: 1, radius: 4 }}
+        textStyle={{ fill: 0xe5e7eb, fontSize: 12 }}
+      >
         <Button
           height={24}
           onClick={onFulfill}

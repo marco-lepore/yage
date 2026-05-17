@@ -281,10 +281,16 @@ breakdowns):
 | `opened` | Force visibility, bypassing hover (controlled / debug) |
 | `disabled` | Render the trigger only — never show the bubble |
 
-The bubble is out of the layout flow (it never reflows siblings) and
-unclipped (it can extend past the trigger). It is start-aligned on the
-cross axis rather than centered — precise centering needs a measured size,
-so compose a custom overlay with `<ZStack>` if you need it.
+Under a `<UIRoot>` (the normal case) the bubble is hoisted into the root's
+top overlay: a viewport-sized, top-most, unclipped container that is
+re-anchored to the trigger every frame. That means it always draws above
+the rest of the UI, escapes a `<ScrollView>`'s clip, never reflows
+siblings, and is sized to its own content (long labels stay on one line
+instead of wrapping into the trigger's width). Rendered without a
+`<UIRoot>` (a bare reconciler tree) it falls back to an in-tree absolute
+bubble. It is start-aligned on the cross axis rather than centered —
+precise centering needs a second measured pass, so compose a `<ZStack>`
+if you need it.
 
 ### PixiUI Components
 

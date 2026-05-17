@@ -1,4 +1,11 @@
-import { useState } from "react";
+import {
+  useState,
+  useContext,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  forwardRef,
+} from "react";
 import type { PropsWithChildren, ReactNode } from "react";
 import type {
   BitmapTextOption,
@@ -34,7 +41,10 @@ import type {
   PixiViewType,
   PointerEventProps,
   ScrollbarOptions,
+  UIElement,
 } from "@yagejs/ui";
+import { TooltipOverlayCtx } from "./tooltip-overlay.js";
+import type { TooltipController } from "./tooltip-overlay.js";
 
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements
@@ -61,6 +71,12 @@ export interface PanelProps extends LayoutProps, PointerEventProps {
     | "space-around"
     | "space-evenly";
   overflow?: "visible" | "hidden";
+  /**
+   * Opt the panel out of the UI auto-consume pointer fallback (default
+   * `true`). Pass `false` for a decorative / pass-through container that
+   * shouldn't swallow clicks meant for the world or elements beneath it.
+   */
+  consumeInput?: boolean;
   visible?: boolean;
 }
 
@@ -171,6 +187,20 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
 }
 
 /**
+ * @internal A `Panel` that forwards a ref to its underlying `PanelNode`
+ * (the reconciler returns the `UIElement` instance via `getPublicInstance`).
+ * Used by `Tooltip` to read the trigger's post-layout geometry and by the
+ * overlay host to position each bubble.
+ */
+const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
+  function RefPanel(props, ref) {
+    const { children, bg, ...rest } = props;
+    // @ts-expect-error — custom reconciler element type
+    return <ui-element _ctor={PanelNode} {...rest} background={bg} ref={ref}>{children}</ui-element>;
+  },
+);
+
+/**
  * Z-axis stacking primitive: a `Panel` that defaults to filling its parent
  * and acts as the containing block for absolute-positioned children. Drop
  * children inside with `position="absolute"` (plus `left` / `top` / `right`
@@ -219,22 +249,26 @@ export interface TooltipProps {
   children: ReactNode;
 }
 
+/** Neutral dark default bubble look (readable on light or dark game UIs). */
+const TOOLTIP_BG: BackgroundOptions = { color: 0x1f2430, alpha: 0.96, radius: 6 };
+const TOOLTIP_PAD: Padding = { left: 10, right: 10, top: 6, bottom: 6 };
+const TOOLTIP_TEXT = { fill: 0xe5e7eb, fontSize: 13 } as const;
+
 /**
  * Hover-driven floating label, Mantine-style: one wrapper, content in a
- * prop. Wraps `children` in a `position: "relative"` `<Panel>` that
- * shrink-wraps the trigger and listens for hover (via the new `onHover`
- * prop); while hovered it renders an absolutely-positioned bubble just
- * outside the chosen `placement` edge.
+ * prop. Wraps `children` in a `<Panel>` that shrink-wraps the trigger and
+ * listens for hover (the `onHover` prop).
  *
- * Positioning uses a `"100%"` edge offset against the wrapper (Yoga lays
- * absolute children out against the parent's content box, and the wrapper
- * hugs the trigger) — so the bubble anchors to the trigger with no size
- * measurement. The bubble is start-aligned on the cross axis (not centered)
- * since centering would need the measured bubble size; compose a custom
- * overlay with `<ZStack>` if you need precise centering.
+ * Under a `<UIRoot>` the bubble is hoisted into the root's top overlay (a
+ * viewport-sized, top-most, unclipped container) and re-anchored to the
+ * trigger every frame from its post-layout geometry. That keeps it above all
+ * other UI, lets it escape a `<ScrollView>` clip, and sizes it to its own
+ * content instead of the trigger's width. Rendered without a `<UIRoot>`
+ * (e.g. a bare reconciler tree) it falls back to an in-tree absolute bubble.
  *
- * The bubble is out of Yoga flow, so it never reflows siblings, and Panels
- * don't clip by default, so it can extend past the trigger's bounds.
+ * The bubble is start-aligned on the cross axis (not centered) — centering
+ * would need a second measured pass; compose a `<ZStack>` for precise
+ * placement.
  */
 export function Tooltip(props: TooltipProps): React.JSX.Element {
   const {
@@ -248,18 +282,81 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
     disabled,
     children,
   } = props;
+  const controller = useContext(TooltipOverlayCtx);
   const [hovered, setHovered] = useState(false);
   const show = !disabled && (opened ?? hovered);
 
   const body =
     typeof content === "string" || typeof content === "number" ? (
-      <UIText {...(textStyle ? { style: textStyle } : {})}>
+      <UIText style={{ ...TOOLTIP_TEXT, ...textStyle }}>
         {String(content)}
       </UIText>
     ) : (
       content
     );
 
+  // The visual bubble. In the overlay path the host wraps this in the
+  // absolutely-positioned, frame-anchored container; inline it carries the
+  // edge offset itself.
+  const bubble = (
+    <Panel
+      consumeInput={false}
+      padding={padding ?? TOOLTIP_PAD}
+      bg={bg ?? TOOLTIP_BG}
+    >
+      {body}
+    </Panel>
+  );
+
+  const triggerRef = useRef<UIElement | null>(null);
+  const idRef = useRef<number | null>(null);
+
+  // Register / unregister with the overlay while shown. Re-runs only on
+  // show / placement / offset changes (content is refreshed below).
+  useEffect(() => {
+    if (!controller || !show) return;
+    const id = controller.register({
+      node: bubble,
+      placement,
+      offset,
+      getTrigger: () => triggerRef.current,
+    });
+    idRef.current = id;
+    return () => {
+      controller.unregister(id);
+      idRef.current = null;
+    };
+    // `bubble` identity changes every render by design — refreshed by the
+    // effect below rather than re-registering here.
+  }, [controller, show, placement, offset]);
+
+  // Keep the live entry's content current (cheap: Tooltip re-renders are
+  // event-driven — hover / prop changes, not per-frame).
+  useEffect(() => {
+    if (!controller || idRef.current === null) return;
+    controller.update(idRef.current, {
+      node: bubble,
+      placement,
+      offset,
+      getTrigger: () => triggerRef.current,
+    });
+  });
+
+  if (controller) {
+    return (
+      <RefPanel
+        alignItems="flex-start"
+        ref={(el) => {
+          triggerRef.current = el;
+        }}
+        {...(disabled ? {} : { onHover: setHovered })}
+      >
+        {children}
+      </RefPanel>
+    );
+  }
+
+  // Inline fallback (no UIRoot overlay): in-tree absolute bubble.
   const edge: Partial<PanelProps> =
     placement === "bottom"
       ? { top: "100%", margin: { top: offset } }
@@ -277,15 +374,50 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
     >
       {children}
       {show ? (
-        <Panel
-          position="absolute"
-          {...edge}
-          padding={padding ?? { left: 8, right: 8, top: 4, bottom: 4 }}
-          bg={bg ?? { color: 0x1a1a1a, alpha: 0.95, radius: 4 }}
-        >
-          {body}
+        <Panel position="absolute" {...edge}>
+          {bubble}
         </Panel>
       ) : null}
+    </Panel>
+  );
+}
+
+/**
+ * @internal Renders the live tooltip bubbles for a `UIRoot`'s overlay. Each
+ * is an absolutely-positioned element the controller re-anchors imperatively
+ * every frame (no per-frame React work). The host fills the viewport so a
+ * bubble's text is measured against the screen, not its trigger — long
+ * labels stay on one line instead of wrapping into the trigger's width.
+ */
+export function TooltipOverlayHost({
+  controller,
+}: {
+  controller: TooltipController;
+}): React.JSX.Element {
+  const entries = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  );
+  return (
+    <Panel
+      position="relative"
+      width="100vw"
+      height="100vh"
+      consumeInput={false}
+    >
+      {entries.map((e) => (
+        <RefPanel
+          key={e.id}
+          position="absolute"
+          left={0}
+          top={0}
+          consumeInput={false}
+          ref={(el) => controller.attachBubble(e.id, el)}
+        >
+          {e.node}
+        </RefPanel>
+      ))}
     </Panel>
   );
 }

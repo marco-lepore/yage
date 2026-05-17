@@ -80,8 +80,14 @@ function MainMenu() {
           ScrollView's content stack is start-aligned). */}
       <ScrollView flexGrow={1}>
       <Panel direction="column" gap={12} alignItems="center">
-      {/* Tooltip: a string `content` auto-wraps in a styled <Text>. */}
-      <Tooltip content="YAGE — Yet Another Game Engine" placement="bottom">
+      {/* Tooltip: a string `content` auto-wraps in a styled <Text>.
+          Styled to match the demo's panels via the shared ui-theme. */}
+      <Tooltip
+        content="YAGE — Yet Another Game Engine"
+        placement="bottom"
+        bg={panelBg}
+        textStyle={textStyle("caption")}
+      >
         <Image texture={Logo} width={180} height={58} />
       </Tooltip>
 
@@ -102,7 +108,12 @@ function MainMenu() {
           height={12}
         />
         <Panel direction="row" gap={6}>
-          <Tooltip content="-15% HP" placement="top">
+          <Tooltip
+            content="-15% HP"
+            placement="top"
+            bg={panelBg}
+            textStyle={textStyle("caption")}
+          >
             <Button
               bg={{ color: 0x661111, alpha: 1, radius: 4 }}
               hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
@@ -112,7 +123,12 @@ function MainMenu() {
               Take Damage
             </Button>
           </Tooltip>
-          <Tooltip content="+15% HP" placement="top">
+          <Tooltip
+            content="+15% HP"
+            placement="top"
+            bg={panelBg}
+            textStyle={textStyle("caption")}
+          >
             <Button
               bg={{ color: 0x115511, alpha: 1, radius: 4 }}
               hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
@@ -180,6 +196,7 @@ function MainMenu() {
       {/* Tooltip: `content` also takes arbitrary nodes for rich tooltips. */}
       <Tooltip
         placement="right"
+        bg={panelBg}
         content={
           <Panel direction="column" gap={2}>
             <Text style={textStyle("caption", { fill: 0xffffff })}>
