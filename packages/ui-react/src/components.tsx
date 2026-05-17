@@ -373,7 +373,7 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
     >
       {children}
       {show ? (
-        <Panel position="absolute" {...edge}>
+        <Panel position="absolute" {...edge} consumeInput={false}>
           {bubble}
         </Panel>
       ) : null}
