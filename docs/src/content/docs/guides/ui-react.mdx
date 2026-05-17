@@ -247,10 +247,16 @@ existing disabled hover-background behavior).
 `<Tooltip>` wraps a trigger element and shows a floating bubble while the
 pointer is over it. It follows the Mantine convention — a single wrapper
 with the body in a `content` prop — rather than compound
-trigger/content subcomponents, so the common case stays a one-liner:
+trigger/content subcomponents. It is **headless**: no default visuals —
+pass `bg` / `padding` / `textStyle` to style it.
 
 ```tsx
-<Tooltip content="Save your game" placement="top">
+<Tooltip
+  content="Save your game"
+  placement="top"
+  bg={{ color: 0x1f2430, radius: 6 }}
+  padding={8}
+>
   <Button onClick={save}>Save</Button>
 </Tooltip>
 ```
@@ -275,22 +281,35 @@ breakdowns):
 | Prop | Description |
 |---|---|
 | `content` | Bubble body — string/number auto-wraps in `<Text>`; nodes for rich content |
-| `placement` | `"top"` (default), `"bottom"`, `"left"`, `"right"` |
+| `placement` | `side` or `side-align`: `"top"` (default, center-aligned), `"bottom-start"`, `"right-end"`, … |
 | `offset` | Gap in px between trigger and bubble (default `6`) |
-| `bg` / `padding` / `textStyle` | Bubble styling overrides |
+| `maxWidth` | Cap bubble width (px) — long content wraps instead of running off-screen |
+| `bg` / `padding` / `textStyle` | Bubble styling (headless — omit for an unstyled bubble) |
 | `opened` | Force visibility, bypassing hover (controlled / debug) |
 | `disabled` | Render the trigger only — never show the bubble |
 
-Under a `<UIRoot>` (the normal case) the bubble is hoisted into the root's
-top overlay: a viewport-sized, top-most, unclipped container that is
-re-anchored to the trigger every frame. That means it always draws above
-the rest of the UI, escapes a `<ScrollView>`'s clip, never reflows
-siblings, and is sized to its own content (long labels stay on one line
-instead of wrapping into the trigger's width). Rendered without a
-`<UIRoot>` (a bare reconciler tree) it falls back to an in-tree absolute
-bubble. It is start-aligned on the cross axis rather than centered —
-precise centering needs a second measured pass, so compose a `<ZStack>`
-if you need it.
+Under a `<UIRoot>` (the normal case) the bubble is portaled into the
+scene's top-most screen-space overlay and anchored by the positioning
+engine. It draws above all other UI, escapes a `<ScrollView>`'s clip,
+never reflows siblings, **flips** to the opposite side and **shifts**
+along the cross axis to stay on-screen, caps to `maxWidth` (and to the
+space available at the resolved side), z-stacks across roots
+(most-recently-opened on top), and anchors correctly even for world-space
+/ camera-transformed triggers. Rendered without a `<UIRoot>` overlay (a
+bare reconciler tree) it falls back to an in-tree absolute bubble with no
+collision handling.
+
+#### Headless: `useFloating`
+
+`<Tooltip>` is a thin wrapper over the exported `useFloating` primitive —
+use it directly for custom popovers, dropdowns, hovercards, or context
+menus. `useFloating({ open, placement, offset, padding, maxWidth, flip,
+shift })` returns `{ setReference, renderFloating, hasOverlay }`: wire
+`setReference` to the trigger's ref and render `renderFloating(node)` in
+your tree — it portals `node` into the scene overlay while `open` (keeping
+it in your React tree so context/props/lifecycle still flow) and returns
+`null` when closed. The pure `computePosition()` engine and `Placement`
+type are also exported for fully custom floating layers.
 
 ### PixiUI Components
 

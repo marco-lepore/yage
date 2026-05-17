@@ -1,11 +1,4 @@
-import {
-  useState,
-  useContext,
-  useEffect,
-  useRef,
-  useSyncExternalStore,
-  forwardRef,
-} from "react";
+import { useState, forwardRef } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
 import type {
   BitmapTextOption,
@@ -43,8 +36,8 @@ import type {
   ScrollbarOptions,
   UIElement,
 } from "@yagejs/ui";
-import { TooltipOverlayCtx } from "./tooltip-overlay.js";
-import type { TooltipController } from "./tooltip-overlay.js";
+import { useFloating } from "./use-floating.js";
+import type { Placement } from "./positioning.js";
 
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements
@@ -227,13 +220,27 @@ export interface TooltipProps {
    * text rows, stat blocks, …).
    */
   content: ReactNode;
-  /** Which side of the wrapped child the bubble appears on. Default `"top"`. */
-  placement?: "top" | "bottom" | "left" | "right";
+  /**
+   * Preferred side, optionally aligned (`"top"`, `"bottom-start"`,
+   * `"right-end"`, …). Default `"top"` (center-aligned). The bubble flips
+   * to the opposite side and shifts along the cross axis to stay
+   * on-screen.
+   */
+  placement?: Placement;
   /** Gap in px between the trigger and the bubble. Default `6`. */
   offset?: number;
-  /** Bubble background. Default a dark, slightly translucent rounded panel. */
+  /**
+   * Cap the bubble width (px). Long content wraps instead of running off
+   * screen; the bubble always also clamps to the space available at the
+   * resolved side.
+   */
+  maxWidth?: number;
+  /**
+   * Bubble background. Headless by default — omit and the bubble is an
+   * unstyled, transparent container; pass to style it.
+   */
   bg?: BackgroundOptions;
-  /** Padding inside the bubble. Default `{ left: 8, right: 8, top: 4, bottom: 4 }`. */
+  /** Padding inside the bubble. Headless by default (none). */
   padding?: Padding;
   /** Text style applied when `content` is a string / number. */
   textStyle?: Partial<TextStyle>;
@@ -249,33 +256,26 @@ export interface TooltipProps {
   children: ReactNode;
 }
 
-/** Neutral dark default bubble look (readable on light or dark game UIs). */
-const TOOLTIP_BG: BackgroundOptions = { color: 0x1f2430, alpha: 0.96, radius: 6 };
-const TOOLTIP_PAD: Padding = { left: 14, right: 14, top: 9, bottom: 9 };
-const TOOLTIP_TEXT = { fill: 0xe5e7eb, fontSize: 13 } as const;
-
 /**
- * Hover-driven floating label, Mantine-style: one wrapper, content in a
- * prop. Wraps `children` in a layout-transparent `<Panel>` (no forced
- * alignment — the trigger keeps its natural sizing) that listens for hover
- * (the `onHover` prop).
+ * Hover-driven floating label, Mantine-style: one wrapper, body in a
+ * `content` prop. **Headless** — no default visuals; pass `bg` / `padding`
+ * / `textStyle` to style it.
  *
- * Under a `<UIRoot>` the bubble is hoisted into the root's top overlay (a
- * viewport-sized, top-most, unclipped container) and re-anchored to the
- * trigger every frame from its post-layout geometry. That keeps it above all
- * other UI, lets it escape a `<ScrollView>` clip, and sizes it to its own
- * content instead of the trigger's width. Rendered without a `<UIRoot>`
- * (e.g. a bare reconciler tree) it falls back to an in-tree absolute bubble.
- *
- * The bubble is start-aligned on the cross axis (not centered) — centering
- * would need a second measured pass; compose a `<ZStack>` for precise
- * placement.
+ * Under a `<UIRoot>` the bubble is portaled into the scene's top-most
+ * screen-space overlay and anchored to the trigger by the positioning
+ * engine (offset → flip → shift → size): it draws above all other UI,
+ * escapes any `<ScrollView>` clip, flips/shifts to stay on-screen, and
+ * caps to `maxWidth` (and to the space available at the resolved side).
+ * World-space / camera-transformed triggers anchor correctly. Without a
+ * `<UIRoot>` overlay (e.g. a bare reconciler tree) it falls back to an
+ * in-tree absolute bubble with no collision handling.
  */
 export function Tooltip(props: TooltipProps): React.JSX.Element {
   const {
     content,
     placement = "top",
     offset = 6,
+    maxWidth,
     bg,
     padding,
     textStyle,
@@ -283,140 +283,70 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
     disabled,
     children,
   } = props;
-  const controller = useContext(TooltipOverlayCtx);
   const [hovered, setHovered] = useState(false);
-  const show = !disabled && (opened ?? hovered);
+  const open = !disabled && (opened ?? hovered);
+  const { setReference, renderFloating, hasOverlay } = useFloating({
+    open,
+    placement,
+    offset,
+    ...(maxWidth !== undefined ? { maxWidth } : {}),
+  });
 
   const body =
     typeof content === "string" || typeof content === "number" ? (
-      <UIText style={{ ...TOOLTIP_TEXT, ...textStyle }}>
+      <UIText {...(textStyle ? { style: textStyle } : {})}>
         {String(content)}
       </UIText>
     ) : (
       content
     );
 
-  // The visual bubble. In the overlay path the host wraps this in the
-  // absolutely-positioned, frame-anchored container; inline it carries the
-  // edge offset itself.
+  // Headless: a bare layout container (single portal/fallback root). Style
+  // only what the caller asked for.
   const bubble = (
     <Panel
       consumeInput={false}
-      padding={padding ?? TOOLTIP_PAD}
-      bg={bg ?? TOOLTIP_BG}
+      {...(padding ? { padding } : {})}
+      {...(bg ? { bg } : {})}
     >
       {body}
     </Panel>
   );
 
-  const triggerRef = useRef<UIElement | null>(null);
-  const idRef = useRef<number | null>(null);
-
-  // Register / unregister with the overlay while shown. Re-runs only on
-  // show / placement / offset changes (content is refreshed below).
-  useEffect(() => {
-    if (!controller || !show) return;
-    const id = controller.register({
-      node: bubble,
-      placement,
-      offset,
-      getTrigger: () => triggerRef.current,
-    });
-    idRef.current = id;
-    return () => {
-      controller.unregister(id);
-      idRef.current = null;
-    };
-    // `bubble` identity changes every render by design — refreshed by the
-    // effect below rather than re-registering here.
-  }, [controller, show, placement, offset]);
-
-  // Keep the live entry's content current (cheap: Tooltip re-renders are
-  // event-driven — hover / prop changes, not per-frame).
-  useEffect(() => {
-    if (!controller || idRef.current === null) return;
-    controller.update(idRef.current, {
-      node: bubble,
-      placement,
-      offset,
-      getTrigger: () => triggerRef.current,
-    });
-  });
-
-  if (controller) {
+  if (hasOverlay) {
     return (
-      <RefPanel
-        ref={(el) => {
-          triggerRef.current = el;
-        }}
-        {...(disabled ? {} : { onHover: setHovered })}
-      >
-        {children}
-      </RefPanel>
+      <>
+        <RefPanel
+          ref={(el) => setReference(el)}
+          {...(disabled ? {} : { onHover: setHovered })}
+        >
+          {children}
+        </RefPanel>
+        {renderFloating(bubble)}
+      </>
     );
   }
 
-  // Inline fallback (no UIRoot overlay): in-tree absolute bubble.
+  // Inline fallback (no scene overlay): in-tree absolute bubble, no
+  // collision handling. Side only (alignment is an overlay feature).
+  const side = placement.split("-")[0];
   const edge: Partial<PanelProps> =
-    placement === "bottom"
+    side === "bottom"
       ? { top: "100%", margin: { top: offset } }
-      : placement === "left"
+      : side === "left"
         ? { right: "100%", margin: { right: offset } }
-        : placement === "right"
+        : side === "right"
           ? { left: "100%", margin: { left: offset } }
           : { bottom: "100%", margin: { bottom: offset } };
 
   return (
-    <Panel
-      position="relative"
-      {...(disabled ? {} : { onHover: setHovered })}
-    >
+    <Panel position="relative" {...(disabled ? {} : { onHover: setHovered })}>
       {children}
-      {show ? (
+      {open ? (
         <Panel position="absolute" {...edge} consumeInput={false}>
           {bubble}
         </Panel>
       ) : null}
-    </Panel>
-  );
-}
-
-/**
- * @internal Renders the live tooltip bubbles for a `UIRoot`'s overlay. Each
- * is an absolutely-positioned element the controller re-anchors imperatively
- * every frame (no per-frame React work). The host fills the viewport so a
- * bubble's text is measured against the screen, not its trigger — long
- * labels stay on one line instead of wrapping into the trigger's width.
- */
-export function TooltipOverlayHost({
-  controller,
-}: {
-  controller: TooltipController;
-}): React.JSX.Element {
-  const entries = useSyncExternalStore(
-    controller.subscribe,
-    controller.getSnapshot,
-    controller.getSnapshot,
-  );
-  return (
-    <Panel
-      position="relative"
-      width="100%"
-      height="100%"
-      consumeInput={false}
-    >
-      {entries.map((e) => (
-        <RefPanel
-          key={e.id}
-          position="absolute"
-          left={0}
-          top={0}
-          consumeInput={false}
-          ref={(el) => controller.attachBubble(e.id, el)}
-        >
-          {e.node}
-        </RefPanel>
-      ))}
     </Panel>
   );
 }

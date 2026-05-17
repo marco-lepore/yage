@@ -24,8 +24,8 @@ import {
 } from "./reconciler.js";
 import type { ReconcilerRoot } from "./reconciler.js";
 import { EngineCtx, SceneCtx, notifyFrame } from "./hooks.js";
-import { TooltipController, TooltipOverlayCtx } from "./tooltip-overlay.js";
-import { TooltipOverlayHost } from "./components.js";
+import { FloatingOverlayCtx, FloatingOverlayKey } from "./floating.js";
+import type { FloatingOverlay } from "./floating.js";
 import { UIReactPluginKey } from "./UIReactPlugin.js";
 import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 
@@ -75,16 +75,8 @@ export interface UIRootOptions {
 @serializable
 export class UIRoot extends Component {
   private root: ReconcilerRoot | null = null;
-  private overlayRoot: ReconcilerRoot | null = null;
   private readonly _container: Container;
-  /**
-   * Top-most, viewport-sized, unclipped sibling that hosts floating tooltip
-   * bubbles. Kept as a high-`zIndex` child of `_container` so it shares the
-   * tree's coordinate space yet always draws above it and escapes any
-   * `ScrollView` clip.
-   */
-  private readonly _overlay: Container;
-  private readonly _tooltips = new TooltipController();
+  private _floating: FloatingOverlay | null = null;
   private readonly _anchor: Anchor | undefined;
   private readonly _offset: { x: number; y: number };
   private readonly _layer: string | undefined;
@@ -95,9 +87,6 @@ export class UIRoot extends Component {
   constructor(opts?: UIRootOptions) {
     super();
     this._container = new Container();
-    this._container.sortableChildren = true;
-    this._overlay = new Container();
-    this._overlay.zIndex = 1_000_000;
     if (opts?.consumeInput !== false) {
       markPointerConsumeContainer(this._container);
     }
@@ -141,16 +130,9 @@ export class UIRoot extends Component {
 
     this.root = createRoot(this._container);
 
-    // Top overlay: a high-zIndex sibling so tooltip bubbles draw above the
-    // whole tree and escape any ScrollView clip, while sharing its
-    // coordinate space (both children of `_container`).
-    this._container.addChild(this._overlay);
-    this.overlayRoot = createRoot(this._overlay);
-    this.overlayRoot.render(
-      this._provide(
-        createElement(TooltipOverlayHost, { controller: this._tooltips }),
-      ),
-    );
+    // Scene-level top overlay floating UI (tooltips/popovers) portals into.
+    this._floating = this.use(FloatingOverlayKey);
+    this._floating.attach(tree);
 
     // When React commits, re-run layout and anchor
     this._onCommit = () => this._layoutAndAnchor();
@@ -173,12 +155,12 @@ export class UIRoot extends Component {
     }
 
     // Wrap in context providers so useEngine()/useScene() work, plus the
-    // tooltip-overlay controller so <Tooltip> can hoist its bubble.
+    // scene floating overlay so <Tooltip> can portal its bubble.
     this.root.render(
       this._provide(
         createElement(
-          TooltipOverlayCtx.Provider,
-          { value: this._tooltips },
+          FloatingOverlayCtx.Provider,
+          { value: this._floating },
           element,
         ),
       ),
@@ -258,44 +240,14 @@ export class UIRoot extends Component {
     } else {
       this._container.position.set(this._offset.x, this._offset.y);
     }
-
-    // Lay out the overlay then re-anchor every bubble to its trigger's
-    // post-layout geometry. The overlay is sized to the renderer's virtual
-    // viewport (not `vw/vh`, which only the non-React UILayoutSystem feeds)
-    // so its `100%`-sized root gives absolute bubbles a screen-sized
-    // containing block — long labels stay on one line instead of wrapping
-    // into the trigger's width. Kept at the container origin so its
-    // coordinate space matches the tree the triggers live in.
-    // The main reconciler root's initial mount calls `clearContainer`,
-    // which strips every child of `_container` — including `_overlay`.
-    // Re-attach it (this runs on every commit and every frame) so the
-    // overlay is restored right after the user's first `render()`.
-    if (this._overlay.parent !== this._container) {
-      this._container.addChild(this._overlay);
-    }
-
-    const overlayInstances = getRootInstances(this._overlay);
-    if (overlayInstances) {
-      const vs = this.use(RendererKey).virtualSize;
-      for (const inst of overlayInstances) {
-        if (!inst.displayObject.visible) continue;
-        inst.yogaNode.calculateLayout(vs.width, vs.height);
-        inst.applyLayout?.();
-        inst.displayObject.position.set(0, 0);
-      }
-    }
-    this._tooltips.position(this._container);
   }
 
   onDestroy(): void {
     if (this._onCommit) removeOnCommit(this._onCommit);
     unmarkPointerConsumeContainer(this._container);
-    this.overlayRoot?.unmount();
-    this.overlayRoot = null;
     this.root?.unmount();
     this.root = null;
-    this._overlay.removeFromParent();
-    this._overlay.destroy();
+    this._floating = null;
     this._container.removeFromParent();
     this._container.destroy();
   }

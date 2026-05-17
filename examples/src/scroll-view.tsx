@@ -57,6 +57,7 @@ function OrderRow({
         content={`Fulfill ${order.label}`}
         placement="left"
         bg={{ color: 0x243042, alpha: 1, radius: 4 }}
+        padding={{ left: 10, right: 10, top: 6, bottom: 6 }}
         textStyle={{ fill: 0xe5e7eb, fontSize: 12 }}
       >
         <Button

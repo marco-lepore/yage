@@ -324,6 +324,26 @@ const hostConfig = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const reconciler = ReactReconciler(hostConfig as any);
 
+/**
+ * Portal a subtree into another PixiJS `Container` while keeping it in the
+ * caller's React tree (context, props, lifecycle all flow normally). Used
+ * by the floating layer to render tooltip/popover content into the
+ * top-most scene overlay without leaving the trigger's component subtree.
+ */
+export function createPortal(
+  children: React.ReactNode,
+  container: Container,
+): React.ReactPortal {
+  // react-reconciler bundles its own (older) React types; the returned
+  // portal is structurally our React.ReactPortal.
+  return reconciler.createPortal(
+    children,
+    container,
+    null,
+    null,
+  ) as unknown as React.ReactPortal;
+}
+
 /** Opaque root handle. */
 export interface ReconcilerRoot {
   render(element: React.ReactElement): void;

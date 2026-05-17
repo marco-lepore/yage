@@ -86,6 +86,7 @@ function MainMenu() {
         content="YAGE — Yet Another Game Engine"
         placement="bottom"
         bg={panelBg}
+        padding={{ left: 10, right: 10, top: 6, bottom: 6 }}
         textStyle={textStyle("caption")}
       >
         <Image texture={Logo} width={180} height={58} />
@@ -197,6 +198,7 @@ function MainMenu() {
       <Tooltip
         placement="right"
         bg={panelBg}
+        padding={{ left: 10, right: 10, top: 8, bottom: 8 }}
         content={
           <Panel direction="column" gap={2}>
             <Text style={textStyle("caption", { fill: 0xffffff })}>

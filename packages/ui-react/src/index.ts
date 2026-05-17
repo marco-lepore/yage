@@ -23,6 +23,21 @@ export type {
 // Hooks
 export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hooks.js";
 
+// Headless floating primitive (tooltips/popovers/menus build on this)
+export { useFloating } from "./use-floating.js";
+export type { UseFloatingOptions, UseFloatingResult } from "./use-floating.js";
+export { computePosition } from "./positioning.js";
+export type {
+  Placement,
+  Side,
+  Align,
+  Rect,
+  Dimensions,
+  ComputePositionConfig,
+  ComputePositionResult,
+} from "./positioning.js";
+export type { FloatConfig, FloatingHandle } from "./floating.js";
+
 // Re-export useful types from @yagejs/ui for convenience
 export { Anchor } from "@yagejs/ui";
 export type {
