@@ -28,6 +28,24 @@ export interface VirtualRect {
 export type CanvasRect = VirtualRect;
 
 /**
+ * Runaway-feedback guard thresholds. A fit host whose own height is
+ * content-driven has no stable size: the canvas the controller sizes to it
+ * becomes its tallest child, so the host's measured size is a function of the
+ * canvas size. The renderer sets `display:block` on the canvas, which
+ * collapses the common ~4px inline-descender gap to zero so the loop
+ * converges. These bound the residual cases it can't (a vertical margin on
+ * the canvas, sub-pixel / devicePixelRatio rounding, an extra wrapper
+ * element): once the host has grown by at most `RUNAWAY_STEP_PX` on this many
+ * consecutive observer fires with the other axis held stable, treat it as a
+ * runaway, freeze auto-resize, and warn once. The thresholds are deliberately
+ * loose — a real resize jumps by more than `RUNAWAY_STEP_PX` or stops growing
+ * (resetting the streak) long before `RUNAWAY_LIMIT`, while a true feedback
+ * loop never stops.
+ */
+const RUNAWAY_STEP_PX = 16;
+const RUNAWAY_LIMIT = 64;
+
+/**
  * Owns the world-root transform + canvas size under responsive fit.
  *
  * On `start()`, observes the target element and re-applies both
@@ -64,6 +82,15 @@ export class FitController {
    * `cover`, or `stretch`).
    */
   private letterboxMask: Graphics | null = null;
+  /**
+   * Runaway-feedback guard. See {@link RUNAWAY_LIMIT}. `runawayStreak` counts
+   * consecutive small monotonic host growths on one axis; on crossing the
+   * limit `frozen` latches (auto-resize stops) and `runawayWarned` debounces
+   * the console warning. All three reset whenever observation (re)starts.
+   */
+  private runawayStreak = 0;
+  private runawayWarned = false;
+  private frozen = false;
 
   constructor(
     private readonly app: Application,
@@ -89,6 +116,10 @@ export class FitController {
   start(): void {
     if (this.observer) return;
 
+    this.runawayStreak = 0;
+    this.runawayWarned = false;
+    this.frozen = false;
+
     if (!this.target) {
       this.apply(this.canvasW, this.canvasH);
       return;
@@ -103,18 +134,56 @@ export class FitController {
     this.observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      // Read the host's content box, not its border box. The Pixi canvas is
-      // a block-level child laid out inside the content box; sizing it to
-      // the host's border-box (`hostW + borderX`, `hostH + borderY`) on a
-      // host with no explicit height makes the canvas push the host's
-      // intrinsic block-size up by 2× the border each apply, the observer
-      // re-fires with the new larger border-box, and the loop only stops
-      // when the host hits a parent-driven cap (e.g. `max-height: 100%`).
+      // Read the host's content box, not its border box. The canvas is a
+      // block-level child (the renderer forces `display:block`) laid out
+      // inside the host content box; measuring the host's border-box would
+      // re-add padding+border to the canvas on every apply and the observer
+      // would chase its own output. contentBoxSize already excludes both.
       const size = entry.contentBoxSize?.[0];
       const w = size ? size.inlineSize : entry.contentRect.width;
       const h = size ? size.blockSize : entry.contentRect.height;
       if (w <= 0 || h <= 0) return;
-      if (w === this.canvasW && h === this.canvasH) return;
+      if (w === this.canvasW && h === this.canvasH) {
+        this.runawayStreak = 0;
+        return;
+      }
+      if (this.frozen) return;
+
+      // A host with no bounded height of its own is sized by the canvas we
+      // just put in it, so each apply can make it measure slightly larger
+      // and the observer re-fires forever. `display:block` kills the common
+      // ~4px descender; this catches the residual (canvas margin, sub-pixel
+      // / DPR rounding, wrapper elements): a small monotonic growth on one
+      // axis with the other axis exactly stable, sustained for the limit.
+      const dw = w - this.canvasW;
+      const dh = h - this.canvasH;
+      const creeping =
+        (dh > 0 && dh <= RUNAWAY_STEP_PX && w === this.canvasW) ||
+        (dw > 0 && dw <= RUNAWAY_STEP_PX && h === this.canvasH);
+      this.runawayStreak = creeping ? this.runawayStreak + 1 : 0;
+
+      if (this.runawayStreak >= RUNAWAY_LIMIT) {
+        this.frozen = true;
+        if (!this.runawayWarned) {
+          this.runawayWarned = true;
+          // The two `creeping` branches are mutually exclusive (`w ===
+          // canvasW` forces `dw === 0`, contradicting `dw > 0`), so a
+          // positive `dh` unambiguously identifies the runaway axis.
+          const axis = dh > 0 ? "height" : "width";
+          console.warn(
+            `FitController: the fit container's ${axis} is being driven ` +
+              `by the canvas inside it — it grows on every resize and ` +
+              `never settles. The renderer sets \`display:block\` on the ` +
+              `canvas to prevent this; the loop persists when the ` +
+              `container has no bounded ${axis} of its own. Give it an ` +
+              `explicit or bounded ${axis} (e.g. \`${axis}:100%\` under a ` +
+              `sized ancestor, or \`max-${axis}\`). Auto-resize frozen at ` +
+              `${this.canvasW}×${this.canvasH}px.`,
+          );
+        }
+        return;
+      }
+
       this.apply(w, h);
     });
     this.observer.observe(this.target);

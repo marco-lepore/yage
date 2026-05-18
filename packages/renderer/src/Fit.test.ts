@@ -664,6 +664,132 @@ describe("FitController", () => {
     });
   });
 
+  describe("runaway feedback guard", () => {
+    it("freezes auto-resize and warns once on sustained small monotonic growth", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit, app } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // 63 small +4px height creeps, width pinned: still applying.
+        for (let i = 1; i <= 63; i++) ro.fire(800, 600 + 4 * i);
+        expect(warn).not.toHaveBeenCalled();
+
+        app.renderer.resize.mockClear();
+        // 64th consecutive creep crosses the limit: freeze + warn, no apply.
+        ro.fire(800, 600 + 4 * 64);
+        expect(app.renderer.resize).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        // Height axis tripped — message names "height", not "width".
+        const msg = warn.mock.calls[0]![0] as string;
+        expect(msg).toContain("FitController:");
+        expect(msg).toContain("container's height is being driven");
+        expect(msg).not.toContain("container's width is being driven");
+
+        // Further growth is ignored and does not warn again.
+        ro.fire(800, 600 + 4 * 65);
+        expect(app.renderer.resize).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        // Frozen at the last value applied before the limit (fire 63).
+        expect(fit.canvasSize).toEqual({ width: 800, height: 600 + 4 * 63 });
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("names the width axis when the runaway is horizontal", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // Width creeps +4px with height pinned (e.g. an inline-block canvas
+        // in a flex row) — the guard must blame width, not height.
+        for (let i = 1; i <= 64; i++) ro.fire(800 + 4 * i, 600);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const msg = warn.mock.calls[0]![0] as string;
+        expect(msg).toContain("container's width is being driven");
+        expect(msg).toContain("`max-width`");
+        expect(msg).not.toContain("container's height is being driven");
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does not freeze on large genuine resizes", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit, app } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // 100 growing resizes, each well above the creep step.
+        for (let i = 1; i <= 100; i++) ro.fire(800 + 40 * i, 600 + 40 * i);
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(app.renderer.resize).toHaveBeenLastCalledWith(
+          800 + 40 * 100,
+          600 + 40 * 100,
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("does not freeze on large single-axis resizes", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit, app } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // Width-only growth, each step well above the creep threshold with
+        // the other axis pinned — exercises the `h === canvasH` stability
+        // branch; must not be mistaken for a runaway and frozen.
+        for (let i = 1; i <= 100; i++) ro.fire(800 + 40 * i, 600);
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(app.renderer.resize).toHaveBeenLastCalledWith(
+          800 + 40 * 100,
+          600,
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("resets the streak when growth stops, so it never warns", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // Contiguous +4px creeps with no discontinuities. Five runs of 40
+        // creeps is 200 cumulative — far past the 64 limit — so if the
+        // unchanged-size settle did NOT reset the streak this would warn
+        // partway through run 2. The repeated-size fire after each run is
+        // the only thing keeping the streak below the limit, which isolates
+        // the reset behavior under test.
+        let h = 600;
+        for (let run = 0; run < 5; run++) {
+          for (let i = 0; i < 40; i++) {
+            h += 4;
+            ro.fire(800, h);
+          }
+          ro.fire(800, h); // unchanged size → settle → must reset the streak
+        }
+
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
   describe("null target (headless)", () => {
     it("applies a one-shot transform using initial canvas size and installs no observer", () => {
       const app = new MockApp();

@@ -66,6 +66,8 @@ new RendererPlugin({
 
 A `ResizeObserver` drives updates; it's disposed in `onDestroy`. In headless environments (no DOM target, no `document`) the plugin applies a one-shot transform against the initial `width × height` and installs no observer.
 
+**Give the fit container a bounded height.** The fit host's size is fed back into the canvas every resize, so a container with no height of its own (only content-driven height) has no stable size and the observer can grow without bound. The renderer sets `display:block` on the canvas (kills the ~4px inline-canvas baseline gap that otherwise drives this), which makes the common case converge with zero CSS — but you still want the container to have an explicit or bounded height (`height: 100%` under a sized ancestor, or `max-height`). If a true feedback loop is detected anyway (residual margin / sub-pixel growth), `FitController` freezes auto-resize and logs a one-time `console.warn` rather than hang the tab.
+
 Runtime API on the plugin:
 
 ```ts
