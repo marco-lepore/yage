@@ -114,6 +114,17 @@ export interface PointerInfo {
   readonly buttons: ReadonlySet<number>;
   /** Convenience mirror of `buttons.size > 0`. */
   readonly isDown: boolean;
+  /**
+   * The button whose state changed for the event this snapshot was delivered
+   * with: `0`=left/primary, `1`=middle, `2`=right. `-1` when not applicable —
+   * `onPointerMove`, `pointercancel`-driven up notifications, and query
+   * snapshots from {@link InputManager.getPointers} / `getPointer`.
+   *
+   * Use this — not `buttons` — to filter by button inside an `onPointerDown`
+   * / `onPointerUp` listener: those listeners are notified *before* the edge
+   * is drained into `buttons`, so `buttons` does not yet reflect this event.
+   */
+  readonly button: number;
 }
 
 /**

@@ -74,7 +74,9 @@ input.onPointerMove((p) => {/* ... */});
 off();
 ```
 
-`PointerInfo` carries `{ id, screenPos: Vec2, type: "mouse" | "pen" | "touch", isPrimary: boolean, buttons: ReadonlySet<number>, isDown: boolean }`. Treat as an immutable snapshot — don't retain across frames.
+`PointerInfo` carries `{ id, screenPos: Vec2, type: "mouse" | "pen" | "touch", isPrimary: boolean, buttons: ReadonlySet<number>, isDown: boolean, button: number }`. Treat as an immutable snapshot — don't retain across frames.
+
+`button` is the edge that triggered the event: `0`/`1`/`2` for the pressed/released button in an `onPointerDown`/`onPointerUp` listener, `-1` for `onPointerMove`, `pointercancel`-driven up notifications, and `getPointers()`/`getPointer()` snapshots. **In a down/up listener, filter by `p.button`, not `p.buttons`** — listeners fire synchronously *before* the press/release edge is drained into `buttons`, so `buttons` does not yet reflect this event (gating on `p.buttons.has(0)` in `onPointerDown` is a permanent no-op).
 
 Touch / pen pointers are removed from `getPointers()` once their last button releases (or on `pointercancel`); mouse pointers persist across click cycles. The `MouseLeft/Middle/Right` action codes are aggregate "any pointer holds this button" — two simultaneous taps holding button 0 emit one down edge, one up edge.
 

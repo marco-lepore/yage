@@ -527,6 +527,53 @@ describe("InputManager", () => {
       expect(downs).toEqual(["fire"]);
       expect(ups).toEqual(["fire"]);
     });
+
+    it("exposes the triggering button via info.button before the edge is drained", () => {
+      const downButtons: number[] = [];
+      const downSawInButtons: boolean[] = [];
+      const upButtons: number[] = [];
+      input.onPointerDown((info) => {
+        downButtons.push(info.button);
+        downSawInButtons.push(info.buttons.has(info.button));
+      });
+      input.onPointerUp((info) => upButtons.push(info.button));
+
+      input._enqueuePointerDown({
+        id: 1,
+        screenX: 0,
+        screenY: 0,
+        type: "mouse",
+        isPrimary: true,
+        button: 2,
+      });
+      input._enqueuePointerUp({
+        id: 1,
+        screenX: 0,
+        screenY: 0,
+        type: "mouse",
+        isPrimary: true,
+        button: 2,
+      });
+
+      // `info.button` identifies the right-click even though the press edge
+      // is not yet drained into `buttons` — the gap that made gating an
+      // onPointerDown listener on `buttons.has(0)` a permanent no-op.
+      expect(downButtons).toEqual([2]);
+      expect(downSawInButtons).toEqual([false]);
+      expect(upButtons).toEqual([2]);
+    });
+
+    it("moves and query snapshots carry button === -1", () => {
+      const moveButtons: number[] = [];
+      input.onPointerMove((info) => moveButtons.push(info.button));
+
+      input.firePointerMove(7, 8);
+      input.firePointerDown(0);
+
+      expect(moveButtons).toEqual([-1]);
+      expect(input.getPointers().every((p) => p.button === -1)).toBe(true);
+      expect(input.getPointer(1)?.button).toBe(-1);
+    });
   });
 
   // -- Group management --
