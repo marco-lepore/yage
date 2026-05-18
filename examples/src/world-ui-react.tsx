@@ -83,7 +83,6 @@ function Namecard(props: EnemySpec) {
   return (
     <Tooltip
       placement="top"
-      opened
       content={
         <Panel
           direction="column"
