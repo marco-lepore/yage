@@ -68,7 +68,7 @@ class Patrol extends Component {
     this.t = phase;
   }
   update(dt: number): void {
-    this.t += dt * this.speed;
+    this.t += (dt / 1000) * this.speed;
     this.entity
       .get(Transform)
       .setPosition(
