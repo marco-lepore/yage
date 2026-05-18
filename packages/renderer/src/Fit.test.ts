@@ -739,6 +739,28 @@ describe("FitController", () => {
       }
     });
 
+    it("does not freeze on large single-axis resizes", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit, app } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // Width-only growth, each step well above the creep threshold with
+        // the other axis pinned — exercises the `h === canvasH` stability
+        // branch; must not be mistaken for a runaway and frozen.
+        for (let i = 1; i <= 100; i++) ro.fire(800 + 40 * i, 600);
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(app.renderer.resize).toHaveBeenLastCalledWith(
+          800 + 40 * 100,
+          600,
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it("resets the streak when growth stops, so it never warns", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
@@ -746,12 +768,19 @@ describe("FitController", () => {
         fit.start();
         const ro = observers[0]!;
 
-        // Bursts of 40 creeps then a settle (unchanged size) — the settle
-        // fire resets the streak so the limit is never reached.
-        for (let burst = 0; burst < 5; burst++) {
-          const base = 600 + burst * 1000;
-          for (let i = 1; i <= 40; i++) ro.fire(800, base + 4 * i);
-          ro.fire(800, base + 4 * 40);
+        // Contiguous +4px creeps with no discontinuities. Five runs of 40
+        // creeps is 200 cumulative — far past the 64 limit — so if the
+        // unchanged-size settle did NOT reset the streak this would warn
+        // partway through run 2. The repeated-size fire after each run is
+        // the only thing keeping the streak below the limit, which isolates
+        // the reset behavior under test.
+        let h = 600;
+        for (let run = 0; run < 5; run++) {
+          for (let i = 0; i < 40; i++) {
+            h += 4;
+            ro.fire(800, h);
+          }
+          ro.fire(800, h); // unchanged size → settle → must reset the streak
         }
 
         expect(warn).not.toHaveBeenCalled();
