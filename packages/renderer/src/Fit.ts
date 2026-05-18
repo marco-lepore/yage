@@ -166,15 +166,19 @@ export class FitController {
         this.frozen = true;
         if (!this.runawayWarned) {
           this.runawayWarned = true;
+          // The two `creeping` branches are mutually exclusive (`w ===
+          // canvasW` forces `dw === 0`, contradicting `dw > 0`), so a
+          // positive `dh` unambiguously identifies the runaway axis.
+          const axis = dh > 0 ? "height" : "width";
           console.warn(
-            "FitController: the fit container's height is being driven by " +
-              "the canvas inside it — it grows on every resize and never " +
-              "settles. The renderer sets `display:block` on the canvas to " +
-              "prevent this; the loop persists when the container has no " +
-              "bounded height of its own. Give it an explicit or bounded " +
-              "height (e.g. `height:100%` under a sized ancestor, or " +
-              `\`max-height\`). Auto-resize frozen at ${this.canvasW}×` +
-              `${this.canvasH}px.`,
+            `FitController: the fit container's ${axis} is being driven ` +
+              `by the canvas inside it — it grows on every resize and ` +
+              `never settles. The renderer sets \`display:block\` on the ` +
+              `canvas to prevent this; the loop persists when the ` +
+              `container has no bounded ${axis} of its own. Give it an ` +
+              `explicit or bounded ${axis} (e.g. \`${axis}:100%\` under a ` +
+              `sized ancestor, or \`max-${axis}\`). Auto-resize frozen at ` +
+              `${this.canvasW}×${this.canvasH}px.`,
           );
         }
         return;

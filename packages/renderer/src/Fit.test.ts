@@ -681,7 +681,11 @@ describe("FitController", () => {
         ro.fire(800, 600 + 4 * 64);
         expect(app.renderer.resize).not.toHaveBeenCalled();
         expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0]![0]).toContain("FitController:");
+        // Height axis tripped — message names "height", not "width".
+        const msg = warn.mock.calls[0]![0] as string;
+        expect(msg).toContain("FitController:");
+        expect(msg).toContain("container's height is being driven");
+        expect(msg).not.toContain("container's width is being driven");
 
         // Further growth is ignored and does not warn again.
         ro.fire(800, 600 + 4 * 65);
@@ -689,6 +693,27 @@ describe("FitController", () => {
         expect(warn).toHaveBeenCalledTimes(1);
         // Frozen at the last value applied before the limit (fire 63).
         expect(fit.canvasSize).toEqual({ width: 800, height: 600 + 4 * 63 });
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it("names the width axis when the runaway is horizontal", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const { fit } = makeFit("letterbox", 400, 300, 800, 600);
+        fit.start();
+        const ro = observers[0]!;
+
+        // Width creeps +4px with height pinned (e.g. an inline-block canvas
+        // in a flex row) — the guard must blame width, not height.
+        for (let i = 1; i <= 64; i++) ro.fire(800 + 4 * i, 600);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const msg = warn.mock.calls[0]![0] as string;
+        expect(msg).toContain("container's width is being driven");
+        expect(msg).toContain("`max-width`");
+        expect(msg).not.toContain("container's height is being driven");
       } finally {
         warn.mockRestore();
       }
