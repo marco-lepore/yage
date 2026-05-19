@@ -1,5 +1,5 @@
 import { Component, Transform, serializable } from "@yagejs/core";
-import { Container } from "pixi.js";
+import { Container, Rectangle } from "pixi.js";
 import type { TextStyleOptions } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import {
@@ -82,9 +82,19 @@ export class PanelNode implements UIContainerElement {
   private _children: UIElement[] = [];
   private bgOpts: BackgroundOptions | undefined;
   private readonly pointerEvents: PointerEvents;
+  // Explicit hit area so pointer/hover events (and the consume-input
+  // fallback) cover the panel's whole computed box — gaps, padding, and the
+  // empty space around shrink-wrapped children. A bare `eventMode:"static"`
+  // Container is only hit-tested where a descendant actually paints, so
+  // without this `onHover`/`onClick`/`<Tooltip>` would silently die over any
+  // region a child isn't covering (unless a full-bleed `background` happens
+  // to). Mirrors `ScrollViewNode`'s viewport hitArea. Reused, synced in
+  // `applyLayout()`.
+  private readonly _hitArea = new Rectangle(0, 0, 0, 0);
 
   constructor(opts: PanelProps) {
     this.container = new Container();
+    this.container.hitArea = this._hitArea;
     this.yogaNode = createYogaNode();
     applyConsumeInput(this.container, opts.consumeInput);
     this.pointerEvents = new PointerEvents(this.container, opts);
@@ -195,10 +205,13 @@ export class PanelNode implements UIContainerElement {
       child.applyLayout?.();
     }
 
+    const w = this.yogaNode.getComputedWidth();
+    const h = this.yogaNode.getComputedHeight();
+    this._hitArea.width = w;
+    this._hitArea.height = h;
+
     // Update background to match computed panel size
     if (this.bgRenderer && this.bgOpts) {
-      const w = this.yogaNode.getComputedWidth();
-      const h = this.yogaNode.getComputedHeight();
       this.bgRenderer.resize(w, h);
     }
 

@@ -101,13 +101,23 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText } };
+  class MockRectangle {
+    constructor(
+      public x = 0,
+      public y = 0,
+      public width = 0,
+      public height = 0,
+    ) {}
+  }
+
+  return { mocks: { MockContainer, MockGraphics, MockText, MockRectangle } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Graphics: mocks.MockGraphics,
   Text: mocks.MockText,
+  Rectangle: mocks.MockRectangle,
 }));
 
 import Yoga from "yoga-layout";

@@ -138,7 +138,16 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText, MockSprite, MockNineSliceSprite, MockTilingSprite } };
+  class MockRectangle {
+    constructor(
+      public x = 0,
+      public y = 0,
+      public width = 0,
+      public height = 0,
+    ) {}
+  }
+
+  return { mocks: { MockContainer, MockGraphics, MockText, MockSprite, MockNineSliceSprite, MockTilingSprite, MockRectangle } };
 });
 
 vi.mock("pixi.js", () => ({
@@ -148,6 +157,7 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
   NineSliceSprite: mocks.MockNineSliceSprite,
   TilingSprite: mocks.MockTilingSprite,
+  Rectangle: mocks.MockRectangle,
 }));
 
 import Yoga, { Direction } from "yoga-layout";
