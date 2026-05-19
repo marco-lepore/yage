@@ -183,6 +183,15 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  class MockRectangle {
+    constructor(
+      public x = 0,
+      public y = 0,
+      public width = 0,
+      public height = 0,
+    ) {}
+  }
+
   return {
     mocks: {
       MockContainer,
@@ -191,6 +200,7 @@ const { mocks } = vi.hoisted(() => {
       MockSprite,
       MockNineSliceSprite,
       MockTilingSprite,
+      MockRectangle,
     },
   };
 });
@@ -202,6 +212,7 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
   NineSliceSprite: mocks.MockNineSliceSprite,
   TilingSprite: mocks.MockTilingSprite,
+  Rectangle: mocks.MockRectangle,
 }));
 
 import Yoga from "yoga-layout";
@@ -577,6 +588,39 @@ describe("UIPanel", () => {
       expect(children[1]!.displayObject.position.y).toBe(40);
       expect(overlay.displayObject.position.x).toBe(0);
       expect(overlay.displayObject.position.y).toBe(0);
+    });
+
+    it("sets a hitArea synced to the panel's computed box (no dead-zones)", () => {
+      // Regression for the un-painted dead-zone bug: a background-less panel
+      // with hover/click handlers must be hit-testable over its whole box —
+      // gaps, padding, the space around shrink-wrapped children — not just
+      // where a child actually paints.
+      const panel = new UIPanel({
+        direction: "column",
+        gap: 10,
+        padding: 5,
+        onHover: vi.fn(),
+      });
+      panel.button("A", { width: 100, height: 30 });
+      panel.button("B", { width: 100, height: 30 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      const hit = (
+        panel.container as unknown as {
+          hitArea: { x: number; y: number; width: number; height: number };
+        }
+      ).hitArea;
+      expect(hit).toBeDefined();
+      expect(hit.x).toBe(0);
+      expect(hit.y).toBe(0);
+      // 100 wide content + 5px padding each side; two 30px rows + 10px gap +
+      // 5px padding each side — the gap/padding region is now inside the box.
+      expect(hit.width).toBe(panel._node.yogaNode.getComputedWidth());
+      expect(hit.height).toBe(panel._node.yogaNode.getComputedHeight());
+      expect(hit.width).toBe(110);
+      expect(hit.height).toBe(80);
     });
 
     it("hidden elements are skipped in layout (collapse)", () => {
