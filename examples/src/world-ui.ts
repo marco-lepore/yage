@@ -225,7 +225,9 @@ class PlayerController extends Component {
     // doesn't match the declared virtual aspect.
     this.input.setCamera(this.camera);
     this.disposeClickListener = this.input.onPointerDown((p) => {
-      if (!p.buttons.has(0)) return;
+      // `p.button`, not `p.buttons`: down listeners fire before the press is
+      // drained into `buttons`, so `buttons` is empty for a fresh click.
+      if (p.button !== 0) return;
       const world = this.camera.screenToWorld(p.screenPos.x, p.screenPos.y);
       this.handleClick(world);
     });

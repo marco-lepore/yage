@@ -17,6 +17,9 @@ export type {
   UIContainerElement,
   LayoutProps,
   LayoutValue,
+  PositionValue,
+  ConsumeInputProps,
+  PointerEventProps,
   UITextProps,
   UIButtonProps,
   UIImageProps,
@@ -47,6 +50,10 @@ export type { NineSliceViewOptions } from "./views.js";
 
 // Background renderer
 export { BackgroundRenderer } from "./background-renderer.js";
+
+// Shared pointer/hover fan-out (used by the interactive primitives;
+// exported for custom element implementations and tests)
+export { PointerEvents } from "./pointer-events.js";
 
 // Plugin
 export { UIPlugin } from "./UIPlugin.js";

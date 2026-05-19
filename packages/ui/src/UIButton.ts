@@ -11,6 +11,7 @@ import type {
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { PointerEvents } from "./pointer-events.js";
 import { UIText } from "./UIText.js";
 
 import { type ColorBackground, isTextureBackground } from "./types.js";
@@ -72,6 +73,7 @@ export class UIButton implements UIContainerElement {
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
   private onClick: (() => void) | undefined;
+  private readonly pointerEvents: PointerEvents;
 
   constructor(p: UIButtonProps) {
     this.yogaNode = createYogaNode();
@@ -132,6 +134,10 @@ export class UIButton implements UIContainerElement {
       this.applyBg(this.hoverBgOpts);
       this.onClick?.();
     });
+
+    // Hover callbacks fan out alongside the bg-swap above (separate listener
+    // pair). Suppressed while disabled, mirroring the bg-swap guards.
+    this.pointerEvents = new PointerEvents(this.container, p, () => this._disabled);
   }
 
   get children(): readonly UIElement[] {
@@ -267,6 +273,7 @@ export class UIButton implements UIContainerElement {
       this._label.setStyle(p.textStyle);
     }
     if (p.onClick !== undefined) this.onClick = p.onClick;
+    this.pointerEvents.set(p);
     if (p.disabled !== undefined) this.setDisabled(p.disabled);
     if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
 

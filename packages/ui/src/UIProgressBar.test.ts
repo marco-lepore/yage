@@ -14,6 +14,9 @@ const { mocks } = vi.hoisted(() => {
     addChildAt(child: MockContainer, index: number): MockContainer { this.children.splice(index, 0, child); child.parent = this; return child; }
     removeChild(child: MockContainer): MockContainer { const i = this.children.indexOf(child); if (i !== -1) { this.children.splice(i, 1); child.parent = null; } return child; }
     removeFromParent(): void { this.parent?.removeChild(this); }
+    private _listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+    on(event: string, fn: (...args: unknown[]) => void): this { if (!this._listeners.has(event)) this._listeners.set(event, new Set()); this._listeners.get(event)!.add(fn); return this; }
+    emit(event: string, ...args: unknown[]): void { for (const fn of this._listeners.get(event) ?? []) fn(...args); }
     destroy(): void { this.destroyed = true; this.removeFromParent(); }
   }
 

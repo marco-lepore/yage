@@ -284,6 +284,41 @@ describe("UIButton", () => {
     expect(onClick2).toHaveBeenCalledTimes(1);
   });
 
+  it("fires hover callbacks on pointerover/pointerout", () => {
+    const onHover = vi.fn();
+    const onPointerOver = vi.fn();
+    const btn = new UIButton({ children: "Hi", onHover, onPointerOver });
+    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+
+    container.emit("pointerover");
+    container.emit("pointerout");
+
+    expect(onPointerOver).toHaveBeenCalledTimes(1);
+    expect(onHover.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("does not fire hover callbacks while disabled", () => {
+    const onHover = vi.fn();
+    const btn = new UIButton({ children: "Hi", onHover });
+    btn.setDisabled(true);
+    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+
+    container.emit("pointerover");
+    expect(onHover).not.toHaveBeenCalled();
+  });
+
+  it("update() swaps the hover handler", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const btn = new UIButton({ children: "Hi", onHover: first });
+    btn.update({ onHover: second });
+    const container = btn.container as unknown as InstanceType<typeof mocks.MockContainer>;
+
+    container.emit("pointerover");
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith(true);
+  });
+
   describe("auto-size", () => {
     it("shrinks to its string content when width and height are omitted", () => {
       const btn = new UIButton({ children: "Hello" });

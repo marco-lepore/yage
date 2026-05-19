@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Diegetic UI (React)</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Diegetic UI (React)</h1>
+    <div id="game-container"></div>
+    <p style="max-width: 680px; color: #999; font-size: 0.85rem; line-height: 1.5; margin: 0 1rem;">
+      Three enemies orbit in world space. Each has a separate nameplate entity tracked via <code>ScreenFollow</code> (it projects the enemy's world position through the camera and writes the screen coord to the nameplate's Transform each frame). A React <code>&lt;UIRoot&gt;</code> with <code>positioning: "transform"</code> renders the namecard there, and an always-open <code>&lt;Tooltip&gt;</code> shows the enemy's stats — portaled into the scene's screen-space overlay yet staying glued to the moving namecard.
+    </p>
+    <script type="module" src="/src/world-ui-react.tsx"></script>
+  </body>
+</html>

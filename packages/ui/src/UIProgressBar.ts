@@ -5,6 +5,7 @@ import type { BackgroundOptions, UIElement, UIProgressBarProps } from "./types.j
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { PointerEvents } from "./pointer-events.js";
 
 /** Default track and fill backgrounds. */
 const DEFAULT_TRACK: BackgroundOptions = { color: 0x333333, alpha: 1 };
@@ -25,11 +26,13 @@ export class UIProgressBar implements UIElement {
   private _direction: "horizontal" | "vertical";
   private lastWidth = 0;
   private lastHeight = 0;
+  private readonly pointerEvents: PointerEvents;
 
   constructor(props: UIProgressBarProps) {
     this.yogaNode = createYogaNode();
     this.container = new Container();
     applyConsumeInput(this.container, props.consumeInput);
+    this.pointerEvents = new PointerEvents(this.container, props);
 
     this._value = clamp(props.value);
     this._direction = props.direction ?? "horizontal";
@@ -88,6 +91,7 @@ export class UIProgressBar implements UIElement {
     }
 
     if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 

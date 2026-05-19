@@ -108,7 +108,7 @@ import type { PointerInfo } from "@yagejs/input";
 for (const p of input.getPointers()) {
   // p.id is PointerEvent.pointerId — stable across moves for the same finger
   // p.type is "mouse" | "pen" | "touch"
-  // p.screenPos / p.buttons / p.isPrimary / p.isDown
+  // p.screenPos / p.buttons / p.isPrimary / p.isDown / p.button
 }
 ```
 
@@ -123,6 +123,26 @@ const offMove = input.onPointerMove((p) => updateTrackedFinger(p));
 const offUp = input.onPointerUp((p) => stopTrackingFinger(p.id));
 // Up listeners also fire on `pointercancel` — gestures clean up uniformly.
 ```
+
+To act only on a specific mouse button inside a down/up listener, check
+`p.button` — the button whose edge triggered this event (`0` left, `1`
+middle, `2` right; `-1` for moves and query snapshots):
+
+```typescript
+input.onPointerDown((p) => {
+  if (p.button !== 0) return; // left-click only
+  attackAt(camera.screenToWorld(p.screenPos.x, p.screenPos.y));
+});
+```
+
+:::caution[Use `p.button`, not `p.buttons`, in down/up listeners]
+Pointer listeners fire **synchronously, before** the press/release edge is
+drained into `p.buttons` (this ordering is what lets UI auto-consume and
+`consumePointer()` suppress gameplay edges for the same press). So inside an
+`onPointerDown` listener `p.buttons` does **not** yet include the button just
+pressed — gating on `p.buttons.has(0)` silently never runs. `p.button`
+carries the triggering edge regardless of drain timing.
+:::
 
 Touch primary contacts fire `MouseLeft` (since `PointerEvent.button === 0` for
 the first finger), so an action bound to `MouseLeft` works as a tap handler

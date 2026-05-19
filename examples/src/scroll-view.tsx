@@ -9,6 +9,7 @@ import {
   Button,
   ScrollView,
   Text,
+  Tooltip,
   Anchor,
 } from "@yagejs/ui-react";
 import { setupGameContainer } from "./shared";
@@ -52,15 +53,23 @@ function OrderRow({
       bg={{ color: 0x243042, alpha: 1, radius: 4 }}
     >
       <Text style={{ fill: 0xe5e7eb, fontSize: 14 }}>{order.label}</Text>
-      <Button
-        height={24}
-        onClick={onFulfill}
-        bg={{ color: 0x2563eb, alpha: 1, radius: 3 }}
-        hoverBg={{ color: 0x3b82f6, alpha: 1, radius: 3 }}
-        textStyle={{ fill: 0xffffff, fontSize: 12 }}
+      <Tooltip
+        content={`Fulfill ${order.label}`}
+        placement="left"
+        bg={{ color: 0x243042, alpha: 1, radius: 4 }}
+        padding={{ left: 10, right: 10, top: 6, bottom: 6 }}
+        textStyle={{ fill: 0xe5e7eb, fontSize: 12 }}
       >
-        Fulfill
-      </Button>
+        <Button
+          height={24}
+          onClick={onFulfill}
+          bg={{ color: 0x2563eb, alpha: 1, radius: 3 }}
+          hoverBg={{ color: 0x3b82f6, alpha: 1, radius: 3 }}
+          textStyle={{ fill: 0xffffff, fontSize: 12 }}
+        >
+          Fulfill
+        </Button>
+      </Tooltip>
     </Panel>
   );
 }

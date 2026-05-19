@@ -438,6 +438,39 @@ describe("UIPanel", () => {
       expect(child.yogaNode.getComputedHeight()).toBe(30);
     });
 
+    it("percentage edge offsets resolve against the parent box (tooltip anchor)", () => {
+      // The mechanism `<Tooltip>` rides on: a `"100%"` edge offset on an
+      // absolute child pins it flush against the parent's far edge with no
+      // size measurement. `top: "100%"` ⇒ child's top at the parent's
+      // bottom; `right: "100%"` ⇒ child's right at the parent's left.
+      const parent = new UIPanel({
+        direction: "column",
+        width: 200,
+        height: 120,
+      });
+      const below = parent.panel({
+        position: "absolute",
+        top: "100%",
+        width: 60,
+        height: 24,
+      });
+      const leftOf = parent.panel({
+        position: "absolute",
+        right: "100%",
+        width: 40,
+        height: 16,
+      });
+
+      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent._node.applyLayout();
+
+      // `top: 100%` of the 120px-tall parent ⇒ y == 120 (flush under it).
+      expect(below.displayObject.position.y).toBe(120);
+      // `right: 100%` ⇒ the child's right edge sits at the parent's left
+      // edge, so its left (rendered x) is -width.
+      expect(leftOf.displayObject.position.x).toBe(-40);
+    });
+
     it("alignItems 'stretch' grows short auto children to the widest sibling", () => {
       // The pause-scene pattern: a shrink-to-fit column panel where every
       // button auto-sizes to its label. The widest button defines the

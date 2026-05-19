@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
@@ -10,10 +11,12 @@ import {
   Text,
   Button,
   Image,
+  Tooltip,
   PixiProgressBar,
   Checkbox,
   Anchor,
 } from "@yagejs/ui-react";
+import type { Placement } from "@yagejs/ui-react";
 import { injectStyles, setupGameContainer } from "./shared";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtnReact, panelBg,
@@ -26,6 +29,34 @@ injectStyles();
 // Additional assets for this example
 // ---------------------------------------------------------------------------
 const Logo = texture("/assets/yage.png");
+
+// The library `<Tooltip>` is headless (no default visuals). For the common
+// "string label in a themed box" case, wrap once: pass the bubble look as
+// styled `content` (a `<Panel>` + `<Text>`) instead of `bg`/`textStyle`.
+const TOOLTIP_PAD = { left: 10, right: 10, top: 6, bottom: 6 };
+
+function StyledTooltip({
+  content,
+  placement = "top",
+  children,
+}: {
+  content: string;
+  placement?: Placement;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip
+      placement={placement}
+      content={
+        <Panel bg={panelBg} padding={TOOLTIP_PAD}>
+          <Text style={textStyle("caption")}>{content}</Text>
+        </Panel>
+      }
+    >
+      {children}
+    </Tooltip>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // React UI components
@@ -79,7 +110,13 @@ function MainMenu() {
           ScrollView's content stack is start-aligned). */}
       <ScrollView flexGrow={1}>
       <Panel direction="column" gap={12} alignItems="center">
-      <Image texture={Logo} width={180} height={58} />
+      {/* Themed string tooltip via the local StyledTooltip wrapper. */}
+      <StyledTooltip
+        content="YAGE — Yet Another Game Engine"
+        placement="bottom"
+      >
+        <Image texture={Logo} width={180} height={58} />
+      </StyledTooltip>
 
       <Text style={textStyle("title", { fontSize: 28 })}>UI Demo</Text>
       <Text style={textStyle("subtitle")}>React API</Text>
@@ -98,22 +135,26 @@ function MainMenu() {
           height={12}
         />
         <Panel direction="row" gap={6}>
-          <Button
-            bg={{ color: 0x661111, alpha: 1, radius: 4 }}
-            hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
-            textStyle={textStyle("caption")}
-            onClick={() => setHp((v) => Math.max(0, v - 0.15))}
-          >
-            Take Damage
-          </Button>
-          <Button
-            bg={{ color: 0x115511, alpha: 1, radius: 4 }}
-            hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
-            textStyle={textStyle("caption")}
-            onClick={() => setHp((v) => Math.min(1, v + 0.15))}
-          >
-            Heal
-          </Button>
+          <StyledTooltip content="-15% HP" placement="top">
+            <Button
+              bg={{ color: 0x661111, alpha: 1, radius: 4 }}
+              hoverBg={{ color: 0x882222, alpha: 1, radius: 4 }}
+              textStyle={textStyle("caption")}
+              onClick={() => setHp((v) => Math.max(0, v - 0.15))}
+            >
+              Take Damage
+            </Button>
+          </StyledTooltip>
+          <StyledTooltip content="+15% HP" placement="top">
+            <Button
+              bg={{ color: 0x115511, alpha: 1, radius: 4 }}
+              hoverBg={{ color: 0x228822, alpha: 1, radius: 4 }}
+              textStyle={textStyle("caption")}
+              onClick={() => setHp((v) => Math.min(1, v + 0.15))}
+            >
+              Heal
+            </Button>
+          </StyledTooltip>
         </Panel>
       </Panel>
 
@@ -169,15 +210,36 @@ function MainMenu() {
         </Panel>
       )}
 
-      <Button
-        width={200}
-        height={40}
-        textStyle={textStyle("button")}
-        onClick={() => setShowSettings((s) => !s)}
-        {...nineSliceBtnReact}
+      {/* Rich tooltip: the headless bubble is styled entirely by passing a
+          themed <Panel> as `content` (no bg/padding props on Tooltip). */}
+      <Tooltip
+        placement="right"
+        content={
+          <Panel
+            direction="column"
+            gap={2}
+            bg={panelBg}
+            padding={{ left: 10, right: 10, top: 8, bottom: 8 }}
+          >
+            <Text style={textStyle("caption", { fill: 0xffffff })}>
+              Audio & display
+            </Text>
+            <Text style={textStyle("caption", { fontSize: 10, fill: 0x9ca3af })}>
+              Toggle to expand
+            </Text>
+          </Panel>
+        }
       >
-        Settings
-      </Button>
+        <Button
+          width={200}
+          height={40}
+          textStyle={textStyle("button")}
+          onClick={() => setShowSettings((s) => !s)}
+          {...nineSliceBtnReact}
+        >
+          Settings
+        </Button>
+      </Tooltip>
 
       {showSettings && (
         <Panel direction="column" gap={8} padding={8}>

@@ -164,6 +164,7 @@ labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
 | `<NineSlice>` | Nine-slice scalable texture |
 | `<ProgressBar>` | Progress bar (`value` 0–1) |
 | `<Checkbox>` | Checkbox with `checked`, `onChange`, `label` |
+| `<Tooltip>` | Hover-driven floating label wrapping a trigger |
 
 ### Absolute positioning
 
@@ -207,6 +208,108 @@ in YAGE use `<Panel direction="column" | "row">`.
   </Panel>
 </ZStack>
 ```
+
+### Hover events
+
+`<Panel>`, `<Button>`, `<Text>`, `<Image>`, `<NineSlice>`, and
+`<ProgressBar>` accept hover callbacks. Their containers are already
+interactive, so this is a lightweight fan-out — there is no separate
+"make it hoverable" step.
+
+Three independent props (combine them freely):
+
+- `onPointerOver` / `onPointerOut` — fire on pointer enter / leave. They
+  mirror Pixi's event names and the existing `onClick`, so reach for these
+  when enter and leave need separate handlers.
+- `onHover(hovering)` — the convenience form: called with `true` on enter
+  and `false` on leave. One setter drives a "while hovered" state.
+
+```tsx
+function HoverableCard() {
+  const [active, setActive] = useState(false);
+  return (
+    <Panel
+      onHover={setActive}
+      bg={{ color: active ? 0x3355aa : 0x223044 }}
+      padding={12}
+    >
+      <Text>{active ? "Release to deselect" : "Hover me"}</Text>
+    </Panel>
+  );
+}
+```
+
+Hover callbacks are suppressed while a `<Button disabled>` (matching its
+existing disabled hover-background behavior).
+
+### `<Tooltip>` — hover-driven floating label
+
+`<Tooltip>` wraps a trigger element and shows a floating bubble while the
+pointer is over it. It follows the Mantine convention — a single wrapper
+with the body in a `content` prop — rather than compound
+trigger/content subcomponents. It is **headless**: no default visuals —
+pass `bg` / `padding` / `textStyle` to style it.
+
+```tsx
+<Tooltip
+  content="Save your game"
+  placement="top"
+  bg={{ color: 0x1f2430, radius: 6 }}
+  padding={8}
+>
+  <Button onClick={save}>Save</Button>
+</Tooltip>
+```
+
+`content` also takes arbitrary nodes for rich tooltips (item cards, stat
+breakdowns):
+
+```tsx
+<Tooltip
+  placement="right"
+  content={
+    <Panel gap={2}>
+      <Text style={{ fontWeight: "bold" }}>Iron Sword</Text>
+      <Text style={{ fontSize: 12 }}>+5 ATK · Rare</Text>
+    </Panel>
+  }
+>
+  <Image texture={swordIcon} width={32} height={32} />
+</Tooltip>
+```
+
+| Prop | Description |
+|---|---|
+| `content` | Bubble body — string/number auto-wraps in `<Text>`; nodes for rich content |
+| `placement` | `side` or `side-align`: `"top"` (default, center-aligned), `"bottom-start"`, `"right-end"`, … |
+| `offset` | Gap in px between trigger and bubble (default `6`) |
+| `maxWidth` | Cap bubble width (px) — long content wraps instead of running off-screen |
+| `bg` / `padding` / `textStyle` | Bubble styling (headless — omit for an unstyled bubble) |
+| `opened` | Force visibility, bypassing hover (controlled / debug) |
+| `disabled` | Render the trigger only — never show the bubble |
+
+Under a `<UIRoot>` (the normal case) the bubble is portaled into the
+scene's top-most screen-space overlay and anchored by the positioning
+engine. It draws above all other UI, escapes a `<ScrollView>`'s clip,
+never reflows siblings, **flips** to the opposite side and **shifts**
+along the cross axis to stay on-screen, caps to `maxWidth` (and to the
+space available at the resolved side), z-stacks across roots
+(most-recently-opened on top), and anchors correctly even for world-space
+/ camera-transformed triggers. Rendered without a `<UIRoot>` overlay (a
+bare reconciler tree) it falls back to an in-tree absolute bubble with no
+collision handling.
+
+#### Headless: `useFloating`
+
+`<Tooltip>` is a thin wrapper over the exported `useFloating` primitive —
+use it directly for custom popovers, dropdowns, hovercards, or context
+menus. `useFloating({ open, placement, offset, padding, maxWidth, flip,
+shift })` returns `{ setReference, renderFloating, hasOverlay }`: wire
+`setReference` to the trigger's ref and render `renderFloating(node)` in
+your tree — it portals `node` into the scene overlay while `open` (keeping
+it in your React tree so context/props/lifecycle still flow) and returns
+`null` when closed. The pure `computePosition()` engine and `Placement`
+type are also exported for fully custom floating layers.
 
 ### PixiUI Components
 

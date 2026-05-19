@@ -290,9 +290,10 @@ export class InputManager {
    * holds a real `Set` for `buttons` — even though the `PointerInfo` type
    * declares `ReadonlySet`, JS doesn't enforce that at runtime, so we copy the
    * set on every public read. `Vec2` is convention-immutable across YAGE, so
-   * we share the same instance.
+   * we share the same instance. `button` is the edge that triggered this
+   * snapshot's delivery (down/up); `-1` for moves and query reads.
    */
-  private toPointerInfo(pointer: MutablePointerInfo): PointerInfo {
+  private toPointerInfo(pointer: MutablePointerInfo, button = -1): PointerInfo {
     return {
       id: pointer.id,
       screenPos: pointer.screenPos,
@@ -300,6 +301,7 @@ export class InputManager {
       isPrimary: pointer.isPrimary,
       buttons: new Set(pointer.buttons),
       isDown: pointer.isDown,
+      button,
     };
   }
 
@@ -1399,15 +1401,15 @@ export class InputManager {
    * after sync mutation would silently drop the transient transition).
    *
    * Listeners therefore observe `pointer.buttons` BEFORE this event's edge is
-   * applied. That's a documented tradeoff: the canonical event-button info
-   * is in the `FederatedPointerEvent` / `PointerEvent` the user's Pixi
-   * handler already receives, so the lossy `info.buttons` view rarely
-   * matters in practice.
+   * applied — `buttons` does not yet include the button just pressed. To
+   * filter by button in an `onPointerDown` listener, read `info.button`
+   * (the triggering edge, threaded through to {@link PointerInfo.button}),
+   * not `info.buttons`.
    */
   _enqueuePointerDown(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerDownListeners, pointer);
+    this.notifyPointerListeners(this.pointerDownListeners, pointer, info.button);
     this.inputQueue.push({ kind: "pointerDown", info });
   }
 
@@ -1415,7 +1417,7 @@ export class InputManager {
   _enqueuePointerUp(info: PointerEventInfo): void {
     const pointer = this.upsertPointer(info);
     pointer.screenPos = new Vec2(info.screenX, info.screenY);
-    this.notifyPointerListeners(this.pointerUpListeners, pointer);
+    this.notifyPointerListeners(this.pointerUpListeners, pointer, info.button);
     this.inputQueue.push({ kind: "pointerUp", info });
   }
 
@@ -1625,7 +1627,7 @@ export class InputManager {
     } else {
       pointer.isDown = pointer.buttons.size > 0;
     }
-    this.notifyPointerListeners(this.pointerDownListeners, pointer);
+    this.notifyPointerListeners(this.pointerDownListeners, pointer, info.button);
   }
 
   /**
@@ -1640,7 +1642,7 @@ export class InputManager {
       this.recomputeMouseAggregate(info.button);
     }
     pointer.isDown = pointer.buttons.size > 0;
-    this.notifyPointerListeners(this.pointerUpListeners, pointer);
+    this.notifyPointerListeners(this.pointerUpListeners, pointer, info.button);
     if (!pointer.isDown) {
       this.consumedPointers.delete(info.id);
       if (pointer.type !== "mouse") {
@@ -1742,13 +1744,14 @@ export class InputManager {
   private notifyPointerListeners(
     listeners: Array<(info: PointerInfo) => void>,
     pointer: MutablePointerInfo,
+    button = -1,
   ): void {
     if (listeners.length === 0) return;
     // Snapshot once per emission so all listeners see the same view and a
     // misbehaving consumer can't mutate manager state. Iterate a copy of
     // `listeners` so a callback that calls its own disposer doesn't skip the
     // next one.
-    const info = this.toPointerInfo(pointer);
+    const info = this.toPointerInfo(pointer, button);
     for (const fn of [...listeners]) {
       fn(info);
     }

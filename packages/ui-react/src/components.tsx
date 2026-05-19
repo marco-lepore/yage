@@ -1,3 +1,4 @@
+import { useState, forwardRef } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
 import type {
   BitmapTextOption,
@@ -31,14 +32,18 @@ import type {
   LayoutValue,
   Padding,
   PixiViewType,
+  PointerEventProps,
   ScrollbarOptions,
+  UIElement,
 } from "@yagejs/ui";
+import { useFloating } from "./use-floating.js";
+import type { Placement } from "./positioning.js";
 
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements
 // ---------------------------------------------------------------------------
 
-export interface PanelProps extends LayoutProps {
+export interface PanelProps extends LayoutProps, PointerEventProps {
   anchor?: string;
   direction?: "row" | "column";
   gap?: number;
@@ -59,10 +64,16 @@ export interface PanelProps extends LayoutProps {
     | "space-around"
     | "space-evenly";
   overflow?: "visible" | "hidden";
+  /**
+   * Opt the panel out of the UI auto-consume pointer fallback (default
+   * `true`). Pass `false` for a decorative / pass-through container that
+   * shouldn't swallow clicks meant for the world or elements beneath it.
+   */
+  consumeInput?: boolean;
   visible?: boolean;
 }
 
-export interface TextProps extends LayoutProps {
+export interface TextProps extends LayoutProps, PointerEventProps {
   style?: Partial<TextStyle>;
   /**
    * Overflow behavior when the rendered text is wider than the layout slot.
@@ -87,7 +98,7 @@ export interface TextProps extends LayoutProps {
   children?: string;
 }
 
-export interface ButtonProps extends LayoutProps {
+export interface ButtonProps extends LayoutProps, PointerEventProps {
   /**
    * Fixed width — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
    * `"auto"` to shrink-to-fit the button's content (text + any icon /
@@ -124,13 +135,13 @@ export interface ButtonProps extends LayoutProps {
   children?: ReactNode;
 }
 
-export interface ImageProps extends LayoutProps {
+export interface ImageProps extends LayoutProps, PointerEventProps {
   texture: TextureHandle;
   tint?: number;
   alpha?: number;
 }
 
-export interface NineSliceProps extends LayoutProps {
+export interface NineSliceProps extends LayoutProps, PointerEventProps {
   texture: TextureHandle;
   insets:
     | { left: number; top: number; right: number; bottom: number }
@@ -139,7 +150,7 @@ export interface NineSliceProps extends LayoutProps {
   alpha?: number;
 }
 
-export interface ProgressBarProps extends LayoutProps {
+export interface ProgressBarProps extends LayoutProps, PointerEventProps {
   value: number;
   trackBackground?: BackgroundOptions;
   fillBackground?: BackgroundOptions;
@@ -169,6 +180,20 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
 }
 
 /**
+ * @internal A `Panel` that forwards a ref to its underlying `PanelNode`
+ * (the reconciler returns the `UIElement` instance via `getPublicInstance`).
+ * Used by `Tooltip` to read the trigger's post-layout geometry and by the
+ * overlay host to position each bubble.
+ */
+const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
+  function RefPanel(props, ref) {
+    const { children, bg, ...rest } = props;
+    // @ts-expect-error — custom reconciler element type
+    return <ui-element _ctor={PanelNode} {...rest} background={bg} ref={ref}>{children}</ui-element>;
+  },
+);
+
+/**
  * Z-axis stacking primitive: a `Panel` that defaults to filling its parent
  * and acts as the containing block for absolute-positioned children. Drop
  * children inside with `position="absolute"` (plus `left` / `top` / `right`
@@ -185,6 +210,144 @@ export function ZStack(props: PropsWithChildren<PanelProps>): React.JSX.Element 
       position="relative"
       {...props}
     />
+  );
+}
+
+export interface TooltipProps {
+  /**
+   * Tooltip body. A `string` / `number` is auto-wrapped in a `<Text>`
+   * styled with `textStyle`; pass `ReactNode`s for rich content (icon +
+   * text rows, stat blocks, …).
+   */
+  content: ReactNode;
+  /**
+   * Preferred side, optionally aligned (`"top"`, `"bottom-start"`,
+   * `"right-end"`, …). Default `"top"` (center-aligned). The bubble flips
+   * to the opposite side and shifts along the cross axis to stay
+   * on-screen.
+   */
+  placement?: Placement;
+  /** Gap in px between the trigger and the bubble. Default `6`. */
+  offset?: number;
+  /**
+   * Cap the bubble width (px). Long content wraps instead of running off
+   * screen; the bubble always also clamps to the space available at the
+   * resolved side.
+   */
+  maxWidth?: number;
+  /**
+   * Bubble background. Headless by default — omit and the bubble is an
+   * unstyled, transparent container; pass to style it.
+   */
+  bg?: BackgroundOptions;
+  /** Padding inside the bubble. Headless by default (none). */
+  padding?: Padding;
+  /** Text style applied when `content` is a string / number. */
+  textStyle?: Partial<TextStyle>;
+  /**
+   * Force the bubble's visibility, bypassing hover. Omit for the default
+   * hover-driven behavior; pass a boolean to control it yourself (a pinned
+   * onboarding callout, a debug toggle, …).
+   */
+  opened?: boolean;
+  /** Render the children only — never show the bubble. */
+  disabled?: boolean;
+  /** The trigger element(s) the tooltip describes. */
+  children: ReactNode;
+}
+
+/**
+ * Hover-driven floating label, Mantine-style: one wrapper, body in a
+ * `content` prop. **Headless** — no default visuals; pass `bg` / `padding`
+ * / `textStyle` to style it.
+ *
+ * Under a `<UIRoot>` the bubble is portaled into the scene's top-most
+ * screen-space overlay and anchored to the trigger by the positioning
+ * engine (offset → flip → shift → size): it draws above all other UI,
+ * escapes any `<ScrollView>` clip, flips/shifts to stay on-screen, and
+ * caps to `maxWidth` (and to the space available at the resolved side).
+ * World-space / camera-transformed triggers anchor correctly. Without a
+ * `<UIRoot>` overlay (e.g. a bare reconciler tree) it falls back to an
+ * in-tree absolute bubble with no collision handling.
+ */
+export function Tooltip(props: TooltipProps): React.JSX.Element {
+  const {
+    content,
+    placement = "top",
+    offset = 6,
+    maxWidth,
+    bg,
+    padding,
+    textStyle,
+    opened,
+    disabled,
+    children,
+  } = props;
+  const [hovered, setHovered] = useState(false);
+  const open = !disabled && (opened ?? hovered);
+  const { setReference, renderFloating, hasOverlay } = useFloating({
+    open,
+    placement,
+    offset,
+    ...(maxWidth !== undefined ? { maxWidth } : {}),
+  });
+
+  const body =
+    typeof content === "string" || typeof content === "number" ? (
+      <UIText {...(textStyle ? { style: textStyle } : {})}>
+        {String(content)}
+      </UIText>
+    ) : (
+      content
+    );
+
+  // Headless: a bare layout container (single portal/fallback root). Style
+  // only what the caller asked for.
+  const bubble = (
+    <Panel
+      consumeInput={false}
+      {...(padding ? { padding } : {})}
+      {...(bg ? { bg } : {})}
+    >
+      {body}
+    </Panel>
+  );
+
+  if (hasOverlay) {
+    return (
+      <>
+        <RefPanel
+          ref={(el) => setReference(el)}
+          {...(disabled ? {} : { onHover: setHovered })}
+        >
+          {children}
+        </RefPanel>
+        {renderFloating(bubble)}
+      </>
+    );
+  }
+
+  // Inline fallback (no scene overlay): in-tree absolute bubble, no
+  // collision handling. Side only (alignment is an overlay feature).
+  const side = placement.split("-")[0];
+  const edge: Partial<PanelProps> =
+    side === "bottom"
+      ? { top: "100%", margin: { top: offset } }
+      : side === "left"
+        ? { right: "100%", margin: { right: offset } }
+        : side === "right"
+          ? { left: "100%", margin: { left: offset } }
+          : { bottom: "100%", margin: { bottom: offset } };
+
+  return (
+    <Panel position="relative" {...(disabled ? {} : { onHover: setHovered })}>
+      {children}
+      {open ? (
+        <Panel position="absolute" {...edge} consumeInput={false}>
+          {bubble}
+        </Panel>
+      ) : null}
+    </Panel>
   );
 }
 

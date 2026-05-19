@@ -123,8 +123,80 @@ stacking use `<Panel direction="column" | "row">`.
 ```
 
 `position` defaults to `"relative"`. Set `"absolute"` to lift the element out
-of the flex flow; `left` / `top` / `right` / `bottom` are pixel offsets
-against the nearest relative ancestor.
+of the flex flow; `left` / `top` / `right` / `bottom` are offsets against the
+nearest relative ancestor — a number is px, a `"<n>%"` string resolves
+against the containing block (so `top="100%"` is flush below it).
+
+`Panel` accepts `consumeInput?: boolean` (default `true`). The UI
+auto-consume fallback claims pointer events that land on the panel so they
+don't leak through to gameplay actions; set `false` for a decorative /
+pass-through container (e.g. a full-screen overlay) that should let clicks
+reach elements beneath it. It does not gate the panel's own
+hover/click callbacks (those still fire), and a `<Tooltip>` trigger placed
+under such a panel still works. The `<Tooltip>` overlay and its bubbles use
+`consumeInput={false}` so they never block input to the UI behind them.
+
+### Hover events
+
+`Panel`, `Button`, `Text`, `Image`, `NineSlice`, `ProgressBar` accept hover
+callbacks (the container is already interactive — this is a fan-out, not new
+infra). Three independent, combinable props:
+
+- `onPointerOver?: () => void` / `onPointerOut?: () => void` — mirror Pixi
+  events and the existing `onClick` naming; use when enter / leave need
+  separate handlers.
+- `onHover?: (hovering: boolean) => void` — convenience: `true` on enter,
+  `false` on leave. Ideal for "show while hovered" toggles.
+
+```tsx
+<Button onClick={save} onHover={setGlow}>Save</Button>
+<Panel onPointerOver={preview} onPointerOut={clearPreview}>…</Panel>
+```
+
+Callbacks are suppressed while a `<Button disabled>`.
+
+### Tooltip
+
+`<Tooltip content={…}>` wraps a trigger and shows a floating bubble while
+hovered (Mantine-style: one wrapper, content in a prop). **Headless** — no
+default visuals; pass `bg` / `padding` / `textStyle` to style it. Under a
+`<UIRoot>` the bubble is portaled into the scene's top-most screen-space
+overlay and anchored by the positioning engine: it draws above all other
+UI, escapes a `<ScrollView>` clip, never reflows siblings, **flips** to the
+opposite side and **shifts** to stay on-screen, z-stacks across roots
+(most-recently-opened on top), and anchors correctly even for world-space /
+camera-transformed triggers. Without a `<UIRoot>` overlay it falls back to
+an in-tree absolute bubble (no collision handling).
+
+```tsx
+<Tooltip content="Save your game" placement="top" bg={{ color: 0x1f2430, radius: 6 }} padding={8}>
+  <Button onClick={save}>Save</Button>
+</Tooltip>
+
+<Tooltip content={<Panel gap={2}><Text>+5 ATK</Text><Text>Rare</Text></Panel>} placement="right">
+  <Image texture={swordIcon} />
+</Tooltip>
+```
+
+Props: `content` (string/number → auto `<Text>`; nodes for rich content),
+`placement` (`Placement` — `side` or `side-align`, e.g. `"top"`,
+`"bottom-start"`, `"right-end"`; default `"top"`, center-aligned),
+`offset` (px gap, default `6`), `maxWidth` (px; content wraps instead of
+running off-screen — always also clamped to the space available at the
+resolved side), `bg`, `padding`, `textStyle`, `opened` (force visibility,
+bypass hover), `disabled` (render trigger only).
+
+### useFloating (headless)
+
+The primitive `<Tooltip>` is built on. `useFloating({ open, placement,
+offset, padding, maxWidth, flip, shift })` → `{ setReference(el),
+renderFloating(content), hasOverlay }`. Wire `setReference` to the
+trigger's ref, render `renderFloating(node)` in your tree (it portals into
+the scene overlay while `open`, returns `null` when closed / no overlay).
+Use for custom popovers, menus, hovercards. `computePosition()` (the pure
+engine: `offset` → `flip` → `shift` → `size`) and `Placement` are exported
+for fully custom layers. The scene overlay is a scene-scoped
+`FloatingOverlay` provided by `UIReactPlugin`.
 
 ## Hooks
 

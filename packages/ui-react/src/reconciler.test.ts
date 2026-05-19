@@ -114,7 +114,7 @@ import Yoga from "yoga-layout";
 import { setYoga, createYogaNode, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
-import { Button, UIText as Text } from "./components.js";
+import { Button, Panel, Tooltip, UIText as Text } from "./components.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -283,6 +283,63 @@ describe("reconciler", () => {
     // created and confirm the truncate mode landed on the underlying node.
     const label = btn.children[0] as { _truncate: unknown };
     expect(label._truncate).toBe("ellipsis");
+  });
+
+  it("forwards onHover through the reconciler to the underlying node", () => {
+    // End-to-end: React prop → generic reconciler → PanelNode →
+    // PointerEvents → callback. Emitting on the node's own container
+    // exercises the whole chain.
+    const onHover = vi.fn();
+    const root = createRoot(container as never);
+    root.render(createElement(Panel, { onHover }));
+
+    const panel = getRootInstances(container as never)![0] as unknown as {
+      displayObject: InstanceType<typeof mocks.MockContainer>;
+    };
+    panel.displayObject.emit("pointerover");
+    panel.displayObject.emit("pointerout");
+
+    expect(onHover.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("Tooltip renders only the trigger until opened, then adds the bubble", () => {
+    const root = createRoot(container as never);
+    const tree = (opened: boolean): React.ReactElement =>
+      createElement(
+        Tooltip,
+        { content: "Save your game", opened },
+        createElement(Button, null, "Save"),
+      );
+
+    root.render(tree(false));
+    let wrapper = getRootInstances(container as never)![0] as unknown as {
+      children: readonly unknown[];
+    };
+    // Just the trigger button — no bubble.
+    expect(wrapper.children.length).toBe(1);
+
+    root.render(tree(true));
+    wrapper = getRootInstances(container as never)![0] as unknown as {
+      children: readonly unknown[];
+    };
+    // Trigger + the absolutely-positioned bubble panel.
+    expect(wrapper.children.length).toBe(2);
+  });
+
+  it("Tooltip stays collapsed when disabled even if opened", () => {
+    const root = createRoot(container as never);
+    root.render(
+      createElement(
+        Tooltip,
+        { content: "hidden", opened: true, disabled: true },
+        createElement(Button, null, "Trigger"),
+      ),
+    );
+
+    const wrapper = getRootInstances(container as never)![0] as unknown as {
+      children: readonly unknown[];
+    };
+    expect(wrapper.children.length).toBe(1);
   });
 
   it("commitUpdate calls instance.update()", () => {

@@ -24,6 +24,8 @@ import {
 } from "./reconciler.js";
 import type { ReconcilerRoot } from "./reconciler.js";
 import { EngineCtx, SceneCtx, notifyFrame } from "./hooks.js";
+import { FloatingOverlayCtx, FloatingOverlayKey } from "./floating.js";
+import type { FloatingOverlay } from "./floating.js";
 import { UIReactPluginKey } from "./UIReactPlugin.js";
 import { RendererKey, SceneRenderTreeKey } from "@yagejs/renderer";
 
@@ -74,6 +76,7 @@ export interface UIRootOptions {
 export class UIRoot extends Component {
   private root: ReconcilerRoot | null = null;
   private readonly _container: Container;
+  private _floating: FloatingOverlay | null = null;
   private readonly _anchor: Anchor | undefined;
   private readonly _offset: { x: number; y: number };
   private readonly _layer: string | undefined;
@@ -127,9 +130,22 @@ export class UIRoot extends Component {
 
     this.root = createRoot(this._container);
 
+    // Scene-level top overlay floating UI (tooltips/popovers) portals into.
+    this._floating = this.use(FloatingOverlayKey);
+    this._floating.attach(tree);
+
     // When React commits, re-run layout and anchor
     this._onCommit = () => this._layoutAndAnchor();
     addOnCommit(this._onCommit);
+  }
+
+  /** Wrap a tree in the engine/scene context providers. */
+  private _provide(element: ReactElement): ReactElement {
+    return createElement(
+      EngineCtx.Provider,
+      { value: this.context },
+      createElement(SceneCtx.Provider, { value: this.scene }, element),
+    );
   }
 
   /** Render a React element tree into this UI root. */
@@ -138,14 +154,17 @@ export class UIRoot extends Component {
       throw new Error("UIRoot.render() called before onAdd().");
     }
 
-    // Wrap in context providers so useEngine()/useScene() work
-    const wrapped = createElement(
-      EngineCtx.Provider,
-      { value: this.context },
-      createElement(SceneCtx.Provider, { value: this.scene }, element),
+    // Wrap in context providers so useEngine()/useScene() work, plus the
+    // scene floating overlay so <Tooltip> can portal its bubble.
+    this.root.render(
+      this._provide(
+        createElement(
+          FloatingOverlayCtx.Provider,
+          { value: this._floating },
+          element,
+        ),
+      ),
     );
-
-    this.root.render(wrapped);
   }
 
   /**
@@ -228,6 +247,7 @@ export class UIRoot extends Component {
     unmarkPointerConsumeContainer(this._container);
     this.root?.unmount();
     this.root = null;
+    this._floating = null;
     this._container.removeFromParent();
     this._container.destroy();
   }
