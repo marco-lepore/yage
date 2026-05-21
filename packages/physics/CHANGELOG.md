@@ -1,5 +1,67 @@
 # @yagejs/physics
 
+## 0.7.0
+
+### Minor Changes
+
+- [#69](https://github.com/marco-lepore/yage/pull/69) [`90e4d30`](https://github.com/marco-lepore/yage/commit/90e4d3064d9c2804549d62844067cf487d592f0a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Dev-mode warnings for common silent-failure modes:
+  - `Component.use(Key)` now throws a named error when called at field-init
+    time (before the component is bound to an entity), pointing at
+    `this.service(Key)` as the lazy alternative.
+  - `ColliderComponent.onCollision` on a sensor collider (or `onTrigger` on a
+    non-sensor) emits a one-shot dev warning.
+  - Asymmetric collision-mask pairs (where Rapier silently drops events) emit
+    a one-shot dev warning per `(layers, mask)` tuple.
+  - Declaring a scene layer named `"ui"` without `space: "screen"` warns that
+    the auto-provisioned UI layer is being shadowed by a world-space layer.
+  - A polygon collider whose convex hull drops vertices (concave input) warns
+    so the developer can decompose or switch to a polyline.
+
+  All warnings gate on `process.env.NODE_ENV !== "production"` via a new
+  `isDev()` / `devWarn()` helper exported from `@yagejs/core` (`@internal`).
+
+- [#68](https://github.com/marco-lepore/yage/pull/68) [`903b2b9`](https://github.com/marco-lepore/yage/commit/903b2b9539015e8109f0bb456ba75811ad8fba4f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - feat(tilemap): capsule/ellipse + concave-polygon collider support
+
+  **Tiled shape coverage.** `extractCollisionShapes` / `toPhysicsColliders`
+  now branch on the `ellipse` and `capsule` flags Tiled writes on object
+  instances; previously those silently fell through to the default
+  rectangle path and produced wrong AABB hitboxes. Ellipses become
+  `circle` colliders (with a dev-warning fallback when `width !== height`,
+  since Rapier has no real ellipse primitive); capsule objects become
+  `capsule` colliders oriented along the longer axis.
+
+  **Concave polygons via polyline.** Tiled polygons are authored as
+  outlines, not solid hulls, so `toPhysicsColliders` now emits them as
+  the new `shape: "polyline"` variant (chain of line segments). Unlike
+  `shape: "polygon"`, polylines preserve concave detail — at the cost of
+  being static-only (no inertia computed). The existing convex `polygon`
+  path now logs a dev warning when the input vertex list is concave, so
+  the silent convex-hull widening can't return.
+
+  **Breaking — `TilemapColliderConfig` types.** `extractCollisionShapes`
+  previously returned `RectColliderConfig | PolygonColliderConfig`; it
+  now also returns `CircleColliderConfig`, `CapsuleColliderConfig`, and
+  `PolylineColliderConfig` (and Tiled polygons map to `polyline` rather
+  than `polygon`). Code that exhaustively switches on the `type` field
+  needs new arms for `"circle"`, `"capsule"`, `"polyline"`, and should
+  treat the existing `"polygon"` case as covering only pre-converted
+  convex hull data.
+
+  **Breaking — `ColliderShape` adds `polyline` + `axis`.** The physics
+  `ColliderShape` discriminated union gains a `polyline` variant and the
+  `capsule` variant gains an optional `axis: "x" | "y"` field (default
+  `"y"`, matching previous behavior).
+
+### Patch Changes
+
+- [#67](https://github.com/marco-lepore/yage/pull/67) [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `PhysicsDebugContributor` now draws convex polygon colliders.
+
+  The wireframe pass only handled `Ball`, `Cuboid`, and `Capsule` — polygon shapes (from `{ type: "polygon", vertices }`) silently rendered as nothing. The contributor now switches on `ShapeType.ConvexPolygon` and traces the hull via `collider.vertices()`, closing the path, using the same per-body-type color + alpha scheme as the other shapes.
+
+- Updated dependencies [[`069d41e`](https://github.com/marco-lepore/yage/commit/069d41e711aeb6218c1438f52a2b098ff8946526), [`90e4d30`](https://github.com/marco-lepore/yage/commit/90e4d3064d9c2804549d62844067cf487d592f0a), [`57a6441`](https://github.com/marco-lepore/yage/commit/57a6441f9ef8b5f7140959d6393930c2326d70e0), [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40), [`7ca5050`](https://github.com/marco-lepore/yage/commit/7ca5050d91479121039af5e4898fc0c220e8d7c3)]:
+  - @yagejs/core@0.7.0
+  - @yagejs/debug@0.7.0
+
 ## 0.6.0
 
 ### Patch Changes

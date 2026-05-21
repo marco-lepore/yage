@@ -1,5 +1,11 @@
 # @yagejs/effects
 
+## 0.7.0
+
+### Minor Changes
+
+- [#74](https://github.com/marco-lepore/yage/pull/74) [`49a09c0`](https://github.com/marco-lepore/yage/commit/49a09c04b962a54187c62a66ad6dbf61f03c2cb5) Thanks [@marco-lepore](https://github.com/marco-lepore)! - New `colorize` preset — luminance-to-colour recolour via a custom WebGL+WGSL shader pair. Outputs `mix(sourceRGB, tintColor * L, strength)` where `L` is Rec. 601 luminance, so black stays black, white reaches the target colour, midtones blend proportionally, and source alpha is preserved unchanged. The replace-style alternative to `sprite.tint`'s multiply, which turns saturated source colours into mud when the tint is far from the source hue. Options: `{ color: number | string, strength?: number }` (default `strength: 1`); handle: `setColor(color: number | string)`, `setStrength(value: number)` (preserves intensity ratio), plus the base fade/run/setEnabled/remove surface.
+
 ## 0.6.0
 
 ### Minor Changes
