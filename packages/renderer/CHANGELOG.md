@@ -1,5 +1,111 @@
 # @yagejs/renderer
 
+## 0.7.0
+
+### Minor Changes
+
+- [#67](https://github.com/marco-lepore/yage/pull/67) [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `AnimatedSpriteComponent` now accepts `anchor` and `tint` options.
+
+  `AnimatedSpriteComponentOptions` gained:
+  - `anchor?: Vec2Like | readonly [number, number]` — component-level default anchor, applied during setup. Per-`AnimationDef.anchor` overrides this when set.
+  - `tint?: number | string` — forwarded to `AnimatedSprite.tint` (Pixi v8 accepts both numeric colors and color strings).
+
+  Both options are now persisted: `AnimatedSpriteData` gained optional `anchor` and `tint` fields and `serialize()` / `fromSnapshot()` round-trip them — matching `SpriteComponent` / `SpriteData` so save/load doesn't silently revert the component to defaults.
+
+  Brings `AnimatedSpriteComponent` to parity with the equivalent setters on `SpriteComponent` so swapping between the two needs no extra boilerplate.
+
+- [#77](https://github.com/marco-lepore/yage/pull/77) [`8d80f18`](https://github.com/marco-lepore/yage/commit/8d80f1856ac897e8dcaa28543d57ff16750e97f3) Thanks [@marco-lepore](https://github.com/marco-lepore)! - BitmapText path for pixel-art text + per-text `resolution`.
+  - `TextComponent` and `UIText` accept a new `bitmap?: boolean | { font?: string; size?: number }` option. `true` bakes a dynamic bitmap font from the text's own `style`; the object form renders with an installed/loaded font by name (`size` overrides the glyph size). Canvas-rasterised Pixi `Text` is bilinear-sampled and goes blurry at non-integer scale on non-Retina displays — `BitmapText` draws crisp pre-baked glyph quads instead. Yoga measurement (the PR [#67](https://github.com/marco-lepore/yage/issues/67) word-wrap / `truncate` semantics) is unchanged on the bitmap path.
+  - New `bitmapFont(path)` asset factory (wired into the renderer asset pipeline as the `"bitmap-font"` loader) for BMFont `.fnt`/`.xml` + atlas descriptors, plus an async `installBitmapFont(source, opts)` helper that loads a `.ttf` and bakes a glyph atlas via Pixi v8's `BitmapFont.install`, returning the registered font name.
+  - New `resolution?: number` constructor option on `TextComponent` / `UIText` (and the React `<Text>` wrapper). Pixi v8 `resolution` is a `Text` constructor option, NOT a `TextStyle` property — this is the only way to get crisp canvas text without a prototype patch. Ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
+  - `TextComponent` serialization round-trips `bitmap` and `resolution`. `@yagejs/ui-react`'s `TextProps` gains the same two props.
+  - `bitmap` / `resolution` are construction-only — Pixi v8 can't morph `Text`↔`BitmapText` or change `resolution` in place. `UIText.update()` (the React reconciler path) emits a dev-mode warning when either changes instead of silently dropping it; remount the element (e.g. change its React `key`) to switch.
+
+- [#73](https://github.com/marco-lepore/yage/pull/73) [`069d41e`](https://github.com/marco-lepore/yage/commit/069d41e711aeb6218c1438f52a2b098ff8946526) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Core lifecycle ergonomics: animation fan-out, Transform first-read, scene reentrancy.
+
+  **`@yagejs/renderer` — `LayeredAnimationController`**
+
+  New helper component for multi-layer characters (head + body + outfit). Takes
+  a list of sibling `AnimationController` instances and fans `play()` /
+  `playOneShot()` across all of them with a single shared lock timer. The
+  shared duration is computed once (from the first controller, or an explicit
+  `duration` option) and passed to each child as `options.duration`, so every
+  layer unlocks on the same frame regardless of per-layer frame counts. The
+  master `onComplete` fires exactly once.
+
+  `AnimationController.playOneShot` now accepts a per-call `duration` override
+  on solo controllers too (the auto-computed wall-clock value is still the
+  default). Doc comment clarifies the canonical pattern for narrowing
+  `AnimationController<T>` through `entity.get()` / `sibling()`.
+
+  **`@yagejs/core` — `KeyframeAnimator`**
+
+  `KeyframeAnimationDef.setter` is now optional — omit it for pure-timeline
+  tracks that fire only keyframe `event` callbacks (cutscene beats, audio
+  cues). Also declared with method syntax so a
+  `Record<string, KeyframeAnimationDef<number>>` literal flows into the
+  constructor unchanged, without per-key `as` casts or builder helpers
+  (previously failed on setter parameter contravariance under
+  `strictFunctionTypes`).
+
+  **`@yagejs/core` — `Transform`**
+
+  The constructor leaves `_dirty = true` so the first `worldPosition` /
+  `worldRotation` / `worldScale` read recomputes against whatever parent chain
+  `addChild` has established by then. Previously, an unparented read before
+  parenting completed would lock in a stale local-as-world value.
+
+  **`@yagejs/core` — `SceneManager` reentrancy**
+
+  `push`, `pop`, `replace`, and `popAll` are now safe to call from inside a
+  scene lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`,
+  `beforeEnter`, `afterExit`). The call is queued on the manager's internal
+  pending chain and runs after the current mutation finishes; the returned
+  promise resolves when the deferred op completes. The previous throw is
+  replaced with a dev-only `console.warn` so the smell still surfaces in
+  development without breaking the (legitimate) "skip the title scene if a
+  save exists" pattern.
+
+- [#69](https://github.com/marco-lepore/yage/pull/69) [`90e4d30`](https://github.com/marco-lepore/yage/commit/90e4d3064d9c2804549d62844067cf487d592f0a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Dev-mode warnings for common silent-failure modes:
+  - `Component.use(Key)` now throws a named error when called at field-init
+    time (before the component is bound to an entity), pointing at
+    `this.service(Key)` as the lazy alternative.
+  - `ColliderComponent.onCollision` on a sensor collider (or `onTrigger` on a
+    non-sensor) emits a one-shot dev warning.
+  - Asymmetric collision-mask pairs (where Rapier silently drops events) emit
+    a one-shot dev warning per `(layers, mask)` tuple.
+  - Declaring a scene layer named `"ui"` without `space: "screen"` warns that
+    the auto-provisioned UI layer is being shadowed by a world-space layer.
+  - A polygon collider whose convex hull drops vertices (concave input) warns
+    so the developer can decompose or switch to a polyline.
+
+  All warnings gate on `process.env.NODE_ENV !== "production"` via a new
+  `isDev()` / `devWarn()` helper exported from `@yagejs/core` (`@internal`).
+
+- [#66](https://github.com/marco-lepore/yage/pull/66) [`57a6441`](https://github.com/marco-lepore/yage/commit/57a6441f9ef8b5f7140959d6393930c2326d70e0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Two layer-semantics fixes for scene + layer isolation.
+
+  `LayerDef.isRenderGroup` (renderer): opt-in flag that promotes a layer's container to a Pixi v8 render group, giving it its own uniform scope. Set it on layers that host filtered content AND on any sibling layer whose pipe reads `globalUniforms` directly (`@pixi/tilemap`'s `TilemapPipe.execute` pulls `_activeUniforms.at(-1)`, so a filter elsewhere in the tree can leak its `uWorldTransformMatrix` into the tilemap draw and visibly drift the canopy). Default: `false`.
+
+  `Scene.transparentBelow = false` (the default) is now actually enforced (core + renderer). Pushing an opaque scene on top of a stack hides every below-stack scene tree — world layers AND screen-space UI/HUD. The flag composes through the stack: a below scene stays visible only while every scene above it has `transparentBelow: true`. While a scene transition is running, both the outgoing and incoming scenes render regardless so `crossFade` and friends keep working; the chain is reapplied on `scene:transition:ended`. Previously the flag was documented but no code path enforced it, so UI from scenes below the active scene bled through.
+
+  Breaking: games that relied on the old (unenforced) behavior — below-stack UI continuing to paint through a pushed scene — must either set `transparentBelow = true` on the pushed scene or restructure as a `replace` instead of a `push`.
+
+- [#71](https://github.com/marco-lepore/yage/pull/71) [`0e9f86c`](https://github.com/marco-lepore/yage/commit/0e9f86cc42bb632d38a67c22aa31b6dd21cf82e7) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Renderer ergonomics: `RendererConfig.pixelArtPreset`, `CameraEntity.fitTo`, and `LayerDef.sort` + `ySort` / `ySortBy` helpers.
+  - **`RendererConfig.pixelArtPreset?: boolean`** (default `false`). One flag flips `TextureStyle.defaultOptions.scaleMode = "nearest"`, `roundPixels: true` on the Pixi `Application`, and `image-rendering: pixelated` (with a `-webkit-optimize-contrast` Safari fallback) on the canvas element. Composes with `pixi: {...}` — explicit user overrides win. The `TextureStyle` global is captured on install and restored on destroy so the mutation stays scoped to the plugin's lifetime.
+  - **`CameraEntityParams.fitTo?: { x; y; width; height }`**. Frames an axis-aligned world rectangle by setting both `position` (the rect's centre) and `zoom` (`contain` semantics — `min(viewportW / rect.w, viewportH / rect.h)`) at setup. Overrides explicit `position` / `zoom` when supplied. The right primitive for fixed-camera scenes (puzzle boards, arcade levels, dialog-scene insets) where the framed area is known up front and zoom matters as much as position.
+  - **`LayerDef.sort?: (c: Container) => number`**. Per-frame **depth-key** function. `DisplaySystem` writes `child.zIndex = sort(child)` on every direct child of the layer, and the layer container's `sortableChildren` is flipped to `true` so Pixi's render pipeline orders by zIndex. Layers without a `sort` keep insertion order. Composes with manual `child.zIndex` writes — a depth-key fn handles the bulk; individual sprites can still write their own zIndex between frames for one-off bias.
+  - **`ySort` / `ySortBy`** exported from `@yagejs/renderer`. `ySort` is `(c) => c.position.y` for the classic top-down 2D depth rule; `ySortBy(offsetOf)` adds a per-container offset to the depth key (Godot's `y_sort_origin` pattern) so anchored-at-top sprites can advertise their visual "footprint".
+  - **Removed** `LayerDef.sortableChildren` — subsumed by `sort` (which enables auto-sort internally). Game code that wants Pixi's pure zIndex auto-sort without a depth-key fn can write `tree.get(name).container.sortableChildren = true` directly; the redundant declarative field is gone.
+
+### Patch Changes
+
+- [#67](https://github.com/marco-lepore/yage/pull/67) [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix Pixi v8 deprecation warning in the `iris()` scene transition.
+
+  `iris()` was constructing `new Graphics()` and adding the mask geometry as a child — Pixi v8 logs a deprecation because `Graphics` is no longer a `Container`. The overlay is now a real `Container` that holds the color fill `Graphics` plus the mask `Graphics`, so the warning goes away while the transition renders identically.
+
+- Updated dependencies [[`069d41e`](https://github.com/marco-lepore/yage/commit/069d41e711aeb6218c1438f52a2b098ff8946526), [`90e4d30`](https://github.com/marco-lepore/yage/commit/90e4d3064d9c2804549d62844067cf487d592f0a), [`57a6441`](https://github.com/marco-lepore/yage/commit/57a6441f9ef8b5f7140959d6393930c2326d70e0), [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40), [`7ca5050`](https://github.com/marco-lepore/yage/commit/7ca5050d91479121039af5e4898fc0c220e8d7c3)]:
+  - @yagejs/core@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

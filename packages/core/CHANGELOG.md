@@ -1,5 +1,159 @@
 # @yagejs/core
 
+## 0.7.0
+
+### Minor Changes
+
+- [#73](https://github.com/marco-lepore/yage/pull/73) [`069d41e`](https://github.com/marco-lepore/yage/commit/069d41e711aeb6218c1438f52a2b098ff8946526) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Core lifecycle ergonomics: animation fan-out, Transform first-read, scene reentrancy.
+
+  **`@yagejs/renderer` — `LayeredAnimationController`**
+
+  New helper component for multi-layer characters (head + body + outfit). Takes
+  a list of sibling `AnimationController` instances and fans `play()` /
+  `playOneShot()` across all of them with a single shared lock timer. The
+  shared duration is computed once (from the first controller, or an explicit
+  `duration` option) and passed to each child as `options.duration`, so every
+  layer unlocks on the same frame regardless of per-layer frame counts. The
+  master `onComplete` fires exactly once.
+
+  `AnimationController.playOneShot` now accepts a per-call `duration` override
+  on solo controllers too (the auto-computed wall-clock value is still the
+  default). Doc comment clarifies the canonical pattern for narrowing
+  `AnimationController<T>` through `entity.get()` / `sibling()`.
+
+  **`@yagejs/core` — `KeyframeAnimator`**
+
+  `KeyframeAnimationDef.setter` is now optional — omit it for pure-timeline
+  tracks that fire only keyframe `event` callbacks (cutscene beats, audio
+  cues). Also declared with method syntax so a
+  `Record<string, KeyframeAnimationDef<number>>` literal flows into the
+  constructor unchanged, without per-key `as` casts or builder helpers
+  (previously failed on setter parameter contravariance under
+  `strictFunctionTypes`).
+
+  **`@yagejs/core` — `Transform`**
+
+  The constructor leaves `_dirty = true` so the first `worldPosition` /
+  `worldRotation` / `worldScale` read recomputes against whatever parent chain
+  `addChild` has established by then. Previously, an unparented read before
+  parenting completed would lock in a stale local-as-world value.
+
+  **`@yagejs/core` — `SceneManager` reentrancy**
+
+  `push`, `pop`, `replace`, and `popAll` are now safe to call from inside a
+  scene lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`,
+  `beforeEnter`, `afterExit`). The call is queued on the manager's internal
+  pending chain and runs after the current mutation finishes; the returned
+  promise resolves when the deferred op completes. The previous throw is
+  replaced with a dev-only `console.warn` so the smell still surfaces in
+  development without breaking the (legitimate) "skip the title scene if a
+  save exists" pattern.
+
+- [#69](https://github.com/marco-lepore/yage/pull/69) [`90e4d30`](https://github.com/marco-lepore/yage/commit/90e4d3064d9c2804549d62844067cf487d592f0a) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Dev-mode warnings for common silent-failure modes:
+  - `Component.use(Key)` now throws a named error when called at field-init
+    time (before the component is bound to an entity), pointing at
+    `this.service(Key)` as the lazy alternative.
+  - `ColliderComponent.onCollision` on a sensor collider (or `onTrigger` on a
+    non-sensor) emits a one-shot dev warning.
+  - Asymmetric collision-mask pairs (where Rapier silently drops events) emit
+    a one-shot dev warning per `(layers, mask)` tuple.
+  - Declaring a scene layer named `"ui"` without `space: "screen"` warns that
+    the auto-provisioned UI layer is being shadowed by a world-space layer.
+  - A polygon collider whose convex hull drops vertices (concave input) warns
+    so the developer can decompose or switch to a polyline.
+
+  All warnings gate on `process.env.NODE_ENV !== "production"` via a new
+  `isDev()` / `devWarn()` helper exported from `@yagejs/core` (`@internal`).
+
+- [#66](https://github.com/marco-lepore/yage/pull/66) [`57a6441`](https://github.com/marco-lepore/yage/commit/57a6441f9ef8b5f7140959d6393930c2326d70e0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Two layer-semantics fixes for scene + layer isolation.
+
+  `LayerDef.isRenderGroup` (renderer): opt-in flag that promotes a layer's container to a Pixi v8 render group, giving it its own uniform scope. Set it on layers that host filtered content AND on any sibling layer whose pipe reads `globalUniforms` directly (`@pixi/tilemap`'s `TilemapPipe.execute` pulls `_activeUniforms.at(-1)`, so a filter elsewhere in the tree can leak its `uWorldTransformMatrix` into the tilemap draw and visibly drift the canopy). Default: `false`.
+
+  `Scene.transparentBelow = false` (the default) is now actually enforced (core + renderer). Pushing an opaque scene on top of a stack hides every below-stack scene tree — world layers AND screen-space UI/HUD. The flag composes through the stack: a below scene stays visible only while every scene above it has `transparentBelow: true`. While a scene transition is running, both the outgoing and incoming scenes render regardless so `crossFade` and friends keep working; the chain is reapplied on `scene:transition:ended`. Previously the flag was documented but no code path enforced it, so UI from scenes below the active scene bled through.
+
+  Breaking: games that relied on the old (unenforced) behavior — below-stack UI continuing to paint through a pushed scene — must either set `transparentBelow = true` on the pushed scene or restructure as a `replace` instead of a `push`.
+
+- [#67](https://github.com/marco-lepore/yage/pull/67) [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `Scene.emit` + public `Scene.registerScoped`.
+  - New `Scene.emit<T>(token, data)` is symmetric to `Entity.emit` — dispatches to scene-level `on` handlers with no entity source. Scene handlers receive `(data, entity?)` where `entity` is `undefined` for scene-emitted events and the source `Entity` for bubbled ones. `Component.listenScene` was updated to mirror the optional `entity` parameter.
+  - `Scene.registerScoped(key, value)` is now public. Plugins and game code can attach scene-scoped services that resolve via `Component.use(key)`; they're auto-cleared after scene exit (after plugin `afterExit` hooks see them). The underscore-prefixed `_registerScoped` is kept as an internal alias.
+
+- [#76](https://github.com/marco-lepore/yage/pull/76) [`7ca5050`](https://github.com/marco-lepore/yage/commit/7ca5050d91479121039af5e4898fc0c220e8d7c3) Thanks [@marco-lepore](https://github.com/marco-lepore)! - State layer redesign: `create*` factories, three orthogonal contracts, and id/version moved to the save call site.
+
+  The registry-based `define*` API (per-primitive `id`, baked-in `version`/`migrate`, a global store registry) is replaced by plain factories with no ambient state. The persistence vocabulary is pulled out of the state primitives and into the `@yagejs/save` call site.
+
+  **Three contracts.** Every state factory in `@yagejs/core` returns a value implementing all three; each shape also carries a `[STATE_KIND]` symbol brand, and `useStore` dispatches on the brand instead of duck-typing on method names:
+
+  ```ts
+  interface Reactive {
+    subscribe(fn: () => void): () => void;
+  }
+  interface Serializable<TEnc> {
+    serialize(): TEnc;
+    hydrate(raw: TEnc): void;
+  }
+  interface Resettable {
+    reset(): void;
+  }
+  ```
+
+  **Factories.** One factory per shape — `createValue`, `createCounter`, `createRecord`, `createMap`, `createSet`, `createList`, and the compound `createStore`. No registry, no per-primitive `id`, no per-primitive `version` / `migrate`:
+
+  ```ts
+  import { createStore, createRecord } from "@yagejs/core";
+
+  const game = createStore((s) => ({
+    inventory: s.map<string, number>(),
+    gold: s.counter({ default: 0 }),
+    day: s.value<number>({ default: 1 }),
+  }));
+  const settings = createRecord<Settings>({
+    default: () => ({ music: 0.8, sfx: 1.0 }),
+  });
+  ```
+
+  `createStore` is the primary surface: one save target, many typed leaves built via `s.value` / `s.counter` / `s.record` / `s.map` / `s.set` / `s.list`. Its `subscribe` aggregates leaf changes so `save.autoPersist` debounces N rapid leaf mutations into one write.
+
+  **Save methods take `(id, thing, opts?)`.** Id and version live at the call site, not on the primitive:
+
+  ```ts
+  await save.persist("game", game, { version: 1 });
+  await save.restore("game", game, {
+    version: 2,
+    migrate: (old) => migrateV1ToV2(old as V1),
+  });
+  await save.saveSlot("game", "manual-1", game, {
+    metadata: {
+      /* … */
+    },
+  });
+  save.autoPersist("settings", settings);
+  ```
+
+  `StoreVersionTooNewError` and `StoreMigrationMissingError` moved from `@yagejs/core` to `@yagejs/save`.
+
+  **`useStore` widens to all `Reactive*` shapes, including compound** (`@yagejs/ui-react`). Same name; one overload per shape plus a selector escape hatch that receives the reactive source itself:
+
+  ```ts
+  useStore(record); useStore(counter); useStore(map); useStore(set);
+  useStore(list);   useStore(value);   useStore(compound);
+  useStore(source, (src) => src.get().score, isEqual?);
+  ```
+
+  **Additions over 0.6.0.** `createValue` / `s.value` and `createList` / `s.list` (new shapes); the compound `createStore`; `ReactiveCounter.clamp(value, min, max)`; `entries()` on maps and `values()` on sets now return arrays (were iterators) so React can read them repeatedly without re-iterating.
+
+  **Breaking changes.**
+  - All factories renamed `define*` → `create*`. `defineStore<T>(id, opts)` (the old object-record factory) → `createRecord<T>(opts)`; `defineCounter` / `defineMap` / `defineSet` → `createCounter` / `createMap` / `createSet`, with the per-primitive `id` removed.
+  - `PersistentLike` and every `Persistent*` type are gone — replaced by `Reactive*` + `Serializable<T>`. `createRecord`'s return type is now a `Reactive*` shape (`ReactiveRecord<T>`), not `PersistentStore<T>`.
+  - `PersistentMap.remove` / `PersistentSet.remove` → `.delete` (matches JS-stdlib `Map`/`Set`).
+  - The factory default option renamed `defaults` → `default` and now accepts a value or a factory (`default: T | (() => T)`, was `defaults: () => T`). Passing the old `defaults` key is silently ignored and you get the zero/empty default instead — grep call sites, this one fails without a type error in loosely-typed setups.
+  - `createAtom` removed — use `createValue`.
+  - `@yagejs/ui-react`'s old single-record `createStore` removed — use `createRecord` from `@yagejs/core`.
+  - `save.restoreAll` removed — use `Promise.all([save.restore(...), …])`.
+  - `_resetAllStoresForTesting` / `_clearStoreRegistryForTesting` removed — there is no registry; construct fresh primitives per test.
+  - `useStore`'s selector receives the reactive source, not a snapshot — record selectors that used `(s) => s.score` are now `(src) => src.get().score`.
+
+  **Migration from 0.6.0.** Rename the factory call (`defineStore("id", opts)` → `createRecord(opts)`, `defineCounter("id", opts)` → `createCounter(opts)`, etc.) and move the `id` plus any `version` / `migrate` onto the matching `save.autoPersist` / `save.restore` / `save.persist` call. Group related primitives under one `createStore((s) => …)` when they share a save target. Swap the `defaults:` option key for `default:`, `.remove(` → `.delete(` on map/set, `createAtom` → `createValue`, and any `@yagejs/ui-react` `createStore` import for `createRecord` from `@yagejs/core`.
+
 ## 0.6.0
 
 ### Minor Changes

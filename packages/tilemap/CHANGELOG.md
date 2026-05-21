@@ -1,5 +1,56 @@
 # @yagejs/tilemap
 
+## 0.7.0
+
+### Minor Changes
+
+- [#68](https://github.com/marco-lepore/yage/pull/68) [`903b2b9`](https://github.com/marco-lepore/yage/commit/903b2b9539015e8109f0bb456ba75811ad8fba4f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - feat(tilemap): capsule/ellipse + concave-polygon collider support
+
+  **Tiled shape coverage.** `extractCollisionShapes` / `toPhysicsColliders`
+  now branch on the `ellipse` and `capsule` flags Tiled writes on object
+  instances; previously those silently fell through to the default
+  rectangle path and produced wrong AABB hitboxes. Ellipses become
+  `circle` colliders (with a dev-warning fallback when `width !== height`,
+  since Rapier has no real ellipse primitive); capsule objects become
+  `capsule` colliders oriented along the longer axis.
+
+  **Concave polygons via polyline.** Tiled polygons are authored as
+  outlines, not solid hulls, so `toPhysicsColliders` now emits them as
+  the new `shape: "polyline"` variant (chain of line segments). Unlike
+  `shape: "polygon"`, polylines preserve concave detail — at the cost of
+  being static-only (no inertia computed). The existing convex `polygon`
+  path now logs a dev warning when the input vertex list is concave, so
+  the silent convex-hull widening can't return.
+
+  **Breaking — `TilemapColliderConfig` types.** `extractCollisionShapes`
+  previously returned `RectColliderConfig | PolygonColliderConfig`; it
+  now also returns `CircleColliderConfig`, `CapsuleColliderConfig`, and
+  `PolylineColliderConfig` (and Tiled polygons map to `polyline` rather
+  than `polygon`). Code that exhaustively switches on the `type` field
+  needs new arms for `"circle"`, `"capsule"`, `"polyline"`, and should
+  treat the existing `"polygon"` case as covering only pre-converted
+  convex hull data.
+
+  **Breaking — `ColliderShape` adds `polyline` + `axis`.** The physics
+  `ColliderShape` discriminated union gains a `polyline` variant and the
+  `capsule` variant gains an optional `axis: "x" | "y"` field (default
+  `"y"`, matching previous behavior).
+
+### Patch Changes
+
+- [#67](https://github.com/marco-lepore/yage/pull/67) [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Guard the Tiled tileset subtexture cache against duplicate keys, and key cache entries on the tileset image path.
+  - `tiledMapLoaderParser` called `Assets.cache.set(cacheKey, subtex)` unconditionally for every tile on every load — re-loading the same map (or two maps that share a tileset) triggered Pixi's `[Cache] already has key` warning and re-allocated subtextures the cache already held. The loader now skips both the `Texture` construction and the `cache.set` when the key already exists.
+  - The subtexture cache key now derives from the tileset's image path rather than its user-supplied display name, so two tilesets that happen to share a name can't silently return one another's subtextures. The loader and `parseTiledMap` share a `subtextureCacheKey()` helper to stay in lock-step.
+  - Documented the JSON-tileset requirement: tilesets must be exported from Tiled as JSON (`.tsj` / `.json`); the default `.tsx` XML format isn't supported by the loader.
+
+- [#66](https://github.com/marco-lepore/yage/pull/66) [`57a6441`](https://github.com/marco-lepore/yage/commit/57a6441f9ef8b5f7140959d6393930c2326d70e0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix tilemap drift when a sibling layer renders a filter (`hitFlash`, `bloom`, etc.). `TilemapPlugin.install` now runtime-patches `@pixi/tilemap`'s `TilemapPipe.execute` to read the currently-bound uniform group instead of `renderer.globalUniforms._activeUniforms.at(-1)` (which is the per-frame push log and stays populated after a filter pops, so subsequent tilemap draws were picking up the filter's leftover `uWorldTransformMatrix`). The patch also swaps `tilemap.worldTransform` for `tilemap.groupTransform` to match what Pixi's own `SpritePipe` / `GraphicsPipe` do — Pixi populates `worldTransform` as `parentRG.worldTransform × relativeGroupTransform` when the tilemap sits inside a sub-render-group, so combining it with `uWorldTransformMatrix` would double-apply the camera + fit transform.
+
+  The patch is applied once in `TilemapPlugin.install` and is idempotent. Targets `@pixi/tilemap@5.0.2`; the dependency is now pinned to that exact version so a transparent minor bump can't silently change the pipe shape under us.
+
+- Updated dependencies [[`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40), [`8d80f18`](https://github.com/marco-lepore/yage/commit/8d80f1856ac897e8dcaa28543d57ff16750e97f3), [`069d41e`](https://github.com/marco-lepore/yage/commit/069d41e711aeb6218c1438f52a2b098ff8946526), [`90e4d30`](https://github.com/marco-lepore/yage/commit/90e4d3064d9c2804549d62844067cf487d592f0a), [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40), [`57a6441`](https://github.com/marco-lepore/yage/commit/57a6441f9ef8b5f7140959d6393930c2326d70e0), [`0e9f86c`](https://github.com/marco-lepore/yage/commit/0e9f86cc42bb632d38a67c22aa31b6dd21cf82e7), [`a6dda59`](https://github.com/marco-lepore/yage/commit/a6dda59d9328666980c17c937f1ec7bd023efc40), [`7ca5050`](https://github.com/marco-lepore/yage/commit/7ca5050d91479121039af5e4898fc0c220e8d7c3)]:
+  - @yagejs/renderer@0.7.0
+  - @yagejs/core@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes

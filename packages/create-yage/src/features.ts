@@ -11,7 +11,7 @@
 export type FeatureId = "ui" | "save" | "effects";
 
 /** Range used for `@yagejs/*` deps the features add. Mirrors the templates. */
-export const YAGE_RANGE = "^0.6.0";
+export const YAGE_RANGE = "^0.7.0";
 
 /** React versions used by the `ui` feature. Matches `@yagejs/ui-react`. */
 const REACT_RANGE = "^19.0.0";
