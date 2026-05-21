@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { FEATURES, isFeatureId, parseFeatureList } from "./features.js";
+import {
+  FEATURES,
+  isFeatureId,
+  parseFeatureList,
+  YAGE_RANGE,
+} from "./features.js";
 import {
   applyFeaturesToPackageJson,
   applyFeaturesToTsConfig,
@@ -21,9 +26,9 @@ describe("feature registry", () => {
     expect(FEATURES.ui.devDependencies).toHaveProperty("@types/react");
     expect(FEATURES.ui.tsconfigOptions).toEqual({ jsx: "react-jsx" });
 
-    expect(FEATURES.save.dependencies).toEqual({ "@yagejs/save": "^0.6.0" });
+    expect(FEATURES.save.dependencies).toEqual({ "@yagejs/save": YAGE_RANGE });
     expect(FEATURES.effects.dependencies).toEqual({
-      "@yagejs/effects": "^0.6.0",
+      "@yagejs/effects": YAGE_RANGE,
     });
   });
 });
@@ -78,8 +83,8 @@ describe("applyFeaturesToPackageJson", () => {
     );
     expect(result.dependencies).toEqual({
       "@yagejs/core": "^0.6.0",
-      "@yagejs/effects": "^0.6.0",
-      "@yagejs/save": "^0.6.0",
+      "@yagejs/effects": YAGE_RANGE,
+      "@yagejs/save": YAGE_RANGE,
     });
     // Sorted alphabetically.
     expect(Object.keys(result.dependencies ?? {})).toEqual([
@@ -119,8 +124,8 @@ describe("applyFeaturesToPackageJson", () => {
       ["ui"],
     );
     expect(result.dependencies).toMatchObject({
-      "@yagejs/ui": "^0.6.0",
-      "@yagejs/ui-react": "^0.6.0",
+      "@yagejs/ui": YAGE_RANGE,
+      "@yagejs/ui-react": YAGE_RANGE,
       react: "^19.0.0",
       "react-dom": "^19.0.0",
     });
