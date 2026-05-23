@@ -624,7 +624,19 @@ import { SceneRenderTreeKey } from "@yagejs/renderer";
 const tree = this.use(SceneRenderTreeKey);
 const layer = tree.get("world");
 layer.container.addChild(myDisplayObject);
+
+// Also resolvable from a Scene subclass (onEnter onward) — Scene.use is
+// scope-aware, so a scene-scoped effect/mask can be attached at setup:
+class MyScene extends Scene {
+  onEnter() {
+    this.use(SceneRenderTreeKey).fx.addEffect(crt());
+  }
+}
 ```
+
+Don't use `SceneRenderTreeProviderKey` from game code — it's tooling-only
+(inspector/debug/save enumerate trees across scenes). Resolve the tree for
+the current scene with `this.use(SceneRenderTreeKey)`.
 
 `SpriteComponent`/`GraphicsComponent`/etc. take a `layer` option and handle
 this internally. DisplaySystem syncs `Transform` to PixiJS display objects

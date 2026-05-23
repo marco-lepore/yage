@@ -102,7 +102,7 @@ someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = 
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)`. Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `_registerScoped` is a kept internal alias — prefer `registerScoped` in new code.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)` — and via `Scene.use(key)` / `Scene.service(key)` from the scene itself, which are scope-aware (scene scope first, then engine). Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `_registerScoped` is a kept internal alias — prefer `registerScoped` in new code.
 
 ### Math
 

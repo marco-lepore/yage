@@ -177,3 +177,36 @@ Components resolve it the same way as any other service (`this.use(LevelClockKey
 Every key registered this way is automatically unregistered when the scene
 exits (after `onExit` and plugin `afterExit` hooks run), so the next scene
 starts with a clean slate and there's no cross-scene leakage.
+
+### Resolving scene-scoped services from the scene itself
+
+`Scene.use(key)` and `Scene.service(key)` are scope-aware: they check scene
+scope first, then engine scope — exactly like `Component.use`. Plugin
+`beforeEnter` hooks run **before** `onEnter`, so a scene-scoped value is
+already registered by the time `onEnter` fires. That means the obvious call
+works in the obvious place — e.g. attaching a scene-wide effect or mask at
+setup:
+
+```typescript
+import { Scene } from "@yagejs/core";
+import { SceneRenderTreeKey } from "@yagejs/renderer";
+import { crt } from "@yagejs/effects";
+
+class LevelScene extends Scene {
+  override onEnter() {
+    // Resolves this scene's render tree — registered by RendererPlugin's
+    // beforeEnter hook, which ran before onEnter.
+    this.use(SceneRenderTreeKey).fx.addEffect(crt({ scanlines: true }));
+  }
+}
+```
+
+You don't need `SceneRenderTreeProviderKey` for this — that key is for
+cross-scene tooling (inspector, debug overlay, save system) that enumerates
+every scene's tree. Game code reaches its own scene's tree with
+`this.use(SceneRenderTreeKey)`.
+
+For scene-scoped keys, resolve them inside `onEnter()` (or later) via
+`use()` rather than a field initializer with `service()` — the scoped value
+is recreated each time the scene is entered, and a field-level proxy would
+cache the first one.
