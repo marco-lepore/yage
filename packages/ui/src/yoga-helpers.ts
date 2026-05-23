@@ -297,6 +297,10 @@ export function exemptFromOverflowWarning(node: YogaNode): void {
  * Skips intentional overflow: containers with `overflow: "hidden"` (they clip
  * on purpose, e.g. ScrollView) and `position: "absolute"` children (lifted out
  * of flow, free to extend past the parent by design).
+ *
+ * A node's warned-state is cleared once it fits again, so a child that
+ * recovers (e.g. after a resize) and later overflows once more re-warns —
+ * the suppression is per overflow episode, not permanent.
  */
 export function warnChildOverflow(
   parent: YogaNode,
@@ -310,23 +314,42 @@ export function warnChildOverflow(
   const h = parent.getComputedHeight();
   if (!Number.isFinite(w) || !Number.isFinite(h)) return;
 
+  // Children are positioned from the parent's outer-box origin, so the content
+  // box runs from the padding edges inward.
+  const contentLeft = parent.getComputedPadding(Edge.Left);
+  const contentTop = parent.getComputedPadding(Edge.Top);
   const contentRight = w - parent.getComputedPadding(Edge.Right);
   const contentBottom = h - parent.getComputedPadding(Edge.Bottom);
 
   for (const child of children) {
     const cn = child.yogaNode;
-    if (_overflowWarned.has(cn)) continue;
     if (cn.getDisplay() === Display.None) continue;
     if (cn.getPositionType() === PositionType.Absolute) continue;
 
+    const overLeft = contentLeft - cn.getComputedLeft();
+    const overTop = contentTop - cn.getComputedTop();
     const overRight = cn.getComputedLeft() + cn.getComputedWidth() - contentRight;
     const overBottom = cn.getComputedTop() + cn.getComputedHeight() - contentBottom;
-    if (overRight <= OVERFLOW_EPSILON && overBottom <= OVERFLOW_EPSILON) continue;
 
+    if (
+      overLeft <= OVERFLOW_EPSILON &&
+      overTop <= OVERFLOW_EPSILON &&
+      overRight <= OVERFLOW_EPSILON &&
+      overBottom <= OVERFLOW_EPSILON
+    ) {
+      // Fits — clear so a future re-overflow on this node warns again.
+      _overflowWarned.delete(cn);
+      continue;
+    }
+
+    if (_overflowWarned.has(cn)) continue; // already warned this episode
     _overflowWarned.add(cn);
+
     const parts: string[] = [];
-    if (overRight > OVERFLOW_EPSILON) parts.push(`${overRight.toFixed(1)}px horizontally`);
-    if (overBottom > OVERFLOW_EPSILON) parts.push(`${overBottom.toFixed(1)}px vertically`);
+    if (overLeft > OVERFLOW_EPSILON) parts.push(`${overLeft.toFixed(1)}px past the left edge`);
+    if (overRight > OVERFLOW_EPSILON) parts.push(`${overRight.toFixed(1)}px past the right edge`);
+    if (overTop > OVERFLOW_EPSILON) parts.push(`${overTop.toFixed(1)}px past the top edge`);
+    if (overBottom > OVERFLOW_EPSILON) parts.push(`${overBottom.toFixed(1)}px past the bottom edge`);
     devWarn(
       `UI layout: a child overflows its container by ${parts.join(" and ")}. ` +
         `Flex children shrink by default, but this one can't fit — give the ` +
