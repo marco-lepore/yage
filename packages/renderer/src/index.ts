@@ -40,7 +40,7 @@ export type {
 export { TextComponent } from "./TextComponent.js";
 export type { TextComponentOptions, TextData } from "./TextComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
-export { buildTextOptions } from "./internal/textConstruction.js";
+export { buildTextOptions, foldBitmapStyle } from "./internal/textConstruction.js";
 export { linearGradient, radialGradient } from "./gradient.js";
 export type {
   GradientStop,

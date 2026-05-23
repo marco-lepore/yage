@@ -65,6 +65,8 @@ export interface InstallBitmapFontOptions {
   /**
    * Extra `TextStyle` props baked into every glyph (fill, stroke, weight,
    * drop shadow…). `fontFamily` / `fontSize` are managed by this helper.
+   * `fill` defaults to white so per-text `fill` / `tint` can recolour the
+   * glyphs — set it explicitly to bake a fixed colour instead.
    */
   style?: Partial<TextStyle>;
   /**
@@ -100,6 +102,10 @@ export async function installBitmapFont(
   BitmapFont.install({
     name: opts.name,
     style: {
+      // Bake glyphs white by default so per-text `fill` / `tint` (a multiply
+      // over the atlas) can colour them — a black atlas yields `black × tint
+      // = black`. A caller-supplied `style.fill` still wins.
+      fill: 0xffffff,
       ...opts.style,
       fontFamily: family,
       fontSize: opts.size ?? 32,

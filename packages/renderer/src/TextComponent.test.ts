@@ -300,6 +300,27 @@ describe("TextComponent", () => {
     });
   });
 
+  it("setStyle re-folds the bitmap font so a recolour keeps fontFamily", () => {
+    const comp = new TextComponent({
+      text: "score",
+      bitmap: { font: "PressStart", size: 16 },
+      style: { fill: 0xffcc00 },
+    });
+    // Recolour with a raw style that carries no fontFamily.
+    comp.setStyle({ fill: 0xff0000 });
+    expect(comp.text.style).toEqual({
+      fill: 0xff0000,
+      fontFamily: "PressStart",
+      fontSize: 16,
+    });
+  });
+
+  it("setStyle on a canvas Text leaves the raw style untouched", () => {
+    const comp = new TextComponent({ text: "x", style: { fontSize: 10 } });
+    comp.setStyle({ fontSize: 20, fill: 0x00ff00 });
+    expect(comp.text.style).toEqual({ fontSize: 20, fill: 0x00ff00 });
+  });
+
   it("forwards resolution to a canvas Text constructor", () => {
     const comp = new TextComponent({ text: "x", resolution: 3 });
     expect(

@@ -2,6 +2,32 @@ import type { TextOptions } from "pixi.js";
 import type { BitmapTextOption, TextStyle } from "../public-types.js";
 
 /**
+ * Fold a `bitmap` option's `font` / `size` into a `TextStyle`. The object
+ * form of `bitmap` carries the installed font name (→ `fontFamily`) and an
+ * optional glyph `size` (→ `fontSize`); Pixi `BitmapText` reads those off
+ * `style`, so they must be merged in. Returns `style` untouched when `bitmap`
+ * isn't the object form.
+ *
+ * Must run on every path that assigns `style` to the Pixi node — not just
+ * construction. A re-render that re-applies the raw `style` (which has no
+ * `fontFamily`) makes `BitmapText` fall back to the default canvas family, so
+ * `setStyle` / update paths re-run this with their cached `bitmap` option.
+ *
+ * @internal
+ */
+export function foldBitmapStyle(
+  style: TextStyle | undefined,
+  bitmap: BitmapTextOption | undefined,
+): TextStyle | undefined {
+  if (!bitmap || typeof bitmap !== "object") return style;
+  return {
+    ...(style ?? {}),
+    ...(bitmap.font !== undefined ? { fontFamily: bitmap.font } : {}),
+    ...(bitmap.size !== undefined ? { fontSize: bitmap.size } : {}),
+  };
+}
+
+/**
  * Build the shared `Text` / `BitmapText` constructor options and pick the
  * Pixi class for both `TextComponent` and `UIText`. `bitmap` selects
  * `BitmapText`; the object form folds the font name / size into the style.
@@ -21,14 +47,7 @@ export function buildTextOptions(
   resolution: number | undefined,
 ): { options: TextOptions; bitmap: boolean } {
   const useBitmap = bitmap === true || (!!bitmap && typeof bitmap === "object");
-  let resolvedStyle = style;
-  if (bitmap && typeof bitmap === "object") {
-    resolvedStyle = {
-      ...(style ?? {}),
-      ...(bitmap.font !== undefined ? { fontFamily: bitmap.font } : {}),
-      ...(bitmap.size !== undefined ? { fontSize: bitmap.size } : {}),
-    };
-  }
+  const resolvedStyle = foldBitmapStyle(style, bitmap);
   return {
     bitmap: useBitmap,
     options: {

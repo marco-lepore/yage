@@ -770,7 +770,9 @@ const font = await installBitmapFont("fonts/PressStart2P.ttf", {
   size: 16,            // glyph bake size (default 32)
   resolution: 2,       // crisp when upscaled (default 2)
   // chars: [["a","z"],["A","Z"],"0123456789 .,!?"],  // default: alphanumeric
-  // style: { fill: 0xffffff },                        // extra baked style
+  // style: { fill: 0x00ff00 },                        // bake a fixed colour
 });
-entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+entity.add(new TextComponent({ text: "READY", bitmap: { font }, style: { fill: 0xffcc00 } }));
 ```
+
+Glyphs bake **white** by default so a per-text `fill` / `tint` (multiplied over the atlas) can recolour them — a black atlas would yield `black × tint = black`. Set `style.fill` only to bake a fixed colour. A bitmap `TextComponent` / `UIText` keeps its font across `setStyle` / recolour (the `bitmap.font → fontFamily` fold re-runs on update).

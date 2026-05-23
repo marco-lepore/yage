@@ -48,10 +48,23 @@ describe("installBitmapFont()", () => {
     });
     expect(mocks.bitmapFontInstall).toHaveBeenCalledWith({
       name: "PressStart",
-      style: { fontFamily: "PressStart", fontSize: 16 },
+      style: { fill: 0xffffff, fontFamily: "PressStart", fontSize: 16 },
       resolution: 2,
       padding: 4,
     });
+  });
+
+  it("bakes a white atlas by default so per-text fill/tint can colour it", async () => {
+    await installBitmapFont("a.ttf", { name: "A" });
+    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(0xffffff);
+  });
+
+  it("lets an explicit style.fill override the white default", async () => {
+    await installBitmapFont("a.ttf", {
+      name: "A",
+      style: { fill: 0x00ff00 },
+    });
+    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(0x00ff00);
   });
 
   it("defaults size/resolution/padding and merges extra style props", async () => {

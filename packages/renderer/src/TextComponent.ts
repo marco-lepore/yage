@@ -7,7 +7,7 @@ import { BitmapText, Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { buildTextOptions } from "./internal/textConstruction.js";
+import { buildTextOptions, foldBitmapStyle } from "./internal/textConstruction.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -133,7 +133,10 @@ export class TextComponent extends Component {
 
   /** Replace the text style. */
   setStyle(style: TextStyle): void {
-    this.text.style = style;
+    // Re-fold the cached `bitmap.font` → `fontFamily`: the raw `style` has no
+    // `fontFamily`, so a bitmap node would otherwise revert to the default
+    // canvas family on recolour. Cache the raw style (pre-fold) for round-trip.
+    this.text.style = foldBitmapStyle(style, this._bitmap) ?? style;
     this._styleOptions = { ...style };
   }
 

@@ -1,5 +1,5 @@
 import { devWarn } from "@yagejs/core";
-import { buildTextOptions } from "@yagejs/renderer";
+import { buildTextOptions, foldBitmapStyle } from "@yagejs/renderer";
 import type { BitmapTextOption } from "@yagejs/renderer";
 import { BitmapText, Text } from "pixi.js";
 import type { TextStyleOptions, Container } from "pixi.js";
@@ -124,7 +124,10 @@ export class UIText implements UIElement {
   }
 
   setStyle(s: Partial<TextStyleOptions>): void {
-    this.text.style = s;
+    // Re-fold the cached `bitmap.font` → `fontFamily`: the raw style carries no
+    // `fontFamily`, so a bitmap node would otherwise revert to the default
+    // canvas family the first time it re-renders / recolours.
+    this.text.style = foldBitmapStyle(s, this._bitmap) ?? s;
     this.applyTruncateStyle();
     this.yogaNode.markDirty();
   }

@@ -269,6 +269,33 @@ describe("UIText bitmap + resolution", () => {
     });
   });
 
+  it("setStyle re-folds the bitmap font so a recolour keeps fontFamily", () => {
+    const t = new UIText({
+      children: "score",
+      style: { fill: 0xffcc00 },
+      bitmap: { font: "PressStart", size: 8 },
+    });
+    // Recolour with a raw style that carries no fontFamily.
+    t.setStyle({ fill: 0xff0000 });
+    expect(textObject(t).style).toMatchObject({
+      fill: 0xff0000,
+      fontFamily: "PressStart",
+      fontSize: 8,
+    });
+  });
+
+  it("update({ style }) re-folds the bitmap font", () => {
+    const t = new UIText({
+      children: "score",
+      bitmap: { font: "PressStart", size: 8 },
+    });
+    t.update({ style: { fill: 0x0000ff } });
+    expect(textObject(t).style).toMatchObject({
+      fontFamily: "PressStart",
+      fontSize: 8,
+    });
+  });
+
   it("honors PR #67 wrap semantics under a bitmap font", () => {
     const t = new UIText({
       children: "the quick brown fox jumps",

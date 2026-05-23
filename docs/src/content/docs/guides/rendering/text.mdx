@@ -96,6 +96,12 @@ const font = await installBitmapFont("fonts/PressStart2P.ttf", {
 entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
 ```
 
+Glyphs bake **white** by default so a per-text `fill` / `tint`
+(multiplied over the atlas) can recolour them — `new TextComponent({ …,
+bitmap: { font }, style: { fill: 0xffcc00 } })` renders gold. Pass
+`installBitmapFont(…, { style: { fill } })` only when you want to bake a
+fixed colour into the atlas instead.
+
 For a pre-built BMFont (`.fnt`/`.xml` + atlas), preload the
 `bitmapFont("fonts/x.fnt")` handle through a scene's `preload` and pass
 the `fontFamily` declared in the descriptor as `bitmap: { font }`.
