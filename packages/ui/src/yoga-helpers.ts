@@ -4,9 +4,11 @@ import {
   Align,
   Display,
   Edge,
+  Overflow,
   PositionType,
 } from "yoga-layout";
-import type { LayoutProps, LayoutValue } from "./types.js";
+import { isDev, devWarn } from "@yagejs/core";
+import type { LayoutProps, LayoutValue, UIElement } from "./types.js";
 
 type Yoga = typeof YogaDefault;
 
@@ -27,9 +29,22 @@ export function getYoga(): Yoga {
   return yoga;
 }
 
-/** Create a new Yoga node. */
+/**
+ * Create a new Yoga node, pre-configured to match web flexbox defaults.
+ *
+ * Yoga's raw default is `flexShrink: 0`, which diverges from CSS (where flex
+ * items default to `flexShrink: 1`) exactly where text overflow is governed:
+ * a child sharing a row reports its natural size and refuses to give space
+ * back, so it overflows its container instead of shrinking/wrapping. We flip
+ * the default to `1` here so layouts fail gracefully out of the box. Explicit
+ * `flexShrink` props (via {@link applyLayoutProps}) and component-level
+ * overrides (e.g. ScrollView pins its content to `0`) still win because they
+ * run after this.
+ */
 export function createYogaNode(): YogaNode {
-  return getYoga().Node.create();
+  const node = getYoga().Node.create();
+  node.setFlexShrink(1);
+  return node;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,5 +255,83 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
     node.setDisplay(Display.None);
   } else if (props.visible === true) {
     node.setDisplay(Display.Flex);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dev-mode overflow warning
+// ---------------------------------------------------------------------------
+
+/**
+ * Track child nodes we've already warned about so a per-frame layout pass
+ * doesn't spam the console — one warning per offending child for the life of
+ * the node. A child that later fits (e.g. after a resize) simply stops
+ * triggering the check.
+ */
+const _overflowWarned = new WeakSet<YogaNode>();
+
+/**
+ * Container nodes whose children are *meant* to overflow — e.g. a ScrollView's
+ * content panel, which extends past the clipped viewport on the scroll axis by
+ * design. Registered via {@link exemptFromOverflowWarning}.
+ */
+const _overflowExempt = new WeakSet<YogaNode>();
+
+/** Half-pixel slack so sub-pixel rounding in Yoga's layout never trips the check. */
+const OVERFLOW_EPSILON = 0.5;
+
+/**
+ * Opt a container out of the dev-mode overflow warning. Use for nodes that
+ * legitimately let their children spill past the box (scroll content).
+ */
+export function exemptFromOverflowWarning(node: YogaNode): void {
+  _overflowExempt.add(node);
+}
+
+/**
+ * Dev-only: warn when an in-flow child's computed box spills past its
+ * container's content box. Catches the classic "forgot to make it shrinkable"
+ * footgun — a long/i18n label or image that overflows instead of
+ * wrapping/clipping. No-op in production (tree-shaken via {@link isDev}).
+ *
+ * Skips intentional overflow: containers with `overflow: "hidden"` (they clip
+ * on purpose, e.g. ScrollView) and `position: "absolute"` children (lifted out
+ * of flow, free to extend past the parent by design).
+ */
+export function warnChildOverflow(
+  parent: YogaNode,
+  children: readonly UIElement[],
+): void {
+  if (!isDev()) return;
+  if (parent.getOverflow() === Overflow.Hidden) return;
+  if (_overflowExempt.has(parent)) return;
+
+  const w = parent.getComputedWidth();
+  const h = parent.getComputedHeight();
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+
+  const contentRight = w - parent.getComputedPadding(Edge.Right);
+  const contentBottom = h - parent.getComputedPadding(Edge.Bottom);
+
+  for (const child of children) {
+    const cn = child.yogaNode;
+    if (_overflowWarned.has(cn)) continue;
+    if (cn.getDisplay() === Display.None) continue;
+    if (cn.getPositionType() === PositionType.Absolute) continue;
+
+    const overRight = cn.getComputedLeft() + cn.getComputedWidth() - contentRight;
+    const overBottom = cn.getComputedTop() + cn.getComputedHeight() - contentBottom;
+    if (overRight <= OVERFLOW_EPSILON && overBottom <= OVERFLOW_EPSILON) continue;
+
+    _overflowWarned.add(cn);
+    const parts: string[] = [];
+    if (overRight > OVERFLOW_EPSILON) parts.push(`${overRight.toFixed(1)}px horizontally`);
+    if (overBottom > OVERFLOW_EPSILON) parts.push(`${overBottom.toFixed(1)}px vertically`);
+    devWarn(
+      `UI layout: a child overflows its container by ${parts.join(" and ")}. ` +
+        `Flex children shrink by default, but this one can't fit — give the ` +
+        `container more room, set maxWidth/maxHeight, allow the content to ` +
+        `wrap, or use truncate: "clip" | "ellipsis" on text.`,
+    );
   }
 }

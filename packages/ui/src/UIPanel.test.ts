@@ -658,4 +658,87 @@ describe("UIPanel", () => {
       expect(panel._node.yogaNode.getChildCount()).toBe(0);
     });
   });
+
+  describe("web flexbox defaults", () => {
+    it("shrinks flex children to fit by default (web default, not Yoga's 0)", () => {
+      // Two 80px children in a 100px row want 160px total. With the web
+      // `flexShrink: 1` default they give space back and compress to 50px
+      // each; under Yoga's raw `flexShrink: 0` they'd stay 80px and overflow.
+      const panel = new UIPanel({ direction: "row", width: 100 });
+      const a = panel.panel({ width: 80, height: 20 });
+      const b = panel.panel({ width: 80, height: 20 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      expect(a.yogaNode.getComputedWidth()).toBe(50);
+      expect(b.yogaNode.getComputedWidth()).toBe(50);
+    });
+
+    it("explicit flexShrink: 0 still opts a child out of shrinking", () => {
+      const panel = new UIPanel({ direction: "row", width: 100 });
+      const fixed = panel.panel({ width: 80, height: 20, flexShrink: 0 });
+      const flex = panel.panel({ width: 80, height: 20 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      // `fixed` keeps its 80px; only `flex` absorbs the overflow → 20px.
+      expect(fixed.yogaNode.getComputedWidth()).toBe(80);
+      expect(flex.yogaNode.getComputedWidth()).toBe(20);
+    });
+  });
+
+  describe("dev-mode overflow warning", () => {
+    it("warns once when an in-flow child overflows the content box", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const panel = new UIPanel({ direction: "row", width: 100 });
+      // flexShrink: 0 + width 200 → can't fit the 100px row, overflows by 100.
+      panel.panel({ width: 200, height: 20, flexShrink: 0 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+      panel._node.applyLayout(); // second pass must not re-warn the same node
+
+      const overflowWarns = warn.mock.calls.filter((c) =>
+        String(c[0]).includes("overflows its container"),
+      );
+      expect(overflowWarns).toHaveLength(1);
+      warn.mockRestore();
+    });
+
+    it("does not warn when the container clips with overflow: hidden", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const panel = new UIPanel({
+        direction: "row",
+        width: 100,
+        overflow: "hidden",
+      });
+      panel.panel({ width: 200, height: 20, flexShrink: 0 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      const overflowWarns = warn.mock.calls.filter((c) =>
+        String(c[0]).includes("overflows its container"),
+      );
+      expect(overflowWarns).toHaveLength(0);
+      warn.mockRestore();
+    });
+
+    it("does not warn for an absolute-positioned child outside the box", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const panel = new UIPanel({ direction: "row", width: 100, height: 50 });
+      panel.panel({ position: "absolute", left: 90, width: 80, height: 20 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      const overflowWarns = warn.mock.calls.filter((c) =>
+        String(c[0]).includes("overflows its container"),
+      );
+      expect(overflowWarns).toHaveLength(0);
+      warn.mockRestore();
+    });
+  });
 });

@@ -34,7 +34,11 @@ import type {
   ScrollViewProps,
 } from "./types.js";
 import type { Anchor } from "./types.js";
-import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
+import {
+  createYogaNode,
+  applyLayoutProps,
+  warnChildOverflow,
+} from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
@@ -204,6 +208,8 @@ export class PanelNode implements UIContainerElement {
 
       child.applyLayout?.();
     }
+
+    warnChildOverflow(this.yogaNode, this._children);
 
     const w = this.yogaNode.getComputedWidth();
     const h = this.yogaNode.getComputedHeight();

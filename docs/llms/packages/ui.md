@@ -72,6 +72,10 @@ const autoBtn = panel.button("Auto-sized", { onClick: () => {} }); // shrinks to
 btn.setText("Loading...");
 btn.setDisabled(true);
 
+// Long/i18n labels: a fixed-size button can't grow, so keep the label on one
+// line and ellipsize it instead of letting it spill out of the frame.
+panel.button("A very long label that won't fit", { width: 120, truncate: "ellipsis" });
+
 // Button is a flex container — addElement on it for icon + label rows etc.
 btn.addElement(new UIImage({ texture: iconTex, width: 16, height: 16 }));
 
@@ -97,6 +101,26 @@ import { UIProgressBar } from "@yagejs/ui";
 const bar = new UIProgressBar({ width: 100, height: 16, value: 0.75 }); // value 0–1
 row.addElement(bar);
 ```
+
+## Flex layout defaults
+
+Layout tracks **web flexbox defaults**, not Yoga's raw ones — the divergence
+that otherwise makes text/children overflow instead of shrinking:
+
+- **`flexShrink: 1` by default** (Yoga's raw default is `0`). Every element
+  gives space back when its row/column is too small, so a `Text` sharing a row
+  with a sibling shrinks and wraps inside the box instead of spilling past it.
+  Opt a child out with `flexShrink: 0` (e.g. a fixed icon that must keep its
+  size); explicit `flexShrink` always wins.
+- **Dev-mode overflow warning.** When an in-flow child's computed box still
+  spills past its container (e.g. a `flexShrink: 0` child too big to fit, or a
+  wrapped label taller than a fixed-height button), a `console.warn` fires once
+  for that node. Silenced in production builds (`NODE_ENV=production`), and for
+  intentional overflow — `overflow: "hidden"` containers, `position:
+  "absolute"` children, and ScrollView content.
+
+Fixes: give the container more room, set `maxWidth`/`maxHeight`, let the content
+wrap, or use `truncate: "clip" | "ellipsis"` on text (and `UIButton`).
 
 ## UIText: bitmap & resolution
 

@@ -12,7 +12,11 @@ import type {
   UIContainerElement,
   UIElement,
 } from "./types.js";
-import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
+import {
+  createYogaNode,
+  applyLayoutProps,
+  exemptFromOverflowWarning,
+} from "./yoga-helpers.js";
 import { PanelNode } from "./UIPanel.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
@@ -140,6 +144,10 @@ export class ScrollViewNode implements UIContainerElement {
     // The content sizes to its children on the scroll axis and overflows the
     // viewport — never shrink it to fit the clipped box.
     this.content.yogaNode.setFlexShrink(0);
+    // Content overflowing the (clipped, scrollable) viewport is the whole
+    // point — exempt it from the dev overflow warning so scroll views don't
+    // spam it every frame.
+    exemptFromOverflowWarning(this.content.yogaNode);
     this.yogaNode.insertChild(this.content.yogaNode, 0);
 
     if (props.background) {

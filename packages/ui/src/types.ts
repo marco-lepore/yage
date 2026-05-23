@@ -264,6 +264,15 @@ export interface UIButtonProps
   hoverBackground?: BackgroundOptions;
   pressBackground?: BackgroundOptions;
   textStyle?: Partial<TextStyle>;
+  /**
+   * Overflow behavior for the auto-wrapped string label, forwarded to the
+   * internal {@link UITextProps.truncate}. Omitted, the label wraps to the
+   * button's content width (and an auto-height button grows to fit). Set
+   * `"clip"` / `"ellipsis"` to keep the label on a single line so it can't
+   * spill out of a fixed-size button — the safe choice for variable-length
+   * (i18n) labels.
+   */
+  truncate?: "clip" | "ellipsis";
   disabled?: boolean;
 }
 

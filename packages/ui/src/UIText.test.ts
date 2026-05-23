@@ -131,7 +131,7 @@ vi.mock("pixi.js", () => ({
   BitmapText: mocks.MockBitmapText,
 }));
 
-import Yoga, { Direction } from "yoga-layout";
+import Yoga, { Direction, FlexDirection } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIText } from "./UIText.js";
 
@@ -231,6 +231,37 @@ describe("UIText.measure", () => {
     const out = layoutInContainer(t, 100);
     expect(out.height).toBeGreaterThan(16); // wrapped again
     expect(renderedText(t)).toBe("the quick brown fox jumps");
+  });
+});
+
+describe("UIText in a flex row (web shrink default)", () => {
+  it("shrinks and wraps instead of overflowing a row shared with a sibling", () => {
+    // The issue's repro: a Text next to a fixed-size sibling in a 200px row.
+    // Under Yoga's raw flexShrink: 0 the text is measured against the full
+    // 200px (ignoring the icon), keeps that width, and spills 40px past the
+    // row. With the web flexShrink: 1 default it gives the space back, wraps,
+    // and stays inside the box.
+    const root = Yoga.Node.create();
+    root.setFlexDirection(FlexDirection.Row);
+    root.setWidth(200);
+
+    const icon = Yoga.Node.create();
+    icon.setWidth(40);
+    icon.setHeight(40);
+    root.insertChild(icon, 0);
+
+    const text = new UIText({ children: "the quick brown fox jumps over" });
+    root.insertChild(text.yogaNode, 1);
+
+    root.calculateLayout(200, undefined, Direction.LTR);
+
+    const right =
+      text.yogaNode.getComputedLeft() + text.yogaNode.getComputedWidth();
+    expect(right).toBeLessThanOrEqual(200); // no overflow past the row
+    expect(text.yogaNode.getComputedHeight()).toBeGreaterThan(16); // wrapped
+
+    root.removeChild(text.yogaNode);
+    root.free();
   });
 });
 

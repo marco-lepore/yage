@@ -53,6 +53,30 @@ ui.add(new UIPanel({
 | `layer` | `string` | — | Render layer name |
 | `visible` | `boolean` | `true` | Initial visibility |
 
+## Flexbox defaults & overflow
+
+YAGE's UI is Yoga-flexbox-based, but it tracks **web flexbox defaults** rather
+than Yoga's raw ones — the divergence that otherwise causes text and children
+to overflow instead of shrinking gracefully:
+
+- **Flex children shrink by default (`flexShrink: 1`).** Yoga's raw default is
+  `0`, which means a child reports its natural size and refuses to give space
+  back — so a `Text` sharing a row with, say, an icon would spill past the
+  container instead of wrapping. With the web default, children compress to fit
+  and text wraps inside its slot. Set `flexShrink: 0` on a child that must keep
+  its size (a fixed icon, a pinned sidebar); an explicit value always wins.
+
+- **A dev-mode warning catches the leftovers.** When an in-flow child still
+  overflows its container — a `flexShrink: 0` child too large to fit, or a
+  wrapped label taller than a *fixed-height* button — YAGE logs a one-time
+  `console.warn` pointing at the offending node. It's compiled out of
+  production builds and stays quiet for intentional overflow (`overflow:
+  "hidden"` containers, `position: "absolute"` children, and scroll views).
+
+When a warning fires, fix it by giving the container more room, setting
+`maxWidth`/`maxHeight`, letting the content wrap, or using
+`truncate: "clip" | "ellipsis"` on the text (see [Text](#text)) or button.
+
 ## Anchoring
 
 The `Anchor` enum positions panels relative to the screen:
@@ -247,6 +271,21 @@ Omitting `width` and/or `height` lets Yoga shrink the button to fit its
 content, with a small default padding around the label. Pass explicit
 dimensions when you need a fixed-size button (e.g. for a grid of
 equally-sized toolbar buttons).
+
+For a fixed-size button whose label might be longer than the box — especially
+with variable-length (i18n) strings — pass `truncate: "clip" | "ellipsis"` to
+keep the label on a single line so it can't spill past the frame:
+
+```typescript
+panel.button("A label that is too long to fit", {
+  width: 120,
+  truncate: "ellipsis", // → "A label that is…"
+});
+```
+
+Without `truncate`, a label wider than the button wraps to multiple lines; an
+auto-height button grows to fit, but a button with a *fixed* height can't — so
+either give it room to grow or truncate the label.
 
 `UIButton` is itself a flex container — `.addElement()` accepts any
 `UIElement` (text, image, nested panels) for icon + label compositions:
