@@ -356,11 +356,33 @@ describe("ScrollViewNode", () => {
       sv.addElement(new PanelNode({ height: 30, width: 200 })); // 240 total
     }
     parent.addElement(sv);
-    parent.addElement(new PanelNode({ height: 20 })); // fixed footer sibling
+    const footer = new PanelNode({ height: 20 }); // fixed footer sibling
+    parent.addElement(footer);
     parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     parent.applyLayout();
 
     expect(sv.maxScroll).toBeGreaterThan(0);
+    // The fixed footer must NOT shrink: a flexGrow scroll viewport zeroes its
+    // own main-axis basis (web `flex: 1`) so it absorbs the free space instead
+    // of letting its overflowing content over-subscribe the column. Without
+    // that, the now-shrinkable footer would compress below 20px.
+    expect(footer.yogaNode.getComputedHeight()).toBe(20);
+    expect(sv.yogaNode.getComputedHeight()).toBe(80); // 100 parent − 20 footer
+    parent.destroy();
+  });
+
+  it("an explicit-height viewport keeps its height (basis stays auto)", () => {
+    // Regression guard for the basis fix: `flex-basis: 0` would override an
+    // explicit height per CSS, so it must only apply to the flexGrow case.
+    const parent = new PanelNode({ direction: "column", width: 200, height: 200 });
+    const sv = new ScrollViewNode({ height: 120 });
+    for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 }));
+    parent.addElement(sv);
+    parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    parent.applyLayout();
+
+    expect(sv.yogaNode.getComputedHeight()).toBe(120);
+    expect(sv.maxScroll).toBe(240 - 120);
     parent.destroy();
   });
 

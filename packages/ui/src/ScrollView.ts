@@ -6,6 +6,7 @@ import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { MaskHandle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
+  LayoutValue,
   Padding,
   ScrollbarOptions,
   ScrollViewProps,
@@ -29,6 +30,11 @@ interface ResolvedScrollbar {
   radius: number;
   minThumb: number;
   margin: number;
+}
+
+/** A dimension is "explicit" when pinned to a concrete value (px, %, vh/vw). */
+function isExplicitSize(v: LayoutValue | undefined): boolean {
+  return v !== undefined && v !== "auto";
 }
 
 const SCROLLBAR_DEFAULTS = {
@@ -90,6 +96,13 @@ export class ScrollViewNode implements UIContainerElement {
   private _maxScroll = 0;
   private _lastNotified = 0;
 
+  // Whether the caller pinned the viewport's main-axis size explicitly, and
+  // whether they asked it to grow. Drives the scroll-axis flex-basis (see
+  // `_reconcileScrollBasis`). Updated on construct + `update()`.
+  private _explicitWidth = false;
+  private _explicitHeight = false;
+  private _hasFlexGrow = false;
+
   // Cached computed metrics from the last layout pass so wheel/drag feels
   // immediate instead of waiting a frame for the next `applyLayout`.
   private _vw = 0;
@@ -134,6 +147,10 @@ export class ScrollViewNode implements UIContainerElement {
     this.yogaNode.setFlexDirection(
       this.vertical ? FlexDirection.Column : FlexDirection.Row,
     );
+    this._explicitWidth = isExplicitSize(props.width);
+    this._explicitHeight = isExplicitSize(props.height);
+    this._hasFlexGrow = (props.flexGrow ?? 0) > 0;
+    this._reconcileScrollBasis();
     this._applyGutter();
 
     this.content = new PanelNode({
@@ -211,6 +228,31 @@ export class ScrollViewNode implements UIContainerElement {
    */
   get scrollbarGutter(): number {
     return this._sb.enabled ? this._sb.thickness + this._sb.margin * 2 : 0;
+  }
+
+  /**
+   * Drive the scroll-axis flex-basis. A scroll viewport's main-axis size must
+   * come from an explicit size or a flex parent — never from its clipped,
+   * overflowing content. Yoga's auto basis resolves to the content size; now
+   * that flex children shrink by default (web alignment), that inflated basis
+   * makes the column over-subscribed and forces *sibling* elements (a fixed
+   * toolbar/footer) to shrink to make room. When the caller sizes the viewport
+   * via `flexGrow` and gives no explicit main-axis size, zero the basis — the
+   * web `flex: 1` idiom — so growth (not content) drives the size and siblings
+   * keep theirs. Otherwise leave it auto so an explicit `height`/`width` wins.
+   *
+   * Note `flex-basis: 0` overrides the main-axis size property per CSS, so it
+   * must NOT be set when the caller pinned an explicit size.
+   */
+  private _reconcileScrollBasis(): void {
+    const explicitMain = this.vertical
+      ? this._explicitHeight
+      : this._explicitWidth;
+    if (this._hasFlexGrow && !explicitMain) {
+      this.yogaNode.setFlexBasis(0);
+    } else {
+      this.yogaNode.setFlexBasisAuto();
+    }
   }
 
   /**
@@ -441,6 +483,11 @@ export class ScrollViewNode implements UIContainerElement {
 
     applyLayoutProps(this.yogaNode, props);
     this.yogaNode.setOverflow(Overflow.Hidden);
+    if (props.width !== undefined) this._explicitWidth = isExplicitSize(props.width);
+    if (props.height !== undefined)
+      this._explicitHeight = isExplicitSize(props.height);
+    if (props.flexGrow !== undefined) this._hasFlexGrow = props.flexGrow > 0;
+    this._reconcileScrollBasis();
     // Re-reserve the gutter: covers a scrollbar style/visibility change, a
     // direction flip (edges swap), and any padding reset by applyLayoutProps.
     this._applyGutter();
