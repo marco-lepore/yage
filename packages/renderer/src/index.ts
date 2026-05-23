@@ -24,6 +24,8 @@ export type {
   TextureInput,
   TextureResource,
   TextureSliceOptions,
+  WebFontHandle,
+  WebFontResource,
 } from "./public-types.js";
 
 // Plugin
@@ -40,7 +42,13 @@ export type {
 export { TextComponent } from "./TextComponent.js";
 export type { TextComponentOptions, TextData } from "./TextComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
-export { buildTextOptions, foldBitmapStyle } from "./internal/textConstruction.js";
+export {
+  buildTextOptions,
+  foldBitmapStyle,
+  resolveTextStyle,
+  getDefaultTextStyle,
+  setDefaultTextStyle,
+} from "./internal/textConstruction.js";
 export { linearGradient, radialGradient } from "./gradient.js";
 export type {
   GradientStop,
@@ -132,8 +140,9 @@ export {
   sliceTextureFrames,
   spritesheet,
   texture,
+  webFont,
 } from "./assets.js";
-export type { InstallBitmapFontOptions } from "./assets.js";
+export type { InstallBitmapFontOptions, WebFontOptions } from "./assets.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";

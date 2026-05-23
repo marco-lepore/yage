@@ -1,4 +1,5 @@
 import { Container } from "pixi.js";
+import type { BitmapTextOption, TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
 import type {
@@ -7,6 +8,7 @@ import type {
   UIContainerElement,
   UIElement,
   UIButtonProps,
+  UITextProps,
 } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
@@ -61,6 +63,8 @@ export class UIButton implements UIContainerElement {
   private bgRenderer: BackgroundRenderer;
   private _children: UIElement[] = [];
   private _label: UIText | undefined;
+  private _labelStyle: Partial<TextStyle> | undefined;
+  private _labelBitmap: BitmapTextOption | undefined;
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;
@@ -102,10 +106,10 @@ export class UIButton implements UIContainerElement {
     // Auto-wrap a string child in a UIText so the builder API and React
     // JSX-string children both produce a centered label without callers
     // having to construct a UIText themselves.
+    this._labelStyle = p.textStyle;
+    this._labelBitmap = p.bitmap;
     if (typeof p.children === "string" && p.children.length > 0) {
-      this._label = new UIText(
-        p.textStyle ? { children: p.children, style: p.textStyle } : { children: p.children },
-      );
+      this._label = new UIText(this._labelProps(p.children));
       this.addElement(this._label);
     }
 
@@ -229,6 +233,15 @@ export class UIButton implements UIContainerElement {
     else this.applyBg(this.bgOpts);
   }
 
+  /** Build the auto-wrapped label's props from the cached style / bitmap. */
+  private _labelProps(children: string): UITextProps {
+    return {
+      children,
+      ...(this._labelStyle ? { style: this._labelStyle } : {}),
+      ...(this._labelBitmap !== undefined ? { bitmap: this._labelBitmap } : {}),
+    };
+  }
+
   setText(s: string): void {
     if (this._label) {
       this._label.setText(s);
@@ -236,7 +249,7 @@ export class UIButton implements UIContainerElement {
     }
     // Promote: caller constructed without a string child, but now wants a
     // label — create one and add it as the first child.
-    this._label = new UIText({ children: s });
+    this._label = new UIText(this._labelProps(s));
     this.addElement(this._label);
   }
 

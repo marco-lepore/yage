@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
@@ -132,11 +132,19 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga, { Direction } from "yoga-layout";
+import { setDefaultTextStyle } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
+import { setUIDefaultTextStyle } from "./text-defaults.js";
 import { UIText } from "./UIText.js";
 
 beforeAll(() => {
   setYoga(Yoga);
+});
+
+afterEach(() => {
+  setDefaultTextStyle(undefined);
+  setUIDefaultTextStyle(undefined);
+  vi.restoreAllMocks();
 });
 
 /**
@@ -387,5 +395,50 @@ describe("UIText bitmap + resolution", () => {
       expect.stringContaining("construction-only"),
     );
     warn.mockRestore();
+  });
+});
+
+describe("UIText default text style", () => {
+  it("layers the UI default over the renderer default; per-text wins", () => {
+    setDefaultTextStyle({ fontFamily: "Renderer", fill: 0x111111, fontSize: 10 });
+    setUIDefaultTextStyle({ fontFamily: "UI", fontSize: 14 });
+    const t = new UIText({ children: "hi", style: { fill: 0xff0000 } });
+    expect(textObject(t).style).toMatchObject({
+      fontFamily: "UI", // UI default beats renderer default
+      fill: 0xff0000, // per-text beats both
+      fontSize: 14,
+    });
+  });
+
+  it("keeps the UI default under a recolour via setStyle", () => {
+    setUIDefaultTextStyle({ fontFamily: "UI" });
+    const t = new UIText({ children: "hi", style: { fill: 0xff0000 } });
+    t.setStyle({ fill: 0x00ff00 });
+    expect(textObject(t).style).toMatchObject({
+      fontFamily: "UI",
+      fill: 0x00ff00,
+    });
+  });
+});
+
+describe("UIText bitmap-in-style warning", () => {
+  it("warns when `bitmap` is nested inside `style`", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    new UIText({
+      children: "hi",
+      // Mistake: bitmap folded into style instead of a sibling prop.
+      style: { fill: 0xffffff, bitmap: { font: "A" } } as never,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("`bitmap` was found inside `style`"),
+    );
+  });
+
+  it("does not warn for a correct sibling bitmap prop", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    new UIText({ children: "hi", bitmap: { font: "A" }, style: { fill: 0xffffff } });
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("`bitmap` was found inside `style`"),
+    );
   });
 });

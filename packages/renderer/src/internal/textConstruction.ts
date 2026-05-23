@@ -1,5 +1,55 @@
+import { devWarn } from "@yagejs/core";
 import type { TextOptions } from "pixi.js";
 import type { BitmapTextOption, TextStyle } from "../public-types.js";
+
+/**
+ * Engine-level default text style, applied as the base under every per-text
+ * `style`. Set by `RendererPlugin` from `RendererConfig.defaultTextStyle` so
+ * consumers don't have to reach into pixi's `TextStyle.defaultTextStyle`.
+ * `@yagejs/ui` layers its own override on top via `buildTextOptions`'s
+ * `extraDefault`. `undefined` means "no default — use pixi's".
+ *
+ * @internal
+ */
+let _defaultTextStyle: TextStyle | undefined;
+
+/** @internal Set the renderer-level default text style (RendererPlugin). */
+export function setDefaultTextStyle(style: TextStyle | undefined): void {
+  _defaultTextStyle = style ? { ...style } : undefined;
+}
+
+/** @internal Current renderer-level default text style, if any. */
+export function getDefaultTextStyle(): TextStyle | undefined {
+  return _defaultTextStyle;
+}
+
+/** Merge two partial styles, returning `undefined` when both are empty. */
+function mergeStyles(
+  base: TextStyle | undefined,
+  over: TextStyle | undefined,
+): TextStyle | undefined {
+  if (!base) return over;
+  if (!over) return base;
+  return { ...base, ...over };
+}
+
+/**
+ * Resolve the final style assigned to a Pixi text node: engine default (+ an
+ * optional caller default, e.g. the UIPlugin override) as the base, then the
+ * per-text `style`, then the `bitmap` font/size fold on top. Used by both
+ * construction and the `setStyle` update paths so a re-render keeps the
+ * resolved default + bitmap font.
+ *
+ * @internal
+ */
+export function resolveTextStyle(
+  style: TextStyle | undefined,
+  bitmap: BitmapTextOption | undefined,
+  extraDefault?: TextStyle | undefined,
+): TextStyle | undefined {
+  const base = mergeStyles(_defaultTextStyle, extraDefault);
+  return mergeStyles(base, foldBitmapStyle(style, bitmap));
+}
 
 /**
  * Fold a `bitmap` option's `font` / `size` into a `TextStyle`. The object
@@ -36,7 +86,8 @@ export function foldBitmapStyle(
  * use `installBitmapFont({ resolution })`.
  *
  * Centralised so the two text classes can't drift on the Pixi-v8
- * resolution-gating rule.
+ * resolution-gating rule. `extraDefault` layers a caller-owned default
+ * (the UIPlugin override) between the engine default and the per-text style.
  *
  * @internal
  */
@@ -45,9 +96,17 @@ export function buildTextOptions(
   style: TextStyle | undefined,
   bitmap: BitmapTextOption | undefined,
   resolution: number | undefined,
+  extraDefault?: TextStyle | undefined,
 ): { options: TextOptions; bitmap: boolean } {
+  if (style && "bitmap" in style) {
+    devWarn(
+      "Text: `bitmap` was found inside `style` — it's a sibling prop, not a " +
+        "style key, and is ignored there. Move it out: " +
+        "`{ style: { … }, bitmap: { font } }`.",
+    );
+  }
   const useBitmap = bitmap === true || (!!bitmap && typeof bitmap === "object");
-  const resolvedStyle = foldBitmapStyle(style, bitmap);
+  const resolvedStyle = resolveTextStyle(style, bitmap, extraDefault);
   return {
     bitmap: useBitmap,
     options: {

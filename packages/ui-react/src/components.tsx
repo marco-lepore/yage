@@ -118,6 +118,12 @@ export interface ButtonProps extends LayoutProps, PointerEventProps {
   /** Style applied to the auto-wrapped text node when `children` is a string. */
   textStyle?: Partial<TextStyle>;
   /**
+   * Bitmap font for the auto-wrapped label when `children` is a string /
+   * number. Forwarded to the inner `<Text>`. No effect when `children` is a
+   * React element — set `bitmap` on that `<Text>` directly.
+   */
+  bitmap?: BitmapTextOption;
+  /**
    * Overflow behavior for the auto-wrapped label when `children` is a
    * string / number. Forwarded straight to the inner `<Text>` so a
    * fixed-width button can ellipsize long labels instead of wrapping or
@@ -370,13 +376,14 @@ export function UIText(props: TextProps): React.JSX.Element {
  *   dropped (this reconciler has no `createTextInstance`).
  */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, bg, hoverBg, pressBg, textStyle, truncate, ...rest } = props;
+  const { children, bg, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } = props;
   const isPrimitiveLabel =
     typeof children === "string" || typeof children === "number";
   const content = isPrimitiveLabel
     ? <UIText
         {...(textStyle ? { style: textStyle } : {})}
         {...(truncate ? { truncate } : {})}
+        {...(bitmap !== undefined ? { bitmap } : {})}
       >
         {String(children)}
       </UIText>

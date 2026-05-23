@@ -87,6 +87,9 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  // Distinct subclass so tests can assert a bitmap label was constructed.
+  class MockBitmapText extends MockText {}
+
   class MockSprite extends MockContainer {
     texture: unknown;
     width = 0;
@@ -147,13 +150,14 @@ const { mocks } = vi.hoisted(() => {
     ) {}
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText, MockSprite, MockNineSliceSprite, MockTilingSprite, MockRectangle } };
+  return { mocks: { MockContainer, MockGraphics, MockText, MockBitmapText, MockSprite, MockNineSliceSprite, MockTilingSprite, MockRectangle } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Graphics: mocks.MockGraphics,
   Text: mocks.MockText,
+  BitmapText: mocks.MockBitmapText,
   Sprite: mocks.MockSprite,
   NineSliceSprite: mocks.MockNineSliceSprite,
   TilingSprite: mocks.MockTilingSprite,
@@ -225,6 +229,31 @@ describe("UIButton", () => {
     const btn = new UIButton({ children: "Hello", width: 100, height: 30 });
     btn.setText("World");
     // No throw; label updated internally
+  });
+
+  it("forwards bitmap to the auto-wrapped label", () => {
+    const btn = new UIButton({
+      children: "PLAY",
+      bitmap: { font: "PressStart", size: 8 },
+      textStyle: { fill: 0xffcc00 },
+    });
+    const label = btn.children[0] as UIText;
+    const text = label.displayObject as unknown as InstanceType<
+      typeof mocks.MockBitmapText
+    > & { style: Record<string, unknown> };
+    expect(text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(text.style).toMatchObject({
+      fill: 0xffcc00,
+      fontFamily: "PressStart",
+      fontSize: 8,
+    });
+  });
+
+  it("forwards bitmap to a label created later via setText", () => {
+    const btn = new UIButton({ bitmap: { font: "PressStart" } });
+    btn.setText("SCORE");
+    const label = btn.children[0] as UIText;
+    expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);
   });
 
   it("visibility can be toggled", () => {

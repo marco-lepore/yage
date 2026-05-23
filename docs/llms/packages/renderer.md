@@ -245,6 +245,10 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 `resolution` is ignored when `bitmap` is set — bitmap resolution is fixed when the font is baked (see `installBitmapFont({ resolution })`).
 
+**Engine default text style.** `new RendererPlugin({ defaultTextStyle: { fontFamily, fill, resolution } })` sets an app-wide base under every `TextComponent` / `UIText` `style` (per-text values win) — no need to import pixi to touch `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })` layers a UI-only override on top (precedence: per-text style > UIPlugin default > RendererPlugin default > pixi default). The default also re-applies on `setStyle`, so a recolour keeps it.
+
+**`bitmap` is a sibling of `style`, not a style key.** Folding it into `style` (`style: { …, bitmap: { font } }`) is ignored and emits a dev warning — keep it top-level: `{ style: { … }, bitmap: { font } }`.
+
 ### AnimatedSpriteComponent
 
 ```ts
@@ -743,7 +747,7 @@ Effects and masks survive `SaveService.saveSnapshot` / `loadSnapshot` round-trip
 ## Asset Factories
 
 ```ts
-import { texture, spritesheet, renderAsset, bitmapFont } from "@yagejs/renderer";
+import { texture, spritesheet, renderAsset, bitmapFont, webFont } from "@yagejs/renderer";
 
 // Returns AssetHandle<Texture> for preloading
 const heroTex = texture("hero.png");
@@ -753,10 +757,15 @@ const asset = renderAsset("ui-atlas.json");
 // registers under the fontFamily in the descriptor; pass that name as the
 // `bitmap.font` discriminator on TextComponent / UIText.
 const pixelFont = bitmapFont("fonts/press-start.fnt");
+// AssetHandle<FontFace[]> — a plain .ttf/.woff/.woff2 for canvas Text. The
+// face registers under `family` (pass that as `style.fontFamily`); omit to let
+// Pixi derive it from the file name. Preload it so the face is ready before the
+// first draw — Pixi caches fallback metrics on first paint otherwise.
+const uiFont = webFont("fonts/Inter.woff2", { family: "Inter" });
 
 // Use in Scene.preload:
 class MyScene extends Scene {
-  readonly preload = [heroTex, sheet, pixelFont];
+  readonly preload = [heroTex, sheet, pixelFont, uiFont];
 }
 ```
 

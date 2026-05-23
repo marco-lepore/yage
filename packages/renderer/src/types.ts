@@ -1,5 +1,6 @@
 import { ServiceKey } from "@yagejs/core";
 import type { RendererPlugin } from "./RendererPlugin.js";
+import type { TextStyle } from "./public-types.js";
 
 /** Service key for the RendererPlugin. */
 export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
@@ -72,4 +73,12 @@ export interface RendererConfig {
    * preset. Default: `false`.
    */
   pixelArtPreset?: boolean;
+  /**
+   * Engine-level default text style, applied as the base under every
+   * `TextComponent` / `UIText` `style` (per-text values win). Lets you set an
+   * app-wide font / fill / resolution without importing pixi to touch
+   * `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })`
+   * can layer a UI-only override on top.
+   */
+  defaultTextStyle?: TextStyle;
 }

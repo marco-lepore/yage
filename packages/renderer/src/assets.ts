@@ -9,6 +9,7 @@ import type {
   TextureInput,
   TextureResource,
   TextureSliceOptions,
+  WebFontHandle,
 } from "./public-types.js";
 
 /** Create a typed asset handle for a texture. */
@@ -37,6 +38,38 @@ export function renderAsset<T = unknown>(path: string): RendererAsset<T> {
  */
 export function bitmapFont(path: string): BitmapFontHandle {
   return new AssetHandle("bitmap-font", path);
+}
+
+/** Options for {@link webFont}. */
+export interface WebFontOptions {
+  /**
+   * `@font-face` family the loaded face registers under — the name you then
+   * pass as `style.fontFamily` on `Text` / `UIText` / `TextComponent`.
+   * Omit to let Pixi derive it from the file name.
+   */
+  family?: string;
+}
+
+/**
+ * Create a typed asset handle for a plain web font (a `.ttf`/`.woff`/`.woff2`
+ * loaded for canvas `Text`, the canvas sibling of {@link bitmapFont}). Resolve
+ * it through a scene's `preload` so the face is registered before the first
+ * draw — Pixi caches fallback metrics on first paint otherwise, so a font that
+ * loads late never applies.
+ *
+ * ```ts
+ * class MenuScene extends Scene {
+ *   readonly preload = [webFont("fonts/Inter.woff2", { family: "Inter" })];
+ *   // …then: new TextComponent({ text: "Play", style: { fontFamily: "Inter" } })
+ * }
+ * ```
+ */
+export function webFont(path: string, opts?: WebFontOptions): WebFontHandle {
+  return new AssetHandle(
+    "web-font",
+    path,
+    opts?.family !== undefined ? { family: opts.family } : undefined,
+  );
 }
 
 /** Options for {@link installBitmapFont}. */

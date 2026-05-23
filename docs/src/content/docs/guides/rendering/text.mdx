@@ -108,6 +108,58 @@ the `fontFamily` declared in the descriptor as `bitmap: { font }`.
 Bitmap text honours the same Yoga word-wrap / `truncate` behaviour as
 canvas text inside a `UIPanel`.
 
+## Loading a web font (canvas `Text`)
+
+For plain canvas text in a custom font, use `webFont` — the canvas
+sibling of `bitmapFont`. Preload the handle so the face registers
+**before the first draw**; Pixi caches fallback metrics on first paint,
+so a font that loads late never applies.
+
+```typescript
+import { webFont, TextComponent, Scene } from "@yagejs/renderer";
+
+class MenuScene extends Scene {
+  readonly preload = [webFont("fonts/Inter.woff2", { family: "Inter" })];
+
+  onEnter() {
+    this.spawn(/* … */).add(
+      new TextComponent({ text: "Play", style: { fontFamily: "Inter" } }),
+    );
+  }
+}
+```
+
+The `family` you pass is what you set as `style.fontFamily`; omit it to
+let Pixi derive the family from the file name.
+
+## Engine-level default text style
+
+To set an app-wide font / fill without importing pixi to poke
+`TextStyle.defaultTextStyle`, pass `defaultTextStyle` to `RendererPlugin`
+— it's the base under every `TextComponent` / `UIText` `style`, and
+per-text values still win:
+
+```typescript
+new RendererPlugin({
+  width: 800,
+  height: 600,
+  defaultTextStyle: { fontFamily: "Inter", fill: 0xf8fafc },
+});
+```
+
+`UIPlugin({ defaultTextStyle })` layers a UI-only override on top, so
+widgets can use a different font than free-positioned `TextComponent`.
+Precedence: per-text `style` → `UIPlugin` default → `RendererPlugin`
+default → pixi default. The default re-applies on `setStyle`, so a
+recolour keeps it.
+
+:::caution[`bitmap` is a sibling of `style`, not a style key]
+Fold `bitmap` into `style` (`style: { …, bitmap: { font } }`) and it's
+silently ignored — the text renders as canvas. Keep it top-level:
+`{ style: { … }, bitmap: { font } }`. YAGE emits a dev-mode warning if it
+spots a `bitmap` key inside `style`.
+:::
+
 ## The Pixi v8 `resolution` gotcha
 
 In Pixi v8, `resolution` is a `Text` **constructor option, not a

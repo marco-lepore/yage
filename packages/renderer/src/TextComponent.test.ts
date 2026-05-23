@@ -86,6 +86,7 @@ vi.mock("pixi.js", () => ({
 
 import { Transform } from "@yagejs/core";
 import { TextComponent } from "./TextComponent.js";
+import { setDefaultTextStyle } from "./internal/textConstruction.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
@@ -94,6 +95,7 @@ import {
 describe("TextComponent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setDefaultTextStyle(undefined);
   });
 
   it("creates a pixi Text with the supplied content", () => {
@@ -273,6 +275,19 @@ describe("TextComponent", () => {
     const b = comp.serialize();
     expect(a.style).not.toBe(b.style);
     expect(a.style).toEqual(b.style);
+  });
+
+  it("applies the engine default text style as a base, per-text style wins", () => {
+    setDefaultTextStyle({ fontFamily: "Inter", fill: 0x111111 });
+    const comp = new TextComponent({ text: "x", style: { fill: 0xff0000 } });
+    expect(comp.text.style).toEqual({ fontFamily: "Inter", fill: 0xff0000 });
+  });
+
+  it("keeps the engine default under a recolour via setStyle", () => {
+    setDefaultTextStyle({ fontFamily: "Inter" });
+    const comp = new TextComponent({ text: "x", style: { fill: 0xff0000 } });
+    comp.setStyle({ fill: 0x00ff00 });
+    expect(comp.text.style).toEqual({ fontFamily: "Inter", fill: 0x00ff00 });
   });
 
   it("constructs a canvas Text by default", () => {

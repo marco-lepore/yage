@@ -46,6 +46,12 @@ export type BitmapFontResource = BitmapFont;
 /** A typed asset handle for a bitmap font resource. */
 export type BitmapFontHandle = AssetHandle<BitmapFontResource>;
 
+/** The `FontFace`s registered when a web font (`.ttf`/`.woff`) is loaded. */
+export type WebFontResource = FontFace[];
+
+/** A typed asset handle for a web font loaded for canvas `Text`. */
+export type WebFontHandle = AssetHandle<WebFontResource>;
+
 /**
  * Opt into bitmap-font text rendering instead of canvas-rasterised `Text`.
  *

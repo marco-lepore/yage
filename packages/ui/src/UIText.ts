@@ -1,6 +1,7 @@
 import { devWarn } from "@yagejs/core";
-import { buildTextOptions, foldBitmapStyle } from "@yagejs/renderer";
+import { buildTextOptions, resolveTextStyle } from "@yagejs/renderer";
 import type { BitmapTextOption } from "@yagejs/renderer";
+import { getUIDefaultTextStyle } from "./text-defaults.js";
 import { BitmapText, Text } from "pixi.js";
 import type { TextStyleOptions, Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
@@ -59,6 +60,7 @@ export class UIText implements UIElement {
       props.style,
       props.bitmap,
       props.resolution,
+      getUIDefaultTextStyle(),
     );
     this.text = bitmap ? new BitmapText(options) : new Text(options);
     this.applyTruncateStyle();
@@ -124,10 +126,12 @@ export class UIText implements UIElement {
   }
 
   setStyle(s: Partial<TextStyleOptions>): void {
-    // Re-fold the cached `bitmap.font` → `fontFamily`: the raw style carries no
-    // `fontFamily`, so a bitmap node would otherwise revert to the default
-    // canvas family the first time it re-renders / recolours.
-    this.text.style = foldBitmapStyle(s, this._bitmap) ?? s;
+    // Re-resolve against engine + UI defaults and the cached `bitmap.font`
+    // fold: the raw style carries none of those, so a bitmap node would
+    // otherwise revert to the default canvas family the first time it
+    // re-renders / recolours, and the UI default would be dropped.
+    this.text.style =
+      resolveTextStyle(s, this._bitmap, getUIDefaultTextStyle()) ?? s;
     this.applyTruncateStyle();
     this.yogaNode.markDirty();
   }

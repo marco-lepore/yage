@@ -7,6 +7,11 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based UI. Supports b
 ```ts
 import { UIPlugin } from "@yagejs/ui";
 engine.use(new UIPlugin());
+
+// Optional: an app-wide default style for UI text (UIText + auto-wrapped
+// Button/Checkbox labels). Layered over RendererConfig.defaultTextStyle;
+// per-text `style` still wins.
+engine.use(new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xffffff } }));
 ```
 
 ## UIPanel
@@ -113,7 +118,9 @@ new UIText({ children: "READY", bitmap: { font: "PressStart", size: 16 } });
 new UIText({ children: "HUD", resolution: window.devicePixelRatio });
 ```
 
-Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obtain a font name for `bitmap: { font }`.
+Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obtain a font name for `bitmap: { font }`. `bitmap` is a sibling prop of `style`, not a style key — nesting it (`style: { …, bitmap }`) is ignored and warns in dev.
+
+`UIButton` and the React `<Button>` forward a `bitmap` prop to their auto-wrapped string label: `new UIButton({ children: "PLAY", bitmap: { font: "PressStart" } })` / `<Button bitmap={{ font: "PressStart" }}>PLAY</Button>`. (No effect when the child is a composed element — set `bitmap` on that `<Text>` directly.)
 
 **`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property — setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass `resolution` explicitly per text for crisp canvas output without a prototype patch, or use `bitmap` for pixel-perfect rendering. `resolution` is ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
 

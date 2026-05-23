@@ -264,6 +264,12 @@ export interface UIButtonProps
   hoverBackground?: BackgroundOptions;
   pressBackground?: BackgroundOptions;
   textStyle?: Partial<TextStyle>;
+  /**
+   * Bitmap font for the auto-wrapped string label (forwarded to the inner
+   * `UIText`). No effect when `children` is a composed element — set `bitmap`
+   * on the `UIText` directly in that case.
+   */
+  bitmap?: BitmapTextOption;
   disabled?: boolean;
 }
 
