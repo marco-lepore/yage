@@ -330,6 +330,16 @@ describe("TextComponent", () => {
     });
   });
 
+  it("warns when `bitmap` is nested in style on the setStyle path", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const comp = new TextComponent({ text: "x" });
+    comp.setStyle({ fill: 0xff0000, bitmap: { font: "A" } } as never);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("`bitmap` was found inside `style`"),
+    );
+    warn.mockRestore();
+  });
+
   it("setStyle on a canvas Text leaves the raw style untouched", () => {
     const comp = new TextComponent({ text: "x", style: { fontSize: 10 } });
     comp.setStyle({ fontSize: 20, fill: 0x00ff00 });

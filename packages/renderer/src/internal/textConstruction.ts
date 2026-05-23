@@ -47,6 +47,13 @@ export function resolveTextStyle(
   bitmap: BitmapTextOption | undefined,
   extraDefault?: TextStyle | undefined,
 ): TextStyle | undefined {
+  if (style && "bitmap" in style) {
+    devWarn(
+      "Text: `bitmap` was found inside `style` — it's a sibling prop, not a " +
+        "style key, and is ignored there. Move it out: " +
+        "`{ style: { … }, bitmap: { font } }`.",
+    );
+  }
   const base = mergeStyles(_defaultTextStyle, extraDefault);
   return mergeStyles(base, foldBitmapStyle(style, bitmap));
 }
@@ -98,13 +105,8 @@ export function buildTextOptions(
   resolution: number | undefined,
   extraDefault?: TextStyle | undefined,
 ): { options: TextOptions; bitmap: boolean } {
-  if (style && "bitmap" in style) {
-    devWarn(
-      "Text: `bitmap` was found inside `style` — it's a sibling prop, not a " +
-        "style key, and is ignored there. Move it out: " +
-        "`{ style: { … }, bitmap: { font } }`.",
-    );
-  }
+  // `bitmap`-in-`style` warning lives in `resolveTextStyle` (the shared
+  // chokepoint), so construction and the `setStyle` paths all surface it.
   const useBitmap = bitmap === true || (!!bitmap && typeof bitmap === "object");
   const resolvedStyle = resolveTextStyle(style, bitmap, extraDefault);
   return {

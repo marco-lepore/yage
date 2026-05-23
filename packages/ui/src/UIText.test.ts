@@ -434,6 +434,15 @@ describe("UIText bitmap-in-style warning", () => {
     );
   });
 
+  it("warns when `bitmap` is nested in style on the setStyle path", () => {
+    const t = new UIText({ children: "hi" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    t.setStyle({ fill: 0xff0000, bitmap: { font: "A" } } as never);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("`bitmap` was found inside `style`"),
+    );
+  });
+
   it("does not warn for a correct sibling bitmap prop", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     new UIText({ children: "hi", bitmap: { font: "A" }, style: { fill: 0xffffff } });
