@@ -220,7 +220,13 @@ Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `Qu
 Plugin keys: `RendererKey`, `RendererAdapterKey` (cross-package pointer-input contract defined in core; registered by `RendererPlugin` or a foreign renderer, consumed by `InputPlugin`), `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 
 Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`) are per-scene —
-`this.use(key)` resolves the correct scene's instance automatically.
+`this.use(key)` resolves the correct scene's instance automatically. This
+works from both `Component` code and from a `Scene` subclass: `Scene.use(key)`
+/ `Scene.service(key)` are scope-aware, so `this.use(SceneRenderTreeKey)`
+resolves from `onEnter` onward (scene-scoped values are registered by plugin
+`beforeEnter` hooks, which run before `onEnter`). Don't reach for the
+provider key (`SceneRenderTreeProviderKey`) from game code — that's tooling-only
+(inspector, debug, save) for enumerating trees across scenes.
 
 ### Scene render layers
 

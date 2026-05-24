@@ -6,6 +6,8 @@ import {
   QueryCacheKey,
   EventBusKey,
   SceneManagerKey,
+  LoggerKey,
+  ServiceKey,
 } from "./EngineContext.js";
 import { SceneManager } from "./SceneManager.js";
 import { QueryCache } from "./QueryCache.js";
@@ -458,5 +460,89 @@ describe("Scene", () => {
       expect(child.name).toBe("hp");
       expect(scene.findByKey("hp-bar-01")).toBe(child);
     });
+  });
+});
+
+interface FakeService {
+  tag: string;
+}
+const EngineScopedKey = new ServiceKey<FakeService>("test.engineScoped");
+const SceneScopedKey = new ServiceKey<FakeService>("test.sceneScoped", {
+  scope: "scene",
+});
+
+class ResolverScene extends Scene {
+  readonly name = "resolver";
+  // Expose protected resolution helpers for testing.
+  pubUse<T>(key: ServiceKey<T>): T {
+    return this.use(key);
+  }
+  pubService<T extends object>(key: ServiceKey<T>): T {
+    return this.service(key);
+  }
+}
+
+describe("Scene service resolution", () => {
+  it("use() resolves engine-scoped services from the context", () => {
+    const { ctx } = createContext();
+    const svc: FakeService = { tag: "engine" };
+    ctx.register(EngineScopedKey, svc);
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    expect(scene.pubUse(EngineScopedKey)).toBe(svc);
+  });
+
+  it("use() resolves scene-scoped services registered via registerScoped", () => {
+    const { ctx } = createContext();
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    const tree: FakeService = { tag: "scene-tree" };
+    scene.registerScoped(SceneScopedKey, tree);
+    // This is the issue #93 case: resolvable from the scene itself, the way
+    // onEnter would, without reaching for a provider key.
+    expect(scene.pubUse(SceneScopedKey)).toBe(tree);
+  });
+
+  it("use() prefers scene scope over engine scope for the same key", () => {
+    const { ctx } = createContext();
+    const engineVal: FakeService = { tag: "engine" };
+    const sceneVal: FakeService = { tag: "scene" };
+    ctx.register(SceneScopedKey, engineVal);
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    scene.registerScoped(SceneScopedKey, sceneVal);
+    expect(scene.pubUse(SceneScopedKey)).toBe(sceneVal);
+  });
+
+  it("use() throws a helpful message for an unregistered scene-scoped key", () => {
+    const { ctx } = createContext();
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    expect(() => scene.pubUse(SceneScopedKey)).toThrow(
+      /Scene-scoped service "test\.sceneScoped" is not registered for scene "resolver"/,
+    );
+  });
+
+  it("use() warns when a scene-scoped key falls back to engine scope", () => {
+    const { ctx } = createContext();
+    const warn = vi.fn();
+    ctx.register(LoggerKey, { warn } as never);
+    const engineVal: FakeService = { tag: "engine-fallback" };
+    ctx.register(SceneScopedKey, engineVal);
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    // No registerScoped → only the engine registration exists.
+    expect(scene.pubUse(SceneScopedKey)).toBe(engineVal);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("service() proxy is scope-aware", () => {
+    const { ctx } = createContext();
+    const scene = new ResolverScene();
+    scene._setContext(ctx);
+    const tree: FakeService = { tag: "scene-tree" };
+    scene.registerScoped(SceneScopedKey, tree);
+    const proxy = scene.pubService(SceneScopedKey);
+    expect(proxy.tag).toBe("scene-tree");
   });
 });
