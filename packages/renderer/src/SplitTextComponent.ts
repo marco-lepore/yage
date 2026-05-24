@@ -261,6 +261,8 @@ export class SplitTextComponent extends Component {
 
   onDestroy(): void {
     this.splitText.removeFromParent();
-    this.splitText.destroy();
+    // `{ children: true }` so the per-line / word / char display objects that
+    // `split()` parented are destroyed too (not freed by the default destroy).
+    this.splitText.destroy({ children: true });
   }
 }

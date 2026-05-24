@@ -28,6 +28,27 @@ export interface TextSegments {
 export type SplitListener = (segments: TextSegments) => void;
 
 /**
+ * Top-level shallow equality for two style objects. A new style literal of the
+ * same shape (the common React re-render case) compares equal, so we skip the
+ * expensive re-split; a nested object passed by fresh reference (e.g. a new
+ * `dropShadow` literal) compares unequal and re-splits, which is correct-but-
+ * conservative.
+ */
+function shallowEqualStyle(
+  a: Partial<TextStyle> | undefined,
+  b: Partial<TextStyle> | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  const ar = a as Record<string, unknown>;
+  const br = b as Record<string, unknown>;
+  return ak.every((k) => ar[k] === br[k]);
+}
+
+/**
  * UI element that renders text split into per-character / per-word / per-line
  * display objects for animated text — typewriter reveals, per-letter colour /
  * wave, staggered line entrances. The UI sibling of `@yagejs/renderer`'s
@@ -54,6 +75,14 @@ export class UISplitText implements UIElement {
   private _source: string;
   // Cached so `setStyle` keeps selecting the right Pixi class (canvas vs bitmap).
   private readonly _bitmap: boolean | undefined;
+  // Whether Pixi auto-splits on text/style change. When false, `setText` /
+  // `setStyle` clear the segments without rebuilding (the split is deferred to
+  // `resplit()`), so emitting `onSplit` then would hand listeners empty arrays.
+  private readonly _autoSplit: boolean;
+  // Last style applied — `update()` re-applies (and re-splits) only on an
+  // actual content change, so a parent re-render passing a fresh style literal
+  // of the same shape doesn't re-split and reset in-flight glyph animations.
+  private _appliedStyle: Partial<TextStyle> | undefined;
   private readonly pointerEvents: PointerEvents;
   private readonly _splitListeners = new Set<SplitListener>();
 
@@ -61,6 +90,8 @@ export class UISplitText implements UIElement {
     this.yogaNode = createYogaNode();
     this._source = props.children ?? "";
     this._bitmap = props.bitmap;
+    this._autoSplit = props.autoSplit ?? true;
+    this._appliedStyle = props.style;
 
     const { options, bitmap } = buildTextOptions(
       this._source,
@@ -149,14 +180,18 @@ export class UISplitText implements UIElement {
   private emitSplit(): void {
     if (this._splitListeners.size === 0) return;
     const segments = this.segments;
-    for (const listener of this._splitListeners) listener(segments);
+    // Snapshot: a listener may unsubscribe (or subscribe) itself while running.
+    for (const listener of [...this._splitListeners]) listener(segments);
   }
 
   setText(s?: string): void {
     this._source = s ?? "";
     this.splitText.text = this._source;
     this.yogaNode.markDirty();
-    this.emitSplit();
+    // With autoSplit off, Pixi cleared the segments without rebuilding — the
+    // real split is deferred to resplit(), which emits then. Emitting now would
+    // hand listeners empty arrays.
+    if (this._autoSplit) this.emitSplit();
   }
 
   setStyle(style: Partial<TextStyle>): void {
@@ -167,8 +202,9 @@ export class UISplitText implements UIElement {
       undefined,
     );
     this.splitText.style = options.style ?? style;
+    this._appliedStyle = style;
     this.yogaNode.markDirty();
-    this.emitSplit();
+    if (this._autoSplit) this.emitSplit();
   }
 
   /** Re-split now (only needed when constructed with `autoSplit: false`). */
@@ -214,7 +250,11 @@ export class UISplitText implements UIElement {
     if (p.children !== undefined && p.children !== this._source) {
       this.setText(p.children);
     }
-    if (p.style) {
+    // Re-style (and thus re-split) only on an actual content change. The React
+    // reconciler runs update() on every commit with a fresh style object, so
+    // without this guard a parent re-render would re-split every frame and
+    // reset any in-flight per-glyph animation.
+    if (p.style && !shallowEqualStyle(p.style, this._appliedStyle)) {
       this.setStyle(p.style);
     }
     if (p.charAnchor !== undefined) this.charAnchor = p.charAnchor;
@@ -232,7 +272,10 @@ export class UISplitText implements UIElement {
     this._splitListeners.clear();
     clearConsumeInput(this.splitText);
     this.yogaNode.free();
-    this.splitText.destroy();
+    // `{ children: true }` so the per-line / word / char display objects that
+    // `split()` parented are destroyed too — they're real children, not freed
+    // by the default leaf destroy.
+    this.splitText.destroy({ children: true });
   }
 
   /**

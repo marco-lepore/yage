@@ -29,8 +29,10 @@ const { mocks } = vi.hoisted(() => {
     removeFromParent(): void {
       this.parent?.removeChild(this);
     }
-    destroy(): void {
+    destroyOpts: unknown;
+    destroy(opts?: unknown): void {
       this.destroyed = true;
+      this.destroyOpts = opts;
       this.removeFromParent();
     }
   }
@@ -243,6 +245,10 @@ describe("SplitTextComponent", () => {
     comp.onDestroy?.();
     expect(obj.parent).toBeNull();
     expect(obj.destroyed).toBe(true);
+    // segment children freed too, not leaked
+    expect((obj as unknown as { destroyOpts?: unknown }).destroyOpts).toEqual({
+      children: true,
+    });
   });
 
   it("serialize/fromSnapshot round-trips text, style, bitmap, anchors, layer", () => {

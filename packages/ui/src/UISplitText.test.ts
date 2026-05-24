@@ -30,8 +30,10 @@ const { mocks } = vi.hoisted(() => {
         this.parent = null;
       }
     }
-    destroy(): void {
+    destroyOpts: unknown;
+    destroy(opts?: unknown): void {
       this.destroyed = true;
+      this.destroyOpts = opts;
       this.removeFromParent();
     }
   }
@@ -230,6 +232,49 @@ describe("UISplitText", () => {
     t.lineAnchor = { x: 1, y: 0 };
     expect(t.splitText.lineAnchor).toEqual({ x: 1, y: 0 });
     expect((t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls).toBe(before);
+  });
+
+  it("setText with autoSplit:false defers onSplit (no empty-segment emit)", () => {
+    const t = new UISplitText({ children: "hi", autoSplit: false });
+    let fired = 0;
+    t.onSplit(() => fired++);
+    t.setText("new content");
+    expect(fired).toBe(0); // deferred — would otherwise fire with empty chars
+    t.resplit();
+    expect(fired).toBe(1); // the real split notifies
+  });
+
+  it("update() skips re-style (no re-split/emit) when style content is unchanged", () => {
+    const t = new UISplitText({ children: "hi", style: { fill: 0xffffff } });
+    let fired = 0;
+    t.onSplit(() => fired++);
+    const before = (t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls;
+    // Fresh object literal, same content — the React re-render case.
+    t.update({ style: { fill: 0xffffff } });
+    expect(fired).toBe(0);
+    expect((t.splitText as InstanceType<typeof mocks.MockSplitText>).splitCalls).toBe(before);
+    // A genuine change does re-style and notify.
+    t.update({ style: { fill: 0xff0000 } });
+    expect(fired).toBe(1);
+  });
+
+  it("emitSplit tolerates a listener unsubscribing itself mid-notify", () => {
+    const t = new UISplitText({ children: "hi" });
+    const order: string[] = [];
+    const offA = t.onSplit(() => {
+      order.push("a");
+      offA();
+    });
+    t.onSplit(() => order.push("b"));
+    t.setText("x");
+    expect(order).toEqual(["a", "b"]); // b not skipped despite a's self-removal
+  });
+
+  it("destroy passes { children: true } to free the segment display objects", () => {
+    const t = new UISplitText({ children: "hi" });
+    const obj = t.splitText as unknown as { destroyOpts?: unknown };
+    t.destroy();
+    expect(obj.destroyOpts).toEqual({ children: true });
   });
 
   it("visible toggles display object and yoga display", () => {
