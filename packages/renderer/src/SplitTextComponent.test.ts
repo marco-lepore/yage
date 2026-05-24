@@ -302,4 +302,12 @@ describe("SplitTextComponent", () => {
     style.fill = 0xff0000;
     expect(comp.serialize().style).toEqual({ fontSize: 14 });
   });
+
+  it("decouples a cached object-form anchor from the caller's object", () => {
+    const charAnchor = { x: 0.5, y: 0.5 };
+    const comp = new SplitTextComponent({ text: "x", charAnchor });
+    charAnchor.x = 0.1;
+    charAnchor.y = 0.9;
+    expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
+  });
 });

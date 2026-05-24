@@ -11,6 +11,15 @@ import type { TextStyle } from "./public-types.js";
  */
 export type SegmentAnchor = number | { x: number; y: number };
 
+/**
+ * Clone an anchor for the serialize cache so a caller mutating the object form
+ * after passing it can't drift our snapshot away from the value that was set.
+ * Mirrors the shallow-clone of `style` / `bitmap`.
+ */
+function cloneAnchor(anchor: SegmentAnchor): SegmentAnchor {
+  return typeof anchor === "object" ? { ...anchor } : anchor;
+}
+
 /** Options for creating a {@link SplitTextComponent}. */
 export interface SplitTextComponentOptions {
   /** The text string to render and segment. */
@@ -127,9 +136,12 @@ export class SplitTextComponent extends Component {
     // our cached snapshot away from the live pixi state.
     if (options.style) this._styleOptions = { ...options.style };
     if (options.bitmap !== undefined) this._bitmap = options.bitmap;
-    if (options.charAnchor !== undefined) this._charAnchor = options.charAnchor;
-    if (options.wordAnchor !== undefined) this._wordAnchor = options.wordAnchor;
-    if (options.lineAnchor !== undefined) this._lineAnchor = options.lineAnchor;
+    if (options.charAnchor !== undefined)
+      this._charAnchor = cloneAnchor(options.charAnchor);
+    if (options.wordAnchor !== undefined)
+      this._wordAnchor = cloneAnchor(options.wordAnchor);
+    if (options.lineAnchor !== undefined)
+      this._lineAnchor = cloneAnchor(options.lineAnchor);
     if (options.autoSplit !== undefined) this._autoSplit = options.autoSplit;
 
     if (options.visible !== undefined) this.splitText.visible = options.visible;
@@ -180,7 +192,7 @@ export class SplitTextComponent extends Component {
   /** Transform origin for each character (normalized 0–1). */
   set charAnchor(anchor: SegmentAnchor) {
     this.splitText.charAnchor = anchor;
-    this._charAnchor = anchor;
+    this._charAnchor = cloneAnchor(anchor);
   }
   get charAnchor(): SegmentAnchor {
     return this.splitText.charAnchor;
@@ -189,7 +201,7 @@ export class SplitTextComponent extends Component {
   /** Transform origin for each word (normalized 0–1). */
   set wordAnchor(anchor: SegmentAnchor) {
     this.splitText.wordAnchor = anchor;
-    this._wordAnchor = anchor;
+    this._wordAnchor = cloneAnchor(anchor);
   }
   get wordAnchor(): SegmentAnchor {
     return this.splitText.wordAnchor;
@@ -198,7 +210,7 @@ export class SplitTextComponent extends Component {
   /** Transform origin for each line (normalized 0–1). */
   set lineAnchor(anchor: SegmentAnchor) {
     this.splitText.lineAnchor = anchor;
-    this._lineAnchor = anchor;
+    this._lineAnchor = cloneAnchor(anchor);
   }
   get lineAnchor(): SegmentAnchor {
     return this.splitText.lineAnchor;
