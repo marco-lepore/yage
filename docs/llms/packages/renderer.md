@@ -252,6 +252,30 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 
 **`bitmap` is a sibling of `style`, not a style key.** Folding it into `style` (`style: { …, bitmap: true }`) is ignored and emits a dev warning — keep it top-level: `{ style: { … }, bitmap: true }`.
 
+### SplitTextComponent
+
+Per-glyph / animated text — typewriter reveals, per-letter colour/wave, staggered line entrances. Wraps Pixi v8's **experimental** `SplitText` / `SplitBitmapText`; exposes the text as arrays of individually transformable display objects. Transform-synced and layer-attached like `TextComponent`.
+
+```ts
+import { SplitTextComponent } from "@yagejs/renderer";
+
+const title = entity.add(new SplitTextComponent({
+  text: "GAME OVER",
+  style: { fontSize: 48, fill: 0xffffff },
+  bitmap: true,                     // optional — SplitBitmapText (font via style.fontFamily)
+  charAnchor: 0.5,                  // segment pivots (0–1): char / word / lineAnchor
+  // autoSplit: false,              // batch text/style edits, then resplit()
+}));
+
+title.chars;   // (Text | BitmapText)[] — one per glyph
+title.words;   // Container[] — word groups
+title.lines;   // Container[] — line groups
+
+title.chars.forEach((c, i) => { c.alpha = 0; tween(c, { alpha: 1 }, { delay: i * 0.05 }); });
+```
+
+API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `tint` / `alpha`, `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/tint/alpha/visible; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
+
 ### AnimatedSpriteComponent
 
 ```ts

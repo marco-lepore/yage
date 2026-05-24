@@ -7,6 +7,7 @@ import { SpriteComponent } from "./SpriteComponent.js";
 import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { TextComponent } from "./TextComponent.js";
+import { SplitTextComponent } from "./SplitTextComponent.js";
 import type { Container } from "pixi.js";
 
 /**
@@ -23,6 +24,7 @@ export class DisplaySystem extends System {
   private graphicsQuery!: QueryResult;
   private animatedSpriteQuery!: QueryResult;
   private textQuery!: QueryResult;
+  private splitTextQuery!: QueryResult;
   private cameraQuery!: QueryResult;
   private treeProvider!: SceneRenderTreeProvider;
 
@@ -35,6 +37,7 @@ export class DisplaySystem extends System {
       AnimatedSpriteComponent,
     ]);
     this.textQuery = queryCache.register([Transform, TextComponent]);
+    this.splitTextQuery = queryCache.register([Transform, SplitTextComponent]);
     this.cameraQuery = queryCache.register([CameraComponent]);
     this.treeProvider = context.resolve(SceneRenderTreeProviderKey);
   }
@@ -67,6 +70,13 @@ export class DisplaySystem extends System {
       const text = entity.get(TextComponent);
       if (!text.enabled) continue;
       this.syncDisplayObject(transform, text.text);
+    }
+
+    for (const entity of this.splitTextQuery) {
+      const transform = entity.get(Transform);
+      const splitText = entity.get(SplitTextComponent);
+      if (!splitText.enabled) continue;
+      this.syncDisplayObject(transform, splitText.splitText);
     }
 
     // 2. Apply per-layer depth keys. Runs AFTER transform sync so
