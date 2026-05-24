@@ -386,6 +386,22 @@ describe("ScrollViewNode", () => {
     parent.destroy();
   });
 
+  it("respects an explicit flexBasis prop instead of overriding it", () => {
+    // _reconcileScrollBasis must not clobber a caller-supplied flexBasis. With
+    // basis 60 (and no grow), the viewport's main size resolves to 60, not its
+    // content size (240) — proving the explicit prop survived reconciliation.
+    const parent = new PanelNode({ direction: "column", width: 200, height: 300 });
+    const sv = new ScrollViewNode({ flexBasis: 60 });
+    for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 }));
+    parent.addElement(sv);
+    parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    parent.applyLayout();
+
+    expect(sv.yogaNode.getComputedHeight()).toBe(60);
+    expect(sv.maxScroll).toBe(240 - 60);
+    parent.destroy();
+  });
+
   it("survives destroy()", () => {
     const { sv } = buildScrollView(3);
     expect(() => sv.destroy()).not.toThrow();

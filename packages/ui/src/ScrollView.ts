@@ -102,6 +102,8 @@ export class ScrollViewNode implements UIContainerElement {
   private _explicitWidth = false;
   private _explicitHeight = false;
   private _hasFlexGrow = false;
+  // A caller-supplied `flexBasis` prop is authoritative — never override it.
+  private _explicitFlexBasis = false;
 
   // Cached computed metrics from the last layout pass so wheel/drag feels
   // immediate instead of waiting a frame for the next `applyLayout`.
@@ -150,6 +152,7 @@ export class ScrollViewNode implements UIContainerElement {
     this._explicitWidth = isExplicitSize(props.width);
     this._explicitHeight = isExplicitSize(props.height);
     this._hasFlexGrow = (props.flexGrow ?? 0) > 0;
+    this._explicitFlexBasis = props.flexBasis !== undefined;
     this._reconcileScrollBasis();
     this._applyGutter();
 
@@ -242,9 +245,11 @@ export class ScrollViewNode implements UIContainerElement {
    * keep theirs. Otherwise leave it auto so an explicit `height`/`width` wins.
    *
    * Note `flex-basis: 0` overrides the main-axis size property per CSS, so it
-   * must NOT be set when the caller pinned an explicit size.
+   * must NOT be set when the caller pinned an explicit size. A caller-supplied
+   * `flexBasis` prop is authoritative and left untouched.
    */
   private _reconcileScrollBasis(): void {
+    if (this._explicitFlexBasis) return;
     const explicitMain = this.vertical
       ? this._explicitHeight
       : this._explicitWidth;
@@ -487,6 +492,7 @@ export class ScrollViewNode implements UIContainerElement {
     if (props.height !== undefined)
       this._explicitHeight = isExplicitSize(props.height);
     if (props.flexGrow !== undefined) this._hasFlexGrow = props.flexGrow > 0;
+    if (props.flexBasis !== undefined) this._explicitFlexBasis = true;
     this._reconcileScrollBasis();
     // Re-reserve the gutter: covers a scrollbar style/visibility change, a
     // direction flip (edges swap), and any padding reset by applyLayoutProps.
