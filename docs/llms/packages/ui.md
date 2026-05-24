@@ -104,23 +104,45 @@ row.addElement(bar);
 
 ## Flex layout defaults
 
-Layout tracks **web flexbox defaults**, not Yoga's raw ones — the divergence
-that otherwise makes text/children overflow instead of shrinking:
+Layout uses **Yoga's raw defaults**, notably **`flexShrink: 0`** — an element
+keeps its natural main-axis size and *overflows* a too-small row/column rather
+than being crushed. This is *not* the web's `flexShrink: 1`: Yoga has no
+`min-width: auto` content floor, so a global `1` crushes fixed-size siblings and
+collapses scroll content (a ScrollView's content must exceed its viewport to
+scroll). Shrinking and wrapping are therefore **opt-in**:
 
-- **`flexShrink: 1` by default** (Yoga's raw default is `0`). Every element
-  gives space back when its row/column is too small, so a `Text` sharing a row
-  with a sibling shrinks and wraps inside the box instead of spilling past it.
-  Opt a child out with `flexShrink: 0` (e.g. a fixed icon that must keep its
-  size); explicit `flexShrink` always wins.
-- **Dev-mode overflow warning.** When an in-flow child's computed box still
-  spills past its container (e.g. a `flexShrink: 0` child too big to fit, or a
-  wrapped label taller than a fixed-height button), a `console.warn` fires once
-  for that node. Silenced in production builds (`NODE_ENV=production`), and for
-  intentional overflow — `overflow: "hidden"` containers, `position:
-  "absolute"` children, and ScrollView content.
+- **`flexShrink: 1`** — the child gives space back when the line is too small
+  (text then re-wraps). Explicit `flexShrink` always wins.
+- **`flex: <number>`** — shorthand for `flexGrow: <n>` + `flexShrink: 1` +
+  `flexBasis: 0` (CSS `flex: <n>`). Use it for a "fill the remaining space"
+  child — e.g. the text column between a fixed icon and a fixed button: it sizes
+  from a `0` basis instead of claiming its content width, so it won't push
+  siblings and its text wraps cleanly. **Prefer `flex: 1` over `flexGrow: 1`**:
+  `flexGrow: 1` alone keeps `flexBasis: auto` (content width) and overflows.
 
-Fixes: give the container more room, set `maxWidth`/`maxHeight`, let the content
-wrap, or use `truncate: "clip" | "ellipsis"` on text (and `UIButton`).
+```ts
+// Fixed icon, growing/wrapping text column, fixed button — the common row.
+row.panel({ width: 16, height: 16 });           // fixed, flexShrink 0 (default)
+const col = row.panel({ flex: 1, direction: "column" }); // fills + wraps
+col.text("a long label that wraps within the column");
+row.button("Buy", { width: 68, onClick: () => {} }); // fixed
+```
+
+**Text only wraps when a width constraint reaches it** — some ancestor must have
+a definite width (an explicit `width`, or a `flex`/`flexShrink` child shrunk to
+a definite size). The root is laid out shrink-to-content (no viewport width is
+imposed, so bigger-than-screen UIs like skill trees work); give a top-level
+panel an explicit `width` to bound and wrap its contents.
+
+- **Dev-mode overflow warning.** When an in-flow child's computed box spills
+  past its container, a `console.warn` fires once for that node. Silenced in
+  production builds (`NODE_ENV=production`), and for intentional overflow —
+  `overflow: "hidden"` containers, `position: "absolute"` children, and
+  ScrollView content.
+
+Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
+`flexShrink: 1` / `flex: <n>` so it gives space back and wraps, or use
+`truncate: "clip" | "ellipsis"` on text (and `UIButton`).
 
 ## UIText: bitmap & resolution
 

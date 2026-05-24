@@ -30,21 +30,20 @@ export function getYoga(): Yoga {
 }
 
 /**
- * Create a new Yoga node, pre-configured to match web flexbox defaults.
+ * Create a new Yoga node, keeping Yoga's raw defaults — notably
+ * `flexShrink: 0`, so an element keeps its natural main-axis size and
+ * *overflows* a too-small row/column rather than being crushed.
  *
- * Yoga's raw default is `flexShrink: 0`, which diverges from CSS (where flex
- * items default to `flexShrink: 1`) exactly where text overflow is governed:
- * a child sharing a row reports its natural size and refuses to give space
- * back, so it overflows its container instead of shrinking/wrapping. We flip
- * the default to `1` here so layouts fail gracefully out of the box. Explicit
- * `flexShrink` props (via {@link applyLayoutProps}) and component-level
- * overrides (e.g. ScrollView pins its content to `0`) still win because they
- * run after this.
+ * This intentionally does NOT adopt the web's `flexShrink: 1` default. Yoga has
+ * no `min-width: auto` content floor, so a global `1` has nothing to stop it
+ * crushing fixed-size siblings, and it collapses scroll content (a ScrollView's
+ * content must exceed its viewport to scroll). Opt into shrinking per element
+ * via `flexShrink: 1` or the `flex` shorthand (see {@link applyLayoutProps});
+ * to let text wrap, give an ancestor a definite width and mark the text/column
+ * `flex` / `flexShrink: 1` so it gives the space back.
  */
 export function createYogaNode(): YogaNode {
-  const node = getYoga().Node.create();
-  node.setFlexShrink(1);
-  return node;
+  return getYoga().Node.create();
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +194,14 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
     applyLayoutValue(node, "minHeight", props.minHeight);
   if (props.maxHeight !== undefined)
     applyLayoutValue(node, "maxHeight", props.maxHeight);
+  // `flex: <n>` shorthand = grow n / shrink 1 / basis 0 (CSS). Applied first so
+  // the explicit flexGrow/flexShrink/flexBasis below can override any part.
+  if (props.flex !== undefined) {
+    node.setFlexGrow(props.flex);
+    node.setFlexShrink(1);
+    node.setFlexBasis(0);
+  }
+
   if (props.flexBasis !== undefined)
     applyLayoutValue(node, "flexBasis", props.flexBasis);
 
@@ -352,9 +359,10 @@ export function warnChildOverflow(
     if (overBottom > OVERFLOW_EPSILON) parts.push(`${overBottom.toFixed(1)}px past the bottom edge`);
     devWarn(
       `UI layout: a child overflows its container by ${parts.join(" and ")}. ` +
-        `Flex children shrink by default, but this one can't fit — give the ` +
-        `container more room, set maxWidth/maxHeight, allow the content to ` +
-        `wrap, or use truncate: "clip" | "ellipsis" on text.`,
+        `Flex children keep their natural size by default (flexShrink: 0) — ` +
+        `give the container more room, set maxWidth/maxHeight, mark the child ` +
+        `flexShrink: 1 or flex: <n> so it gives space back and wraps, or use ` +
+        `truncate: "clip" | "ellipsis" on text.`,
     );
   }
 }

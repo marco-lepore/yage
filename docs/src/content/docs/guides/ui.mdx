@@ -55,27 +55,54 @@ ui.add(new UIPanel({
 
 ## Flexbox defaults & overflow
 
-YAGE's UI is Yoga-flexbox-based, but it tracks **web flexbox defaults** rather
-than Yoga's raw ones — the divergence that otherwise causes text and children
-to overflow instead of shrinking gracefully:
+YAGE's UI is Yoga-flexbox-based and keeps **Yoga's raw defaults** — most
+notably `flexShrink: 0`. A flex child reports its natural main-axis size and
+*overflows* a too-small row or column rather than being crushed to fit.
 
-- **Flex children shrink by default (`flexShrink: 1`).** Yoga's raw default is
-  `0`, which means a child reports its natural size and refuses to give space
-  back — so a `Text` sharing a row with, say, an icon would spill past the
-  container instead of wrapping. With the web default, children compress to fit
-  and text wraps inside its slot. Set `flexShrink: 0` on a child that must keep
-  its size (a fixed icon, a pinned sidebar); an explicit value always wins.
+This deliberately differs from the web's `flexShrink: 1`. The web can shrink
+everything safely because each item also has a `min-width: auto` content floor
+that stops it collapsing past its content; Yoga has no such floor, so a global
+`flexShrink: 1` would crush fixed-size siblings (icons, fixed-width buttons) and
+collapse scroll content — a `ScrollView`'s content *must* exceed its viewport
+for there to be anything to scroll. So shrinking and wrapping are **opt-in**:
+
+- **`flexShrink: 1`** on a child lets it give space back when the line is too
+  small; a `Text` then re-wraps inside its slot. An explicit value always wins.
+
+- **`flex: <number>`** is shorthand for `flexGrow: <n>` + `flexShrink: 1` +
+  `flexBasis: 0` (the CSS `flex: <n>` rule). Reach for it on a child that should
+  *fill the remaining space* — classically the text column sitting between a
+  fixed icon and a fixed button. Because it sizes from a `0` basis rather than
+  its content width, it won't shove its siblings, and its text wraps cleanly.
+  **Prefer `flex: 1` to `flexGrow: 1`** here: `flexGrow: 1` on its own keeps
+  `flexBasis: auto` (the content's natural width), so a long label still
+  overflows and pushes the neighbours.
+
+```ts
+// Fixed icon · growing + wrapping text column · fixed button — the common row.
+row.panel({ width: 16, height: 16 });                    // fixed (flexShrink 0)
+const col = row.panel({ flex: 1, direction: "column" }); // fills & wraps
+col.text("a long label that wraps within the column");
+row.button("Buy", { width: 68, onClick: () => {} });     // fixed
+```
+
+Note that **text only wraps once a width constraint reaches it** — some ancestor
+must have a definite width (an explicit `width`, or a `flex`/`flexShrink` child
+that's been shrunk to a definite size). The UI root is laid out
+shrink-to-content and is *not* clamped to the viewport, so intentionally large
+UIs (skill trees, world maps) can exceed the screen; if you want a top-level
+panel to bound and wrap its contents, give it an explicit `width`.
 
 - **A dev-mode warning catches the leftovers.** When an in-flow child still
-  overflows its container — a `flexShrink: 0` child too large to fit, or a
-  wrapped label taller than a *fixed-height* button — YAGE logs a one-time
-  `console.warn` pointing at the offending node. It's compiled out of
-  production builds and stays quiet for intentional overflow (`overflow:
-  "hidden"` containers, `position: "absolute"` children, and scroll views).
+  overflows its container, YAGE logs a one-time `console.warn` pointing at the
+  offending node. It's compiled out of production builds and stays quiet for
+  intentional overflow (`overflow: "hidden"` containers, `position: "absolute"`
+  children, and scroll views).
 
 When a warning fires, fix it by giving the container more room, setting
-`maxWidth`/`maxHeight`, letting the content wrap, or using
-`truncate: "clip" | "ellipsis"` on the text (see [Text](#text)) or button.
+`maxWidth`/`maxHeight`, marking the child `flexShrink: 1` / `flex: <n>` so it
+gives space back and wraps, or using `truncate: "clip" | "ellipsis"` on the
+text (see [Text](#text)) or button.
 
 ## Anchoring
 

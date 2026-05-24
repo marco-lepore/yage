@@ -234,13 +234,11 @@ describe("UIText.measure", () => {
   });
 });
 
-describe("UIText in a flex row (web shrink default)", () => {
-  it("shrinks and wraps instead of overflowing a row shared with a sibling", () => {
-    // The issue's repro: a Text next to a fixed-size sibling in a 200px row.
-    // Under Yoga's raw flexShrink: 0 the text is measured against the full
-    // 200px (ignoring the icon), keeps that width, and spills 40px past the
-    // row. With the web flexShrink: 1 default it gives the space back, wraps,
-    // and stays inside the box.
+describe("UIText in a flex row", () => {
+  it("keeps its size and overflows the row by default (Yoga's flexShrink: 0)", () => {
+    // A Text next to a fixed-size sibling in a 200px row. With Yoga's raw
+    // flexShrink: 0 default the text keeps its natural single-line width and
+    // spills past the row — wrapping is opt-in (next test).
     const root = Yoga.Node.create();
     root.setFlexDirection(FlexDirection.Row);
     root.setWidth(200);
@@ -251,6 +249,34 @@ describe("UIText in a flex row (web shrink default)", () => {
     root.insertChild(icon, 0);
 
     const text = new UIText({ children: "the quick brown fox jumps over" });
+    root.insertChild(text.yogaNode, 1);
+
+    root.calculateLayout(200, undefined, Direction.LTR);
+
+    const right =
+      text.yogaNode.getComputedLeft() + text.yogaNode.getComputedWidth();
+    expect(right).toBeGreaterThan(200); // spills past the row
+
+    root.removeChild(text.yogaNode);
+    root.free();
+  });
+
+  it("shrinks and wraps inside the row when given flexShrink: 1", () => {
+    // The issue's repro, fixed by opting in: the text gives the space back to
+    // the icon, wraps to multiple lines, and stays inside the 200px box.
+    const root = Yoga.Node.create();
+    root.setFlexDirection(FlexDirection.Row);
+    root.setWidth(200);
+
+    const icon = Yoga.Node.create();
+    icon.setWidth(40);
+    icon.setHeight(40);
+    root.insertChild(icon, 0);
+
+    const text = new UIText({
+      children: "the quick brown fox jumps over",
+      flexShrink: 1,
+    });
     root.insertChild(text.yogaNode, 1);
 
     root.calculateLayout(200, undefined, Direction.LTR);

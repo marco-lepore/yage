@@ -362,10 +362,10 @@ describe("ScrollViewNode", () => {
     parent.applyLayout();
 
     expect(sv.maxScroll).toBeGreaterThan(0);
-    // The fixed footer must NOT shrink: a flexGrow scroll viewport zeroes its
-    // own main-axis basis (web `flex: 1`) so it absorbs the free space instead
-    // of letting its overflowing content over-subscribe the column. Without
-    // that, the now-shrinkable footer would compress below 20px.
+    // The fixed footer keeps its 20px and the scroll viewport fills the rest:
+    // a flexGrow scroll viewport zeroes its own main-axis basis (web `flex: 1`)
+    // so it absorbs the free space instead of letting its overflowing content
+    // over-subscribe the column and push the footer out.
     expect(footer.yogaNode.getComputedHeight()).toBe(20);
     expect(sv.yogaNode.getComputedHeight()).toBe(80); // 100 parent − 20 footer
     parent.destroy();

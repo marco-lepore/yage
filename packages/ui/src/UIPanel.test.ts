@@ -659,11 +659,11 @@ describe("UIPanel", () => {
     });
   });
 
-  describe("web flexbox defaults", () => {
-    it("shrinks flex children to fit by default (web default, not Yoga's 0)", () => {
-      // Two 80px children in a 100px row want 160px total. With the web
-      // `flexShrink: 1` default they give space back and compress to 50px
-      // each; under Yoga's raw `flexShrink: 0` they'd stay 80px and overflow.
+  describe("flex shrink behaviour", () => {
+    it("keeps flex children at their natural size by default (Yoga's flexShrink: 0)", () => {
+      // Two 80px children in a 100px row want 160px total. With Yoga's raw
+      // `flexShrink: 0` default they keep their 80px and overflow the row
+      // rather than being crushed — shrinking is opt-in (see below).
       const panel = new UIPanel({ direction: "row", width: 100 });
       const a = panel.panel({ width: 80, height: 20 });
       const b = panel.panel({ width: 80, height: 20 });
@@ -671,14 +671,14 @@ describe("UIPanel", () => {
       panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
       panel._node.applyLayout();
 
-      expect(a.yogaNode.getComputedWidth()).toBe(50);
-      expect(b.yogaNode.getComputedWidth()).toBe(50);
+      expect(a.yogaNode.getComputedWidth()).toBe(80);
+      expect(b.yogaNode.getComputedWidth()).toBe(80);
     });
 
-    it("explicit flexShrink: 0 still opts a child out of shrinking", () => {
+    it("shrinks only the child that opts in with flexShrink: 1", () => {
       const panel = new UIPanel({ direction: "row", width: 100 });
-      const fixed = panel.panel({ width: 80, height: 20, flexShrink: 0 });
-      const flex = panel.panel({ width: 80, height: 20 });
+      const fixed = panel.panel({ width: 80, height: 20 }); // default: no shrink
+      const flex = panel.panel({ width: 80, height: 20, flexShrink: 1 });
 
       panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
       panel._node.applyLayout();
@@ -686,6 +686,20 @@ describe("UIPanel", () => {
       // `fixed` keeps its 80px; only `flex` absorbs the overflow → 20px.
       expect(fixed.yogaNode.getComputedWidth()).toBe(80);
       expect(flex.yogaNode.getComputedWidth()).toBe(20);
+    });
+
+    it("flex shorthand fills the remaining space (grow + shrink:1 + basis:0)", () => {
+      // `flex: 1` sizes from a 0 basis, so it takes exactly the space the fixed
+      // sibling leaves instead of claiming any content width of its own.
+      const panel = new UIPanel({ direction: "row", width: 100 });
+      const fixed = panel.panel({ width: 30, height: 20 });
+      const grow = panel.panel({ height: 20, flex: 1 });
+
+      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel._node.applyLayout();
+
+      expect(fixed.yogaNode.getComputedWidth()).toBe(30);
+      expect(grow.yogaNode.getComputedWidth()).toBe(70); // 100 − 30
     });
   });
 
