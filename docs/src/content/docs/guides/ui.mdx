@@ -270,6 +270,46 @@ fixed when the font atlas is baked). Use `installBitmapFont(...)` /
 Word-wrap and the `truncate?: "clip" | "ellipsis"` overflow modes work
 the same on the bitmap path as on canvas text.
 
+### Animated / per-glyph text (`UISplitText`)
+
+For typewriter reveals, per-letter colour / wave, or staggered line
+entrances inside a panel, use `UISplitText` — the UI sibling of
+`@yagejs/renderer`'s `SplitTextComponent`. It lays the block out as one
+Yoga element and exposes `chars` / `words` / `lines` (per-glyph,
+per-word, per-line display objects) for you to animate. You drive those
+with the engine's `Tween` / `Process` — it deliberately doesn't ship its
+own animation API.
+
+```tsx
+import { SplitText, useSplitText } from "@yagejs/ui-react";
+import type { UISplitText } from "@yagejs/ui";
+
+function GameOver({ label }: { label: string }) {
+  // bind() runs once on mount and re-runs (with cleanup) after every
+  // re-split — so a typewriter rebinds itself when `label` changes and
+  // the old glyph objects are destroyed.
+  const ref = useSplitText<UISplitText>((seg) => {
+    const stops = seg.chars.map((c, i) => {
+      c.alpha = 0;
+      return startTween(c, { alpha: 1 }, { delay: i * 0.05 });
+    });
+    return () => stops.forEach((s) => s.cancel());
+  });
+
+  return <SplitText ref={ref} charAnchor={0.5} style={{ fontSize: 48 }}>{label}</SplitText>;
+}
+```
+
+Imperatively, `new UISplitText({ children, charAnchor, … })` exposes the
+same `chars` / `words` / `lines` and an `onSplit(cb)` subscription.
+
+:::caution[Different from `UIText`]
+`UISplitText` has **no `truncate` and no word-wrap** — pre-break long
+copy with `\n`, or use `UIText` for flowing paragraphs. The underlying
+`SplitText` is experimental in Pixi and re-lays-out on every text/style
+change, so keep static and simple dynamic labels on `UIText`.
+:::
+
 ## Buttons
 
 ```typescript

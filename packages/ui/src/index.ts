@@ -21,6 +21,7 @@ export type {
   ConsumeInputProps,
   PointerEventProps,
   UITextProps,
+  UISplitTextProps,
   UIButtonProps,
   UIImageProps,
   UINineSliceProps,
@@ -61,6 +62,8 @@ export { UIPlugin } from "./UIPlugin.js";
 // Components & elements
 export { UIPanel, PanelNode } from "./UIPanel.js";
 export { UIText } from "./UIText.js";
+export { UISplitText } from "./UISplitText.js";
+export type { TextSegments, SplitListener } from "./UISplitText.js";
 export { UIButton } from "./UIButton.js";
 export { UIImage } from "./UIImage.js";
 export { UINineSlice } from "./UINineSlice.js";

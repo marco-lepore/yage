@@ -10,18 +10,19 @@ export { UIRootLayoutSystem } from "./UIRootLayoutSystem.js";
 
 // JSX components
 export {
-  Panel, ZStack, Tooltip, UIText as Text, Button, Image, NineSlice, ProgressBar, Checkbox,
+  Panel, ZStack, Tooltip, UIText as Text, SplitText, Button, Image, NineSlice, ProgressBar, Checkbox,
   PixiFancyButton, PixiCheckbox, PixiProgressBar, PixiSlider,
   PixiInput, ScrollView, PixiSelect, PixiRadioGroup,
 } from "./components.js";
 export type {
-  PanelProps, TooltipProps, TextProps, ButtonProps, ImageProps, NineSliceProps, ProgressBarProps, CheckboxProps,
+  PanelProps, TooltipProps, TextProps, SplitTextProps, ButtonProps, ImageProps, NineSliceProps, ProgressBarProps, CheckboxProps,
   PixiFancyButtonReactProps, PixiCheckboxReactProps, PixiProgressBarReactProps, PixiSliderReactProps,
   PixiInputReactProps, ScrollViewReactProps, PixiSelectReactProps, PixiRadioGroupReactProps,
 } from "./components.js";
 
 // Hooks
 export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hooks.js";
+export { useSplitText } from "./use-split-text.js";
 
 // Headless floating primitive (tooltips/popovers/menus build on this)
 export { useFloating } from "./use-floating.js";
