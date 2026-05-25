@@ -17,6 +17,7 @@
  */
 
 import {
+  Engine,
   Scene,
   Entity,
   Component,
@@ -43,7 +44,8 @@ import type { PhysicsWorld } from "@yagejs/physics";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
 import type { SnapshotService } from "@yagejs/save";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { DebugPlugin } from "@yagejs/debug";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 // ---------------------------------------------------------------------------
 // Styles + HUD
@@ -559,7 +561,7 @@ class SaveDemoScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = createExampleEngine();
+  const engine = new Engine();
 
   engine.use(new RendererPlugin({
     width: WIDTH,
@@ -579,7 +581,7 @@ async function main() {
     preventDefaultKeys: ["Space", "F5", "F9"],
   }));
   engine.use(new SnapshotPlugin());
-  engine.use(exampleDebugPlugin());
+  engine.use(new DebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new SaveDemoScene());

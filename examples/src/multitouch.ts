@@ -1,5 +1,6 @@
 import {
   Component,
+  Engine,
   EventBusKey,
   Scene,
   Transform,
@@ -15,7 +16,7 @@ import {
   InputPlugin,
   type PointerInfo,
 } from "@yagejs/input";
-import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   /* Stop iOS / Android from interpreting touches as scroll, zoom, or
@@ -311,7 +312,7 @@ class MultitouchScene extends Scene {
 }
 
 async function main() {
-  const engine = createExampleEngine();
+  const engine = new Engine();
 
   const renderer = new RendererPlugin({
     width: WIDTH,
@@ -323,7 +324,6 @@ async function main() {
 
   engine.use(new InputPlugin());
 
-  installTestHarness(engine);
   await engine.start();
 
   // Orientation badge: seed with the current value, then update live from

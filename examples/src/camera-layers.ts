@@ -9,6 +9,7 @@
  *     layer transforms (no stale pan/zoom).
  */
 import {
+  Engine,
   Scene,
   Component,
   Transform,
@@ -23,7 +24,8 @@ import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { DebugPlugin } from "@yagejs/debug";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -284,7 +286,7 @@ class PauseController extends Component {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-const engine = createExampleEngine({ debug: true });
+const engine = new Engine({ debug: true });
 engine.use(
   new RendererPlugin({
     width: WIDTH,
@@ -307,7 +309,7 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-engine.use(exampleDebugPlugin());
+engine.use(new DebugPlugin());
 
 await engine.start();
 await engine.scenes.push(new WorldScene());

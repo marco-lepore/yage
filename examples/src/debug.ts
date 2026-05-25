@@ -1,4 +1,4 @@
-import { Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -6,7 +6,8 @@ import {
   ColliderComponent,
 } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { DebugPlugin } from "@yagejs/debug";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -171,7 +172,7 @@ const PALETTE = [0xff6b6b, 0x4ecdc4, 0xffe66d, 0xa78bfa, 0xf97316, 0x38bdf8, 0xf
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = createExampleEngine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -191,7 +192,7 @@ async function main() {
       },
     }),
   );
-  engine.use(exampleDebugPlugin({ startEnabled: true }));
+  engine.use(new DebugPlugin({ startEnabled: true }));
 
   await engine.start();
   await engine.scenes.push(new DebugDemoScene());

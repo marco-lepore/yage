@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Scene, Vec2, Transform } from "@yagejs/core";
+import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { UIPlugin, createNineSliceView } from "@yagejs/ui";
 import {
@@ -16,7 +16,7 @@ import {
   PixiSelect,
   PixiRadioGroup,
 } from "@yagejs/ui-react";
-import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared";
+import { injectStyles, setupGameContainer } from "./shared";
 import {
   textStyle, loadFonts, assets, allAssets,
   nineSlice, btnTextOffset, panelBg,
@@ -294,7 +294,7 @@ class KitchenSinkScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = createExampleEngine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -311,7 +311,6 @@ async function main() {
   engine.use(new UIReactPlugin());
 
   await loadFonts();
-  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new KitchenSinkScene());
 }

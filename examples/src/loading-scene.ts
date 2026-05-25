@@ -1,6 +1,7 @@
 import {
   AssetHandle,
   Component,
+  Engine,
   Entity,
   EventBusKey,
   LoadingScene,
@@ -17,7 +18,7 @@ import {
   UIPanel,
   UIPlugin,
 } from "@yagejs/ui";
-import { setupGameContainer, injectStyles, createExampleEngine, installTestHarness } from "./shared.js";
+import { setupGameContainer, injectStyles } from "./shared.js";
 
 injectStyles(`
   .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
@@ -196,7 +197,7 @@ class PressAnyKeyLogic extends Component {
 // ---------------------------------------------------------------------------
 // Boot the engine.
 // ---------------------------------------------------------------------------
-const engine = createExampleEngine();
+const engine = new Engine();
 engine.use(
   new RendererPlugin({
     width: WIDTH,
@@ -212,7 +213,6 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-installTestHarness(engine);
 await engine.start();
 engine.assets.registerLoader("slow", slowLoader);
 

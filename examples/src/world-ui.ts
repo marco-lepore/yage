@@ -1,5 +1,6 @@
 import {
   Component,
+  Engine,
   Entity,
   Scene,
   Transform,
@@ -14,8 +15,9 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import { Anchor, UIPanel, UIPlugin, UIProgressBar } from "@yagejs/ui";
-import { getContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { getContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -349,7 +351,7 @@ class DemoScene extends Scene {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-const engine = createExampleEngine({ debug: true });
+const engine = new Engine({ debug: true });
 const container = getContainer();
 
 engine.use(
@@ -376,7 +378,7 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-engine.use(exampleDebugPlugin());
+engine.use(new DebugPlugin());
 
 await engine.start();
 

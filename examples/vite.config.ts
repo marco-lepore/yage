@@ -1,8 +1,27 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import { readdirSync } from "fs";
 import { resolve } from "path";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
+
+// Test server only: inject the deterministic E2E harness ahead of each
+// example's own module so Playwright can drive the unmodified examples. Gated
+// on YAGE_E2E so normal `npm run dev` and production builds never include it.
+function e2eHarness(): PluginOption {
+  return {
+    name: "yage-e2e-harness",
+    apply: () => Boolean(process.env.YAGE_E2E),
+    transformIndexHtml() {
+      return [
+        {
+          tag: "script",
+          attrs: { type: "module", src: "/e2e/harness.ts" },
+          injectTo: "head-prepend",
+        },
+      ];
+    },
+  };
+}
 
 // Auto-discover every *.html at the examples root so new examples are picked
 // up by the production build without touching this file. `index.html` keeps
@@ -18,7 +37,7 @@ const htmlInputs = Object.fromEntries(
 
 export default defineConfig({
   base: process.env.VITE_BASE || "/",
-  plugins: [react(), wasm()],
+  plugins: [react(), wasm(), e2eHarness()],
   server: {
     port: 5199,
   },

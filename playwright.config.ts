@@ -37,6 +37,8 @@ export default defineConfig({
       cwd: `${__dirname}/examples`,
       url: "http://127.0.0.1:5199/",
       reuseExistingServer: !process.env["CI"],
+      // Enables the example-page E2E harness injection (examples/e2e/harness.ts).
+      env: { YAGE_E2E: "1" },
     },
   ],
 });

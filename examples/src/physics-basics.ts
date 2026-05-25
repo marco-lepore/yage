@@ -1,4 +1,4 @@
-import { Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -8,7 +8,8 @@ import {
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { DebugPlugin } from "@yagejs/debug";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -197,7 +198,7 @@ function randomColor(): number {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = createExampleEngine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: WIDTH,
@@ -214,7 +215,7 @@ async function main() {
     },
     preventDefaultKeys: ["Space"],
   }));
-  engine.use(exampleDebugPlugin());
+  engine.use(new DebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new PhysicsBasicsScene());

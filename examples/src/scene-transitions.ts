@@ -1,5 +1,6 @@
 import {
   AssetHandle,
+  Engine,
   LoadingScene,
   Scene,
   Transform,
@@ -27,7 +28,7 @@ import {
   UIPlugin,
 } from "@yagejs/ui";
 import type { Container } from "pixi.js";
-import { setupGameContainer, injectStyles, createExampleEngine, installTestHarness } from "./shared.js";
+import { setupGameContainer, injectStyles } from "./shared.js";
 
 injectStyles(`
   .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
@@ -211,7 +212,7 @@ class LoadThenShow extends LoadingScene {
 }
 
 // ----- Boot ----------------------------------------------------------------
-const engine = createExampleEngine();
+const engine = new Engine();
 engine.use(
   new RendererPlugin({
     width: WIDTH,
@@ -221,7 +222,6 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-installTestHarness(engine);
 await engine.start();
 engine.assets.registerLoader("slow", slowLoader);
 await engine.scenes.push(new MenuScene());

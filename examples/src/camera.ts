@@ -1,4 +1,4 @@
-import { Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yagejs/core";
+import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, createKeyframeTrack, easeInOutQuad } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -6,7 +6,8 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { DebugPlugin } from "@yagejs/debug";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -181,7 +182,7 @@ class CameraScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = createExampleEngine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: 800,
@@ -202,7 +203,7 @@ async function main() {
     },
     preventDefaultKeys: ["Space"],
   }));
-  engine.use(exampleDebugPlugin());
+  engine.use(new DebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new CameraScene());

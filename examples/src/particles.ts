@@ -1,4 +1,4 @@
-import { Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import {
   RendererPlugin,
@@ -11,7 +11,8 @@ import {
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 import type { EmitterConfig } from "@yagejs/particles";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { DebugPlugin } from "@yagejs/debug";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -211,7 +212,7 @@ class CrosshairFollow extends Component {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = createExampleEngine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: 800,
@@ -230,7 +231,7 @@ async function main() {
     preventDefaultKeys: ["Space"],
   }));
   engine.use(new ParticlesPlugin());
-  engine.use(exampleDebugPlugin());
+  engine.use(new DebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new ParticlesScene());

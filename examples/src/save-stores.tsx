@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  Engine,
   Scene,
   Component,
   Transform,
@@ -41,6 +42,7 @@ import {
   useScene,
 } from "@yagejs/ui-react";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { DebugPlugin } from "@yagejs/debug";
 import {
   createSave,
   SavePlugin,
@@ -58,7 +60,7 @@ import {
   sprites as S,
   nineSlice,
 } from "./ui-theme.js";
-import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -667,7 +669,7 @@ async function main(): Promise<void> {
   save.autoPersist(GAME_ID, game);
   save.autoPersist(SETTINGS_ID, settings);
 
-  const engine = createExampleEngine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -687,7 +689,7 @@ async function main(): Promise<void> {
     }),
   );
   engine.use(new SavePlugin({ save }));
-  engine.use(exampleDebugPlugin());
+  engine.use(new DebugPlugin());
 
   await loadFonts();
   await engine.start();
