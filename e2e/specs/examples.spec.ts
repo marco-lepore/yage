@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { readdirSync } from "fs";
-import { dirname, resolve } from "path";
+import { mkdirSync, readdirSync, writeFileSync } from "fs";
+import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import {
   DEFAULT_WARMUP,
@@ -17,6 +17,12 @@ const slugs = readdirSync(examplesDir)
   .filter((f) => f.endsWith(".html") && f !== "index.html")
   .map((f) => f.slice(0, -".html".length))
   .sort();
+
+// When set, write each example's stable JSON into this directory instead of
+// comparing against a committed baseline. Used by the example-snapshot-diff
+// workflow to capture one branch's output for a later cross-branch diff.
+const dumpDir = process.env["EXAMPLE_SNAPSHOT_DIR"];
+if (dumpDir) mkdirSync(dumpDir, { recursive: true });
 
 /** Deterministic key-sorted pretty JSON, so snapshot diffs stay readable. */
 function stablePretty(json: string): string {
@@ -114,13 +120,19 @@ test.describe("Examples", () => {
       const json = await page.evaluate(() =>
         window.__yage__!.inspector.snapshotJSON(),
       );
-      expect(stablePretty(json)).toMatchSnapshot(`${slug}.json`);
+      const pretty = stablePretty(json);
 
-      if (script.screenshot) {
-        const b64 = await page.evaluate(() =>
-          window.__yage__!.inspector.capture.pngBase64(),
-        );
-        expect(Buffer.from(b64, "base64")).toMatchSnapshot(`${slug}.png`);
+      if (dumpDir) {
+        // Dump mode: persist for cross-branch diffing, no baseline assertion.
+        writeFileSync(join(dumpDir, `${slug}.json`), `${pretty}\n`);
+      } else {
+        expect(pretty).toMatchSnapshot(`${slug}.json`);
+        if (script.screenshot) {
+          const b64 = await page.evaluate(() =>
+            window.__yage__!.inspector.capture.pngBase64(),
+          );
+          expect(Buffer.from(b64, "base64")).toMatchSnapshot(`${slug}.png`);
+        }
       }
 
       expect(errors, `console/page errors in ${slug}`).toEqual([]);
