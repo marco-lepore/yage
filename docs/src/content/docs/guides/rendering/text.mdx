@@ -189,6 +189,7 @@ render layer; set `bitmap` to split a bitmap font instead of canvas text.
 
 ```typescript
 import { SplitTextComponent } from "@yagejs/renderer";
+import { Tween, ProcessComponent } from "@yagejs/core";
 
 entity.add(new Transform());
 const title = entity.add(
@@ -199,11 +200,13 @@ const title = entity.add(
   }),
 );
 
-// Typewriter reveal
-title.chars.forEach((char, i) => {
-  char.alpha = 0;
-  tween(char, { alpha: 1 }, { delay: i * 0.05 });
-});
+// Typewriter reveal — stagger each glyph's fade-in by 50ms, ticked by a
+// ProcessComponent (the renderer-side equivalent of useSplitText's `run`).
+title.chars.forEach((char) => (char.alpha = 0));
+const pc = entity.add(new ProcessComponent());
+Tween.stagger(title.chars, (char) => Tween.to(char, "alpha", 1, 300), 50).forEach((p) =>
+  pc.run(p),
+);
 
 // Per-letter sine wave (in a component update)
 title.chars.forEach((char, i) => {

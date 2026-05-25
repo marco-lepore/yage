@@ -258,6 +258,7 @@ Per-glyph / animated text — typewriter reveals, per-letter colour/wave, stagge
 
 ```ts
 import { SplitTextComponent } from "@yagejs/renderer";
+import { Tween, ProcessComponent } from "@yagejs/core";
 
 const title = entity.add(new SplitTextComponent({
   text: "GAME OVER",
@@ -271,7 +272,10 @@ title.chars;   // (Text | BitmapText)[] — one per glyph
 title.words;   // Container[] — word groups
 title.lines;   // Container[] — line groups
 
-title.chars.forEach((c, i) => { c.alpha = 0; tween(c, { alpha: 1 }, { delay: i * 0.05 }); });
+// Typewriter: stagger each glyph's fade-in (50ms apart) via a ProcessComponent.
+title.chars.forEach((c) => (c.alpha = 0));
+const pc = entity.add(new ProcessComponent());
+Tween.stagger(title.chars, (c) => Tween.to(c, "alpha", 1, 300), 50).forEach((p) => pc.run(p));
 ```
 
 API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `tint` / `alpha`, `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/tint/alpha/visible; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).

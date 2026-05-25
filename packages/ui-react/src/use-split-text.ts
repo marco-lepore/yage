@@ -57,7 +57,7 @@ export interface SplitTextControls {
  *       50,
  *     ),
  *   );
- * return <SplitText ref={ref} onPointerDown={reveal}>{label}</SplitText>;
+ * return <SplitText ref={ref} onPointerOver={reveal}>{label}</SplitText>;
  * ```
  */
 export function useSplitText<T extends UISplitText = UISplitText>(): [

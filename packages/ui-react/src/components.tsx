@@ -390,7 +390,7 @@ export interface SplitTextProps extends LayoutProps, PointerEventProps {
  * const [ref, split] = useSplitText();
  * const reveal = () =>
  *   split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
- * return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
+ * return <SplitText ref={ref} charAnchor={0.5} onPointerOver={reveal}>{label}</SplitText>;
  * ```
  *
  * No `truncate` / word-wrap (unlike `<Text>`) — pre-break with `\n`. The

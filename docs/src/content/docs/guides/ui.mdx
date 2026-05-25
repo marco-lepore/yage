@@ -302,7 +302,7 @@ function GameOver({ label }: { label: string }) {
   };
 
   return (
-    <SplitText ref={ref} charAnchor={0.5} style={{ fontSize: 48 }} onPointerDown={reveal}>
+    <SplitText ref={ref} charAnchor={0.5} style={{ fontSize: 48 }} onPointerOver={reveal}>
       {label}
     </SplitText>
   );
