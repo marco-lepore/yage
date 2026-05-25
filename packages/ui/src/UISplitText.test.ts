@@ -148,11 +148,11 @@ describe("UISplitText", () => {
     expect(t.isBitmap).toBe(true);
   });
 
-  it("folds bitmap.font/size into the constructed style", () => {
+  it("bitmap text reads fontFamily / fontSize from style", () => {
     const t = new UISplitText({
       children: "hi",
-      style: { fill: 0xff0000 },
-      bitmap: { font: "PressStart", size: 8 },
+      bitmap: true,
+      style: { fill: 0xff0000, fontFamily: "PressStart", fontSize: 8 },
     });
     expect(t.splitText.style).toMatchObject({
       fill: 0xff0000,
@@ -188,15 +188,15 @@ describe("UISplitText", () => {
     expect(seen).toEqual([4]);
   });
 
-  it("setStyle re-folds the bitmap font and fires onSplit", () => {
+  it("setStyle replaces the style and fires onSplit", () => {
     const t = new UISplitText({
       children: "hi",
-      bitmap: { font: "PressStart", size: 8 },
-      style: { fill: 0xffcc00 },
+      bitmap: true,
+      style: { fontFamily: "PressStart", fontSize: 8, fill: 0xffcc00 },
     });
     let fired = 0;
     t.onSplit(() => fired++);
-    t.setStyle({ fill: 0xff0000 });
+    t.setStyle({ fontFamily: "PressStart", fontSize: 8, fill: 0xff0000 });
     expect(t.splitText.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",

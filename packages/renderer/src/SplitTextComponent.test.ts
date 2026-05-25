@@ -146,11 +146,11 @@ describe("SplitTextComponent", () => {
     expect(comp.isBitmap).toBe(true);
   });
 
-  it("folds bitmap.font/size into the constructed style", () => {
+  it("bitmap text reads fontFamily / fontSize from style", () => {
     const comp = new SplitTextComponent({
       text: "hi",
-      style: { fill: 0xff0000 },
-      bitmap: { font: "PressStart", size: 8 },
+      bitmap: true,
+      style: { fill: 0xff0000, fontFamily: "PressStart", fontSize: 8 },
     });
     expect(comp.splitText.style).toMatchObject({
       fill: 0xff0000,
@@ -173,13 +173,13 @@ describe("SplitTextComponent", () => {
     expect(comp.chars).toHaveLength(4);
   });
 
-  it("setStyle re-folds the bitmap font so a restyle keeps fontFamily", () => {
+  it("setStyle replaces the style (font lives in style.fontFamily)", () => {
     const comp = new SplitTextComponent({
       text: "hi",
-      bitmap: { font: "PressStart", size: 8 },
-      style: { fill: 0xffcc00 },
+      bitmap: true,
+      style: { fontFamily: "PressStart", fontSize: 8, fill: 0xffcc00 },
     });
-    comp.setStyle({ fill: 0xff0000 });
+    comp.setStyle({ fontFamily: "PressStart", fontSize: 8, fill: 0xff0000 });
     expect(comp.splitText.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
@@ -255,8 +255,8 @@ describe("SplitTextComponent", () => {
     const comp = new SplitTextComponent({
       text: "score",
       layer: "hud",
-      style: { fontSize: 16 },
-      bitmap: { font: "PressStart", size: 8 },
+      style: { fontSize: 16, fontFamily: "PressStart" },
+      bitmap: true,
       charAnchor: 0.5,
       autoSplit: false,
       tint: 0x123456,
@@ -267,8 +267,8 @@ describe("SplitTextComponent", () => {
     expect(data).toMatchObject({
       text: "score",
       layer: "hud",
-      style: { fontSize: 16 },
-      bitmap: { font: "PressStart", size: 8 },
+      style: { fontSize: 16, fontFamily: "PressStart" },
+      bitmap: true,
       charAnchor: 0.5,
       autoSplit: false,
       tint: 0x123456,
