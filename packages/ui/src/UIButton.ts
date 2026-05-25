@@ -308,11 +308,16 @@ export class UIButton implements UIContainerElement {
         this._labelBitmap = p.bitmap;
       }
     }
+    // Refresh the cached label style (so a not-yet-promoted label is built
+    // with it) and apply it in place when the label already exists. Mirrors
+    // the bitmap refresh above so a `textStyle`-before-`children` two-step
+    // update isn't silently dropped on the promote path.
+    if (p.textStyle) {
+      this._labelStyle = p.textStyle;
+      this._label?.setStyle(p.textStyle);
+    }
     if (p.children !== undefined && typeof p.children === "string") {
       this.setText(p.children);
-    }
-    if (p.textStyle && this._label) {
-      this._label.setStyle(p.textStyle);
     }
     // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:
     // undefined }` from the reconciler clears the mode back to wrapping.

@@ -266,6 +266,18 @@ describe("UIButton", () => {
     expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);
   });
 
+  it("update({ textStyle }) before children promotes the label with that style", () => {
+    // Two-step reconcile: textStyle arrives before the label exists, then the
+    // string. The promoted label must carry the textStyle, not the stale
+    // construction-time value.
+    const btn = new UIButton({});
+    btn.update({ textStyle: { fill: 0xff0000 } });
+    btn.update({ children: "SCORE" });
+    const label = btn.children[0] as UIText;
+    const text = label.displayObject as unknown as { style: Record<string, unknown> };
+    expect(text.style).toMatchObject({ fill: 0xff0000 });
+  });
+
   it("warns (and keeps the class) when update() changes bitmap on an existing label", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const btn = new UIButton({ children: "SCORE" }); // canvas label
