@@ -363,17 +363,30 @@ describe("ScrollViewNode", () => {
 
     expect(sv.maxScroll).toBeGreaterThan(0);
     // The fixed footer keeps its 20px and the scroll viewport fills the rest:
-    // a flexGrow scroll viewport zeroes its own main-axis basis (web `flex: 1`)
-    // so it absorbs the free space instead of letting its overflowing content
-    // over-subscribe the column and push the footer out.
+    // the viewport's own flexShrink:1 + minHeight:0 let it shrink to the
+    // available space, while the footer (default flexShrink:0) is not pulled in.
     expect(footer.yogaNode.getComputedHeight()).toBe(20);
     expect(sv.yogaNode.getComputedHeight()).toBe(80); // 100 parent − 20 footer
     parent.destroy();
   });
 
-  it("an explicit-height viewport keeps its height (basis stays auto)", () => {
-    // Regression guard for the basis fix: `flex-basis: 0` would override an
-    // explicit height per CSS, so it must only apply to the flexGrow case.
+  it("sizes to content (does not collapse) when flexGrow in an auto-height parent", () => {
+    // Regression for the ui-react menu: a flexGrow ScrollView inside an
+    // auto-height (content-sized / maxHeight) parent must size to its content,
+    // not collapse to 0. A forced `flex-basis: 0` here would have nothing to
+    // grow into and the viewport would vanish.
+    const parent = new PanelNode({ direction: "column", width: 200 }); // no height
+    const sv = new ScrollViewNode({ flexGrow: 1 });
+    for (let i = 0; i < 4; i++) sv.addElement(new PanelNode({ height: 30 })); // 120
+    parent.addElement(sv);
+    parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    parent.applyLayout();
+
+    expect(sv.yogaNode.getComputedHeight()).toBe(120); // sized to content, not 0
+    parent.destroy();
+  });
+
+  it("an explicit-height viewport keeps its height", () => {
     const parent = new PanelNode({ direction: "column", width: 200, height: 200 });
     const sv = new ScrollViewNode({ height: 120 });
     for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 }));
@@ -386,10 +399,9 @@ describe("ScrollViewNode", () => {
     parent.destroy();
   });
 
-  it("respects an explicit flexBasis prop instead of overriding it", () => {
-    // _reconcileScrollBasis must not clobber a caller-supplied flexBasis. With
-    // basis 60 (and no grow), the viewport's main size resolves to 60, not its
-    // content size (240) — proving the explicit prop survived reconciliation.
+  it("respects an explicit flexBasis prop", () => {
+    // With basis 60 (and no grow), the viewport's main size resolves to 60, not
+    // its content size (240) — the caller's flexBasis is applied verbatim.
     const parent = new PanelNode({ direction: "column", width: 200, height: 300 });
     const sv = new ScrollViewNode({ flexBasis: 60 });
     for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 }));
@@ -402,10 +414,10 @@ describe("ScrollViewNode", () => {
     parent.destroy();
   });
 
-  it("treats the `flex` shorthand like flexGrow for scroll-basis reconciliation", () => {
-    // `flex: 1` implies flexGrow:1, so the viewport must zero its scroll-axis
-    // basis and fill the column (like `flexGrow: 1`) rather than reverting to
-    // an auto basis and over-subscribing the column with its content.
+  it("fills a fixed-height column via the `flex` shorthand (basis 0 + grow)", () => {
+    // `flex: 1` expands to grow:1 / shrink:1 / basis:0, so the viewport grows
+    // from a 0 basis into the column's free space and the fixed footer keeps
+    // its height — the web `flex: 1` scroll idiom.
     const parent = new PanelNode({
       direction: "column",
       width: 200,
