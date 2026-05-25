@@ -1,8 +1,8 @@
-import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
+import { Scene, Transform, Vec2, Component } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
 injectStyles();
@@ -175,7 +175,7 @@ class UILayersScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: WIDTH, height: HEIGHT,
@@ -186,6 +186,7 @@ async function main() {
   engine.use(new UIPlugin());
 
   await loadFonts();
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new UILayersScene());
 }

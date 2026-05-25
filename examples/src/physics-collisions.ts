@@ -1,4 +1,4 @@
-import { Engine, Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
+import { Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import {
   PhysicsPlugin,
@@ -8,8 +8,7 @@ import {
 } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -253,7 +252,7 @@ class CollisionsScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: WIDTH,
@@ -271,7 +270,7 @@ async function main() {
       right: ["KeyD", "ArrowRight"],
     },
   }));
-  engine.use(new DebugPlugin());
+  engine.use(exampleDebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new CollisionsScene());

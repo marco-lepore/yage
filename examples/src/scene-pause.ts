@@ -15,7 +15,7 @@ import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/ph
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
 injectStyles();
@@ -288,7 +288,7 @@ class SettingsScene extends Scene {
 let engine: Engine;
 
 async function main() {
-  engine = new Engine({ debug: true });
+  engine = createExampleEngine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: WIDTH, height: HEIGHT,
@@ -310,6 +310,7 @@ async function main() {
   engine.use(new UIPlugin());
 
   await loadFonts();
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new GameScene());
 }

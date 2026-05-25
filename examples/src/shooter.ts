@@ -1,5 +1,4 @@
 import {
-  Engine,
   EventBusKey,
   Scene,
   Entity,
@@ -32,8 +31,7 @@ import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { AudioPlugin } from "@yagejs/audio";
 import { InputPlugin } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -1159,7 +1157,7 @@ class ShooterScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   // Mount overlays inside the same container the renderer will fullscreen,
   // so HUD / fullscreen button / win message stay visible alongside the
@@ -1188,7 +1186,7 @@ async function main() {
     },
     preventDefaultKeys: ["Space"],
   }));
-  engine.use(new DebugPlugin());
+  engine.use(exampleDebugPlugin());
 
   await engine.start();
 

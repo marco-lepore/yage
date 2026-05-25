@@ -1,4 +1,4 @@
-import { Engine, Scene, Vec2 } from "@yagejs/core";
+import { Scene, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import {
   UIPlugin,
@@ -10,7 +10,7 @@ import {
   Anchor,
 } from "@yagejs/ui";
 import { Transform } from "@yagejs/core";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtn, panelBg,
 } from "./ui-theme.js";
@@ -267,7 +267,7 @@ class UIExampleScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -283,6 +283,7 @@ async function main() {
   engine.use(new UIPlugin());
 
   await loadFonts();
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new UIExampleScene());
 }

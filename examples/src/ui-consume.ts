@@ -18,7 +18,6 @@
  */
 import {
   Component,
-  Engine,
   Entity,
   Scene,
   Transform,
@@ -31,7 +30,7 @@ import {
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { Anchor, UIPanel, UIPlugin, UIText } from "@yagejs/ui";
-import { setupGameContainer } from "./shared.js";
+import { setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -235,7 +234,7 @@ class DemoScene extends Scene {
   }
 }
 
-const engine = new Engine({ debug: true });
+const engine = createExampleEngine({ debug: true });
 const container = setupGameContainer(WIDTH, HEIGHT);
 
 engine.use(
@@ -255,5 +254,6 @@ engine.use(
 );
 engine.use(new UIPlugin());
 
+installTestHarness(engine);
 await engine.start();
 await engine.scenes.push(new DemoScene());

@@ -21,7 +21,7 @@
  *           boundary softens without blurring the outer canvas edge.
  *   hud   — screen-space, corner cards tracking `visibleCanvasRect` corners.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   RendererKey,
@@ -30,7 +30,7 @@ import {
 } from "@yagejs/renderer";
 import type { GradientFill, LayerDef } from "@yagejs/renderer";
 import { Anchor, UIPanel, UIPlugin } from "@yagejs/ui";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, getContainer, createExampleEngine, installTestHarness } from "./shared.js";
 
 injectStyles(`
   #game-container {
@@ -419,7 +419,7 @@ class ResponsiveUIScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine();
+  const engine = createExampleEngine();
 
   engine.use(
     new RendererPlugin({
@@ -432,6 +432,7 @@ async function main() {
   );
   engine.use(new UIPlugin());
 
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new ResponsiveUIScene());
 }

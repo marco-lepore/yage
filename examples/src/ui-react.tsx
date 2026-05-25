@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { Engine, Scene, Vec2, Transform } from "@yagejs/core";
+import { Scene, Vec2, Transform } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -17,7 +17,7 @@ import {
   Anchor,
 } from "@yagejs/ui-react";
 import type { Placement } from "@yagejs/ui-react";
-import { injectStyles, setupGameContainer } from "./shared";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared";
 import {
   textStyle, loadFonts, allAssets, nineSliceBtnReact, panelBg,
   sprites as S, nineSlice,
@@ -308,7 +308,7 @@ class UIReactScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -325,6 +325,7 @@ async function main() {
   engine.use(new UIReactPlugin());
 
   await loadFonts();
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new UIReactScene());
 }

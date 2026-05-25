@@ -1,4 +1,4 @@
-import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
+import { Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -15,14 +15,13 @@ import {
   type RectColliderConfig,
 } from "@yagejs/tilemap";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
 import { DebugRegistryKey } from "@yagejs/debug/api";
 import type {
   DebugContributor,
   HudDebugApi,
   WorldDebugApi,
 } from "@yagejs/debug/api";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
 
 injectStyles();
 
@@ -275,7 +274,7 @@ class TilemapScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -298,7 +297,7 @@ async function main() {
       },
     }),
   );
-  engine.use(new DebugPlugin({ startEnabled: true }));
+  engine.use(exampleDebugPlugin({ startEnabled: true }));
 
   await engine.start();
 

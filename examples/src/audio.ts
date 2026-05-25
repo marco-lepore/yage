@@ -1,10 +1,9 @@
-import { Engine, Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yagejs/core";
+import { Scene, Component, Transform, Vec2, ProcessComponent, KeyframeAnimator, easeInOutQuad } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
 
 injectStyles(`
   .controls kbd { min-width: 24px; text-align: center; }
@@ -363,7 +362,7 @@ class AudioScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: WIDTH,
@@ -388,7 +387,7 @@ async function main() {
     preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
   }));
   engine.use(new AudioPlugin());
-  engine.use(new DebugPlugin());
+  engine.use(exampleDebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new AudioScene());

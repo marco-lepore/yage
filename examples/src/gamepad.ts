@@ -1,6 +1,5 @@
 import {
   Component,
-  Engine,
   Scene,
   Transform,
   Vec2,
@@ -15,7 +14,7 @@ import {
   InputPlugin,
   getKeyDisplayName,
 } from "@yagejs/input";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
 
 injectStyles();
 
@@ -307,7 +306,7 @@ function addHudLabel(scene: Scene, x: number, y: number, text: string): void {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const engine = new Engine();
+  const engine = createExampleEngine();
 
   engine.use(
     new RendererPlugin({
@@ -333,6 +332,7 @@ async function main() {
     }),
   );
 
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new GamepadScene());
 }

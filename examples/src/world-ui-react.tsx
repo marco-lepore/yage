@@ -8,7 +8,7 @@
  * into the scene's screen-space overlay yet must stay anchored to the
  * moving namecard every frame — the world→screen anchoring path.
  */
-import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
+import { Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
@@ -26,7 +26,7 @@ import {
   ProgressBar,
   Anchor,
 } from "@yagejs/ui-react";
-import { getContainer } from "./shared.js";
+import { getContainer, createExampleEngine, installTestHarness } from "./shared.js";
 
 const WIDTH = 900;
 const HEIGHT = 600;
@@ -177,7 +177,7 @@ class DemoScene extends Scene {
   }
 }
 
-const engine = new Engine({ debug: true });
+const engine = createExampleEngine({ debug: true });
 engine.use(
   new RendererPlugin({
     width: WIDTH,
@@ -188,5 +188,6 @@ engine.use(
 );
 engine.use(new UIPlugin());
 engine.use(new UIReactPlugin());
+installTestHarness(engine);
 await engine.start();
 await engine.scenes.push(new DemoScene());

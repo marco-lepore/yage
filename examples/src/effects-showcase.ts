@@ -17,7 +17,6 @@
 
 import {
   Entity,
-  Engine,
   Scene,
   SceneManagerKey,
   Transform,
@@ -65,7 +64,7 @@ import {
   wave,
 } from "@yagejs/effects";
 import type { HitFlashHandle, ShockwaveHandle } from "@yagejs/effects";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared.js";
 
 const VIRTUAL_WIDTH = 900;
 const VIRTUAL_HEIGHT = 640;
@@ -775,7 +774,7 @@ let activeSidebar: PanelNode | null = null;
 let sidebarScrollY = 0;
 
 async function main(): Promise<void> {
-  const engine = new Engine({ debug: false });
+  const engine = createExampleEngine({ debug: false });
 
   const container = setupGameContainer(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
   engine.use(
@@ -834,6 +833,7 @@ async function main(): Promise<void> {
     if (e.key.toLowerCase() === "l") void scene.doLoad();
   });
 
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new ShowcaseScene());
 }

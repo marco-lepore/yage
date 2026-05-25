@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Engine, Scene } from "@yagejs/core";
+import { Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { UIPlugin } from "@yagejs/ui";
 import {
@@ -12,7 +12,7 @@ import {
   Tooltip,
   Anchor,
 } from "@yagejs/ui-react";
-import { setupGameContainer } from "./shared";
+import { setupGameContainer, createExampleEngine, installTestHarness } from "./shared";
 
 // ---------------------------------------------------------------------------
 // A right-rail "Orders" panel: a declarative, scrollable list of card
@@ -128,7 +128,7 @@ class ScrollViewScene extends Scene {
 }
 
 async function main(): Promise<void> {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
   engine.use(
     new RendererPlugin({
       width: 640,
@@ -141,6 +141,7 @@ async function main(): Promise<void> {
   );
   engine.use(new UIPlugin());
   engine.use(new UIReactPlugin());
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new ScrollViewScene());
 }

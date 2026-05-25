@@ -1,4 +1,4 @@
-import { Engine, Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
+import { Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
 import {
   RendererPlugin,
   GraphicsComponent,
@@ -16,8 +16,7 @@ import {
 import type { PhysicsWorld } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -658,7 +657,7 @@ class PlatformerScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: WIDTH,
@@ -696,7 +695,7 @@ async function main() {
   if (globals.__YAGE_START_FROZEN__) {
     debugConfig.startFrozen = true;
   }
-  engine.use(new DebugPlugin(debugConfig));
+  engine.use(exampleDebugPlugin(debugConfig));
 
   await engine.start();
   await engine.scenes.push(new PlatformerScene());

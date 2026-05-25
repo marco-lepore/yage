@@ -1,7 +1,6 @@
-import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer, createExampleEngine, exampleDebugPlugin } from "./shared.js";
 
 injectStyles();
 
@@ -78,7 +77,7 @@ class HelloWorldScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine({ debug: true });
+  const engine = createExampleEngine({ debug: true });
 
   engine.use(new RendererPlugin({
     width: 800,
@@ -86,7 +85,7 @@ async function main() {
     backgroundColor: 0x0a0a0a,
     container: setupGameContainer(800, 600),
   }));
-  engine.use(new DebugPlugin());
+  engine.use(exampleDebugPlugin());
 
   await engine.start();
   await engine.scenes.push(new HelloWorldScene());

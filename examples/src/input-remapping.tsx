@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   Component,
-  Engine,
   Scene,
   Transform,
   Vec2,
@@ -31,7 +30,7 @@ import {
 } from "@yagejs/ui-react";
 import { createRecord } from "@yagejs/core";
 import type { ReactiveRecord } from "@yagejs/core";
-import { injectStyles, setupGameContainer } from "./shared";
+import { injectStyles, setupGameContainer, createExampleEngine, installTestHarness } from "./shared";
 
 injectStyles();
 
@@ -602,7 +601,7 @@ class InputRemappingScene extends Scene {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const engine = new Engine();
+  const engine = createExampleEngine();
 
   engine.use(
     new RendererPlugin({
@@ -630,6 +629,7 @@ async function main() {
   engine.use(new UIPlugin());
   engine.use(new UIReactPlugin());
 
+  installTestHarness(engine);
   await engine.start();
   await engine.scenes.push(new InputRemappingScene());
 }
