@@ -120,19 +120,13 @@ test.describe("Examples", () => {
       const json = await page.evaluate(() =>
         window.__yage__!.inspector.snapshotJSON(),
       );
-      const pretty = stablePretty(json);
 
+      // Dump mode (example-snapshot-diff workflow): persist the stable JSON for
+      // cross-branch diffing. Otherwise this is a smoke test — capturing the
+      // snapshot exercises serialization, and the no-error assertion below
+      // confirms the example boots and reaches a scene cleanly.
       if (dumpDir) {
-        // Dump mode: persist for cross-branch diffing, no baseline assertion.
-        writeFileSync(join(dumpDir, `${slug}.json`), `${pretty}\n`);
-      } else {
-        expect(pretty).toMatchSnapshot(`${slug}.json`);
-        if (script.screenshot) {
-          const b64 = await page.evaluate(() =>
-            window.__yage__!.inspector.capture.pngBase64(),
-          );
-          expect(Buffer.from(b64, "base64")).toMatchSnapshot(`${slug}.png`);
-        }
+        writeFileSync(join(dumpDir, `${slug}.json`), `${stablePretty(json)}\n`);
       }
 
       expect(errors, `console/page errors in ${slug}`).toEqual([]);

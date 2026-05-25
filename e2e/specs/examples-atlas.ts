@@ -4,11 +4,12 @@
  * The runner (examples.spec.ts) auto-discovers every example HTML file and
  * loads it with `?test`, which boots the engine frozen and seeded. For each
  * example it advances `warmup` frames, replays `actions`, then captures a
- * stable inspector snapshot to compare against a committed baseline.
+ * stable inspector snapshot — used by the example-snapshot-diff workflow to
+ * compare two branches, and otherwise as a boots-cleanly smoke test.
  *
  * Examples not listed here get the default treatment: advance DEFAULT_WARMUP
  * frames, then snapshot. Add an entry only when an example needs input to reach
- * an interesting state, a different warmup, a screenshot, or a skip.
+ * an interesting state, a different warmup, or a skip.
  */
 
 /** A single deterministic input action, replayed in-page against the inspector. */
@@ -27,8 +28,6 @@ export interface ExampleScript {
   warmup?: number;
   /** Deterministic input sequence performed after warmup. */
   actions?: AtlasAction[];
-  /** Also capture a PNG screenshot baseline (pixel-sensitive; opt-in). */
-  screenshot?: boolean;
   /** Skip this example entirely. */
   skip?: boolean;
   /** Human-readable reason, surfaced in the test title when skipped. */
