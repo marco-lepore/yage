@@ -131,7 +131,7 @@ vi.mock("pixi.js", () => ({
   BitmapText: mocks.MockBitmapText,
 }));
 
-import Yoga, { Direction } from "yoga-layout";
+import Yoga, { Direction, FlexDirection } from "yoga-layout";
 import { setDefaultTextStyle } from "@yagejs/renderer";
 import { setYoga } from "./yoga-helpers.js";
 import { setUIDefaultTextStyle } from "./text-defaults.js";
@@ -239,6 +239,63 @@ describe("UIText.measure", () => {
     const out = layoutInContainer(t, 100);
     expect(out.height).toBeGreaterThan(16); // wrapped again
     expect(renderedText(t)).toBe("the quick brown fox jumps");
+  });
+});
+
+describe("UIText in a flex row", () => {
+  it("keeps its size and overflows the row by default (Yoga's flexShrink: 0)", () => {
+    // A Text next to a fixed-size sibling in a 200px row. With Yoga's raw
+    // flexShrink: 0 default the text keeps its natural single-line width and
+    // spills past the row — wrapping is opt-in (next test).
+    const root = Yoga.Node.create();
+    root.setFlexDirection(FlexDirection.Row);
+    root.setWidth(200);
+
+    const icon = Yoga.Node.create();
+    icon.setWidth(40);
+    icon.setHeight(40);
+    root.insertChild(icon, 0);
+
+    const text = new UIText({ children: "the quick brown fox jumps over" });
+    root.insertChild(text.yogaNode, 1);
+
+    root.calculateLayout(200, undefined, Direction.LTR);
+
+    const right =
+      text.yogaNode.getComputedLeft() + text.yogaNode.getComputedWidth();
+    expect(right).toBeGreaterThan(200); // spills past the row
+
+    root.removeChild(text.yogaNode);
+    root.free();
+  });
+
+  it("shrinks and wraps inside the row when given flexShrink: 1", () => {
+    // The issue's repro, fixed by opting in: the text gives the space back to
+    // the icon, wraps to multiple lines, and stays inside the 200px box.
+    const root = Yoga.Node.create();
+    root.setFlexDirection(FlexDirection.Row);
+    root.setWidth(200);
+
+    const icon = Yoga.Node.create();
+    icon.setWidth(40);
+    icon.setHeight(40);
+    root.insertChild(icon, 0);
+
+    const text = new UIText({
+      children: "the quick brown fox jumps over",
+      flexShrink: 1,
+    });
+    root.insertChild(text.yogaNode, 1);
+
+    root.calculateLayout(200, undefined, Direction.LTR);
+
+    const right =
+      text.yogaNode.getComputedLeft() + text.yogaNode.getComputedWidth();
+    expect(right).toBeLessThanOrEqual(200); // no overflow past the row
+    expect(text.yogaNode.getComputedHeight()).toBeGreaterThan(16); // wrapped
+
+    root.removeChild(text.yogaNode);
+    root.free();
   });
 });
 

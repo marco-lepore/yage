@@ -8,6 +8,7 @@ import type { EventToken } from "./EventToken.js";
 import type { AssetHandle } from "./AssetHandle.js";
 import type { AssetManager } from "./AssetManager.js";
 import type { ServiceKey } from "./EngineContext.js";
+import type { Logger } from "./Logger.js";
 import type { SnapshotResolver } from "./Serializable.js";
 import type { SceneTransition } from "./SceneTransition.js";
 import { filterEntities } from "./EntityFilter.js";
@@ -18,6 +19,7 @@ import {
   EventBusKey,
   AssetManagerKey,
   SceneManagerKey,
+  LoggerKey,
 } from "./EngineContext.js";
 
 /**
@@ -153,24 +155,76 @@ export abstract class Scene {
   }
 
   /**
+   * Resolve a service by key. Scene-scoped values (registered via
+   * `registerScoped` — e.g. the renderer's per-scene render tree) take
+   * precedence over engine scope, so the obvious call works in the obvious
+   * place:
+   * ```ts
+   * onEnter() {
+   *   const tree = this.use(SceneRenderTreeKey); // resolvable from onEnter on
+   *   tree.fx.addEffect(crt());
+   * }
+   * ```
+   * Scene-scoped values are registered by plugin `beforeEnter` hooks, which
+   * run before `onEnter`, so they're available throughout the scene's
+   * lifecycle. Throws if the key resolves nowhere. For lazy resolution at
+   * field-declaration time, use `service()`.
+   */
+  protected use<T>(key: ServiceKey<T>): T {
+    const scoped = this._resolveScoped(key);
+    if (scoped !== undefined) return scoped;
+
+    if (key.scope === "scene") {
+      const engineValue = this._context.tryResolve(key);
+      if (engineValue !== undefined) {
+        // A scene-scoped key that only resolves at engine scope almost
+        // always means a plugin forgot to register it in a beforeEnter hook.
+        this._warnScopedFallback(key);
+        return engineValue;
+      }
+      throw new Error(
+        `Scene-scoped service "${key.id}" is not registered for scene "${this.name}". ` +
+          `Scene-scoped services are provided by a plugin's beforeEnter hook ` +
+          `(e.g. RendererPlugin registers SceneRenderTreeKey). Resolve it from ` +
+          `onEnter() or later, and make sure the providing plugin is installed.`,
+      );
+    }
+
+    return this._context.resolve(key);
+  }
+
+  private _warnScopedFallback<T>(key: ServiceKey<T>): void {
+    const logger = this._context.tryResolve(LoggerKey) as Logger | undefined;
+    logger?.warn(
+      "core",
+      `Scoped key "${key.id}" fell back to engine scope — did a plugin forget to register a beforeEnter hook?`,
+      { scene: this.name },
+    );
+  }
+
+  /**
    * Lazy proxy-based service resolution. Can be used at field-declaration time:
    * ```ts
    * readonly layers = this.service(RenderLayerManagerKey);
    * ```
-   * The actual resolution is deferred until first property access.
+   * The actual resolution is deferred until first property access and is
+   * scope-aware (see `use()`). For scene-scoped keys, prefer resolving inside
+   * `onEnter()` via `use()` rather than a field initializer — the proxy
+   * caches the first resolved value, which would go stale if the scene is
+   * exited and re-entered (the scoped value is recreated each enter).
    */
   protected service<T extends object>(key: ServiceKey<T>): T {
     let resolved: T | undefined;
     return new Proxy({} as object, {
       get: (_target, prop) => {
-        resolved ??= this._context.resolve(key);
+        resolved ??= this.use(key);
         const value = (resolved as Record<string | symbol, unknown>)[prop];
         return typeof value === "function"
           ? (value as (...args: unknown[]) => unknown).bind(resolved)
           : value;
       },
       set: (_target, prop, value) => {
-        resolved ??= this._context.resolve(key);
+        resolved ??= this.use(key);
         (resolved as Record<string | symbol, unknown>)[prop] = value;
         return true;
       },

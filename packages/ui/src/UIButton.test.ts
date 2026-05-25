@@ -462,6 +462,37 @@ describe("UIButton", () => {
     });
   });
 
+  describe("label truncate", () => {
+    const truncateOf = (t: UIText): string | undefined =>
+      (t as unknown as { _truncate?: "clip" | "ellipsis" })._truncate;
+
+    it("forwards the truncate option to the auto-created label", () => {
+      const btn = new UIButton({
+        children: "A label too long for the box",
+        truncate: "ellipsis",
+      });
+      expect(truncateOf(btn.children[0] as UIText)).toBe("ellipsis");
+    });
+
+    it("update() propagates a truncate change to the label", () => {
+      const btn = new UIButton({ children: "A label" });
+      const label = btn.children[0] as UIText;
+      expect(truncateOf(label)).toBeUndefined();
+
+      btn.update({ truncate: "clip" });
+      expect(truncateOf(label)).toBe("clip");
+
+      btn.update({ truncate: undefined });
+      expect(truncateOf(label)).toBeUndefined();
+    });
+
+    it("threads truncate through a label promoted via setText()", () => {
+      const btn = new UIButton({ truncate: "ellipsis" });
+      btn.setText("Promoted label");
+      expect(truncateOf(btn.children[0] as UIText)).toBe("ellipsis");
+    });
+  });
+
   describe("container mode", () => {
     it("can host multiple UIElement children via addElement", () => {
       // Mirrors what the React reconciler does when <Button> receives

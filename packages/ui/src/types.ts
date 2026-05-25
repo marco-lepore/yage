@@ -122,6 +122,17 @@ export interface LayoutProps {
   flexGrow?: number;
   flexShrink?: number;
   flexBasis?: LayoutValue;
+  /**
+   * Shorthand for the common CSS `flex: <number>` case — expands to
+   * `flexGrow: <number>`, `flexShrink: 1`, `flexBasis: 0`. Use it for a child
+   * that should fill the remaining main-axis space (e.g. the text column
+   * between a fixed icon and a fixed button): sizing from a `0` basis means it
+   * won't claim its content width and push its siblings, and its text wraps
+   * cleanly. Prefer this over `flexGrow: 1` alone, which keeps `flexBasis: auto`
+   * (content width) and overflows. Explicit `flexGrow`/`flexShrink`/`flexBasis`
+   * override the parts this expands to.
+   */
+  flex?: number;
   alignSelf?:
     | "auto"
     | "flex-start"
@@ -270,6 +281,15 @@ export interface UIButtonProps
    * on the `UIText` directly in that case.
    */
   bitmap?: boolean;
+  /**
+   * Overflow behavior for the auto-wrapped string label, forwarded to the
+   * internal {@link UITextProps.truncate}. Omitted, the label wraps to the
+   * button's content width (and an auto-height button grows to fit). Set
+   * `"clip"` / `"ellipsis"` to keep the label on a single line so it can't
+   * spill out of a fixed-size button — the safe choice for variable-length
+   * (i18n) labels.
+   */
+  truncate?: "clip" | "ellipsis";
   disabled?: boolean;
 }
 

@@ -11,7 +11,11 @@ import type {
   UIButtonProps,
   UITextProps,
 } from "./types.js";
-import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
+import {
+  createYogaNode,
+  applyLayoutProps,
+  warnChildOverflow,
+} from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
@@ -66,6 +70,7 @@ export class UIButton implements UIContainerElement {
   private _label: UIText | undefined;
   private _labelStyle: Partial<TextStyle> | undefined;
   private _labelBitmap: boolean | undefined;
+  private _truncate: "clip" | "ellipsis" | undefined;
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;
@@ -89,6 +94,7 @@ export class UIButton implements UIContainerElement {
     this._hasExplicitHeight = isExplicitSize(p.height);
     this._reconcileDefaultPadding();
 
+    this._truncate = p.truncate;
     this.onClick = p.onClick;
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
@@ -197,6 +203,7 @@ export class UIButton implements UIContainerElement {
       child.displayObject.position.set(layout.left, layout.top);
       child.applyLayout?.();
     }
+    warnChildOverflow(this.yogaNode, this._children);
     this._computedWidth = this.yogaNode.getComputedWidth();
     this._computedHeight = this.yogaNode.getComputedHeight();
     this.bgRenderer.resize(this._computedWidth, this._computedHeight);
@@ -234,13 +241,17 @@ export class UIButton implements UIContainerElement {
     else this.applyBg(this.bgOpts);
   }
 
-  /** Build the auto-wrapped label's props from the cached style / bitmap. */
+  /**
+   * Build the internal label's props from the cached style / bitmap /
+   * truncate mode. Omits absent keys so `exactOptionalPropertyTypes` stays
+   * happy.
+   */
   private _labelProps(children: string): UITextProps {
-    return {
-      children,
-      ...(this._labelStyle ? { style: this._labelStyle } : {}),
-      ...(this._labelBitmap !== undefined ? { bitmap: this._labelBitmap } : {}),
-    };
+    const props: UITextProps = { children };
+    if (this._labelStyle) props.style = this._labelStyle;
+    if (this._labelBitmap !== undefined) props.bitmap = this._labelBitmap;
+    if (this._truncate) props.truncate = this._truncate;
+    return props;
   }
 
   setText(s: string): void {
@@ -302,6 +313,12 @@ export class UIButton implements UIContainerElement {
     }
     if (p.textStyle && this._label) {
       this._label.setStyle(p.textStyle);
+    }
+    // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:
+    // undefined }` from the reconciler clears the mode back to wrapping.
+    if ("truncate" in p && p.truncate !== this._truncate) {
+      this._truncate = p.truncate;
+      this._label?.update({ truncate: p.truncate });
     }
     if (p.onClick !== undefined) this.onClick = p.onClick;
     this.pointerEvents.set(p);
