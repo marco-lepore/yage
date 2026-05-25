@@ -402,6 +402,29 @@ describe("ScrollViewNode", () => {
     parent.destroy();
   });
 
+  it("treats the `flex` shorthand like flexGrow for scroll-basis reconciliation", () => {
+    // `flex: 1` implies flexGrow:1, so the viewport must zero its scroll-axis
+    // basis and fill the column (like `flexGrow: 1`) rather than reverting to
+    // an auto basis and over-subscribing the column with its content.
+    const parent = new PanelNode({
+      direction: "column",
+      width: 200,
+      height: 100,
+    });
+    const sv = new ScrollViewNode({ flex: 1 });
+    for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 })); // 240
+    parent.addElement(sv);
+    const footer = new PanelNode({ height: 20 });
+    parent.addElement(footer);
+    parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+    parent.applyLayout();
+
+    expect(footer.yogaNode.getComputedHeight()).toBe(20);
+    expect(sv.yogaNode.getComputedHeight()).toBe(80); // 100 − 20 footer
+    expect(sv.maxScroll).toBeGreaterThan(0);
+    parent.destroy();
+  });
+
   it("survives destroy()", () => {
     const { sv } = buildScrollView(3);
     expect(() => sv.destroy()).not.toThrow();

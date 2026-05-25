@@ -151,7 +151,10 @@ export class ScrollViewNode implements UIContainerElement {
     );
     this._explicitWidth = isExplicitSize(props.width);
     this._explicitHeight = isExplicitSize(props.height);
-    this._hasFlexGrow = (props.flexGrow ?? 0) > 0;
+    // `flex: <n>` implies flexGrow: <n> (plus shrink:1, basis:0), so it must
+    // count as grow here too — otherwise a `flex: 1` viewport reverts to an
+    // auto basis below and stops filling/scrolling its parent.
+    this._hasFlexGrow = (props.flexGrow ?? props.flex ?? 0) > 0;
     this._explicitFlexBasis = props.flexBasis !== undefined;
     this._reconcileScrollBasis();
     this._applyGutter();
@@ -492,6 +495,7 @@ export class ScrollViewNode implements UIContainerElement {
     if (props.height !== undefined)
       this._explicitHeight = isExplicitSize(props.height);
     if (props.flexGrow !== undefined) this._hasFlexGrow = props.flexGrow > 0;
+    else if (props.flex !== undefined) this._hasFlexGrow = props.flex > 0;
     if (props.flexBasis !== undefined) this._explicitFlexBasis = true;
     this._reconcileScrollBasis();
     // Re-reserve the gutter: covers a scrollbar style/visibility change, a
