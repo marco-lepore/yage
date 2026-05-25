@@ -2,7 +2,7 @@
  * Shared UI theme — fonts, text presets, asset handles, and nine-slice configs.
  * Used across all UI examples like a design-system token file.
  */
-import { texture } from "@yagejs/renderer";
+import { texture, webFont } from "@yagejs/renderer";
 
 // ---------------------------------------------------------------------------
 // Fonts
@@ -10,21 +10,35 @@ import { texture } from "@yagejs/renderer";
 export const FONT_REGULAR = "Kenney Future";
 export const FONT_NARROW = "Kenney Future Narrow";
 
-const fontCSS = `
-@font-face { font-family: "${FONT_REGULAR}"; src: url("/assets/Kenney Future.ttf"); }
-@font-face { font-family: "${FONT_NARROW}"; src: url("/assets/Kenney Future Narrow.ttf"); }
-`;
-const styleEl = document.createElement("style");
-styleEl.textContent = fontCSS;
-document.head.appendChild(styleEl);
+/**
+ * Web-font handles — declarative font loading. Spread into `allAssets` so a
+ * scene's `preload` registers the `@font-face` before the first text draw
+ * (Pixi caches fallback metrics on first paint otherwise). Replaces the old
+ * hand-rolled `<style>` injection + `document.fonts.load()` dance.
+ */
+export const fonts = {
+  regular: webFont("/assets/Kenney Future.ttf", { family: FONT_REGULAR }),
+  narrow: webFont("/assets/Kenney Future Narrow.ttf", { family: FONT_NARROW }),
+} as const;
 
-/** Call before engine.start() to ensure fonts are ready for PixiJS text measurement. */
-export function loadFonts(): Promise<FontFace[][]> {
-  return Promise.all([
-    document.fonts.load(`16px "${FONT_REGULAR}"`),
-    document.fonts.load(`16px "${FONT_NARROW}"`),
-  ]);
+/**
+ * @deprecated Fonts now load declaratively via the `fonts` handles in
+ * `allAssets` (scene `preload`). Kept as a no-op so existing call sites still
+ * work; safe to drop.
+ */
+export function loadFonts(): Promise<void> {
+  return Promise.resolve();
 }
+
+/**
+ * Engine-level default text style — pass to `new UIPlugin({ defaultTextStyle })`
+ * so UI text without an explicit `fontFamily` / `fill` inherits the theme base
+ * instead of Pixi's default. Per-text `style` still wins.
+ */
+export const defaultTextStyle = {
+  fontFamily: FONT_NARROW,
+  fill: 0xe2e8f0,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Text style presets
@@ -94,7 +108,7 @@ export const assets = {
 } as const;
 
 /** All asset handles as an array — spread into scene.preload. */
-export const allAssets = Object.values(assets);
+export const allAssets = [...Object.values(assets), ...Object.values(fonts)];
 
 // ---------------------------------------------------------------------------
 // Sprite paths — @pixi/ui creates fresh Sprite instances from string paths
