@@ -242,9 +242,12 @@ export class SplitTextComponent extends Component {
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
     if (this._bitmap !== undefined) data.bitmap = this._bitmap;
-    if (this._charAnchor !== undefined) data.charAnchor = this._charAnchor;
-    if (this._wordAnchor !== undefined) data.wordAnchor = this._wordAnchor;
-    if (this._lineAnchor !== undefined) data.lineAnchor = this._lineAnchor;
+    if (this._charAnchor !== undefined)
+      data.charAnchor = cloneAnchor(this._charAnchor);
+    if (this._wordAnchor !== undefined)
+      data.wordAnchor = cloneAnchor(this._wordAnchor);
+    if (this._lineAnchor !== undefined)
+      data.lineAnchor = cloneAnchor(this._lineAnchor);
     if (this._autoSplit !== undefined) data.autoSplit = this._autoSplit;
     return data;
   }

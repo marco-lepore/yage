@@ -310,4 +310,15 @@ describe("SplitTextComponent", () => {
     charAnchor.y = 0.9;
     expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
   });
+
+  it("decouples the serialized anchor from the cache (mutating the snapshot)", () => {
+    const comp = new SplitTextComponent({
+      text: "x",
+      charAnchor: { x: 0.5, y: 0.5 },
+    });
+    const snap = comp.serialize().charAnchor as { x: number; y: number };
+    snap.x = 0.1;
+    snap.y = 0.9;
+    expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
+  });
 });
