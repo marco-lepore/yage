@@ -7,8 +7,13 @@ import type {
   UIContainerElement,
   UIElement,
   UIButtonProps,
+  UITextProps,
 } from "./types.js";
-import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
+import {
+  createYogaNode,
+  applyLayoutProps,
+  warnChildOverflow,
+} from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 import { PointerEvents } from "./pointer-events.js";
@@ -61,6 +66,7 @@ export class UIButton implements UIContainerElement {
   private bgRenderer: BackgroundRenderer;
   private _children: UIElement[] = [];
   private _label: UIText | undefined;
+  private _truncate: "clip" | "ellipsis" | undefined;
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;
@@ -84,6 +90,7 @@ export class UIButton implements UIContainerElement {
     this._hasExplicitHeight = isExplicitSize(p.height);
     this._reconcileDefaultPadding();
 
+    this._truncate = p.truncate;
     this.onClick = p.onClick;
     this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
@@ -103,9 +110,7 @@ export class UIButton implements UIContainerElement {
     // JSX-string children both produce a centered label without callers
     // having to construct a UIText themselves.
     if (typeof p.children === "string" && p.children.length > 0) {
-      this._label = new UIText(
-        p.textStyle ? { children: p.children, style: p.textStyle } : { children: p.children },
-      );
+      this._label = new UIText(this._labelProps(p.children, p.textStyle));
       this.addElement(this._label);
     }
 
@@ -192,6 +197,7 @@ export class UIButton implements UIContainerElement {
       child.displayObject.position.set(layout.left, layout.top);
       child.applyLayout?.();
     }
+    warnChildOverflow(this.yogaNode, this._children);
     this._computedWidth = this.yogaNode.getComputedWidth();
     this._computedHeight = this.yogaNode.getComputedHeight();
     this.bgRenderer.resize(this._computedWidth, this._computedHeight);
@@ -236,8 +242,20 @@ export class UIButton implements UIContainerElement {
     }
     // Promote: caller constructed without a string child, but now wants a
     // label — create one and add it as the first child.
-    this._label = new UIText({ children: s });
+    this._label = new UIText(this._labelProps(s));
     this.addElement(this._label);
+  }
+
+  /**
+   * Build the props for the internal label `UIText`, threading the button's
+   * `truncate` mode (and optional text style) through. Omits absent keys so
+   * `exactOptionalPropertyTypes` stays happy.
+   */
+  private _labelProps(text: string, style?: UITextProps["style"]): UITextProps {
+    const props: UITextProps = { children: text };
+    if (style) props.style = style;
+    if (this._truncate) props.truncate = this._truncate;
+    return props;
   }
 
   setDisabled(v: boolean): void {
@@ -271,6 +289,12 @@ export class UIButton implements UIContainerElement {
     }
     if (p.textStyle && this._label) {
       this._label.setStyle(p.textStyle);
+    }
+    // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:
+    // undefined }` from the reconciler clears the mode back to wrapping.
+    if ("truncate" in p && p.truncate !== this._truncate) {
+      this._truncate = p.truncate;
+      this._label?.update({ truncate: p.truncate });
     }
     if (p.onClick !== undefined) this.onClick = p.onClick;
     this.pointerEvents.set(p);
