@@ -12,7 +12,7 @@ import {
 import { Transform } from "@yagejs/core";
 import { injectStyles, setupGameContainer } from "./shared.js";
 import {
-  textStyle, loadFonts, allAssets, nineSliceBtn, panelBg,
+  textStyle, allAssets, defaultTextStyle, nineSliceBtn, panelBg,
 } from "./ui-theme.js";
 
 injectStyles();
@@ -280,9 +280,11 @@ async function main() {
     }),
   );
 
-  engine.use(new UIPlugin());
+  // `defaultTextStyle` sets the theme font/fill as the base for all UI text;
+  // the fonts themselves load declaratively via the `webFont` handles in
+  // `allAssets` (scene preload) — no manual `document.fonts.load` needed.
+  engine.use(new UIPlugin({ defaultTextStyle }));
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new UIExampleScene());
 }

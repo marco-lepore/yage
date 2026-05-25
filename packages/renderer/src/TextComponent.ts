@@ -7,12 +7,11 @@ import { BitmapText, Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { buildTextOptions } from "./internal/textConstruction.js";
+import { buildTextOptions, resolveTextStyle } from "./internal/textConstruction.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type {
-  BitmapTextOption,
   DisplayBitmapText,
   DisplayText,
   TextStyle,
@@ -26,11 +25,12 @@ export interface TextComponentOptions {
   style?: TextStyle;
   /**
    * Render with a bitmap font instead of canvas-rasterised `Text` — the
-   * pixel-art escape hatch. `true` bakes a dynamic font from `style`;
-   * `{ font }` uses an installed/loaded font by name (`size` overrides the
-   * glyph size). See {@link BitmapTextOption}.
+   * pixel-art escape hatch that stays crisp at non-integer scale. Pixi bakes
+   * or looks up the glyph atlas from `style.fontFamily` (the name an
+   * {@link installBitmapFont} call registered, or any font for a dynamic
+   * bake) at `style.fontSize`.
    */
-  bitmap?: BitmapTextOption;
+  bitmap?: boolean;
   /**
    * Per-text render resolution. Mirrors the Pixi v8 `Text` constructor
    * option — note `resolution` is NOT a `TextStyle` property in v8, so
@@ -55,7 +55,7 @@ export interface TextComponentOptions {
 export interface TextData {
   text: string;
   style?: TextStyle;
-  bitmap?: BitmapTextOption;
+  bitmap?: boolean;
   resolution?: number;
   layer: string;
   tint?: number;
@@ -77,7 +77,7 @@ export class TextComponent extends Component {
   private _styleOptions?: TextStyle;
   // Raw bitmap / resolution options, cached for the same round-trip reason:
   // the pixi instance doesn't faithfully read them back.
-  private _bitmap?: BitmapTextOption;
+  private _bitmap?: boolean;
   private _resolution?: number;
   /** See {@link SpriteComponent.fx}. */
   readonly fx = new EffectsHost(
@@ -102,12 +102,7 @@ export class TextComponent extends Component {
     // Shallow-clone so external mutation of the caller's options object
     // doesn't drift our cached snapshot away from the live pixi state.
     if (options.style) this._styleOptions = { ...options.style };
-    if (options.bitmap !== undefined) {
-      this._bitmap =
-        typeof options.bitmap === "object"
-          ? { ...options.bitmap }
-          : options.bitmap;
-    }
+    if (options.bitmap !== undefined) this._bitmap = options.bitmap;
     if (options.resolution !== undefined) {
       this._resolution = options.resolution;
     }
@@ -131,10 +126,25 @@ export class TextComponent extends Component {
     this.text.text = value;
   }
 
-  /** Replace the text style. */
+  /**
+   * Replace the text style. Unset properties fall back to the engine default
+   * (then Pixi's), so this is a full replace, not a patch — to change a few
+   * properties while keeping the rest, use {@link mergeStyle}.
+   */
   setStyle(style: TextStyle): void {
-    this.text.style = style;
+    this.text.style = resolveTextStyle(style) ?? style;
     this._styleOptions = { ...style };
+  }
+
+  /**
+   * Patch the current style: merge `style` over the properties already set
+   * (construction or a prior `setStyle`/`mergeStyle`) and re-apply. Unlike
+   * {@link setStyle}, properties you don't pass are preserved — handy for an
+   * imperative recolour (`mergeStyle({ fill })`) that keeps the font, size,
+   * weight, etc.
+   */
+  mergeStyle(style: TextStyle): void {
+    this.setStyle({ ...this._styleOptions, ...style });
   }
 
   /** Tint color applied to the rendered text. */
@@ -163,12 +173,7 @@ export class TextComponent extends Component {
       visible: this.text.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
-    if (this._bitmap !== undefined) {
-      data.bitmap =
-        typeof this._bitmap === "object"
-          ? { ...this._bitmap }
-          : this._bitmap;
-    }
+    if (this._bitmap !== undefined) data.bitmap = this._bitmap;
     if (this._resolution !== undefined) data.resolution = this._resolution;
     const effects = this.fx.serialize();
     if (effects) data.effects = effects;

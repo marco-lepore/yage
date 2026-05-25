@@ -7,6 +7,11 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Yoga flexbox-based UI. Supports b
 ```ts
 import { UIPlugin } from "@yagejs/ui";
 engine.use(new UIPlugin());
+
+// Optional: an app-wide default style for UI text (UIText + auto-wrapped
+// Button/Checkbox labels). Layered over RendererConfig.defaultTextStyle;
+// per-text `style` still wins.
+engine.use(new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xffffff } }));
 ```
 
 ## UIPanel
@@ -57,7 +62,8 @@ const panel = entity.get(UIPanel);
 // Text
 const label = panel.text("Score: 0", { fontSize: 24, fill: 0xffffff });
 label.setText("Score: 100");
-label.setStyle({ fill: 0x00ff00 });
+label.setStyle({ fill: 0x00ff00 }); // replace — unset props revert to default
+label.mergeStyle({ fill: 0x00ff00 }); // patch — keeps the current font/size/etc
 
 // Button — width/height are optional; omit them to shrink-to-content
 const btn = panel.button("Start", {
@@ -149,17 +155,20 @@ Fixes: give the container more room, set `maxWidth`/`maxHeight`, mark the child
 `UIText` (and the `panel.text(...)` builder, `UIButton` labels, the React `<Text>`) accept two extra props for crisp pixel-art text. Yoga measurement — the default word-wrap and the `truncate?: "clip" | "ellipsis"` modes — is unchanged on the bitmap path.
 
 ```ts
-// Dynamic bitmap font baked from the text's own style (zero-config).
+// `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
+// at `style.fontSize` — the font is a normal style property.
 new UIText({ children: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
 
-// An installed / loaded bitmap font by name; `size` overrides glyph size.
-new UIText({ children: "READY", bitmap: { font: "PressStart", size: 16 } });
+// An installed / loaded bitmap font: name it via fontFamily.
+new UIText({ children: "READY", bitmap: true, style: { fontFamily: "PressStart", fontSize: 16 } });
 
 // Per-text canvas resolution (see gotcha below).
 new UIText({ children: "HUD", resolution: window.devicePixelRatio });
 ```
 
-Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obtain a font name for `bitmap: { font }`.
+Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obtain a font name, then pass it as `style.fontFamily` with `bitmap: true`. `bitmap` is a sibling prop of `style`, not a style key — nesting it (`style: { …, bitmap }`) is ignored and warns in dev. To recolour bitmap text at runtime use `mergeStyle({ fill })` so `fontFamily` survives; `setStyle({ fill })` replaces the style and drops the font.
+
+`UIButton` and the React `<Button>` forward a `bitmap` boolean to their auto-wrapped string label: `new UIButton({ children: "PLAY", bitmap: true, textStyle: { fontFamily: "PressStart" } })` / `<Button bitmap textStyle={{ fontFamily: "PressStart" }}>PLAY</Button>`. (No effect when the child is a composed element — set `bitmap` on that `<Text>` directly.)
 
 **`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property — setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass `resolution` explicitly per text for crisp canvas output without a prototype patch, or use `bitmap` for pixel-perfect rendering. `resolution` is ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
 

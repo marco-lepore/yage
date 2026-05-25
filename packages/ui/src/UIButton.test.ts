@@ -87,6 +87,9 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
+  // Distinct subclass so tests can assert a bitmap label was constructed.
+  class MockBitmapText extends MockText {}
+
   class MockSprite extends MockContainer {
     texture: unknown;
     width = 0;
@@ -147,13 +150,14 @@ const { mocks } = vi.hoisted(() => {
     ) {}
   }
 
-  return { mocks: { MockContainer, MockGraphics, MockText, MockSprite, MockNineSliceSprite, MockTilingSprite, MockRectangle } };
+  return { mocks: { MockContainer, MockGraphics, MockText, MockBitmapText, MockSprite, MockNineSliceSprite, MockTilingSprite, MockRectangle } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Graphics: mocks.MockGraphics,
   Text: mocks.MockText,
+  BitmapText: mocks.MockBitmapText,
   Sprite: mocks.MockSprite,
   NineSliceSprite: mocks.MockNineSliceSprite,
   TilingSprite: mocks.MockTilingSprite,
@@ -225,6 +229,76 @@ describe("UIButton", () => {
     const btn = new UIButton({ children: "Hello", width: 100, height: 30 });
     btn.setText("World");
     // No throw; label updated internally
+  });
+
+  it("forwards bitmap to the auto-wrapped label", () => {
+    const btn = new UIButton({
+      children: "PLAY",
+      bitmap: true,
+      textStyle: { fill: 0xffcc00, fontFamily: "PressStart", fontSize: 8 },
+    });
+    const label = btn.children[0] as UIText;
+    const text = label.displayObject as unknown as InstanceType<
+      typeof mocks.MockBitmapText
+    > & { style: Record<string, unknown> };
+    expect(text).toBeInstanceOf(mocks.MockBitmapText);
+    expect(text.style).toMatchObject({
+      fill: 0xffcc00,
+      fontFamily: "PressStart",
+      fontSize: 8,
+    });
+  });
+
+  it("forwards bitmap to a label created later via setText", () => {
+    const btn = new UIButton({ bitmap: true });
+    btn.setText("SCORE");
+    const label = btn.children[0] as UIText;
+    expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("update({ bitmap, children }) promotes to a BitmapText label", () => {
+    // No children at construction → no label yet. A reconciler pass that
+    // brings both bitmap and the string must build the label as BitmapText,
+    // not stale canvas Text.
+    const btn = new UIButton({});
+    btn.update({ bitmap: true, children: "SCORE" });
+    const label = btn.children[0] as UIText;
+    expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("update({ textStyle }) before children promotes the label with that style", () => {
+    // Two-step reconcile: textStyle arrives before the label exists, then the
+    // string. The promoted label must carry the textStyle, not the stale
+    // construction-time value.
+    const btn = new UIButton({});
+    btn.update({ textStyle: { fill: 0xff0000 } });
+    btn.update({ children: "SCORE" });
+    const label = btn.children[0] as UIText;
+    const text = label.displayObject as unknown as { style: Record<string, unknown> };
+    expect(text.style).toMatchObject({ fill: 0xff0000 });
+  });
+
+  it("warns (and keeps the class) when update() changes bitmap on an existing label", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const btn = new UIButton({ children: "SCORE" }); // canvas label
+    const label = btn.children[0] as UIText;
+    expect(label.displayObject).not.toBeInstanceOf(mocks.MockBitmapText);
+
+    btn.update({ bitmap: true });
+
+    expect(label.displayObject).not.toBeInstanceOf(mocks.MockBitmapText);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
+
+  it("does not warn when update() repeats bitmap: false on a canvas label", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const btn = new UIButton({ children: "SCORE" });
+    btn.update({ bitmap: false });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("visibility can be toggled", () => {

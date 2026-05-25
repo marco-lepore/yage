@@ -9,6 +9,12 @@ export class AssetHandle<T> {
     readonly type: string,
     /** Asset path or URL. */
     readonly path: string,
+    /**
+     * Optional loader metadata that the path can't carry — e.g. the
+     * `@font-face` family for a web font. Forwarded to the loader's
+     * `load(path, data)`; ignored by loaders that don't read it.
+     */
+    readonly data?: unknown,
   ) {}
 
   /** Phantom field to preserve the generic type at compile time. */
@@ -17,6 +23,6 @@ export class AssetHandle<T> {
 
 /** Interface that plugins implement to load/unload a specific asset type. */
 export interface AssetLoader<T = unknown> {
-  load(path: string): Promise<T>;
+  load(path: string, data?: unknown): Promise<T>;
   unload?(path: string, asset: T): void;
 }

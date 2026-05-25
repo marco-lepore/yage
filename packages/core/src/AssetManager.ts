@@ -51,7 +51,7 @@ export class AssetManager {
             `No loader registered for asset type "${handle.type}". Missing plugin?`,
           );
         }
-        const asset = await loader.load(handle.path);
+        const asset = await loader.load(handle.path, handle.data);
         this.cache.set(this.key(handle), asset);
         onProgress?.(++done / toLoad.length);
       }),

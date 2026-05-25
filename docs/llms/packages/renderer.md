@@ -228,14 +228,17 @@ Serializable. **Thin wrapper:** `style` forwards as-is to pixi `TextStyleOptions
 **Pixel-art text — `bitmap`.** Canvas-rasterised `Text` is bilinear-sampled by the GPU, so it goes blurry at non-integer scale (camera zoom, pixel-art upscaling) on non-Retina displays. Set `bitmap` to draw pre-baked glyph quads instead:
 
 ```ts
-// Dynamic bitmap font baked from this text's own style — zero-config.
+// `bitmap: true` bakes (or looks up) the atlas from `style.fontFamily`
+// at `style.fontSize` — the font is a normal style property.
 new TextComponent({ text: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
 
-// Use an installed / loaded bitmap font by name; `size` overrides glyph size.
-new TextComponent({ text: "READY", bitmap: { font: "PressStart", size: 16 } });
+// An installed / loaded bitmap font: name it via fontFamily.
+new TextComponent({ text: "READY", bitmap: true, style: { fontFamily: "PressStart", fontSize: 16 } });
 ```
 
-`bitmap` and `resolution` round-trip through serialization. Yoga/layout behaviour is unchanged.
+`bitmap` (boolean) and `resolution` round-trip through serialization. Yoga/layout behaviour is unchanged.
+
+**`setStyle` replaces, `mergeStyle` patches.** `setStyle(style)` assigns a fresh style — properties you omit fall back to the defaults. `mergeStyle(style)` merges over the properties already set, so an imperative recolour (`mergeStyle({ fill })`) keeps the current font, size, weight, etc. The React reconciler uses `setStyle` (declarative: the full style is passed every render).
 
 **`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property. Setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass it explicitly to get crisp canvas text without a prototype patch — or use `bitmap` for pixel-perfect rendering:
 
@@ -244,6 +247,10 @@ new TextComponent({ text: "HUD", resolution: window.devicePixelRatio });
 ```
 
 `resolution` is ignored when `bitmap` is set — bitmap resolution is fixed when the font is baked (see `installBitmapFont({ resolution })`).
+
+**Engine default text style.** `new RendererPlugin({ defaultTextStyle: { fontFamily, fill, resolution } })` sets an app-wide base under every `TextComponent` / `UIText` `style` (per-text values win) — no need to import pixi to touch `TextStyle.defaultTextStyle`. `@yagejs/ui`'s `UIPlugin({ defaultTextStyle })` layers a UI-only override on top (precedence: per-text style > UIPlugin default > RendererPlugin default > pixi default). The default also re-applies on `setStyle`, so a recolour keeps it.
+
+**`bitmap` is a sibling of `style`, not a style key.** Folding it into `style` (`style: { …, bitmap: true }`) is ignored and emits a dev warning — keep it top-level: `{ style: { … }, bitmap: true }`.
 
 ### AnimatedSpriteComponent
 
@@ -755,24 +762,29 @@ Effects and masks survive `SaveService.saveSnapshot` / `loadSnapshot` round-trip
 ## Asset Factories
 
 ```ts
-import { texture, spritesheet, renderAsset, bitmapFont } from "@yagejs/renderer";
+import { texture, spritesheet, renderAsset, bitmapFont, webFont } from "@yagejs/renderer";
 
 // Returns AssetHandle<Texture> for preloading
 const heroTex = texture("hero.png");
 const sheet = spritesheet("characters.json");
 const asset = renderAsset("ui-atlas.json");
 // AssetHandle<BitmapFont> — a BMFont .fnt/.xml + atlas. The loaded font
-// registers under the fontFamily in the descriptor; pass that name as the
-// `bitmap.font` discriminator on TextComponent / UIText.
+// registers under the fontFamily in the descriptor; pass that name as
+// `style.fontFamily` (with `bitmap: true`) on TextComponent / UIText.
 const pixelFont = bitmapFont("fonts/press-start.fnt");
+// AssetHandle<FontFace[]> — a plain .ttf/.woff/.woff2 for canvas Text. The
+// face registers under `family` (pass that as `style.fontFamily`); omit to let
+// Pixi derive it from the file name. Preload it so the face is ready before the
+// first draw — Pixi caches fallback metrics on first paint otherwise.
+const uiFont = webFont("fonts/Inter.woff2", { family: "Inter" });
 
 // Use in Scene.preload:
 class MyScene extends Scene {
-  readonly preload = [heroTex, sheet, pixelFont];
+  readonly preload = [heroTex, sheet, pixelFont, uiFont];
 }
 ```
 
-**`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready for the `bitmap: { font }` option:
+**`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):
 
 ```ts
 import { installBitmapFont, TextComponent } from "@yagejs/renderer";
@@ -782,7 +794,9 @@ const font = await installBitmapFont("fonts/PressStart2P.ttf", {
   size: 16,            // glyph bake size (default 32)
   resolution: 2,       // crisp when upscaled (default 2)
   // chars: [["a","z"],["A","Z"],"0123456789 .,!?"],  // default: alphanumeric
-  // style: { fill: 0xffffff },                        // extra baked style
+  // style: { fill: 0x00ff00 },                        // bake a fixed colour
 });
-entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+entity.add(new TextComponent({ text: "READY", bitmap: true, style: { fontFamily: font, fill: 0xffcc00 } }));
 ```
+
+Glyphs bake **white** by default so a per-text `fill` / `tint` (multiplied over the atlas) can recolour them — a black atlas would yield `black × tint = black`. Set `style.fill` only to bake a fixed colour. To recolour at runtime use `mergeStyle({ fill })` so `fontFamily` survives — `setStyle({ fill })` replaces the style and drops the font.

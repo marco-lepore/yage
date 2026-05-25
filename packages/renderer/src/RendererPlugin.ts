@@ -32,7 +32,8 @@ import { RendererSnapshotContributor } from "./effects/RendererSnapshotContribut
 import { DisplaySystem } from "./DisplaySystem.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
-import type { GraphicsContext, TextureResource } from "./public-types.js";
+import type { GraphicsContext, TextStyle, TextureResource } from "./public-types.js";
+import { getDefaultTextStyle, setDefaultTextStyle } from "./internal/textConstruction.js";
 import { RendererKey } from "./types.js";
 import type { RendererConfig, RendererFitOptions } from "./types.js";
 import type { SceneRenderTreeProvider } from "./SceneRenderTree.js";
@@ -119,6 +120,8 @@ export class RendererPlugin implements Plugin {
    */
   private _originalScaleMode: SCALE_MODE | undefined = undefined;
   private _scaleModeCaptured = false;
+  private _prevDefaultTextStyle: TextStyle | undefined = undefined;
+  private _defaultTextStyleCaptured = false;
 
   constructor(config: RendererConfig) {
     this._config = config;
@@ -137,6 +140,15 @@ export class RendererPlugin implements Plugin {
       this._originalScaleMode = TextureStyle.defaultOptions.scaleMode;
       this._scaleModeCaptured = true;
       TextureStyle.defaultOptions.scaleMode = "nearest";
+    }
+
+    // Apply the engine-level default text style. Captured/restored like the
+    // scale mode above so this module-singleton mutation stays scoped to the
+    // plugin's lifetime (test isolation, multiple engines in one process).
+    if (this._config.defaultTextStyle !== undefined) {
+      this._prevDefaultTextStyle = getDefaultTextStyle();
+      this._defaultTextStyleCaptured = true;
+      setDefaultTextStyle(this._config.defaultTextStyle);
     }
 
     // 2. Create & init PixiJS Application
@@ -308,6 +320,19 @@ export class RendererPlugin implements Plugin {
         Assets.unload(path);
       },
     });
+    am?.registerLoader("web-font", {
+      // `data.family` (from the `webFont` handle) names the registered
+      // `@font-face`; Pixi derives it from the file name when omitted.
+      load: (path: string, data?: unknown) => {
+        const family = (data as { family?: string } | undefined)?.family;
+        return Assets.load<FontFace[]>(
+          family !== undefined ? { src: path, data: { family } } : path,
+        );
+      },
+      unload: (path: string) => {
+        Assets.unload(path);
+      },
+    });
 
     // 12. Stash the context for use in onStart, where the snapshot bridge is
     //     wired up — we need to wait for every plugin to install before
@@ -397,6 +422,12 @@ export class RendererPlugin implements Plugin {
       }
       this._scaleModeCaptured = false;
       this._originalScaleMode = undefined;
+    }
+
+    if (this._defaultTextStyleCaptured) {
+      setDefaultTextStyle(this._prevDefaultTextStyle);
+      this._defaultTextStyleCaptured = false;
+      this._prevDefaultTextStyle = undefined;
     }
   }
 

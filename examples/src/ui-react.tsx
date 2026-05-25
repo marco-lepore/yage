@@ -19,7 +19,7 @@ import {
 import type { Placement } from "@yagejs/ui-react";
 import { injectStyles, setupGameContainer } from "./shared";
 import {
-  textStyle, loadFonts, allAssets, nineSliceBtnReact, panelBg,
+  textStyle, allAssets, defaultTextStyle, nineSliceBtnReact, panelBg,
   sprites as S, nineSlice,
 } from "./ui-theme";
 
@@ -321,10 +321,12 @@ async function main() {
     }),
   );
 
-  engine.use(new UIPlugin());
+  // `defaultTextStyle` sets the theme font/fill as the base for all UI text;
+  // fonts load declaratively via the `webFont` handles in `allAssets` (scene
+  // preload), replacing the old manual `document.fonts.load` call.
+  engine.use(new UIPlugin({ defaultTextStyle }));
   engine.use(new UIReactPlugin());
 
-  await loadFonts();
   await engine.start();
   await engine.scenes.push(new UIReactScene());
 }

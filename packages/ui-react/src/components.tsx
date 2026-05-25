@@ -1,7 +1,6 @@
 import { useState, forwardRef } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
 import type {
-  BitmapTextOption,
   ColorValue,
   DisplayContainer,
   PointLike,
@@ -85,10 +84,11 @@ export interface TextProps extends LayoutProps, PointerEventProps {
   /**
    * Render with a bitmap font instead of canvas-rasterised `Text` — the
    * pixel-art escape hatch (canvas text blurs at non-integer scale on
-   * non-Retina displays). `true` bakes a dynamic font from `style`;
-   * `{ font }` uses an installed/loaded font by name.
+   * non-Retina displays). Pixi bakes or looks up the glyph atlas from
+   * `style.fontFamily` (an `installBitmapFont` name, or any font for a
+   * dynamic bake) at `style.fontSize`.
    */
-  bitmap?: BitmapTextOption;
+  bitmap?: boolean;
   /**
    * Per-text render resolution. Pixi v8 `resolution` is a `Text`
    * constructor option, not a `TextStyle` property — set it here for crisp
@@ -117,6 +117,12 @@ export interface ButtonProps extends LayoutProps, PointerEventProps {
   pressBg?: BackgroundOptions;
   /** Style applied to the auto-wrapped text node when `children` is a string. */
   textStyle?: Partial<TextStyle>;
+  /**
+   * Bitmap font for the auto-wrapped label when `children` is a string /
+   * number. Forwarded to the inner `<Text>`. No effect when `children` is a
+   * React element — set `bitmap` on that `<Text>` directly.
+   */
+  bitmap?: boolean;
   /**
    * Overflow behavior for the auto-wrapped label when `children` is a
    * string / number. Forwarded straight to the inner `<Text>` so a
@@ -370,13 +376,14 @@ export function UIText(props: TextProps): React.JSX.Element {
  *   dropped (this reconciler has no `createTextInstance`).
  */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, bg, hoverBg, pressBg, textStyle, truncate, ...rest } = props;
+  const { children, bg, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } = props;
   const isPrimitiveLabel =
     typeof children === "string" || typeof children === "number";
   const content = isPrimitiveLabel
     ? <UIText
         {...(textStyle ? { style: textStyle } : {})}
         {...(truncate ? { truncate } : {})}
+        {...(bitmap !== undefined ? { bitmap } : {})}
       >
         {String(children)}
       </UIText>

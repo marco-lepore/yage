@@ -86,6 +86,7 @@ vi.mock("pixi.js", () => ({
 
 import { Transform } from "@yagejs/core";
 import { TextComponent } from "./TextComponent.js";
+import { setDefaultTextStyle } from "./internal/textConstruction.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
@@ -94,6 +95,7 @@ import {
 describe("TextComponent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setDefaultTextStyle(undefined);
   });
 
   it("creates a pixi Text with the supplied content", () => {
@@ -275,6 +277,19 @@ describe("TextComponent", () => {
     expect(a.style).toEqual(b.style);
   });
 
+  it("applies the engine default text style as a base, per-text style wins", () => {
+    setDefaultTextStyle({ fontFamily: "Inter", fill: 0x111111 });
+    const comp = new TextComponent({ text: "x", style: { fill: 0xff0000 } });
+    expect(comp.text.style).toEqual({ fontFamily: "Inter", fill: 0xff0000 });
+  });
+
+  it("keeps the engine default under a recolour via setStyle", () => {
+    setDefaultTextStyle({ fontFamily: "Inter" });
+    const comp = new TextComponent({ text: "x", style: { fill: 0xff0000 } });
+    comp.setStyle({ fill: 0x00ff00 });
+    expect(comp.text.style).toEqual({ fontFamily: "Inter", fill: 0x00ff00 });
+  });
+
   it("constructs a canvas Text by default", () => {
     const comp = new TextComponent({ text: "x" });
     expect(comp.text).toBeInstanceOf(mocks.MockText);
@@ -286,18 +301,51 @@ describe("TextComponent", () => {
     expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
   });
 
-  it("bitmap: { font, size } folds into the constructed style", () => {
+  it("bitmap text reads fontFamily / fontSize from style", () => {
     const comp = new TextComponent({
       text: "x",
-      style: { fill: 0xff0000 },
-      bitmap: { font: "PressStart", size: 16 },
+      bitmap: true,
+      style: { fill: 0xff0000, fontFamily: "PressStart", fontSize: 16 },
     });
     expect(comp.text).toBeInstanceOf(mocks.MockBitmapText);
-    expect(comp.text.style).toEqual({
+    expect(comp.text.style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
       fontSize: 16,
     });
+  });
+
+  it("mergeStyle keeps the existing font/size on an imperative recolour", () => {
+    const comp = new TextComponent({
+      text: "score",
+      bitmap: true,
+      style: { fontFamily: "PressStart", fontSize: 16, fill: 0xffcc00 },
+    });
+    comp.mergeStyle({ fill: 0xff0000 });
+    expect(comp.text.style).toMatchObject({
+      fill: 0xff0000,
+      fontFamily: "PressStart",
+      fontSize: 16,
+    });
+  });
+
+  it("warns when `bitmap` is nested in style on the setStyle path", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const comp = new TextComponent({ text: "x" });
+    comp.setStyle({ fill: 0xff0000, bitmap: true } as never);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("`bitmap` was found inside `style`"),
+    );
+    warn.mockRestore();
+  });
+
+  it("setStyle replaces — properties not passed drop away", () => {
+    const comp = new TextComponent({
+      text: "x",
+      style: { fontSize: 10, fontFamily: "Foo" },
+    });
+    comp.setStyle({ fontSize: 20, fill: 0x00ff00 });
+    expect(comp.text.style).toEqual({ fontSize: 20, fill: 0x00ff00 });
   });
 
   it("forwards resolution to a canvas Text constructor", () => {
@@ -322,11 +370,12 @@ describe("TextComponent", () => {
   it("serialize/fromSnapshot round-trips bitmap and resolution", () => {
     const comp = new TextComponent({
       text: "hi",
-      bitmap: { font: "PressStart", size: 8 },
+      bitmap: true,
+      style: { fontFamily: "PressStart", fontSize: 8 },
       resolution: 2,
     });
     const data = comp.serialize();
-    expect(data.bitmap).toEqual({ font: "PressStart", size: 8 });
+    expect(data.bitmap).toBe(true);
     expect(data.resolution).toBe(2);
 
     const restored = TextComponent.fromSnapshot(data);
@@ -337,12 +386,12 @@ describe("TextComponent", () => {
     });
   });
 
-  it("decouples the cached bitmap option from the caller's object", () => {
-    const bitmap: { font: string; size?: number } = { font: "A" };
-    const comp = new TextComponent({ text: "x", bitmap });
-    bitmap.font = "B";
-    bitmap.size = 99;
-    expect(comp.serialize().bitmap).toEqual({ font: "A" });
+  it("decouples the cached style snapshot from the caller's object", () => {
+    const style: { fill: number; fontFamily?: string } = { fill: 0xffffff };
+    const comp = new TextComponent({ text: "x", style });
+    style.fill = 0x000000;
+    style.fontFamily = "B";
+    expect(comp.serialize().style).toEqual({ fill: 0xffffff });
   });
 
   it("omits bitmap and resolution from the snapshot when not provided", () => {

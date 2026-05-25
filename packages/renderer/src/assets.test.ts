@@ -19,7 +19,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import { AssetHandle } from "@yagejs/core";
-import { bitmapFont, installBitmapFont } from "./assets.js";
+import { bitmapFont, installBitmapFont, webFont } from "./assets.js";
 
 describe("bitmapFont()", () => {
   it("creates a typed bitmap-font asset handle", () => {
@@ -27,6 +27,21 @@ describe("bitmapFont()", () => {
     expect(handle).toBeInstanceOf(AssetHandle);
     expect(handle.type).toBe("bitmap-font");
     expect(handle.path).toBe("fonts/pixel.fnt");
+  });
+});
+
+describe("webFont()", () => {
+  it("creates a web-font handle carrying the family as loader data", () => {
+    const handle = webFont("fonts/Inter.woff2", { family: "Inter" });
+    expect(handle).toBeInstanceOf(AssetHandle);
+    expect(handle.type).toBe("web-font");
+    expect(handle.path).toBe("fonts/Inter.woff2");
+    expect(handle.data).toEqual({ family: "Inter" });
+  });
+
+  it("omits data when no family is given (Pixi derives from the file name)", () => {
+    const handle = webFont("fonts/Inter.woff2");
+    expect(handle.data).toBeUndefined();
   });
 });
 
@@ -48,10 +63,23 @@ describe("installBitmapFont()", () => {
     });
     expect(mocks.bitmapFontInstall).toHaveBeenCalledWith({
       name: "PressStart",
-      style: { fontFamily: "PressStart", fontSize: 16 },
+      style: { fill: 0xffffff, fontFamily: "PressStart", fontSize: 16 },
       resolution: 2,
       padding: 4,
     });
+  });
+
+  it("bakes a white atlas by default so per-text fill/tint can colour it", async () => {
+    await installBitmapFont("a.ttf", { name: "A" });
+    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(0xffffff);
+  });
+
+  it("lets an explicit style.fill override the white default", async () => {
+    await installBitmapFont("a.ttf", {
+      name: "A",
+      style: { fill: 0x00ff00 },
+    });
+    expect(mocks.bitmapFontInstall.mock.calls[0]?.[0].style.fill).toBe(0x00ff00);
   });
 
   it("defaults size/resolution/padding and merges extra style props", async () => {

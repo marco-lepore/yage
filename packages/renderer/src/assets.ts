@@ -9,6 +9,7 @@ import type {
   TextureInput,
   TextureResource,
   TextureSliceOptions,
+  WebFontHandle,
 } from "./public-types.js";
 
 /** Create a typed asset handle for a texture. */
@@ -31,7 +32,7 @@ export function renderAsset<T = unknown>(path: string): RendererAsset<T> {
  * descriptor plus its glyph atlas. Resolve it through the asset manager
  * (`engine.assets`) like any other handle; the loaded font registers itself
  * under the `fontFamily` declared in the descriptor, so pass that same name
- * as the `bitmap.font` discriminator on `UIText` / `TextComponent`.
+ * as `style.fontFamily` (with `bitmap: true`) on `UIText` / `TextComponent`.
  *
  * For runtime-baked fonts from a `.ttf` instead, see {@link installBitmapFont}.
  */
@@ -39,12 +40,44 @@ export function bitmapFont(path: string): BitmapFontHandle {
   return new AssetHandle("bitmap-font", path);
 }
 
+/** Options for {@link webFont}. */
+export interface WebFontOptions {
+  /**
+   * `@font-face` family the loaded face registers under — the name you then
+   * pass as `style.fontFamily` on `Text` / `UIText` / `TextComponent`.
+   * Omit to let Pixi derive it from the file name.
+   */
+  family?: string;
+}
+
+/**
+ * Create a typed asset handle for a plain web font (a `.ttf`/`.woff`/`.woff2`
+ * loaded for canvas `Text`, the canvas sibling of {@link bitmapFont}). Resolve
+ * it through a scene's `preload` so the face is registered before the first
+ * draw — Pixi caches fallback metrics on first paint otherwise, so a font that
+ * loads late never applies.
+ *
+ * ```ts
+ * class MenuScene extends Scene {
+ *   readonly preload = [webFont("fonts/Inter.woff2", { family: "Inter" })];
+ *   // …then: new TextComponent({ text: "Play", style: { fontFamily: "Inter" } })
+ * }
+ * ```
+ */
+export function webFont(path: string, opts?: WebFontOptions): WebFontHandle {
+  return new AssetHandle(
+    "web-font",
+    path,
+    opts?.family !== undefined ? { family: opts.family } : undefined,
+  );
+}
+
 /** Options for {@link installBitmapFont}. */
 export interface InstallBitmapFontOptions {
   /**
-   * Name to register the baked font under. This is what you pass as the
-   * `bitmap.font` discriminator on `UIText` / `TextComponent`, and what
-   * `installBitmapFont` returns.
+   * Name to register the baked font under. This is what you pass as
+   * `style.fontFamily` (alongside `bitmap: true`) on `UIText` /
+   * `TextComponent`, and what `installBitmapFont` returns.
    */
   name: string;
   /** Glyph size (px) to bake the atlas at. Default `32`. */
@@ -65,6 +98,8 @@ export interface InstallBitmapFontOptions {
   /**
    * Extra `TextStyle` props baked into every glyph (fill, stroke, weight,
    * drop shadow…). `fontFamily` / `fontSize` are managed by this helper.
+   * `fill` defaults to white so per-text `fill` / `tint` can recolour the
+   * glyphs — set it explicitly to bake a fixed colour instead.
    */
   style?: Partial<TextStyle>;
   /**
@@ -78,14 +113,16 @@ export interface InstallBitmapFontOptions {
 /**
  * Load a `.ttf`/`.woff` and bake a bitmap glyph atlas from it via Pixi v8's
  * `BitmapFont.install`. Returns the registered font name, ready to hand to
- * the `bitmap: { font }` option on `UIText` / `TextComponent`.
+ * `style.fontFamily` (with `bitmap: true`) on `UIText` / `TextComponent`.
  *
  * ```ts
  * const font = await installBitmapFont("fonts/PressStart2P.ttf", {
  *   name: "PressStart",
  *   size: 16,
  * });
- * entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+ * entity.add(
+ *   new TextComponent({ text: "READY", bitmap: true, style: { fontFamily: font } }),
+ * );
  * ```
  */
 export async function installBitmapFont(
@@ -100,6 +137,10 @@ export async function installBitmapFont(
   BitmapFont.install({
     name: opts.name,
     style: {
+      // Bake glyphs white by default so per-text `fill` / `tint` (a multiply
+      // over the atlas) can colour them — a black atlas yields `black × tint
+      // = black`. A caller-supplied `style.fill` still wins.
+      fill: 0xffffff,
       ...opts.style,
       fontFamily: family,
       fontSize: opts.size ?? 32,

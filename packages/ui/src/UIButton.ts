@@ -1,4 +1,6 @@
 import { Container } from "pixi.js";
+import { devWarn } from "@yagejs/core";
+import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
 import type {
@@ -66,6 +68,8 @@ export class UIButton implements UIContainerElement {
   private bgRenderer: BackgroundRenderer;
   private _children: UIElement[] = [];
   private _label: UIText | undefined;
+  private _labelStyle: Partial<TextStyle> | undefined;
+  private _labelBitmap: boolean | undefined;
   private _truncate: "clip" | "ellipsis" | undefined;
   private _disabled = false;
   private _isHovered = false;
@@ -109,8 +113,10 @@ export class UIButton implements UIContainerElement {
     // Auto-wrap a string child in a UIText so the builder API and React
     // JSX-string children both produce a centered label without callers
     // having to construct a UIText themselves.
+    this._labelStyle = p.textStyle;
+    this._labelBitmap = p.bitmap;
     if (typeof p.children === "string" && p.children.length > 0) {
-      this._label = new UIText(this._labelProps(p.children, p.textStyle));
+      this._label = new UIText(this._labelProps(p.children));
       this.addElement(this._label);
     }
 
@@ -235,6 +241,19 @@ export class UIButton implements UIContainerElement {
     else this.applyBg(this.bgOpts);
   }
 
+  /**
+   * Build the internal label's props from the cached style / bitmap /
+   * truncate mode. Omits absent keys so `exactOptionalPropertyTypes` stays
+   * happy.
+   */
+  private _labelProps(children: string): UITextProps {
+    const props: UITextProps = { children };
+    if (this._labelStyle) props.style = this._labelStyle;
+    if (this._labelBitmap !== undefined) props.bitmap = this._labelBitmap;
+    if (this._truncate) props.truncate = this._truncate;
+    return props;
+  }
+
   setText(s: string): void {
     if (this._label) {
       this._label.setText(s);
@@ -244,18 +263,6 @@ export class UIButton implements UIContainerElement {
     // label — create one and add it as the first child.
     this._label = new UIText(this._labelProps(s));
     this.addElement(this._label);
-  }
-
-  /**
-   * Build the props for the internal label `UIText`, threading the button's
-   * `truncate` mode (and optional text style) through. Omits absent keys so
-   * `exactOptionalPropertyTypes` stays happy.
-   */
-  private _labelProps(text: string, style?: UITextProps["style"]): UITextProps {
-    const props: UITextProps = { children: text };
-    if (style) props.style = style;
-    if (this._truncate) props.truncate = this._truncate;
-    return props;
   }
 
   setDisabled(v: boolean): void {
@@ -284,11 +291,33 @@ export class UIButton implements UIContainerElement {
   }
 
   update(p: Partial<UIButtonProps>): void {
+    // `bitmap` is construction-only for the label (Pixi v8 can't morph
+    // Text↔BitmapText in place). Refresh the cached value while the label
+    // hasn't been promoted yet, so a `setText` in this same update() builds
+    // it with the right class; once a label exists, surface the dropped
+    // change rather than silently rendering the wrong text type. `false` and
+    // `undefined` both mean canvas, so coalesce before comparing.
+    if ("bitmap" in p && (p.bitmap ?? false) !== (this._labelBitmap ?? false)) {
+      if (this._label) {
+        devWarn(
+          "UIButton: `bitmap` is construction-only for the label and was " +
+            "ignored on update() — remount the button (e.g. change its React " +
+            "`key`) to switch the label between canvas and bitmap text.",
+        );
+      } else {
+        this._labelBitmap = p.bitmap;
+      }
+    }
+    // Refresh the cached label style (so a not-yet-promoted label is built
+    // with it) and apply it in place when the label already exists. Mirrors
+    // the bitmap refresh above so a `textStyle`-before-`children` two-step
+    // update isn't silently dropped on the promote path.
+    if (p.textStyle) {
+      this._labelStyle = p.textStyle;
+      this._label?.setStyle(p.textStyle);
+    }
     if (p.children !== undefined && typeof p.children === "string") {
       this.setText(p.children);
-    }
-    if (p.textStyle && this._label) {
-      this._label.setStyle(p.textStyle);
     }
     // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:
     // undefined }` from the reconciler clears the mode back to wrapping.
