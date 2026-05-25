@@ -6,8 +6,13 @@ import { act } from "react";
 import { EngineCtx, SceneCtx } from "./hooks.js";
 import { useSplitText } from "./use-split-text.js";
 import type { SplitTextControls } from "./use-split-text.js";
-import { Process, ProcessSystemKey } from "@yagejs/core";
-import type { EngineContext, Scene } from "@yagejs/core";
+import {
+  Process,
+  ProcessSystem,
+  ProcessSystemKey,
+  createMockScene,
+} from "@yagejs/core";
+import type { Scene, EngineContext } from "@yagejs/core";
 import type { UISplitText } from "@yagejs/ui";
 
 beforeAll(() => {
@@ -37,16 +42,20 @@ function makeStubNode(): StubNode {
   } as unknown as StubNode;
 }
 
-function makeEngine(added: Process[]): EngineContext {
-  const processSystem = {
-    addForScene: (_scene: unknown, p: Process) => {
-      added.push(p);
-    },
-  };
-  return {
-    resolve: (key: unknown) =>
-      key === ProcessSystemKey ? processSystem : undefined,
-  } as unknown as EngineContext;
+interface Harness {
+  scene: Scene;
+  context: EngineContext;
+  processSystem: ProcessSystem;
+}
+
+// A real EngineContext + Scene (core's shared test helper) with a real
+// ProcessSystem wired in, so the hook resolves and routes through genuine
+// engine plumbing rather than ad-hoc stubs.
+function makeHarness(): Harness {
+  const { scene, context } = createMockScene();
+  const processSystem = new ProcessSystem();
+  context.register(ProcessSystemKey, processSystem);
+  return { scene, context, processSystem };
 }
 
 describe("useSplitText", () => {
@@ -66,7 +75,7 @@ describe("useSplitText", () => {
 
   function render(
     node: StubNode | null,
-    engine: EngineContext,
+    harness: Harness,
     capture: (tuple: [unknown, SplitTextControls]) => void,
   ): void {
     function TestComp(): null {
@@ -81,10 +90,10 @@ describe("useSplitText", () => {
       root.render(
         createElement(
           EngineCtx.Provider,
-          { value: engine },
+          { value: harness.context },
           createElement(
             SceneCtx.Provider,
-            { value: {} as Scene },
+            { value: harness.scene },
             createElement(TestComp),
           ),
         ),
@@ -95,7 +104,7 @@ describe("useSplitText", () => {
   it("returns a [ref, controls] tuple with live segment accessors", () => {
     const node = makeStubNode();
     let tuple!: [unknown, SplitTextControls];
-    render(node, makeEngine([]), (t) => (tuple = t));
+    render(node, makeHarness(), (t) => (tuple = t));
 
     const [ref, controls] = tuple;
     expect(ref).toHaveProperty("current");
@@ -104,27 +113,39 @@ describe("useSplitText", () => {
     expect(typeof controls.run).toBe("function");
   });
 
-  it("run() enqueues on the scene queue; the handle cancels just that batch", () => {
-    const added: Process[] = [];
+  it("run() routes processes onto the scene's process pool", () => {
+    const harness = makeHarness();
     let controls!: SplitTextControls;
-    render(makeStubNode(), makeEngine(added), (t) => (controls = t[1]));
+    render(makeStubNode(), harness, (t) => (controls = t[1]));
 
-    const p1 = new Process({ update: () => {} });
-    const p2 = new Process({ update: () => {} });
-    const handle = controls.run([p1, p2]);
+    const p = new Process({ update: () => {} });
+    controls.run(p);
+    expect(p.completed).toBe(false);
 
-    expect(added).toEqual([p1, p2]);
-    expect(p1.completed).toBe(false);
+    // Cancelling the scene's pool tears p down, proving run() routed it
+    // through ProcessSystem.addForScene(scene, …).
+    harness.processSystem.cancelForScene(harness.scene);
+    expect(p.completed).toBe(true);
+  });
 
-    handle.cancel();
-    expect(p1.completed).toBe(true);
-    expect(p2.completed).toBe(true);
+  it("the run() handle cancels only its own batch", () => {
+    let controls!: SplitTextControls;
+    render(makeStubNode(), makeHarness(), (t) => (controls = t[1]));
+
+    const a = new Process({ update: () => {} });
+    const b = new Process({ update: () => {} });
+    const handleA = controls.run(a);
+    controls.run(b);
+
+    handleA.cancel();
+    expect(a.completed).toBe(true);
+    expect(b.completed).toBe(false);
   });
 
   it("cancels in-flight processes when the text re-splits", () => {
     const node = makeStubNode();
     let controls!: SplitTextControls;
-    render(node, makeEngine([]), (t) => (controls = t[1]));
+    render(node, makeHarness(), (t) => (controls = t[1]));
 
     const p = new Process({ update: () => {} });
     controls.run(p);
@@ -137,7 +158,7 @@ describe("useSplitText", () => {
   it("resplit() delegates to the element", () => {
     const node = makeStubNode();
     let controls!: SplitTextControls;
-    render(node, makeEngine([]), (t) => (controls = t[1]));
+    render(node, makeHarness(), (t) => (controls = t[1]));
 
     controls.resplit();
     expect(node.resplit).toHaveBeenCalledTimes(1);
