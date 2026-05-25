@@ -11,6 +11,18 @@ function e2eHarness(): PluginOption {
   return {
     name: "yage-e2e-harness",
     apply: () => Boolean(process.env.YAGE_E2E),
+    configureServer(server) {
+      // Silence the favicon 404 so the suite's no-console-error assertion
+      // isn't tripped by a missing icon every example would otherwise request.
+      server.middlewares.use((req, res, next) => {
+        if (req.url === "/favicon.ico") {
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        next();
+      });
+    },
     transformIndexHtml() {
       return [
         {
