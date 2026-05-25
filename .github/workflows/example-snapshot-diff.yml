@@ -1,0 +1,82 @@
+name: Example Snapshot Diff
+
+# Manually-triggered behavioral diff of the shipped examples between two
+# branches. Runs the deterministic `?test` harness against each ref on the
+# SAME runner (so float/render jitter cancels out), captures each example's
+# inspector snapshot, and reports the per-example differences. This is a
+# review aid, not a gate — it never fails on differences, it just surfaces
+# them in the run summary and as artifacts.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Branch/ref to test"
+        required: true
+      base:
+        description: "Branch/ref to compare against"
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    name: Diff ${{ inputs.target }} vs ${{ inputs.base }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (all history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Capture base snapshots (${{ inputs.base }})
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ inputs.base }}
+        run: |
+          git checkout "$BASE_REF"
+          npm ci
+          npx turbo run build --filter='./packages/*'
+          npx playwright install --with-deps chromium
+          EXAMPLE_SNAPSHOT_DIR="$RUNNER_TEMP/base" npx playwright test --project=examples
+
+      - name: Capture target snapshots (${{ inputs.target }})
+        continue-on-error: true
+        env:
+          TARGET_REF: ${{ inputs.target }}
+        run: |
+          git checkout "$TARGET_REF"
+          npm ci
+          npx turbo run build --filter='./packages/*'
+          npx playwright install --with-deps chromium
+          EXAMPLE_SNAPSHOT_DIR="$RUNNER_TEMP/target" npx playwright test --project=examples
+
+      - name: Diff and report
+        env:
+          BASE_REF: ${{ inputs.base }}
+          TARGET_REF: ${{ inputs.target }}
+        run: |
+          # Run on the target ref's tooling (checked out above).
+          node e2e/scripts/diff-snapshots.mjs \
+            "$RUNNER_TEMP/base" "$RUNNER_TEMP/target" \
+            "$BASE_REF" "$TARGET_REF" \
+            | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload snapshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-snapshot-diff
+          path: |
+            ${{ runner.temp }}/base
+            ${{ runner.temp }}/target
+            ${{ runner.temp }}/report.md
+          if-no-files-found: warn
