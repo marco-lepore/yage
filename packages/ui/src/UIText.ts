@@ -1,6 +1,5 @@
 import { devWarn } from "@yagejs/core";
 import { buildTextOptions, resolveTextStyle } from "@yagejs/renderer";
-import type { BitmapTextOption } from "@yagejs/renderer";
 import { getUIDefaultTextStyle } from "./text-defaults.js";
 import { BitmapText, Text } from "pixi.js";
 import type { TextStyleOptions, Container } from "pixi.js";
@@ -14,18 +13,6 @@ import { PointerEvents } from "./pointer-events.js";
 
 const ELLIPSIS = "…";
 
-/**
- * Canonical key for a `bitmap` option so `update()` change-detection treats
- * `false` and `undefined` as the same thing (both mean "canvas text") and
- * compares object configs structurally. Avoids `JSON.stringify(false)` (a
- * string) vs `JSON.stringify(undefined)` (the value `undefined`) spuriously
- * differing on first mount of `<Text bitmap={false}>`.
- */
-function normalizeBitmap(b: BitmapTextOption | undefined): string {
-  if (!b) return "";
-  return JSON.stringify(b);
-}
-
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
   readonly displayObject: Container;
@@ -34,10 +21,13 @@ export class UIText implements UIElement {
   private _truncate: "clip" | "ellipsis" | undefined;
   /** Source text — preserved so ellipsis re-truncation has the full string. */
   private _source: string;
+  // Raw style options, kept so `mergeStyle()` can patch over the current
+  // style instead of replacing it.
+  private _styleOptions: TextStyleOptions | undefined;
   // `bitmap` / `resolution` are construction-only (Pixi v8 can't morph
   // Text↔BitmapText or change resolution in place). Cached so `update()`
   // can detect — and warn about — a change it cannot honor.
-  private readonly _bitmap: BitmapTextOption | undefined;
+  private readonly _bitmap: boolean | undefined;
   private readonly _resolution: number | undefined;
   private readonly pointerEvents: PointerEvents;
 
@@ -46,13 +36,8 @@ export class UIText implements UIElement {
 
     this._source = props.children ?? "";
     this._truncate = props.truncate;
-    // Shallow-clone the object form so a later caller-side mutation can't
-    // silently drift the cached snapshot (which would make update()'s
-    // change-detection a false negative). Mirrors TextComponent.
-    this._bitmap =
-      props.bitmap !== undefined && typeof props.bitmap === "object"
-        ? { ...props.bitmap }
-        : props.bitmap;
+    if (props.style) this._styleOptions = { ...props.style };
+    this._bitmap = props.bitmap;
     this._resolution = props.resolution;
 
     const { options, bitmap } = buildTextOptions(
@@ -125,15 +110,29 @@ export class UIText implements UIElement {
     this.yogaNode.markDirty();
   }
 
+  /**
+   * Replace the text style. Unset properties fall back to the engine + UI
+   * defaults (then Pixi's), so this is a full replace, not a patch — to
+   * change a few properties while keeping the rest, use {@link mergeStyle}.
+   */
   setStyle(s: Partial<TextStyleOptions>): void {
-    // Re-resolve against engine + UI defaults and the cached `bitmap.font`
-    // fold: the raw style carries none of those, so a bitmap node would
-    // otherwise revert to the default canvas family the first time it
-    // re-renders / recolours, and the UI default would be dropped.
-    this.text.style =
-      resolveTextStyle(s, this._bitmap, getUIDefaultTextStyle()) ?? s;
+    // Re-resolve against engine + UI defaults: the raw style carries neither,
+    // so an omitted prop would otherwise drop to Pixi's bare default.
+    this.text.style = resolveTextStyle(s, getUIDefaultTextStyle()) ?? s;
+    this._styleOptions = { ...s };
     this.applyTruncateStyle();
     this.yogaNode.markDirty();
+  }
+
+  /**
+   * Patch the current style: merge `s` over the properties already set
+   * (construction or a prior `setStyle`/`mergeStyle`) and re-apply. Unlike
+   * {@link setStyle}, properties you don't pass are preserved — handy for an
+   * imperative recolour (`mergeStyle({ fill })`) that keeps the font, size,
+   * weight, etc.
+   */
+  mergeStyle(s: Partial<TextStyleOptions>): void {
+    this.setStyle({ ...this._styleOptions, ...s });
   }
 
   get visible(): boolean {
@@ -169,9 +168,10 @@ export class UIText implements UIElement {
     // and `resolution` is a constructor-only option). Surface the dropped
     // change instead of silently ignoring it so the React reconciler path
     // doesn't fail mysteriously.
+    // `false` and `undefined` both mean "canvas text", so coalesce before
+    // comparing to avoid a spurious change on first mount of `bitmap={false}`.
     const bitmapChanged =
-      "bitmap" in p &&
-      normalizeBitmap(p.bitmap) !== normalizeBitmap(this._bitmap);
+      "bitmap" in p && (p.bitmap ?? false) !== (this._bitmap ?? false);
     if (
       bitmapChanged ||
       ("resolution" in p && p.resolution !== this._resolution)

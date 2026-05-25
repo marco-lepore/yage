@@ -263,11 +263,11 @@ describe("UIText bitmap + resolution", () => {
     expect(textObject(t)).toBeInstanceOf(mocks.MockBitmapText);
   });
 
-  it("bitmap: { font, size } folds into the constructed style", () => {
+  it("bitmap text reads fontFamily / fontSize from style", () => {
     const t = new UIText({
       children: "hi",
-      style: { fill: 0x00ff00 },
-      bitmap: { font: "PressStart", size: 8 },
+      style: { fill: 0x00ff00, fontFamily: "PressStart", fontSize: 8 },
+      bitmap: true,
     });
     expect(textObject(t)).toBeInstanceOf(mocks.MockBitmapText);
     expect(textObject(t).style).toMatchObject({
@@ -277,14 +277,13 @@ describe("UIText bitmap + resolution", () => {
     });
   });
 
-  it("setStyle re-folds the bitmap font so a recolour keeps fontFamily", () => {
+  it("mergeStyle keeps the existing font/size on an imperative recolour", () => {
     const t = new UIText({
       children: "score",
-      style: { fill: 0xffcc00 },
-      bitmap: { font: "PressStart", size: 8 },
+      style: { fontFamily: "PressStart", fontSize: 8, fill: 0xffcc00 },
+      bitmap: true,
     });
-    // Recolour with a raw style that carries no fontFamily.
-    t.setStyle({ fill: 0xff0000 });
+    t.mergeStyle({ fill: 0xff0000 });
     expect(textObject(t).style).toMatchObject({
       fill: 0xff0000,
       fontFamily: "PressStart",
@@ -292,15 +291,19 @@ describe("UIText bitmap + resolution", () => {
     });
   });
 
-  it("update({ style }) re-folds the bitmap font", () => {
+  it("update({ style }) replaces — React passes the full style each render", () => {
     const t = new UIText({
       children: "score",
-      bitmap: { font: "PressStart", size: 8 },
+      bitmap: true,
+      style: { fontFamily: "PressStart", fontSize: 8, fill: 0xffffff },
     });
-    t.update({ style: { fill: 0x0000ff } });
+    t.update({
+      style: { fontFamily: "PressStart", fontSize: 8, fill: 0x0000ff },
+    });
     expect(textObject(t).style).toMatchObject({
       fontFamily: "PressStart",
       fontSize: 8,
+      fill: 0x0000ff,
     });
   });
 
@@ -366,8 +369,8 @@ describe("UIText bitmap + resolution", () => {
 
   it("does not warn when update() repeats the same bitmap value", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const t = new UIText({ children: "hi", bitmap: { font: "A", size: 8 } });
-    t.update({ bitmap: { font: "A", size: 8 }, children: "ho" });
+    const t = new UIText({ children: "hi", bitmap: true });
+    t.update({ bitmap: true, children: "ho" });
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -382,19 +385,17 @@ describe("UIText bitmap + resolution", () => {
     warn.mockRestore();
   });
 
-  it("decouples the cached bitmap option from the caller's object", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const bitmap: { font: string; size?: number } = { font: "A" };
-    // Caller mutates their object after construction. The cached snapshot
-    // must be a copy, so a later update() with the (now-stale) reference is
-    // correctly detected as a change from the constructed font.
-    const t = new UIText({ children: "hi", bitmap });
-    bitmap.font = "B";
-    t.update({ bitmap });
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("construction-only"),
-    );
-    warn.mockRestore();
+  it("decouples the cached style snapshot from the caller's object", () => {
+    // Caller mutates their style object after construction. The cached
+    // snapshot must be a copy, so a later mergeStyle() patches over the
+    // constructed values, not the mutated reference.
+    const style: { fill: number; fontFamily?: string } = { fill: 0xffffff };
+    const t = new UIText({ children: "hi", bitmap: true, style });
+    style.fill = 0x000000;
+    style.fontFamily = "B";
+    t.mergeStyle({ fontSize: 8 });
+    expect(textObject(t).style).toMatchObject({ fill: 0xffffff, fontSize: 8 });
+    expect(textObject(t).style.fontFamily).not.toBe("B");
   });
 });
 
@@ -427,7 +428,7 @@ describe("UIText bitmap-in-style warning", () => {
     new UIText({
       children: "hi",
       // Mistake: bitmap folded into style instead of a sibling prop.
-      style: { fill: 0xffffff, bitmap: { font: "A" } } as never,
+      style: { fill: 0xffffff, bitmap: true } as never,
     });
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("`bitmap` was found inside `style`"),
@@ -437,7 +438,7 @@ describe("UIText bitmap-in-style warning", () => {
   it("warns when `bitmap` is nested in style on the setStyle path", () => {
     const t = new UIText({ children: "hi" });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    t.setStyle({ fill: 0xff0000, bitmap: { font: "A" } } as never);
+    t.setStyle({ fill: 0xff0000, bitmap: true } as never);
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("`bitmap` was found inside `style`"),
     );
@@ -445,7 +446,7 @@ describe("UIText bitmap-in-style warning", () => {
 
   it("does not warn for a correct sibling bitmap prop", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    new UIText({ children: "hi", bitmap: { font: "A" }, style: { fill: 0xffffff } });
+    new UIText({ children: "hi", bitmap: true, style: { fill: 0xffffff } });
     expect(warn).not.toHaveBeenCalledWith(
       expect.stringContaining("`bitmap` was found inside `style`"),
     );

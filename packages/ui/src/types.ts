@@ -1,5 +1,4 @@
 import type {
-  BitmapTextOption,
   ColorValue,
   DisplayContainer,
   DisplaySprite,
@@ -239,11 +238,12 @@ export interface UITextProps
   /**
    * Render with a bitmap font instead of canvas-rasterised `Text`. Pixel-art
    * escape hatch — canvas text blurs at non-integer scale on non-Retina
-   * displays. `true` bakes a dynamic font from `style`; `{ font }` uses an
-   * installed/loaded font by name. See {@link BitmapTextOption}. Yoga
-   * measurement (wrap / truncate) is unchanged.
+   * displays. Pixi bakes or looks up the glyph atlas from `style.fontFamily`
+   * (the name an `installBitmapFont` call registered, or any font for a
+   * dynamic bake) at `style.fontSize`. Yoga measurement (wrap / truncate) is
+   * unchanged.
    */
-  bitmap?: BitmapTextOption;
+  bitmap?: boolean;
   /**
    * Per-text render resolution. Mirrors the Pixi v8 `Text` constructor
    * option — `resolution` is NOT a `TextStyle` property in v8, so this is
@@ -269,7 +269,7 @@ export interface UIButtonProps
    * `UIText`). No effect when `children` is a composed element — set `bitmap`
    * on the `UIText` directly in that case.
    */
-  bitmap?: BitmapTextOption;
+  bitmap?: boolean;
   disabled?: boolean;
 }
 

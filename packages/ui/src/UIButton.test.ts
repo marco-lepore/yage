@@ -234,8 +234,8 @@ describe("UIButton", () => {
   it("forwards bitmap to the auto-wrapped label", () => {
     const btn = new UIButton({
       children: "PLAY",
-      bitmap: { font: "PressStart", size: 8 },
-      textStyle: { fill: 0xffcc00 },
+      bitmap: true,
+      textStyle: { fill: 0xffcc00, fontFamily: "PressStart", fontSize: 8 },
     });
     const label = btn.children[0] as UIText;
     const text = label.displayObject as unknown as InstanceType<
@@ -250,7 +250,7 @@ describe("UIButton", () => {
   });
 
   it("forwards bitmap to a label created later via setText", () => {
-    const btn = new UIButton({ bitmap: { font: "PressStart" } });
+    const btn = new UIButton({ bitmap: true });
     btn.setText("SCORE");
     const label = btn.children[0] as UIText;
     expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);

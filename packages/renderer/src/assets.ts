@@ -32,7 +32,7 @@ export function renderAsset<T = unknown>(path: string): RendererAsset<T> {
  * descriptor plus its glyph atlas. Resolve it through the asset manager
  * (`engine.assets`) like any other handle; the loaded font registers itself
  * under the `fontFamily` declared in the descriptor, so pass that same name
- * as the `bitmap.font` discriminator on `UIText` / `TextComponent`.
+ * as `style.fontFamily` (with `bitmap: true`) on `UIText` / `TextComponent`.
  *
  * For runtime-baked fonts from a `.ttf` instead, see {@link installBitmapFont}.
  */
@@ -75,9 +75,9 @@ export function webFont(path: string, opts?: WebFontOptions): WebFontHandle {
 /** Options for {@link installBitmapFont}. */
 export interface InstallBitmapFontOptions {
   /**
-   * Name to register the baked font under. This is what you pass as the
-   * `bitmap.font` discriminator on `UIText` / `TextComponent`, and what
-   * `installBitmapFont` returns.
+   * Name to register the baked font under. This is what you pass as
+   * `style.fontFamily` (alongside `bitmap: true`) on `UIText` /
+   * `TextComponent`, and what `installBitmapFont` returns.
    */
   name: string;
   /** Glyph size (px) to bake the atlas at. Default `32`. */
@@ -113,14 +113,16 @@ export interface InstallBitmapFontOptions {
 /**
  * Load a `.ttf`/`.woff` and bake a bitmap glyph atlas from it via Pixi v8's
  * `BitmapFont.install`. Returns the registered font name, ready to hand to
- * the `bitmap: { font }` option on `UIText` / `TextComponent`.
+ * `style.fontFamily` (with `bitmap: true`) on `UIText` / `TextComponent`.
  *
  * ```ts
  * const font = await installBitmapFont("fonts/PressStart2P.ttf", {
  *   name: "PressStart",
  *   size: 16,
  * });
- * entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+ * entity.add(
+ *   new TextComponent({ text: "READY", bitmap: true, style: { fontFamily: font } }),
+ * );
  * ```
  */
 export async function installBitmapFont(

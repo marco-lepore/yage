@@ -1,5 +1,5 @@
 import { Container } from "pixi.js";
-import type { BitmapTextOption, TextStyle } from "@yagejs/renderer";
+import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
 import type {
@@ -64,7 +64,7 @@ export class UIButton implements UIContainerElement {
   private _children: UIElement[] = [];
   private _label: UIText | undefined;
   private _labelStyle: Partial<TextStyle> | undefined;
-  private _labelBitmap: BitmapTextOption | undefined;
+  private _labelBitmap: boolean | undefined;
   private _disabled = false;
   private _isHovered = false;
   private _isPressed = false;

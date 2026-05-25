@@ -29,7 +29,14 @@ entity.add(
 ```
 
 Update at runtime with `setText()` / `setStyle()`, or tweak `tint` and
-`alpha` directly.
+`alpha` directly. `setStyle()` **replaces** the style — properties you
+don't pass fall back to the defaults. To change a few properties while
+keeping the rest, use `mergeStyle()`:
+
+```typescript
+text.setStyle({ fill: 0xff0000 }); // replaces: font/size revert to default
+text.mergeStyle({ fill: 0xff0000 }); // patches: keeps the current font/size
+```
 
 ## When to reach for UI instead
 
@@ -68,6 +75,10 @@ pixel-art camera, a 4× upscale — on a non-Retina display. `BitmapText`
 draws pre-baked glyph quads instead, so it stays crisp. Set the `bitmap`
 option (works on `TextComponent` and `UIText` alike):
 
+Set `bitmap: true` and Pixi bakes (or looks up) the glyph atlas from
+`style.fontFamily` at `style.fontSize` — the font lives in `style` like
+every other property:
+
 ```typescript
 // Zero-config: bake a dynamic bitmap font from this text's own style.
 new TextComponent({
@@ -76,14 +87,17 @@ new TextComponent({
   style: { fontFamily: "monospace", fontSize: 12 },
 });
 
-// Render with an installed / loaded bitmap font by name. `size`
-// overrides the glyph size.
-new TextComponent({ text: "READY", bitmap: { font: "PressStart", size: 16 } });
+// Render with an installed / loaded bitmap font: name it via fontFamily.
+new TextComponent({
+  text: "READY",
+  bitmap: true,
+  style: { fontFamily: "PressStart", fontSize: 16 },
+});
 ```
 
 To bake a bitmap atlas from a `.ttf` at runtime, use
-`installBitmapFont` — it loads the font and returns a name you hand
-straight to `bitmap: { font }`:
+`installBitmapFont` — it loads the font and returns a name you hand to
+`style.fontFamily`:
 
 ```typescript
 import { installBitmapFont, TextComponent } from "@yagejs/renderer";
@@ -93,18 +107,22 @@ const font = await installBitmapFont("fonts/PressStart2P.ttf", {
   size: 16,        // glyph bake size (default 32)
   resolution: 2,   // keeps glyphs crisp when upscaled (default 2)
 });
-entity.add(new TextComponent({ text: "READY", bitmap: { font } }));
+entity.add(
+  new TextComponent({ text: "READY", bitmap: true, style: { fontFamily: font } }),
+);
 ```
 
 Glyphs bake **white** by default so a per-text `fill` / `tint`
-(multiplied over the atlas) can recolour them — `new TextComponent({ …,
-bitmap: { font }, style: { fill: 0xffcc00 } })` renders gold. Pass
-`installBitmapFont(…, { style: { fill } })` only when you want to bake a
-fixed colour into the atlas instead.
+(multiplied over the atlas) can recolour them — adding a gold `fill` to
+the `style` renders gold. Pass a `style.fill` to `installBitmapFont`
+only when you want to bake a fixed colour into the atlas instead.
+Recolour at runtime with `mergeStyle({ fill })` so the `fontFamily` is
+preserved — a plain `setStyle({ fill })` replaces the style and drops
+the font.
 
 For a pre-built BMFont (`.fnt`/`.xml` + atlas), preload the
 `bitmapFont("fonts/x.fnt")` handle through a scene's `preload` and pass
-the `fontFamily` declared in the descriptor as `bitmap: { font }`.
+the `fontFamily` declared in the descriptor as `style.fontFamily`.
 Bitmap text honours the same Yoga word-wrap / `truncate` behaviour as
 canvas text inside a `UIPanel`.
 
@@ -154,9 +172,9 @@ default → pixi default. The default re-applies on `setStyle`, so a
 recolour keeps it.
 
 :::caution[`bitmap` is a sibling of `style`, not a style key]
-Fold `bitmap` into `style` (`style: { …, bitmap: { font } }`) and it's
+Fold `bitmap` into `style` (`style: { …, bitmap: true }`) and it's
 silently ignored — the text renders as canvas. Keep it top-level:
-`{ style: { … }, bitmap: { font } }`. YAGE emits a dev-mode warning if it
+`{ style: { … }, bitmap: true }`. YAGE emits a dev-mode warning if it
 spots a `bitmap` key inside `style`.
 :::
 

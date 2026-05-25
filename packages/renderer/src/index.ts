@@ -9,7 +9,6 @@ export type { CanvasRect, VirtualRect } from "./Fit.js";
 export type {
   BitmapFontHandle,
   BitmapFontResource,
-  BitmapTextOption,
   ColorValue,
   DisplayBitmapText,
   DisplayContainer,
@@ -44,7 +43,6 @@ export type { TextComponentOptions, TextData } from "./TextComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
 export {
   buildTextOptions,
-  foldBitmapStyle,
   resolveTextStyle,
   getDefaultTextStyle,
   setDefaultTextStyle,

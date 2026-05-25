@@ -197,10 +197,10 @@ control rasterisation:
 import { UIText } from "@yagejs/ui";
 
 // Crisp pixel-art text — draws pre-baked glyph quads instead of a
-// blurry bilinear-sampled canvas texture. `true` bakes a dynamic font
-// from the style; `{ font }` uses an installed/loaded bitmap font.
+// blurry bilinear-sampled canvas texture. `bitmap: true` bakes (or looks
+// up) the atlas from `style.fontFamily` at `style.fontSize`.
 new UIText({ children: "SCORE", bitmap: true, style: { fontFamily: "monospace", fontSize: 12 } });
-new UIText({ children: "READY", bitmap: { font: "PressStart", size: 16 } });
+new UIText({ children: "READY", bitmap: true, style: { fontFamily: "PressStart", fontSize: 16 } });
 
 // Per-text canvas resolution.
 new UIText({ children: "HUD", resolution: window.devicePixelRatio });
