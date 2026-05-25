@@ -10,7 +10,8 @@ import wasm from "vite-plugin-wasm";
 function e2eHarness(): PluginOption {
   return {
     name: "yage-e2e-harness",
-    apply: () => Boolean(process.env.YAGE_E2E),
+    apply: (_config, { command }) =>
+      command === "serve" && Boolean(process.env.YAGE_E2E),
     configureServer(server) {
       // Silence the favicon 404 so the suite's no-console-error assertion
       // isn't tripped by a missing icon every example would otherwise request.
