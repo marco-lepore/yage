@@ -175,7 +175,7 @@ Negative scale on a child still composes — a child with `setScale(-1, 1)` unde
 | `Process` | Frame-updated action; `Process.delay(ms, cb)` |
 | `ProcessComponent` | Entity component managing processes and slots |
 | `ProcessSlot` | Reusable restartable handle (cooldowns, effects) |
-| `Tween` | Static factory: `to`, `custom`, `vec2` |
+| `Tween` | Static factory: `to`, `custom`, `vec2`, `stagger` |
 | `Sequence` | Chainable step builder: `then`, `wait`, `call`, `parallel`, `loop` |
 | `TimerEntity` | Pre-built entity with ProcessComponent API |
 
@@ -187,6 +187,7 @@ Decision matrix:
 | Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()` |
 | Animate one property A → B | `Tween.to()` / `.vec2()` |
 | Interpolate a number from→to with a custom setter | `Tween.custom(setter, from, to, duration, easing?)` |
+| Cascade a tween across an array (staggered starts) | `Tween.stagger(items, (item, i) => Process, stepMs)` → `Process[]` |
 | Arbitrary per-frame logic (no interpolation) | `new Process({ update })` |
 | Multi-step "do this, then this, then this" | `Sequence` |
 | Run several animations together | `Sequence.parallel()` |

@@ -23,6 +23,7 @@ export type {
 // Hooks
 export { useEngine, useScene, useStore, useQuery, useSceneSelector } from "./hooks.js";
 export { useSplitText } from "./use-split-text.js";
+export type { SplitTextControls, SplitRunHandle } from "./use-split-text.js";
 
 // Headless floating primitive (tooltips/popovers/menus build on this)
 export { useFloating } from "./use-floating.js";

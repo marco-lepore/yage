@@ -193,12 +193,15 @@ title.setText("YOU WIN");           // destroys + recreates chars, then onSplit
 
 API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API.
 
-**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText(bind?)` hook. The hook is animation-agnostic: it returns a `ref`, runs `bind(segments)` once on mount and re-runs it (with cleanup) after every re-split so animations always target live glyphs. Omit `bind` for deferred/triggered animation and read `ref.current.chars` in your handler.
+**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepMs)` to cascade a tween across the segments.
 
 ```tsx
-const ref = useSplitText<UISplitText>((seg) =>
-  seg.chars.forEach((c, i) => { c.alpha = 0; startTween(c, { alpha: 1 }, { delay: i * 0.05 }); }));
-return <SplitText ref={ref} charAnchor={0.5}>{label}</SplitText>;
+const [ref, split] = useSplitText();
+const reveal = () => {
+  split.chars.forEach((c) => (c.alpha = 0));
+  split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+};
+return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
 ```
 
 `SplitText` is experimental in Pixi and re-lays-out on every `text` / `style` change — prefer `UIText` for static / simple dynamic labels.

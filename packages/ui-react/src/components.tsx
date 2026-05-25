@@ -383,12 +383,14 @@ export interface SplitTextProps extends LayoutProps, PointerEventProps {
 
 /**
  * Text split into per-character / per-word / per-line display objects for
- * animated text. Pair with {@link useSplitText} to reach the segments and
- * (re)bind animations across re-splits:
+ * animated text. Pair with {@link useSplitText} for a `[ref, controls]` tuple
+ * to reach the live segments and `run` tweens programmatically:
  *
  * ```tsx
- * const ref = useSplitText((seg) => seg.chars.forEach((c, i) => { … }));
- * return <SplitText ref={ref} charAnchor={0.5}>{label}</SplitText>;
+ * const [ref, split] = useSplitText();
+ * const reveal = () =>
+ *   split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+ * return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
  * ```
  *
  * No `truncate` / word-wrap (unlike `<Text>`) — pre-break with `\n`. The

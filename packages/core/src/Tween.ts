@@ -2,6 +2,7 @@ import {
   Process,
   easeLinear,
 } from "./Process.js";
+import { Sequence } from "./Sequence.js";
 import { Vec2 } from "./Vec2.js";
 import type { Vec2Like } from "./Vec2.js";
 import type { EasingFunction } from "./types.js";
@@ -60,6 +61,27 @@ export const Tween = {
           new Vec2(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e),
         );
       },
+    });
+  },
+
+  /**
+   * Map a Process factory over an array, staggering each item's START by
+   * `stepMs` (item 0 starts immediately, item 1 after `stepMs`, and so on).
+   * Returns one Process per item — enqueue them all on a process queue (or
+   * `useSplitText`'s `run`) to play a staggered cascade across a split text's
+   * `chars` / `words` / `lines`. The factory runs when each item's turn
+   * begins, so a `Tween.to` built inside it reads its `from` value at start
+   * time, not build time.
+   */
+  stagger<T>(
+    items: readonly T[],
+    factory: (item: T, index: number) => Process,
+    stepMs: number,
+  ): Process[] {
+    return items.map((item, i) => {
+      const seq = new Sequence();
+      if (i > 0 && stepMs > 0) seq.wait(i * stepMs);
+      return seq.then(() => factory(item, i)).start();
     });
   },
 };

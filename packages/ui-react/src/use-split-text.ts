@@ -1,72 +1,119 @@
-import { useRef, useEffect } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import type { RefObject } from "react";
+import type { Process } from "@yagejs/core";
+import { ProcessSystemKey, makeSceneScopedQueue } from "@yagejs/core";
 import type { UISplitText, TextSegments } from "@yagejs/ui";
+import { useEngine, useScene } from "./hooks.js";
 
-/** Optional teardown returned from a bind callback, run before the next rebind. */
-export type SplitCleanup = () => void;
+/** Handle to the processes a single `run()` call enqueued. */
+export interface SplitRunHandle {
+  /** Cancel just the processes this `run()` started. */
+  cancel(): void;
+}
 
 /**
- * Bind callback: receives the live segments after each (re)split, optionally
- * returning a cleanup — same contract as a `useEffect` effect.
+ * Imperative controls over a `<SplitText>`, returned alongside its ref. The
+ * segment accessors read the live element each time, so they stay correct
+ * across re-splits (a `text` change destroys and recreates `chars`).
  */
-// eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- optional-cleanup return, mirrors React's EffectCallback
-export type SplitBind = (segments: TextSegments) => void | SplitCleanup;
+export interface SplitTextControls {
+  /** Live per-glyph display objects, in reading order. */
+  readonly chars: TextSegments["chars"];
+  /** Live word-group containers. */
+  readonly words: TextSegments["words"];
+  /** Live line-group containers. */
+  readonly lines: TextSegments["lines"];
+  /** Live `chars` / `words` / `lines` as one object. */
+  readonly segments: TextSegments;
+  /** Re-split now (only needed under `autoSplit={false}`). */
+  resplit(): void;
+  /**
+   * Enqueue one or more `Process`es on the scene's process queue (so they
+   * pause with the scene and are torn down on unmount / re-split). Pair with
+   * `Tween.stagger` to cascade tweens across `chars`. Returns a handle to
+   * cancel just this batch.
+   */
+  run(processes: Process | Process[]): SplitRunHandle;
+}
 
 /**
- * Bind animations to a `<SplitText>`'s segments across re-splits. Returns a
- * ref to put on the element; the optional `bind` callback runs once the
- * segments exist and again after every re-split (e.g. when the `text` prop
- * changes and the old `chars` are destroyed), so your animation always targets
- * the live glyphs. Return a cleanup from `bind` to tear down the previous
- * binding — same contract as `useEffect`.
+ * Imperative access to a `<SplitText>` for programmatic animation. Returns a
+ * `[ref, controls]` tuple: put `ref` on the element, then reach `chars` /
+ * `words` / `lines` and `run` tweens whenever you like (an event handler, an
+ * effect, a timeout) rather than binding up front.
  *
- * The hook is **animation-agnostic** — it owns only the segment lifecycle, not
- * how you animate. Drive `chars` / `words` / `lines` with the engine's `Tween`
- * / `Process`, GSAP, a manual ticker, or nothing at all.
+ * `run` schedules on a scene-scoped process queue, so animations pause with
+ * the scene and are cancelled on unmount. In-flight processes are also
+ * cancelled when the text re-splits, so a tween never writes to a destroyed
+ * glyph.
  *
  * ```tsx
- * const ref = useSplitText<UISplitText>((seg) => {
- *   const stops = seg.chars.map((c, i) => {
- *     c.alpha = 0;
- *     return startTween(c, { alpha: 1 }, { delay: i * 0.05 });
- *   });
- *   return () => stops.forEach((s) => s.cancel());
- * });
- * return <SplitText ref={ref}>{label}</SplitText>;
+ * const [ref, split] = useSplitText();
+ * const reveal = () =>
+ *   split.run(
+ *     Tween.stagger(
+ *       split.chars,
+ *       (char) => Tween.to(char, "alpha", 1, 300),
+ *       50,
+ *     ),
+ *   );
+ * return <SplitText ref={ref} onPointerDown={reveal}>{label}</SplitText>;
  * ```
- *
- * For deferred / triggered animation, omit `bind` and read `ref.current` (its
- * `chars` / `segments`) in your event handler instead.
  */
-export function useSplitText<T extends UISplitText = UISplitText>(
-  bind?: SplitBind,
-): RefObject<T | null> {
+export function useSplitText<T extends UISplitText = UISplitText>(): [
+  RefObject<T | null>,
+  SplitTextControls,
+] {
   const ref = useRef<T | null>(null);
-  // Keep the latest callback without re-subscribing every render.
-  const bindRef = useRef(bind);
-  bindRef.current = bind;
+  const engine = useEngine();
+  const scene = useScene();
 
+  const queue = useMemo(
+    () => makeSceneScopedQueue(engine.resolve(ProcessSystemKey), scene),
+    [engine, scene],
+  );
+
+  // A re-split destroys the old glyph objects, so cancel anything still
+  // animating them; cancel everything on unmount too.
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-
-    let cleanup: SplitCleanup | undefined;
-    const run = (segments: TextSegments): void => {
-      cleanup?.();
-      const result = bindRef.current?.(segments);
-      cleanup = typeof result === "function" ? result : undefined;
-    };
-
-    // Segments already exist (the node split at construction); bind now, then
-    // rebind after every subsequent re-split.
-    run(node.segments);
-    const unsubscribe = node.onSplit(run);
-
+    const off = node.onSplit(() => queue.cancelAll());
     return () => {
-      unsubscribe();
-      cleanup?.();
+      off();
+      queue.cancelAll();
     };
-  }, []);
+  }, [queue]);
 
-  return ref;
+  const controls = useMemo<SplitTextControls>(
+    () => ({
+      get chars() {
+        return ref.current?.chars ?? [];
+      },
+      get words() {
+        return ref.current?.words ?? [];
+      },
+      get lines() {
+        return ref.current?.lines ?? [];
+      },
+      get segments(): TextSegments {
+        return ref.current?.segments ?? { chars: [], words: [], lines: [] };
+      },
+      resplit() {
+        ref.current?.resplit();
+      },
+      run(processes) {
+        const batch = Array.isArray(processes) ? processes : [processes];
+        for (const p of batch) queue.run(p);
+        return {
+          cancel() {
+            for (const p of batch) p.cancel();
+          },
+        };
+      },
+    }),
+    [queue],
+  );
+
+  return [ref, controls];
 }

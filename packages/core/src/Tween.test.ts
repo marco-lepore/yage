@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Tween } from "./Tween.js";
 import { Vec2 } from "./Vec2.js";
-import { easeInQuad } from "./Process.js";
+import { Process, easeInQuad } from "./Process.js";
 
 describe("Tween", () => {
   describe("to()", () => {
@@ -91,6 +91,50 @@ describe("Tween", () => {
       proc._update(50); // t=0.5, easeInQuad=0.25
       expect(result.x).toBeCloseTo(25);
       expect(result.y).toBeCloseTo(25);
+    });
+  });
+
+  describe("stagger()", () => {
+    it("returns one process per item and passes (item, index) to the factory", () => {
+      const items = ["a", "b", "c"];
+      const seen: Array<[string, number]> = [];
+      const procs = Tween.stagger(
+        items,
+        (item, i) => {
+          seen.push([item, i]);
+          return new Process({ update: () => true });
+        },
+        0,
+      );
+      expect(procs).toHaveLength(3);
+      // The factory is deferred until each item's turn begins (first update).
+      expect(seen).toEqual([]);
+      procs.forEach((p) => p._update(16));
+      expect(seen).toEqual([
+        ["a", 0],
+        ["b", 1],
+        ["c", 2],
+      ]);
+    });
+
+    it("delays each item's start by stepMs (item 0 starts immediately)", () => {
+      const objs = [{ a: 0 }, { a: 0 }, { a: 0 }];
+      const procs = Tween.stagger(
+        objs,
+        (o) => Tween.to(o, "a", 1, 100),
+        100,
+      );
+
+      // First frame: only item 0's tween is live; later items are still waiting.
+      procs.forEach((p) => p._update(50));
+      expect(objs[0]!.a).toBeGreaterThan(0);
+      expect(objs[1]!.a).toBe(0);
+      expect(objs[2]!.a).toBe(0);
+
+      // Advance well past item 1's start: item 0 finished, item 1 has begun.
+      for (let i = 0; i < 4; i++) procs.forEach((p) => p._update(50));
+      expect(objs[0]!.a).toBeCloseTo(1);
+      expect(objs[1]!.a).toBeGreaterThan(0);
     });
   });
 });

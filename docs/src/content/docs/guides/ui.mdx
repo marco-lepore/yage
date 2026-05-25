@@ -280,28 +280,38 @@ per-word, per-line display objects) for you to animate. You drive those
 with the engine's `Tween` / `Process` — it deliberately doesn't ship its
 own animation API.
 
+`useSplitText()` returns a `[ref, controls]` tuple: put `ref` on the
+element, then reach `controls.chars` / `words` / `lines` and `run` tweens
+whenever you like (an event handler, a timeout, an effect) rather than
+binding up front. `controls.run` schedules on a scene-scoped process
+queue, so animations pause with the scene and are cancelled on unmount —
+and on re-split, so a tween never writes to a destroyed glyph. Pair it
+with `Tween.stagger` to cascade a tween across the segments.
+
 ```tsx
 import { SplitText, useSplitText } from "@yagejs/ui-react";
-import type { UISplitText } from "@yagejs/ui";
+import { Tween } from "@yagejs/core";
 
 function GameOver({ label }: { label: string }) {
-  // bind() runs once on mount and re-runs (with cleanup) after every
-  // re-split — so a typewriter rebinds itself when `label` changes and
-  // the old glyph objects are destroyed.
-  const ref = useSplitText<UISplitText>((seg) => {
-    const stops = seg.chars.map((c, i) => {
-      c.alpha = 0;
-      return startTween(c, { alpha: 1 }, { delay: i * 0.05 });
-    });
-    return () => stops.forEach((s) => s.cancel());
-  });
+  const [ref, split] = useSplitText();
 
-  return <SplitText ref={ref} charAnchor={0.5} style={{ fontSize: 48 }}>{label}</SplitText>;
+  const reveal = () => {
+    split.chars.forEach((c) => (c.alpha = 0));
+    // stagger each char's fade-in by 50ms; run() returns a cancel handle.
+    split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+  };
+
+  return (
+    <SplitText ref={ref} charAnchor={0.5} style={{ fontSize: 48 }} onPointerDown={reveal}>
+      {label}
+    </SplitText>
+  );
 }
 ```
 
-Imperatively, `new UISplitText({ children, charAnchor, … })` exposes the
-same `chars` / `words` / `lines` and an `onSplit(cb)` subscription.
+Imperatively (no React), `new UISplitText({ children, charAnchor, … })`
+exposes the same `chars` / `words` / `lines` and an `onSplit(cb)`
+subscription that fires after each re-split.
 
 :::caution[Different from `UIText`]
 `UISplitText` has **no `truncate` and no word-wrap** — pre-break long
