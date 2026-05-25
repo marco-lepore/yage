@@ -4,7 +4,7 @@ import type { TextStyle } from "@yagejs/renderer";
 import { UILayoutSystem } from "./UILayoutSystem.js";
 import { setYoga } from "./yoga-helpers.js";
 import { setAssetManager } from "./asset-helpers.js";
-import { setUIDefaultTextStyle } from "./text-defaults.js";
+import { getUIDefaultTextStyle, setUIDefaultTextStyle } from "./text-defaults.js";
 
 /** Options for {@link UIPlugin}. */
 export interface UIPluginOptions {
@@ -29,6 +29,10 @@ export class UIPlugin implements Plugin {
   readonly dependencies = ["renderer"];
 
   private readonly _options: UIPluginOptions;
+  // Capture/restore the UI default text-style singleton so the mutation stays
+  // scoped to this plugin's lifetime — otherwise it leaks across engine
+  // lifecycles (e.g. between tests). Mirrors RendererPlugin's defaultTextStyle.
+  private _prevDefaultTextStyle: TextStyle | undefined = undefined;
 
   constructor(options: UIPluginOptions = {}) {
     this._options = options;
@@ -43,10 +47,16 @@ export class UIPlugin implements Plugin {
     const am = context.tryResolve(AssetManagerKey);
     if (am) setAssetManager(am);
 
+    this._prevDefaultTextStyle = getUIDefaultTextStyle();
     setUIDefaultTextStyle(this._options.defaultTextStyle);
   }
 
   registerSystems(scheduler: SystemScheduler): void {
     scheduler.add(new UILayoutSystem());
+  }
+
+  onDestroy(): void {
+    setUIDefaultTextStyle(this._prevDefaultTextStyle);
+    this._prevDefaultTextStyle = undefined;
   }
 }

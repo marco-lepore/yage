@@ -256,6 +256,39 @@ describe("UIButton", () => {
     expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);
   });
 
+  it("update({ bitmap, children }) promotes to a BitmapText label", () => {
+    // No children at construction → no label yet. A reconciler pass that
+    // brings both bitmap and the string must build the label as BitmapText,
+    // not stale canvas Text.
+    const btn = new UIButton({});
+    btn.update({ bitmap: true, children: "SCORE" });
+    const label = btn.children[0] as UIText;
+    expect(label.displayObject).toBeInstanceOf(mocks.MockBitmapText);
+  });
+
+  it("warns (and keeps the class) when update() changes bitmap on an existing label", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const btn = new UIButton({ children: "SCORE" }); // canvas label
+    const label = btn.children[0] as UIText;
+    expect(label.displayObject).not.toBeInstanceOf(mocks.MockBitmapText);
+
+    btn.update({ bitmap: true });
+
+    expect(label.displayObject).not.toBeInstanceOf(mocks.MockBitmapText);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("construction-only"),
+    );
+    warn.mockRestore();
+  });
+
+  it("does not warn when update() repeats bitmap: false on a canvas label", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const btn = new UIButton({ children: "SCORE" });
+    btn.update({ bitmap: false });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("visibility can be toggled", () => {
     const btn = new UIButton({ children: "Test", width: 100, height: 30 });
     expect(btn.visible).toBe(true);

@@ -1,4 +1,5 @@
 import { Container } from "pixi.js";
+import { devWarn } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
@@ -279,6 +280,23 @@ export class UIButton implements UIContainerElement {
   }
 
   update(p: Partial<UIButtonProps>): void {
+    // `bitmap` is construction-only for the label (Pixi v8 can't morph
+    // Text↔BitmapText in place). Refresh the cached value while the label
+    // hasn't been promoted yet, so a `setText` in this same update() builds
+    // it with the right class; once a label exists, surface the dropped
+    // change rather than silently rendering the wrong text type. `false` and
+    // `undefined` both mean canvas, so coalesce before comparing.
+    if ("bitmap" in p && (p.bitmap ?? false) !== (this._labelBitmap ?? false)) {
+      if (this._label) {
+        devWarn(
+          "UIButton: `bitmap` is construction-only for the label and was " +
+            "ignored on update() — remount the button (e.g. change its React " +
+            "`key`) to switch the label between canvas and bitmap text.",
+        );
+      } else {
+        this._labelBitmap = p.bitmap;
+      }
+    }
     if (p.children !== undefined && typeof p.children === "string") {
       this.setText(p.children);
     }
