@@ -39,8 +39,10 @@ jobs:
 
       - name: Capture base snapshots (${{ inputs.base }})
         continue-on-error: true
+        env:
+          BASE_REF: ${{ inputs.base }}
         run: |
-          git checkout "${{ inputs.base }}"
+          git checkout "$BASE_REF"
           npm ci
           npx turbo run build --filter='./packages/*'
           npx playwright install --with-deps chromium
@@ -48,19 +50,24 @@ jobs:
 
       - name: Capture target snapshots (${{ inputs.target }})
         continue-on-error: true
+        env:
+          TARGET_REF: ${{ inputs.target }}
         run: |
-          git checkout "${{ inputs.target }}"
+          git checkout "$TARGET_REF"
           npm ci
           npx turbo run build --filter='./packages/*'
           npx playwright install --with-deps chromium
           EXAMPLE_SNAPSHOT_DIR="$RUNNER_TEMP/target" npx playwright test --project=examples
 
       - name: Diff and report
+        env:
+          BASE_REF: ${{ inputs.base }}
+          TARGET_REF: ${{ inputs.target }}
         run: |
           # Run on the target ref's tooling (checked out above).
           node e2e/scripts/diff-snapshots.mjs \
             "$RUNNER_TEMP/base" "$RUNNER_TEMP/target" \
-            "${{ inputs.base }}" "${{ inputs.target }}" \
+            "$BASE_REF" "$TARGET_REF" \
             | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload snapshots and report
