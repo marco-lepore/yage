@@ -284,8 +284,14 @@ const _overflowWarned = new WeakSet<YogaNode>();
  */
 const _overflowExempt = new WeakSet<YogaNode>();
 
-/** Half-pixel slack so sub-pixel rounding in Yoga's layout never trips the check. */
-const OVERFLOW_EPSILON = 0.5;
+/**
+ * Slack before an overflow is reported. Pixi text/sprite measurement and
+ * Yoga's point rounding routinely differ from the container by up to a whole
+ * pixel (e.g. a bordered card sitting 1px proud of its slot), which is visually
+ * irrelevant. Only flag overflow beyond that so real spills (text/children
+ * running many px past the box) still warn without nagging on rounding noise.
+ */
+const OVERFLOW_EPSILON = 1.5;
 
 /**
  * Opt a container out of the dev-mode overflow warning. Use for nodes that
