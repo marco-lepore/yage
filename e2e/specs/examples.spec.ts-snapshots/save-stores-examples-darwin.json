@@ -1,0 +1,371 @@
+{
+  "camera": null,
+  "entityCount": 1,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 1,
+      "name": "save-stores.menu",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {
+                "anchor": 4
+              },
+              "type": "UIRoot"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "save-stores.menu",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "menu-ui",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "name": "save-stores.menu",
+              "pauseBelow": true,
+              "paused": false,
+              "preload": [
+                {
+                  "path": "/assets/ui-sprites/panel-bg.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-default.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-hover.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-pressed.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-disabled.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-track.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-fill-green.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-fill-blue.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-handle.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/checkbox-checked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/radio-checked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/radio-unchecked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/input-bg.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/select-closed.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/select-open.png",
+                  "type": "texture"
+                }
+              ],
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "save-stores.menu",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": null
+    }
+  ],
+  "systemCount": 9,
+  "version": 1
+}

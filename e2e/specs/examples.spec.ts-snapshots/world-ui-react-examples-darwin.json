@@ -1,0 +1,3589 @@
+{
+  "camera": {
+    "name": null,
+    "position": {
+      "x": 450,
+      "y": 300
+    },
+    "priority": 0,
+    "rotation": 0,
+    "sceneId": "scene-1",
+    "sceneName": "world-ui-react",
+    "zoom": 1
+  },
+  "entityCount": 8,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 8,
+      "name": "world-ui-react",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {},
+              "type": "CameraBoundsComponent"
+            },
+            {
+              "state": {
+                "bindings": null,
+                "position": {
+                  "x": 450,
+                  "y": 300
+                },
+                "priority": 0,
+                "rotation": 0,
+                "zoom": 1
+              },
+              "type": "CameraComponent"
+            },
+            {
+              "state": {
+                "offset": {
+                  "x": 0,
+                  "y": 0
+                },
+                "smoothing": 1
+              },
+              "type": "CameraFollow"
+            },
+            {
+              "state": {
+                "decay": 0,
+                "duration": 0,
+                "elapsed": 0,
+                "intensity": 0,
+                "offset": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              "type": "CameraShake"
+            },
+            {
+              "state": {
+                "duration": 0,
+                "elapsed": 0,
+                "zoomFrom": 1,
+                "zoomTarget": 1,
+                "zooming": false
+              },
+              "type": "CameraZoom"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "CameraEntity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "bg"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "2",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "world"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Patrol"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 388.75289084066327,
+                  "y": 314.93065194240734
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "3",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 388.75289084066327,
+            "y": 314.93065194240734
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "cameraEntityId": 1,
+                "offset": {
+                  "x": 0,
+                  "y": -42
+                },
+                "target": {
+                  "entityId": 3,
+                  "kind": "entity"
+                },
+                "trackRotation": false
+              },
+              "type": "ScreenFollow"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 388.75289084066327,
+                  "y": 272.93065194240734
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            },
+            {
+              "state": {
+                "anchor": 7,
+                "positioning": "transform"
+              },
+              "type": "UIRoot"
+            }
+          ],
+          "id": "4",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 388.75289084066327,
+            "y": 272.93065194240734
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "world"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Patrol"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 555.1262434735314,
+                  "y": 373.72472405888396
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "5",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 555.1262434735314,
+            "y": 373.72472405888396
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "cameraEntityId": 1,
+                "offset": {
+                  "x": 0,
+                  "y": -42
+                },
+                "target": {
+                  "entityId": 5,
+                  "kind": "entity"
+                },
+                "trackRotation": false
+              },
+              "type": "ScreenFollow"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 555.1262434735314,
+                  "y": 331.72472405888396
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            },
+            {
+              "state": {
+                "anchor": 7,
+                "positioning": "transform"
+              },
+              "type": "UIRoot"
+            }
+          ],
+          "id": "6",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 555.1262434735314,
+            "y": 331.72472405888396
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "world"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Patrol"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 439.1391264813106,
+                  "y": 384.47411191790485
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "7",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 439.1391264813106,
+            "y": 384.47411191790485
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "cameraEntityId": 1,
+                "offset": {
+                  "x": 0,
+                  "y": -42
+                },
+                "target": {
+                  "entityId": 7,
+                  "kind": "entity"
+                },
+                "trackRotation": false
+              },
+              "type": "ScreenFollow"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 439.1391264813106,
+                  "y": 342.47411191790485
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            },
+            {
+              "state": {
+                "anchor": 7,
+                "positioning": "transform"
+              },
+              "type": "UIRoot"
+            }
+          ],
+          "id": "8",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 439.1391264813106,
+            "y": 342.47411191790485
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "CameraEntity",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "bindings": null,
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "CameraEntity",
+                "tags": {}
+              },
+              "position": {
+                "x": 450,
+                "y": 300
+              },
+              "priority": 0,
+              "rotation": 0,
+              "zoom": 1
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "CameraEntity",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "grid",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "grid",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "grid",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "enemy-Grunt",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 300,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 300,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "enemy-Grunt",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "enemy-Grunt",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "center": {
+                "x": 300,
+                "y": 300
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "enemy-Grunt",
+                "tags": {}
+              },
+              "radius": 90,
+              "speed": 0.5,
+              "t": 0
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "enemy-Grunt",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "plate-Grunt",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 4,
+                "name": "plate-Grunt",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "plate-Grunt",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "enemy-Scout",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 600,
+                "y": 320
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 600,
+                "y": 320
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 5,
+                "name": "enemy-Scout",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "enemy-Scout",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "center": {
+                "x": 600,
+                "y": 320
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 5,
+                "name": "enemy-Scout",
+                "tags": {}
+              },
+              "radius": 70,
+              "speed": 0.8,
+              "t": 2
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "enemy-Scout",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 6,
+              "name": "plate-Scout",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 6,
+                "name": "plate-Scout",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 6,
+              "name": "plate-Scout",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 7,
+              "name": "enemy-Brute",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 470,
+                "y": 430
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 470,
+                "y": 430
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 7,
+                "name": "enemy-Brute",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 7,
+              "name": "enemy-Brute",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "center": {
+                "x": 470,
+                "y": 430
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 7,
+                "name": "enemy-Brute",
+                "tags": {}
+              },
+              "radius": 55,
+              "speed": 0.35,
+              "t": 4
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 7,
+              "name": "enemy-Brute",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 8,
+              "name": "plate-Brute",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "bg",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    }
+                  ],
+                  "name": "world-ui-react",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 8,
+                "name": "plate-Brute",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "bg",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  }
+                ],
+                "name": "world-ui-react",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 8,
+              "name": "plate-Brute",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "layers": [
+                {
+                  "name": "bg",
+                  "order": -10
+                },
+                {
+                  "name": "world",
+                  "order": 0
+                }
+              ],
+              "name": "world-ui-react",
+              "pauseBelow": true,
+              "paused": false,
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "world-ui-react",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": null
+    }
+  ],
+  "systemCount": 7,
+  "version": 1
+}

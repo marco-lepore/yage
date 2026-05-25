@@ -1,0 +1,1931 @@
+{
+  "camera": null,
+  "entityCount": 5,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 5,
+      "name": "effects-showcase",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "background"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "BackgroundEntity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "effects": {
+                  "entries": [
+                    {
+                      "enabled": true,
+                      "intensity": 0,
+                      "name": "yage:hitFlash",
+                      "options": {
+                        "color": 16777215,
+                        "duration": 200
+                      }
+                    }
+                  ]
+                },
+                "layer": "world"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 150,
+                  "y": 320
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "2",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 150,
+            "y": 320
+          },
+          "type": "HeroEntity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "world"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 310,
+                  "y": 320
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "3",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 310,
+            "y": 320
+          },
+          "type": "BlockEntity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "world"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 490,
+                  "y": 320
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "4",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 490,
+            "y": 320
+          },
+          "type": "GemEntity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "anchor": 2,
+                "background": {
+                  "alpha": 0.85,
+                  "color": 0,
+                  "radius": 6
+                },
+                "direction": "column",
+                "gap": 4,
+                "layer": "ui",
+                "maxHeight": 624,
+                "offset": {
+                  "x": -8,
+                  "y": 8
+                },
+                "overflow": "hidden",
+                "padding": 10,
+                "width": 248
+              },
+              "type": "UIPanel"
+            }
+          ],
+          "id": "5",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "block": null,
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "effectHandles": {},
+                "entities": {},
+                "entityCallbacks": {},
+                "gem": null,
+                "hero": null,
+                "layers": [
+                  {
+                    "name": "background",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  },
+                  {
+                    "name": "ui",
+                    "order": 1000,
+                    "space": "screen"
+                  }
+                ],
+                "name": "effects-showcase",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "toggleButtons": {},
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "BackgroundEntity",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "block": null,
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "effectHandles": {},
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "gem": null,
+                  "hero": null,
+                  "layers": [
+                    {
+                      "name": "background",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    },
+                    {
+                      "name": "ui",
+                      "order": 1000,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "effects-showcase",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "toggleButtons": {},
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "BackgroundEntity",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "block": null,
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "effectHandles": {},
+                "entities": {},
+                "entityCallbacks": {},
+                "gem": null,
+                "hero": null,
+                "layers": [
+                  {
+                    "name": "background",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  },
+                  {
+                    "name": "ui",
+                    "order": 1000,
+                    "space": "screen"
+                  }
+                ],
+                "name": "effects-showcase",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "toggleButtons": {},
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "BackgroundEntity",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "block": null,
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "effectHandles": {},
+                "entities": {},
+                "entityCallbacks": {},
+                "gem": null,
+                "hero": null,
+                "layers": [
+                  {
+                    "name": "background",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  },
+                  {
+                    "name": "ui",
+                    "order": 1000,
+                    "space": "screen"
+                  }
+                ],
+                "name": "effects-showcase",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "toggleButtons": {},
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "flashHandle": null,
+              "id": 2,
+              "name": "HeroEntity",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 150,
+                "y": 320
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 150,
+                "y": 320
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "block": null,
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "effectHandles": {},
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "gem": null,
+                  "hero": null,
+                  "layers": [
+                    {
+                      "name": "background",
+                      "order": -10
+                    },
+                    {
+                      "name": "world",
+                      "order": 0
+                    },
+                    {
+                      "name": "ui",
+                      "order": 1000,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "effects-showcase",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "toggleButtons": {},
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "flashHandle": null,
+                "id": 2,
+                "name": "HeroEntity",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "block": null,
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "effectHandles": {},
+                "entities": {},
+                "entityCallbacks": {},
+                "gem": null,
+                "hero": null,
+                "layers": [
+                  {
+                    "name": "background",
+                    "order": -10
+                  },
+                  {
+                    "name": "world",
+                    "order": 0
+                  },
+                  {
+                    "name": "ui",
+                    "order": 1000,
+                    "space": "screen"
+                  }
+                ],
+                "name": "effects-showcase",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "toggleButtons": {},
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "flashHandle": null,
+              "id": 2,
+              "name": "HeroEntity",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "effects-showcase",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": {
+        "root": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "id": "entity-5:UIPanel:0/0/0",
+                  "layout": {
+                    "height": 16,
+                    "width": 228,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/1/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 160,
+                        "x": 34,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/1",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 20
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/2/0/0",
+                          "layout": {
+                            "height": 13,
+                            "width": 114,
+                            "x": 53,
+                            "y": 4
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/2/0",
+                      "layout": {
+                        "height": 22,
+                        "width": 220,
+                        "x": 4,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/2/1/0",
+                          "layout": {
+                            "height": 13,
+                            "width": 100,
+                            "x": 60,
+                            "y": 4
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/2/1",
+                      "layout": {
+                        "height": 22,
+                        "width": 220,
+                        "x": 4,
+                        "y": 25
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/2/2/0",
+                          "layout": {
+                            "height": 13,
+                            "width": 120,
+                            "x": 50,
+                            "y": 4
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/2/2",
+                      "layout": {
+                        "height": 22,
+                        "width": 220,
+                        "x": 4,
+                        "y": 50
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/2/3/0",
+                          "layout": {
+                            "height": 13,
+                            "width": 68,
+                            "x": 76,
+                            "y": 4
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/2/3",
+                      "layout": {
+                        "height": 22,
+                        "width": 220,
+                        "x": 4,
+                        "y": 75
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/2",
+                  "layout": {
+                    "height": 97,
+                    "width": 228,
+                    "x": 0,
+                    "y": 46
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/3/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 206,
+                        "x": 11,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/3",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 147
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/4/0/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/4/0",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/4/1/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/4/1",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/4/2/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/4/2",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/4/3/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/4/3",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/4/4/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/4/4",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/4/5/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/4/5",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/4",
+                  "layout": {
+                    "height": 0,
+                    "width": 0,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/5/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 152,
+                        "x": 38,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/5",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 173
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/0/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/0",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/1/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/1",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/2/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/2",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/3/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/3",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/4/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/4",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/5/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/5",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/6/6/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/6/6",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/6",
+                  "layout": {
+                    "height": 0,
+                    "width": 0,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/7/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 160,
+                        "x": 34,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/7",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 199
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/8/0/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/8/0",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/8",
+                  "layout": {
+                    "height": 0,
+                    "width": 0,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/9/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 48,
+                        "x": 90,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/9",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 225
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/10/0/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/10/0",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/10/1/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/10/1",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/10/2/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/10/2",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/10/3/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/10/3",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/10",
+                  "layout": {
+                    "height": 0,
+                    "width": 0,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/11/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 48,
+                        "x": 90,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/11",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 251
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/12/0/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/12/0",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/12/1/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/12/1",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/12/2/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/12/2",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/12",
+                  "layout": {
+                    "height": 0,
+                    "width": 0,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/0/13/0",
+                      "layout": {
+                        "height": 13,
+                        "width": 140,
+                        "x": 44,
+                        "y": 4
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/13",
+                  "layout": {
+                    "height": 22,
+                    "width": 228,
+                    "x": 0,
+                    "y": 277
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/14/0/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/14/0",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-5:UIPanel:0/0/14/1/0",
+                          "layout": {
+                            "height": 0,
+                            "width": 0,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-5:UIPanel:0/0/14/1",
+                      "layout": {
+                        "height": 0,
+                        "width": 0,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/0/14",
+                  "layout": {
+                    "height": 0,
+                    "width": 0,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                }
+              ],
+              "id": "entity-5:UIPanel:0/0",
+              "layout": {
+                "height": 299,
+                "width": 228,
+                "x": 10,
+                "y": 10
+              },
+              "state": null,
+              "type": "PanelNode"
+            }
+          ],
+          "id": "entity-5:UIPanel:0",
+          "layout": {
+            "height": 318.6953125,
+            "width": 248,
+            "x": 0,
+            "y": 0
+          },
+          "state": null,
+          "type": "PanelNode"
+        }
+      }
+    }
+  ],
+  "systemCount": 6,
+  "version": 1
+}

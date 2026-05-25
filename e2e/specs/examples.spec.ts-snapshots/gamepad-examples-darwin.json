@@ -1,0 +1,3140 @@
+{
+  "camera": null,
+  "entityCount": 10,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 10,
+      "name": "gamepad",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "ShipController"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 400,
+                  "y": 300
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 400,
+            "y": 300
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 14870768,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 14
+                },
+                "text": "Plug in a controller and press any button. Keyboard fallback: WASD to move.",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 20,
+                  "y": 20
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "2",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 20,
+            "y": 20
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": null,
+              "type": "GamepadHud"
+            },
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 20,
+                  "y": 470
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "3",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 20,
+            "y": 470
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 9741240,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 11
+                },
+                "text": "L Stick",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 80,
+                  "y": 570
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "4",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 80,
+            "y": 570
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 9741240,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 11
+                },
+                "text": "R Stick",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 220,
+                  "y": 570
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "5",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 220,
+            "y": 570
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 9741240,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 11
+                },
+                "text": "LT",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 340,
+                  "y": 570
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "6",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 340,
+            "y": 570
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0.5,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 9741240,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 11
+                },
+                "text": "RT",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 380,
+                  "y": 570
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "7",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 380,
+            "y": 570
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 14870768,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 14
+                },
+                "text": "—",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 450,
+                  "y": 505
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "8",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 450,
+            "y": 505
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 9741240,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 11
+                },
+                "text": "Buttons held",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 450,
+                  "y": 485
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "9",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 450,
+            "y": 485
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 6583435,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 12
+                },
+                "text": "Left stick / WASD: move    ·    Right stick: aim    ·    A or Space or RT: boost",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 20,
+                  "y": 552
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "10",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 20,
+            "y": 552
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "ship",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 400,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 400,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "ship",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "ship",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "boosting": false,
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "ship",
+                "tags": {}
+              },
+              "graphics": {},
+              "input": {},
+              "transform": {}
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "ship",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "header",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 20,
+                "y": 20
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 20,
+                "y": 20
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "header",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "header",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "hud",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 20,
+                "y": 470
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 20,
+                "y": 470
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "hud",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "hud",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 80,
+                "y": 570
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 80,
+                "y": 570
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 4,
+                "name": "hud-label",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 220,
+                "y": 570
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 220,
+                "y": 570
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 5,
+                "name": "hud-label",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 6,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 340,
+                "y": 570
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 340,
+                "y": 570
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 6,
+                "name": "hud-label",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 6,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 7,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 380,
+                "y": 570
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 380,
+                "y": 570
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 7,
+                "name": "hud-label",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 7,
+              "name": "hud-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 8,
+              "name": "buttons",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 450,
+                "y": 505
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 450,
+                "y": 505
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 8,
+                "name": "buttons",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 8,
+              "name": "buttons",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 9,
+              "name": "buttons-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 450,
+                "y": 485
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 450,
+                "y": 485
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 9,
+                "name": "buttons-label",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 9,
+              "name": "buttons-label",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 10,
+              "name": "footer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 20,
+                "y": 552
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 20,
+                "y": 552
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "gamepad",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 10,
+                "name": "footer",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "gamepad",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 10,
+              "name": "footer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "name": "gamepad",
+              "pauseBelow": true,
+              "paused": false,
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "gamepad",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": null
+    }
+  ],
+  "systemCount": 7,
+  "version": 1
+}

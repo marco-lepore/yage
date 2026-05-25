@@ -1,0 +1,1428 @@
+{
+  "camera": null,
+  "entityCount": 4,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 4,
+      "name": "multitouch",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "MultitouchVisualizer"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": null,
+              "type": "PointerHud"
+            },
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 14870768,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 14
+                },
+                "text": "Touch the screen with one or more fingers.",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 20,
+                  "y": 20
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "2",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 20,
+            "y": 20
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 9741240,
+                  "fontFamily": "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  "fontSize": 12,
+                  "lineHeight": 18
+                },
+                "text": "—",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 20,
+                  "y": 50
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "3",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 20,
+            "y": 50
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alpha": 1,
+                "anchor": {
+                  "x": 0,
+                  "y": 0
+                },
+                "layer": "default",
+                "style": {
+                  "fill": 6583435,
+                  "fontFamily": "system-ui, sans-serif",
+                  "fontSize": 12
+                },
+                "text": "Each pointer gets its own color and trail. ★ marks the primary contact. Tap to ripple.",
+                "tint": 16777215,
+                "visible": true
+              },
+              "type": "TextComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 20,
+                  "y": 572
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "4",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 20,
+            "y": 572
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "visualizer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "multitouch",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "visualizer",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "visualizer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_serviceCache": {},
+              "disposers": [
+                null,
+                null,
+                null
+              ],
+              "elapsed": 0,
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "multitouch",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "visualizer",
+                "tags": {}
+              },
+              "graphics": {},
+              "input": {},
+              "pendingRemovals": {},
+              "ripples": [],
+              "trails": {}
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "visualizer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "hud-header",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 20,
+                "y": 20
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 20,
+                "y": 20
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "multitouch",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "hud-header",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "hud-header",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "hud-list",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 20,
+                "y": 50
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 20,
+                "y": 50
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "multitouch",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "hud-list",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "hud-list",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "footer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 20,
+                "y": 572
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 20,
+                "y": 572
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "multitouch",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 4,
+                "name": "footer",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "multitouch",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "footer",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "name": "multitouch",
+              "pauseBelow": true,
+              "paused": false,
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "multitouch",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": null
+    }
+  ],
+  "systemCount": 7,
+  "version": 1
+}

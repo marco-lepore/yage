@@ -1,0 +1,239 @@
+{
+  "camera": null,
+  "entityCount": 1,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 1,
+      "name": "scroll-view-scene",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {
+                "anchor": 4
+              },
+              "type": "UIRoot"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "scroll-view-scene",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "orders-ui",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "name": "scroll-view-scene",
+              "pauseBelow": true,
+              "paused": false,
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "scroll-view-scene",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": null
+    }
+  ],
+  "systemCount": 7,
+  "version": 1
+}

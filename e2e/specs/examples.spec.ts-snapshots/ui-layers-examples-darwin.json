@@ -1,0 +1,4645 @@
+{
+  "camera": null,
+  "entityCount": 7,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 7,
+      "name": "ui-layers",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Spinner"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 150,
+                  "y": 300
+                },
+                "rotation": 0.10063833494205027,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0.10063833494205027,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 150,
+            "y": 300
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Spinner"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 320,
+                  "y": 300
+                },
+                "rotation": 0.2230709759906555,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "2",
+          "parent": null,
+          "transform": {
+            "rotation": 0.2230709759906555,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 320,
+            "y": 300
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Spinner"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 490,
+                  "y": 300
+                },
+                "rotation": 0.3289118924100573,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "3",
+          "parent": null,
+          "transform": {
+            "rotation": 0.3289118924100573,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 490,
+            "y": 300
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": null,
+              "type": "Spinner"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 660,
+                  "y": 300
+                },
+                "rotation": 0.32595484291668986,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "4",
+          "parent": null,
+          "transform": {
+            "rotation": 0.32595484291668986,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 660,
+            "y": 300
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "anchor": 0,
+                "background": {
+                  "mode": "nine-slice",
+                  "nineSlice": 10,
+                  "texture": {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  "tint": 3359061
+                },
+                "direction": "column",
+                "gap": 8,
+                "layer": "hud",
+                "offset": {
+                  "x": 16,
+                  "y": 16
+                },
+                "padding": 16
+              },
+              "type": "UIPanel"
+            }
+          ],
+          "id": "5",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alignItems": "center",
+                "anchor": 4,
+                "background": {
+                  "mode": "nine-slice",
+                  "nineSlice": 10,
+                  "texture": {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  "tint": 3359061
+                },
+                "direction": "column",
+                "gap": 10,
+                "layer": "menu",
+                "padding": 24,
+                "visible": false
+              },
+              "type": "UIPanel"
+            }
+          ],
+          "id": "6",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "alignItems": "center",
+                "anchor": 4,
+                "background": {
+                  "mode": "nine-slice",
+                  "nineSlice": 10,
+                  "texture": {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  "tint": 3359061
+                },
+                "direction": "column",
+                "gap": 10,
+                "layer": "dialog",
+                "offset": {
+                  "x": 0,
+                  "y": -40
+                },
+                "padding": 24,
+                "visible": false
+              },
+              "type": "UIPanel"
+            }
+          ],
+          "id": "7",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "bg-0",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 150,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 150,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "bg-0",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "bg-0",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "bg-0",
+                "tags": {}
+              },
+              "speed": 0.3019150048261508
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "bg-0",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "bg-1",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 320,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 320,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "bg-1",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "bg-1",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "bg-1",
+                "tags": {}
+              },
+              "speed": 0.6692129279719665
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "bg-1",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "bg-2",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 490,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 490,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "bg-2",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "bg-2",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "bg-2",
+                "tags": {}
+              },
+              "speed": 0.9867356772301719
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "bg-2",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "bg-3",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 660,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 660,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 4,
+                "name": "bg-3",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "bg-3",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "layers": [
+                    {
+                      "name": "hud",
+                      "order": 1010,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "menu",
+                      "order": 1020,
+                      "space": "screen"
+                    },
+                    {
+                      "name": "dialog",
+                      "order": 1030,
+                      "space": "screen"
+                    }
+                  ],
+                  "name": "ui-layers",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "preload": [
+                    {
+                      "path": "/assets/ui-sprites/panel-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-default.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-hover.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-pressed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/btn-disabled.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-track.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-green.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-fill-blue.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/slider-handle.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-checked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/radio-unchecked.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/input-bg.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-closed.png",
+                      "type": "texture"
+                    },
+                    {
+                      "path": "/assets/ui-sprites/select-open.png",
+                      "type": "texture"
+                    }
+                  ],
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 4,
+                "name": "bg-3",
+                "tags": {}
+              },
+              "speed": 0.9778645287500694
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "bg-3",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "hud-panel",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 6,
+              "name": "menu-panel",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "layers": [
+                  {
+                    "name": "hud",
+                    "order": 1010,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "menu",
+                    "order": 1020,
+                    "space": "screen"
+                  },
+                  {
+                    "name": "dialog",
+                    "order": 1030,
+                    "space": "screen"
+                  }
+                ],
+                "name": "ui-layers",
+                "pauseBelow": true,
+                "paused": false,
+                "preload": [
+                  {
+                    "path": "/assets/ui-sprites/panel-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-default.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-hover.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-pressed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/btn-disabled.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-track.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-green.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-fill-blue.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/slider-handle.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-checked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/radio-unchecked.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/input-bg.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-closed.png",
+                    "type": "texture"
+                  },
+                  {
+                    "path": "/assets/ui-sprites/select-open.png",
+                    "type": "texture"
+                  }
+                ],
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 7,
+              "name": "dialog-panel",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "layers": [
+                {
+                  "name": "hud",
+                  "order": 1010,
+                  "space": "screen"
+                },
+                {
+                  "name": "menu",
+                  "order": 1020,
+                  "space": "screen"
+                },
+                {
+                  "name": "dialog",
+                  "order": 1030,
+                  "space": "screen"
+                }
+              ],
+              "name": "ui-layers",
+              "pauseBelow": true,
+              "paused": false,
+              "preload": [
+                {
+                  "path": "/assets/ui-sprites/panel-bg.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-default.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-hover.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-pressed.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/btn-disabled.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-track.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-fill-green.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-fill-blue.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/slider-handle.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/checkbox-checked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/checkbox-unchecked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/radio-checked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/radio-unchecked.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/input-bg.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/select-closed.png",
+                  "type": "texture"
+                },
+                {
+                  "path": "/assets/ui-sprites/select-open.png",
+                  "type": "texture"
+                }
+              ],
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "ui-layers",
+      "paused": false,
+      "physics": {
+        "bodies": [],
+        "contacts": []
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": {
+        "root": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "id": "entity-5:UIPanel:0/0",
+                  "layout": {
+                    "height": 16,
+                    "width": 260,
+                    "x": 16,
+                    "y": 16
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [],
+                  "id": "entity-5:UIPanel:0/1",
+                  "layout": {
+                    "height": 11,
+                    "width": 260,
+                    "x": 16,
+                    "y": 40
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [],
+                  "id": "entity-5:UIPanel:0/2",
+                  "layout": {
+                    "height": 14,
+                    "width": 260,
+                    "x": 16,
+                    "y": 59
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/3/0",
+                      "layout": {
+                        "height": 14,
+                        "width": 226,
+                        "x": 17,
+                        "y": 15
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/3",
+                  "layout": {
+                    "height": 44,
+                    "width": 260,
+                    "x": 16,
+                    "y": 81
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-5:UIPanel:0/4/0",
+                      "layout": {
+                        "height": 14,
+                        "width": 242,
+                        "x": 9,
+                        "y": 15
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-5:UIPanel:0/4",
+                  "layout": {
+                    "height": 44,
+                    "width": 260,
+                    "x": 16,
+                    "y": 133
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                }
+              ],
+              "id": "entity-5:UIPanel:0",
+              "layout": {
+                "height": 193,
+                "width": 292,
+                "x": 0,
+                "y": 0
+              },
+              "state": null,
+              "type": "PanelNode"
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "id": "entity-6:UIPanel:0/0",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [],
+                  "id": "entity-6:UIPanel:0/1",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [],
+                  "id": "entity-6:UIPanel:0/2",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-6:UIPanel:0/3/0",
+                      "layout": {
+                        "height": null,
+                        "width": null,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-6:UIPanel:0/3",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-6:UIPanel:0/4/0",
+                      "layout": {
+                        "height": null,
+                        "width": null,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-6:UIPanel:0/4",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [],
+                      "id": "entity-6:UIPanel:0/5/0",
+                      "layout": {
+                        "height": null,
+                        "width": null,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIText"
+                    }
+                  ],
+                  "id": "entity-6:UIPanel:0/5",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIButton"
+                }
+              ],
+              "id": "entity-6:UIPanel:0",
+              "layout": {
+                "height": null,
+                "width": null,
+                "x": 0,
+                "y": 0
+              },
+              "state": null,
+              "type": "PanelNode"
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "id": "entity-7:UIPanel:0/0",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [],
+                  "id": "entity-7:UIPanel:0/1",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [],
+                  "id": "entity-7:UIPanel:0/2",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "UIText"
+                },
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-7:UIPanel:0/3/0/0",
+                          "layout": {
+                            "height": null,
+                            "width": null,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-7:UIPanel:0/3/0",
+                      "layout": {
+                        "height": null,
+                        "width": null,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "id": "entity-7:UIPanel:0/3/1/0",
+                          "layout": {
+                            "height": null,
+                            "width": null,
+                            "x": 0,
+                            "y": 0
+                          },
+                          "state": null,
+                          "type": "UIText"
+                        }
+                      ],
+                      "id": "entity-7:UIPanel:0/3/1",
+                      "layout": {
+                        "height": null,
+                        "width": null,
+                        "x": 0,
+                        "y": 0
+                      },
+                      "state": null,
+                      "type": "UIButton"
+                    }
+                  ],
+                  "id": "entity-7:UIPanel:0/3",
+                  "layout": {
+                    "height": null,
+                    "width": null,
+                    "x": 0,
+                    "y": 0
+                  },
+                  "state": null,
+                  "type": "PanelNode"
+                }
+              ],
+              "id": "entity-7:UIPanel:0",
+              "layout": {
+                "height": null,
+                "width": null,
+                "x": 0,
+                "y": 0
+              },
+              "state": null,
+              "type": "PanelNode"
+            }
+          ],
+          "id": "scene-scene-1:ui",
+          "layout": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "state": null,
+          "type": "UIRoot"
+        }
+      }
+    }
+  ],
+  "systemCount": 6,
+  "version": 1
+}

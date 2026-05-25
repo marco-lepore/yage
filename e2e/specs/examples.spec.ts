@@ -47,16 +47,39 @@ test.describe("Examples", () => {
       });
       page.on("pageerror", (err) => errors.push(err.message));
 
+      // Seed Math.random before any example code runs. The engine's own RNG is
+      // seeded via DebugPlugin's deterministicSeed, but several examples scatter
+      // entities with bare Math.random(); overriding it here (mulberry32) makes
+      // their layout reproducible without rewriting the examples. Frozen-clock
+      // execution is deterministic, so the call order — and thus the sequence —
+      // is identical across runs.
+      await page.addInitScript(() => {
+        let s = 1 >>> 0;
+        Math.random = () => {
+          s = (s + 0x6d2b79f5) | 0;
+          let t = Math.imul(s ^ (s >>> 15), 1 | s);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      });
+
       await page.goto(`/${slug}.html?test`);
 
-      // Wait until the engine is up and the clock is frozen at frame zero —
-      // `?test` boots a startFrozen DebugPlugin, so this confirms the time
-      // controller is attached before we drive it.
+      // Wait until the engine is up, the clock is frozen at frame zero, AND a
+      // user scene is on the stack. `?test` boots a startFrozen DebugPlugin, but
+      // the scene is pushed *after* `engine.start()` resolves — waiting only on
+      // isFrozen() races the push and can snapshot an empty scene.
       await page.waitForFunction(
-        () => window.__yage__?.inspector?.time.isFrozen() === true,
+        () => {
+          const insp = window.__yage__?.inspector;
+          return (
+            insp?.time.isFrozen() === true && insp.getSceneStack().length > 0
+          );
+        },
         undefined,
         { timeout: 10_000 },
       );
+
 
       // Replay the script in-page against the inspector.
       await page.evaluate(

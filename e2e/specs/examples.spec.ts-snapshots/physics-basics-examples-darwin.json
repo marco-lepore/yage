@@ -1,0 +1,2304 @@
+{
+  "camera": null,
+  "entityCount": 5,
+  "errors": {
+    "disabledComponents": [],
+    "disabledSystems": []
+  },
+  "frame": 20,
+  "input": {
+    "actions": [],
+    "gamepad": {
+      "axes": [],
+      "buttons": []
+    },
+    "keys": [],
+    "mouse": {
+      "buttons": [],
+      "down": false,
+      "x": 0,
+      "y": 0
+    },
+    "pointers": []
+  },
+  "sceneStack": [
+    {
+      "entityCount": 5,
+      "name": "physics-basics",
+      "paused": false
+    }
+  ],
+  "scenes": [
+    {
+      "entities": [
+        {
+          "components": [
+            {
+              "state": null,
+              "type": "InputController"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "1",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 0,
+            "y": 0
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "config": {
+                  "friction": 0.5,
+                  "restitution": 0.3,
+                  "shape": {
+                    "height": 20,
+                    "type": "box",
+                    "width": 800
+                  }
+                }
+              },
+              "type": "ColliderComponent"
+            },
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "angularVelocity": 0,
+                "syncRotation": true,
+                "type": "static",
+                "velocity": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              "type": "RigidBodyComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 400,
+                  "y": 590
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "2",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 400,
+            "y": 590
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "config": {
+                  "friction": 0.5,
+                  "restitution": 0.3,
+                  "shape": {
+                    "height": 20,
+                    "type": "box",
+                    "width": 800
+                  }
+                }
+              },
+              "type": "ColliderComponent"
+            },
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "angularVelocity": 0,
+                "syncRotation": true,
+                "type": "static",
+                "velocity": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              "type": "RigidBodyComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 400,
+                  "y": 10
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "3",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 400,
+            "y": 10
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "config": {
+                  "friction": 0.5,
+                  "restitution": 0.3,
+                  "shape": {
+                    "height": 600,
+                    "type": "box",
+                    "width": 20
+                  }
+                }
+              },
+              "type": "ColliderComponent"
+            },
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "angularVelocity": 0,
+                "syncRotation": true,
+                "type": "static",
+                "velocity": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              "type": "RigidBodyComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 10,
+                  "y": 300
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "4",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 10,
+            "y": 300
+          },
+          "type": "Entity"
+        },
+        {
+          "components": [
+            {
+              "state": {
+                "config": {
+                  "friction": 0.5,
+                  "restitution": 0.3,
+                  "shape": {
+                    "height": 600,
+                    "type": "box",
+                    "width": 20
+                  }
+                }
+              },
+              "type": "ColliderComponent"
+            },
+            {
+              "state": {
+                "layer": "default"
+              },
+              "type": "GraphicsComponent"
+            },
+            {
+              "state": {
+                "angularVelocity": 0,
+                "syncRotation": true,
+                "type": "static",
+                "velocity": {
+                  "x": 0,
+                  "y": 0
+                }
+              },
+              "type": "RigidBodyComponent"
+            },
+            {
+              "state": {
+                "position": {
+                  "x": 790,
+                  "y": 300
+                },
+                "rotation": 0,
+                "scale": {
+                  "x": 1,
+                  "y": 1
+                }
+              },
+              "type": "Transform"
+            }
+          ],
+          "id": "5",
+          "parent": null,
+          "transform": {
+            "rotation": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "x": 790,
+            "y": 300
+          },
+          "type": "Entity"
+        }
+      ],
+      "events": [
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "controller",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 0,
+                "y": 0
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 0,
+                "y": 0
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "controller",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "controller",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_serviceCache": {},
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 1,
+                "name": "controller",
+                "tags": {}
+              },
+              "gravityDown": true,
+              "input": {},
+              "shapeCount": 0,
+              "world": {
+                "_colliderComponents": {},
+                "_layerInfo": {},
+                "_warnedAsymmetricPairs": {},
+                "bodyMap": {},
+                "colliderMap": {},
+                "eventQueue": {
+                  "raw": {
+                    "__wbg_ptr": 1133840
+                  }
+                },
+                "pixelsPerMeter": 50,
+                "world": {
+                  "bodies": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1126784
+                    }
+                  },
+                  "broadPhase": {
+                    "raw": {
+                      "__wbg_ptr": 1124336
+                    }
+                  },
+                  "ccdSolver": {
+                    "raw": {
+                      "__wbg_ptr": 1126752
+                    }
+                  },
+                  "characterControllers": {},
+                  "colliders": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1127760
+                    }
+                  },
+                  "debugRenderPipeline": {
+                    "raw": {
+                      "__wbg_ptr": 1133240
+                    }
+                  },
+                  "gravity": {
+                    "x": 0,
+                    "y": 19.6
+                  },
+                  "impulseJoints": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1130464
+                    }
+                  },
+                  "integrationParameters": {
+                    "raw": {
+                      "__wbg_ptr": 1124176
+                    }
+                  },
+                  "islands": {
+                    "raw": {
+                      "__wbg_ptr": 1124256
+                    }
+                  },
+                  "multibodyJoints": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1132088
+                    }
+                  },
+                  "narrowPhase": {
+                    "raw": {
+                      "__wbg_ptr": 1125632
+                    },
+                    "tempManifold": {
+                      "raw": null
+                    }
+                  },
+                  "physicsPipeline": {
+                    "raw": {
+                      "__wbg_ptr": 1132200
+                    }
+                  },
+                  "pidControllers": {},
+                  "serializationPipeline": {
+                    "raw": {
+                      "__wbg_ptr": 1123552
+                    }
+                  }
+                }
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 1,
+              "name": "controller",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 400,
+                "y": 590
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 400,
+                "y": 590
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "wall",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_bodyHandle": 0,
+              "_currPosition": {
+                "x": 400,
+                "y": 590
+              },
+              "_currRotation": 0,
+              "_prevPosition": {
+                "x": 400,
+                "y": 590
+              },
+              "_prevRotation": 0,
+              "_serviceCache": {},
+              "_teleported": false,
+              "config": {
+                "type": "static"
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 2,
+                "name": "wall",
+                "tags": {}
+              },
+              "physicsWorld": {
+                "_colliderComponents": {},
+                "_layerInfo": {},
+                "_warnedAsymmetricPairs": {},
+                "bodyMap": {},
+                "colliderMap": {},
+                "eventQueue": {
+                  "raw": {
+                    "__wbg_ptr": 1133840
+                  }
+                },
+                "pixelsPerMeter": 50,
+                "world": {
+                  "bodies": {
+                    "map": {
+                      "data": [
+                        {
+                          "colliderSet": {
+                            "map": {
+                              "data": [],
+                              "fconv": {
+                                "0": 0
+                              },
+                              "size": 0,
+                              "uconv": {
+                                "0": 0,
+                                "1": 0
+                              }
+                            },
+                            "raw": {
+                              "__wbg_ptr": 1127760
+                            }
+                          },
+                          "handle": 0,
+                          "rawSet": {
+                            "__wbg_ptr": 1126784
+                          }
+                        }
+                      ],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 1,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1126784
+                    }
+                  },
+                  "broadPhase": {
+                    "raw": {
+                      "__wbg_ptr": 1124336
+                    }
+                  },
+                  "ccdSolver": {
+                    "raw": {
+                      "__wbg_ptr": 1126752
+                    }
+                  },
+                  "characterControllers": {},
+                  "colliders": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1127760
+                    }
+                  },
+                  "debugRenderPipeline": {
+                    "raw": {
+                      "__wbg_ptr": 1133240
+                    }
+                  },
+                  "gravity": {
+                    "x": 0,
+                    "y": 19.6
+                  },
+                  "impulseJoints": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1130464
+                    }
+                  },
+                  "integrationParameters": {
+                    "raw": {
+                      "__wbg_ptr": 1124176
+                    }
+                  },
+                  "islands": {
+                    "raw": {
+                      "__wbg_ptr": 1124256
+                    }
+                  },
+                  "multibodyJoints": {
+                    "map": {
+                      "data": [],
+                      "fconv": {
+                        "0": 0
+                      },
+                      "size": 0,
+                      "uconv": {
+                        "0": 0,
+                        "1": 0
+                      }
+                    },
+                    "raw": {
+                      "__wbg_ptr": 1132088
+                    }
+                  },
+                  "narrowPhase": {
+                    "raw": {
+                      "__wbg_ptr": 1125632
+                    },
+                    "tempManifold": {
+                      "raw": null
+                    }
+                  },
+                  "physicsPipeline": {
+                    "raw": {
+                      "__wbg_ptr": 1132200
+                    }
+                  },
+                  "pidControllers": {},
+                  "serializationPipeline": {
+                    "raw": {
+                      "__wbg_ptr": 1123552
+                    }
+                  }
+                }
+              },
+              "syncRotation": true,
+              "transform": {},
+              "type": "static"
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 2,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 400,
+                "y": 10
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 400,
+                "y": 10
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 3,
+                "name": "wall",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 3,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 10,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 10,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 4,
+                "name": "wall",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 4,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "entity:created"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "component": {
+              "_dirty": true,
+              "_position": {
+                "x": 790,
+                "y": 300
+              },
+              "_rotation": 0,
+              "_scale": {
+                "x": 1,
+                "y": 1
+              },
+              "_worldPosition": {
+                "x": 790,
+                "y": 300
+              },
+              "_worldRotation": 0,
+              "_worldScale": {
+                "x": 1,
+                "y": 1
+              },
+              "enabled": true,
+              "entity": {
+                "_children": null,
+                "_destroyed": false,
+                "_parent": null,
+                "_scene": {
+                  "_context": {
+                    "services": {}
+                  },
+                  "_scopedServices": {},
+                  "bus": {
+                    "handlers": {},
+                    "observers": {}
+                  },
+                  "destroyQueue": [],
+                  "entities": {},
+                  "entityCallbacks": {},
+                  "name": "physics-basics",
+                  "pauseBelow": true,
+                  "paused": false,
+                  "queryCache": {
+                    "queries": [
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null,
+                          null
+                        ]
+                      },
+                      {
+                        "_entities": {},
+                        "_filter": [
+                          null
+                        ]
+                      }
+                    ]
+                  },
+                  "timeScale": 1,
+                  "transparentBelow": false
+                },
+                "callbacks": {},
+                "components": {},
+                "id": 5,
+                "name": "wall",
+                "tags": {}
+              }
+            },
+            "entity": {
+              "_children": null,
+              "_destroyed": false,
+              "_parent": null,
+              "_scene": {
+                "_context": {
+                  "services": {}
+                },
+                "_scopedServices": {},
+                "bus": {
+                  "handlers": {},
+                  "observers": {}
+                },
+                "destroyQueue": [],
+                "entities": {},
+                "entityCallbacks": {},
+                "name": "physics-basics",
+                "pauseBelow": true,
+                "paused": false,
+                "queryCache": {
+                  "queries": [
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null,
+                        null
+                      ]
+                    },
+                    {
+                      "_entities": {},
+                      "_filter": [
+                        null
+                      ]
+                    }
+                  ]
+                },
+                "timeScale": 1,
+                "transparentBelow": false
+              },
+              "callbacks": {},
+              "components": {},
+              "id": 5,
+              "name": "wall",
+              "tags": {}
+            }
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "_unserializable": true
+          },
+          "source": "bus",
+          "type": "component:added"
+        },
+        {
+          "frame": 0,
+          "payload": {
+            "scene": {
+              "_context": {
+                "services": {}
+              },
+              "_scopedServices": {},
+              "bus": {
+                "handlers": {},
+                "observers": {}
+              },
+              "destroyQueue": [],
+              "entities": {},
+              "entityCallbacks": {},
+              "name": "physics-basics",
+              "pauseBelow": true,
+              "paused": false,
+              "queryCache": {
+                "queries": [
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null,
+                      null
+                    ]
+                  },
+                  {
+                    "_entities": {},
+                    "_filter": [
+                      null
+                    ]
+                  }
+                ]
+              },
+              "timeScale": 1,
+              "transparentBelow": false
+            }
+          },
+          "source": "bus",
+          "type": "scene:pushed"
+        }
+      ],
+      "id": "scene-1",
+      "name": "physics-basics",
+      "paused": false,
+      "physics": {
+        "bodies": [
+          {
+            "angvel": 0,
+            "entityId": "2",
+            "linvel": {
+              "x": 0,
+              "y": 0
+            },
+            "position": {
+              "x": 400,
+              "y": 590.0000095367432
+            },
+            "rotation": 0,
+            "type": "static"
+          },
+          {
+            "angvel": 0,
+            "entityId": "3",
+            "linvel": {
+              "x": 0,
+              "y": 0
+            },
+            "position": {
+              "x": 400,
+              "y": 10.000000149011612
+            },
+            "rotation": 0,
+            "type": "static"
+          },
+          {
+            "angvel": 0,
+            "entityId": "4",
+            "linvel": {
+              "x": 0,
+              "y": 0
+            },
+            "position": {
+              "x": 10.000000149011612,
+              "y": 300
+            },
+            "rotation": 0,
+            "type": "static"
+          },
+          {
+            "angvel": 0,
+            "entityId": "5",
+            "linvel": {
+              "x": 0,
+              "y": 0
+            },
+            "position": {
+              "x": 790.0000095367432,
+              "y": 300
+            },
+            "rotation": 0,
+            "type": "static"
+          }
+        ],
+        "contacts": [
+          {
+            "a": "2",
+            "b": "4"
+          },
+          {
+            "a": "2",
+            "b": "5"
+          },
+          {
+            "a": "3",
+            "b": "4"
+          },
+          {
+            "a": "3",
+            "b": "5"
+          }
+        ]
+      },
+      "seed": 1,
+      "timeScale": 1,
+      "ui": null
+    }
+  ],
+  "systemCount": 9,
+  "version": 1
+}
