@@ -172,6 +172,40 @@ Use `installBitmapFont(...)` / `bitmapFont(...)` from `@yagejs/renderer` to obta
 
 **`resolution` gotcha (Pixi v8).** `resolution` is a `Text` *constructor* option, NOT a `TextStyle` property — setting `TextStyle.defaultTextStyle.resolution` does nothing. Pass `resolution` explicitly per text for crisp canvas output without a prototype patch, or use `bitmap` for pixel-perfect rendering. `resolution` is ignored when `bitmap` is set (bitmap resolution is fixed at font-bake time).
 
+## UISplitText — animated / per-glyph text
+
+UI sibling of `@yagejs/renderer`'s `SplitTextComponent` (wraps Pixi's experimental `SplitText` / `SplitBitmapText`). Lays the whole block out as one Yoga element and exposes `chars` / `words` / `lines` for animation. **No `truncate` / word-wrap** (pre-break with `\n`, or use `UIText` for paragraphs); measures its natural size via Pixi text metrics so the Yoga box doesn't jitter as you animate glyphs.
+
+```ts
+import { UISplitText } from "@yagejs/ui";
+
+const title = panel.addElement(new UISplitText({
+  children: "GAME OVER",
+  style: { fontSize: 48, fill: 0xffffff },
+  charAnchor: 0.5,                  // segment pivots: char / word / lineAnchor
+  // bitmap: true, autoSplit: false,   // font via style.fontFamily
+}));
+
+title.chars;   // (Text | BitmapText)[]   title.words / title.lines: Container[]
+title.onSplit((seg) => { /* rebind animations — fires after each re-split */ });
+title.setText("YOU WIN");           // destroys + recreates chars, then onSplit
+```
+
+API: `chars` / `words` / `lines` getters, `segments`, `setText`, `setStyle`, `resplit()`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `onSplit(cb) → unsubscribe`. Animate the segments with the engine's `Tween` / `Process` — the element doesn't impose an animation API.
+
+**React:** `<SplitText>` (props mirror `<Text>` minus `truncate`, plus the three anchors + `autoSplit`) and the `useSplitText()` hook. The hook returns a `[ref, controls]` tuple — `controls` has live `chars` / `words` / `lines` / `segments` getters, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split, so a tween never writes to a destroyed glyph) and returns `{ cancel() }` for that batch. Animate imperatively from any handler — pair `run` with `Tween.stagger(items, factory, stepMs)` to cascade a tween across the segments.
+
+```tsx
+const [ref, split] = useSplitText();
+const reveal = () => {
+  split.chars.forEach((c) => (c.alpha = 0));
+  split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+};
+return <SplitText ref={ref} charAnchor={0.5} onPointerDown={reveal}>{label}</SplitText>;
+```
+
+`SplitText` is experimental in Pixi and re-lays-out on every `text` / `style` change — prefer `UIText` for static / simple dynamic labels.
+
 ## LoadingSceneProgressBar
 
 Drop-in progress bar for a `LoadingScene` (in `@yagejs/core`). Subscribes to `scene:loading:progress` internally and updates a `UIProgressBar`. Spawn inside a `LoadingScene` (throws otherwise). Full contract: `loading-scene.md`.

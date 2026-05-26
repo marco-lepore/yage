@@ -178,6 +178,56 @@ silently ignored — the text renders as canvas. Keep it top-level:
 spots a `bitmap` key inside `style`.
 :::
 
+## Animated / per-glyph text (`SplitTextComponent`)
+
+For typewriter reveals, per-letter colour / wave, or staggered line
+entrances, reach for `SplitTextComponent` — it wraps Pixi v8's
+experimental `SplitText` / `SplitBitmapText` and exposes the text as
+arrays of individually transformable display objects: `chars`, `words`,
+and `lines`. Like `TextComponent` it's Transform-synced and lives on a
+render layer; set `bitmap` to split a bitmap font instead of canvas text.
+
+```typescript
+import { SplitTextComponent } from "@yagejs/renderer";
+import { Tween, ProcessComponent } from "@yagejs/core";
+
+entity.add(new Transform());
+const title = entity.add(
+  new SplitTextComponent({
+    text: "GAME OVER",
+    style: { fontFamily: "monospace", fontSize: 48, fill: 0xffffff },
+    charAnchor: 0.5, // rotate / scale each glyph about its center
+  }),
+);
+
+// Typewriter reveal — stagger each glyph's fade-in by 50ms, ticked by a
+// ProcessComponent (the renderer-side equivalent of useSplitText's `run`).
+title.chars.forEach((char) => (char.alpha = 0));
+const pc = entity.add(new ProcessComponent());
+Tween.stagger(title.chars, (char) => Tween.to(char, "alpha", 1, 300), 50).forEach((p) =>
+  pc.run(p),
+);
+
+// Per-letter sine wave (in a component update)
+title.chars.forEach((char, i) => {
+  char.y = Math.sin(this.t * 4 + i * 0.4) * 6;
+});
+```
+
+The transform origins — `charAnchor`, `wordAnchor`, `lineAnchor`
+(normalized 0–1, settable at construction or at runtime) — control the
+pivot each segment rotates and scales about. `chars` are `Text` /
+`BitmapText`; `words` and `lines` are containers grouping them.
+
+:::caution[Experimental, and not free]
+`SplitText` is flagged experimental in Pixi, and splitting re-lays-out
+the text on every `text` / `style` change — keep static or simple
+dynamic strings on `TextComponent`. Char spacing can also differ
+slightly from `Text` because browser kerning is lost once glyphs are
+separated. Construct with `autoSplit: false` and call `resplit()` to
+batch multiple updates into one layout pass.
+:::
+
 ## The Pixi v8 `resolution` gotcha
 
 In Pixi v8, `resolution` is a `Text` **constructor option, not a

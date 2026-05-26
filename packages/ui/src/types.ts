@@ -4,6 +4,7 @@ import type {
   DisplaySprite,
   GraphicsContext,
   PointLike,
+  SegmentAnchor,
   TextStyle,
   TextureHandle,
   TextureResource,
@@ -262,6 +263,32 @@ export interface UITextProps
    * Ignored when `bitmap` is set.
    */
   resolution?: number;
+}
+
+/** Props for UISplitText (used by reconciler and props-driven constructor). */
+export interface UISplitTextProps
+  extends LayoutProps,
+    ConsumeInputProps,
+    PointerEventProps {
+  children?: string;
+  style?: Partial<TextStyle>;
+  /**
+   * Render the segments with a bitmap font (`SplitBitmapText`) instead of
+   * canvas `Text` (`SplitText`). Pass the installed/baked font name as
+   * `style.fontFamily` (and glyph size as `style.fontSize`).
+   */
+  bitmap?: boolean;
+  /** Transform origin (0–1) each character rotates / scales about. Default `0`. */
+  charAnchor?: SegmentAnchor;
+  /** Transform origin (0–1) each word rotates / scales about. Default `0`. */
+  wordAnchor?: SegmentAnchor;
+  /** Transform origin (0–1) each line rotates / scales about. Default `0`. */
+  lineAnchor?: SegmentAnchor;
+  /**
+   * Re-split automatically on `text` / `style` change. Default `true`. Set
+   * `false` and call `resplit()` to batch edits into one layout pass.
+   */
+  autoSplit?: boolean;
 }
 
 /** Props for UIButton (used by reconciler and props-driven constructor). */

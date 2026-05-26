@@ -4,12 +4,14 @@ import type {
   ColorValue,
   DisplayContainer,
   PointLike,
+  SegmentAnchor,
   TextStyle,
   TextureHandle,
 } from "@yagejs/renderer";
 import {
   PanelNode,
   UIText as UITextNode,
+  UISplitText as UISplitTextNode,
   UIButton as UIButtonNode,
   UIImage as UIImageNode,
   UINineSlice as UINineSliceNode,
@@ -363,6 +365,44 @@ export function UIText(props: TextProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
 }
+
+export interface SplitTextProps extends LayoutProps, PointerEventProps {
+  style?: Partial<TextStyle>;
+  /** Render with a bitmap font (`SplitBitmapText`) instead of canvas text. */
+  bitmap?: boolean;
+  /** Transform origin (0–1) each character rotates / scales about. */
+  charAnchor?: SegmentAnchor;
+  /** Transform origin (0–1) each word rotates / scales about. */
+  wordAnchor?: SegmentAnchor;
+  /** Transform origin (0–1) each line rotates / scales about. */
+  lineAnchor?: SegmentAnchor;
+  /** Re-split automatically on text/style change (default `true`). */
+  autoSplit?: boolean;
+  children?: string;
+}
+
+/**
+ * Text split into per-character / per-word / per-line display objects for
+ * animated text. Pair with {@link useSplitText} for a `[ref, controls]` tuple
+ * to reach the live segments and `run` tweens programmatically:
+ *
+ * ```tsx
+ * const [ref, split] = useSplitText();
+ * const reveal = () =>
+ *   split.run(Tween.stagger(split.chars, (c) => Tween.to(c, "alpha", 1, 300), 50));
+ * return <SplitText ref={ref} charAnchor={0.5} onPointerOver={reveal}>{label}</SplitText>;
+ * ```
+ *
+ * No `truncate` / word-wrap (unlike `<Text>`) — pre-break with `\n`. The
+ * underlying `SplitText` is experimental in Pixi.
+ */
+export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
+  function SplitText(props, ref) {
+    const { children, ...rest } = props;
+    // @ts-expect-error — custom reconciler element type
+    return <ui-element _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>{children}</ui-element>;
+  },
+);
 
 /**
  * An interactive button.
