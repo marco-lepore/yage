@@ -22,6 +22,14 @@ interface TransitionRun {
   fromScene: Scene | undefined;
   toScene: Scene | undefined;
   resolve: () => void;
+  /**
+   * Mutates the stack to its post-transition shape (pop/replace teardown).
+   * Run synchronously inside `_cleanupRun` between `end()` and the
+   * `scene:transition:ended` event, so any listener reacting to that event
+   * (e.g. the renderer's visibility recompute) sees the settled stack rather
+   * than the stale pre-teardown one. See {@link pop} / {@link replace}.
+   */
+  finalize: (() => void) | undefined;
 }
 
 /** Stack-based scene manager with push/pop/replace semantics. */
@@ -171,11 +179,18 @@ export class SceneManager {
         this.stack.length > 1 ? this.stack[this.stack.length - 2] : undefined;
       const transition = resolveTransition(opts?.transition, destination);
 
-      if (transition) {
-        await this._runTransition("pop", transition, fromScene, destination);
-      }
+      if (!transition) return this._popScene();
 
-      return this._popScene();
+      // Tear the outgoing scene down inside the transition's finalize step so
+      // the post-pop stack is in place before `scene:transition:ended` fires.
+      // Doing it on the awaited continuation instead would settle the stack a
+      // microtask too late — after the frame that emitted `ended` already
+      // rendered — flashing the outgoing scene for one frame (#102).
+      let removed: Scene | undefined;
+      await this._runTransition("pop", transition, fromScene, destination, () => {
+        removed = this._popScene();
+      });
+      return removed;
     });
   }
 
@@ -202,14 +217,20 @@ export class SceneManager {
 
       const old = this.active;
       await this._pushScene(scene, true);
-      await this._runTransition("replace", transition, old, scene);
-
-      if (old) {
-        this._removeScene(old, true);
-      }
-      this.bus?.emit("scene:replaced", {
-        oldScene: old ?? scene,
-        newScene: scene,
+      // Remove the old scene and announce the replace inside finalize so the
+      // settled stack is visible to `scene:transition:ended` listeners — same
+      // one-frame-flash avoidance as pop (#102). Note this deliberately emits
+      // `scene:replaced` BEFORE `scene:transition:ended` (the pre-#102 order
+      // was the reverse): the stack mutation now precedes the end signal, so
+      // `isTransitioning` is still true when `scene:replaced` fires.
+      await this._runTransition("replace", transition, old, scene, () => {
+        if (old) {
+          this._removeScene(old, true);
+        }
+        this.bus?.emit("scene:replaced", {
+          oldScene: old ?? scene,
+          newScene: scene,
+        });
       });
     });
   }
@@ -434,6 +455,7 @@ export class SceneManager {
     transition: SceneTransition,
     fromScene: Scene | undefined,
     toScene: Scene | undefined,
+    finalize?: () => void,
   ): Promise<void> {
     // If destroy() landed between this op's prior await and here, bail
     // before registering a _currentRun whose promise would never resolve
@@ -452,6 +474,7 @@ export class SceneManager {
       fromScene,
       toScene,
       resolve: resolveRun,
+      finalize,
     };
     this._currentRun = run;
     this.bus?.emit("scene:transition:started", {
@@ -481,6 +504,21 @@ export class SceneManager {
 
     this._safeCall(run, "end");
     this._currentRun = undefined;
+    // Settle the stack (pop/replace teardown) before announcing the end, so
+    // listeners recomputing off `scene:transition:ended` see the final stack.
+    // Guarded like `_safeCall`: finalize runs user teardown (onExit / afterExit
+    // hooks) which can throw — an escaping error here would skip the `ended`
+    // emit and leave `run.resolve()` uncalled, hanging `_pendingChain`.
+    if (run.finalize) {
+      try {
+        run.finalize();
+      } catch (err: unknown) {
+        this.logger?.warn(
+          "SceneManager",
+          `Transition finalize error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     this.bus?.emit("scene:transition:ended", {
       kind: run.kind,
       fromScene: run.fromScene,

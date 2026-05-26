@@ -790,6 +790,48 @@ describe("SceneManager", () => {
       expect(log).toContain("end(100)");
     });
 
+    it("settles the stack before scene:transition:ended on pop (#102)", async () => {
+      const { manager, ctx } = setup();
+      const bus = ctx.resolve(EventBusKey);
+      await manager.push(new GameScene("a"));
+      await manager.push(new GameScene("b"));
+
+      let stackAtEnd: string[] | null = null;
+      bus.on("scene:transition:ended", () => {
+        stackAtEnd = manager.all.map((s) => s.name);
+      });
+
+      const { transition } = makeFakeTransition(100);
+      const popPromise = manager.pop({ transition });
+      await flush();
+      manager._tickTransition(100);
+      await popPromise;
+
+      // The outgoing "b" must already be gone when `ended` fires.
+      expect(stackAtEnd).toEqual(["a"]);
+    });
+
+    it("settles the stack before scene:transition:ended on replace (#102)", async () => {
+      const { manager, ctx } = setup();
+      const bus = ctx.resolve(EventBusKey);
+      await manager.push(new GameScene("old"));
+
+      let stackAtEnd: string[] | null = null;
+      bus.on("scene:transition:ended", () => {
+        stackAtEnd = manager.all.map((s) => s.name);
+      });
+
+      const { transition } = makeFakeTransition(100);
+      const replacePromise = manager.replace(new GameScene("new"), {
+        transition,
+      });
+      await flush();
+      manager._tickTransition(100);
+      await replacePromise;
+
+      expect(stackAtEnd).toEqual(["new"]);
+    });
+
     it("replace with transition keeps both scenes during transition", async () => {
       const { manager, ctx } = setup();
       const bus = ctx.resolve(EventBusKey);
