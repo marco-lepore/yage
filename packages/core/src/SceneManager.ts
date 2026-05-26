@@ -219,7 +219,10 @@ export class SceneManager {
       await this._pushScene(scene, true);
       // Remove the old scene and announce the replace inside finalize so the
       // settled stack is visible to `scene:transition:ended` listeners — same
-      // one-frame-flash avoidance as pop (#102).
+      // one-frame-flash avoidance as pop (#102). Note this deliberately emits
+      // `scene:replaced` BEFORE `scene:transition:ended` (the pre-#102 order
+      // was the reverse): the stack mutation now precedes the end signal, so
+      // `isTransitioning` is still true when `scene:replaced` fires.
       await this._runTransition("replace", transition, old, scene, () => {
         if (old) {
           this._removeScene(old, true);
@@ -503,7 +506,19 @@ export class SceneManager {
     this._currentRun = undefined;
     // Settle the stack (pop/replace teardown) before announcing the end, so
     // listeners recomputing off `scene:transition:ended` see the final stack.
-    run.finalize?.();
+    // Guarded like `_safeCall`: finalize runs user teardown (onExit / afterExit
+    // hooks) which can throw — an escaping error here would skip the `ended`
+    // emit and leave `run.resolve()` uncalled, hanging `_pendingChain`.
+    if (run.finalize) {
+      try {
+        run.finalize();
+      } catch (err: unknown) {
+        this.logger?.warn(
+          "SceneManager",
+          `Transition finalize error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     this.bus?.emit("scene:transition:ended", {
       kind: run.kind,
       fromScene: run.fromScene,
