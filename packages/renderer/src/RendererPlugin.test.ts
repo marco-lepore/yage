@@ -402,6 +402,7 @@ describe("RendererPlugin", () => {
     async function setupWithSceneManager(): Promise<{
       plugin: RendererPlugin;
       scenes: SceneManager;
+      bus: EventBus<EngineEvents>;
     }> {
       const { context } = createInstallContext();
       const scenes = new SceneManager();
@@ -409,7 +410,8 @@ describe("RendererPlugin", () => {
       scenes._setContext(context);
       const plugin = new RendererPlugin(defaultConfig);
       await plugin.install(context);
-      return { plugin, scenes };
+      const bus = context.resolve(EventBusKey);
+      return { plugin, scenes, bus };
     }
 
     it("hides the below scene when an opaque scene is pushed on top", async () => {
@@ -490,6 +492,40 @@ describe("RendererPlugin", () => {
       // After scene:transition:ended fires recompute, the chain settles
       // with `below` hidden under the opaque `top`.
       expect((belowTree.root as unknown as { visible: boolean }).visible).toBe(false);
+    });
+
+    it("does not re-show the outgoing scene on the frame a pop transition ends (#102)", async () => {
+      // Regression: the end-of-transition recompute must run against the
+      // post-pop stack. If it sees the stale stack (outgoing scene still on
+      // top), `applyTransparentBelow` re-shows the outgoing root for the
+      // frame that renders right as the transition ends — a one-frame flash.
+      const { plugin, scenes, bus } = await setupWithSceneManager();
+      const a = makeScene("a", false);
+      const b = makeScene("b", false);
+      await scenes.push(a);
+      await scenes.push(b);
+
+      const aTree = plugin.sceneRenderTrees.getTree(a)!;
+
+      // Capture the world state at the instant `scene:transition:ended` fires
+      // — this is the frame that would have flashed.
+      let bStillOnStackAtEnd: boolean | null = null;
+      let aVisibleAtEnd: boolean | null = null;
+      bus.on("scene:transition:ended", () => {
+        bStillOnStackAtEnd = scenes.all.includes(b);
+        aVisibleAtEnd = (aTree.root as unknown as { visible: boolean }).visible;
+      });
+
+      const transition: SceneTransition = { duration: 100, tick: () => {} };
+      const popPromise = scenes.pop({ transition });
+      await new Promise<void>((r) => setTimeout(r, 0));
+
+      scenes._tickTransition(100);
+      await popPromise;
+
+      expect(bStillOnStackAtEnd).toBe(false);
+      expect(aVisibleAtEnd).toBe(true);
+      expect((aTree.root as unknown as { visible: boolean }).visible).toBe(true);
     });
   });
 
