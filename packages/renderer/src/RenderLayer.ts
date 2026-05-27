@@ -104,10 +104,16 @@ export class RenderLayer {
 
   /**
    * Set (or clear) this layer's depth-key function at runtime, flipping
-   * `container.sortableChildren` to match. Pass `undefined` to revert to
-   * insertion-order rendering. Useful for opting the auto-created
-   * `"default"` layer into `ySort` after the scene is live, or toggling
-   * depth sorting on/off dynamically.
+   * `container.sortableChildren` to match. Useful for opting the
+   * auto-created `"default"` layer into `ySort` after the scene is live,
+   * or toggling depth sorting on dynamically.
+   *
+   * Passing `undefined` stops the per-frame re-sort, but does **not**
+   * restore the original insertion order: Pixi reorders `container.children`
+   * in place while sorting is on, so clearing `sortableChildren` only halts
+   * further sorting — children keep their current (last-sorted) order and
+   * `zIndex`. Re-establish paint order yourself if you need the original
+   * sequence back.
    */
   setSort(sort: LayerSortFn | undefined): void {
     this._sort = sort;

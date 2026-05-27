@@ -138,16 +138,30 @@ describe("SceneRenderTreeProvider — default layer configuration", () => {
     );
     const sort = (c: { position: { y: number } }) => c.position.y;
     const tree = provider.createForScene(
+      // A non-zero `order` is declared to prove it's ignored — "default" is
+      // pinned to order 0 — while `space` / `isRenderGroup` pass through.
       makeFakeScene("scene", [
-        { name: "default", order: 0, sort: sort as never },
+        {
+          name: "default",
+          order: 999,
+          sort: sort as never,
+          space: "screen",
+          isRenderGroup: true,
+        },
       ]),
     );
 
     const def = tree.defaultLayer;
     expect(def.sort).toBe(sort);
+    expect(def.order).toBe(0);
+    expect(def.space).toBe("screen");
     expect(
       (def.container as unknown as InstanceType<typeof MockContainer>)
         .sortableChildren,
+    ).toBe(true);
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .isRenderGroup,
     ).toBe(true);
   });
 

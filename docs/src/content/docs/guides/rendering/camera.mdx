@@ -318,8 +318,15 @@ scope):
 import { SceneRenderTreeKey, ySort } from "@yagejs/renderer";
 
 const tree = this.use(SceneRenderTreeKey); // inside a Component
-tree.defaultLayer.setSort(ySort); // pass `undefined` to revert to insertion order
+tree.defaultLayer.setSort(ySort);
 ```
+
+Passing `undefined` to `setSort` stops the per-frame re-sort, but it does
+**not** restore the original insertion order — Pixi reorders the
+container's children in place while sorting is on, so clearing
+`sortableChildren` only halts further sorting and children keep their
+last-sorted order. Re-establish paint order yourself if you need the
+original sequence back.
 
 #### Depth offsets (`ySortBy`) — Godot's `y_sort_origin` pattern
 
