@@ -131,6 +131,37 @@ describe("SceneRenderTreeProvider — 'ui' layer name-shadow warning", () => {
   });
 });
 
+describe("SceneRenderTreeProvider — default layer configuration", () => {
+  it("applies a declared { name: 'default', sort } to the pre-created layer", () => {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const sort = (c: { position: { y: number } }) => c.position.y;
+    const tree = provider.createForScene(
+      makeFakeScene("scene", [
+        { name: "default", order: 0, sort: sort as never },
+      ]),
+    );
+
+    const def = tree.defaultLayer;
+    expect(def.sort).toBe(sort);
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .sortableChildren,
+    ).toBe(true);
+  });
+
+  it("does not create a duplicate layer when 'default' is declared", () => {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const tree = provider.createForScene(
+      makeFakeScene("scene", [{ name: "default", order: 0 }]),
+    );
+    expect(tree.getAll().filter((l) => l.name === "default")).toHaveLength(1);
+  });
+});
+
 describe("SceneRenderTreeProviderImpl", () => {
   let root: InstanceType<typeof MockContainer>;
   let provider: SceneRenderTreeProviderImpl;

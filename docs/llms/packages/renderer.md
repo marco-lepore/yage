@@ -503,6 +503,8 @@ class GameScene extends Scene {
 }
 ```
 
+**The `"default"` layer.** Every scene's tree auto-creates a layer named `"default"` at order 0; any sprite/text/graphics with no explicit `layer` renders there. Declaring `{ name: "default", ... }` *configures* that pre-created layer (its `sort` / `space` / `isRenderGroup`) rather than adding a second one — `{ name: "default", sort: ySort }` is the canonical "depth-sort the layer my entities already use" setup, with no per-component `layer` wiring. The declared `order` is ignored (default is order 0 by definition). To change a live layer's sort after the scene is running, call `layer.setSort(fn)` (pass `undefined` to revert to insertion order) — `tree.defaultLayer.setSort(ySort)`.
+
 ### Camera binding rule
 
 A `CameraEntity` spawned without explicit `bindings` auto-binds every

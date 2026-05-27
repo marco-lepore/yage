@@ -7,7 +7,7 @@ import type {
   SceneRenderTreeProvider,
   EnsureLayerOptions,
 } from "./SceneRenderTree.js";
-import { RenderLayerManager } from "./RenderLayer.js";
+import { RenderLayerManager, layerDefToOptions } from "./RenderLayer.js";
 import type { EffectQueueFactory, RenderLayer } from "./RenderLayer.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
@@ -136,9 +136,20 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
       ? () => makeSceneScopedQueue(ps, scene)
       : undefined;
 
-    const manager = new RenderLayerManager(root, "passive", queueFactory);
+    // A declared `{ name: "default", ... }` configures the pre-created
+    // default layer (order 0) rather than being skipped: the manager bakes
+    // its `sort`/`space`/`isRenderGroup` into the layer it builds in its
+    // ctor. `order` stays 0 — "default" is the order-0 layer by definition.
+    const layers = scene.layers ?? [];
+    const defaultDef = layers.find((def) => def.name === "default");
+    const manager = new RenderLayerManager(
+      root,
+      "passive",
+      queueFactory,
+      defaultDef ? layerDefToOptions(defaultDef) : undefined,
+    );
 
-    for (const def of scene.layers ?? []) {
+    for (const def of layers) {
       if (manager.tryGet(def.name)) continue;
       warnUiLayerShadow(def);
       manager.createFromDef(def);
