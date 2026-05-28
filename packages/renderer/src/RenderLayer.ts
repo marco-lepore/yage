@@ -39,6 +39,23 @@ export interface CreateLayerOptions {
   sort?: LayerSortFn;
 }
 
+/**
+ * Derive `CreateLayerOptions` from a declarative `LayerDef`. Fields set on
+ * the def (`space`, `isRenderGroup`, `sort`) take precedence over `base` so
+ * a scene's declaration stays authoritative; `base` carries plugin-side
+ * defaults for fields the def leaves unset.
+ */
+export function layerDefToOptions(
+  def: LayerDef,
+  base?: CreateLayerOptions,
+): CreateLayerOptions {
+  const merged: CreateLayerOptions = { ...base };
+  if (def.space !== undefined) merged.space = def.space;
+  if (def.isRenderGroup !== undefined) merged.isRenderGroup = def.isRenderGroup;
+  if (def.sort !== undefined) merged.sort = def.sort;
+  return merged;
+}
+
 /** A named rendering layer — a pixi container at a given draw order. */
 export class RenderLayer {
   readonly name: string;
@@ -46,12 +63,7 @@ export class RenderLayer {
   readonly container: Container;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
-  /**
-   * Per-frame sort comparator, or `undefined` for insertion-order rendering.
-   * Set via `LayerDef.sort` / `CreateLayerOptions.sort`. `DisplaySystem`
-   * re-sorts `container.children` with this each Render phase.
-   */
-  readonly sort: LayerSortFn | undefined;
+  private _sort: LayerSortFn | undefined;
   /**
    * Layer-scope effects host. `.fx.addEffect(...)` applies a filter to every
    * entity rendered through this layer (one full-screen render pass per
@@ -75,8 +87,37 @@ export class RenderLayer {
     this.order = order;
     this.container = container;
     this.space = space;
-    this.sort = sort;
+    this._sort = sort;
+    if (sort) container.sortableChildren = true;
     this.fx = new EffectsHost(() => this.container, "layer", queueFactory);
+  }
+
+  /**
+   * Per-frame depth-key function, or `undefined` for insertion-order
+   * rendering. Set via `LayerDef.sort` / `CreateLayerOptions.sort` at
+   * creation, or {@link setSort} at runtime. `DisplaySystem` writes
+   * `child.zIndex = sort(child)` on every child each Render phase.
+   */
+  get sort(): LayerSortFn | undefined {
+    return this._sort;
+  }
+
+  /**
+   * Set (or clear) this layer's depth-key function at runtime, flipping
+   * `container.sortableChildren` to match. Useful for opting the
+   * auto-created `"default"` layer into `ySort` after the scene is live,
+   * or toggling depth sorting on dynamically.
+   *
+   * Passing `undefined` stops the per-frame re-sort, but does **not**
+   * restore the original insertion order: Pixi reorders `container.children`
+   * in place while sorting is on, so clearing `sortableChildren` only halts
+   * further sorting — children keep their current (last-sorted) order and
+   * `zIndex`. Re-establish paint order yourself if you need the original
+   * sequence back.
+   */
+  setSort(sort: LayerSortFn | undefined): void {
+    this._sort = sort;
+    this.container.sortableChildren = sort !== undefined;
   }
 
   /**
@@ -140,11 +181,18 @@ export class RenderLayerManager {
     root: Container,
     defaultEventMode?: EventMode,
     queueFactory?: EffectQueueFactory,
+    /**
+     * Config for the auto-created `"default"` layer (order 0). Lets a scene
+     * that declares `{ name: "default", sort, space, isRenderGroup }`
+     * configure the pre-created layer instead of the declaration being a
+     * no-op. The provider derives this from the matching `LayerDef`.
+     */
+    defaultLayerOptions?: CreateLayerOptions,
   ) {
     this.rootContainer = root;
     this._defaultEventMode = defaultEventMode;
     this._queueFactory = queueFactory;
-    this._defaultLayer = this.create("default", 0);
+    this._defaultLayer = this.create("default", 0, defaultLayerOptions);
   }
 
   /** Create a new named layer. Throws if `name` already exists. */
@@ -164,12 +212,9 @@ export class RenderLayerManager {
     if (opts?.isRenderGroup) container.isRenderGroup = true;
     // `sort` is a depth-key fn — DisplaySystem writes the result to each
     // child's zIndex every frame, and Pixi's render pipeline orders the
-    // layer by zIndex when `sortableChildren` is true. Set the flag once
-    // here so the relationship is explicit; Pixi's `zIndex` setter marks
-    // `sortDirty` on the parent automatically, so we don't need to
-    // re-sort manually.
-    if (opts?.sort) container.sortableChildren = true;
-
+    // layer by zIndex when `sortableChildren` is true. The `RenderLayer`
+    // ctor flips that flag; Pixi's `zIndex` setter marks `sortDirty` on
+    // the parent automatically, so we don't need to re-sort manually.
     const layer = new RenderLayer(
       name,
       order,
@@ -194,13 +239,7 @@ export class RenderLayerManager {
    * declare (via `ensureLayer`).
    */
   createFromDef(def: LayerDef, opts?: CreateLayerOptions): RenderLayer {
-    const merged: CreateLayerOptions = { ...opts };
-    if (def.space !== undefined) merged.space = def.space;
-    if (def.isRenderGroup !== undefined) {
-      merged.isRenderGroup = def.isRenderGroup;
-    }
-    if (def.sort !== undefined) merged.sort = def.sort;
-    return this.create(def.name, def.order, merged);
+    return this.create(def.name, def.order, layerDefToOptions(def, opts));
   }
 
   /** Get a layer by name. Throws if not found. */

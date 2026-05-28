@@ -131,6 +131,51 @@ describe("SceneRenderTreeProvider — 'ui' layer name-shadow warning", () => {
   });
 });
 
+describe("SceneRenderTreeProvider — default layer configuration", () => {
+  it("applies a declared { name: 'default', sort } to the pre-created layer", () => {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const sort = (c: { position: { y: number } }) => c.position.y;
+    const tree = provider.createForScene(
+      // A non-zero `order` is declared to prove it's ignored — "default" is
+      // pinned to order 0 — while `space` / `isRenderGroup` pass through.
+      makeFakeScene("scene", [
+        {
+          name: "default",
+          order: 999,
+          sort: sort as never,
+          space: "screen",
+          isRenderGroup: true,
+        },
+      ]),
+    );
+
+    const def = tree.defaultLayer;
+    expect(def.sort).toBe(sort);
+    expect(def.order).toBe(0);
+    expect(def.space).toBe("screen");
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .sortableChildren,
+    ).toBe(true);
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .isRenderGroup,
+    ).toBe(true);
+  });
+
+  it("does not create a duplicate layer when 'default' is declared", () => {
+    const provider = new SceneRenderTreeProviderImpl(
+      new MockContainer() as never,
+    );
+    const tree = provider.createForScene(
+      makeFakeScene("scene", [{ name: "default", order: 0 }]),
+    );
+    expect(tree.getAll().filter((l) => l.name === "default")).toHaveLength(1);
+  });
+});
+
 describe("SceneRenderTreeProviderImpl", () => {
   let root: InstanceType<typeof MockContainer>;
   let provider: SceneRenderTreeProviderImpl;

@@ -51,6 +51,52 @@ describe("RenderLayer", () => {
     expect(layer.order).toBe(5);
     expect(layer.container).toBe(container);
   });
+
+  it("flips sortableChildren when constructed with a sort fn", () => {
+    const container = new MockContainer();
+    const layer = new RenderLayer(
+      "chars",
+      0,
+      container as never,
+      "world",
+      undefined,
+      (c) => c.position.y,
+    );
+    expect(layer.sort).toBeDefined();
+    expect(container.sortableChildren).toBe(true);
+  });
+
+  describe("setSort", () => {
+    it("sets the sort fn and flips sortableChildren on", () => {
+      const container = new MockContainer();
+      const layer = new RenderLayer("chars", 0, container as never);
+      expect(container.sortableChildren).toBe(false);
+
+      const sort = (c: { position: { y: number } }) => c.position.y;
+      layer.setSort(sort as never);
+
+      expect(layer.sort).toBe(sort);
+      expect(container.sortableChildren).toBe(true);
+    });
+
+    it("clears the sort fn and flips sortableChildren off", () => {
+      const container = new MockContainer();
+      const layer = new RenderLayer(
+        "chars",
+        0,
+        container as never,
+        "world",
+        undefined,
+        (c) => c.position.y,
+      );
+      expect(container.sortableChildren).toBe(true);
+
+      layer.setSort(undefined);
+
+      expect(layer.sort).toBeUndefined();
+      expect(container.sortableChildren).toBe(false);
+    });
+  });
 });
 
 describe("RenderLayerManager", () => {
@@ -66,6 +112,36 @@ describe("RenderLayerManager", () => {
     const def = manager.defaultLayer;
     expect(def.name).toBe("default");
     expect(def.order).toBe(0);
+  });
+
+  it("applies defaultLayerOptions to the auto-created default layer", () => {
+    const sort = (c: { position: { y: number } }) => c.position.y;
+    const mgr = new RenderLayerManager(root as never, undefined, undefined, {
+      sort: sort as never,
+      isRenderGroup: true,
+    });
+    const def = mgr.defaultLayer;
+    expect(def.sort).toBe(sort);
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .sortableChildren,
+    ).toBe(true);
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .isRenderGroup,
+    ).toBe(true);
+  });
+
+  it("default layer can be opted into a sort at runtime via setSort", () => {
+    const def = manager.defaultLayer;
+    expect(def.sort).toBeUndefined();
+    const sort = (c: { position: { y: number } }) => c.position.y;
+    def.setSort(sort as never);
+    expect(def.sort).toBe(sort);
+    expect(
+      (def.container as unknown as InstanceType<typeof MockContainer>)
+        .sortableChildren,
+    ).toBe(true);
   });
 
   it("default layer container is added to root", () => {

@@ -237,8 +237,13 @@ engine.use(new RendererPlugin({ width: 800, height: 600 }));
 ```
 
 Assign a layer via the `layer` property on `SpriteComponent` or
-`GraphicsComponent`. Entities within the same layer are sorted by their
-y-position by default.
+`GraphicsComponent`. Within a layer, entities paint in insertion order by
+default — opt into depth sorting with [`sort`](#per-frame-paint-order-with-sort).
+
+A component with no `layer` renders on the auto-created `"default"` layer
+(order 0) that every scene has. You don't need to declare it — but you
+*can*, to configure it (see [Sorting the default
+layer](#sorting-the-default-layer)).
 
 ### Layer space
 
@@ -285,6 +290,43 @@ readonly layers: readonly LayerDef[] = [
 `ySort` is just `(c) => c.position.y` — terse enough that you can write
 your own depth-key if you'd rather drive paint order from a different
 axis or off a custom field on the sprite.
+
+#### Sorting the default layer
+
+The most common top-down setup is "depth-sort the layer my entities are
+already on" — and that layer is usually the auto-created `"default"`. You
+don't have to invent a named layer and set `layer: "..."` on every
+component: declare a `LayerDef` named `"default"` to configure the
+pre-created layer in place.
+
+```typescript
+import { ySort, type LayerDef } from "@yagejs/renderer";
+
+class TopDownScene extends Scene {
+  readonly name = "game";
+  // Sprites added with no `layer` land here and depth-sort by y.
+  readonly layers: readonly LayerDef[] = [{ name: "default", sort: ySort }];
+}
+```
+
+The declared `order` is ignored — `"default"` is the order-0 layer by
+definition. To flip sorting on (or off) after the scene is live, call
+`setSort` on the layer (any component can reach the tree through scene
+scope):
+
+```typescript
+import { SceneRenderTreeKey, ySort } from "@yagejs/renderer";
+
+const tree = this.use(SceneRenderTreeKey); // inside a Component
+tree.defaultLayer.setSort(ySort);
+```
+
+Passing `undefined` to `setSort` stops the per-frame re-sort, but it does
+**not** restore the original insertion order — Pixi reorders the
+container's children in place while sorting is on, so clearing
+`sortableChildren` only halts further sorting and children keep their
+last-sorted order. Re-establish paint order yourself if you need the
+original sequence back.
 
 #### Depth offsets (`ySortBy`) — Godot's `y_sort_origin` pattern
 

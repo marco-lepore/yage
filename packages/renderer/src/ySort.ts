@@ -10,9 +10,11 @@ import type { LayerSortFn } from "./LayerDef.js";
  * ```ts
  * import { ySort } from "@yagejs/renderer";
  *
+ * // Depth-sort the auto-created default layer your entities already use —
+ * // no per-component `layer` wiring needed.
  * class GameScene extends Scene {
  *   readonly layers: readonly LayerDef[] = [
- *     { name: "characters", order: 0, sort: ySort },
+ *     { name: "default", order: 0, sort: ySort },
  *   ];
  * }
  * ```
