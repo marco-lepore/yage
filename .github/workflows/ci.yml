@@ -96,7 +96,9 @@ jobs:
         run: |
           for i in 1 2 3; do
             timeout 300 npx playwright install --with-deps chromium && exit 0
-            echo "::warning::playwright install attempt $i stalled or failed; retrying"
+            if [ "$i" -lt 3 ]; then
+              echo "::warning::playwright install attempt $i stalled or failed; retrying"
+            fi
           done
           echo "::error::playwright install failed after 3 attempts"
           exit 1
