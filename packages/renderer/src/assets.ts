@@ -217,6 +217,10 @@ export function unloadWebFont(path: string): void {
   const names = bakedWebFontFamilies.get(path);
   if (names) {
     for (const name of names) BitmapFont.uninstall(name);
+    // The base name (first entry) is the family a `BitmapText` resolves
+    // variants under — drop its registry entries too so a request after
+    // unload no longer maps to a destroyed atlas.
+    if (names[0] !== undefined) unregisterBitmapFontVariants(names[0]);
     bakedWebFontFamilies.delete(path);
   }
 }
@@ -386,7 +390,7 @@ function bakeBitmapFontFamily(
     // Re-installing the same font name with a smaller / different variant set
     // would otherwise inherit stale emphasis entries from the previous install
     // (the registry is process-global), so wipe this name's slate first.
-    unregisterBitmapFontVariants(opts.name);
+    unregisterBitmapFontVariants(name);
     const baseKey = emphasisKey({});
     registerBitmapFontVariant(name, {}, name);
 

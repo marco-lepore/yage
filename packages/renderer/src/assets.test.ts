@@ -173,6 +173,24 @@ describe("web-font loader (loadWebFont / unloadWebFont)", () => {
     expect(uninstalled).toEqual(["Body", "Body bold", "Body italic"]);
   });
 
+  it("clears the variant registry on unload so resolution stops returning a destroyed atlas", async () => {
+    await loadWebFont("fonts/Body.woff2", {
+      family: "Body",
+      bitmap: { variants: [{ fontWeight: "bold" }] },
+    });
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBe(
+      "Body bold",
+    );
+
+    unloadWebFont("fonts/Body.woff2");
+
+    // The family no longer hosts any variants — resolution returns undefined
+    // rather than a name mapping to an uninstalled atlas.
+    expect(
+      resolveBitmapFontVariant("Body", { fontWeight: "bold" }),
+    ).toBeUndefined();
+  });
+
   it("unload of a plain web font drops the face but uninstalls no atlas", async () => {
     await loadWebFont("fonts/Inter.woff2", { family: "Inter" });
 
