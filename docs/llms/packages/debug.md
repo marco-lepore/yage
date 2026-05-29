@@ -47,6 +47,47 @@ await inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 inspector.snapshotJSON();                      // stable, sorted JSON for diffing
 ```
 
+### Render facet — rendered geometry / visibility
+
+`snapshot()` / `snapshotScene()` report each graphical component's *rendered*
+state alongside its `serialize()` output, via a derived `render` facet
+(`RenderFacetSnapshot` from `@yagejs/core`). This is computed on demand from the
+live display object — never from `serialize()` — so it reflects what is actually
+painted, not the declared/persisted state.
+
+```ts
+const scene = inspector.snapshot().scenes[0];
+const e = scene.entities.find((ent) => ent.id === "3");
+
+// Entity-level facet (first graphical component on the entity):
+e.render;            // { bounds: { x, y, width, height } | null, visible }
+
+// Per-component facet (read this for entities with several graphical components):
+e.components.find((c) => c.type === "SpriteComponent")?.render;
+```
+
+`bounds` are **world-space** pixels — the same coordinate space as
+`entity.transform`, before the camera and responsive `fit` transform are
+applied. `bounds` is `null` when the object paints nothing (e.g. an empty
+`Graphics`).
+
+`SplitTextComponent` adds per-glyph reporting, so a typewriter reveal is
+observable without touching Pixi internals — where `serialize()` reports the
+full declared string, the facet reports only what is on screen:
+
+```ts
+const split = e.components.find((c) => c.type === "SplitTextComponent")?.render;
+split?.glyphs;        // [{ visible }, ...] in reading order
+split?.visibleText;   // the substring currently painted, e.g. "Hel"
+```
+
+A renderer component opts in by exposing an `inspectRender(): RenderFacetSnapshot`
+method; the Inspector duck-types it (no Pixi dependency in core) and tolerates an
+absent or throwing hook. The facet shape is open — components may attach extra
+keys without a core change. The built-in graphical components
+(`SpriteComponent`, `AnimatedSpriteComponent`, `GraphicsComponent`,
+`TextComponent`, `SplitTextComponent`) all implement it.
+
 Renderer-aware diagnostics live under the inspector extension namespace `debug`
 (only present while `DebugPlugin` is installed). Pass `DebugDiagnostics` as the
 type parameter so the returned methods are typed:

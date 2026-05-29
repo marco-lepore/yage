@@ -38,6 +38,7 @@ export default defineConfig({
         "camera-parallax": resolve(__dirname, "camera-parallax.html"),
         "camera-lifecycle": resolve(__dirname, "camera-lifecycle.html"),
         "loading-scene": resolve(__dirname, "loading-scene.html"),
+        "split-text-reveal": resolve(__dirname, "split-text-reveal.html"),
         platformer: resolve(__dirname, "platformer.html"),
       },
     },

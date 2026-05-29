@@ -1,6 +1,8 @@
 import { Component, serializable } from "@yagejs/core";
+import type { RenderFacetSnapshot } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
 import type { BitmapText, Container, Text } from "pixi.js";
+import { computeRenderFacet } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type { TextStyle } from "./public-types.js";
@@ -267,6 +269,27 @@ export class SplitTextComponent extends Component {
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.visible !== undefined) opts.visible = data.visible;
     return new SplitTextComponent(opts);
+  }
+
+  /**
+   * Derived render facet for the Inspector. Beyond the shared world-space
+   * `bounds` and container-level `visible`, this walks the per-character
+   * segments and reports `glyphs` (one `{ visible }` per char in reading
+   * order) plus `visibleText` — the substring currently painted. This is the
+   * read-only window into a typewriter reveal: where `serialize()` reports the
+   * full declared string, `visibleText` reports only the glyphs whose
+   * `chars[i].visible` is still on. Not part of `serialize()`; see
+   * {@link computeRenderFacet} for the bounds coordinate space.
+   */
+  inspectRender(): RenderFacetSnapshot {
+    const facet = computeRenderFacet(this.splitText);
+    const chars = this.splitText.chars;
+    const glyphs = chars.map((char) => ({ visible: char.visible }));
+    const visibleText = chars
+      .filter((char) => char.visible)
+      .map((char) => char.text)
+      .join("");
+    return { ...facet, glyphs, visibleText };
   }
 
   onAdd(): void {

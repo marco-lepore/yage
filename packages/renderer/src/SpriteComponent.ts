@@ -6,7 +6,9 @@ import {
   unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
+import type { RenderFacetSnapshot } from "@yagejs/core";
 import { Sprite } from "pixi.js";
+import { computeRenderFacet } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveTextureInput } from "./assets.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
@@ -235,6 +237,15 @@ export class SpriteComponent extends Component {
    */
   get mask(): MaskHandle | undefined {
     return this._mask;
+  }
+
+  /**
+   * Derived render facet for the Inspector — world-space `bounds` and resolved
+   * `visible`, computed on demand from the live sprite. Not part of
+   * `serialize()`; see {@link computeRenderFacet} for the bounds coordinate space.
+   */
+  inspectRender(): RenderFacetSnapshot {
+    return computeRenderFacet(this.sprite);
   }
 
   onAdd(): void {

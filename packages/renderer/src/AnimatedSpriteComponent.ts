@@ -6,8 +6,9 @@ import {
   unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
+import type { RenderFacetSnapshot, Vec2Like } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
+import { computeRenderFacet } from "./internal/renderFacet.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
@@ -219,6 +220,15 @@ export class AnimatedSpriteComponent extends Component {
    */
   get mask(): MaskHandle | undefined {
     return this._mask;
+  }
+
+  /**
+   * Derived render facet for the Inspector — world-space `bounds` and resolved
+   * `visible` of the current animation frame, computed on demand. Not part of
+   * `serialize()`; see {@link computeRenderFacet} for the bounds coordinate space.
+   */
+  inspectRender(): RenderFacetSnapshot {
+    return computeRenderFacet(this.animatedSprite);
   }
 
   onAdd(): void {

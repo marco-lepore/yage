@@ -3,7 +3,9 @@ import {
   makeEntityScopedQueue,
   serializable,
 } from "@yagejs/core";
+import type { RenderFacetSnapshot } from "@yagejs/core";
 import { Graphics } from "pixi.js";
+import { computeRenderFacet } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
@@ -100,6 +102,16 @@ export class GraphicsComponent extends Component {
    */
   get mask(): MaskHandle | undefined {
     return this._mask;
+  }
+
+  /**
+   * Derived render facet for the Inspector — world-space `bounds` of the drawn
+   * geometry and resolved `visible`, computed on demand. An empty `Graphics`
+   * reports `bounds: null`. Not part of `serialize()`; see
+   * {@link computeRenderFacet} for the bounds coordinate space.
+   */
+  inspectRender(): RenderFacetSnapshot {
+    return computeRenderFacet(this.graphics);
   }
 
   onAdd(): void {

@@ -102,6 +102,7 @@ export type {
   SystemSnapshot,
   ErrorSnapshot,
   ComponentStateSnapshot,
+  RenderFacetSnapshot,
   WorldEntitySnapshot,
   UINodeSnapshot,
   UITreeSnapshot,

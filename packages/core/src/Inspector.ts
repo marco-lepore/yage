@@ -143,6 +143,50 @@ export interface ErrorSnapshot {
 export interface ComponentStateSnapshot {
   type: string;
   state: unknown | null;
+  /**
+   * Derived rendered-geometry / visibility facet, present only for graphical
+   * components that expose an `inspectRender()` hook. See {@link RenderFacetSnapshot}.
+   */
+  render?: RenderFacetSnapshot;
+}
+
+/**
+ * Derived, read-only rendered-geometry / visibility facet for a graphical
+ * component, computed on demand from its live display object — NOT from
+ * `serialize()` (which reports declared, persisted state). Where `serialize()`
+ * says a typewriter's full string is present, this reports the bounds actually
+ * painted and per-glyph visibility.
+ *
+ * A renderer component opts in by exposing an `inspectRender(): RenderFacetSnapshot`
+ * method; the Inspector duck-types it (no compile-time dependency on the
+ * renderer package) and attaches the result to {@link WorldEntitySnapshot.render}.
+ *
+ * The shape is intentionally open — `bounds` / `visible` are always present,
+ * but components may attach richer keys (e.g. `glyphs`, a visible substring)
+ * without a core change.
+ */
+export interface RenderFacetSnapshot {
+  /**
+   * Axis-aligned bounding box of what the component actually paints, in
+   * world space (the same coordinate space as {@link WorldEntitySnapshot.transform}
+   * — pixels, before camera/viewport projection). `null` when the display
+   * object reports no measurable bounds (e.g. an empty `Graphics`).
+   */
+  bounds: { x: number; y: number; width: number; height: number } | null;
+  /** Resolved visibility of the display object at snapshot time. */
+  visible: boolean;
+  /**
+   * Per-glyph visibility, present only for components that render text split
+   * into individual glyph display objects (e.g. `SplitTextComponent`).
+   */
+  glyphs?: Array<{ visible: boolean }>;
+  /** Components may attach richer, component-specific render state here. */
+  [key: string]: unknown;
+}
+
+/** Duck-typed hook a renderer component exposes to publish its render facet. */
+interface RenderInspectableLike {
+  inspectRender(): RenderFacetSnapshot;
 }
 
 export interface WorldEntitySnapshot {
@@ -157,6 +201,13 @@ export interface WorldEntitySnapshot {
     scaleY: number;
   };
   components: ComponentStateSnapshot[];
+  /**
+   * Entity-level render facet, derived from the first graphical component on
+   * the entity that exposes an `inspectRender()` hook. Present only when at
+   * least one such component exists. For entities with multiple graphical
+   * components, read the per-component facets on {@link ComponentStateSnapshot.render}.
+   */
+  render?: RenderFacetSnapshot;
 }
 
 export interface UINodeSnapshot {
@@ -953,7 +1004,7 @@ export class Inspector {
       .map((component) => this.componentToSnapshot(component))
       .sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
 
-    return {
+    const snapshot: WorldEntitySnapshot = {
       id: String(entity.id),
       type: entity.constructor.name,
       parent: entity.parent ? String(entity.parent.id) : null,
@@ -966,16 +1017,24 @@ export class Inspector {
       },
       components,
     };
+    // Surface the first graphical component's facet at the entity level so the
+    // common single-sprite/text case needn't walk the component list.
+    const primaryRender = components.find((c) => c.render)?.render;
+    if (primaryRender) snapshot.render = primaryRender;
+    return snapshot;
   }
 
   private componentToSnapshot(component: Component): ComponentStateSnapshot {
-    return {
+    const snapshot: ComponentStateSnapshot = {
       type: component.constructor.name,
       state:
         typeof component.serialize === "function"
           ? trySerialize(component) ?? null
           : null,
     };
+    const render = tryInspectRender(component);
+    if (render) snapshot.render = render;
+    return snapshot;
   }
 
   private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
@@ -1237,6 +1296,24 @@ function safeClone(value: unknown): unknown | undefined {
 function trySerialize(component: Component): unknown | undefined {
   try {
     return safeClone(component.serialize?.());
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Duck-type and invoke an optional `inspectRender()` hook on a component,
+ * tolerating both an absent hook and one that throws (mid-teardown, no parent
+ * yet, etc.) — mirroring {@link trySerialize}. Returns `undefined` when no
+ * facet is available so the caller can omit the `render` key entirely.
+ */
+function tryInspectRender(component: Component): RenderFacetSnapshot | undefined {
+  const hook = (component as unknown as Partial<RenderInspectableLike>)
+    .inspectRender;
+  if (typeof hook !== "function") return undefined;
+  try {
+    const facet = hook.call(component);
+    return facet && typeof facet === "object" ? facet : undefined;
   } catch {
     return undefined;
   }

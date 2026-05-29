@@ -13,6 +13,10 @@ const { mocks } = vi.hoisted(() => {
     zIndex = 0;
     destroyed = false;
 
+    // Bounds reported in "global" space; the parent identity transform means
+    // toLocal is a passthrough, so the world-space facet equals these.
+    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
+
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
       child.parent = this;
@@ -29,12 +33,25 @@ const { mocks } = vi.hoisted(() => {
     removeFromParent(): void {
       this.parent?.removeChild(this);
     }
+    getBounds(): { x: number; y: number; width: number; height: number } {
+      return { ...this.boundsBox };
+    }
+    toLocal(p: { x: number; y: number }): { x: number; y: number } {
+      return { x: p.x, y: p.y };
+    }
     destroyOpts: unknown;
     destroy(opts?: unknown): void {
       this.destroyed = true;
       this.destroyOpts = opts;
       this.removeFromParent();
     }
+  }
+
+  class MockPoint {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
   }
 
   class MockText extends MockContainer {
@@ -109,6 +126,7 @@ const { mocks } = vi.hoisted(() => {
       MockBitmapText,
       MockSplitText,
       MockSplitBitmapText,
+      MockPoint,
     },
   };
 });
@@ -119,6 +137,7 @@ vi.mock("pixi.js", () => ({
   BitmapText: mocks.MockBitmapText,
   SplitText: mocks.MockSplitText,
   SplitBitmapText: mocks.MockSplitBitmapText,
+  Point: mocks.MockPoint,
 }));
 
 import { Transform } from "@yagejs/core";
@@ -320,5 +339,40 @@ describe("SplitTextComponent", () => {
     snap.x = 0.1;
     snap.y = 0.9;
     expect(comp.serialize().charAnchor).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  describe("inspectRender", () => {
+    it("reports world-space bounds, visibility, and per-glyph state", () => {
+      const comp = new SplitTextComponent({ text: "abc" });
+      const split = comp.splitText as unknown as InstanceType<
+        typeof mocks.MockSplitText
+      >;
+      split.boundsBox = { x: 10, y: 20, width: 30, height: 12 };
+
+      const facet = comp.inspectRender();
+      expect(facet.bounds).toEqual({ x: 10, y: 20, width: 30, height: 12 });
+      expect(facet.visible).toBe(true);
+      expect(facet.glyphs).toEqual([
+        { visible: true },
+        { visible: true },
+        { visible: true },
+      ]);
+      expect(facet.visibleText).toBe("abc");
+    });
+
+    it("reflects a typewriter reveal after toggling chars[i].visible", () => {
+      const comp = new SplitTextComponent({ text: "Hello" });
+      comp.chars.forEach((char, i) => (char.visible = i < 3));
+
+      const facet = comp.inspectRender();
+      expect(facet.glyphs).toEqual([
+        { visible: true },
+        { visible: true },
+        { visible: true },
+        { visible: false },
+        { visible: false },
+      ]);
+      expect(facet.visibleText).toBe("Hel");
+    });
   });
 });

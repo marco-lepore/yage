@@ -27,6 +27,8 @@ const { mocks } = vi.hoisted(() => {
       }),
     };
 
+    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
+
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
       child.parent = this;
@@ -50,10 +52,25 @@ const { mocks } = vi.hoisted(() => {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
+    getBounds(): { x: number; y: number; width: number; height: number } {
+      return { ...this.boundsBox };
+    }
+
+    toLocal(p: { x: number; y: number }): { x: number; y: number } {
+      return { x: p.x, y: p.y };
+    }
+
     destroy(): void {
       this.destroyed = true;
       this.removeFromParent();
     }
+  }
+
+  class MockPoint {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
   }
 
   class MockSprite extends MockContainer {
@@ -70,13 +87,14 @@ const { mocks } = vi.hoisted(() => {
     static from = vi.fn((input: unknown) => ({ input, kind: "texture" }));
   }
 
-  return { mocks: { MockContainer, MockSprite, MockTexture } };
+  return { mocks: { MockContainer, MockSprite, MockTexture, MockPoint } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Sprite: mocks.MockSprite,
   Texture: mocks.MockTexture,
+  Point: mocks.MockPoint,
 }));
 
 import { Transform } from "@yagejs/core";
@@ -181,5 +199,41 @@ describe("SpriteComponent", () => {
     comp.onDestroy?.();
     expect(sprite.parent).toBeNull();
     expect(sprite.destroyed).toBe(true);
+  });
+
+  describe("inspectRender", () => {
+    it("reports world-space bounds and resolved visibility", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new SpriteComponent({ texture: {} as never }));
+      const sprite = comp.sprite as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      sprite.boundsBox = { x: 4, y: 8, width: 16, height: 16 };
+
+      const facet = comp.inspectRender();
+      expect(facet.bounds).toEqual({ x: 4, y: 8, width: 16, height: 16 });
+      expect(facet.visible).toBe(true);
+    });
+
+    it("reflects a visibility toggle", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new SpriteComponent({ texture: {} as never }));
+      const sprite = comp.sprite as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      sprite.boundsBox = { x: 0, y: 0, width: 10, height: 10 };
+      comp.sprite.visible = false;
+
+      expect(comp.inspectRender().visible).toBe(false);
+    });
+
+    it("returns null bounds for a zero-area display object", () => {
+      const comp = new SpriteComponent({ texture: {} as never });
+      expect(comp.inspectRender().bounds).toBeNull();
+    });
   });
 });

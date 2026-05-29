@@ -422,3 +422,142 @@ describe("Inspector", () => {
     ]);
   });
 });
+
+// A fake graphical component exposing the duck-typed `inspectRender()` hook,
+// with NO dependency on Pixi or the renderer package. Verifies the Inspector
+// attaches the render facet purely structurally.
+class FakeRenderComponent extends Component {
+  constructor(
+    private readonly facet: {
+      bounds: { x: number; y: number; width: number; height: number } | null;
+      visible: boolean;
+      glyphs?: Array<{ visible: boolean }>;
+    },
+  ) {
+    super();
+  }
+  inspectRender() {
+    return this.facet;
+  }
+  serialize() {
+    return { kind: "fake" };
+  }
+}
+
+class ThrowingRenderComponent extends Component {
+  inspectRender(): never {
+    throw new Error("display object not parented");
+  }
+  serialize() {
+    return { kind: "throws" };
+  }
+}
+
+describe("Inspector render facet", () => {
+  it("attaches a render facet from a component's inspectRender() hook", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("sprite");
+    e.add(new Transform({ position: new Vec2(100, 50) }));
+    e.add(
+      new FakeRenderComponent({
+        bounds: { x: 90, y: 40, width: 20, height: 20 },
+        visible: true,
+      }),
+    );
+
+    const entity = inspector.snapshot().scenes[0]?.entities.find(
+      (candidate) => candidate.id === String(e.id),
+    );
+    expect(entity?.render).toEqual({
+      bounds: { x: 90, y: 40, width: 20, height: 20 },
+      visible: true,
+    });
+    const comp = entity?.components.find(
+      (c) => c.type === "FakeRenderComponent",
+    );
+    expect(comp?.render).toEqual({
+      bounds: { x: 90, y: 40, width: 20, height: 20 },
+      visible: true,
+    });
+  });
+
+  it("carries per-glyph visibility through unchanged", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("split");
+    e.add(new Transform());
+    e.add(
+      new FakeRenderComponent({
+        bounds: { x: 0, y: 0, width: 30, height: 10 },
+        visible: true,
+        glyphs: [{ visible: true }, { visible: true }, { visible: false }],
+      }),
+    );
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.render?.glyphs).toEqual([
+      { visible: true },
+      { visible: true },
+      { visible: false },
+    ]);
+  });
+
+  it("omits render when a component has no inspectRender() hook", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("plain");
+    e.add(new Transform());
+    e.add(new Health(42));
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.render).toBeUndefined();
+    const comp = entity?.components.find((c) => c.type === "Health");
+    expect(comp?.render).toBeUndefined();
+  });
+
+  it("tolerates an inspectRender() hook that throws", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("broken");
+    e.add(new Transform());
+    e.add(new ThrowingRenderComponent());
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.render).toBeUndefined();
+    const comp = entity?.components.find(
+      (c) => c.type === "ThrowingRenderComponent",
+    );
+    // serialize() state is still captured; only the render facet is omitted.
+    expect(comp?.state).toEqual({ kind: "throws" });
+    expect(comp?.render).toBeUndefined();
+  });
+
+  it("surfaces the first graphical component's facet at the entity level", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("multi");
+    e.add(new Transform());
+    // Two graphical components; AaaRender sorts before ZzzRender, so the
+    // entity-level facet should mirror AaaRender's.
+    class AaaRender extends FakeRenderComponent {}
+    class ZzzRender extends FakeRenderComponent {}
+    e.add(
+      new ZzzRender({ bounds: { x: 5, y: 5, width: 1, height: 1 }, visible: false }),
+    );
+    e.add(
+      new AaaRender({ bounds: { x: 0, y: 0, width: 2, height: 2 }, visible: true }),
+    );
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.render).toEqual({
+      bounds: { x: 0, y: 0, width: 2, height: 2 },
+      visible: true,
+    });
+  });
+});
