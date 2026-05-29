@@ -46,7 +46,7 @@ function isItalicStyle(style: TextStyle["fontStyle"] | undefined): boolean {
 /**
  * Collapse an emphasis to a stable lookup key on the two boolean axes
  * (bold / italic). Variants only differ along those axes, so a request for
- * `fontWeight: 700` resolves the same atlas baked for `fontWeight: "bold"`.
+ * `fontWeight: "700"` resolves the same atlas baked for `fontWeight: "bold"`.
  *
  * @internal
  */
@@ -56,9 +56,24 @@ export function emphasisKey(emphasis: BitmapFontEmphasis): string {
   return `${bold ? "b" : "r"}${italic ? "i" : "u"}`;
 }
 
-/** Whether an emphasis carries any bold/italic flag at all. */
-export function hasEmphasis(emphasis: BitmapFontEmphasis): boolean {
-  return isBoldWeight(emphasis.fontWeight) || isItalicStyle(emphasis.fontStyle);
+/**
+ * Derive the registration name for an emphasis variant of `baseName`. Driven
+ * by the same bold/italic axis classification as {@link emphasisKey} (not a
+ * raw presence check) so the name and the lookup key can never disagree — a
+ * `{ fontWeight: "lighter" }` variant resolves to the base axis and reuses
+ * `baseName` rather than minting a spurious `"… bold"` atlas that collides
+ * with the regular entry.
+ *
+ * @internal
+ */
+export function variantFontName(
+  baseName: string,
+  emphasis: BitmapFontEmphasis,
+): string {
+  const parts: string[] = [baseName];
+  if (isBoldWeight(emphasis.fontWeight)) parts.push("bold");
+  if (isItalicStyle(emphasis.fontStyle)) parts.push("italic");
+  return parts.join(" ");
 }
 
 /**
@@ -96,7 +111,12 @@ export function resolveBitmapFontVariant(
 ): string | undefined {
   const byEmphasis = variantRegistry.get(baseName);
   if (!byEmphasis) return undefined;
-  return byEmphasis.get(emphasisKey(emphasis)) ?? byEmphasis.get("ru");
+  // Fall back to the unemphasised (base) atlas for any emphasis that has no
+  // baked variant. `emphasisKey({})` keeps the fallback key tied to the
+  // encoding rather than a hardcoded literal.
+  return (
+    byEmphasis.get(emphasisKey(emphasis)) ?? byEmphasis.get(emphasisKey({}))
+  );
 }
 
 /** Drop every registered variant — test isolation only. @internal */

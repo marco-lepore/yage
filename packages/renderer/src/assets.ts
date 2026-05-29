@@ -2,7 +2,9 @@ import { AssetHandle } from "@yagejs/core";
 import { Assets, BitmapFont, Rectangle, Texture } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import {
+  emphasisKey,
   registerBitmapFontVariant,
+  variantFontName,
   type BitmapFontEmphasis,
 } from "./internal/bitmapFontVariants.js";
 import type {
@@ -205,6 +207,7 @@ export async function installBitmapFont(
   // The base atlas registers itself as the regular variant so a `BitmapText`
   // with an explicit `fontWeight: "normal"` resolves back to it.
   if (opts.variants && opts.variants.length > 0) {
+    const baseKey = emphasisKey({});
     registerBitmapFontVariant(opts.name, {}, opts.name);
 
     for (const variant of opts.variants) {
@@ -216,6 +219,10 @@ export async function installBitmapFont(
           ? { fontStyle: variant.fontStyle }
           : {}),
       };
+      // A variant whose weight/style doesn't cross the bold or italic axis
+      // (e.g. `{ fontWeight: "lighter" }`) collapses onto the base — skip it
+      // rather than re-bake and clobber the regular atlas under its own name.
+      if (emphasisKey(emphasis) === baseKey) continue;
       const variantName = variantFontName(opts.name, emphasis);
       const variantFont = bakeBitmapFont({
         name: variantName,
@@ -241,21 +248,6 @@ export async function installBitmapFont(
   }
 
   return opts.name;
-}
-
-/**
- * Derive the registration name for an emphasis variant of `baseName`. The
- * suffix is human-readable (`"Body bold italic"`) but never authored by the
- * caller — `BitmapText` resolution maps emphasis → this name internally.
- */
-function variantFontName(
-  baseName: string,
-  emphasis: BitmapFontEmphasis,
-): string {
-  const parts: string[] = [baseName];
-  if (emphasis.fontWeight !== undefined) parts.push("bold");
-  if (emphasis.fontStyle !== undefined) parts.push("italic");
-  return parts.join(" ");
 }
 
 /**

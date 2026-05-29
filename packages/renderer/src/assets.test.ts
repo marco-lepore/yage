@@ -246,4 +246,18 @@ describe("installBitmapFont() variants", () => {
     await installBitmapFont("Body.ttf", { name: "Body" });
     expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBeUndefined();
   });
+
+  it("skips a variant that doesn't cross the bold/italic axis", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      // "lighter" collapses onto the regular axis — it must not bake a second
+      // atlas nor clobber the base registration (#115 review P1).
+      variants: [{ fontWeight: "lighter" }, { fontWeight: "bold" }],
+    });
+
+    const names = mocks.bitmapFontInstall.mock.calls.map((c) => c[0].name);
+    expect(names).toEqual(["Body", "Body bold"]);
+    // Regular text still resolves the base atlas, not a phantom "Body bold".
+    expect(resolveBitmapFontVariant("Body", {})).toBe("Body");
+  });
 });
