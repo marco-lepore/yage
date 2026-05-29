@@ -580,12 +580,16 @@ Consequences:
 **Supported workarounds:**
 
 - **Atomic grouping at one position** — give every part of the entity the *same* sort key (e.g. spawn all parts at the entity's anchor y and offset visually via the sprite's own local position, not its container world-y) so they share a key and stay adjacent via insertion order. Limit: all parts must share one key, so the group can't itself span a depth range relative to the world.
-- **`ySortBy` shared entity key** — point every part's depth-key at the *entity's* footprint rather than each part's own world-y. Have `offsetOf` resolve a per-entity Y the parts all read (e.g. tag each container with the owner entity's foot y), so all parts of one entity collapse to the same key and sort as a unit against the world:
+- **Shared entity key via a custom `sort`** — `ySort`/`ySortBy` key off each container's *own* `position.y` (`ySortBy` returns `position.y + (offset ?? 0)`, so it only *shifts* a part's key — parts at different world-y stay distinct). To collapse a whole entity to one key, write a `LayerSortFn` that reads an absolute per-entity depth off each container, falling back to `position.y`. Tag every part of an entity with the same owner key so they sort as a unit against the world:
 
   ```ts
-  // Each part's container carries the OWNER entity's footprint y.
-  const sort = ySortBy((c) => (c as { entityFootY?: number }).entityFootY);
-  // All of entity A's parts set the same value → one shared key.
+  import type { LayerSortFn } from "@yagejs/renderer";
+
+  // Absolute per-entity sort key, NOT an additive offset.
+  const sortByEntity: LayerSortFn = (c) =>
+    (c as { entitySortKey?: number }).entitySortKey ?? c.position.y;
+  // All of entity A's parts set the same entitySortKey → one shared key,
+  // so nothing foreign can land between them.
   ```
 
   This trades per-part interleaving (e.g. a character walking behind only a tree's lower trunk) for atomic grouping — choose per layer.

@@ -386,17 +386,23 @@ Two supported workarounds:
   contiguous and can't be split. The limit: because all parts share one
   key, the group can't itself span a depth range against the world — use
   explicit `zIndex` on parts if you need a guaranteed within-group order.
-- **`ySortBy` with a shared entity key** — instead of each part keying
-  off its own world-y, point `offsetOf` at the *owner entity's*
-  footprint so all of an entity's parts collapse to the same key and
-  sort as a single unit against the world:
+- **Shared entity key via a custom `sort`** — `ySort`/`ySortBy` key off
+  each container's *own* `position.y` (`ySortBy` only *adds* a per-part
+  offset, so parts at different world-y still get different keys). To
+  collapse a whole entity to one key, write a `sort` fn that reads an
+  absolute per-entity depth off each container and only falls back to
+  `position.y` when none is set. Tag every part of an entity with the
+  *same* owner key and they sort as a single unit against the world:
 
   ```typescript
-  // Each part's container carries the OWNER entity's footprint y.
-  const sort = ySortBy(
-    (c) => (c as { entityFootY?: number }).entityFootY,
-  );
-  // All of entity A's parts set the same value → one shared key,
+  import type { LayerSortFn } from "@yagejs/renderer";
+
+  // Each part's container carries the OWNER entity's footprint y as an
+  // absolute sort key — not an additive offset.
+  const sortByEntity: LayerSortFn = (c) =>
+    (c as { entitySortKey?: number }).entitySortKey ?? c.position.y;
+
+  // All of entity A's parts set the SAME entitySortKey → one shared key,
   // so nothing foreign can land between them.
   ```
 
