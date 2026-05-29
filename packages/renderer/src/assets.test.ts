@@ -2,7 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mocks } = vi.hoisted(() => {
   const assetsLoad = vi.fn(async () => undefined);
-  const bitmapFontInstall = vi.fn();
+  // Mimic Pixi: each `BitmapFont.install` returns the installed font, whose
+  // baked baseline metrics differ per emphasis (the #109 drift). The
+  // installed-name counter gives the synthetic variants distinct baselines so
+  // the normalization step has something to align.
+  let baked = 0;
+  const bitmapFontInstall = vi.fn(
+    (options: {
+      name: string;
+      style: Record<string, unknown>;
+      chars?: unknown;
+    }) => {
+      void options;
+      baked += 1;
+      return {
+        name: options.name,
+        baseLineOffset: 10 + baked,
+        lineHeight: 30 + baked,
+      };
+    },
+  );
   return {
     mocks: { assetsLoad, bitmapFontInstall },
   };
@@ -20,6 +39,10 @@ vi.mock("pixi.js", () => ({
 
 import { AssetHandle } from "@yagejs/core";
 import { bitmapFont, installBitmapFont, webFont } from "./assets.js";
+import {
+  clearBitmapFontVariants,
+  resolveBitmapFontVariant,
+} from "./internal/bitmapFontVariants.js";
 
 describe("bitmapFont()", () => {
   it("creates a typed bitmap-font asset handle", () => {
@@ -129,5 +152,98 @@ describe("installBitmapFont()", () => {
       ["a", "z"],
       "0123456789 ",
     ]);
+  });
+});
+
+describe("installBitmapFont() variants", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearBitmapFontVariants();
+  });
+
+  it("bakes a sibling atlas per variant under a derived name", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }, { fontStyle: "italic" }],
+    });
+
+    const names = mocks.bitmapFontInstall.mock.calls.map((c) => c[0].name);
+    expect(names).toEqual(["Body", "Body bold", "Body italic"]);
+  });
+
+  it("bakes each variant's emphasis into its atlas style", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold", fontStyle: "italic" }],
+    });
+
+    const variantCall = mocks.bitmapFontInstall.mock.calls.find(
+      (c) => c[0].name === "Body bold italic",
+    );
+    expect(variantCall?.[0].style).toMatchObject({
+      fontWeight: "bold",
+      fontStyle: "italic",
+      fontFamily: "Body",
+    });
+  });
+
+  it("aligns every variant's baseline metrics to the base atlas (#109)", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }, { fontStyle: "italic" }],
+    });
+
+    // Each install returns a distinct baked baseline; after normalization the
+    // variant fonts must share the base font's offset + line height so a
+    // mixed-weight line sits on one baseline.
+    const fonts = mocks.bitmapFontInstall.mock.results.map(
+      (r) => r.value as { baseLineOffset: number; lineHeight: number },
+    );
+    const [base, bold, italic] = fonts;
+    expect(bold?.baseLineOffset).toBe(base?.baseLineOffset);
+    expect(italic?.baseLineOffset).toBe(base?.baseLineOffset);
+    expect(bold?.lineHeight).toBe(base?.lineHeight);
+    expect(italic?.lineHeight).toBe(base?.lineHeight);
+  });
+
+  it("registers variants so a bold/italic request resolves the right atlas", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }, { fontStyle: "italic" }],
+    });
+
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBe(
+      "Body bold",
+    );
+    // Numeric weights map onto the bold axis.
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "700" })).toBe(
+      "Body bold",
+    );
+    expect(resolveBitmapFontVariant("Body", { fontStyle: "italic" })).toBe(
+      "Body italic",
+    );
+    // No emphasis resolves the base atlas.
+    expect(resolveBitmapFontVariant("Body", {})).toBe("Body");
+    expect(
+      resolveBitmapFontVariant("Body", { fontWeight: "normal" }),
+    ).toBe("Body");
+  });
+
+  it("falls back to the base atlas for an emphasis with no baked variant", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }],
+    });
+
+    // Only bold was baked — an italic request has no atlas, so resolution
+    // returns the base rather than a phantom name.
+    expect(resolveBitmapFontVariant("Body", { fontStyle: "italic" })).toBe(
+      "Body",
+    );
+  });
+
+  it("registers no variants when none are requested", async () => {
+    await installBitmapFont("Body.ttf", { name: "Body" });
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBeUndefined();
   });
 });
