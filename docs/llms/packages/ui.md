@@ -321,11 +321,12 @@ on-screen, and z-stacks above other floats on each (re)open.
 
 For custom popovers / menus reach for the lower-level pieces directly:
 
-- `FloatingOverlayKey.acquire()` → a `FloatingHandle` with
-  `setReference(get)`, `setConfig(FloatConfig)`, `setLayout(fn)`,
-  `setActive(bool)`, `bringToFront()`, `release()`, and a `container` to
-  parent content into. Resolve the overlay scene-scoped:
-  `scene._resolveScoped(FloatingOverlayKey)`.
+- `scene._resolveScoped(FloatingOverlayKey).acquire()` → a
+  `FloatingHandle` with `setReference(get)`, `setConfig(FloatConfig)`,
+  `setLayout(fn)`, `setActive(bool)`, `bringToFront()`, `release()`, and a
+  `container` to parent content into. `FloatingOverlayKey` is a
+  scene-scoped `ServiceKey`; resolve it on the scene first, then call
+  `acquire()` on the resulting `FloatingOverlay`.
 - `computePosition(reference, floating, viewport, config)` — the pure
   positioning engine (`offset → flip → shift → size`), no Pixi / engine
   deps. Returns `{ x, y, placement, available }`. `Placement` / `Side` /
