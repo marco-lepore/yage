@@ -25,7 +25,7 @@ export class ParticleSystem extends System {
       if (!emitter.enabled) continue;
       const pos = entity.get(Transform).position;
       emitter._update(
-        dtSec * sceneTimeScale * (entity.timeScale ?? 1),
+        dtSec * sceneTimeScale * entity.timeScale,
         pos.x,
         pos.y,
       );
