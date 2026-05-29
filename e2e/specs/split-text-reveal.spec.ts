@@ -1,13 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import type { RenderFacetSnapshot } from "@yagejs/core";
 import { gotoFixture, stepFrames, waitForClock } from "./helpers.js";
 
-interface RenderFacet {
-  bounds: { x: number; y: number; width: number; height: number } | null;
-  visible: boolean;
-  glyphs?: Array<{ visible: boolean }>;
-  visibleText?: string;
-}
+type RenderFacet = RenderFacetSnapshot;
 
 /**
  * Reads the SplitTextComponent render facet for the reveal label out of the

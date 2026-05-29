@@ -161,9 +161,9 @@ export interface ComponentStateSnapshot {
  * method; the Inspector duck-types it (no compile-time dependency on the
  * renderer package) and attaches the result to {@link WorldEntitySnapshot.render}.
  *
- * The shape is intentionally open — `bounds` / `visible` are always present,
- * but components may attach richer keys (e.g. `glyphs`, a visible substring)
- * without a core change.
+ * `bounds` / `visible` are always present; richer optional keys cover
+ * specific render modes (e.g. per-glyph state for split text). Components
+ * needing a new key declare it here.
  */
 export interface RenderFacetSnapshot {
   /**
@@ -185,8 +185,13 @@ export interface RenderFacetSnapshot {
    * into individual glyph display objects (e.g. `SplitTextComponent`).
    */
   glyphs?: Array<{ visible: boolean }>;
-  /** Components may attach richer, component-specific render state here. */
-  [key: string]: unknown;
+  /**
+   * Substring currently painted, present only for components whose text
+   * reveal can hide individual glyphs (e.g. `SplitTextComponent`). Reports
+   * rendered glyphs only — entries Pixi treats as separators (spaces) are
+   * not included.
+   */
+  visibleText?: string;
 }
 
 /** Duck-typed hook a renderer component exposes to publish its render facet. */
