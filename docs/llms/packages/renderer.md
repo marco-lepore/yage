@@ -560,6 +560,38 @@ const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
 
 Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
+#### Sort granularity — no per-entity stacking context (#104)
+
+`sort` is **flatten-to-layer**: every sprite/text/graphics is a *direct child* of the layer container, positioned at its entity's world coords, and the `sort` fn yields **one global key per direct child**. There is no per-entity group — an entity composed of multiple sprites (or a parent entity plus child entities, each its own container) contributes several independent keys, not one.
+
+Consequences:
+
+- **Parts at the same key** (same world position) keep their relative order **only** through the stable-sort insertion-order tie-break. It works for stacked paper-doll composites built at one position, but it's incidental: bias parts explicitly with `zIndex` if you depend on a fixed within-group order.
+- **Parts at different world-Y** each sort **independently**. A foreign entity whose key falls *between* two parts of a multi-sprite entity renders between them — the entity visually splits.
+
+```ts
+// layer: { name: "world", order: 0, sort: ySort }
+// Entity A: body sprite at y=100, held-item child sprite at y=108
+// Entity B: a single sprite at y=104
+// Paint order by key: body(100) < B(104) < heldItem(108)
+//   → B renders BETWEEN A's body and A's held item.
+```
+
+**Supported workarounds:**
+
+- **Atomic grouping at one position** — give every part of the entity the *same* sort key (e.g. spawn all parts at the entity's anchor y and offset visually via the sprite's own local position, not its container world-y) so they share a key and stay adjacent via insertion order. Limit: all parts must share one key, so the group can't itself span a depth range relative to the world.
+- **`ySortBy` shared entity key** — point every part's depth-key at the *entity's* footprint rather than each part's own world-y. Have `offsetOf` resolve a per-entity Y the parts all read (e.g. tag each container with the owner entity's foot y), so all parts of one entity collapse to the same key and sort as a unit against the world:
+
+  ```ts
+  // Each part's container carries the OWNER entity's footprint y.
+  const sort = ySortBy((c) => (c as { entityFootY?: number }).entityFootY);
+  // All of entity A's parts set the same value → one shared key.
+  ```
+
+  This trades per-part interleaving (e.g. a character walking behind only a tree's lower trunk) for atomic grouping — choose per layer.
+
+A robust per-entity `SortGroupComponent` (a sub-container whose children sort internally while the group participates in the layer `sort` as a single unit, à la Unity's `SortingGroup` / Godot nested y-sort scopes) is tracked as a follow-up in **#104**.
+
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 
 `isRenderGroup: true` promotes the layer's container to a Pixi v8 render

@@ -357,6 +357,59 @@ sprite.sprite.depthOffset = 32; // depth key is `position.y + 32`
 so mixed-content layers work without every child carrying a depth
 offset.
 
+#### Multi-sprite entities can split (no per-entity sort group)
+
+`sort` operates on **one key per direct child of the layer**. Every
+sprite, text, and graphics is a direct child — positioned at its
+entity's world coordinates — so an entity built from *several* sprites
+(or a parent entity with child entities, each its own container)
+contributes several independent keys, not one. There is no per-entity
+stacking context, so a foreign entity whose key lands between two of
+your entity's parts will render **between** them:
+
+```typescript
+// layer: { name: "world", order: 0, sort: ySort }
+// Entity A: body sprite at y=100, held-item child sprite at y=108
+// Entity B: a single sprite at y=104
+//
+// Paint order by key: body(100) < B(104) < heldItem(108)
+//   → B renders BETWEEN A's body and A's held item.
+```
+
+Two supported workarounds:
+
+- **Same key + insertion order** — give every part of the composite the
+  *same* sort key (build it at one position and offset parts visually
+  via each sprite's local position rather than its container's world-y).
+  Parts that share a key keep their relative order through the
+  stable-sort insertion-order tie-break, so the composite stays
+  contiguous and can't be split. The limit: because all parts share one
+  key, the group can't itself span a depth range against the world — use
+  explicit `zIndex` on parts if you need a guaranteed within-group order.
+- **`ySortBy` with a shared entity key** — instead of each part keying
+  off its own world-y, point `offsetOf` at the *owner entity's*
+  footprint so all of an entity's parts collapse to the same key and
+  sort as a single unit against the world:
+
+  ```typescript
+  // Each part's container carries the OWNER entity's footprint y.
+  const sort = ySortBy(
+    (c) => (c as { entityFootY?: number }).entityFootY,
+  );
+  // All of entity A's parts set the same value → one shared key,
+  // so nothing foreign can land between them.
+  ```
+
+  This trades away per-part interleaving (e.g. a character walking
+  behind only a tree's lower trunk) for atomic grouping — pick the
+  behavior per layer.
+
+A first-class per-entity `SortGroupComponent` — a sub-container whose
+children sort internally while the group participates in the layer
+`sort` as one unit, like Unity's `SortingGroup` or Godot's nested
+y-sort scopes — is tracked as a follow-up in
+[issue #104](https://github.com/marco-lepore/yage/issues/104).
+
 #### Manual zIndex still works alongside `sort`
 
 Because `sort` writes to `zIndex`, anything that manually sets

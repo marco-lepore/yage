@@ -219,6 +219,17 @@ The transform origins — `charAnchor`, `wordAnchor`, `lineAnchor`
 pivot each segment rotates and scales about. `chars` are `Text` /
 `BitmapText`; `words` and `lines` are containers grouping them.
 
+:::note[Glyphs stay grouped under a layer `sort`]
+A `SplitTextComponent`'s glyphs are children of the component's *own*
+container, not direct children of the layer, so a layer
+[`sort`](/guides/rendering/camera/#per-frame-paint-order-with-sort)
+keys off the component as one unit — the glyphs never split apart and
+nothing foreign can render between two letters. This is exactly the
+per-entity stacking context that loose multi-sprite entities lack; see
+[Multi-sprite entities can split](/guides/rendering/camera/#multi-sprite-entities-can-split-no-per-entity-sort-group)
+for how to group standalone sprites the same way.
+:::
+
 :::caution[Experimental, and not free]
 `SplitText` is flagged experimental in Pixi, and splitting re-lays-out
 the text on every `text` / `style` change — keep static or simple
