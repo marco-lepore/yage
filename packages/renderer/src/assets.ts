@@ -17,6 +17,7 @@ import type {
   TextureResource,
   TextureSliceOptions,
   WebFontHandle,
+  WebFontResource,
 } from "./public-types.js";
 
 /** Create a typed asset handle for a texture. */
@@ -47,6 +48,46 @@ export function bitmapFont(path: string): BitmapFontHandle {
   return new AssetHandle("bitmap-font", path);
 }
 
+/**
+ * Declarative atlas-baking config for a {@link webFont} loaded with `bitmap`
+ * set. Mirrors {@link InstallBitmapFontOptions} minus `name` / `family` — the
+ * baked bitmap font registers under the same family as the canvas face, so one
+ * `webFont` name drives both the canvas `Text` and the `BitmapText` registries
+ * (separate registries, no collision).
+ */
+export interface WebFontBakeOptions {
+  /** Glyph size (px) to bake the atlas at. Default `32`. */
+  size?: number;
+  /**
+   * Character set to bake. Accepts Pixi's range syntax, e.g.
+   * `[["a", "z"], ["A", "Z"], "0123456789 .,!?"]`. Defaults to Pixi's
+   * alphanumeric set — remember to include a space.
+   */
+  chars?: string | (string | string[])[];
+  /**
+   * Atlas resolution multiplier. `2` keeps glyphs crisp when the text is
+   * upscaled by a pixel-art camera. Default `2`.
+   */
+  resolution?: number;
+  /** Glyph padding in the atlas. Default `4`. */
+  padding?: number;
+  /**
+   * Extra `TextStyle` props baked into every glyph (fill, stroke, weight,
+   * drop shadow…). `fontFamily` / `fontSize` are managed by the baker.
+   * `fill` defaults to white so per-text `fill` / `tint` can recolour the
+   * glyphs — set it explicitly to bake a fixed colour instead.
+   */
+  style?: Partial<TextStyle>;
+  /**
+   * Weight/style emphasis atlases to bake alongside the base font from the
+   * same source face — the same declarative model as
+   * {@link InstallBitmapFontOptions.variants}. A `BitmapText` whose
+   * `style.fontWeight`/`fontStyle` asks for bold or italic then renders from
+   * the matching synthetic atlas.
+   */
+  variants?: BitmapFontVariant[];
+}
+
 /** Options for {@link webFont}. */
 export interface WebFontOptions {
   /**
@@ -55,6 +96,38 @@ export interface WebFontOptions {
    * Omit to let Pixi derive it from the file name.
    */
   family?: string;
+  /**
+   * Also bake a bitmap glyph atlas from the loaded face under the same family,
+   * so the one `webFont` name works for both canvas `Text` (no `bitmap`) and
+   * `BitmapText` (`bitmap: true`). `true` bakes with defaults; pass a
+   * {@link WebFontBakeOptions} object to control size, charset, emphasis
+   * variants, and baked style.
+   *
+   * Requires `family` so the baked atlas has a stable name to register under
+   * and uninstall on unload; baking is skipped (with a warning) when `family`
+   * is omitted.
+   *
+   * ```ts
+   * webFont("fonts/Inter.woff2", { family: "Inter", bitmap: { size: 24 } });
+   * // <TextComponent style={{ fontFamily: "Inter" }} />        → canvas Text
+   * // <TextComponent bitmap style={{ fontFamily: "Inter" }} /> → bitmap atlas
+   * ```
+   */
+  bitmap?: boolean | WebFontBakeOptions;
+}
+
+/**
+ * Loader metadata stashed onto a {@link webFont} handle — the `@font-face`
+ * family plus the optional declarative bitmap-bake config. Read by the
+ * `web-font` loader, never by user code.
+ *
+ * @internal
+ */
+export interface WebFontHandleData {
+  /** `@font-face` family the loaded face registers under. */
+  family?: string;
+  /** Declarative bitmap-bake config, copied through from `WebFontOptions`. */
+  bitmap?: boolean | WebFontBakeOptions;
 }
 
 /**
@@ -64,6 +137,9 @@ export interface WebFontOptions {
  * draw — Pixi caches fallback metrics on first paint otherwise, so a font that
  * loads late never applies.
  *
+ * Pass `bitmap` to also bake a `BitmapText` atlas from the same face under the
+ * same family, so a single declared font works for both text paths.
+ *
  * ```ts
  * class MenuScene extends Scene {
  *   readonly preload = [webFont("fonts/Inter.woff2", { family: "Inter" })];
@@ -72,11 +148,82 @@ export interface WebFontOptions {
  * ```
  */
 export function webFont(path: string, opts?: WebFontOptions): WebFontHandle {
+  const data: WebFontHandleData = {
+    ...(opts?.family !== undefined ? { family: opts.family } : {}),
+    ...(opts?.bitmap !== undefined ? { bitmap: opts.bitmap } : {}),
+  };
   return new AssetHandle(
     "web-font",
     path,
-    opts?.family !== undefined ? { family: opts.family } : undefined,
+    Object.keys(data).length > 0 ? data : undefined,
   );
+}
+
+/**
+ * Bitmap fonts a single web-font load installed, keyed by the load path so the
+ * `web-font` loader can `BitmapFont.uninstall` them on unload — which only
+ * receives `(path, asset)`, never the handle's bake config. Holds the base
+ * family plus every baked emphasis-variant name.
+ *
+ * @internal
+ */
+const bakedWebFontFamilies = new Map<string, string[]>();
+
+/**
+ * Load a web font for the `web-font` asset loader, optionally baking a bitmap
+ * atlas under the same family when `data.bitmap` is set. Returns the loaded
+ * `FontFace[]` so the asset cache holds the canvas face as before.
+ *
+ * Split out of the loader registration so the bake/teardown logic is unit
+ * testable against the same Pixi mock as {@link installBitmapFont}.
+ *
+ * @internal
+ */
+export async function loadWebFont(
+  path: string,
+  data?: unknown,
+): Promise<WebFontResource> {
+  const meta = data as WebFontHandleData | undefined;
+  const family = meta?.family;
+  const faces = await Assets.load<WebFontResource>(
+    family !== undefined ? { src: path, data: { family } } : path,
+  );
+
+  if (meta?.bitmap) {
+    if (family === undefined) {
+      console.warn(
+        `webFont("${path}", { bitmap }) needs an explicit \`family\` to name ` +
+          `the baked atlas — skipping the bitmap bake.`,
+      );
+    } else {
+      const bake = meta.bitmap === true ? {} : meta.bitmap;
+      bakedWebFontFamilies.set(path, bakeBitmapFontFamily(family, family, bake));
+    }
+  }
+
+  return faces;
+}
+
+/**
+ * Unload a web font for the `web-font` asset loader: drop the canvas face via
+ * `Assets.unload` and `BitmapFont.uninstall` every atlas baked for it. The
+ * core loader's `unload(path, asset)` never sees the handle's bake config, so
+ * the baked family names are recovered from {@link bakedWebFontFamilies}.
+ *
+ * @internal
+ */
+export function unloadWebFont(path: string): void {
+  Assets.unload(path);
+  const names = bakedWebFontFamilies.get(path);
+  if (names) {
+    for (const name of names) BitmapFont.uninstall(name);
+    bakedWebFontFamilies.delete(path);
+  }
+}
+
+/** Drop the baked-web-font tracking — test isolation only. @internal */
+export function clearBakedWebFontFamilies(): void {
+  bakedWebFontFamilies.clear();
 }
 
 /** Options for {@link installBitmapFont}. */
@@ -191,6 +338,33 @@ export async function installBitmapFont(
 
   await Assets.load({ src: path, data: { family } });
 
+  bakeBitmapFontFamily(opts.name, family, {
+    ...(opts.size !== undefined ? { size: opts.size } : {}),
+    ...(opts.chars !== undefined ? { chars: opts.chars } : {}),
+    ...(opts.resolution !== undefined ? { resolution: opts.resolution } : {}),
+    ...(opts.padding !== undefined ? { padding: opts.padding } : {}),
+    ...(opts.style !== undefined ? { style: opts.style } : {}),
+    ...(opts.variants !== undefined ? { variants: opts.variants } : {}),
+  });
+
+  return opts.name;
+}
+
+/**
+ * Bake the base atlas for `name` from an already-loaded `family` face, plus
+ * any declared emphasis variants, registering each so a `BitmapText` resolves
+ * the right sibling. Returns every installed font name (base first) so a
+ * caller that owns the loaded face — the `web-font` loader — can uninstall the
+ * whole set on unload.
+ *
+ * Shared by {@link installBitmapFont} (one-shot `.ttf` bake) and the `web-font`
+ * loader (declarative `webFont({ bitmap })`), so both bake an identical family.
+ */
+function bakeBitmapFontFamily(
+  name: string,
+  family: string,
+  opts: WebFontBakeOptions,
+): string[] {
   // Shared bake params reused by the base atlas and every variant, so the
   // whole family is sized/charset/padded identically and only the emphasis
   // axes differ between siblings.
@@ -203,7 +377,8 @@ export async function installBitmapFont(
     ...(opts.style !== undefined ? { style: opts.style } : {}),
   } satisfies Omit<BakeBitmapFontParams, "name">;
 
-  const baseFont = bakeBitmapFont({ name: opts.name, ...shared });
+  const baseFont = bakeBitmapFont({ name, ...shared });
+  const installed: string[] = [name];
 
   // The base atlas registers itself as the regular variant so a `BitmapText`
   // with an explicit `fontWeight: "normal"` resolves back to it.
@@ -213,7 +388,7 @@ export async function installBitmapFont(
     // (the registry is process-global), so wipe this name's slate first.
     unregisterBitmapFontVariants(opts.name);
     const baseKey = emphasisKey({});
-    registerBitmapFontVariant(opts.name, {}, opts.name);
+    registerBitmapFontVariant(name, {}, name);
 
     for (const variant of opts.variants) {
       const emphasis: BitmapFontEmphasis = {
@@ -228,7 +403,7 @@ export async function installBitmapFont(
       // (e.g. `{ fontWeight: "lighter" }`) collapses onto the base — skip it
       // rather than re-bake and clobber the regular atlas under its own name.
       if (emphasisKey(emphasis) === baseKey) continue;
-      const variantName = variantFontName(opts.name, emphasis);
+      const variantName = variantFontName(name, emphasis);
       const variantFont = bakeBitmapFont({
         name: variantName,
         ...shared,
@@ -248,11 +423,12 @@ export async function installBitmapFont(
       // drifts a mixed-weight line vertically (issue #109). Align the variant
       // to the base so siblings are baseline-interchangeable.
       alignBaselineMetrics(variantFont, baseFont);
-      registerBitmapFontVariant(opts.name, emphasis, variantName);
+      registerBitmapFontVariant(name, emphasis, variantName);
+      installed.push(variantName);
     }
   }
 
-  return opts.name;
+  return installed;
 }
 
 /**

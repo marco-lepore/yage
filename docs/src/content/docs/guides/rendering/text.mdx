@@ -200,6 +200,57 @@ class MenuScene extends Scene {
 The `family` you pass is what you set as `style.fontFamily`; omit it to
 let Pixi derive the family from the file name.
 
+### One font, both canvas and bitmap (`webFont({ bitmap })`)
+
+A `webFont` can bake a `BitmapText` atlas from the same loaded face, so a
+single declared font is usable both as canvas `Text` **and** as a
+`bitmap` atlas under one family — no separate `installBitmapFont` call,
+no second name to keep in sync. Pass `bitmap` to the handle:
+
+```typescript
+import { webFont, TextComponent, Scene } from "@yagejs/renderer";
+
+class HudScene extends Scene {
+  readonly preload = [
+    // `bitmap: true` bakes with defaults; pass an object to tune the bake.
+    webFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24, variants: [{ fontWeight: "bold" }] },
+    }),
+  ];
+
+  onEnter() {
+    // Crisp UI prose, GPU-rasterised canvas Text:
+    this.spawn(/* … */).add(
+      new TextComponent({ text: "Settings", style: { fontFamily: "Inter" } }),
+    );
+    // Same family, drawn from the baked atlas — stays sharp under camera zoom:
+    this.spawn(/* … */).add(
+      new TextComponent({
+        text: "SCORE 9000",
+        bitmap: true,
+        style: { fontFamily: "Inter", fontWeight: "bold" },
+      }),
+    );
+  }
+}
+```
+
+The canvas face and the baked atlas live in separate Pixi registries, so
+sharing the one `family` between them never collides. `bitmap` accepts
+`true` (bake with defaults) or a `WebFontBakeOptions` object —
+`{ size?, chars?, resolution?, padding?, style?, variants? }`, the same
+knobs as [`installBitmapFont`](#pixel-art-text-bitmap) minus
+`name`/`family` (the atlas always registers under the web font's
+`family`). Emphasis `variants` work exactly as they do for
+`installBitmapFont`.
+
+`bitmap` **requires** an explicit `family`: the baked atlas needs a
+stable name to register under and to uninstall when the scene unloads, so
+the bake is skipped (with a console warning) when `family` is omitted.
+Unloading the web font tears down both the canvas face and every baked
+atlas.
+
 ## Engine-level default text style
 
 To set an app-wide font / fill without importing pixi to poke

@@ -149,6 +149,7 @@ export {
 export type {
   BitmapFontVariant,
   InstallBitmapFontOptions,
+  WebFontBakeOptions,
   WebFontOptions,
 } from "./assets.js";
 

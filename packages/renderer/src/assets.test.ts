@@ -22,8 +22,10 @@ const { mocks } = vi.hoisted(() => {
       };
     },
   );
+  const assetsUnload = vi.fn(() => undefined);
+  const bitmapFontUninstall = vi.fn((name: string) => void name);
   return {
-    mocks: { assetsLoad, bitmapFontInstall },
+    mocks: { assetsLoad, assetsUnload, bitmapFontInstall, bitmapFontUninstall },
   };
 });
 
@@ -31,14 +33,24 @@ const { mocks } = vi.hoisted(() => {
 // texture-slicing helpers, which these tests don't exercise — stub them as
 // inert values so the named imports resolve.
 vi.mock("pixi.js", () => ({
-  Assets: { load: mocks.assetsLoad },
-  BitmapFont: { install: mocks.bitmapFontInstall },
+  Assets: { load: mocks.assetsLoad, unload: mocks.assetsUnload },
+  BitmapFont: {
+    install: mocks.bitmapFontInstall,
+    uninstall: mocks.bitmapFontUninstall,
+  },
   Rectangle: {},
   Texture: {},
 }));
 
 import { AssetHandle } from "@yagejs/core";
-import { bitmapFont, installBitmapFont, webFont } from "./assets.js";
+import {
+  bitmapFont,
+  clearBakedWebFontFamilies,
+  installBitmapFont,
+  loadWebFont,
+  unloadWebFont,
+  webFont,
+} from "./assets.js";
 import {
   clearBitmapFontVariants,
   resolveBitmapFontVariant,
@@ -65,6 +77,109 @@ describe("webFont()", () => {
   it("omits data when no family is given (Pixi derives from the file name)", () => {
     const handle = webFont("fonts/Inter.woff2");
     expect(handle.data).toBeUndefined();
+  });
+
+  it("stashes the bitmap bake config alongside the family in loader data", () => {
+    const handle = webFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24 },
+    });
+    expect(handle.data).toEqual({ family: "Inter", bitmap: { size: 24 } });
+  });
+
+  it("stashes a bare `bitmap: true` flag", () => {
+    const handle = webFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: true,
+    });
+    expect(handle.data).toEqual({ family: "Inter", bitmap: true });
+  });
+});
+
+describe("web-font loader (loadWebFont / unloadWebFont)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearBitmapFontVariants();
+    clearBakedWebFontFamilies();
+  });
+
+  it("loads the face without baking when bitmap is unset", async () => {
+    await loadWebFont("fonts/Inter.woff2", { family: "Inter" });
+    expect(mocks.assetsLoad).toHaveBeenCalledWith({
+      src: "fonts/Inter.woff2",
+      data: { family: "Inter" },
+    });
+    expect(mocks.bitmapFontInstall).not.toHaveBeenCalled();
+  });
+
+  it("bakes a bitmap font under the same family when bitmap is set", async () => {
+    await loadWebFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24 },
+    });
+    expect(mocks.assetsLoad).toHaveBeenCalledWith({
+      src: "fonts/Inter.woff2",
+      data: { family: "Inter" },
+    });
+    expect(mocks.bitmapFontInstall).toHaveBeenCalledWith({
+      name: "Inter",
+      style: { fill: 0xffffff, fontFamily: "Inter", fontSize: 24 },
+      resolution: 2,
+      padding: 4,
+    });
+  });
+
+  it("bakes with defaults when bitmap is `true`", async () => {
+    await loadWebFont("fonts/Inter.woff2", { family: "Inter", bitmap: true });
+    expect(mocks.bitmapFontInstall).toHaveBeenCalledWith({
+      name: "Inter",
+      style: { fill: 0xffffff, fontFamily: "Inter", fontSize: 32 },
+      resolution: 2,
+      padding: 4,
+    });
+  });
+
+  it("bakes declared emphasis variants under derived names", async () => {
+    await loadWebFont("fonts/Body.woff2", {
+      family: "Body",
+      bitmap: { variants: [{ fontWeight: "bold" }] },
+    });
+    const names = mocks.bitmapFontInstall.mock.calls.map((c) => c[0].name);
+    expect(names).toEqual(["Body", "Body bold"]);
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBe(
+      "Body bold",
+    );
+  });
+
+  it("skips the bake (with a warning) when no family is given", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await loadWebFont("fonts/Inter.woff2", { bitmap: true });
+    expect(mocks.assetsLoad).toHaveBeenCalledWith("fonts/Inter.woff2");
+    expect(mocks.bitmapFontInstall).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("uninstalls every baked atlas on unload alongside Assets.unload", async () => {
+    await loadWebFont("fonts/Body.woff2", {
+      family: "Body",
+      bitmap: { variants: [{ fontWeight: "bold" }, { fontStyle: "italic" }] },
+    });
+
+    unloadWebFont("fonts/Body.woff2");
+
+    expect(mocks.assetsUnload).toHaveBeenCalledWith("fonts/Body.woff2");
+    const uninstalled = mocks.bitmapFontUninstall.mock.calls.map((c) => c[0]);
+    expect(uninstalled).toEqual(["Body", "Body bold", "Body italic"]);
+  });
+
+  it("unload of a plain web font drops the face but uninstalls no atlas", async () => {
+    await loadWebFont("fonts/Inter.woff2", { family: "Inter" });
+
+    unloadWebFont("fonts/Inter.woff2");
+
+    expect(mocks.assetsUnload).toHaveBeenCalledWith("fonts/Inter.woff2");
+    expect(mocks.bitmapFontUninstall).not.toHaveBeenCalled();
   });
 });
 
