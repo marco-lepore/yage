@@ -275,6 +275,67 @@ The React layer (`@yagejs/ui-react`) exposes these props on the matching
 JSX components plus a Mantine-style `<Tooltip content=…>` built on
 `onHover`.
 
+## Floating UI (tooltips / popovers / menus)
+
+`UIPlugin` provisions one scene-scoped `FloatingOverlay` per scene — a
+top-most, screen-space surface that floating elements parent into. It draws
+above all other UI, escapes any `<ScrollView>` clip, never reflows siblings,
+and anchors correctly even for world-space / camera-transformed triggers
+(e.g. a `ScreenFollow` namecard). A `FloatingOverlaySystem` (registered by
+`UIPlugin`, `Phase.LateUpdate` priority `201` — after `UILayoutSystem`)
+re-anchors every active scene's overlay each frame. **No `<UIRoot>` or React
+is required** — this works in a pure imperative scene.
+
+### attachTooltip (imperative, headless)
+
+```ts
+import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
+
+const dispose = attachTooltip(triggerNode, scene, {
+  content: () => {
+    const card = new PanelNode({
+      padding: 6,
+      gap: 4,
+      background: { color: 0x111827, alpha: 0.95, radius: 6 },
+    });
+    card.addElement(new UIText({ children: "Goblin", style: { fontSize: 13 } }));
+    card.addElement(new UIText({ children: "HP 100/100", style: { fontSize: 11 } }));
+    return card;
+  },
+  placement: "top", // Placement: side or side-align (default "top", centered)
+  offset: 8,        // px gap between trigger and bubble (default 6)
+  maxWidth: 200,    // px; content wraps + clamps to available space
+});
+// later: dispose();  // detaches hover + releases the overlay slot
+```
+
+`trigger` is any UI primitive (`UIPanel._node` / `PanelNode`, `UIButton`,
+`UIImage`, …) — `attachTooltip` wires its `onHover` to show / hide the
+bubble. `content` is a factory (called once); **headless** — return a styled
+node for visuals, nothing is added for you. Requires the scene to have the
+`FloatingOverlay` (i.e. `UIPlugin` is registered); throws otherwise. The
+bubble flips to the opposite side and shifts along the cross axis to stay
+on-screen, and z-stacks above other floats on each (re)open.
+
+### Escape hatches
+
+For custom popovers / menus reach for the lower-level pieces directly:
+
+- `FloatingOverlayKey.acquire()` → a `FloatingHandle` with
+  `setReference(get)`, `setConfig(FloatConfig)`, `setLayout(fn)`,
+  `setActive(bool)`, `bringToFront()`, `release()`, and a `container` to
+  parent content into. Resolve the overlay scene-scoped:
+  `scene._resolveScoped(FloatingOverlayKey)`.
+- `computePosition(reference, floating, viewport, config)` — the pure
+  positioning engine (`offset → flip → shift → size`), no Pixi / engine
+  deps. Returns `{ x, y, placement, available }`. `Placement` / `Side` /
+  `Align` / `Rect` / `Dimensions` are exported.
+- `layoutFloat(nodes, maxWidth)` — shrink-to-content layout of a UI node
+  stack (what a `setLayout` callback feeds the overlay).
+
+The React layer (`@yagejs/ui-react`) builds `<Tooltip>` / `useFloating` on
+this exact overlay.
+
 ## Background Options
 
 ```ts

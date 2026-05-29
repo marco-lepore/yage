@@ -17,7 +17,15 @@ import {
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { Anchor, UIPanel, UIPlugin, UIProgressBar } from "@yagejs/ui";
+import {
+  Anchor,
+  attachTooltip,
+  PanelNode,
+  UIPanel,
+  UIPlugin,
+  UIProgressBar,
+  UIText,
+} from "@yagejs/ui";
 import { getContainer } from "./shared.js";
 
 const WIDTH = 800;
@@ -140,6 +148,72 @@ class EnemyNameplate extends Entity {
       }),
     );
     panel.text(params.label, { fontSize: 11, fill: params.color });
+
+    // Imperative tooltip on the namecard — a stats card that stays glued
+    // above the trigger as the enemy traverses the screen (the overlay
+    // re-anchors it every frame against the camera-transformed trigger).
+    // `attachTooltip` works here with no `<UIRoot>` / React in sight.
+    this.add(
+      new NameplateTooltip(panel, {
+        label: params.label,
+        color: params.color,
+        target: params.target,
+      }),
+    );
+  }
+}
+
+// Builds + owns the namecard's stats tooltip. Holds the `dispose()` so the
+// overlay slot + hover handler are released when the nameplate is destroyed
+// (cascade-destroyed with the enemy).
+class NameplateTooltip extends Component {
+  private dispose: (() => void) | null = null;
+
+  constructor(
+    private readonly panel: UIPanel,
+    private readonly params: { label: string; color: number; target: Entity },
+  ) {
+    super();
+  }
+
+  onAdd(): void {
+    this.dispose = attachTooltip(this.panel._node, this.scene, {
+      placement: "top",
+      offset: 8,
+      maxWidth: 200,
+      content: () => {
+        const card = new PanelNode({
+          padding: 6,
+          gap: 4,
+          background: { color: 0x111827, alpha: 0.95, radius: 6 },
+        });
+        card.addElement(
+          new UIText({
+            children: this.params.label,
+            style: { fontSize: 13, fill: this.params.color, fontWeight: "bold" },
+          }),
+        );
+        const health = this.params.target.tryGet(Health);
+        card.addElement(
+          new UIText({
+            children: `HP ${health ? health.current : "?"} / ${health ? health.max : "?"}`,
+            style: { fontSize: 11, fill: 0xe5e7eb },
+          }),
+        );
+        card.addElement(
+          new UIText({
+            children: "A hostile unit. Click to deal damage.",
+            style: { fontSize: 10, fill: 0x9ca3af },
+          }),
+        );
+        return card;
+      },
+    });
+  }
+
+  onDestroy(): void {
+    this.dispose?.();
+    this.dispose = null;
   }
 }
 

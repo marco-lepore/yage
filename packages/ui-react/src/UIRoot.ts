@@ -130,9 +130,11 @@ export class UIRoot extends Component {
 
     this.root = createRoot(this._container);
 
-    // Scene-level top overlay floating UI (tooltips/popovers) portals into.
+    // Resolve the scene-level overlay so the React context Provider can hand
+    // it to <Tooltip>/useFloating. The overlay layer is attached + ticked by
+    // `@yagejs/ui`'s `FloatingOverlaySystem`, not here — so floating UI works
+    // with or without a `UIRoot`.
     this._floating = this.use(FloatingOverlayKey);
-    this._floating.attach(tree);
 
     // When React commits, re-run layout and anchor
     this._onCommit = () => this._layoutAndAnchor();

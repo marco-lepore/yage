@@ -28,7 +28,8 @@ export type { SplitTextControls, SplitRunHandle } from "./use-split-text.js";
 // Headless floating primitive (tooltips/popovers/menus build on this)
 export { useFloating } from "./use-floating.js";
 export type { UseFloatingOptions, UseFloatingResult } from "./use-floating.js";
-export { computePosition } from "./positioning.js";
+// Floating system moved to `@yagejs/ui`; re-exported here for back-compat.
+export { computePosition } from "./floating.js";
 export type {
   Placement,
   Side,
@@ -37,8 +38,9 @@ export type {
   Dimensions,
   ComputePositionConfig,
   ComputePositionResult,
-} from "./positioning.js";
-export type { FloatConfig, FloatingHandle } from "./floating.js";
+  FloatConfig,
+  FloatingHandle,
+} from "./floating.js";
 
 // Re-export useful types from @yagejs/ui for convenience
 export { Anchor } from "@yagejs/ui";

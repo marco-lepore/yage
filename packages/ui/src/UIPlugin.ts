@@ -1,7 +1,9 @@
 import type { EngineContext, Plugin, SystemScheduler } from "@yagejs/core";
-import { AssetManagerKey } from "@yagejs/core";
+import { AssetManagerKey, SceneHookRegistryKey } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { UILayoutSystem } from "./UILayoutSystem.js";
+import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
+import { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
 import { setYoga } from "./yoga-helpers.js";
 import { setAssetManager } from "./asset-helpers.js";
 import { getUIDefaultTextStyle, setUIDefaultTextStyle } from "./text-defaults.js";
@@ -33,6 +35,7 @@ export class UIPlugin implements Plugin {
   // scoped to this plugin's lifetime — otherwise it leaks across engine
   // lifecycles (e.g. between tests). Mirrors RendererPlugin's defaultTextStyle.
   private _prevDefaultTextStyle: TextStyle | undefined = undefined;
+  private _unregisterHooks: (() => void) | null = null;
 
   constructor(options: UIPluginOptions = {}) {
     this._options = options;
@@ -49,14 +52,30 @@ export class UIPlugin implements Plugin {
 
     this._prevDefaultTextStyle = getUIDefaultTextStyle();
     setUIDefaultTextStyle(this._options.defaultTextStyle);
+
+    // Provision one scene-scoped FloatingOverlay per scene — the top-most
+    // screen-space surface tooltips/popovers/menus portal into. Owned here
+    // (not in UIReactPlugin) so floating UI exists with or without React.
+    const hooks = context.resolve(SceneHookRegistryKey);
+    this._unregisterHooks = hooks.register({
+      beforeEnter: (scene) => {
+        scene.registerScoped(FloatingOverlayKey, new FloatingOverlay());
+      },
+      afterExit: (scene) => {
+        scene._resolveScoped(FloatingOverlayKey)?.destroy();
+      },
+    });
   }
 
   registerSystems(scheduler: SystemScheduler): void {
     scheduler.add(new UILayoutSystem());
+    scheduler.add(new FloatingOverlaySystem());
   }
 
   onDestroy(): void {
     setUIDefaultTextStyle(this._prevDefaultTextStyle);
     this._prevDefaultTextStyle = undefined;
+    this._unregisterHooks?.();
+    this._unregisterHooks = null;
   }
 }

@@ -221,6 +221,55 @@ The offset is in **screen pixels** — 40 world units above at zoom=1 and
 offsets are what nameplates almost always want. See the `world-ui`
 example for a runnable demo with zoom and rotation controls.
 
+## Tooltips (`attachTooltip`)
+
+Hover-driven floating bubbles for the imperative UI layer — no React
+required. `UIPlugin` provisions one top-most, screen-space **floating
+overlay** per scene; `attachTooltip` parents a bubble into it and anchors it
+to a trigger. The bubble draws above all other UI, escapes any
+`<ScrollView>` clip, flips to the opposite side and shifts along the cross
+axis to stay on-screen, and — because it re-anchors every frame against the
+trigger's live geometry — stays glued to world-space / camera-transformed
+triggers like the `ScreenFollow` namecard above.
+
+```ts
+import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
+
+// `trigger` is any UI primitive — here the namecard's PanelNode.
+const dispose = attachTooltip(panel._node, this.scene, {
+  placement: "top", // side, or side-align (e.g. "bottom-start"); default "top"
+  offset: 8,        // px gap between trigger and bubble (default 6)
+  maxWidth: 200,    // px; long content wraps + clamps to available space
+  // Headless: build (and style) the bubble yourself. Called once.
+  content: () => {
+    const card = new PanelNode({
+      padding: 6,
+      gap: 4,
+      background: { color: 0x111827, alpha: 0.95, radius: 6 },
+    });
+    card.addElement(new UIText({ children: "Goblin", style: { fontSize: 13 } }));
+    card.addElement(new UIText({ children: "HP 100 / 100", style: { fontSize: 11 } }));
+    return card;
+  },
+});
+
+// When the trigger goes away, release the overlay slot + hover handler:
+dispose();
+```
+
+`attachTooltip` wires the trigger's `onHover` internally — show on
+pointer-over, hide on pointer-out. It's **headless** like the React
+`<Tooltip>`: nothing is styled for you, so pass a `background` / `padding`
+on the content node. Own the returned `dispose()` (e.g. call it from a
+component's `onDestroy`) so the slot is freed when the trigger is destroyed.
+
+For fully custom popovers / menus, drop to the primitives: acquire a slot
+with `scene._resolveScoped(FloatingOverlayKey).acquire()` for a
+`FloatingHandle`, and position with the pure `computePosition()` engine
+(`offset → flip → shift → size`). The React `<Tooltip>` / `useFloating`
+build on this exact overlay — see the
+[React UI guide](/guides/ui-react/).
+
 ## Text
 
 Add text to a panel with the builder API:

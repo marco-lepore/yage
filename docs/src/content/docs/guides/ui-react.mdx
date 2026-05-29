@@ -311,6 +311,10 @@ it in your React tree so context/props/lifecycle still flow) and returns
 `null` when closed. The pure `computePosition()` engine and `Placement`
 type are also exported for fully custom floating layers.
 
+The scene overlay is owned by `UIPlugin` (not `UIReactPlugin`), so the same
+floating system is available without React — see `attachTooltip` in the
+[imperative UI guide](/guides/ui/) for tooltips on a non-React `UIPanel`.
+
 ### PixiUI Components
 
 Wrappers for advanced [@pixi/ui](https://github.com/pixijs/ui) widgets:
