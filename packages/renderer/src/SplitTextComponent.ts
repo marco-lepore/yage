@@ -280,6 +280,12 @@ export class SplitTextComponent extends Component {
    * full declared string, `visibleText` reports only the glyphs whose
    * `chars[i].visible` is still on. Not part of `serialize()`; see
    * {@link computeRenderFacet} for the bounds coordinate space.
+   *
+   * Note: Pixi's `chars` array (and therefore `glyphs` / `visibleText`)
+   * contains only the rendered glyph segments — whitespace is laid out via
+   * `words`/`lines` and is NOT a char. So `visibleText` strips spaces: a fully
+   * revealed `"Hello world"` reports `"Helloworld"`. Use it to compare *which
+   * glyphs* are on screen, not to reconstruct the original string verbatim.
    */
   inspectRender(): RenderFacetSnapshot {
     const facet = computeRenderFacet(this.splitText);

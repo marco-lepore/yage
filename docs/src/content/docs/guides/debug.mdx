@@ -291,7 +291,12 @@ split?.visibleText;      // e.g. "Hel" while only the first 3 glyphs show
 
 `bounds` are world-space pixels — the same space as `transform`, before the
 camera and responsive `fit` transform — and `null` when nothing is painted
-(e.g. an empty `Graphics`). The facet is read-only and never part of
+(e.g. an empty `Graphics`). `visible` is the component's own (local) flag; Pixi
+v8 exposes no world-resolved visibility, so a hidden parent/layer container is
+not folded in. `glyphs` and `visibleText` cover only rendered glyph segments —
+`SplitText.chars` excludes whitespace, so a fully-revealed `"Hello world"`
+reports `"Helloworld"`; compare which glyphs are visible rather than treating it
+as the verbatim string. The facet is read-only and never part of
 `serialize()`, so it does not affect save/load. `SpriteComponent`,
 `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and
 `SplitTextComponent` all implement it; a custom component opts in by exposing

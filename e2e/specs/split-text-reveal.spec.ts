@@ -72,6 +72,9 @@ test.describe("Split text reveal fixture", () => {
     expect(bounds!.height).toBeGreaterThan(0);
 
     // Reveal the rest; the visible substring catches up to the full string.
+    // SplitText.chars excludes whitespace (the space lives in `words`, not
+    // `chars`), so the fully-revealed visibleText is "Helloworld", not
+    // "Hello world". This is the documented behaviour of the facet.
     await stepFrames(page, 10);
     const afterAll = await readReveal(page);
     expect(afterAll.component?.glyphs?.every((g) => g.visible)).toBe(true);

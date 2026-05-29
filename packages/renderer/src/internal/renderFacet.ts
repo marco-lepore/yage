@@ -25,6 +25,14 @@ import type { Container } from "pixi.js";
  * Returns `bounds: null` when the object reports a zero-area / non-finite box
  * (e.g. an empty `Graphics`), so consumers can distinguish "nothing painted"
  * from a real 0×0 origin box.
+ *
+ * ## Visibility
+ *
+ * `visible` is the display object's *own* (local) flag — Pixi v8 has no public
+ * world-resolved visibility getter, so a hidden ancestor (e.g. a layer
+ * container with `visible = false`) is NOT reflected here. For the per-glyph
+ * reveal use case this is exactly right (glyphs are toggled directly); callers
+ * hiding an entity via a parent container should read the parent's flag too.
  */
 export function computeRenderFacet(displayObject: Container): RenderFacetSnapshot {
   return {

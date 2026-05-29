@@ -78,8 +78,14 @@ full declared string, the facet reports only what is on screen:
 ```ts
 const split = e.components.find((c) => c.type === "SplitTextComponent")?.render;
 split?.glyphs;        // [{ visible }, ...] in reading order
-split?.visibleText;   // the substring currently painted, e.g. "Hel"
+split?.visibleText;   // painted glyphs joined, e.g. "Hel"
 ```
+
+`glyphs` / `visibleText` cover only rendered glyph segments — `SplitText.chars`
+excludes whitespace, so a fully-revealed `"Hello world"` reports `"Helloworld"`.
+Compare *which glyphs* are visible, not the verbatim string. `visible` is the
+component's own (local) flag; Pixi v8 has no world-resolved getter, so a hidden
+ancestor is not folded in.
 
 A renderer component opts in by exposing an `inspectRender(): RenderFacetSnapshot`
 method; the Inspector duck-types it (no Pixi dependency in core) and tolerates an

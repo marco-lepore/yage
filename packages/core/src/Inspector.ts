@@ -173,7 +173,12 @@ export interface RenderFacetSnapshot {
    * object reports no measurable bounds (e.g. an empty `Graphics`).
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
-  /** Resolved visibility of the display object at snapshot time. */
+  /**
+   * The component's own (local, non-inherited) visibility flag at snapshot
+   * time. A hidden ancestor (e.g. a parent/layer container set invisible) is
+   * NOT folded in — read the relevant parent separately if you need the fully
+   * resolved on-screen state.
+   */
   visible: boolean;
   /**
    * Per-glyph visibility, present only for components that render text split
