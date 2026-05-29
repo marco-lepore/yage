@@ -560,7 +560,7 @@ const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
 
 Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
-#### Sort granularity — no per-entity stacking context (#104)
+#### Sort granularity — no per-entity stacking context
 
 `sort` is **flatten-to-layer**: every sprite/text/graphics is a *direct child* of the layer container, positioned at its entity's world coords, and the `sort` fn yields **one global key per direct child**. There is no per-entity group — an entity composed of multiple sprites (or a parent entity plus child entities, each its own container) contributes several independent keys, not one.
 
