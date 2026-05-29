@@ -492,6 +492,16 @@ class PauseScene extends Scene {
 ```ts
 scene.timeScale = 0.25; // slow-mo
 scene.timeScale = 2; // fast-forward
+
+// Per-entity multiplier, composes on top of scene.timeScale.
+// Components receive dt * scene.timeScale * entity.timeScale.
+entity.timeScale = 0; // freeze one entity while the scene runs
+entity.timeScale = 2; // ...or speed it up
+
+// Affects: component update/fixedUpdate, the entity's ProcessComponent
+// (tweens), and its particle emitters. NOT physics — the scene shares one
+// Rapier world stepped under scene.timeScale only; a rigid body cannot be
+// per-entity time-scaled. entity.timeScale is saved/restored.
 ```
 
 ### Cross-scene access

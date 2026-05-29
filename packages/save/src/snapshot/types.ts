@@ -61,6 +61,11 @@ export interface EntitySnapshotEntry {
   parentId?: number;
   /** The name this entity was registered under in parent.addChild(). */
   childName?: string;
+  /**
+   * Per-entity time-scale multiplier at save time. Omitted when `1` (the
+   * default) to keep snapshots compact; restored to `1` when absent.
+   */
+  timeScale?: number;
 }
 
 /** Serialized state for a single component. */

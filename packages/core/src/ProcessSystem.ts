@@ -137,7 +137,10 @@ export class ProcessSystem extends System {
         if (entity.isDestroyed) continue;
         const pc = entity.tryGet(ProcessComponent);
         if (!pc) continue;
-        pc._tick(effectiveDt);
+        // Entity ProcessComponents compose the per-entity timeScale on top of
+        // the global + per-scene scaling. Scene-scoped processes (the pool
+        // above) stay scene-only — they have no owning entity.
+        pc._tick(effectiveDt * (entity.timeScale ?? 1));
       }
     }
   }
