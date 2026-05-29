@@ -134,23 +134,59 @@ export async function installBitmapFont(
 
   await Assets.load({ src: path, data: { family } });
 
-  BitmapFont.install({
+  bakeBitmapFont({
     name: opts.name,
+    family,
+    ...(opts.size !== undefined ? { size: opts.size } : {}),
+    ...(opts.chars !== undefined ? { chars: opts.chars } : {}),
+    ...(opts.resolution !== undefined ? { resolution: opts.resolution } : {}),
+    ...(opts.padding !== undefined ? { padding: opts.padding } : {}),
+    ...(opts.style !== undefined ? { style: opts.style } : {}),
+  });
+
+  return opts.name;
+}
+
+/** Parameters for {@link bakeBitmapFont}. */
+interface BakeBitmapFontParams {
+  /** Name to register the baked font under. */
+  name: string;
+  /** `@font-face` family the loaded face is registered under. */
+  family: string;
+  /** Glyph size (px) to bake the atlas at. Default `32`. */
+  size?: number;
+  /** Character set to bake (Pixi range syntax). Defaults to Pixi's set. */
+  chars?: string | (string | string[])[];
+  /** Atlas resolution multiplier. Default `2`. */
+  resolution?: number;
+  /** Glyph padding in the atlas. Default `4`. */
+  padding?: number;
+  /** Extra `TextStyle` props baked into every glyph. */
+  style?: Partial<TextStyle>;
+}
+
+/**
+ * Bake a bitmap glyph atlas from an already-loaded font face via Pixi v8's
+ * `BitmapFont.install`. Assumes `family` is registered (e.g. by an
+ * `Assets.load` of the source `.ttf`). The single chokepoint that turns a
+ * loaded face into a registered bitmap font.
+ */
+function bakeBitmapFont(params: BakeBitmapFontParams): void {
+  BitmapFont.install({
+    name: params.name,
     style: {
       // Bake glyphs white by default so per-text `fill` / `tint` (a multiply
       // over the atlas) can colour them — a black atlas yields `black × tint
       // = black`. A caller-supplied `style.fill` still wins.
       fill: 0xffffff,
-      ...opts.style,
-      fontFamily: family,
-      fontSize: opts.size ?? 32,
+      ...params.style,
+      fontFamily: params.family,
+      fontSize: params.size ?? 32,
     },
-    resolution: opts.resolution ?? 2,
-    padding: opts.padding ?? 4,
-    ...(opts.chars !== undefined ? { chars: opts.chars } : {}),
+    resolution: params.resolution ?? 2,
+    padding: params.padding ?? 4,
+    ...(params.chars !== undefined ? { chars: params.chars } : {}),
   });
-
-  return opts.name;
 }
 
 /** Resolve a texture input into a concrete texture resource. */
