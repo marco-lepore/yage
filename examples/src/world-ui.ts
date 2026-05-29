@@ -168,6 +168,11 @@ class EnemyNameplate extends Entity {
 // (cascade-destroyed with the enemy).
 class NameplateTooltip extends Component {
   private dispose: (() => void) | null = null;
+  // Live HP line — kept so the card reflects damage instead of freezing the
+  // values captured when `content()` ran. `content` is called once, so a
+  // tooltip with dynamic data holds its own node references and mutates them.
+  private hpText: UIText | null = null;
+  private lastHp = -1;
 
   constructor(
     private readonly panel: UIPanel,
@@ -193,13 +198,11 @@ class NameplateTooltip extends Component {
             style: { fontSize: 13, fill: this.params.color, fontWeight: "bold" },
           }),
         );
-        const health = this.params.target.tryGet(Health);
-        card.addElement(
-          new UIText({
-            children: `HP ${health ? health.current : "?"} / ${health ? health.max : "?"}`,
-            style: { fontSize: 11, fill: 0xe5e7eb },
-          }),
-        );
+        this.hpText = new UIText({
+          children: this.hpLabel(),
+          style: { fontSize: 11, fill: 0xe5e7eb },
+        });
+        card.addElement(this.hpText);
         card.addElement(
           new UIText({
             children: "A hostile unit. Click to deal damage.",
@@ -211,9 +214,24 @@ class NameplateTooltip extends Component {
     });
   }
 
+  // The damage CTA mutates Health each click; keep the card's HP line in sync
+  // so the tooltip shows live values. Only touch the node when it changes.
+  update(): void {
+    const health = this.params.target.tryGet(Health);
+    if (!this.hpText || !health || health.current === this.lastHp) return;
+    this.lastHp = health.current;
+    this.hpText.update({ children: this.hpLabel() });
+  }
+
+  private hpLabel(): string {
+    const health = this.params.target.tryGet(Health);
+    return health ? `HP ${health.current} / ${health.max}` : "HP ? / ?";
+  }
+
   onDestroy(): void {
     this.dispose?.();
     this.dispose = null;
+    this.hpText = null;
   }
 }
 
