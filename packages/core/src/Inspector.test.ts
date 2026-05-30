@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Inspector } from "./Inspector.js";
+import type { RenderFacetSnapshot } from "./Inspector.js";
 import { Scene } from "./Scene.js";
 import { Component } from "./Component.js";
 import { Transform } from "./Transform.js";
@@ -497,8 +498,15 @@ describe("Inspector render facet", () => {
       }),
     );
 
+    // Renderer-shaped extras are not part of the base RenderFacetSnapshot;
+    // the test reads through the same generic extension a renderer component
+    // would publish, to verify Inspector passes unknown keys through unchanged.
+    type FacetWithGlyphs = RenderFacetSnapshot<{
+      glyphs?: Array<{ visible: boolean }>;
+    }>;
     const entity = inspector.snapshot().scenes[0]?.entities[0];
-    expect(entity?.render?.glyphs).toEqual([
+    const render = entity?.render as FacetWithGlyphs | undefined;
+    expect(render?.glyphs).toEqual([
       { visible: true },
       { visible: true },
       { visible: false },

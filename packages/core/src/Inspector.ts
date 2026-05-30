@@ -155,17 +155,18 @@ export interface ComponentStateSnapshot {
  * component, computed on demand from its live display object — NOT from
  * `serialize()` (which reports declared, persisted state). Where `serialize()`
  * says a typewriter's full string is present, this reports the bounds actually
- * painted and per-glyph visibility.
+ * painted.
  *
  * A renderer component opts in by exposing an `inspectRender(): RenderFacetSnapshot`
  * method; the Inspector duck-types it (no compile-time dependency on the
  * renderer package) and attaches the result to {@link WorldEntitySnapshot.render}.
  *
- * `bounds` / `visible` are always present; richer optional keys cover
- * specific render modes (e.g. per-glyph state for split text). Components
- * needing a new key declare it here.
+ * `bounds` / `visible` are the cross-cutting fields. A component reporting
+ * richer, mode-specific state (e.g. per-glyph visibility for split text)
+ * widens the shape via the `Extra` parameter on its own side — core stays
+ * agnostic of any specific renderer component's payload.
  */
-export interface RenderFacetSnapshot {
+export type RenderFacetSnapshot<Extra = unknown> = {
   /**
    * Axis-aligned bounding box of what the component actually paints, in
    * world space (the same coordinate space as {@link WorldEntitySnapshot.transform}
@@ -180,19 +181,7 @@ export interface RenderFacetSnapshot {
    * resolved on-screen state.
    */
   visible: boolean;
-  /**
-   * Per-glyph visibility, present only for components that render text split
-   * into individual glyph display objects (e.g. `SplitTextComponent`).
-   */
-  glyphs?: Array<{ visible: boolean }>;
-  /**
-   * Substring currently painted, present only for components whose text
-   * reveal can hide individual glyphs (e.g. `SplitTextComponent`). Reports
-   * rendered glyphs only — entries Pixi treats as separators (spaces) are
-   * not included.
-   */
-  visibleText?: string;
-}
+} & Extra;
 
 /** Duck-typed hook a renderer component exposes to publish its render facet. */
 interface RenderInspectableLike {

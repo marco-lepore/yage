@@ -8,6 +8,23 @@ import { buildTextOptions } from "./internal/textConstruction.js";
 import type { TextStyle } from "./public-types.js";
 
 /**
+ * Renderer-specific extras `SplitTextComponent.inspectRender()` attaches on
+ * top of the shared {@link RenderFacetSnapshot} base. Lets a typewriter reveal
+ * be observed purely through the Inspector — `glyphs[i].visible` mirrors the
+ * per-character display objects, and `visibleText` is the currently-painted
+ * substring (whitespace-stripped: Pixi treats spaces as separators between
+ * `words`/`lines`, not as `chars`, so a fully-revealed `"Hello world"` reports
+ * `"Helloworld"`).
+ */
+export interface SplitTextRenderFacetExtras {
+  glyphs: Array<{ visible: boolean }>;
+  visibleText: string;
+}
+
+/** The full render facet shape returned by {@link SplitTextComponent.inspectRender}. */
+export type SplitTextRenderFacet = RenderFacetSnapshot<SplitTextRenderFacetExtras>;
+
+/**
  * Transform origin for a text segment, normalized 0–1. `0` is top-left, `0.5`
  * is center, `1` is bottom-right. A single number applies to both axes.
  */
@@ -287,7 +304,7 @@ export class SplitTextComponent extends Component {
    * revealed `"Hello world"` reports `"Helloworld"`. Use it to compare *which
    * glyphs* are on screen, not to reconstruct the original string verbatim.
    */
-  inspectRender(): RenderFacetSnapshot {
+  inspectRender(): SplitTextRenderFacet {
     const facet = computeRenderFacet(this.splitText);
     const chars = this.splitText.chars;
     const glyphs = chars.map((char) => ({ visible: char.visible }));

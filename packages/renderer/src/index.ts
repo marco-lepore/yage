@@ -45,6 +45,8 @@ export type {
   SplitTextComponentOptions,
   SplitTextData,
   SegmentAnchor,
+  SplitTextRenderFacet,
+  SplitTextRenderFacetExtras,
 } from "./SplitTextComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
 export {
