@@ -1,6 +1,12 @@
 import { AssetHandle } from "@yagejs/core";
 import { Assets, BitmapFont, Rectangle, Texture } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
+import {
+  emphasisKey,
+  registerBitmapFontVariant,
+  variantFontName,
+  type BitmapFontEmphasis,
+} from "./internal/bitmapFontVariants.js";
 import type {
   BitmapFontHandle,
   RendererAsset,
@@ -108,6 +114,56 @@ export interface InstallBitmapFontOptions {
    * coherent identifier.
    */
   family?: string;
+  /**
+   * Bake weight/style emphasis atlases alongside the base font from the same
+   * source `.ttf`, so a `BitmapText` whose `style.fontWeight`/`fontStyle`
+   * asks for bold or italic renders from the matching synthetic atlas instead
+   * of being ignored (canvas `Text` honours those props; plain `BitmapText`
+   * does not).
+   *
+   * Every variant is baked through the same pipeline as the base, then has
+   * its baseline metrics aligned to the base atlas — so a bold span and
+   * regular text sit on one shared baseline with no vertical drift. Variants
+   * register under derived names (`"<name> bold"`, `"<name> italic"`, …); you
+   * never name them yourself. Just set `style.fontWeight: "bold"` on a
+   * `BitmapText` using this font and the bold atlas is selected automatically.
+   *
+   * ```ts
+   * await installBitmapFont("fonts/Body.ttf", {
+   *   name: "Body",
+   *   variants: [{ fontWeight: "bold" }, { fontStyle: "italic" }],
+   * });
+   * // <BitmapText style={{ fontFamily: "Body", fontWeight: "bold" }} /> → bold atlas
+   * ```
+   */
+  variants?: BitmapFontVariant[];
+}
+
+/**
+ * One weight/style emphasis to bake as a sibling atlas of a base bitmap font.
+ * Identified by the `fontWeight`/`fontStyle` a `BitmapText` will ask for — a
+ * variant only differs from the base along the bold and italic axes, so a
+ * request for `fontWeight: "700"` resolves the atlas baked for
+ * `fontWeight: "bold"`.
+ *
+ * This is the declarative shape the loader-level bitmap-font config reuses, so
+ * the same `variants` array can be authored inline or hung off an asset
+ * manifest.
+ */
+export interface BitmapFontVariant {
+  /**
+   * Weight to synthesise this variant at. Keyword (`"bold"`) or numeric
+   * string (`"700"`); >= 600 (or `"bold"`/`"bolder"`) selects the bold axis.
+   */
+  fontWeight?: TextStyle["fontWeight"];
+  /** Slant to synthesise this variant at — `"italic"` or `"oblique"`. */
+  fontStyle?: TextStyle["fontStyle"];
+  /**
+   * Extra `TextStyle` props baked into this variant's glyphs only, layered
+   * over the base font's `style`. `fontFamily` / `fontSize` /
+   * `fontWeight` / `fontStyle` are managed by the variant pipeline.
+   */
+  style?: Partial<TextStyle>;
 }
 
 /**
@@ -134,17 +190,93 @@ export async function installBitmapFont(
 
   await Assets.load({ src: path, data: { family } });
 
-  bakeBitmapFont({
-    name: opts.name,
+  // Shared bake params reused by the base atlas and every variant, so the
+  // whole family is sized/charset/padded identically and only the emphasis
+  // axes differ between siblings.
+  const shared = {
     family,
     ...(opts.size !== undefined ? { size: opts.size } : {}),
     ...(opts.chars !== undefined ? { chars: opts.chars } : {}),
     ...(opts.resolution !== undefined ? { resolution: opts.resolution } : {}),
     ...(opts.padding !== undefined ? { padding: opts.padding } : {}),
     ...(opts.style !== undefined ? { style: opts.style } : {}),
-  });
+  } satisfies Omit<BakeBitmapFontParams, "name">;
+
+  const baseFont = bakeBitmapFont({ name: opts.name, ...shared });
+
+  // The base atlas registers itself as the regular variant so a `BitmapText`
+  // with an explicit `fontWeight: "normal"` resolves back to it.
+  if (opts.variants && opts.variants.length > 0) {
+    const baseKey = emphasisKey({});
+    registerBitmapFontVariant(opts.name, {}, opts.name);
+
+    for (const variant of opts.variants) {
+      const emphasis: BitmapFontEmphasis = {
+        ...(variant.fontWeight !== undefined
+          ? { fontWeight: variant.fontWeight }
+          : {}),
+        ...(variant.fontStyle !== undefined
+          ? { fontStyle: variant.fontStyle }
+          : {}),
+      };
+      // A variant whose weight/style doesn't cross the bold or italic axis
+      // (e.g. `{ fontWeight: "lighter" }`) collapses onto the base — skip it
+      // rather than re-bake and clobber the regular atlas under its own name.
+      if (emphasisKey(emphasis) === baseKey) continue;
+      const variantName = variantFontName(opts.name, emphasis);
+      const variantFont = bakeBitmapFont({
+        name: variantName,
+        ...shared,
+        style: {
+          ...shared.style,
+          ...variant.style,
+          ...(variant.fontWeight !== undefined
+            ? { fontWeight: variant.fontWeight }
+            : {}),
+          ...(variant.fontStyle !== undefined
+            ? { fontStyle: variant.fontStyle }
+            : {}),
+        },
+      });
+      // Synthesised bold/italic measure to a different baseline offset and
+      // line height than the regular face even from the same source, which
+      // drifts a mixed-weight line vertically (issue #109). Align the variant
+      // to the base so siblings are baseline-interchangeable.
+      alignBaselineMetrics(variantFont, baseFont);
+      registerBitmapFontVariant(opts.name, emphasis, variantName);
+    }
+  }
 
   return opts.name;
+}
+
+/**
+ * Copy the reference font's vertical metrics onto a variant so both lay glyphs
+ * out on one baseline. `getBitmapTextLayout` seeds `offsetY` from
+ * `baseLineOffset` and advances lines by `lineHeight`, so matching those two
+ * is what keeps a mixed-emphasis line aligned.
+ */
+function alignBaselineMetrics(
+  variant: BakedFontMetrics,
+  reference: BakedFontMetrics,
+): void {
+  variant.baseLineOffset = reference.baseLineOffset;
+  variant.lineHeight = reference.lineHeight;
+}
+
+/**
+ * The two vertical metrics a baked bitmap font lays glyphs out from, exposed
+ * as a writable view so variant baselines can be aligned to the base. Pixi
+ * types these `readonly` on `AbstractBitmapFont` and they're inert plain
+ * fields at runtime, so writing them is safe — and required to fix #109. The
+ * font instance is also Pixi's runtime return of `BitmapFont.install`, which
+ * its types declare as `void`.
+ */
+interface BakedFontMetrics {
+  /** Glyph offset from the line baseline (px). */
+  baseLineOffset: number;
+  /** Line advance (px). */
+  lineHeight: number;
 }
 
 /** Parameters for {@link bakeBitmapFont}. */
@@ -169,10 +301,15 @@ interface BakeBitmapFontParams {
  * Bake a bitmap glyph atlas from an already-loaded font face via Pixi v8's
  * `BitmapFont.install`. Assumes `family` is registered (e.g. by an
  * `Assets.load` of the source `.ttf`). The single chokepoint that turns a
- * loaded face into a registered bitmap font.
+ * loaded face into a registered bitmap font. Returns the installed font's
+ * writable baseline metrics so callers can read or align them (e.g. baseline
+ * normalization across emphasis variants).
  */
-function bakeBitmapFont(params: BakeBitmapFontParams): void {
-  BitmapFont.install({
+function bakeBitmapFont(params: BakeBitmapFontParams): BakedFontMetrics {
+  // Pixi types `install` as returning `void` but it returns the installed
+  // DynamicBitmapFont at runtime; we only need its (runtime-mutable) baseline
+  // metrics to normalize emphasis variants onto a shared baseline.
+  const font = BitmapFont.install({
     name: params.name,
     style: {
       // Bake glyphs white by default so per-text `fill` / `tint` (a multiply
@@ -186,7 +323,8 @@ function bakeBitmapFont(params: BakeBitmapFontParams): void {
     resolution: params.resolution ?? 2,
     padding: params.padding ?? 4,
     ...(params.chars !== undefined ? { chars: params.chars } : {}),
-  });
+  }) as unknown as BakedFontMetrics;
+  return font;
 }
 
 /** Resolve a texture input into a concrete texture resource. */
