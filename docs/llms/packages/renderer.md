@@ -807,6 +807,10 @@ const pixelFont = bitmapFont("fonts/press-start.fnt");
 // Pixi derive it from the file name. Preload it so the face is ready before the
 // first draw — Pixi caches fallback metrics on first paint otherwise.
 const uiFont = webFont("fonts/Inter.woff2", { family: "Inter" });
+// Pass `bitmap` to ALSO bake a BitmapText atlas under the same family, so the
+// one declared font works as canvas Text (no `bitmap`) and as a bitmap atlas
+// (`bitmap: true`) — see `webFont({ bitmap })` below.
+const dualFont = webFont("fonts/Inter.woff2", { family: "Inter", bitmap: true });
 
 // Use in Scene.preload:
 class MyScene extends Scene {
@@ -850,3 +854,25 @@ new TextComponent({ text: "HP", bitmap: true, style: { fontFamily: "Body", fontW
 `BitmapFontVariant` is `{ fontWeight?, fontStyle?, style? }`; the optional per-variant `style` layers extra `TextStyle` props onto that atlas only. `fontWeight` is matched on the bold axis (`"bold"`/`"bolder"` or numeric `>= 600`), `fontStyle` on the slant axis (`"italic"`/`"oblique"`); a request with no matching variant falls back to the base atlas.
 
 All variants are **baseline-aligned** to the base atlas at bake time: each variant's `baseLineOffset` and `lineHeight` are normalized to the base font's, so a bold span and regular text sit on one shared baseline with no vertical drift (synthetic faux-bold/italic otherwise measure to a different baseline even from one source font).
+
+**Declarative bitmap bake — `webFont({ bitmap })`.** A `webFont` can bake a bitmap atlas from the same loaded face during the scene's `preload`, so one declared font is usable as both canvas `Text` and `BitmapText` under a single family — no separate `installBitmapFont` call, no second name. The canvas face and the baked atlas live in separate Pixi registries, so there's no collision.
+
+```ts
+import { webFont, TextComponent } from "@yagejs/renderer";
+
+class HudScene extends Scene {
+  readonly preload = [
+    // `bitmap: true` bakes with defaults; pass an object to tune it.
+    webFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24, variants: [{ fontWeight: "bold" }] },
+    }),
+  ];
+}
+
+// Same family, both paths:
+new TextComponent({ text: "menu", style: { fontFamily: "Inter" } });                 // canvas Text
+new TextComponent({ text: "SCORE", bitmap: true, style: { fontFamily: "Inter" } });  // bitmap atlas
+```
+
+`WebFontBakeOptions` is `{ size?, chars?, resolution?, padding?, style?, variants? }` — the same knobs as `installBitmapFont` minus `name`/`family` (the atlas always registers under the web font's `family`). `bitmap` **requires** `family`; without it the bake is skipped with a warning (the atlas needs a stable name to register under and uninstall on scene teardown). When the web font is unloaded, every baked atlas (base + variants) is `BitmapFont.uninstall`ed alongside the canvas face.

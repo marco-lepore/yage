@@ -42,6 +42,7 @@ import {
   SceneRenderTreeProviderKey,
 } from "./SceneRenderTree.js";
 import { SceneRenderTreeProviderImpl } from "./SceneRenderTreeProvider.js";
+import { loadWebFont, unloadWebFont } from "./assets.js";
 
 import "./scene-augmentation.js";
 
@@ -321,16 +322,15 @@ export class RendererPlugin implements Plugin {
       },
     });
     am?.registerLoader("web-font", {
-      // `data.family` (from the `webFont` handle) names the registered
-      // `@font-face`; Pixi derives it from the file name when omitted.
-      load: (path: string, data?: unknown) => {
-        const family = (data as { family?: string } | undefined)?.family;
-        return Assets.load<FontFace[]>(
-          family !== undefined ? { src: path, data: { family } } : path,
-        );
-      },
+      // The `webFont` handle stashes the `@font-face` family (Pixi derives it
+      // from the file name when omitted) plus the optional declarative
+      // bitmap-bake config. `loadWebFont` loads the canvas face and, when
+      // `bitmap` is set, bakes a `BitmapText` atlas under the same family;
+      // `unloadWebFont` drops both. The bake/teardown lives in `assets.ts` so
+      // it's unit-testable without standing up the whole plugin.
+      load: (path: string, data?: unknown) => loadWebFont(path, data),
       unload: (path: string) => {
-        Assets.unload(path);
+        unloadWebFont(path);
       },
     });
 

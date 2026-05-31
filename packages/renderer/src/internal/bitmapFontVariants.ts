@@ -120,9 +120,17 @@ export function resolveBitmapFontVariant(
 }
 
 /**
- * Drop every variant registered under `baseName`. Called when re-installing
- * a font name so a smaller / different variant set on the new install can't
- * silently inherit stale entries from a previous one. @internal
+ * Drop every variant registered under `baseName`. Two callers:
+ *
+ *   - `installBitmapFont` calls this at the top of its variants block, so
+ *     re-installing the same font name with a smaller / different variant
+ *     set can't silently inherit stale entries from a previous install.
+ *   - `unloadWebFont` calls this when a `webFont({ bitmap })` is unloaded —
+ *     the symmetric teardown of the `registerBitmapFontVariant` calls
+ *     `bakeBitmapFontFamily` made on load, so a `BitmapText` asking for the
+ *     family afterwards no longer resolves a destroyed atlas.
+ *
+ * A no-op when the family hosts no variants. @internal
  */
 export function unregisterBitmapFontVariants(baseName: string): void {
   variantRegistry.delete(baseName);
