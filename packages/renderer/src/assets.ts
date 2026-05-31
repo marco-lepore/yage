@@ -4,6 +4,7 @@ import type { Spritesheet } from "pixi.js";
 import {
   emphasisKey,
   registerBitmapFontVariant,
+  unregisterBitmapFontVariants,
   variantFontName,
   type BitmapFontEmphasis,
 } from "./internal/bitmapFontVariants.js";
@@ -207,6 +208,10 @@ export async function installBitmapFont(
   // The base atlas registers itself as the regular variant so a `BitmapText`
   // with an explicit `fontWeight: "normal"` resolves back to it.
   if (opts.variants && opts.variants.length > 0) {
+    // Re-installing the same font name with a smaller / different variant set
+    // would otherwise inherit stale emphasis entries from the previous install
+    // (the registry is process-global), so wipe this name's slate first.
+    unregisterBitmapFontVariants(opts.name);
     const baseKey = emphasisKey({});
     registerBitmapFontVariant(opts.name, {}, opts.name);
 

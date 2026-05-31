@@ -260,4 +260,32 @@ describe("installBitmapFont() variants", () => {
     // Regular text still resolves the base atlas, not a phantom "Body bold".
     expect(resolveBitmapFontVariant("Body", {})).toBe("Body");
   });
+
+  it("re-installing the same font name clears stale variant registrations", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }, { fontStyle: "italic" }],
+    });
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBe(
+      "Body bold",
+    );
+    expect(resolveBitmapFontVariant("Body", { fontStyle: "italic" })).toBe(
+      "Body italic",
+    );
+
+    // Re-install with a smaller variant set — the italic entry must NOT linger.
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }],
+    });
+
+    expect(resolveBitmapFontVariant("Body", { fontWeight: "bold" })).toBe(
+      "Body bold",
+    );
+    // Falls back to the base atlas now that italic is no longer registered,
+    // instead of returning the orphaned "Body italic" name.
+    expect(resolveBitmapFontVariant("Body", { fontStyle: "italic" })).toBe(
+      "Body",
+    );
+  });
 });

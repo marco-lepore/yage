@@ -119,6 +119,15 @@ export function resolveBitmapFontVariant(
   );
 }
 
+/**
+ * Drop every variant registered under `baseName`. Called when re-installing
+ * a font name so a smaller / different variant set on the new install can't
+ * silently inherit stale entries from a previous one. @internal
+ */
+export function unregisterBitmapFontVariants(baseName: string): void {
+  variantRegistry.delete(baseName);
+}
+
 /** Drop every registered variant — test isolation only. @internal */
 export function clearBitmapFontVariants(): void {
   variantRegistry.clear();
