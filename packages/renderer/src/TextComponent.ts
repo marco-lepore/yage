@@ -4,7 +4,9 @@ import {
   serializable,
 } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
+import type { Container } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { buildTextOptions, resolveTextStyle } from "./internal/textConstruction.js";
@@ -232,9 +234,14 @@ export class TextComponent extends Component {
     return this._mask;
   }
 
+  /** The underlying Pixi display object. */
+  get renderObject(): Container {
+    return this.text;
+  }
+
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
-    layer.container.addChild(this.text);
+    const tree = this.use(SceneRenderTreeKey);
+    resolveRenderParent(this.entity, this.layerName, tree).addChild(this.text);
   }
 
   onDestroy(): void {
