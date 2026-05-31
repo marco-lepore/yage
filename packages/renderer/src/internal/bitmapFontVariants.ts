@@ -120,7 +120,6 @@ export function resolveBitmapFontVariant(
 }
 
 /**
-/**
  * Drop every variant registered under `baseName`. Two callers:
  *
  *   - `installBitmapFont` calls this at the top of its variants block, so
