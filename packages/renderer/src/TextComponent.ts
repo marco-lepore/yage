@@ -7,7 +7,7 @@ import { BitmapText, Text } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { buildTextOptions, resolveTextStyle } from "./internal/textConstruction.js";
+import { buildTextOptions } from "./internal/textConstruction.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -132,7 +132,17 @@ export class TextComponent extends Component {
    * properties while keeping the rest, use {@link mergeStyle}.
    */
   setStyle(style: TextStyle): void {
-    this.text.style = resolveTextStyle(style) ?? style;
+    // Route through buildTextOptions so the bitmap-variant redirect (synthetic
+    // bold/italic via baked variant atlases) runs on the update path too —
+    // calling resolveTextStyle directly would let `fontWeight`/`fontStyle`
+    // changes silently land on the base atlas on a `bitmap: true` text.
+    const { options } = buildTextOptions(
+      this.text.text,
+      style,
+      this._bitmap,
+      undefined,
+    );
+    this.text.style = options.style ?? style;
     this._styleOptions = { ...style };
   }
 

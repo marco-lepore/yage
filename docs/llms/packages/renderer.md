@@ -830,3 +830,23 @@ entity.add(new TextComponent({ text: "READY", bitmap: true, style: { fontFamily:
 ```
 
 Glyphs bake **white** by default so a per-text `fill` / `tint` (multiplied over the atlas) can recolour them — a black atlas would yield `black × tint = black`. Set `style.fill` only to bake a fixed colour. To recolour at runtime use `mergeStyle({ fill })` so `fontFamily` survives — `setStyle({ fill })` replaces the style and drops the font.
+
+**Synthetic bold / italic — `variants`.** Plain `BitmapText` ignores `style.fontWeight` / `fontStyle` (only canvas `Text` honours them). Pass `variants` to bake emphasis atlases from the same `.ttf` alongside the base; a `BitmapText` whose style asks for bold/italic then renders from the matching atlas automatically. Variants register under derived names internally — you never name or select them by hand:
+
+```ts
+await installBitmapFont("fonts/Body.ttf", {
+  name: "Body",
+  variants: [
+    { fontWeight: "bold" },                    // → "Body bold"
+    { fontStyle: "italic" },                   // → "Body italic"
+    { fontWeight: "bold", fontStyle: "italic" }, // → "Body bold italic"
+  ],
+});
+
+// Resolves the bold atlas — no manual font name needed:
+new TextComponent({ text: "HP", bitmap: true, style: { fontFamily: "Body", fontWeight: "bold" } });
+```
+
+`BitmapFontVariant` is `{ fontWeight?, fontStyle?, style? }`; the optional per-variant `style` layers extra `TextStyle` props onto that atlas only. `fontWeight` is matched on the bold axis (`"bold"`/`"bolder"` or numeric `>= 600`), `fontStyle` on the slant axis (`"italic"`/`"oblique"`); a request with no matching variant falls back to the base atlas.
+
+All variants are **baseline-aligned** to the base atlas at bake time: each variant's `baseLineOffset` and `lineHeight` are normalized to the base font's, so a bold span and regular text sit on one shared baseline with no vertical drift (synthetic faux-bold/italic otherwise measure to a different baseline even from one source font).

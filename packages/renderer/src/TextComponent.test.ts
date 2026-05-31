@@ -315,6 +315,40 @@ describe("TextComponent", () => {
     });
   });
 
+  it("setStyle on a bitmap text honours fontWeight via the variant registry", async () => {
+    const {
+      registerBitmapFontVariant,
+      clearBitmapFontVariants,
+    } = await import("./internal/bitmapFontVariants.js");
+    clearBitmapFontVariants();
+    try {
+      registerBitmapFontVariant("Body", {}, "Body");
+      registerBitmapFontVariant("Body", { fontWeight: "bold" }, "Body bold");
+
+      const comp = new TextComponent({
+        text: "x",
+        bitmap: true,
+        style: { fontFamily: "Body", fontSize: 12 },
+      });
+      expect(comp.text.style).toMatchObject({ fontFamily: "Body" });
+
+      comp.setStyle({ fontFamily: "Body", fontSize: 12, fontWeight: "bold" });
+      // setStyle has to route through buildTextOptions so the variant redirect
+      // runs on the update path — otherwise emphasis silently lands on the base
+      // atlas after construction.
+      expect(comp.text.style).toMatchObject({ fontFamily: "Body bold" });
+      // fontWeight is dropped on the redirect (the variant atlas already baked
+      // its emphasis; Pixi resolves bitmap fonts by family-name alone).
+      expect(
+        (comp.text.style as { fontWeight?: string }).fontWeight,
+      ).toBeUndefined();
+    } finally {
+      // The registry is process-global — restore it even if an assertion above
+      // throws, so a failure here doesn't poison later tests.
+      clearBitmapFontVariants();
+    }
+  });
+
   it("mergeStyle keeps the existing font/size on an imperative recolour", () => {
     const comp = new TextComponent({
       text: "score",

@@ -146,7 +146,11 @@ export {
   texture,
   webFont,
 } from "./assets.js";
-export type { InstallBitmapFontOptions, WebFontOptions } from "./assets.js";
+export type {
+  BitmapFontVariant,
+  InstallBitmapFontOptions,
+  WebFontOptions,
+} from "./assets.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";
