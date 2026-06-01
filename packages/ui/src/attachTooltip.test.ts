@@ -90,13 +90,18 @@ function makeContent(width = 80, height = 24): UIElement {
   } as unknown as UIElement;
 }
 
-// A trigger that records hover wiring and reports a fixed on-screen rect.
-function makeTrigger(): TooltipTrigger & {
+// A trigger that fans hover out to its own `onHover` (optional) plus any
+// additive `watchHover` subscribers — mirroring the real PointerEvents
+// two-tier model. `ownHover` lets a test assert the trigger's own handler
+// survives a tooltip attach/dispose (the clobber regression). `watcherCount`
+// asserts the tooltip's subscription is added on attach and dropped on
+// dispose, without it ever owning the trigger's `onHover` slot.
+function makeTrigger(ownHover?: (h: boolean) => void): TooltipTrigger & {
   hover(h: boolean): void;
-  onHoverHandler: ((h: boolean) => void) | undefined;
+  watcherCount(): number;
 } {
   const displayObject = new mocks.MockContainer() as unknown as UIElement["displayObject"];
-  let onHoverHandler: ((h: boolean) => void) | undefined;
+  const watchers = new Set<(h: boolean) => void>();
   return {
     displayObject,
     yogaNode: {
@@ -104,19 +109,21 @@ function makeTrigger(): TooltipTrigger & {
       getComputedHeight: () => 40,
     } as unknown as UIElement["yogaNode"],
     visible: true,
-    update: (props: { onHover?: ((h: boolean) => void) | undefined }) => {
-      if ("onHover" in props) onHoverHandler = props.onHover;
+    watchHover(fn: (h: boolean) => void): () => void {
+      watchers.add(fn);
+      return () => watchers.delete(fn);
     },
     destroy: () => undefined,
     hover(h: boolean) {
-      onHoverHandler?.(h);
+      ownHover?.(h);
+      for (const fn of [...watchers]) fn(h);
     },
-    get onHoverHandler() {
-      return onHoverHandler;
+    watcherCount() {
+      return watchers.size;
     },
   } as TooltipTrigger & {
     hover(h: boolean): void;
-    onHoverHandler: ((h: boolean) => void) | undefined;
+    watcherCount(): number;
   };
 }
 
@@ -186,18 +193,47 @@ describe("attachTooltip", () => {
     const content = makeContent();
 
     const dispose = attachTooltip(trigger, scene, { content: () => content });
-    expect(trigger.onHoverHandler).toBeDefined();
+    expect(trigger.watcherCount()).toBe(1);
     const bubble = content.displayObject.parent!;
 
     dispose();
 
-    expect(trigger.onHoverHandler).toBeUndefined();
+    expect(trigger.watcherCount()).toBe(0);
     // Slot released → its container destroyed and no longer ticked.
     expect((bubble as unknown as { destroyed: boolean }).destroyed).toBe(true);
-    // A post-dispose hover does nothing (handler cleared).
+    // A post-dispose hover does nothing (subscription dropped).
     trigger.hover(true);
     overlay.update(VIEWPORT);
     expect(bubble.visible).toBe(false);
+  });
+
+  it("composes with — does not clobber — the trigger's own onHover", () => {
+    const { scene } = makeScene(overlay);
+    const own = vi.fn();
+    const trigger = makeTrigger(own);
+    const content = makeContent();
+
+    const dispose = attachTooltip(trigger, scene, { content: () => content });
+    const bubble = content.displayObject.parent!;
+
+    // Hover drives BOTH the trigger's own handler and the tooltip.
+    trigger.hover(true);
+    overlay.update(VIEWPORT);
+    expect(own).toHaveBeenLastCalledWith(true);
+    expect(bubble.visible).toBe(true);
+
+    trigger.hover(false);
+    overlay.update(VIEWPORT);
+    expect(own).toHaveBeenLastCalledWith(false);
+    expect(bubble.visible).toBe(false);
+
+    // Dispose drops only the tooltip's subscription — the own handler lives on.
+    dispose();
+    own.mockClear();
+    trigger.hover(true);
+    overlay.update(VIEWPORT);
+    expect(own).toHaveBeenCalledWith(true); // still firing
+    expect(bubble.visible).toBe(false); // tooltip gone
   });
 
   it("throws when the scene has no FloatingOverlay", () => {

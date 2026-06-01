@@ -257,11 +257,16 @@ const dispose = attachTooltip(panel._node, this.scene, {
 dispose();
 ```
 
-`attachTooltip` wires the trigger's `onHover` internally — show on
-pointer-over, hide on pointer-out. It's **headless** like the React
-`<Tooltip>`: nothing is styled for you, so pass a `background` / `padding`
-on the content node. Own the returned `dispose()` (e.g. call it from a
-component's `onDestroy`) so the slot is freed when the trigger is destroyed.
+`attachTooltip` drives the tooltip from the trigger's hover — show on
+pointer-over, hide on pointer-out. It subscribes through the primitive's
+`watchHover(fn)` (an additive hover channel returning an unsubscribe), so the
+tooltip **composes with** the trigger's own `onHover` rather than replacing
+it — an element can carry its own hover styling and a tooltip at the same
+time. It's **headless** like the React `<Tooltip>`: nothing is styled for
+you, so pass a `background` / `padding` on the content node. Own the returned
+`dispose()` (e.g. call it from a component's `onDestroy`); it drops the
+tooltip's hover subscription (leaving any other hover handlers intact) and
+frees the overlay slot.
 
 For fully custom popovers / menus, drop to the primitives: acquire a slot
 with `scene._resolveScoped(FloatingOverlayKey).acquire()` for a

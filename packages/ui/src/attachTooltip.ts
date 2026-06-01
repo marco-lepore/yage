@@ -33,13 +33,15 @@ export interface AttachTooltipOptions {
 
 /**
  * A trigger element the tooltip anchors to. Any UI primitive
- * (`UIPanel`, `UIButton`, `UIImage`, …) qualifies — they all expose
- * `onHover` through `update()` and participate in Yoga layout.
+ * (`UIPanel`/`PanelNode`, `UIButton`, `UIImage`, …) qualifies — they all
+ * expose `watchHover()` and participate in Yoga layout.
+ *
+ * The tooltip subscribes via `watchHover` (the *additive* hover channel), so
+ * it composes with — never overwrites — the trigger's own `onHover` prop.
+ * An element can carry its own hover styling and a tooltip at once.
  */
 export interface TooltipTrigger extends UIElement {
-  update(props: {
-    onHover?: ((hovering: boolean) => void) | undefined;
-  }): void;
+  watchHover(fn: (hovering: boolean) => void): () => void;
 }
 
 /**
@@ -53,7 +55,8 @@ export interface TooltipTrigger extends UIElement {
  * pointer-out.
  *
  * Requires the trigger's scene to have a `FloatingOverlay` (registered by
- * `UIPlugin`). Returns a `dispose()` that detaches the hover handler and
+ * `UIPlugin`). Returns a `dispose()` that drops the tooltip's hover
+ * subscription (leaving any other hover handlers on the trigger intact) and
  * releases the overlay slot. For custom popovers/menus reach for
  * `FloatingOverlayKey.acquire()` + `computePosition()` directly.
  */
@@ -81,15 +84,13 @@ export function attachTooltip(
   });
   handle.setLayout((mw) => layoutFloat([content], mw));
 
-  trigger.update({
-    onHover: (hovering) => {
-      handle.setActive(hovering);
-      if (hovering) handle.bringToFront();
-    },
+  const unwatchHover = trigger.watchHover((hovering) => {
+    handle.setActive(hovering);
+    if (hovering) handle.bringToFront();
   });
 
   return () => {
-    trigger.update({ onHover: undefined });
+    unwatchHover();
     // Destroy the content first (frees its Yoga node + removes its display
     // object from the handle container), then release the now-empty slot.
     content.destroy();

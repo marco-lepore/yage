@@ -105,6 +105,14 @@ export class UIProgressBar implements UIElement {
     }
   }
 
+  /**
+   * Subscribe to hover *additively*, returning an unsubscribe — composes with
+   * the `onHover` prop instead of replacing it (powers `attachTooltip`).
+   */
+  watchHover(fn: (hovering: boolean) => void): () => void {
+    return this.pointerEvents.watchHover(fn);
+  }
+
   destroy(): void {
     clearConsumeInput(this.container);
     this.yogaNode.free();

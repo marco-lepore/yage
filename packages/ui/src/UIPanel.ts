@@ -234,6 +234,14 @@ export class PanelNode implements UIContainerElement {
     this.pointerEvents.set(props);
   }
 
+  /**
+   * Subscribe to hover *additively*, returning an unsubscribe — composes with
+   * the `onHover` prop instead of replacing it (powers `attachTooltip`).
+   */
+  watchHover(fn: (hovering: boolean) => void): () => void {
+    return this.pointerEvents.watchHover(fn);
+  }
+
   // ---------------------------------------------------------------------------
   // Shared prop application (used by constructor and update)
   // ---------------------------------------------------------------------------

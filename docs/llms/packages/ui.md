@@ -266,6 +266,12 @@ fallback), so wiring is a fan-out. The shared `PointerEvents` helper (also
 exported) binds one listener pair and swaps callbacks in place on
 `update()`; `UIButton` suppresses callbacks while disabled.
 
+Each primitive also exposes `watchHover(fn): () => void` — an **additive**
+hover subscription that stacks alongside the `onHover` prop instead of
+replacing it, returning an unsubscribe. This is the channel imperative
+add-ons (e.g. `attachTooltip`) build on, so they react to hover without
+clobbering — or being clobbered by — the element's own `onHover`.
+
 ```ts
 new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
 panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
@@ -306,13 +312,15 @@ const dispose = attachTooltip(triggerNode, scene, {
   offset: 8,        // px gap between trigger and bubble (default 6)
   maxWidth: 200,    // px; content wraps + clamps to available space
 });
-// later: dispose();  // detaches hover + releases the overlay slot
+// later: dispose();  // drops the tooltip's hover sub + releases the slot
 ```
 
 `trigger` is any UI primitive (`UIPanel._node` / `PanelNode`, `UIButton`,
-`UIImage`, …) — `attachTooltip` wires its `onHover` to show / hide the
-bubble. `content` is a factory (called once); **headless** — return a styled
-node for visuals, nothing is added for you. Requires the scene to have the
+`UIImage`, …) — `attachTooltip` subscribes via its `watchHover` (the additive
+hover channel) to show / hide the bubble, so the tooltip composes with, never
+overwrites, the trigger's own `onHover`. `content` is a factory (called
+once); **headless** — return a styled node for visuals, nothing is added for
+you. Requires the scene to have the
 `FloatingOverlay` (i.e. `UIPlugin` is registered); throws otherwise. The
 bubble flips to the opposite side and shifts along the cross axis to stay
 on-screen, and z-stacks above other floats on each (re)open.

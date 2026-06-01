@@ -268,6 +268,14 @@ export class UISplitText implements UIElement {
     if (p.visible !== undefined) this.visible = p.visible;
   }
 
+  /**
+   * Subscribe to hover *additively*, returning an unsubscribe — composes with
+   * the `onHover` prop instead of replacing it (powers `attachTooltip`).
+   */
+  watchHover(fn: (hovering: boolean) => void): () => void {
+    return this.pointerEvents.watchHover(fn);
+  }
+
   destroy(): void {
     this._splitListeners.clear();
     clearConsumeInput(this.splitText);
