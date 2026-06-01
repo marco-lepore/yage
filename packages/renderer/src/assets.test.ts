@@ -46,8 +46,10 @@ import { AssetHandle } from "@yagejs/core";
 import {
   bitmapFont,
   clearBakedWebFontFamilies,
+  clearInstalledBitmapFontSources,
   installBitmapFont,
   loadWebFont,
+  uninstallBitmapFont,
   unloadWebFont,
   webFont,
 } from "./assets.js";
@@ -55,6 +57,15 @@ import {
   clearBitmapFontVariants,
   resolveBitmapFontVariant,
 } from "./internal/bitmapFontVariants.js";
+import { clearBakedFamilies } from "./internal/bitmapFontRegistry.js";
+
+/** Reset every module-global font ledger so each test starts hermetic. */
+function resetFontState(): void {
+  clearBitmapFontVariants();
+  clearBakedWebFontFamilies();
+  clearInstalledBitmapFontSources();
+  clearBakedFamilies();
+}
 
 describe("bitmapFont()", () => {
   it("creates a typed bitmap-font asset handle", () => {
@@ -99,8 +110,7 @@ describe("webFont()", () => {
 describe("web-font loader (loadWebFont / unloadWebFont)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearBitmapFontVariants();
-    clearBakedWebFontFamilies();
+    resetFontState();
   });
 
   it("loads the face without baking when bitmap is unset", async () => {
@@ -204,6 +214,7 @@ describe("web-font loader (loadWebFont / unloadWebFont)", () => {
 describe("installBitmapFont()", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetFontState();
   });
 
   it("loads the TTF and bakes a bitmap font, returning its name", async () => {
@@ -291,7 +302,7 @@ describe("installBitmapFont()", () => {
 describe("installBitmapFont() variants", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearBitmapFontVariants();
+    resetFontState();
   });
 
   it("bakes a sibling atlas per variant under a derived name", async () => {
@@ -420,5 +431,87 @@ describe("installBitmapFont() variants", () => {
     expect(resolveBitmapFontVariant("Body", { fontStyle: "italic" })).toBe(
       "Body",
     );
+  });
+});
+
+describe("bitmap-font teardown (ref-counted)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetFontState();
+  });
+
+  it("uninstallBitmapFont frees the atlas, the source face, and the variant registry", async () => {
+    await installBitmapFont("fonts/Press.ttf", {
+      name: "Press",
+      variants: [{ fontWeight: "bold" }],
+    });
+    expect(resolveBitmapFontVariant("Press", { fontWeight: "bold" })).toBe(
+      "Press bold",
+    );
+
+    uninstallBitmapFont("Press");
+
+    // Source face dropped, base + variant atlases uninstalled.
+    expect(mocks.assetsUnload).toHaveBeenCalledWith("fonts/Press.ttf");
+    expect(mocks.bitmapFontUninstall.mock.calls.map((c) => c[0])).toEqual([
+      "Press",
+      "Press bold",
+    ]);
+    // Variant registry cleared so resolution no longer points at a dead atlas.
+    expect(
+      resolveBitmapFontVariant("Press", { fontWeight: "bold" }),
+    ).toBeUndefined();
+  });
+
+  it("uninstallBitmapFont is a no-op for a name that was never installed", () => {
+    expect(() => uninstallBitmapFont("Nope")).not.toThrow();
+    expect(mocks.bitmapFontUninstall).not.toHaveBeenCalled();
+    expect(mocks.assetsUnload).not.toHaveBeenCalled();
+  });
+
+  it("re-installing the same name stays one owner (a single uninstall frees it)", async () => {
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }],
+    });
+    await installBitmapFont("Body.ttf", {
+      name: "Body",
+      variants: [{ fontWeight: "bold" }],
+    });
+
+    uninstallBitmapFont("Body");
+
+    const uninstalled = mocks.bitmapFontUninstall.mock.calls.map((c) => c[0]);
+    expect(uninstalled).toContain("Body");
+    expect(uninstalled).toContain("Body bold");
+  });
+
+  it("a webFont and an installBitmapFont sharing a family don't tear each other down", async () => {
+    // Both register a bitmap font under the family "Inter".
+    await installBitmapFont("fonts/Inter.ttf", { name: "Inter" });
+    await loadWebFont("fonts/Inter.woff2", { family: "Inter", bitmap: true });
+
+    // Unloading the web font must NOT uninstall the shared atlas — the install
+    // still owns it. This is the regression the ref-count guards against.
+    unloadWebFont("fonts/Inter.woff2");
+    expect(mocks.assetsUnload).toHaveBeenCalledWith("fonts/Inter.woff2");
+    expect(mocks.bitmapFontUninstall).not.toHaveBeenCalled();
+
+    // The last owner releasing it finally tears the atlas (and the install's
+    // face) down.
+    uninstallBitmapFont("Inter");
+    expect(mocks.bitmapFontUninstall).toHaveBeenCalledWith("Inter");
+    expect(mocks.assetsUnload).toHaveBeenCalledWith("fonts/Inter.ttf");
+  });
+
+  it("two web fonts sharing a family hold the atlas until both unload", async () => {
+    await loadWebFont("a.woff2", { family: "Shared", bitmap: true });
+    await loadWebFont("b.woff2", { family: "Shared", bitmap: true });
+
+    unloadWebFont("a.woff2");
+    expect(mocks.bitmapFontUninstall).not.toHaveBeenCalled();
+
+    unloadWebFont("b.woff2");
+    expect(mocks.bitmapFontUninstall).toHaveBeenCalledWith("Shared");
   });
 });
