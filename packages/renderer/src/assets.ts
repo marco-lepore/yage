@@ -271,6 +271,10 @@ export function unloadWebFont(path: string): void {
 /** Drop the baked-web-font tracking — test isolation only. @internal */
 export function clearBakedWebFontFamilies(): void {
   bakedWebFontFamilies.clear();
+}
+
+/** Drop the install-font source tracking — test isolation only. @internal */
+export function clearInstalledBitmapFontSources(): void {
   installedBitmapFontSources.clear();
 }
 

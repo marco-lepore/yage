@@ -46,6 +46,7 @@ import { AssetHandle } from "@yagejs/core";
 import {
   bitmapFont,
   clearBakedWebFontFamilies,
+  clearInstalledBitmapFontSources,
   installBitmapFont,
   loadWebFont,
   uninstallBitmapFont,
@@ -62,6 +63,7 @@ import { clearBakedFamilies } from "./internal/bitmapFontRegistry.js";
 function resetFontState(): void {
   clearBitmapFontVariants();
   clearBakedWebFontFamilies();
+  clearInstalledBitmapFontSources();
   clearBakedFamilies();
 }
 
