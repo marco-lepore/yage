@@ -9,7 +9,10 @@
 import type { Scene } from "@yagejs/core";
 import { actorRegistryFor } from "../actor/index.js";
 import type { PresentedLine } from "../core/session.js";
-import { DialogueTextView, type DialogueTextConfig } from "./DialogueTextView.js";
+import {
+  DialogueTextView,
+  type DialogueTextConfig,
+} from "./DialogueTextView.js";
 
 export interface BubbleTextLayout {
   readonly width: number;
@@ -28,8 +31,14 @@ export class BubbleTextView extends DialogueTextView {
   private originX = 0;
   private originY = 0;
 
-  constructor(cfg: Omit<DialogueTextConfig, "box">, private readonly bubble: BubbleTextLayout) {
-    super({ ...cfg, box: { x: 0, y: 0, width: bubble.width - 2 * bubble.padding } });
+  constructor(
+    cfg: Omit<DialogueTextConfig, "box">,
+    private readonly bubble: BubbleTextLayout,
+  ) {
+    super({
+      ...cfg,
+      box: { x: 0, y: 0, width: bubble.width - 2 * bubble.padding },
+    });
   }
 
   override mount(scene: Scene): void {
@@ -56,6 +65,12 @@ export class BubbleTextView extends DialogueTextView {
           }
         : undefined,
     );
+    // No actor → text pins at the layout origin (0,0); clear any stale anchor so
+    // `termAtPoint` (world space) doesn't subtract a previous line's origin.
+    if (!actor) {
+      this.originX = 0;
+      this.originY = 0;
+    }
     super.present(line);
   }
 
