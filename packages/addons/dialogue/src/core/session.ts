@@ -280,7 +280,10 @@ export class DialogueSession {
       this.autoTimer -= dt;
       if (this.autoTimer <= 0) {
         this.autoTimer = undefined;
-        this.runner.advance();
+        // Route through advance() (not runner.advance() directly) so auto-advance
+        // fires the line's `advance`-timed commands and honours the in-flight
+        // guards — exactly like a manual advance.
+        this.advance();
       }
     }
   }
