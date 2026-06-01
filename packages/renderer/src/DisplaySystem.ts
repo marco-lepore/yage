@@ -8,7 +8,7 @@ import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { TextComponent } from "./TextComponent.js";
 import { SplitTextComponent } from "./SplitTextComponent.js";
-import { SortGroupComponent } from "./SortGroupComponent.js";
+import { SortGroupComponent, sortGroupForContainer } from "./SortGroupComponent.js";
 import type { Container } from "pixi.js";
 
 /**
@@ -111,29 +111,26 @@ export class DisplaySystem extends System {
    * Layers without a `sort` keep insertion order.
    */
   private applyLayerSort(): void {
-    // Index every sort group by its container, so the layer pass can treat a
-    // group as a single sortable unit and the member pass can find each group.
-    const groups = new Map<Container, SortGroupComponent>();
-    for (const entity of this.sortGroupQuery) {
-      const group = entity.get(SortGroupComponent);
-      groups.set(group.container, group);
-    }
-
+    // Pass 1: key every sorted layer's direct children. A group container is
+    // keyed off its anchor (so the whole group sorts as one unit); everything
+    // else by the layer's depth-key fn. `sortGroupForContainer` is an O(1)
+    // registry lookup — no per-frame allocation in this hot path.
     for (const [, tree] of this.treeProvider.allTrees()) {
       for (const layer of tree.getAll()) {
         const sort = layer.sort;
         if (!sort) continue;
         for (const child of layer.container.children) {
-          const group = groups.get(child);
+          const group = sortGroupForContainer(child);
           child.zIndex = group ? group.resolveSortKey(sort) : sort(child);
         }
       }
     }
 
-    // Intra-group ordering: a group with an `innerSort` re-keys its own members
-    // each frame; groups without one keep insertion order (and honour any
-    // member's manually-set `zIndex`).
-    for (const group of groups.values()) {
+    // Pass 2: intra-group member ordering. A group with an `innerSort` re-keys
+    // its own members each frame (independent of whether its layer has a sort);
+    // groups without one keep insertion order and honour a manual `zIndex`.
+    for (const entity of this.sortGroupQuery) {
+      const group = entity.get(SortGroupComponent);
       const inner = group.innerSort;
       if (!inner) continue;
       for (const member of group.container.children) {

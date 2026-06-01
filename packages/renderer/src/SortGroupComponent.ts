@@ -6,10 +6,17 @@ import type { SceneRenderTree } from "./SceneRenderTree.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 
 /**
- * Contract every single-display-object visual component satisfies: a layer
- * name plus the Pixi object it renders. `SortGroupComponent` uses this to
- * gather a subtree's visuals into its container without importing the concrete
- * component classes (which would create an import cycle).
+ * Contract a single-display-object visual component satisfies: a layer name
+ * plus the Pixi object it renders. All five built-in visual components
+ * (`SpriteComponent`, `GraphicsComponent`, `AnimatedSpriteComponent`,
+ * `TextComponent`, `SplitTextComponent`) expose it through their `renderObject`
+ * getter, and `SortGroupComponent` uses it to gather a subtree's visuals
+ * without importing the concrete classes (which would create an import cycle).
+ *
+ * It's also the extension point for custom visual components: implement
+ * `renderObject` + `layerName`, and route through {@link resolveRenderParent}
+ * in `onAdd`, and the component takes part in sort groups exactly like the
+ * built-ins.
  */
 export interface LayerRenderable {
   /** Name of the layer this component renders into. */
@@ -39,7 +46,19 @@ function isLayerRenderable(
  * at `entity` (inclusive), so a visual on a group-owning entity joins that
  * group.
  *
- * @internal Used by the visual components' `onAdd`.
+ * The built-in visual components call this in their `onAdd`. A custom visual
+ * component (one implementing {@link LayerRenderable}) should do the same, so
+ * it joins an enclosing group on its initial add rather than only when the
+ * group next re-homes its subtree:
+ *
+ * ```ts
+ * onAdd() {
+ *   const tree = this.use(SceneRenderTreeKey);
+ *   resolveRenderParent(this.entity, this.layerName, tree).addChild(
+ *     this.renderObject,
+ *   );
+ * }
+ * ```
  */
 export function resolveRenderParent(
   entity: Entity,
@@ -53,6 +72,25 @@ export function resolveRenderParent(
     current = current.parent;
   }
   return tree.get(layerName).container;
+}
+
+/**
+ * Container → owning sort group, maintained as groups enter and leave the
+ * scene tree (see `SortGroupComponent`'s `onAdd` / `onDestroy`). Lets
+ * `DisplaySystem` recognise a group container during its per-frame sort pass
+ * with an O(1) lookup and no per-frame allocation.
+ */
+const groupByContainer = new WeakMap<Container, SortGroupComponent>();
+
+/**
+ * The sort group that owns `container`, or `undefined` for a plain visual.
+ *
+ * @internal Used by `DisplaySystem.applyLayerSort`.
+ */
+export function sortGroupForContainer(
+  container: Container,
+): SortGroupComponent | undefined {
+  return groupByContainer.get(container);
 }
 
 /** Options for {@link SortGroupComponent}. */
@@ -138,6 +176,7 @@ export class SortGroupComponent extends Component {
   }
 
   onAdd(): void {
+    groupByContainer.set(this.container, this);
     const tree = this.use(SceneRenderTreeKey);
     // Each group is its own unit at the layer level — even a group nested under
     // another entity's group. Transform parenting (ECS) and sort grouping
@@ -152,6 +191,7 @@ export class SortGroupComponent extends Component {
   }
 
   onDestroy(): void {
+    groupByContainer.delete(this.container);
     // Return members to the layer so removing the grouping doesn't orphan
     // sprites; on scene teardown they're destroyed by their own components
     // immediately after. Destroy only the wrapper, never its (borrowed) children.

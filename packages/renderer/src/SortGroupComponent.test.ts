@@ -78,10 +78,15 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
 }));
 
-import { Transform, Vec2 } from "@yagejs/core";
+import { Component, Transform, Vec2 } from "@yagejs/core";
+import { Container } from "pixi.js";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { SpriteComponent } from "./SpriteComponent.js";
-import { SortGroupComponent } from "./SortGroupComponent.js";
+import {
+  SortGroupComponent,
+  resolveRenderParent,
+} from "./SortGroupComponent.js";
+import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
@@ -320,5 +325,41 @@ describe("SortGroupComponent", () => {
     // And it still sorts normally afterwards.
     system.update();
     expect(body.sprite.zIndex).toBe(100);
+  });
+
+  it("lets a custom LayerRenderable join a group via resolveRenderParent", () => {
+    const { scene, tree, system } = setup();
+    tree.ensureLayer({ name: "world", order: 0, sort: ySort });
+
+    // A user-authored visual component that follows the documented extension
+    // path: implement renderObject/layerName, route through resolveRenderParent.
+    class Trail extends Component {
+      readonly layerName = "world";
+      readonly renderObject = new Container();
+      onAdd(): void {
+        resolveRenderParent(
+          this.entity,
+          this.layerName,
+          this.use(SceneRenderTreeKey),
+        ).addChild(this.renderObject);
+      }
+    }
+
+    const knight = spawnEntityInScene(scene, "knight");
+    knight.add(new Transform({ position: new Vec2(0, 100) }));
+    knight.add(new SortGroupComponent({ layer: "world" }));
+    const trailEntity = knight.spawnChild("trail");
+    trailEntity.add(new Transform({ position: new Vec2(0, 5) }));
+    const trail = trailEntity.add(new Trail());
+
+    system.update();
+
+    // Routed straight into the group on its initial add — not stranded on the
+    // layer waiting for the next regroup.
+    const group = knight.get(SortGroupComponent).container;
+    expect(group.children).toContain(trail.renderObject);
+    expect(tree.get("world").container.children).not.toContain(
+      trail.renderObject,
+    );
   });
 });

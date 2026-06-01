@@ -46,7 +46,7 @@ export type {
   SplitTextData,
   SegmentAnchor,
 } from "./SplitTextComponent.js";
-export { SortGroupComponent } from "./SortGroupComponent.js";
+export { SortGroupComponent, resolveRenderParent } from "./SortGroupComponent.js";
 export type {
   SortGroupComponentOptions,
   SortGroupData,
