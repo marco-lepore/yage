@@ -27,8 +27,8 @@ import {
 import type {
   ChromePresenter,
   ChoicePresenter,
+  TextPresenter,
 } from "./chrome/DialogueUiAdapter.js";
-import type { TextPresenter } from "./render/DialogueTextView.js";
 import type { AvatarPresenter } from "./avatar/AvatarPresenter.js";
 import { KeyboardInputBinding, type InputBinding } from "./input/index.js";
 import {

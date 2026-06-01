@@ -20,7 +20,11 @@
 import { loadScript } from "./formats/canonical.js";
 import { IdentityI18n, type I18nAdapter } from "./i18n.js";
 import { parseMarkup, stripMarkup } from "./markup.js";
-import { DialogueRunner, evalCondition, type ResolvedChoice } from "./runner.js";
+import {
+  DialogueRunner,
+  evalCondition,
+  type ResolvedChoice,
+} from "./runner.js";
 import type {
   ChoiceStep,
   Command,
@@ -150,7 +154,10 @@ export interface DialogueSessionOptions {
    * A game command fired. Receives `ctx.mode` (play/skip). For a `blocking`
    * command, return a promise and the conversation waits for it to resolve.
    */
-  readonly onCommand?: (command: Command, ctx: CommandContext) => void | Promise<void>;
+  readonly onCommand?: (
+    command: Command,
+    ctx: CommandContext,
+  ) => void | Promise<void>;
   readonly onEnded?: (e: { scriptId: string }) => void;
 }
 
@@ -178,6 +185,10 @@ export class DialogueSession {
   /** True between an advance request and the runner stepping off the line —
    *  guards against a second advance double-firing `advance`-timed commands. */
   private advancing = false;
+  /** Bumped by every stop()/play(). A suspended async continuation from a prior
+   *  conversation captures this and bails on resume if it changed, so it can't
+   *  drive (advance / show the caret on) the runner of a *new* conversation. */
+  private generation = 0;
 
   constructor(
     private readonly channels: DialogueChannels,
@@ -194,7 +205,10 @@ export class DialogueSession {
   }
 
   /** Begin a conversation. `params` merges into the shared interpolation context. */
-  play(rawScript: DialogueScript, params?: Readonly<Record<string, unknown>>): void {
+  play(
+    rawScript: DialogueScript,
+    params?: Readonly<Record<string, unknown>>,
+  ): void {
     if (params) this.params = { ...this.params, ...params };
     // Abandon any in-flight conversation first. Besides clearing visuals, this
     // nulls the current runner so a still-pending async continuation (e.g. an
@@ -208,7 +222,8 @@ export class DialogueSession {
     this.scriptId = script.id;
     this.runner = new DialogueRunner(script, {
       onSay: (step, speaker) => this.handleSay(step, speaker),
-      onChoice: (step, choices, speaker) => this.handleChoice(step, choices, speaker),
+      onChoice: (step, choices, speaker) =>
+        this.handleChoice(step, choices, speaker),
       onCommand: (command, ctx) => this.handleCommand(command, ctx),
       onEnd: () => this.handleEnd(),
     });
@@ -227,6 +242,7 @@ export class DialogueSession {
   /** Abandon the current conversation and reset to idle (clears all visuals).
    *  Useful for ambient/eavesdrop dialogue that should stop when out of range. */
   stop(): void {
+    this.generation++;
     this.runner = undefined;
     this.mode = "idle";
     this.saying = undefined;
@@ -273,13 +289,17 @@ export class DialogueSession {
    *  `advancing` is held for the whole turn so a second advance can't re-fire
    *  the (possibly non-blocking) `advance` commands before the runner steps. */
   private async advanceLine(): Promise<void> {
+    const gen = this.generation;
     this.advancing = true;
     try {
       await this.fireLineCommands("advance");
-      if (this.mode !== "saying") return; // ended/skipped while awaiting
+      // Bail if stop()/play() swapped the conversation while we awaited — `mode`
+      // can be "saying" again for a *different* runner (e.g. an ambient loop
+      // restarting mid blocking-command), which would skip its first line.
+      if (gen !== this.generation || this.mode !== "saying") return;
       this.runner?.advance();
     } finally {
-      this.advancing = false;
+      if (gen === this.generation) this.advancing = false;
     }
   }
 
@@ -310,8 +330,12 @@ export class DialogueSession {
       const step = script.nodes[node]?.steps[i];
       if (!step) break;
       if (step.kind === "say") {
-        const speaker = step.speaker ? script.speakers?.[step.speaker] : undefined;
-        const name = speaker ? this.i18n.t(speaker.nameKey, speaker.name, this.params) : undefined;
+        const speaker = step.speaker
+          ? script.speakers?.[step.speaker]
+          : undefined;
+        const name = speaker
+          ? this.i18n.t(speaker.nameKey, speaker.name, this.params)
+          : undefined;
         out.push({
           ...(name !== undefined ? { speaker: name } : {}),
           text: stripMarkup(this.i18n.t(step.key, step.text, this.params)),
@@ -347,7 +371,8 @@ export class DialogueSession {
   selectAt(position: number): void {
     if (this.mode !== "choosing") return;
     const n = this.resolved.length;
-    if (n === 0 || position < 0 || position >= n || position === this.selected) return;
+    if (n === 0 || position < 0 || position >= n || position === this.selected)
+      return;
     this.selected = position;
     this.channels.choices.highlight(this.selected);
   }
@@ -357,7 +382,11 @@ export class DialogueSession {
     if (this.mode !== "choosing") return;
     const chosen = this.resolved[this.selected];
     if (!chosen) return;
-    const text = this.i18n.t(chosen.option.key, chosen.option.text, this.params);
+    const text = this.i18n.t(
+      chosen.option.key,
+      chosen.option.text,
+      this.params,
+    );
     this.opts.onChoiceMade?.({ index: chosen.index, text });
     this.runner?.choose(chosen.index);
   }
@@ -397,7 +426,10 @@ export class DialogueSession {
 
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
-    this.channels.chrome?.setNameplate(this.speakerName(speaker), speaker?.color);
+    this.channels.chrome?.setNameplate(
+      this.speakerName(speaker),
+      speaker?.color,
+    );
 
     this.channels.avatar?.setSpeaker(speaker);
     this.channels.avatar?.setExpression(step.expression);
@@ -446,7 +478,8 @@ export class DialogueSession {
     };
     // A self-contained presenter (e.g. a bubble panel) draws its own frame +
     // prompt; then we hide the chrome and don't type the prompt into the body.
-    const presenterOwnsPrompt = this.channels.choices.ownsPrompt?.(ctx) ?? false;
+    const presenterOwnsPrompt =
+      this.channels.choices.ownsPrompt?.(ctx) ?? false;
 
     this.channels.chrome?.setContinueVisible(false);
     if (presenterOwnsPrompt) {
@@ -454,7 +487,10 @@ export class DialogueSession {
       this.channels.text.clear();
     } else {
       // Always set (undefined when no speaker) so a stale nameplate doesn't linger.
-      this.channels.chrome?.setNameplate(this.speakerName(speaker), speaker?.color);
+      this.channels.chrome?.setNameplate(
+        this.speakerName(speaker),
+        speaker?.color,
+      );
       this.channels.chrome?.present?.(line);
       // Prompt (optional) types into the body region above the options.
       if (step.text) this.channels.text.present(line);
@@ -474,7 +510,10 @@ export class DialogueSession {
     this.opts.onChoiceShown?.({ options: labels });
   }
 
-  private handleCommand(command: Command, ctx: CommandContext): void | Promise<void> {
+  private handleCommand(
+    command: Command,
+    ctx: CommandContext,
+  ): void | Promise<void> {
     // `expression` is a built-in convenience: route it straight to the avatar
     // so scripts can change a face mid-line without the host wiring anything.
     if (command.type === "expression" && typeof command.value === "string") {
@@ -501,12 +540,16 @@ export class DialogueSession {
 
   private async handleRevealComplete(): Promise<void> {
     if (this.mode !== "saying") return;
+    const gen = this.generation;
     this.channels.avatar?.setSpeaking(false);
     // `afterReveal` commands run before the continue caret invites advancing.
     await this.fireLineCommands("afterReveal");
-    if (this.mode !== "saying") return; // ended/skipped while awaiting
+    // Bail if stop()/play() swapped the conversation while we awaited, else we'd
+    // show the continue caret on the new conversation's still-revealing line.
+    if (gen !== this.generation || this.mode !== "saying") return;
     this.channels.chrome?.setContinueVisible(true);
-    if (this.saying?.autoAdvanceMs !== undefined) this.autoTimer = this.saying.autoAdvanceMs;
+    if (this.saying?.autoAdvanceMs !== undefined)
+      this.autoTimer = this.saying.autoAdvanceMs;
   }
 
   /**
@@ -519,11 +562,14 @@ export class DialogueSession {
     if (!all || !this.runner) return;
     const batch = all.filter((c) => (c.at ?? "show") === at);
     if (batch.length === 0) return;
+    const gen = this.generation;
     if (batch.some((c) => c.blocking)) this.lineBlocked = true;
     try {
       await this.runner.runCommands(batch);
     } finally {
-      this.lineBlocked = false;
+      // Only clear the gate if still the same conversation, so a stop()/play()
+      // mid-await doesn't reset the new conversation's flag.
+      if (gen === this.generation) this.lineBlocked = false;
     }
   }
 
@@ -532,7 +578,9 @@ export class DialogueSession {
     return this.i18n.t(speaker.nameKey, speaker.name, this.params);
   }
 
-  private speakerView(speaker: SpeakerDef | undefined): SpeakerView | undefined {
+  private speakerView(
+    speaker: SpeakerDef | undefined,
+  ): SpeakerView | undefined {
     if (!speaker) return undefined;
     const name = this.speakerName(speaker);
     // Conditionally include optional keys (exactOptionalPropertyTypes).
