@@ -26,6 +26,12 @@
 - [debug](llms/packages/debug.md): Debug overlay, custom contributors, stats
 - [effects](llms/packages/effects.md): Visual-effect presets — bloom, outline, CRT, vignette, color grade, etc.
 
+## Addons
+
+Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independently versioned. Each addon's doc is sourced from its co-located `packages/addons/<name>/docs/llms/`.
+
+- [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, glossary terms, themeable presenters
+
 ## Optional
 
 - Testing: `createMockEntity`, `createTestEngine`, `advanceFrames` from `@yagejs/core/test-utils`

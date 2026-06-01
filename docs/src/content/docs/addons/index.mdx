@@ -1,0 +1,47 @@
+---
+title: Addons
+description: Installable, opinionated implementations of common gameplay patterns for YAGE
+---
+
+import { Aside, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+**Addons** are the layer between YAGE's engine plugins (`@yagejs/core`,
+`@yagejs/renderer`, …) and your game: installable, opinionated implementations of
+one cohesive gameplay pattern each — dialogue, inventory, combat — designed so
+their opinions stay overridable without forking.
+
+They live under the **`@yagejs-addons` npm scope** (a separate org from the
+engine's `@yagejs` scope) and are **independently versioned**, so an engine
+release never forces an addon bump and vice-versa.
+
+<Aside type="note">
+An addon is a *gameplay pattern*, not engine infrastructure. Many games ship
+zero dialogue or inventory — that's the editorial line between an addon and a
+mainline plugin like `@yagejs/renderer`.
+</Aside>
+
+## How an addon is layered
+
+Each addon separates concerns so each layer is opinionated at its own level and
+replaceable independently:
+
+- **Model** — headless logic + events. No renderer/pixi import, fully
+  unit-testable.
+- **Component** — a `@yagejs/core` Component the game spawns; bridges model
+  events to entity events. The host owns focus and pause.
+- **Presenters** — presentation behind capability-channel interfaces, with a
+  default presenter, reachable only via a `/presenters` subpath so the headless
+  path never pulls a renderer.
+
+This is what makes "logic installed, presentation swappable, copy-paste/eject
+for UI only" actually hold.
+
+## Available addons
+
+<CardGrid>
+  <LinkCard
+    title="Dialogue"
+    href="/addons/dialogue/"
+    description="Branching dialogue runner, typewriter box & speech bubbles, inline markup, glossary terms, and swappable themeable presenters."
+  />
+</CardGrid>

@@ -11,6 +11,7 @@
   "packageManager": "npm@10.8.2",
   "workspaces": [
     "packages/*",
+    "packages/addons/*",
     "examples",
     "e2e",
     "docs"

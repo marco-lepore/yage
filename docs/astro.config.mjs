@@ -149,6 +149,13 @@ export default defineConfig({
           ],
         },
         {
+          label: "Addons",
+          items: [
+            { label: "Overview", slug: "addons" },
+            { label: "Dialogue", slug: "addons/dialogue" },
+          ],
+        },
+        {
           label: "Reference",
           items: [
             { label: "Packages", slug: "getting-started/project-structure" },
