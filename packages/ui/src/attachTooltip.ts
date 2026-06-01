@@ -89,7 +89,10 @@ export function attachTooltip(
     if (hovering) handle.bringToFront();
   });
 
+  let disposed = false;
   return () => {
+    if (disposed) return;
+    disposed = true;
     unwatchHover();
     // Destroy the content first (frees its Yoga node + removes its display
     // object from the handle container), then release the now-empty slot.
