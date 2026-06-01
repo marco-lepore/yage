@@ -73,8 +73,8 @@
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.0.18",
-    "@yagejs/core": "^0.7.0",
-    "@yagejs/input": "^0.7.0",
-    "@yagejs/renderer": "^0.7.0"
+    "@yagejs/core": ">=0.7.0 <0.9.0",
+    "@yagejs/input": ">=0.7.0 <0.9.0",
+    "@yagejs/renderer": ">=0.7.0 <0.9.0"
   }
 }
