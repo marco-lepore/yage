@@ -144,6 +144,7 @@ export {
   sliceTextureFrames,
   spritesheet,
   texture,
+  uninstallBitmapFont,
   webFont,
 } from "./assets.js";
 export type {

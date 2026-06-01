@@ -8,6 +8,10 @@ import {
   variantFontName,
   type BitmapFontEmphasis,
 } from "./internal/bitmapFontVariants.js";
+import {
+  acquireBakedFamily,
+  releaseBakedFamily,
+} from "./internal/bitmapFontRegistry.js";
 import type {
   BitmapFontHandle,
   RendererAsset,
@@ -160,14 +164,50 @@ export function webFont(path: string, opts?: WebFontOptions): WebFontHandle {
 }
 
 /**
- * Bitmap fonts a single web-font load installed, keyed by the load path so the
- * `web-font` loader can `BitmapFont.uninstall` them on unload — which only
- * receives `(path, asset)`, never the handle's bake config. Holds the base
- * family plus every baked emphasis-variant name.
+ * Base family a web-font load baked a bitmap atlas for, keyed by the load path.
+ * The `web-font` loader's `unload(path, asset)` never sees the handle's bake
+ * config, so this recovers which baked family to release (the actual names to
+ * uninstall come from the ref-counted {@link releaseBakedFamily} ledger).
  *
  * @internal
  */
-const bakedWebFontFamilies = new Map<string, string[]>();
+const bakedWebFontFamilies = new Map<string, string>();
+
+/**
+ * Source `.ttf`/`.woff` path each {@link installBitmapFont} loaded, keyed by the
+ * registered font name, so {@link uninstallBitmapFont} — which only receives the
+ * name — can `Assets.unload` the face it loaded, symmetric with the install.
+ *
+ * @internal
+ */
+const installedBitmapFontSources = new Map<string, string>();
+
+/** Owner key a `webFont({ bitmap })` load holds its baked family under. */
+function webFontOwner(path: string): string {
+  return `web-font:${path}`;
+}
+
+/** Owner key an `installBitmapFont` call holds its baked family under. */
+function installOwner(name: string): string {
+  return `install:${name}`;
+}
+
+/**
+ * Release one owner's hold on the baked family `baseName`, performing the real
+ * Pixi teardown only when it was the last owner: `BitmapFont.uninstall` every
+ * atlas (base + variants) and drop the family's emphasis-variant registry so a
+ * later request no longer resolves a destroyed atlas. A no-op while another
+ * owner (a second `webFont` load, or an `installBitmapFont` sharing the family)
+ * still holds it.
+ *
+ * @internal
+ */
+function teardownBakedFamily(owner: string, baseName: string): void {
+  const names = releaseBakedFamily(owner, baseName);
+  if (!names) return;
+  for (const name of names) BitmapFont.uninstall(name);
+  unregisterBitmapFontVariants(baseName);
+}
 
 /**
  * Load a web font for the `web-font` asset loader, optionally baking a bitmap
@@ -197,7 +237,12 @@ export async function loadWebFont(
       );
     } else {
       const bake = meta.bitmap === true ? {} : meta.bitmap;
-      bakedWebFontFamilies.set(path, bakeBitmapFontFamily(family, family, bake));
+      const names = bakeBitmapFontFamily(family, family, bake);
+      bakedWebFontFamilies.set(path, family);
+      // Hold the baked family under this load's owner key so a teardown only
+      // fires once every owner (other loads, a same-family installBitmapFont)
+      // has released it.
+      acquireBakedFamily(webFontOwner(path), family, names);
     }
   }
 
@@ -205,29 +250,28 @@ export async function loadWebFont(
 }
 
 /**
- * Unload a web font for the `web-font` asset loader: drop the canvas face via
- * `Assets.unload` and `BitmapFont.uninstall` every atlas baked for it. The
- * core loader's `unload(path, asset)` never sees the handle's bake config, so
- * the baked family names are recovered from {@link bakedWebFontFamilies}.
+ * Unload a web font for the `web-font` asset loader: drop this load's canvas
+ * face via `Assets.unload` and release its hold on any baked bitmap family. The
+ * baked atlas is `BitmapFont.uninstall`ed only when no other owner still holds
+ * the family — see {@link teardownBakedFamily}. The core loader's
+ * `unload(path, asset)` never sees the handle's bake config, so the baked
+ * family is recovered from {@link bakedWebFontFamilies}.
  *
  * @internal
  */
 export function unloadWebFont(path: string): void {
   Assets.unload(path);
-  const names = bakedWebFontFamilies.get(path);
-  if (names) {
-    for (const name of names) BitmapFont.uninstall(name);
-    // The base name (first entry) is the family a `BitmapText` resolves
-    // variants under — drop its registry entries too so a request after
-    // unload no longer maps to a destroyed atlas.
-    if (names[0] !== undefined) unregisterBitmapFontVariants(names[0]);
+  const family = bakedWebFontFamilies.get(path);
+  if (family !== undefined) {
     bakedWebFontFamilies.delete(path);
+    teardownBakedFamily(webFontOwner(path), family);
   }
 }
 
 /** Drop the baked-web-font tracking — test isolation only. @internal */
 export function clearBakedWebFontFamilies(): void {
   bakedWebFontFamilies.clear();
+  installedBitmapFontSources.clear();
 }
 
 /** Options for {@link installBitmapFont}. */
@@ -321,7 +365,8 @@ export interface BitmapFontVariant {
 /**
  * Load a `.ttf`/`.woff` and bake a bitmap glyph atlas from it via Pixi v8's
  * `BitmapFont.install`. Returns the registered font name, ready to hand to
- * `style.fontFamily` (with `bitmap: true`) on `UIText` / `TextComponent`.
+ * `style.fontFamily` (with `bitmap: true`) on `UIText` / `TextComponent`. Pair
+ * with {@link uninstallBitmapFont} to free the atlas when it's no longer used.
  *
  * ```ts
  * const font = await installBitmapFont("fonts/PressStart2P.ttf", {
@@ -342,7 +387,7 @@ export async function installBitmapFont(
 
   await Assets.load({ src: path, data: { family } });
 
-  bakeBitmapFontFamily(opts.name, family, {
+  const names = bakeBitmapFontFamily(opts.name, family, {
     ...(opts.size !== undefined ? { size: opts.size } : {}),
     ...(opts.chars !== undefined ? { chars: opts.chars } : {}),
     ...(opts.resolution !== undefined ? { resolution: opts.resolution } : {}),
@@ -351,15 +396,47 @@ export async function installBitmapFont(
     ...(opts.variants !== undefined ? { variants: opts.variants } : {}),
   });
 
+  // Remember the source face so `uninstallBitmapFont` can drop it, and hold the
+  // baked family under a stable per-name owner key — re-installing the same
+  // name re-bakes but stays one owner (no leaked reference).
+  installedBitmapFontSources.set(opts.name, path);
+  acquireBakedFamily(installOwner(opts.name), opts.name, names);
+
   return opts.name;
+}
+
+/**
+ * Tear down a font installed by {@link installBitmapFont}: drop its source face
+ * and free the baked atlas (and every emphasis variant) plus its registry
+ * entries. The symmetric counterpart of `installBitmapFont` — without it an
+ * install-once font's atlas lives until the page unloads.
+ *
+ * Safe to interleave with a `webFont({ bitmap })` sharing the same family: the
+ * atlas is reference-counted, so it's only destroyed once the last owner (this
+ * install and any web-font load) has released it. A no-op for a name that was
+ * never installed.
+ *
+ * ```ts
+ * const font = await installBitmapFont("fonts/PressStart2P.ttf", { name: "PressStart" });
+ * // …later, when nothing renders with it anymore:
+ * uninstallBitmapFont(font);
+ * ```
+ */
+export function uninstallBitmapFont(name: string): void {
+  const path = installedBitmapFontSources.get(name);
+  if (path !== undefined) {
+    Assets.unload(path);
+    installedBitmapFontSources.delete(name);
+  }
+  teardownBakedFamily(installOwner(name), name);
 }
 
 /**
  * Bake the base atlas for `name` from an already-loaded `family` face, plus
  * any declared emphasis variants, registering each so a `BitmapText` resolves
- * the right sibling. Returns every installed font name (base first) so a
- * caller that owns the loaded face — the `web-font` loader — can uninstall the
- * whole set on unload.
+ * the right sibling. Returns every installed font name (base first) so the
+ * caller can hold the family in the reference-counted ledger
+ * ({@link acquireBakedFamily}) and uninstall the whole set on final release.
  *
  * Shared by {@link installBitmapFont} (one-shot `.ttf` bake) and the `web-font`
  * loader (declarative `webFont({ bitmap })`), so both bake an identical family.

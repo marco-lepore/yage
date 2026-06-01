@@ -120,6 +120,17 @@ Recolour at runtime with `mergeStyle({ fill })` so the `fontFamily` is
 preserved — a plain `setStyle({ fill })` replaces the style and drops
 the font.
 
+When a font is no longer rendered, free its atlas (and every variant)
+plus the source face with `uninstallBitmapFont(name)` — the symmetric
+counterpart of `installBitmapFont`. Baked bitmap fonts are
+reference-counted by family name, so a family shared by an
+`installBitmapFont` and a [`webFont({ bitmap })`](#one-font-both-canvas-and-bitmap-webfont-bitmap)
+(or by two web-font loads) is destroyed only once the **last** owner
+releases it — `uninstallBitmapFont` and web-font unload are safe to
+interleave. Pointing one family name at two *different* source fonts
+still collides in Pixi's global registry (the last bake wins), so keep
+family names unique.
+
 For a pre-built BMFont (`.fnt`/`.xml` + atlas), preload the
 `bitmapFont("fonts/x.fnt")` handle through a scene's `preload` and pass
 the `fontFamily` declared in the descriptor as `style.fontFamily`.
@@ -248,8 +259,11 @@ knobs as [`installBitmapFont`](#pixel-art-text-bitmap) minus
 `bitmap` **requires** an explicit `family`: the baked atlas needs a
 stable name to register under and to uninstall when the scene unloads, so
 the bake is skipped (with a console warning) when `family` is omitted.
-Unloading the web font tears down both the canvas face and every baked
-atlas.
+Unloading the web font drops its canvas face and releases its hold on the
+baked atlas, which is destroyed once every owner sharing the family has
+released it — so two scenes preloading the same `webFont`, or a `webFont`
+that shares a family with an `installBitmapFont`, never tear the atlas out
+from under each other.
 
 ## Engine-level default text style
 
