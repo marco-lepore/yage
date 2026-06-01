@@ -210,11 +210,11 @@ export class DialogueSession {
     params?: Readonly<Record<string, unknown>>,
   ): void {
     if (params) this.params = { ...this.params, ...params };
-    // Abandon any in-flight conversation first. Besides clearing visuals, this
-    // nulls the current runner so a still-pending async continuation (e.g. an
-    // `afterReveal`/`advance` command awaited from the previous line) resolves
-    // against `undefined` instead of stepping the new runner — important when
-    // `play()` restarts an ambient/eavesdrop loop while a line is mid-flight.
+    // Abandon any in-flight conversation first. `stop()` bumps the generation,
+    // so a still-pending async continuation from the previous line (e.g. an
+    // awaited `afterReveal`/`advance` command) bails on resume instead of
+    // stepping this new runner — important when `play()` restarts an
+    // ambient/eavesdrop loop while a line is mid-flight.
     this.stop();
 
     const script = loadScript(rawScript);

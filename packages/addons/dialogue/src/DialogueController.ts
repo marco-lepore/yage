@@ -147,6 +147,10 @@ export class DialogueController extends Component {
   }
 
   onDestroy(): void {
+    // Stop first: bumps the session generation so an in-flight blocking-command
+    // continuation bails instead of presenting onto presenters we're about to
+    // dispose; also clears visuals while they're still valid.
+    this.session?.stop();
     this.unsubPointer?.();
     this.unsubPointer = undefined;
     this.binding.dispose?.();
