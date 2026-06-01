@@ -29,7 +29,10 @@ export const DEFAULT_ACTIONS: DialogueActions = {
 };
 
 /** Keyboard actions with skip bound (the game maps `skip` → KeyX in main.ts). */
-export const FULL_ACTIONS: DialogueActions = { ...DEFAULT_ACTIONS, skip: ["skip"] };
+export const FULL_ACTIONS: DialogueActions = {
+  ...DEFAULT_ACTIONS,
+  skip: ["skip"],
+};
 
 export interface InputBinding {
   /** Wire a device to a session. Called by the host once both exist. */
@@ -60,13 +63,13 @@ export interface PointerChoiceTarget {
  *
  * The system only *emits* the term id (+ the screen position the activation
  * happened at, for tooltip placement); the game owns the id→definition mapping
- * and renders any tooltip itself. Coords are in `termSpace` ("screen" default;
- * a world bubble uses "world").
+ * and renders any tooltip itself. Coords are in `pointerSpace` ("screen"
+ * default; a world bubble uses "world").
  */
 export interface TermTarget {
   /** Term id under this point, or undefined. Omit for no term hit-testing. */
   termAtPoint?(x: number, y: number): string | undefined;
-  readonly termSpace?: "screen" | "world";
+  readonly pointerSpace?: "screen" | "world";
 }
 
 /** Fan a single session out to several device bindings (keyboard + pointer …). */
@@ -99,7 +102,8 @@ export class KeyboardInputBinding implements InputBinding {
     const { input, session } = this;
     if (!input || !session) return;
     session.setFastForward(this.held(this.actions.speed));
-    if (this.actions.skip && this.justPressed(this.actions.skip)) session.skip();
+    if (this.actions.skip && this.justPressed(this.actions.skip))
+      session.skip();
     if (this.justPressed(this.actions.advance)) session.advance();
     if (this.justPressed(this.actions.up)) session.moveSelection(-1);
     else if (this.justPressed(this.actions.down)) session.moveSelection(1);
@@ -123,9 +127,12 @@ export interface PointerInputBindingOptions {
    * Fired when a `[term=id]` span is hovered or tapped. The game owns the
    * id→definition mapping and renders any tooltip; the binding only reports the
    * id and the screen position the pointer was at (for tooltip placement).
-   * `screen` is the raw screen-space pointer position regardless of `termSpace`.
+   * `screen` is the raw screen-space pointer position regardless of `pointerSpace`.
    */
-  readonly onTermActivate?: (id: string, screen: { x: number; y: number }) => void;
+  readonly onTermActivate?: (
+    id: string,
+    screen: { x: number; y: number },
+  ) => void;
 }
 
 /**
@@ -157,7 +164,10 @@ export class PointerInputBinding implements InputBinding {
    * only) or an options bag with `choices` / `terms` / `onTermActivate`.
    */
   constructor(opts?: PointerChoiceTarget | PointerInputBindingOptions) {
-    if (opts && ("choices" in opts || "terms" in opts || "onTermActivate" in opts)) {
+    if (
+      opts &&
+      ("choices" in opts || "terms" in opts || "onTermActivate" in opts)
+    ) {
       const o = opts as PointerInputBindingOptions;
       this.choices = o.choices;
       this.terms = o.terms;
@@ -184,7 +194,7 @@ export class PointerInputBinding implements InputBinding {
 
   /** Pointer position in the term target's coordinate space. */
   private termPointer(): { x: number; y: number } {
-    return this.terms?.termSpace === "world"
+    return this.terms?.pointerSpace === "world"
       ? this.input!.getPointerPosition()
       : this.input!.getPointerScreenPosition();
   }
