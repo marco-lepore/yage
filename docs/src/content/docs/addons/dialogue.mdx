@@ -1,0 +1,329 @@
+---
+title: Dialogue
+description: Branching dialogue with a typewriter box or speech bubbles, inline markup, glossary terms, and swappable themeable presenters
+---
+
+import { Aside, Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+`@yagejs-addons/dialogue` is the first **YAGE addon**: an installable,
+opinionated dialogue system. A headless branching runner drives a swappable,
+themeable presentation layer, so you drop it into a scene, point it at a script,
+and get a working typewriter box (or speech bubble) with branching choices,
+inline markup, and glossary-term highlighting — then re-theme or replace any
+piece without forking.
+
+## Install
+
+```bash
+npm install @yagejs-addons/dialogue
+```
+
+The addon declares the engine packages as **peer dependencies**, so it reuses
+your single engine install rather than duplicating it. Install the engine
+yourself:
+
+```bash
+npm install @yagejs/core @yagejs/input @yagejs/renderer
+```
+
+- `@yagejs/core` and `@yagejs/input` are **required** peers — the headless runner
+  and the `DialogueController` use them.
+- `@yagejs/renderer` is the **optional** peer — only the `./presenters` subpath
+  needs it (and it brings `pixi.js` transitively). Consuming only the headless runner? Skip
+  them.
+
+## Two entry points
+
+The package is split so the headless path never pulls a renderer:
+
+```ts
+// Headless + input only — no pixi, fully unit-testable.
+import { DialogueRunner, DialogueController } from "@yagejs-addons/dialogue";
+
+// Pixi presentation — Graphics chrome + canvas text, themes, factories.
+import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+```
+
+| Entry          | Imports                          | Contains |
+| -------------- | -------------------------------- | -------- |
+| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical format, events, `DialogueController`, input bindings |
+| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultTheme()`, textured nine-slice variants, radial (experimental) |
+
+## Quick start
+
+The default presenters are **zero-asset**: Graphics objects for the box frame
+plus canvas `SplitText`/`Text` for the typewriter, with native bold/italic and
+per-glyph effects. `defaultTheme()` gives you a working look with no bundled
+files.
+
+<Steps>
+
+1. **Declare the dialogue layers on your scene.** They are screen-space and sit
+   above the in-scene UI so a conversation overlays everything.
+
+   ```ts
+   import { Scene } from "@yagejs/core";
+   import { DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
+
+   class TalkScene extends Scene {
+     readonly layers = [...DIALOGUE_LAYERS];
+     // ...
+   }
+   ```
+
+2. **Spawn a host entity and add the controller.** Spread a factory bundle into
+   `DialogueController` and override any one piece.
+
+   ```ts
+   import { DialogueController, DialogueEndedEvent } from "@yagejs-addons/dialogue";
+   import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+   onEnter() {
+     const host = this.spawn("dialogue");
+     const dlg = host.add(new DialogueController({ ...createBoxDialogue() }));
+     host.on(DialogueEndedEvent, () => host.destroy());
+     dlg.play(script);
+   }
+   ```
+
+3. **Author a script** (plain data — see below) and pass it to `play()`.
+
+</Steps>
+
+<Aside type="tip">
+`createBoxDialogue()` defaults its theme to `defaultTheme()`. Pass a theme to
+restyle: `createBoxDialogue(myTheme)`. For a diegetic look, use
+`createBubbleDialogue(theme?, { worldLayer })`; to mix both per line, use
+`createMixedDialogue(theme?, opts)`.
+</Aside>
+
+## Writing a script
+
+A `DialogueScript` is plain data (JSON-able), so you can author it inline, import
+it, or load it from disk. `loadScript()` validates and freezes it and throws a
+`DialogueScriptError` on a bad reference.
+
+```ts
+import type { DialogueScript } from "@yagejs-addons/dialogue";
+
+const script: DialogueScript = {
+  id: "intro",
+  start: "greeting",
+  vars: { metBefore: false },
+  speakers: {
+    gwen: { id: "gwen", name: "Gwen", color: 0xffd866 },
+  },
+  nodes: {
+    greeting: {
+      id: "greeting",
+      steps: [
+        { kind: "say", speaker: "gwen", text: "Hello, [b]traveler[/b]." },
+        {
+          kind: "choice",
+          text: "What do you say?",
+          options: [
+            { text: "Greet her back.", target: "friendly" },
+            {
+              text: "Walk off.",
+              once: true,
+              commands: [{ type: "set", var: "rude", value: true }],
+            },
+          ],
+        },
+      ],
+    },
+    friendly: {
+      id: "friendly",
+      steps: [{ kind: "say", text: "Safe travels." }, { kind: "end" }],
+    },
+  },
+};
+```
+
+### Step kinds
+
+| Kind      | Purpose |
+| --------- | ------- |
+| `say`     | A line spoken by an optional `speaker`. Supports markup, `speed`, `autoAdvanceMs`, `expression`, `commands`, `view`, `meta`, `voice`. |
+| `choice`  | A branch with `options` (each: `text`, `target?`, `condition?`, `once?`, `commands?`, `meta?`) and an optional prompt `text`. |
+| `command` | Fire commands without showing anything; optionally a conditional `goto` via `condition` + `target`. |
+| `goto`    | Unconditional jump to another node. |
+| `end`     | Ends the conversation. |
+
+A **condition** is a var key (truthy check), a comparison
+`{ var, op, value }` (`op` is one of `== != > >= < <= truthy falsy`), or — in
+TypeScript only — a `(vars) => boolean` predicate.
+
+## Inline markup
+
+Markup is a small BBCode-ish syntax that nests, inherits down the stack, and
+survives translation (translators keep the tags). Unknown tags are dropped
+silently.
+
+| Tag | Effect |
+| --- | ------ |
+| `[b]…[/b]` `[i]…[/i]` | bold / italic |
+| `[color=#ffcc00]…[/color]` / `[color=gold]…` | colour (hex or named) |
+| `[wave]` `[shake]` `[pulse]` `[rainbow]` | per-glyph animated effects |
+| `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
+| `[pause=400]` | zero-width reveal pause, in ms |
+| `[term=cauldron]…[/term]` (alias `[gloss]`) | a glossary term (highlight + hit-test) |
+| `\[` `\]` | a literal bracket |
+
+`parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
+
+## Commands — rules in, consequences out
+
+The runner owns exactly one built-in command: `set`, which writes a branching
+variable. **Every other command** is surfaced to your game — both via an
+`onCommand(command, ctx)` handler and as a `DialogueCommandEvent` — so *the game*
+decides what `give-item` or `play-sfx` actually mean.
+
+```ts
+host.add(new DialogueController({
+  ...createBoxDialogue(),
+  onCommand(command, ctx) {
+    if (command.type === "give-item") inventory.add(command.id as string);
+    // ctx.mode is "play" or "skip"
+  },
+}));
+```
+
+- A `say` line's commands fire by timing: `at: "show"` (default), `"afterReveal"`
+  (once typed), or `"advance"` (as the player leaves the line).
+- A command with `blocking: true` whose handler returns a promise **pauses** the
+  conversation until it resolves — for cinematic sequencing ("wait for the NPC to
+  walk off, then continue").
+- `{ type: "expression", value }` is a built-in convenience routed straight to
+  the avatar.
+
+## Lifecycle events
+
+The controller emits these from its host entity (they bubble entity → scene, so
+a scene can listen with `this.on(...)`):
+
+| Event | Payload |
+| ----- | ------- |
+| `DialogueStartedEvent` | `{ scriptId }` |
+| `DialogueLineEvent` | `{ speaker?, text }` (plain, markup-stripped — handy for a backlog/a11y) |
+| `DialogueChoiceShownEvent` | `{ options }` |
+| `DialogueChoiceMadeEvent` | `{ index, text }` |
+| `DialogueCommandEvent` | `{ command, mode }` |
+| `DialogueEndedEvent` | `{ scriptId }` |
+| `DialogueTermActivatedEvent` | `{ id, screen, kind }` |
+
+`DialogueController` is multi-instance friendly: several ambient conversations
+can run at once. *Which one is interactive* and *whether the world pauses* are
+your game's policy — there is no global singleton.
+
+## Presenters & channels
+
+The view splits into narrow **capability channels** — `TextChannel`,
+`ChoiceChannel`, `AvatarChannel`, `ChromeChannel` — so the typewriter, choice UI,
+portrait, and frame are each swappable and composable. Presenter adapters add the
+YAGE lifecycle (`mount`/`dispose`) and pointer hit-test seams.
+
+| Concern | Default (box) | Default (bubble) |
+| ------- | ------------- | ---------------- |
+| Chrome  | `DialogueChrome` | `BubbleChrome` |
+| Text    | `DialogueTextView` | `BubbleTextView` |
+| Choices | `ChoiceListPresenter` | `BubbleChoicePresenter` |
+
+`createMixedDialogue` composes both behind `CompositeChrome` /
+`CompositeTextPresenter` / `CompositeChoicePresenter`, routing each line and
+choice to box or bubble by its `view` hint.
+
+Avatars are decoupled too: `PortraitPresenter` (a sprite beside the box),
+`SceneFigurePresenter` (an NPC already in the world), or `NullAvatarPresenter`.
+A `DialogueActor` component on a world entity self-registers under a speaker id
+(via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
+speaker's head anchor.
+
+## Input
+
+The controller attaches a `KeyboardInputBinding` by default. Swap or compose it:
+
+```ts
+import { fullControls } from "@yagejs-addons/dialogue";
+
+new DialogueController({
+  ...createBoxDialogue(),
+  input: fullControls(/* choice presenter for pointer hit-testing */),
+});
+```
+
+- `KeyboardInputBinding` — advance / hold-to-fast-forward / choice nav / skip.
+- `PointerInputBinding(choiceTarget?)` — tap to advance; tap/hover choice rows.
+- `CompositeInputBinding` / `fullControls()` — both at once.
+- `DEFAULT_ACTIONS` / `FULL_ACTIONS` — action-map presets.
+
+An ambient (auto-advancing) conversation simply attaches no binding.
+
+## Glossary terms
+
+`[term=id]word[/term]` (alias `[gloss]`) spans are highlighted (theme
+`termColor`) and hit-tested. The controller wires pointer hover/tap to an
+`onTermActivate({ id, screen, kind })` callback **and** a
+`DialogueTermActivatedEvent`, mirroring the pointer-choice pattern.
+
+```ts
+new DialogueController({
+  ...createBoxDialogue(),
+  onTermActivate({ id, screen }) {
+    tooltip.show(glossary[id], screen); // the game owns the tooltip UI
+  },
+});
+```
+
+The addon only emits the term id (plus a screen position and `"hover" | "tap"`) —
+it ships no default tooltip.
+
+## Theming
+
+A `DialogueTheme` is one flat data object (geometry, colours, fonts, layers,
+reveal rate). `defaultTheme()` returns a fresh zero-asset instance each call, so
+spread-and-tweak is safe:
+
+```ts
+const theme = { ...defaultTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
+createBoxDialogue(theme);
+```
+
+<Tabs>
+  <TabItem label="Default (zero assets)">
+    Graphics chrome + canvas `SplitText`/`Text`, native bold/italic, per-glyph
+    effects. Set `fontFamily` to choose the canvas font. No bundled files.
+  </TabItem>
+  <TabItem label="Bitmap fonts (opt-in)">
+    Set `bitmapFont` (plus `bitmapFontBold` / `bitmapFontItalic` /
+    `bitmapFontBoldItalic`, baked via `bakeBitmapFont` variant atlases) for a
+    crisp pixel-font look. Not the default.
+  </TabItem>
+  <TabItem label="Textured nine-slice (opt-in)">
+    Provide `theme.textured = { frameTexture, insets, bubbleTexture?, bubbleInsets? }`.
+    The factories auto-pick `TexturedChrome` / `TexturedBubble`, drawing a
+    stretchable nine-slice frame from your texture (via `@yagejs/renderer`'s
+    `createNineSlice` primitive — no direct pixi or `@yagejs/ui` dependency). Textures are
+    referenced by `TextureInput` (string key or Texture) so themes stay
+    serializable.
+  </TabItem>
+</Tabs>
+
+## Experimental: radial choices
+
+A Mass-Effect-style choice wheel ships under `./presenters` as
+`RadialChoicePresenter`, marked **`@experimental`**. It proves the choice seam is
+swappable, but it is not part of any default factory bundle and is intentionally
+unpolished — its geometry and API may change. Opt in by constructing it yourself
+and passing it as the `choices` channel.
+
+## Save / load
+
+<Aside type="caution" title="Deferred to v1.1">
+Snapshot/restore is **not built yet**, and `@yagejs/save` is **not** a
+dependency. The runner keeps its cursor reachable through read-only getters —
+`getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()` — so a
+`SnapshotContributor` can be added later **without a breaking change**. When it
+lands, capture the whole cursor (`{ nodeId, stepIndex, vars, chosenOnce }`):
+omitting `chosenOnce` would silently resurrect spent `once` choices after a load.
+</Aside>

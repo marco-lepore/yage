@@ -15,6 +15,7 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
+    "@yagejs-addons/dialogue": "^0.1.0",
     "@yagejs/audio": "^0.7.0",
     "@yagejs/core": "^0.7.0",
     "@yagejs/debug": "^0.7.0",

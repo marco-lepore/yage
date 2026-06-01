@@ -1,0 +1,553 @@
+/**
+ * DialogueSession — the headless orchestrator. It binds a {@link DialogueRunner}
+ * to a set of presentation *channels* (text / choices / avatar / chrome) and
+ * sequences a conversation: resolve i18n + markup, drive the typewriter, gate on
+ * reveal-completion, run the auto-advance clock, and book-keep choice selection.
+ *
+ * It is engine-agnostic (zero `@yagejs` imports): the channels are semantic
+ * interfaces — `present(line)`, `highlight(i)`, `setSpeaking(bool)` — with no
+ * pixels, no input, and no world entities. A YAGE host (`DialogueController`)
+ * supplies concrete channels, an `InputBinding`, and pumps `update(dt)`; a
+ * headless test can supply stubs. The public API is input-agnostic
+ * (`advance / moveSelection / confirm / choose / setFastForward`) so any device
+ * binding maps onto it.
+ *
+ * Observation is via callbacks (`onLine`, `onChoiceMade`, `onCommand`, …) so a
+ * host can forward to engine events or a history recorder without the Session
+ * knowing about either.
+ */
+
+import { loadScript } from "./formats/canonical.js";
+import { IdentityI18n, type I18nAdapter } from "./i18n.js";
+import { parseMarkup, stripMarkup } from "./markup.js";
+import { DialogueRunner, evalCondition, type ResolvedChoice } from "./runner.js";
+import type {
+  ChoiceStep,
+  Command,
+  CommandContext,
+  CommandTiming,
+  DialogueScript,
+  ParsedText,
+  SayStep,
+  SpeakerDef,
+  VarMap,
+} from "./types.js";
+
+/** One previewed line: speaker name + plain (markup-stripped) text. */
+export interface PreviewedLine {
+  readonly speaker?: string;
+  readonly text: string;
+}
+
+/** Resolved speaker descriptor on a presented line (for nameplates / anchoring). */
+export interface SpeakerView {
+  readonly id: string;
+  readonly name?: string;
+  readonly color?: number;
+}
+
+/** A fully-resolved line (i18n + markup already applied) handed to presenters. */
+export interface PresentedLine {
+  /** Who's speaking (if anyone) — lets world presenters anchor to their actor. */
+  readonly speaker?: SpeakerView;
+  readonly text: ParsedText;
+  /** Per-line reveal-speed multiplier (`say.speed`, default 1). */
+  readonly speed: number;
+  /** Opaque preset name for per-line layout/variant (presenter interprets). */
+  readonly view?: string;
+  readonly meta?: Readonly<Record<string, unknown>>;
+  /** Voice-clip id (audio handler interprets; reveal may sync to it). */
+  readonly voice?: string;
+}
+
+/** One selectable choice, resolved to a display label. Position = array index. */
+export interface PresentedChoice {
+  readonly label: string;
+  readonly meta?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Body-text channel. Owns reveal timing (the Session only learns *that* a line
+ * finished, via `onRevealComplete`, never *when* a glyph appears). An
+ * accessibility / no-typewriter presenter is `present(){ draw(); onRevealComplete?.() }`.
+ */
+export interface TextChannel {
+  present(line: PresentedLine): void;
+  /** Reveal everything immediately (skip-to-end). */
+  completeReveal(): void;
+  isRevealComplete(): boolean;
+  isRevealing(): boolean;
+  /** Hold-to-fast-forward rate flag (1 = normal). */
+  setSpeedMultiplier(multiplier: number): void;
+  update(dt: number): void;
+  clear(): void;
+  onRevealComplete?: () => void;
+}
+
+/** Per-choice presentation context, so a choice list can route/anchor the same
+ *  way lines do (box list vs a bubble over `speaker`'s actor) and optionally
+ *  render the prompt itself. */
+export interface ChoiceContext {
+  readonly view?: string;
+  readonly speaker?: SpeakerView;
+  /** The (resolved + parsed) prompt, made available so a presenter can render
+   *  it itself (see {@link ChoiceChannel.ownsPrompt}). Empty when no prompt. */
+  readonly prompt?: ParsedText;
+}
+
+/** Choice channel. Selection nav lives in the Session; pointer/touch commits
+ *  come back through `onChoiceChosen(position)`. `context` carries the choice's
+ *  view/speaker/prompt so a composite presenter can route (box vs bubble). */
+export interface ChoiceChannel {
+  present(choices: readonly PresentedChoice[], context?: ChoiceContext): void;
+  highlight(position: number): void;
+  clear(): void;
+  onChoiceChosen?: (position: number) => void;
+  /**
+   * If true for this `context`, the presenter draws the prompt itself (e.g. a
+   * self-contained bubble panel), so the Session suppresses the chrome + body-
+   * text prompt. Default false → the chrome/text show the prompt (box body).
+   */
+  ownsPrompt?(context?: ChoiceContext): boolean;
+}
+
+/** Avatar channel — who's talking + their expression + talk state. */
+export interface AvatarChannel {
+  setSpeaker(speaker: SpeakerDef | undefined): void;
+  setExpression(expression: string | undefined): void;
+  setSpeaking(speaking: boolean): void;
+  update(dt: number): void;
+}
+
+/** Chrome channel — frame / nameplate / continue caret (everything but body
+ *  text and choices). `present?` lets a chrome react to per-line variants. */
+export interface ChromeChannel {
+  setNameplate(name: string | undefined, color?: number): void;
+  setContinueVisible(visible: boolean): void;
+  present?(line: PresentedLine | undefined): void;
+  update(dt: number): void;
+}
+
+export interface DialogueChannels {
+  readonly text: TextChannel;
+  readonly choices: ChoiceChannel;
+  readonly avatar?: AvatarChannel;
+  readonly chrome?: ChromeChannel;
+}
+
+export interface DialogueSessionOptions {
+  readonly i18n?: I18nAdapter;
+  /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
+  readonly params?: Readonly<Record<string, unknown>>;
+  /** Hold-to-fast-forward multiplier. Default 4. */
+  readonly skipMultiplier?: number;
+  readonly onStarted?: (e: { scriptId: string }) => void;
+  /** Plain (markup-stripped) line text — for logs / a11y / history. */
+  readonly onLine?: (e: { speaker?: string; text: string }) => void;
+  readonly onChoiceShown?: (e: { options: readonly string[] }) => void;
+  readonly onChoiceMade?: (e: { index: number; text: string }) => void;
+  /**
+   * A game command fired. Receives `ctx.mode` (play/skip). For a `blocking`
+   * command, return a promise and the conversation waits for it to resolve.
+   */
+  readonly onCommand?: (command: Command, ctx: CommandContext) => void | Promise<void>;
+  readonly onEnded?: (e: { scriptId: string }) => void;
+}
+
+type Mode = "idle" | "saying" | "choosing" | "ended";
+
+export class DialogueSession {
+  private readonly i18n: I18nAdapter;
+  private readonly skipMul: number;
+  private params: Readonly<Record<string, unknown>>;
+
+  // Fields use explicit `| undefined` (not `?`) so reassigning `undefined`
+  // (e.g. `stop()` nulling the cursor) is legal under the repo's
+  // `exactOptionalPropertyTypes`.
+  private runner: DialogueRunner | undefined;
+  private script: DialogueScript | undefined;
+  private mode: Mode = "idle";
+  private scriptId = "";
+
+  private saying: SayStep | undefined;
+  private autoTimer: number | undefined;
+  private resolved: readonly ResolvedChoice[] = [];
+  private selected = 0;
+  /** True while a blocking line-command (show/afterReveal/advance) is awaited. */
+  private lineBlocked = false;
+  /** True between an advance request and the runner stepping off the line —
+   *  guards against a second advance double-firing `advance`-timed commands. */
+  private advancing = false;
+
+  constructor(
+    private readonly channels: DialogueChannels,
+    private readonly opts: DialogueSessionOptions = {},
+  ) {
+    this.i18n = opts.i18n ?? new IdentityI18n();
+    this.skipMul = opts.skipMultiplier ?? 4;
+    this.params = opts.params ?? {};
+    this.channels.text.onRevealComplete = () => this.handleRevealComplete();
+    this.channels.choices.onChoiceChosen = (position) => {
+      this.selected = position;
+      this.confirm();
+    };
+  }
+
+  /** Begin a conversation. `params` merges into the shared interpolation context. */
+  play(rawScript: DialogueScript, params?: Readonly<Record<string, unknown>>): void {
+    if (params) this.params = { ...this.params, ...params };
+    // Abandon any in-flight conversation first. Besides clearing visuals, this
+    // nulls the current runner so a still-pending async continuation (e.g. an
+    // `afterReveal`/`advance` command awaited from the previous line) resolves
+    // against `undefined` instead of stepping the new runner — important when
+    // `play()` restarts an ambient/eavesdrop loop while a line is mid-flight.
+    this.stop();
+
+    const script = loadScript(rawScript);
+    this.script = script;
+    this.scriptId = script.id;
+    this.runner = new DialogueRunner(script, {
+      onSay: (step, speaker) => this.handleSay(step, speaker),
+      onChoice: (step, choices, speaker) => this.handleChoice(step, choices, speaker),
+      onCommand: (command, ctx) => this.handleCommand(command, ctx),
+      onEnd: () => this.handleEnd(),
+    });
+    this.opts.onStarted?.({ scriptId: this.scriptId });
+    this.runner.start();
+  }
+
+  isActive(): boolean {
+    return this.mode === "saying" || this.mode === "choosing";
+  }
+
+  isChoosing(): boolean {
+    return this.mode === "choosing";
+  }
+
+  /** Abandon the current conversation and reset to idle (clears all visuals).
+   *  Useful for ambient/eavesdrop dialogue that should stop when out of range. */
+  stop(): void {
+    this.runner = undefined;
+    this.mode = "idle";
+    this.saying = undefined;
+    this.resolved = [];
+    this.autoTimer = undefined;
+    this.lineBlocked = false;
+    this.advancing = false;
+    this.channels.text.clear();
+    this.channels.choices.clear();
+    this.channels.chrome?.setContinueVisible(false);
+    this.channels.chrome?.setNameplate(undefined);
+    this.channels.avatar?.setSpeaker(undefined);
+    this.channels.avatar?.setSpeaking(false);
+  }
+
+  update(dt: number): void {
+    this.channels.text.update(dt);
+    this.channels.chrome?.update(dt);
+    this.channels.avatar?.update(dt);
+    if (!this.runner || this.mode !== "saying") return;
+    if (this.autoTimer !== undefined && this.channels.text.isRevealComplete()) {
+      this.autoTimer -= dt;
+      if (this.autoTimer <= 0) {
+        this.autoTimer = undefined;
+        this.runner.advance();
+      }
+    }
+  }
+
+  // ── input-agnostic API ────────────────────────────────────────────────────
+
+  /** Primary action. Saying → reveal-all if typing, else next line. Choosing → confirm. */
+  advance(): void {
+    if (this.lineBlocked || this.advancing) return; // a line-command is in flight
+    if (this.mode === "saying") {
+      if (this.channels.text.isRevealing()) this.channels.text.completeReveal();
+      else void this.advanceLine();
+    } else if (this.mode === "choosing") {
+      this.confirm();
+    }
+  }
+
+  /** Fire any `advance`-timed line commands, then step the runner off the line.
+   *  `advancing` is held for the whole turn so a second advance can't re-fire
+   *  the (possibly non-blocking) `advance` commands before the runner steps. */
+  private async advanceLine(): Promise<void> {
+    this.advancing = true;
+    try {
+      await this.fireLineCommands("advance");
+      if (this.mode !== "saying") return; // ended/skipped while awaiting
+      this.runner?.advance();
+    } finally {
+      this.advancing = false;
+    }
+  }
+
+  /**
+   * Fast-forward the current section: run intervening commands (in skip mode)
+   * without presenting, stopping at the next choice or the end. No-op unless a
+   * line is showing.
+   */
+  skip(): void {
+    if (this.mode !== "saying" || this.lineBlocked || this.advancing) return;
+    void this.runner?.skip();
+  }
+
+  /**
+   * Side-effect-free lookahead: the lines a node would show along its linear
+   * path — following `goto` and conditional `command` jumps using the *current*
+   * variable snapshot — stopping at the first choice or the end. Runs no
+   * commands and mutates nothing. For a "skip with a summary" affordance.
+   */
+  preview(nodeId: string, limit = 64): PreviewedLine[] {
+    const script = this.script;
+    if (!script) return [];
+    const vars: Readonly<VarMap> = this.runner?.getVars() ?? {};
+    const out: PreviewedLine[] = [];
+    let node = nodeId;
+    let i = 0;
+    for (let guard = 0; guard < limit; guard++) {
+      const step = script.nodes[node]?.steps[i];
+      if (!step) break;
+      if (step.kind === "say") {
+        const speaker = step.speaker ? script.speakers?.[step.speaker] : undefined;
+        const name = speaker ? this.i18n.t(speaker.nameKey, speaker.name, this.params) : undefined;
+        out.push({
+          ...(name !== undefined ? { speaker: name } : {}),
+          text: stripMarkup(this.i18n.t(step.key, step.text, this.params)),
+        });
+        i++;
+      } else if (step.kind === "command") {
+        if (step.target !== undefined && testCondition(step.condition, vars)) {
+          node = step.target;
+          i = 0;
+        } else {
+          i++;
+        }
+      } else if (step.kind === "goto") {
+        node = step.target;
+        i = 0;
+      } else {
+        break; // choice or end — stop the linear preview
+      }
+    }
+    return out;
+  }
+
+  /** Move the choice cursor by `delta` (wraps). No-op outside a choice. */
+  moveSelection(delta: number): void {
+    if (this.mode !== "choosing") return;
+    const n = this.resolved.length;
+    if (n === 0) return;
+    this.selected = (this.selected + delta + n) % n;
+    this.channels.choices.highlight(this.selected);
+  }
+
+  /** Highlight a choice by absolute position (e.g. pointer hover). No wrap. */
+  selectAt(position: number): void {
+    if (this.mode !== "choosing") return;
+    const n = this.resolved.length;
+    if (n === 0 || position < 0 || position >= n || position === this.selected) return;
+    this.selected = position;
+    this.channels.choices.highlight(this.selected);
+  }
+
+  /** Commit the highlighted choice. */
+  confirm(): void {
+    if (this.mode !== "choosing") return;
+    const chosen = this.resolved[this.selected];
+    if (!chosen) return;
+    const text = this.i18n.t(chosen.option.key, chosen.option.text, this.params);
+    this.opts.onChoiceMade?.({ index: chosen.index, text });
+    this.runner?.choose(chosen.index);
+  }
+
+  /** Commit by original option index (e.g. a direct pointer hit). */
+  choose(optionIndex: number): void {
+    if (this.mode !== "choosing") return;
+    const pos = this.resolved.findIndex((c) => c.index === optionIndex);
+    if (pos < 0) return;
+    this.selected = pos;
+    this.confirm();
+  }
+
+  /** Toggle hold-to-fast-forward; the text channel scales its reveal rate. */
+  setFastForward(on: boolean): void {
+    this.channels.text.setSpeedMultiplier(on ? this.skipMul : 1);
+  }
+
+  // ── runner handlers ─────────────────────────────────────────────────────
+
+  private handleSay(step: SayStep, speaker: SpeakerDef | undefined): void {
+    this.mode = "saying";
+    this.saying = step;
+    this.autoTimer = undefined;
+    const resolved = this.i18n.t(step.key, step.text, this.params);
+    // Conditionally include the optional keys so we never assign `undefined`
+    // to a `?:`-optional property (exactOptionalPropertyTypes).
+    const sv = this.speakerView(speaker);
+    const line: PresentedLine = {
+      ...(sv ? { speaker: sv } : {}),
+      text: parseMarkup(resolved),
+      speed: step.speed ?? 1,
+      ...(step.view !== undefined ? { view: step.view } : {}),
+      ...(step.meta !== undefined ? { meta: step.meta } : {}),
+      ...(step.voice !== undefined ? { voice: step.voice } : {}),
+    };
+
+    this.channels.choices.clear();
+    this.channels.chrome?.setContinueVisible(false);
+    this.channels.chrome?.setNameplate(this.speakerName(speaker), speaker?.color);
+
+    this.channels.avatar?.setSpeaker(speaker);
+    this.channels.avatar?.setExpression(step.expression);
+    this.channels.avatar?.setSpeaking(true);
+
+    this.channels.chrome?.present?.(line);
+    this.channels.text.present(line);
+
+    const lineName = this.speakerName(speaker);
+    this.opts.onLine?.({
+      ...(lineName !== undefined ? { speaker: lineName } : {}),
+      text: stripMarkup(resolved),
+    });
+
+    // Line commands fire by timing (the runner leaves them to us in play mode).
+    void this.fireLineCommands("show");
+  }
+
+  private handleChoice(
+    step: ChoiceStep,
+    choices: readonly ResolvedChoice[],
+    speaker: SpeakerDef | undefined,
+  ): void {
+    this.mode = "choosing";
+    this.resolved = choices;
+    this.selected = 0;
+
+    // Treat the choice like a line so the chrome switches to the right variant
+    // (a composite box/bubble chrome otherwise leaves the previous speaker's
+    // bubble up behind a frameless choice list).
+    const sv = this.speakerView(speaker);
+    const line: PresentedLine = {
+      ...(sv ? { speaker: sv } : {}),
+      text: step.text
+        ? parseMarkup(this.i18n.t(step.key, step.text, this.params))
+        : { runs: [], pauses: [], length: 0 },
+      speed: 1,
+      ...(step.view !== undefined ? { view: step.view } : {}),
+      ...(step.meta !== undefined ? { meta: step.meta } : {}),
+    };
+
+    const ctx: ChoiceContext = {
+      ...(step.view !== undefined ? { view: step.view } : {}),
+      ...(line.speaker ? { speaker: line.speaker } : {}),
+      prompt: line.text,
+    };
+    // A self-contained presenter (e.g. a bubble panel) draws its own frame +
+    // prompt; then we hide the chrome and don't type the prompt into the body.
+    const presenterOwnsPrompt = this.channels.choices.ownsPrompt?.(ctx) ?? false;
+
+    this.channels.chrome?.setContinueVisible(false);
+    if (presenterOwnsPrompt) {
+      this.channels.chrome?.setNameplate(undefined); // composite → hide all chrome
+      this.channels.text.clear();
+    } else {
+      // Always set (undefined when no speaker) so a stale nameplate doesn't linger.
+      this.channels.chrome?.setNameplate(this.speakerName(speaker), speaker?.color);
+      this.channels.chrome?.present?.(line);
+      // Prompt (optional) types into the body region above the options.
+      if (step.text) this.channels.text.present(line);
+      else this.channels.text.clear();
+    }
+
+    const labels = choices.map((c) =>
+      stripMarkup(this.i18n.t(c.option.key, c.option.text, this.params)),
+    );
+    const presented: PresentedChoice[] = choices.map((c, i) => ({
+      label: labels[i]!,
+      // Conditionally include `meta` (exactOptionalPropertyTypes).
+      ...(c.option.meta !== undefined ? { meta: c.option.meta } : {}),
+    }));
+    this.channels.choices.present(presented, ctx);
+    this.channels.choices.highlight(0);
+    this.opts.onChoiceShown?.({ options: labels });
+  }
+
+  private handleCommand(command: Command, ctx: CommandContext): void | Promise<void> {
+    // `expression` is a built-in convenience: route it straight to the avatar
+    // so scripts can change a face mid-line without the host wiring anything.
+    if (command.type === "expression" && typeof command.value === "string") {
+      this.channels.avatar?.setExpression(command.value);
+      return;
+    }
+    // Returning the host's (possibly async) result lets blocking commands pause
+    // the runner until the game finishes handling them.
+    return this.opts.onCommand?.(command, ctx);
+  }
+
+  private handleEnd(): void {
+    this.mode = "ended";
+    this.saying = undefined;
+    this.resolved = [];
+    this.channels.text.clear();
+    this.channels.choices.clear();
+    this.channels.chrome?.setContinueVisible(false);
+    this.channels.chrome?.setNameplate(undefined);
+    this.channels.avatar?.setSpeaker(undefined);
+    this.channels.avatar?.setSpeaking(false);
+    this.opts.onEnded?.({ scriptId: this.scriptId });
+  }
+
+  private async handleRevealComplete(): Promise<void> {
+    if (this.mode !== "saying") return;
+    this.channels.avatar?.setSpeaking(false);
+    // `afterReveal` commands run before the continue caret invites advancing.
+    await this.fireLineCommands("afterReveal");
+    if (this.mode !== "saying") return; // ended/skipped while awaiting
+    this.channels.chrome?.setContinueVisible(true);
+    if (this.saying?.autoAdvanceMs !== undefined) this.autoTimer = this.saying.autoAdvanceMs;
+  }
+
+  /**
+   * Fire the current line's commands matching `at`, via the runner's command
+   * pipeline (so `set`/blocking behave identically). While a blocking one is
+   * awaited, `lineBlocked` gates input so the player can't advance through it.
+   */
+  private async fireLineCommands(at: CommandTiming): Promise<void> {
+    const all = this.saying?.commands;
+    if (!all || !this.runner) return;
+    const batch = all.filter((c) => (c.at ?? "show") === at);
+    if (batch.length === 0) return;
+    if (batch.some((c) => c.blocking)) this.lineBlocked = true;
+    try {
+      await this.runner.runCommands(batch);
+    } finally {
+      this.lineBlocked = false;
+    }
+  }
+
+  private speakerName(speaker: SpeakerDef | undefined): string | undefined {
+    if (!speaker) return undefined;
+    return this.i18n.t(speaker.nameKey, speaker.name, this.params);
+  }
+
+  private speakerView(speaker: SpeakerDef | undefined): SpeakerView | undefined {
+    if (!speaker) return undefined;
+    const name = this.speakerName(speaker);
+    // Conditionally include optional keys (exactOptionalPropertyTypes).
+    return {
+      id: speaker.id,
+      ...(name !== undefined ? { name } : {}),
+      ...(speaker.color !== undefined ? { color: speaker.color } : {}),
+    };
+  }
+}
+
+/** True when no condition, else the parsed condition holds for `vars`. */
+function testCondition(
+  condition: Parameters<typeof evalCondition>[0] | undefined,
+  vars: Readonly<VarMap>,
+): boolean {
+  return condition === undefined ? true : evalCondition(condition, vars);
+}

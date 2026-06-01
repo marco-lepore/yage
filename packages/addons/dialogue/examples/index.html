@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@yagejs-addons/dialogue — Box + Bubble demo</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #111;
+        color: #ccc;
+        font-family: system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.5rem;
+      }
+      h1 { font-size: 1.2rem; color: #eee; }
+      #game-container { width: 800px; max-width: 100%; aspect-ratio: 800 / 600; }
+      .controls { font-size: 0.85rem; color: #999; display: flex; gap: 1rem; flex-wrap: wrap; }
+      kbd {
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 1px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>@yagejs-addons/dialogue — box + bubble, zero assets</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span><kbd>Enter</kbd> / <kbd>Space</kbd> advance / confirm</span>
+      <span><kbd>↑</kbd> <kbd>↓</kbd> move choice</span>
+      <span><kbd>Click</kbd> choices / terms</span>
+    </div>
+    <script type="module">
+      import { start } from "./box-and-bubble.ts";
+      const el = document.getElementById("game-container");
+      start(el).catch(console.error);
+    </script>
+  </body>
+</html>

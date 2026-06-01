@@ -1,5 +1,11 @@
 import { AssetHandle } from "@yagejs/core";
-import { Assets, BitmapFont, Rectangle, Texture } from "pixi.js";
+import {
+  Assets,
+  BitmapFont,
+  NineSliceSprite,
+  Rectangle,
+  Texture,
+} from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import {
   emphasisKey,
@@ -197,7 +203,10 @@ export async function loadWebFont(
       );
     } else {
       const bake = meta.bitmap === true ? {} : meta.bitmap;
-      bakedWebFontFamilies.set(path, bakeBitmapFontFamily(family, family, bake));
+      bakedWebFontFamilies.set(
+        path,
+        bakeBitmapFontFamily(family, family, bake),
+      );
     }
   }
 
@@ -523,6 +532,48 @@ export function resolveTextureInput(input: TextureInput): TextureResource {
   return input;
 }
 
+/** Options for {@link createNineSlice}. Slice insets follow pixi's `NineSliceSprite`. */
+export interface NineSliceOptions {
+  /** Frame {@link TextureInput} — handle, asset key, or raw `Texture`. */
+  readonly texture: TextureInput;
+  /** Left slice-guide inset (source px). */
+  readonly leftWidth: number;
+  /** Top slice-guide inset (source px). */
+  readonly topHeight: number;
+  /** Right slice-guide inset (source px). */
+  readonly rightWidth: number;
+  /** Bottom slice-guide inset (source px). */
+  readonly bottomHeight: number;
+  /** Rendered width (px) the frame stretches to. */
+  readonly width: number;
+  /** Rendered height (px) the frame stretches to. */
+  readonly height: number;
+}
+
+/**
+ * Build a `NineSliceSprite` from an engine-resolved {@link TextureInput} — a
+ * stretchable textured frame whose corners stay crisp at any size. Returns the
+ * raw display object so callers can parent it into their own container, the
+ * same escape-hatch shape as {@link resolveTextureInput}. This is the renderer's
+ * nine-slice primitive: reach for it (not a direct `pixi.js` import) when
+ * building textured panels, dialogue/UI frames, or buttons.
+ *
+ * `width`/`height` are required: a nine-slice is stretched to a target size, and
+ * defaulting to the (possibly unloaded → 0×0) texture size would silently bake a
+ * degenerate frame.
+ */
+export function createNineSlice(options: NineSliceOptions): NineSliceSprite {
+  return new NineSliceSprite({
+    texture: resolveTextureInput(options.texture),
+    leftWidth: options.leftWidth,
+    topHeight: options.topHeight,
+    rightWidth: options.rightWidth,
+    bottomHeight: options.bottomHeight,
+    width: options.width,
+    height: options.height,
+  });
+}
+
 /** Slice a texture input into an array of frame textures. */
 export function sliceTextureFrames(
   input: TextureInput,
@@ -538,10 +589,7 @@ export function sliceTextureFrames(
 
   const computedColumns =
     options.columns ??
-    Math.max(
-      1,
-      Math.floor((base.width - startX + gapX) / (frameWidth + gapX)),
-    );
+    Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
   const count = options.count ?? computedColumns;
   const frames: TextureResource[] = [];
 

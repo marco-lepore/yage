@@ -39,6 +39,7 @@ export default defineConfig({
         "camera-lifecycle": resolve(__dirname, "camera-lifecycle.html"),
         "loading-scene": resolve(__dirname, "loading-scene.html"),
         platformer: resolve(__dirname, "platformer.html"),
+        "dialogue-addon": resolve(__dirname, "dialogue-addon.html"),
       },
     },
   },
