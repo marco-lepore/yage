@@ -220,12 +220,25 @@ export class DialogueSession {
     const script = loadScript(rawScript);
     this.script = script;
     this.scriptId = script.id;
+    // Stamp this runner's callbacks with the current generation. A later
+    // stop()/play() bumps it, so a *prior* runner resuming an async step (e.g.
+    // a blocking command awaited inside skip() or a command step) finds itself
+    // stale and no-ops instead of driving handleSay/handleChoice on — and so
+    // corrupting — the new conversation's session state.
+    const gen = this.generation;
+    const live = () => gen === this.generation;
     this.runner = new DialogueRunner(script, {
-      onSay: (step, speaker) => this.handleSay(step, speaker),
-      onChoice: (step, choices, speaker) =>
-        this.handleChoice(step, choices, speaker),
-      onCommand: (command, ctx) => this.handleCommand(command, ctx),
-      onEnd: () => this.handleEnd(),
+      onSay: (step, speaker) => {
+        if (live()) this.handleSay(step, speaker);
+      },
+      onChoice: (step, choices, speaker) => {
+        if (live()) this.handleChoice(step, choices, speaker);
+      },
+      onCommand: (command, ctx) =>
+        live() ? this.handleCommand(command, ctx) : undefined,
+      onEnd: () => {
+        if (live()) this.handleEnd();
+      },
     });
     this.opts.onStarted?.({ scriptId: this.scriptId });
     this.runner.start();
