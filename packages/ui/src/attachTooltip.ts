@@ -60,20 +60,23 @@ export interface TooltipHandle {
  *
  * **Activation is yours.** This builds the floating parts and returns a
  * {@link TooltipHandle}; nothing shows until you call `setActive`. The
- * `anchor` is used only for positioning — it is never wired for hover — so
- * the common hover trigger is a one-liner you own, and it composes with the
- * anchor's own `onHover` instead of replacing it:
+ * `anchor` is used only for positioning — `attachTooltip` never wires it for
+ * hover, so it can't clobber the anchor's handlers. The common trigger is a
+ * one-liner you own; note `update({ onHover })` *replaces* the anchor's
+ * `onHover` (a single slot), which is what you want when it has none — if it
+ * already has one, compose them yourself:
  *
  * ```ts
  * const tip = attachTooltip(anchor, scene, { content });
- * anchor.update({ onHover: tip.setActive }); // hover-driven (the usual case)
- * // …or compose: onHover: (h) => { highlight(h); tip.setActive(h); }
- * // …or any other source: focus, long-press, a timer, programmatic.
+ * anchor.update({ onHover: tip.setActive }); // anchor has no onHover of its own
+ * // already has one? compose: onHover: (h) => { existing(h); tip.setActive(h); }
+ * // …or drive from any other source: focus, long-press, a timer, programmatic.
  * ```
  *
  * Requires the scene to have a `FloatingOverlay` (registered by `UIPlugin`);
  * throws otherwise. Call `dispose()` to release the overlay slot. For custom
- * popovers/menus reach for `FloatingOverlayKey.acquire()` + `computePosition()`
+ * popovers/menus reach for
+ * `scene._resolveScoped(FloatingOverlayKey).acquire()` + `computePosition()`
  * directly.
  */
 export function attachTooltip(

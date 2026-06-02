@@ -313,14 +313,16 @@ anchorNode.update({ onHover: tip.setActive });
 
 `attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
 controller — it wires **no input itself**, so it can't clobber the anchor's
-handlers. Drive it however you like; hover is a one-liner you own
-(`anchor.update({ onHover: tip.setActive })`, `setActive(hovering)` lining up
-with the callback) that composes with the anchor's own `onHover` instead of
-replacing it — or use focus / long-press / a programmatic call. `anchor` is
-any UI primitive (`UIPanel._node` / `PanelNode`, `UIButton`, `UIImage`, …),
-read only for positioning. `content` is a factory (called once); **headless**
-— return a styled node for visuals, nothing is added for you. `setActive`
-stays a no-op after `dispose()`, so a lingering hover wiring is harmless.
+handlers. Drive it however you like; hover is a one-liner when the anchor does
+not already have an `onHover` (`anchor.update({ onHover: tip.setActive })`,
+`setActive(hovering)` lining up with the callback) — note `update({ onHover })`
+*replaces* that single slot. If the anchor already handles hover, compose
+explicitly (`onHover: (h) => { existing(h); tip.setActive(h); }`) — or use
+focus / long-press / a programmatic call. `anchor` is any UI primitive
+(`UIPanel._node` / `PanelNode`, `UIButton`, `UIImage`, …), read only for
+positioning. `content` is a factory (called once); **headless** — return a
+styled node for visuals, nothing is added for you. `setActive` stays a no-op
+after `dispose()`, so a lingering hover wiring is harmless.
 Requires the scene to have the `FloatingOverlay` (i.e. `UIPlugin` is
 registered); throws otherwise. The bubble flips to the opposite side and
 shifts along the cross axis to stay on-screen, and z-stacks above other floats

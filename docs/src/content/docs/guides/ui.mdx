@@ -263,11 +263,13 @@ tip.dispose();
 ```
 
 `attachTooltip` builds the floating parts and hands back a `{ setActive,
-dispose }` controller — it wires **no input of its own**. You decide what
-shows the tooltip: hover is the usual choice and a one-liner you own
-(`anchor.update({ onHover: tip.setActive })`), but it can equally be focus, a
-long-press, or a programmatic call. Because the wiring is yours, the tooltip
-**composes with** the anchor's own `onHover` instead of clobbering it. It's
+dispose }` controller — it wires **no input of its own**, so it can't clobber
+the anchor's handlers. You decide what shows the tooltip: hover is the usual
+choice and a one-liner when the anchor has no `onHover` of its own
+(`anchor.update({ onHover: tip.setActive })`) — note `update({ onHover })`
+**replaces** that single slot. If the anchor already handles hover, compose
+explicitly (`onHover: (h) => { existing(h); tip.setActive(h); }`); or drive it
+from focus, a long-press, or a programmatic call. It's
 **headless** like the React `<Tooltip>`: nothing is styled for you, so pass a
 `background` / `padding` on the content node. Own the returned `dispose()`
 (e.g. call it from a component's `onDestroy`) to free the slot; `setActive` is
