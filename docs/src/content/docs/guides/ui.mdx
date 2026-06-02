@@ -235,8 +235,9 @@ triggers like the `ScreenFollow` namecard above.
 ```ts
 import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
 
-// `trigger` is any UI primitive — here the namecard's PanelNode.
-const dispose = attachTooltip(panel._node, this.scene, {
+// `anchor` is any UI primitive — here the namecard's PanelNode. It's read
+// only for positioning; attachTooltip never wires hover onto it.
+const tip = attachTooltip(panel._node, this.scene, {
   placement: "top", // side, or side-align (e.g. "bottom-start"); default "top"
   offset: 8,        // px gap between trigger and bubble (default 6)
   maxWidth: 200,    // px; long content wraps + clamps to available space
@@ -253,20 +254,25 @@ const dispose = attachTooltip(panel._node, this.scene, {
   },
 });
 
-// When the trigger goes away, release the overlay slot + hover handler:
-dispose();
+// Activation is yours — wire it on hover (the common case). You own this
+// `onHover`, so it composes with any hover styling the panel already has:
+panel._node.update({ onHover: tip.setActive });
+
+// When the namecard goes away, release the overlay slot:
+tip.dispose();
 ```
 
-`attachTooltip` drives the tooltip from the trigger's hover — show on
-pointer-over, hide on pointer-out. It subscribes through the primitive's
-`watchHover(fn)` (an additive hover channel returning an unsubscribe), so the
-tooltip **composes with** the trigger's own `onHover` rather than replacing
-it — an element can carry its own hover styling and a tooltip at the same
-time. It's **headless** like the React `<Tooltip>`: nothing is styled for
-you, so pass a `background` / `padding` on the content node. Own the returned
-`dispose()` (e.g. call it from a component's `onDestroy`); it drops the
-tooltip's hover subscription (leaving any other hover handlers intact) and
-frees the overlay slot.
+`attachTooltip` builds the floating parts and hands back a `{ setActive,
+dispose }` controller — it wires **no input of its own**. You decide what
+shows the tooltip: hover is the usual choice and a one-liner you own
+(`anchor.update({ onHover: tip.setActive })`), but it can equally be focus, a
+long-press, or a programmatic call. Because the wiring is yours, the tooltip
+**composes with** the anchor's own `onHover` instead of clobbering it. It's
+**headless** like the React `<Tooltip>`: nothing is styled for you, so pass a
+`background` / `padding` on the content node. Own the returned `dispose()`
+(e.g. call it from a component's `onDestroy`) to free the slot; `setActive` is
+a safe no-op afterwards, so a lingering hover wiring won't touch a freed
+tooltip.
 
 For fully custom popovers / menus, drop to the primitives: acquire a slot
 with `scene._resolveScoped(FloatingOverlayKey).acquire()` for a

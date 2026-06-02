@@ -20,19 +20,11 @@ import type { PointerEventProps } from "./types.js";
  * destroys its container in `destroy()`, and Pixi's `EventEmitter` drops all
  * listeners then — matching how the primitives' own click/bg listeners are
  * already cleaned up.
- *
- * Hover has two tiers. The `onHover` prop is a single slot, swapped in place
- * by {@link set} — the declarative channel the element's *owner* drives
- * (props / the reconciler). {@link watchHover} is the *additive* channel:
- * each subscriber stacks and owns its own teardown, so an imperative add-on
- * (e.g. `attachTooltip`) reacts to hover without clobbering — or being
- * clobbered by — the owner's `onHover`. Both fan out together.
  */
 export class PointerEvents {
   private _onPointerOver: (() => void) | undefined;
   private _onPointerOut: (() => void) | undefined;
   private _onHover: ((hovering: boolean) => void) | undefined;
-  private readonly _hoverWatchers = new Set<(hovering: boolean) => void>();
   private readonly inert: () => boolean;
 
   constructor(
@@ -65,37 +57,15 @@ export class PointerEvents {
     if ("onHover" in props) this._onHover = props.onHover;
   }
 
-  /**
-   * Subscribe to hover *additively*, returning an unsubscribe. Distinct from
-   * the `onHover` prop slot (swapped in place by {@link set}): watchers stack
-   * and each owns its own teardown, so imperative add-ons can react to hover
-   * alongside the owner's `onHover` instead of overwriting it. Fires
-   * `true` on enter / `false` on leave, suppressed while `inert`. The
-   * primitives surface this as their own `watchHover()`; `attachTooltip`
-   * builds on it.
-   */
-  watchHover(fn: (hovering: boolean) => void): () => void {
-    this._hoverWatchers.add(fn);
-    return () => this._hoverWatchers.delete(fn);
-  }
-
   private readonly _handleOver = (): void => {
     if (this.inert()) return;
     this._onPointerOver?.();
     this._onHover?.(true);
-    this._emitWatchers(true);
   };
 
   private readonly _handleOut = (): void => {
     if (this.inert()) return;
     this._onPointerOut?.();
     this._onHover?.(false);
-    this._emitWatchers(false);
   };
-
-  private _emitWatchers(hovering: boolean): void {
-    if (this._hoverWatchers.size === 0) return;
-    // Snapshot: a watcher may unsubscribe (or subscribe) itself while running.
-    for (const fn of [...this._hoverWatchers]) fn(hovering);
-  }
 }

@@ -60,7 +60,7 @@ class TooltipScene extends Scene {
     );
     panel.text("Goblin", { fontSize: 11, fill: 0xffffff });
 
-    attachTooltip(panel._node, this, {
+    const tip = attachTooltip(panel._node, this, {
       placement: "top",
       offset: 8,
       maxWidth: 200,
@@ -79,12 +79,14 @@ class TooltipScene extends Scene {
         return card;
       },
     });
+    // attachTooltip wires no input itself — drive it from the trigger's hover.
+    panel._node.update({ onHover: tip.setActive });
 
     const overlay = this._resolveScoped(FloatingOverlayKey)!;
     const triggerContainer = panel._node.container;
 
-    // Probe for the spec. `show`/`hide` fire the Pixi pointer events
-    // `attachTooltip` listens to (via the trigger's PointerEvents) — no real
+    // Probe for the spec. `show`/`hide` fire the trigger's Pixi pointer
+    // events, which run the `onHover` wired above to `tip.setActive` — no real
     // cursor needed. `probe()` reports the bubble + trigger boxes in the
     // overlay's own coordinate space so the spec can assert the gap.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

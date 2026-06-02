@@ -108,4 +108,4 @@ export type {
   ComputePositionResult,
 } from "./positioning.js";
 export { attachTooltip } from "./attachTooltip.js";
-export type { AttachTooltipOptions, TooltipTrigger } from "./attachTooltip.js";
+export type { AttachTooltipOptions, TooltipHandle } from "./attachTooltip.js";

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock pixi.js Container so `FloatingOverlay.acquire()` (and `attachTooltip`)
 // run without a real renderer. `toLocal` returns the point unchanged — the
-// trigger sits at the overlay origin — so positioning is the pure
+// anchor sits at the overlay origin — so positioning is the pure
 // `computePosition` output for the reported reference rect.
 const { mocks } = vi.hoisted(() => {
   class MockContainer {
@@ -56,7 +56,6 @@ vi.mock("pixi.js", () => ({ Container: mocks.MockContainer }));
 
 import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
 import { attachTooltip } from "./attachTooltip.js";
-import type { TooltipTrigger } from "./attachTooltip.js";
 import type { UIElement } from "./types.js";
 
 // A UIElement standing in for the laid-out tooltip content. Its yoga node
@@ -90,18 +89,12 @@ function makeContent(width = 80, height = 24): UIElement {
   } as unknown as UIElement;
 }
 
-// A trigger that fans hover out to its own `onHover` (optional) plus any
-// additive `watchHover` subscribers — mirroring the real PointerEvents
-// two-tier model. `ownHover` lets a test assert the trigger's own handler
-// survives a tooltip attach/dispose (the clobber regression). `watcherCount`
-// asserts the tooltip's subscription is added on attach and dropped on
-// dispose, without it ever owning the trigger's `onHover` slot.
-function makeTrigger(ownHover?: (h: boolean) => void): TooltipTrigger & {
-  hover(h: boolean): void;
-  watcherCount(): number;
-} {
+// A pure-geometry anchor: reports a fixed on-screen rect and counts any
+// `update()` calls — so a test can prove `attachTooltip` only reads the
+// anchor's geometry and never wires hover (or anything else) onto it.
+function makeAnchor(): UIElement & { readonly updateCalls: number } {
   const displayObject = new mocks.MockContainer() as unknown as UIElement["displayObject"];
-  const watchers = new Set<(h: boolean) => void>();
+  let updateCalls = 0;
   return {
     displayObject,
     yogaNode: {
@@ -109,22 +102,14 @@ function makeTrigger(ownHover?: (h: boolean) => void): TooltipTrigger & {
       getComputedHeight: () => 40,
     } as unknown as UIElement["yogaNode"],
     visible: true,
-    watchHover(fn: (h: boolean) => void): () => void {
-      watchers.add(fn);
-      return () => watchers.delete(fn);
+    update: () => {
+      updateCalls += 1;
     },
     destroy: () => undefined,
-    hover(h: boolean) {
-      ownHover?.(h);
-      for (const fn of [...watchers]) fn(h);
+    get updateCalls() {
+      return updateCalls;
     },
-    watcherCount() {
-      return watchers.size;
-    },
-  } as TooltipTrigger & {
-    hover(h: boolean): void;
-    watcherCount(): number;
-  };
+  } as unknown as UIElement & { readonly updateCalls: number };
 }
 
 // A scene-like object exposing only `_resolveScoped`, returning a real
@@ -157,90 +142,78 @@ describe("attachTooltip", () => {
     overlay = new FloatingOverlay();
   });
 
-  it("hover shows + positions the bubble; pointer-out hides it", () => {
+  it("setActive shows + positions the bubble; setActive(false) hides it", () => {
     const { scene } = makeScene(overlay);
-    const trigger = makeTrigger();
+    const anchor = makeAnchor();
     const content = makeContent(80, 24);
 
-    attachTooltip(trigger, scene, {
+    const tip = attachTooltip(anchor, scene, {
       content: () => content,
       placement: "bottom",
       offset: 6,
     });
 
-    // Not hovered → tick keeps it hidden.
+    // Inert until driven → a tick keeps it hidden (but parented eagerly).
     overlay.update(VIEWPORT);
-    expect(content.displayObject.parent).not.toBeNull(); // parented eagerly
-
-    // Hover → active; next overlay tick positions + shows it.
-    trigger.hover(true);
-    overlay.update(VIEWPORT);
-
+    expect(content.displayObject.parent).not.toBeNull();
     const bubble = content.displayObject.parent!;
+    expect(bubble.visible).toBe(false);
+
+    // setActive(true) → next overlay tick positions + shows it.
+    tip.setActive(true);
+    overlay.update(VIEWPORT);
     expect(bubble.visible).toBe(true);
     // bottom placement: y = ref.y(0) + ref.h(40) + offset(6) = 46.
     expect(bubble.position.y).toBe(46);
 
-    // Pointer-out → hidden on the next tick.
-    trigger.hover(false);
+    // setActive(false) → hidden on the next tick.
+    tip.setActive(false);
     overlay.update(VIEWPORT);
     expect(bubble.visible).toBe(false);
   });
 
-  it("dispose detaches hover + releases the overlay slot", () => {
+  it("wires no input on the anchor — activation is the caller's", () => {
     const { scene } = makeScene(overlay);
-    const trigger = makeTrigger();
+    const anchor = makeAnchor();
+
+    attachTooltip(anchor, scene, { content: () => makeContent() });
+
+    // The decouple guarantee: `attachTooltip` only reads the anchor's
+    // geometry — it never calls `update()` / wires `onHover` — so it cannot
+    // clobber the anchor's own handlers. Composition is the caller's
+    // explicit `anchor.update({ onHover: tip.setActive })`.
+    expect(anchor.updateCalls).toBe(0);
+  });
+
+  it("dispose releases the overlay slot and is safe to over-drive", () => {
+    const { scene } = makeScene(overlay);
+    const anchor = makeAnchor();
     const content = makeContent();
 
-    const dispose = attachTooltip(trigger, scene, { content: () => content });
-    expect(trigger.watcherCount()).toBe(1);
+    const tip = attachTooltip(anchor, scene, { content: () => content });
     const bubble = content.displayObject.parent!;
 
-    dispose();
+    tip.dispose();
 
-    expect(trigger.watcherCount()).toBe(0);
     // Slot released → its container destroyed and no longer ticked.
     expect((bubble as unknown as { destroyed: boolean }).destroyed).toBe(true);
-    // A post-dispose hover does nothing (subscription dropped).
-    trigger.hover(true);
+    // A stale `onHover: tip.setActive` wiring can outlive the tooltip; the
+    // guard makes post-dispose activation a no-op (never touches the freed
+    // slot) and dispose() idempotent.
+    expect(() => {
+      tip.setActive(true);
+      tip.setActive(false);
+      tip.dispose();
+    }).not.toThrow();
     overlay.update(VIEWPORT);
     expect(bubble.visible).toBe(false);
-  });
-
-  it("composes with — does not clobber — the trigger's own onHover", () => {
-    const { scene } = makeScene(overlay);
-    const own = vi.fn();
-    const trigger = makeTrigger(own);
-    const content = makeContent();
-
-    const dispose = attachTooltip(trigger, scene, { content: () => content });
-    const bubble = content.displayObject.parent!;
-
-    // Hover drives BOTH the trigger's own handler and the tooltip.
-    trigger.hover(true);
-    overlay.update(VIEWPORT);
-    expect(own).toHaveBeenLastCalledWith(true);
-    expect(bubble.visible).toBe(true);
-
-    trigger.hover(false);
-    overlay.update(VIEWPORT);
-    expect(own).toHaveBeenLastCalledWith(false);
-    expect(bubble.visible).toBe(false);
-
-    // Dispose drops only the tooltip's subscription — the own handler lives on.
-    dispose();
-    own.mockClear();
-    trigger.hover(true);
-    overlay.update(VIEWPORT);
-    expect(own).toHaveBeenCalledWith(true); // still firing
-    expect(bubble.visible).toBe(false); // tooltip gone
   });
 
   it("throws when the scene has no FloatingOverlay", () => {
     const { scene } = makeScene(undefined);
-    const trigger = makeTrigger();
+    const anchor = makeAnchor();
     expect(() =>
-      attachTooltip(trigger, scene, { content: () => makeContent() }),
+      attachTooltip(anchor, scene, { content: () => makeContent() }),
     ).toThrow(/FloatingOverlay/);
   });
 });

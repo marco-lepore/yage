@@ -266,12 +266,6 @@ fallback), so wiring is a fan-out. The shared `PointerEvents` helper (also
 exported) binds one listener pair and swaps callbacks in place on
 `update()`; `UIButton` suppresses callbacks while disabled.
 
-Each primitive also exposes `watchHover(fn): () => void` — an **additive**
-hover subscription that stacks alongside the `onHover` prop instead of
-replacing it, returning an unsubscribe. This is the channel imperative
-add-ons (e.g. `attachTooltip`) build on, so they react to hover without
-clobbering — or being clobbered by — the element's own `onHover`.
-
 ```ts
 new UIButton({ children: "Save", onHover: (h) => setGlow(h) });
 panel.panel({ onPointerOver: showDetail, onPointerOut: hideDetail });
@@ -297,7 +291,7 @@ is required** — this works in a pure imperative scene.
 ```ts
 import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
 
-const dispose = attachTooltip(triggerNode, scene, {
+const tip = attachTooltip(anchorNode, scene, {
   content: () => {
     const card = new PanelNode({
       padding: 6,
@@ -312,18 +306,25 @@ const dispose = attachTooltip(triggerNode, scene, {
   offset: 8,        // px gap between trigger and bubble (default 6)
   maxWidth: 200,    // px; content wraps + clamps to available space
 });
-// later: dispose();  // drops the tooltip's hover sub + releases the slot
+// Activation is yours — wire it on hover (the usual case):
+anchorNode.update({ onHover: tip.setActive });
+// later: tip.dispose();  // releases the overlay slot
 ```
 
-`trigger` is any UI primitive (`UIPanel._node` / `PanelNode`, `UIButton`,
-`UIImage`, …) — `attachTooltip` subscribes via its `watchHover` (the additive
-hover channel) to show / hide the bubble, so the tooltip composes with, never
-overwrites, the trigger's own `onHover`. `content` is a factory (called
-once); **headless** — return a styled node for visuals, nothing is added for
-you. Requires the scene to have the
-`FloatingOverlay` (i.e. `UIPlugin` is registered); throws otherwise. The
-bubble flips to the opposite side and shifts along the cross axis to stay
-on-screen, and z-stacks above other floats on each (re)open.
+`attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
+controller — it wires **no input itself**, so it can't clobber the anchor's
+handlers. Drive it however you like; hover is a one-liner you own
+(`anchor.update({ onHover: tip.setActive })`, `setActive(hovering)` lining up
+with the callback) that composes with the anchor's own `onHover` instead of
+replacing it — or use focus / long-press / a programmatic call. `anchor` is
+any UI primitive (`UIPanel._node` / `PanelNode`, `UIButton`, `UIImage`, …),
+read only for positioning. `content` is a factory (called once); **headless**
+— return a styled node for visuals, nothing is added for you. `setActive`
+stays a no-op after `dispose()`, so a lingering hover wiring is harmless.
+Requires the scene to have the `FloatingOverlay` (i.e. `UIPlugin` is
+registered); throws otherwise. The bubble flips to the opposite side and
+shifts along the cross axis to stay on-screen, and z-stacks above other floats
+on each (re)open.
 
 ### Escape hatches
 

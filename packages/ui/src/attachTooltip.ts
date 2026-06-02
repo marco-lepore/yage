@@ -21,7 +21,7 @@ export interface AttachTooltipOptions {
    * and shifts along the cross axis to stay on-screen.
    */
   placement?: Placement;
-  /** Gap in px between the trigger and the bubble. Default `6`. */
+  /** Gap in px between the anchor and the bubble. Default `6`. */
   offset?: number;
   /**
    * Cap the bubble width (px). Long content wraps instead of running off
@@ -32,39 +32,55 @@ export interface AttachTooltipOptions {
 }
 
 /**
- * A trigger element the tooltip anchors to. Any UI primitive
- * (`UIPanel`/`PanelNode`, `UIButton`, `UIImage`, …) qualifies — they all
- * expose `watchHover()` and participate in Yoga layout.
- *
- * The tooltip subscribes via `watchHover` (the *additive* hover channel), so
- * it composes with — never overwrites — the trigger's own `onHover` prop.
- * An element can carry its own hover styling and a tooltip at once.
+ * Controller returned by {@link attachTooltip}. The tooltip is **inert until
+ * you drive it**: `attachTooltip` wires no input of its own, so it can't
+ * clobber the anchor's handlers and you stay free to trigger on whatever you
+ * like — hover, focus, long-press, or programmatically.
  */
-export interface TooltipTrigger extends UIElement {
-  watchHover(fn: (hovering: boolean) => void): () => void;
+export interface TooltipHandle {
+  /**
+   * Show (`true`) or hide (`false`) the bubble. The signature lines up 1:1
+   * with an `onHover(hovering)` callback, so the common hover wiring is just
+   * `anchor.update({ onHover: tip.setActive })`.
+   */
+  setActive(active: boolean): void;
+  /** Destroy the content node and release the overlay slot. */
+  dispose(): void;
 }
 
 /**
  * Imperative, headless tooltip for the non-React `@yagejs/ui` layer.
  *
- * Anchors a floating bubble to `trigger` via the scene's top-most overlay
+ * Anchors a floating bubble to `anchor` via the scene's top-most overlay
  * (the same surface `<Tooltip>` uses): it draws above all other UI, escapes
  * any clip, flips/shifts to stay on-screen, and caps to `maxWidth`.
- * World-space / camera-transformed triggers (e.g. a `ScreenFollow` namecard)
- * anchor correctly. Hover-driven: shows on pointer-over, hides on
- * pointer-out.
+ * World-space / camera-transformed anchors (e.g. a `ScreenFollow` namecard)
+ * track correctly — the overlay re-anchors every frame against `anchor`'s
+ * live geometry.
  *
- * Requires the trigger's scene to have a `FloatingOverlay` (registered by
- * `UIPlugin`). Returns a `dispose()` that drops the tooltip's hover
- * subscription (leaving any other hover handlers on the trigger intact) and
- * releases the overlay slot. For custom popovers/menus reach for
- * `FloatingOverlayKey.acquire()` + `computePosition()` directly.
+ * **Activation is yours.** This builds the floating parts and returns a
+ * {@link TooltipHandle}; nothing shows until you call `setActive`. The
+ * `anchor` is used only for positioning — it is never wired for hover — so
+ * the common hover trigger is a one-liner you own, and it composes with the
+ * anchor's own `onHover` instead of replacing it:
+ *
+ * ```ts
+ * const tip = attachTooltip(anchor, scene, { content });
+ * anchor.update({ onHover: tip.setActive }); // hover-driven (the usual case)
+ * // …or compose: onHover: (h) => { highlight(h); tip.setActive(h); }
+ * // …or any other source: focus, long-press, a timer, programmatic.
+ * ```
+ *
+ * Requires the scene to have a `FloatingOverlay` (registered by `UIPlugin`);
+ * throws otherwise. Call `dispose()` to release the overlay slot. For custom
+ * popovers/menus reach for `FloatingOverlayKey.acquire()` + `computePosition()`
+ * directly.
  */
 export function attachTooltip(
-  trigger: TooltipTrigger,
+  anchor: UIElement,
   scene: Scene,
   opts: AttachTooltipOptions,
-): () => void {
+): TooltipHandle {
   const overlay = scene._resolveScoped(FloatingOverlayKey);
   if (!(overlay instanceof FloatingOverlay)) {
     throw new Error(
@@ -76,7 +92,7 @@ export function attachTooltip(
   const content = opts.content();
   const handle = overlay.acquire();
   handle.container.addChild(content.displayObject);
-  handle.setReference(() => trigger);
+  handle.setReference(() => anchor);
   handle.setConfig({
     placement: opts.placement,
     offset: opts.offset ?? 6,
@@ -84,19 +100,24 @@ export function attachTooltip(
   });
   handle.setLayout((mw) => layoutFloat([content], mw));
 
-  const unwatchHover = trigger.watchHover((hovering) => {
-    handle.setActive(hovering);
-    if (hovering) handle.bringToFront();
-  });
-
+  // The caller owns the activation wiring (e.g. `onHover: tip.setActive`),
+  // which may outlive this tooltip — so `setActive` must stay safe to call
+  // after `dispose()` has released the slot. The guard makes post-dispose
+  // activation a no-op and `dispose()` idempotent.
   let disposed = false;
-  return () => {
-    if (disposed) return;
-    disposed = true;
-    unwatchHover();
-    // Destroy the content first (frees its Yoga node + removes its display
-    // object from the handle container), then release the now-empty slot.
-    content.destroy();
-    handle.release();
+  return {
+    setActive(active: boolean): void {
+      if (disposed) return;
+      handle.setActive(active);
+      if (active) handle.bringToFront();
+    },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      // Destroy the content first (frees its Yoga node + removes its display
+      // object from the handle container), then release the now-empty slot.
+      content.destroy();
+      handle.release();
+    },
   };
 }
