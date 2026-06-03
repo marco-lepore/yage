@@ -52,13 +52,20 @@ const { mocks } = vi.hoisted(() => {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
-    getBounds(): { x: number; y: number; width: number; height: number } {
+    getLocalBounds(): { x: number; y: number; width: number; height: number } {
       return { ...this.boundsBox };
     }
 
-    toLocal(p: { x: number; y: number }): { x: number; y: number } {
-      return { x: p.x, y: p.y };
-    }
+    updateLocalTransform(): void {}
+
+    // Identity local transform → world bounds equal the local box, so the facet
+    // assertions below read straight through. renderFacet.test.ts covers the
+    // non-identity (zoom / rotation) mapping math against a real Pixi Matrix.
+    localTransform = {
+      apply(p: { x: number; y: number }): { x: number; y: number } {
+        return { x: p.x, y: p.y };
+      },
+    };
 
     destroy(): void {
       this.destroyed = true;
@@ -202,7 +209,7 @@ describe("SpriteComponent", () => {
   });
 
   describe("inspectRender", () => {
-    it("reports world-space bounds and resolved visibility", () => {
+    it("reports world-space bounds and local visibility", () => {
       const { scene } = createRendererTestContext();
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
@@ -228,7 +235,11 @@ describe("SpriteComponent", () => {
       sprite.boundsBox = { x: 0, y: 0, width: 10, height: 10 };
       comp.sprite.visible = false;
 
-      expect(comp.inspectRender().visible).toBe(false);
+      const facet = comp.inspectRender();
+      expect(facet.visible).toBe(false);
+      // Geometry-truthful: a hidden-but-sized object still reports its real box;
+      // `bounds: null` is reserved for genuinely empty geometry.
+      expect(facet.bounds).toEqual({ x: 0, y: 0, width: 10, height: 10 });
     });
 
     it("returns null bounds for a zero-area display object", () => {

@@ -11,20 +11,32 @@ import type { Container } from "pixi.js";
  * coordinate space the Inspector reports for `entity.transform` (pixels,
  * before the camera and the responsive `fit` transform are applied). In the
  * YAGE render tree the camera transform lives on the *layer container*
- * (`DisplaySystem` writes `layer.container.position/scale/rotation`), while the
- * display object's own position is set straight from `transform.worldPosition`.
- * So the display object's parent frame *is* world space, and we measure bounds
- * there: take the object's global (screen) bounds and map the corners back into
- * the parent's local space.
+ * (`DisplaySystem` writes `layer.container.position/scale/rotation`), while each
+ * display object is positioned straight from `transform.worldPosition`. So a
+ * display object's *own local transform* is exactly its placement within world
+ * space, and mapping its local-space bounds through that matrix yields a
+ * world-space box — independent of the camera, which lives one level up on the
+ * parent. (This holds with or without a parent: an unparented object's local
+ * transform is still its world placement, so no special-case is needed.)
  *
- * When the object is not yet parented (pre-`onAdd`, mid-teardown) we fall back
- * to its untransformed local bounds offset by its own position — still a
- * world-space box for an unparented object, just without an ancestor frame to
- * resolve against.
+ * ## Why `getLocalBounds()` and not `getBounds()`
  *
- * Returns `bounds: null` when the object reports a zero-area / non-finite box
- * (e.g. an empty `Graphics`), so consumers can distinguish "nothing painted"
- * from a real 0×0 origin box.
+ * `getBounds()` measures in *global* (screen) space and, critically, returns an
+ * empty box for an object whose own `visible` flag is `false` — Pixi refuses to
+ * measure invisible subtrees. That conflates "currently hidden" with "paints
+ * nothing", which is exactly what `bounds: null` must NOT mean. `getLocalBounds()`
+ * measures the object's own geometry in local space and does *not* gate the root
+ * object on visibility (only its invisible children are skipped), so a real
+ * sized-but-hidden object still reports its true box. `bounds` is therefore
+ * `null` only when the object genuinely has no measurable geometry (an empty
+ * `Graphics`, a zero-area display object) — never merely because it is hidden.
+ * Read `visible` for the hidden/shown state.
+ *
+ * `getLocalBounds()` also keeps the snapshot read-only against the wider scene
+ * graph: unlike `getBounds()` (which walks every ancestor calling
+ * `updateLocalTransform`), it never touches ancestors, and the lone
+ * `updateLocalTransform()` we call refreshes only *this* object's matrix
+ * (cached / a no-op when already current).
  *
  * ## Visibility
  *
@@ -44,34 +56,28 @@ export function computeRenderFacet(displayObject: Container): RenderFacetSnapsho
 function computeWorldBounds(
   displayObject: Container,
 ): RenderFacetSnapshot["bounds"] {
-  const parent = displayObject.parent;
-  const global = displayObject.getBounds();
-  if (!isFiniteBox(global.x, global.y, global.width, global.height)) {
-    return null;
-  }
-  if (global.width === 0 && global.height === 0) {
+  const local = displayObject.getLocalBounds();
+  if (
+    !isFiniteBox(local.x, local.y, local.width, local.height) ||
+    (local.width === 0 && local.height === 0)
+  ) {
+    // No measurable geometry (empty Graphics, zero-area object). This is the
+    // ONLY reason bounds are null — a hidden-but-sized object falls through.
     return null;
   }
 
-  if (!parent) {
-    // Unparented: global bounds already live in the object's own frame.
-    return {
-      x: global.x,
-      y: global.y,
-      width: global.width,
-      height: global.height,
-    };
-  }
-
-  // Map the four global corners into the parent (world) frame and re-derive
-  // an AABB — a non-uniform camera scale or rotation makes a single corner
-  // mapping insufficient.
+  // Refresh only this object's local matrix (no-op when already current), then
+  // map the four local-space corners into the parent/world frame and re-derive
+  // an AABB. A single-corner mapping is insufficient under rotation or
+  // non-uniform scale, so we transform all four and take the extents.
+  displayObject.updateLocalTransform();
+  const toWorld = displayObject.localTransform;
   const corners = [
-    new Point(global.x, global.y),
-    new Point(global.x + global.width, global.y),
-    new Point(global.x + global.width, global.y + global.height),
-    new Point(global.x, global.y + global.height),
-  ].map((corner) => parent.toLocal(corner));
+    new Point(local.x, local.y),
+    new Point(local.x + local.width, local.y),
+    new Point(local.x + local.width, local.y + local.height),
+    new Point(local.x, local.y + local.height),
+  ].map((corner) => toWorld.apply(corner));
 
   let minX = Infinity;
   let minY = Infinity;

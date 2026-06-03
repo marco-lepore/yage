@@ -545,27 +545,37 @@ describe("Inspector render facet", () => {
     expect(comp?.render).toBeUndefined();
   });
 
-  it("surfaces the first graphical component's facet at the entity level", async () => {
+  it("surfaces the first-added graphical component's facet at the entity level", async () => {
     const { inspector, scenes } = setup();
     const scene = new TestScene("game");
     await scenes.push(scene);
     const e = scene.spawn("multi");
     e.add(new Transform());
-    // Two graphical components; AaaRender sorts before ZzzRender, so the
-    // entity-level facet should mirror AaaRender's.
-    class AaaRender extends FakeRenderComponent {}
-    class ZzzRender extends FakeRenderComponent {}
+    // Insertion order — NOT class-name order — decides the entity-level facet.
+    // `Zeta` is added first but sorts last alphabetically; `Alpha` is added
+    // second but sorts first. The entity facet must mirror `Zeta` (the first
+    // graphical component the entity added), proving the pick is deliberate
+    // rather than an artefact of the alphabetical sort applied to `components`.
+    class Zeta extends FakeRenderComponent {}
+    class Alpha extends FakeRenderComponent {}
     e.add(
-      new ZzzRender({ bounds: { x: 5, y: 5, width: 1, height: 1 }, visible: false }),
+      new Zeta({ bounds: { x: 5, y: 5, width: 1, height: 1 }, visible: false }),
     );
     e.add(
-      new AaaRender({ bounds: { x: 0, y: 0, width: 2, height: 2 }, visible: true }),
+      new Alpha({ bounds: { x: 0, y: 0, width: 2, height: 2 }, visible: true }),
     );
 
     const entity = inspector.snapshot().scenes[0]?.entities[0];
     expect(entity?.render).toEqual({
-      bounds: { x: 0, y: 0, width: 2, height: 2 },
-      visible: true,
+      bounds: { x: 5, y: 5, width: 1, height: 1 },
+      visible: false,
     });
+    // The `components` array itself stays alphabetically sorted for stable
+    // snapshot output, independent of the insertion-order facet pick above.
+    expect(entity?.components.map((c) => c.type)).toEqual([
+      "Alpha",
+      "Transform",
+      "Zeta",
+    ]);
   });
 });

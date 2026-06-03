@@ -223,9 +223,10 @@ export class AnimatedSpriteComponent extends Component {
   }
 
   /**
-   * Derived render facet for the Inspector — world-space `bounds` and resolved
-   * `visible` of the current animation frame, computed on demand. Not part of
-   * `serialize()`; see {@link computeRenderFacet} for the bounds coordinate space.
+   * Derived render facet for the Inspector — world-space `bounds` and the
+   * component's own (local, non-inherited) `visible` flag of the current
+   * animation frame, computed on demand. Not part of `serialize()`; see
+   * {@link computeRenderFacet} for the bounds coordinate space.
    */
   inspectRender(): RenderFacetSnapshot {
     return computeRenderFacet(this.animatedSprite);

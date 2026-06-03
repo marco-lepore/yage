@@ -275,23 +275,28 @@ const label = scene.entities.find((e) =>
   e.components.some((c) => c.type === "SplitTextComponent"),
 );
 
-// World-space bounds + resolved visibility, surfaced at the entity level
-// (first graphical component) and per component:
-label.render;            // { bounds: { x, y, width, height } | null, visible }
-label.components.find((c) => c.type === "SplitTextComponent")?.render;
+// World-space bounds + component-local visibility, surfaced at the entity level
+// (first graphical component the entity added) and per component:
+label?.render;           // { bounds: { x, y, width, height } | null, visible }
+label?.components.find((c) => c.type === "SplitTextComponent")?.render;
 
 // SplitTextComponent additionally reports per-glyph state and the visible
-// substring — so a typewriter reveal is testable without touching Pixi:
-const split = label.components.find(
+// substring — so a typewriter reveal is testable without touching Pixi.
+// `render` is typed as the base facet, so widen it to read the SplitText extras
+// (SplitTextRenderFacet is exported from @yagejs/renderer):
+const split = label?.components.find(
   (c) => c.type === "SplitTextComponent",
-)?.render;
+)?.render as SplitTextRenderFacet | undefined;
 split?.glyphs;           // [{ visible }, ...] in reading order
 split?.visibleText;      // e.g. "Hel" while only the first 3 glyphs show
 ```
 
 `bounds` are world-space pixels — the same space as `transform`, before the
-camera and responsive `fit` transform — and `null` when nothing is painted
-(e.g. an empty `Graphics`). `visible` is the component's own (local) flag; Pixi
+camera and responsive `fit` transform — measured from the geometry itself, so a
+sized-but-hidden object still reports its real box. `bounds` is `null` only when
+there is no geometry to measure (an empty `Graphics`, a zero-area object), never
+merely because the object is hidden — read `visible` for that. `visible` is the
+component's own (local) flag; Pixi
 v8 exposes no world-resolved visibility, so a hidden parent/layer container is
 not folded in. `glyphs` and `visibleText` cover only rendered glyph segments —
 `SplitText.chars` excludes whitespace, so a fully-revealed `"Hello world"`

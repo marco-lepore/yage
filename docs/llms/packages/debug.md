@@ -59,7 +59,7 @@ painted, not the declared/persisted state.
 const scene = inspector.snapshot().scenes[0];
 const e = scene.entities.find((ent) => ent.id === "3");
 
-// Entity-level facet (first graphical component on the entity):
+// Entity-level facet (first graphical component the entity added):
 e.render;            // { bounds: { x, y, width, height } | null, visible }
 
 // Per-component facet (read this for entities with several graphical components):
@@ -68,8 +68,10 @@ e.components.find((c) => c.type === "SpriteComponent")?.render;
 
 `bounds` are **world-space** pixels — the same coordinate space as
 `entity.transform`, before the camera and responsive `fit` transform are
-applied. `bounds` is `null` when the object paints nothing (e.g. an empty
-`Graphics`).
+applied. They are measured from the geometry itself, so a sized-but-hidden
+object still reports its real box; `bounds` is `null` only when there is no
+geometry to measure (an empty `Graphics`, a zero-area object), never merely
+because the object is hidden — read `visible` for the hidden/shown state.
 
 `SplitTextComponent` adds per-glyph reporting, so a typewriter reveal is
 observable without touching Pixi internals — where `serialize()` reports the
@@ -89,8 +91,10 @@ ancestor is not folded in.
 
 A renderer component opts in by exposing an `inspectRender(): RenderFacetSnapshot`
 method; the Inspector duck-types it (no Pixi dependency in core) and tolerates an
-absent or throwing hook. The facet shape is open — components may attach extra
-keys without a core change. The built-in graphical components
+absent or throwing hook. `bounds` / `visible` are the shared fields; a component
+may report richer, mode-specific state by widening the generic
+`RenderFacetSnapshot<Extra>` (as `SplitTextComponent` does with `glyphs` /
+`visibleText`) without any core change. The built-in graphical components
 (`SpriteComponent`, `AnimatedSpriteComponent`, `GraphicsComponent`,
 `TextComponent`, `SplitTextComponent`) all implement it.
 

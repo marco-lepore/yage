@@ -106,9 +106,9 @@ export class GraphicsComponent extends Component {
 
   /**
    * Derived render facet for the Inspector — world-space `bounds` of the drawn
-   * geometry and resolved `visible`, computed on demand. An empty `Graphics`
-   * reports `bounds: null`. Not part of `serialize()`; see
-   * {@link computeRenderFacet} for the bounds coordinate space.
+   * geometry and the component's own (local, non-inherited) `visible` flag,
+   * computed on demand. An empty `Graphics` reports `bounds: null`. Not part of
+   * `serialize()`; see {@link computeRenderFacet} for the bounds coordinate space.
    */
   inspectRender(): RenderFacetSnapshot {
     return computeRenderFacet(this.graphics);

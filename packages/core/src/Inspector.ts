@@ -168,10 +168,13 @@ export interface ComponentStateSnapshot {
  */
 export type RenderFacetSnapshot<Extra = unknown> = {
   /**
-   * Axis-aligned bounding box of what the component actually paints, in
-   * world space (the same coordinate space as {@link WorldEntitySnapshot.transform}
-   * — pixels, before camera/viewport projection). `null` when the display
-   * object reports no measurable bounds (e.g. an empty `Graphics`).
+   * Axis-aligned bounding box of the component's geometry, in world space (the
+   * same coordinate space as {@link WorldEntitySnapshot.transform} — pixels,
+   * before camera/viewport projection). Measured from the geometry itself, so a
+   * sized-but-hidden object still reports its real box; `null` means there is no
+   * measurable geometry at all (an empty `Graphics`, a zero-area object), NOT
+   * that the object is hidden. Read {@link RenderFacetSnapshot.visible} for the
+   * hidden/shown state.
    */
   bounds: { x: number; y: number; width: number; height: number } | null;
   /**
@@ -201,10 +204,12 @@ export interface WorldEntitySnapshot {
   };
   components: ComponentStateSnapshot[];
   /**
-   * Entity-level render facet, derived from the first graphical component on
-   * the entity that exposes an `inspectRender()` hook. Present only when at
-   * least one such component exists. For entities with multiple graphical
-   * components, read the per-component facets on {@link ComponentStateSnapshot.render}.
+   * Entity-level render facet, derived from the first graphical component (in
+   * insertion order — the order the entity `add()`ed them) that exposes an
+   * `inspectRender()` hook. Present only when at least one such component
+   * exists. For entities with multiple graphical components this is just the
+   * first one; read the per-component facets on
+   * {@link ComponentStateSnapshot.render} to inspect the rest.
    */
   render?: RenderFacetSnapshot;
 }
@@ -999,9 +1004,16 @@ export class Inspector {
     const transform = entity.has(Transform) ? entity.get(Transform) : undefined;
     const worldPosition = transform?.worldPosition;
     const worldScale = transform?.worldScale;
-    const components = [...entity.getAll()]
-      .map((component) => this.componentToSnapshot(component))
-      .sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
+    // Snapshot components in their insertion order first, then sort a copy for
+    // stable output. The entity-level facet is picked from the insertion-order
+    // list (below) so it is a deliberate "first graphical component the entity
+    // added", not an accident of where the class name happens to sort.
+    const insertionOrder = [...entity.getAll()].map((component) =>
+      this.componentToSnapshot(component),
+    );
+    const components = [...insertionOrder].sort((a, b) =>
+      a.type < b.type ? -1 : a.type > b.type ? 1 : 0,
+    );
 
     const snapshot: WorldEntitySnapshot = {
       id: String(entity.id),
@@ -1018,7 +1030,7 @@ export class Inspector {
     };
     // Surface the first graphical component's facet at the entity level so the
     // common single-sprite/text case needn't walk the component list.
-    const primaryRender = components.find((c) => c.render)?.render;
+    const primaryRender = insertionOrder.find((c) => c.render)?.render;
     if (primaryRender) snapshot.render = primaryRender;
     return snapshot;
   }

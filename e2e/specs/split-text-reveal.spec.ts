@@ -66,6 +66,7 @@ test.describe("Split text reveal fixture", () => {
     expect(bounds).not.toBeNull();
     expect(bounds!.width).toBeGreaterThan(0);
     expect(bounds!.height).toBeGreaterThan(0);
+    const widthAfterThree = bounds!.width;
 
     // Reveal the rest; the visible substring catches up to the full string.
     // SplitText.chars excludes whitespace (the space lives in `words`, not
@@ -75,5 +76,11 @@ test.describe("Split text reveal fixture", () => {
     const afterAll = await readReveal(page);
     expect(afterAll.component?.glyphs?.every((g) => g.visible)).toBe(true);
     expect(afterAll.component?.visibleText).toBe("Helloworld");
+
+    // The facet measures *painted* geometry, not the declared string: with the
+    // remaining (monospace) glyphs now visible, the world-space box is wider
+    // than it was at three glyphs. The pure coordinate-mapping math under
+    // camera zoom / rotation is covered in renderFacet.test.ts.
+    expect(afterAll.component!.bounds!.width).toBeGreaterThan(widthAfterThree);
   });
 });

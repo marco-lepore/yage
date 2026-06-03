@@ -13,8 +13,8 @@ const { mocks } = vi.hoisted(() => {
     zIndex = 0;
     destroyed = false;
 
-    // Bounds reported in "global" space; the parent identity transform means
-    // toLocal is a passthrough, so the world-space facet equals these.
+    // Local-space geometry box; the identity local transform below maps it
+    // straight through, so the world-space facet equals these.
     boundsBox = { x: 0, y: 0, width: 0, height: 0 };
 
     addChild(child: MockContainer): MockContainer {
@@ -33,12 +33,15 @@ const { mocks } = vi.hoisted(() => {
     removeFromParent(): void {
       this.parent?.removeChild(this);
     }
-    getBounds(): { x: number; y: number; width: number; height: number } {
+    getLocalBounds(): { x: number; y: number; width: number; height: number } {
       return { ...this.boundsBox };
     }
-    toLocal(p: { x: number; y: number }): { x: number; y: number } {
-      return { x: p.x, y: p.y };
-    }
+    updateLocalTransform(): void {}
+    localTransform = {
+      apply(p: { x: number; y: number }): { x: number; y: number } {
+        return { x: p.x, y: p.y };
+      },
+    };
     destroyOpts: unknown;
     destroy(opts?: unknown): void {
       this.destroyed = true;

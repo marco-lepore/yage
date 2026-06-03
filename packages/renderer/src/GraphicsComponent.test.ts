@@ -39,13 +39,20 @@ const { mocks } = vi.hoisted(() => {
 
     boundsBox = { x: 0, y: 0, width: 0, height: 0 };
 
-    getBounds(): { x: number; y: number; width: number; height: number } {
+    getLocalBounds(): { x: number; y: number; width: number; height: number } {
       return { ...this.boundsBox };
     }
 
-    toLocal(p: { x: number; y: number }): { x: number; y: number } {
-      return { x: p.x, y: p.y };
-    }
+    updateLocalTransform(): void {}
+
+    // Identity local transform → world bounds equal the local box, so the facet
+    // assertions below read straight through. renderFacet.test.ts covers the
+    // non-identity (zoom / rotation) mapping math against a real Pixi Matrix.
+    localTransform = {
+      apply(p: { x: number; y: number }): { x: number; y: number } {
+        return { x: p.x, y: p.y };
+      },
+    };
 
     destroy(): void {
       this.destroyed = true;
