@@ -86,6 +86,10 @@ export function createBubbleDialogue(
     nameColor: theme.nameColor,
     nameSize: theme.nameSize,
     indicatorColor: theme.indicatorColor,
+    // Body-text metrics so the bubble grows to fit its wrapped text, in lockstep
+    // with the BubbleTextView below.
+    textSize: theme.textSize,
+    lineHeight: theme.lineHeight,
     ...fonts,
   });
 

@@ -48,5 +48,5 @@ export type {
   DialogueActions,
   PointerChoiceTarget,
   TermTarget,
-  PointerInputBindingOptions,
+  TermActivation,
 } from "./input/index.js";

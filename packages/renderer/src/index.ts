@@ -140,6 +140,7 @@ export {
   bitmapFont,
   createNineSlice,
   installBitmapFont,
+  measureWrappedText,
   renderAsset,
   resolveTextureInput,
   sliceTextureFrames,
@@ -150,6 +151,8 @@ export {
 export type {
   BitmapFontVariant,
   InstallBitmapFontOptions,
+  MeasuredText,
+  MeasureTextOptions,
   NineSliceOptions,
   WebFontBakeOptions,
   WebFontOptions,

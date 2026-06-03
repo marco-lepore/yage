@@ -28,6 +28,7 @@
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
+  GraphicsComponent,
   SplitTextComponent,
   type SplitTextComponentOptions,
   type TextStyle,
@@ -41,7 +42,8 @@ import { evaluateEffect, effectDrivesTint } from "./textEffects.js";
  * The body-text channel plus the YAGE lifecycle the host drives. Also exposes
  * the glossary-term pointer seam ({@link termAtPoint}): a pointer binding (see
  * {@link PointerTermTarget}) hit-tests a screen/world point against the line's
- * `[term=…]` spans and fires {@link onTermActivate}.
+ * `[term=…]` spans, highlights the hovered one ({@link setHoveredTerm}), and
+ * surfaces activations to the host.
  */
 export interface TextPresenter extends TextChannel, Mountable {
   /** The glossary term under a point, or undefined. Coords are in
@@ -49,8 +51,9 @@ export interface TextPresenter extends TextChannel, Mountable {
   termAtPoint?(x: number, y: number): string | undefined;
   /** Coordinate space {@link termAtPoint} expects. Default "screen". */
   readonly pointerSpace?: "screen" | "world";
-  /** Fired when a `[term=…]` span is activated (the game renders the tooltip). */
-  onTermActivate?: (term: string) => void;
+  /** Highlight the term span under the pointer (id) or clear it (undefined). A
+   *  pointer binding drives this on hover so terms read as interactable. */
+  setHoveredTerm?(id: string | undefined): void;
 }
 
 /**
@@ -135,12 +138,28 @@ interface TermBox {
   readonly y1: number;
 }
 
+/** A term run in SPLIT-relative coords, for drawing the underline + restyling
+ *  its glyphs on hover (the line entity's Transform carries it into world/screen
+ *  space, so this follows a moving bubble for free). */
+interface TermSpan {
+  readonly term: string;
+  /** Underline extent + baseline, split-relative. */
+  readonly x0: number;
+  readonly x1: number;
+  readonly y: number;
+  /** Glyph index range into `chars`/`metas` (inclusive). */
+  readonly first: number;
+  readonly last: number;
+}
+
 interface LineNodes {
   readonly entity: Entity;
   readonly comp: SplitTextComponent;
   readonly chars: CharNode[];
   readonly metas: CharMeta[];
   readonly terms: TermBox[];
+  readonly spans: TermSpan[];
+  readonly underline?: GraphicsComponent | undefined;
 }
 
 export class DialogueTextView implements TextPresenter {
@@ -174,19 +193,17 @@ export class DialogueTextView implements TextPresenter {
   private completed = false;
 
   private readonly termColor: number;
+  /** Brighter tint for the hovered term (glyphs + underline). */
+  private readonly termHoverColor: number;
+  /** Term id currently highlighted by a hovering pointer, if any. */
+  private hoveredTerm?: string | undefined;
 
   /** Fired once when the whole line finishes revealing. */
   onRevealComplete?: () => void;
 
-  /**
-   * Fired when a `[term=…]` span is activated. The system only emits the term
-   * id (the game maps it to a definition and renders the tooltip). A pointer
-   * binding drives this via {@link termAtPoint}; see {@link PointerTermTarget}.
-   */
-  onTermActivate?: (term: string) => void;
-
   constructor(private readonly cfg: DialogueTextConfig) {
     this.termColor = cfg.termColor ?? DEFAULT_TERM_COLOR;
+    this.termHoverColor = lightenToward(this.termColor, 0.45);
     if (cfg.box) this.setBox(cfg.box.x, cfg.box.y, cfg.box.width);
   }
 
@@ -292,12 +309,13 @@ export class DialogueTextView implements TextPresenter {
   }
 
   clear(): void {
-    this.line?.entity.destroy(); // destroys the split component + its glyphs
+    this.line?.entity.destroy(); // destroys the split + underline + glyphs
     this.line = undefined;
     this.parsed = undefined;
     this.shownCount = -1;
     this.done = false;
     this.completed = false;
+    this.hoveredTerm = undefined; // each new line starts un-hovered
   }
 
   /** Permanent teardown. (No measurer nodes to free — SplitText owns layout.) */
@@ -346,8 +364,15 @@ export class DialogueTextView implements TextPresenter {
       return meta;
     });
 
-    const terms = this.buildTerms(parsed, metas);
-    this.line = { entity, comp, chars, metas, terms };
+    const { boxes, spans } = this.buildTermData(parsed, metas);
+    // One Graphics on the same entity draws the term underlines; it inherits the
+    // line's Transform (reposition()), so it follows a moving bubble for free.
+    const underline =
+      spans.length > 0
+        ? entity.add(new GraphicsComponent({ layer: this.cfg.layer }))
+        : undefined;
+    this.line = { entity, comp, chars, metas, terms: boxes, spans, underline };
+    this.drawUnderlines();
   }
 
   /** Run-style for each NON-SPACE glyph, in reading order (matches `chars`). */
@@ -406,8 +431,17 @@ export class DialogueTextView implements TextPresenter {
     }
   }
 
-  private buildTerms(parsed: ParsedText, metas: CharMeta[]): TermBox[] {
-    const out: TermBox[] = [];
+  /**
+   * Per term-run, the absolute hit-box ({@link termAtPoint}) AND a split-relative
+   * span (underline geometry + glyph index range, for hover restyle) — derived
+   * from the same single pass so they can't drift.
+   */
+  private buildTermData(
+    parsed: ParsedText,
+    metas: CharMeta[],
+  ): { boxes: TermBox[]; spans: TermSpan[] } {
+    const boxes: TermBox[] = [];
+    const spans: TermSpan[] = [];
     let ns = 0;
     for (const run of parsed.runs) {
       const runNonSpace = [...run.text].filter((c) => !/\s/.test(c)).length;
@@ -425,17 +459,25 @@ export class DialogueTextView implements TextPresenter {
           minY = Math.min(minY, m.splitY);
           maxY = Math.max(maxY, m.splitY + this.cfg.size);
         }
-        out.push({
+        boxes.push({
           term: run.style.term,
           x0: this.layoutOriginX + minX,
           y0: this.layoutOriginY + minY,
           x1: this.layoutOriginX + maxX,
           y1: this.layoutOriginY + maxY,
         });
+        spans.push({
+          term: run.style.term,
+          x0: minX,
+          x1: maxX,
+          y: maxY,
+          first,
+          last,
+        });
       }
       ns += runNonSpace;
     }
-    return out;
+    return { boxes, spans };
   }
 
   // ── reveal + effects ─────────────────────────────────────────────────────────
@@ -452,10 +494,10 @@ export class DialogueTextView implements TextPresenter {
 
   /**
    * The glossary term under a point, or undefined — the seam a pointer binding
-   * (see {@link PointerTermTarget}) drives on hover/tap to fire
-   * {@link onTermActivate}. Box-mode geometry: term boxes are captured in the
-   * line's resting coords. A world-anchored subclass repositions via the origin
-   * provider and overrides {@link pointerSpace} accordingly.
+   * (see {@link PointerTermTarget}) drives on hover/tap to highlight + surface a
+   * term. Box-mode geometry: term boxes are captured in the line's resting
+   * coords. A world-anchored subclass repositions via the origin provider and
+   * overrides {@link pointerSpace} accordingly.
    */
   termAtPoint(x: number, y: number): string | undefined {
     if (!this.line) return undefined;
@@ -463,6 +505,48 @@ export class DialogueTextView implements TextPresenter {
       if (x >= t.x0 && x <= t.x1 && y >= t.y0 && y <= t.y1) return t.term;
     }
     return undefined;
+  }
+
+  /** Highlight the hovered term (brighter glyphs + underline) or clear it. */
+  setHoveredTerm(id: string | undefined): void {
+    if (id === this.hoveredTerm) return;
+    this.hoveredTerm = id;
+    this.applyTermHover();
+    this.drawUnderlines();
+  }
+
+  /** Draw each term's underline (split-relative); the hovered one is brighter +
+   *  thicker. An underline (not a fill) sits below the glyphs, so z-order vs the
+   *  split is a non-issue even on the bubble's single shared layer. */
+  private drawUnderlines(): void {
+    const line = this.line;
+    if (!line?.underline) return;
+    const hovered = this.hoveredTerm;
+    line.underline.draw((g) => {
+      for (const s of line.spans) {
+        const on = s.term === hovered;
+        g.rect(s.x0, s.y + 1, Math.max(0, s.x1 - s.x0), on ? 2 : 1).fill({
+          color: on ? this.termHoverColor : this.termColor,
+          alpha: on ? 1 : 0.7,
+        });
+      }
+    });
+  }
+
+  /** Brighten the hovered term's glyph tint. Skips glyphs whose effect already
+   *  rewrites tint every frame (reposition()), to avoid fighting it. */
+  private applyTermHover(): void {
+    const line = this.line;
+    if (!line) return;
+    for (const s of line.spans) {
+      const tint =
+        s.term === this.hoveredTerm ? this.termHoverColor : this.termColor;
+      for (let i = s.first; i <= s.last; i++) {
+        const m = line.metas[i];
+        if (!m || (m.style.effect && effectDrivesTint(m.style.effect))) continue;
+        m.node.tint = tint;
+      }
+    }
   }
 
   /**
@@ -556,4 +640,15 @@ function localInSplit(node: CharNode, root: unknown): { x: number; y: number } {
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
+}
+
+/** Mix an 0xRRGGBB colour toward white by `t` (0…1) — for the hover highlight. */
+function lightenToward(color: number, t: number): number {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  const lr = Math.round(r + (255 - r) * t);
+  const lg = Math.round(g + (255 - g) * t);
+  const lb = Math.round(b + (255 - b) * t);
+  return (lr << 16) | (lg << 8) | lb;
 }

@@ -270,6 +270,81 @@ describe("DialogueSession — auto-advance clock", () => {
     await flush();
     expect(h.text.lastText).toBe("two");
   });
+
+  const twoPlain: DialogueScript = {
+    id: "auto-default",
+    start: "a",
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          { kind: "say", text: "one" },
+          { kind: "say", text: "two" },
+        ],
+      },
+    },
+  };
+
+  it("setAutoAdvance default advances lines that lack their own autoAdvanceMs", async () => {
+    const h = makeHarness();
+    h.session.setAutoAdvance(100);
+    h.session.play(twoPlain);
+    h.text.finishReveal();
+    await flush();
+    h.session.update(60);
+    expect(h.text.lastText).toBe("one"); // 60 < 100, still waiting
+    h.session.update(60); // 120 > 100 → advance via the default
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("a per-line autoAdvanceMs overrides the setAutoAdvance default", async () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "override",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one", autoAdvanceMs: 50 },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    };
+    h.session.setAutoAdvance(5000); // long default, should be ignored on line one
+    h.session.play(script);
+    h.text.finishReveal();
+    await flush();
+    h.session.update(60); // 60 > the per-line 50 → advance
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("setAutoAdvance(null) leaves lines waiting for a manual advance", async () => {
+    const h = makeHarness();
+    h.session.setAutoAdvance(100);
+    h.session.setAutoAdvance(null); // turned back off
+    h.session.play(twoPlain);
+    h.text.finishReveal();
+    await flush();
+    h.session.update(10_000);
+    expect(h.text.lastText).toBe("one"); // never auto-advances
+  });
+
+  it("toggling setAutoAdvance on a revealed line arms it immediately", async () => {
+    const h = makeHarness();
+    h.session.play(twoPlain);
+    h.text.finishReveal(); // line one sits revealed, no timer armed
+    await flush();
+    h.session.update(10_000);
+    expect(h.text.lastText).toBe("one"); // still parked (auto off)
+    h.session.setAutoAdvance(100); // arm now, mid-line
+    h.session.update(120);
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
 });
 
 describe("DialogueSession — i18n & interpolation", () => {

@@ -43,23 +43,14 @@ export interface ChoicePresenter extends ChoiceChannel, Mountable {
 export interface TextPresenter extends TextChannel, Mountable {
   /**
    * Hit-test a point (in this presenter's {@link pointerSpace}) to a `[term=…]`
-   * id, or undefined. Optional seam — the controller only routes term events
-   * when a presenter implements it. Mirrors {@link ChoicePresenter.choiceAtPoint}.
+   * id, or undefined. Optional seam — the pointer binding only routes term
+   * events when a presenter implements it. Mirrors
+   * {@link ChoicePresenter.choiceAtPoint}.
    */
   termAtPoint?(x: number, y: number): string | undefined;
   /** Coordinate space {@link termAtPoint} reads (screen default; bubble = world). */
   readonly pointerSpace?: "screen" | "world";
-  /** Optional hover/commit hook on the presenter (host also gets the event). */
-  onTermActivate?(id: string): void;
-}
-
-/**
- * The read-only glossary-term hit-test seam the controller probes against, kept
- * as a distinct minimal interface so a non-pixi host could implement it. Mirrors
- * the `PointerChoiceTarget` seam in `input/InputBinding`.
- */
-export interface PointerTermTarget {
-  termAtPoint(x: number, y: number): string | undefined;
-  readonly pointerSpace?: "screen" | "world";
-  onTermActivate?(id: string): void;
+  /** Highlight the hovered term (or clear it) so it reads as interactable. The
+   *  pointer binding drives this; the view renders the highlight. */
+  setHoveredTerm?(id: string | undefined): void;
 }

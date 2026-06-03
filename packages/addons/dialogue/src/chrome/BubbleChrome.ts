@@ -18,12 +18,14 @@ import {
 } from "@yagejs/renderer";
 import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type { PresentedLine } from "../core/session.js";
+import { bubbleContentHeight } from "../render/bubbleSizing.js";
 import type { ChromePresenter } from "./DialogueUiAdapter.js";
 
 export interface BubbleChromeConfig {
   /** World-space render layer. */
   readonly layer: string;
   readonly width: number;
+  /** Minimum bubble height (px). The bubble grows past this to fit its text. */
   readonly height: number;
   readonly padding: number;
   /** Gap between the actor's head anchor and the bubble's bottom edge. */
@@ -37,6 +39,10 @@ export interface BubbleChromeConfig {
   readonly nameColor: number;
   readonly nameSize: number;
   readonly indicatorColor: number;
+  /** Body-text size + line advance — to size the bubble to its wrapped text,
+   *  matching the companion `BubbleTextView`. */
+  readonly textSize: number;
+  readonly lineHeight: number;
   readonly bitmapFont?: string | undefined;
   readonly fontFamily?: string | undefined;
   readonly resolution?: number | undefined;
@@ -53,8 +59,12 @@ export class BubbleChrome implements ChromePresenter {
   private actor?: DialogueActor | undefined;
   private caretVisible = false;
   private caretTime = 0;
+  /** Current (content-sized) bubble height; grows per line to fit the text. */
+  private currentHeight: number;
 
-  constructor(private readonly cfg: BubbleChromeConfig) {}
+  constructor(private readonly cfg: BubbleChromeConfig) {
+    this.currentHeight = cfg.height;
+  }
 
   mount(scene: Scene): void {
     this.scene = scene;
@@ -85,12 +95,26 @@ export class BubbleChrome implements ChromePresenter {
     this.root = root;
   }
 
-  /** Re-anchor to the line's speaker and reveal the bubble. */
+  /** Re-anchor to the line's speaker, grow to fit the text, and reveal. */
   present(line: PresentedLine | undefined): void {
     this.actor = this.scene
       ? actorRegistryFor(this.scene).resolve(line?.speaker?.id)
       : undefined;
     const show = this.actor !== undefined;
+    if (show && line) {
+      const c = this.cfg;
+      const plain = line.text.runs.map((r) => r.text).join("");
+      this.currentHeight = bubbleContentHeight(plain, {
+        width: c.width,
+        padding: c.padding,
+        minHeight: c.height,
+        textSize: c.textSize,
+        lineHeight: c.lineHeight,
+        fontFamily: c.fontFamily,
+        bitmapFont: c.bitmapFont,
+      });
+      this.drawBubble();
+    }
     if (this.gfx) this.gfx.graphics.visible = show;
     if (this.name) {
       const label = line?.speaker?.name;
@@ -153,21 +177,23 @@ export class BubbleChrome implements ChromePresenter {
     if (!this.actor) return;
     const a = this.actor.anchorWorld();
     const c = this.cfg;
+    const h = this.currentHeight;
     this.transform?.setPosition(a.x, a.y);
-    // Name: top-left corner of the bubble, lifted by its own height.
+    // Name: top-left corner of the bubble, lifted by the (grown) bubble height.
     this.name?.entity
       .tryGet(Transform)
-      ?.setPosition(a.x - c.width / 2 + c.padding, a.y - (c.offsetY + c.height) - c.nameSize - 1);
-    // Caret: bottom-right interior of the bubble (geometry is fixed; just move it).
+      ?.setPosition(a.x - c.width / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
+    // Caret: bottom-right interior of the bubble (anchored near the bottom edge).
     this.caretTransform?.setPosition(a.x + c.width / 2 - c.padding - 7, a.y - c.offsetY - c.padding - 2);
   }
 
   private drawBubble(): void {
     const c = this.cfg;
+    const h = this.currentHeight;
     const x = -c.width / 2;
-    const y = -(c.offsetY + c.height);
+    const y = -(c.offsetY + h);
     this.gfx?.draw((g) => {
-      g.roundRect(x, y, c.width, c.height, c.cornerRadius)
+      g.roundRect(x, y, c.width, h, c.cornerRadius)
         .fill({ color: c.bgColor, alpha: c.bgAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
       // Tail pointing down toward the speaker (anchor at local 0,0).

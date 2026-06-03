@@ -34,7 +34,6 @@ export type {
   ChromePresenter,
   ChoicePresenter,
   TextPresenter,
-  PointerTermTarget,
 } from "./chrome/DialogueUiAdapter.js";
 export { DialogueChrome } from "./chrome/DialogueChrome.js";
 export type { DialogueChromeConfig } from "./chrome/DialogueChrome.js";

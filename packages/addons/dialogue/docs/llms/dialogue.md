@@ -118,7 +118,7 @@ new DialogueController({
 ```
 
 Methods: `play(script, params?)`, `isActive()`, `stop()`, `skip()`,
-`preview(nodeId): PreviewedLine[]`. It is multi-instance friendly — several
+`setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`. It is multi-instance friendly — several
 ambient conversations can run at once; "which is interactive" and "does the world
 pause" are the game's policy (no global singleton).
 
@@ -133,7 +133,9 @@ Headless channels (core): `TextChannel`, `ChoiceChannel`, `AvatarChannel`,
 `ChromeChannel`. Presenter adapters add the YAGE lifecycle (`mount`/`dispose`)
 and pointer seams: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
 Defaults: `DialogueChrome`, `ChoiceListPresenter`, `DialogueTextView` (box);
-`BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world). Composites
+`BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world; the bubble
+content-sizes to its wrapped text via the renderer's `measureWrappedText`).
+Composites
 (`CompositeChrome`/`CompositeTextPresenter`/`CompositeChoicePresenter`) route by
 `view`. Avatars: `PortraitPresenter`, `SceneFigurePresenter`,
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers
@@ -145,26 +147,31 @@ effects, and hit-tests `[term]` spans.
 
 ## Input (root entry, `@yagejs/input` — not pixi)
 
-`KeyboardInputBinding` (default), `PointerInputBinding(choiceTarget?)`,
-`CompositeInputBinding`, `fullControls(choiceTarget?, actions?)`. Actions:
-`DEFAULT_ACTIONS` (advance/speed/up/down), `FULL_ACTIONS` (+ skip).
-`PointerChoiceTarget` lets a pointer binding hit-test choice rows without owning
-geometry. Ambient/auto-advancing dialogue attaches no binding.
+`KeyboardInputBinding(actions?, skipHoldMs?)` (default),
+`PointerInputBinding(choiceTarget?)`, `CompositeInputBinding`,
+`fullControls(choiceTarget?, { actions?, skipHoldMs? })`. Actions:
+`DEFAULT_ACTIONS` (advance/speed/up/down), `FULL_ACTIONS` (+ skip). `skipHoldMs > 0`
+is the classic hold-to-confirm skip (default `0` = fire on press); fast-forward is
+the `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test
+choice rows without owning geometry. Ambient/auto-advancing dialogue attaches no
+binding.
 
-For glossary terms, `PointerInputBinding` also accepts a
-`PointerInputBindingOptions` bag `{ choices?, terms?, onTermActivate? }`, mirroring
-`PointerChoiceTarget`: a `TermTarget` hit-tests `[term]` spans and the binding
-emits `onTermActivate(id, screen)` on hover/tap. `fullControls(opts, actions?)`
-forwards the same bag.
+Glossary terms ride the binding's single seam `setTermSink(target, onActivate)` —
+the `DialogueController` calls it for you, pointing the text view in. The pointer
+binding owns term hit-testing, highlights the hovered span (`setHoveredTerm`), and
+suppresses the line advance on a term tap. Keyboard-only bindings no-op
+`setTermSink` (terms need a pointer).
 
-## Glossary terms (event-only)
+## Glossary terms
 
-`[term=id]word[/term]` spans get a highlight colour (`theme.termColor`) and are
-hit-tested by the text presenter (`termAtPoint`). The `DialogueController` wires
-pointer hover/tap → `onTermActivate({ id, screen, kind })` + a
-`DialogueTermActivatedEvent`, mirroring `PointerChoiceTarget`. The game owns
-`id → definition` and renders any tooltip; the addon only emits the id (+ screen
-position + `"hover" | "tap"`). No default tooltip UI.
+`[term=id]word[/term]` spans are underlined (`theme.termColor`), hover-highlighted,
+and hit-tested by the text presenter (`termAtPoint` + `setHoveredTerm`). The
+pointer binding is the single seam: on hover/tap it highlights the span and the
+`DialogueController` re-surfaces it as `onTermActivate({ id, screen, kind })` + a
+`DialogueTermActivatedEvent`. A tap on a term does **not** advance the line. The
+game owns `id → definition` and renders any tooltip; the addon only emits the id
+(+ screen position + `"hover" | "tap"`). No default tooltip UI. Terms need a
+pointer-capable binding (e.g. `fullControls(...)`).
 
 ## Theming
 

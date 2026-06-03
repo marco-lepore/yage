@@ -2,9 +2,12 @@ import { AssetHandle } from "@yagejs/core";
 import {
   Assets,
   BitmapFont,
+  BitmapFontManager,
+  CanvasTextMetrics,
   NineSliceSprite,
   Rectangle,
   Texture,
+  TextStyle as PixiTextStyle,
 } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import {
@@ -572,6 +575,69 @@ export function createNineSlice(options: NineSliceOptions): NineSliceSprite {
     width: options.width,
     height: options.height,
   });
+}
+
+/** Inputs for {@link measureWrappedText}. */
+export interface MeasureTextOptions {
+  /** Canvas font family (or a baked bitmap-font name when `bitmap`). */
+  readonly fontFamily?: string;
+  /** Font size in px. */
+  readonly fontSize: number;
+  /** Vertical advance per line in px (defaults to the font's natural height). */
+  readonly lineHeight?: number;
+  /** Wrap width in px. Omit or `<= 0` to measure a single unwrapped line. */
+  readonly wordWrapWidth?: number;
+  /**
+   * Measure via the bitmap-font path (`BitmapFontManager`). Bitmap metrics do
+   * **not** word-wrap, so the result is single-line — callers using a bitmap
+   * font should keep fixed sizing rather than grow to wrapped content.
+   */
+  readonly bitmap?: boolean;
+}
+
+/** Natural laid-out size of a (optionally wrapped) text string. */
+export interface MeasuredText {
+  readonly width: number;
+  readonly height: number;
+  /** Number of laid-out lines (wrap-aware on the canvas path; `>= 1`). */
+  readonly lineCount: number;
+}
+
+/**
+ * Measure the natural size of a text string — wrap-aware on the canvas path —
+ * without constructing a live text node. This is the renderer's text-metrics
+ * primitive: reach for it (not a direct `pixi.js` import) when a layout needs to
+ * size a panel to its text (e.g. a content-sized dialogue bubble).
+ *
+ * Canvas path uses Pixi's `CanvasTextMetrics` and honours `wordWrapWidth`, so
+ * `lineCount` reflects the wrapped line count. The bitmap path
+ * (`BitmapFontManager`) has no wrap support and returns single-line metrics.
+ *
+ * Requires a DOM/canvas at runtime (the browser) for the canvas path; unit tests
+ * mock `CanvasTextMetrics` (there is no canvas under the node test env).
+ */
+export function measureWrappedText(
+  text: string,
+  options: MeasureTextOptions,
+): MeasuredText {
+  const wrap = options.wordWrapWidth !== undefined && options.wordWrapWidth > 0;
+  const style = new PixiTextStyle({
+    fontSize: options.fontSize,
+    ...(options.fontFamily !== undefined
+      ? { fontFamily: options.fontFamily }
+      : {}),
+    ...(options.lineHeight !== undefined
+      ? { lineHeight: options.lineHeight }
+      : {}),
+    wordWrap: wrap,
+    ...(wrap ? { wordWrapWidth: options.wordWrapWidth } : {}),
+  });
+  if (options.bitmap) {
+    const m = BitmapFontManager.measureText(text, style);
+    return { width: m.width, height: m.height, lineCount: text.split("\n").length };
+  }
+  const m = CanvasTextMetrics.measureText(text, style);
+  return { width: m.width, height: m.height, lineCount: m.lines.length };
 }
 
 /** Slice a texture input into an array of frame textures. */
