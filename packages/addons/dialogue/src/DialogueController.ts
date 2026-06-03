@@ -88,12 +88,6 @@ export class DialogueController extends Component {
   private readonly binding: InputBinding;
   private session!: DialogueSession;
 
-  /** Edge-detect for term hover (fire once per term, not every frame). */
-  private hoveredTerm?: string | undefined;
-  /** A primary-button press happened since the last term poll (consumed in update). */
-  private termClicked = false;
-  private unsubPointer?: (() => void) | undefined;
-
   constructor(private readonly opts: DialogueControllerOptions) {
     super();
     this.binding = opts.input ?? new KeyboardInputBinding();
@@ -104,12 +98,6 @@ export class DialogueController extends Component {
     this.opts.choices.mount(this.scene);
     this.opts.avatar?.mount(this.scene);
     this.opts.text.mount(this.scene);
-
-    // Glossary-term pointer seam: a tap edge is captured here; hover is sampled
-    // each frame in `pollTerms`. Mirrors PointerInputBinding's click latch.
-    this.unsubPointer = this.input.onPointerDown((info) => {
-      if (info.button === 0) this.termClicked = true;
-    });
 
     this.session = new DialogueSession(
       {
@@ -144,6 +132,16 @@ export class DialogueController extends Component {
       },
     );
     this.binding.bind(this.input, this.session);
+
+    // Single glossary-term seam: the pointer binding owns hover/tap hit-testing
+    // (it gates the line advance, so a tap on a term doesn't also turn the page)
+    // and highlights the hovered span on the text view; here we just re-surface
+    // each activation as a scene event + the optional callback. Needs a
+    // pointer-capable binding (the default keyboard one no-ops `setTermSink`).
+    this.binding.setTermSink?.(this.opts.text, (e) => {
+      this.entity.emit(DialogueTermActivatedEvent, e);
+      this.opts.onTermActivate?.(e);
+    });
   }
 
   onDestroy(): void {
@@ -151,8 +149,6 @@ export class DialogueController extends Component {
     // continuation bails instead of presenting onto presenters we're about to
     // dispose; also clears visuals while they're still valid.
     this.session?.stop();
-    this.unsubPointer?.();
-    this.unsubPointer = undefined;
     this.binding.dispose?.();
     this.opts.text.dispose();
     this.opts.choices.dispose();
@@ -180,6 +176,15 @@ export class DialogueController extends Component {
   /** Fast-forward the current section to the next choice or the end. */
   skip(): void {
     this.session?.skip();
+  }
+
+  /**
+   * Auto-advance lines after they finish revealing (`ms`), or `null` to disable
+   * (manual advance). A per-line `autoAdvanceMs` still overrides this. Toggle it
+   * live for a VN-style "auto" control.
+   */
+  setAutoAdvance(ms: number | null): void {
+    this.session?.setAutoAdvance(ms);
   }
 
   /**
@@ -216,59 +221,5 @@ export class DialogueController extends Component {
   update(dt: number): void {
     this.session?.update(dt);
     this.binding.poll();
-    this.pollTerms();
-  }
-
-  /**
-   * Glossary-term pointer routing (event-only). Hit-tests the pointer against
-   * the active line's `[term=…]` spans via the text presenter's `termAtPoint`
-   * seam (mirroring `PointerChoiceTarget`), and emits the opaque term id + the
-   * pointer's screen position on hover (once per term) and on a primary tap. The
-   * game owns the tooltip; the system never renders one. No-op when the text
-   * presenter doesn't expose `termAtPoint` (the seam is optional).
-   */
-  private pollTerms(): void {
-    const text = this.opts.text;
-    const clicked = this.termClicked;
-    this.termClicked = false;
-    if (!text.termAtPoint) {
-      this.hoveredTerm = undefined;
-      return;
-    }
-    // A term presenter declares the coordinate space its boxes live in: a
-    // screen-pinned box reads screen coords, a world-anchored bubble reads world.
-    const p =
-      text.pointerSpace === "world"
-        ? this.input.getPointerPosition()
-        : this.input.getPointerScreenPosition();
-    const screen = this.input.getPointerScreenPosition();
-    const term = text.termAtPoint(p.x, p.y);
-
-    // Hover: edge-trigger so the host gets one event per entered term.
-    if (term !== this.hoveredTerm) {
-      this.hoveredTerm = term;
-      if (term !== undefined) {
-        const e = {
-          id: term,
-          screen: { x: screen.x, y: screen.y },
-          kind: "hover" as const,
-        };
-        this.entity.emit(DialogueTermActivatedEvent, e);
-        text.onTermActivate?.(term);
-        this.opts.onTermActivate?.(e);
-      }
-    }
-
-    // Tap: a primary click while the pointer rests on a term commits it.
-    if (clicked && term !== undefined) {
-      const e = {
-        id: term,
-        screen: { x: screen.x, y: screen.y },
-        kind: "tap" as const,
-      };
-      this.entity.emit(DialogueTermActivatedEvent, e);
-      text.onTermActivate?.(term);
-      this.opts.onTermActivate?.(e);
-    }
   }
 }

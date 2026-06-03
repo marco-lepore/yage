@@ -3,7 +3,7 @@ export type {
   DialogueActions,
   PointerChoiceTarget,
   TermTarget,
-  PointerInputBindingOptions,
+  TermActivation,
 } from "./InputBinding.js";
 export {
   KeyboardInputBinding,

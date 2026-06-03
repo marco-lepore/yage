@@ -19,6 +19,7 @@ interface ProbeData {
 interface HostHandle {
   advance(): void;
   choose(n: number): void;
+  setAutoAdvance(ms: number | null): void;
 }
 
 /**
@@ -95,5 +96,31 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(after?.lineCount).toBeGreaterThan(linesBeforeChoice);
     expect(after?.lastLine).toContain("Branching works");
     expect(after?.choosing).toBe(false);
+  });
+
+  test("auto-advance walks the lines to the choice with no manual input", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+
+    // Turn on a short auto-advance, then never call advance(): the three intro
+    // lines should reveal and step themselves, parking at the choice.
+    await page.evaluate(
+      (ms) =>
+        (
+          window as unknown as { __dialogue__: HostHandle }
+        ).__dialogue__.setAutoAdvance(ms),
+      200,
+    );
+
+    for (let i = 0; i < 150; i++) {
+      if ((await probe(page))?.choosing) break;
+      await stepFrames(page, 3);
+    }
+
+    const p = await probe(page);
+    expect(p?.choosing).toBe(true); // reached the choice on its own
+    expect(p?.lineCount).toBeGreaterThanOrEqual(3); // walked all three lines
   });
 });

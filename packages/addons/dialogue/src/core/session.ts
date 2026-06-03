@@ -178,6 +178,9 @@ export class DialogueSession {
 
   private saying: SayStep | undefined;
   private autoTimer: number | undefined;
+  /** Default auto-advance delay (ms) applied to lines without their own
+   *  `autoAdvanceMs`. `null` = off (manual advance). Set via {@link setAutoAdvance}. */
+  private autoAdvanceDefault: number | null = null;
   private resolved: readonly ResolvedChoice[] = [];
   private selected = 0;
   /** True while a blocking line-command (show/afterReveal/advance) is awaited. */
@@ -421,6 +424,23 @@ export class DialogueSession {
     this.channels.text.setSpeedMultiplier(on ? this.skipMul : 1);
   }
 
+  /**
+   * Default auto-advance: lines without their own `autoAdvanceMs` advance `ms`
+   * after they finish revealing; `null` turns it off (manual advance). A
+   * per-line `autoAdvanceMs` always overrides this. Toggling it while a line is
+   * already sitting revealed arms/clears its timer immediately.
+   */
+  setAutoAdvance(ms: number | null): void {
+    this.autoAdvanceDefault = ms;
+    if (
+      this.mode === "saying" &&
+      this.saying?.autoAdvanceMs === undefined &&
+      this.channels.text.isRevealComplete()
+    ) {
+      this.autoTimer = ms ?? undefined;
+    }
+  }
+
   // ── runner handlers ─────────────────────────────────────────────────────
 
   private handleSay(step: SayStep, speaker: SpeakerDef | undefined): void {
@@ -564,8 +584,9 @@ export class DialogueSession {
     // show the continue caret on the new conversation's still-revealing line.
     if (gen !== this.generation || this.mode !== "saying") return;
     this.channels.chrome?.setContinueVisible(true);
-    if (this.saying?.autoAdvanceMs !== undefined)
-      this.autoTimer = this.saying.autoAdvanceMs;
+    // Per-line `autoAdvanceMs` wins; otherwise fall back to the session default.
+    const auto = this.saying?.autoAdvanceMs ?? this.autoAdvanceDefault;
+    if (auto !== null) this.autoTimer = auto;
   }
 
   /**

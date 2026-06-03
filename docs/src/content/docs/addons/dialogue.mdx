@@ -94,7 +94,9 @@ files.
 `createBoxDialogue()` defaults its theme to `defaultTheme()`. Pass a theme to
 restyle: `createBoxDialogue(myTheme)`. For a diegetic look, use
 `createBubbleDialogue(theme?, { worldLayer })`; to mix both per line, use
-`createMixedDialogue(theme?, opts)`.
+`createMixedDialogue(theme?, opts)`. Speech bubbles content-size to their wrapped
+text, so a long line grows the bubble instead of clipping (configure the bubble
+`height` as a minimum).
 </Aside>
 
 ## Writing a script
@@ -248,27 +250,37 @@ import { fullControls } from "@yagejs-addons/dialogue";
 
 new DialogueController({
   ...createBoxDialogue(),
-  input: fullControls(/* choice presenter for pointer hit-testing */),
+  // choice presenter for pointer hit-testing; hold X ~600ms to skip
+  input: fullControls(bundle.choices, { skipHoldMs: 600 }),
 });
 ```
 
-- `KeyboardInputBinding` — advance / hold-to-fast-forward / choice nav / skip.
+- `KeyboardInputBinding(actions?, skipHoldMs?)` — advance / hold-to-fast-forward
+  / choice nav / skip. `skipHoldMs > 0` gives the classic **hold-to-confirm skip**
+  (default `0` = fire on press).
 - `PointerInputBinding(choiceTarget?)` — tap to advance; tap/hover choice rows.
-- `CompositeInputBinding` / `fullControls()` — both at once.
+- `CompositeInputBinding` / `fullControls(choiceTarget?, { actions?, skipHoldMs? })`
+  — both at once.
 - `DEFAULT_ACTIONS` / `FULL_ACTIONS` — action-map presets.
 
-An ambient (auto-advancing) conversation simply attaches no binding.
+For a VN-style **auto-advance** toggle, call `controller.setAutoAdvance(ms)` (and
+`setAutoAdvance(null)` to turn it off); a per-line `autoAdvanceMs` still overrides
+it. An ambient (always auto-advancing) conversation simply attaches no binding.
 
 ## Glossary terms
 
-`[term=id]word[/term]` (alias `[gloss]`) spans are highlighted (theme
-`termColor`) and hit-tested. The controller wires pointer hover/tap to an
-`onTermActivate({ id, screen, kind })` callback **and** a
-`DialogueTermActivatedEvent`, mirroring the pointer-choice pattern.
+`[term=id]word[/term]` (alias `[gloss]`) spans are **underlined** (theme
+`termColor`) and **hover-highlighted**, so they read as interactable. Hit-testing
+and routing are the pointer binding's single responsibility: the controller wires
+the text view onto it automatically (you don't pass terms to `fullControls`), and
+on hover/tap it surfaces an `onTermActivate({ id, screen, kind })` callback **and**
+a `DialogueTermActivatedEvent`. A tap on a term opens its tooltip **without
+advancing the line**.
 
 ```ts
 new DialogueController({
   ...createBoxDialogue(),
+  input: fullControls(bundle.choices), // a pointer binding — terms need one
   onTermActivate({ id, screen }) {
     tooltip.show(glossary[id], screen); // the game owns the tooltip UI
   },
@@ -276,7 +288,8 @@ new DialogueController({
 ```
 
 The addon only emits the term id (plus a screen position and `"hover" | "tap"`) —
-it ships no default tooltip.
+it ships no default tooltip. Terms need a pointer-capable binding; a keyboard-only
+binding has nothing to hover/tap with.
 
 ## Theming
 
