@@ -34,6 +34,7 @@ import {
   CameraEntity,
   GraphicsComponent,
   TextComponent,
+  measureWrappedText,
   type LayerDef,
 } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
@@ -61,6 +62,10 @@ const HEIGHT = 600;
 const SKIP_HOLD_MS = 600; // hold X this long to confirm a skip
 const AUTO_ADVANCE_MS = 1500; // delay between lines when auto-advance is on
 const PLAYER_SPEED = 150; // px/sec
+const TIP_FONT = 13;
+const TIP_LINE = 17;
+const TIP_WRAP = 260; // term-tooltip wrap width (px)
+const TIP_PAD = 8;
 
 /** World-space render layers (under the camera) + the screen-space HUD. The
  *  dialogue box rides DIALOGUE_LAYERS (screen); bubbles ride BUBBLE_LAYER. */
@@ -374,23 +379,48 @@ class Hud extends Component {
     bg.add(new Transform());
     this.tipBg = bg.add(new GraphicsComponent({ layer: HUD_LAYER }));
     this.tipBg.graphics.visible = false;
-    this.tipText = this.spawnText(0, 0, "", 13, 0xffffff, { x: 0, y: 0 });
+
+    const tip = this.scene.spawn("hud-tip-text");
+    tip.add(new Transform());
+    this.tipText = tip.add(
+      new TextComponent({
+        text: "",
+        style: {
+          fontSize: TIP_FONT,
+          fill: 0xffffff,
+          fontFamily: "sans-serif",
+          lineHeight: TIP_LINE,
+          wordWrap: true,
+          wordWrapWidth: TIP_WRAP,
+        },
+        layer: HUD_LAYER,
+        anchor: { x: 0, y: 0 },
+      }),
+    );
     this.tipText.text.visible = false;
   }
 
-  /** Show a glossary tooltip near a screen position (auto-hides). */
+  /** Show a glossary tooltip near a screen position, sized to the text (auto-hides). */
   showTerm(e: TermActivation): void {
     const text = GLOSSARY[e.id];
     if (!text) return;
-    const x = clamp(e.screen.x + 14, 8, WIDTH - 320);
-    const y = clamp(e.screen.y + 14, 8, HEIGHT - 60);
+    const m = measureWrappedText(text, {
+      fontSize: TIP_FONT,
+      lineHeight: TIP_LINE,
+      wordWrapWidth: TIP_WRAP,
+      fontFamily: "sans-serif",
+    });
+    const w = m.width + 2 * TIP_PAD;
+    const h = m.height + 2 * TIP_PAD;
+    const x = clamp(e.screen.x + 14, 8, WIDTH - w - 8);
+    const y = clamp(e.screen.y + 14, 8, HEIGHT - h - 8);
     this.tipText.setText(text);
-    this.tipText.entity.get(Transform).setPosition(x + 10, y + 8);
+    this.tipText.entity.get(Transform).setPosition(x + TIP_PAD, y + TIP_PAD);
     this.tipText.text.visible = true;
     this.tipBg.entity.get(Transform).setPosition(x, y);
     this.tipBg.graphics.clear();
     this.tipBg.draw((g) => {
-      g.roundRect(0, 0, Math.min(text.length * 7 + 20, 320), 28, 6)
+      g.roundRect(0, 0, w, h, 6)
         .fill({ color: 0x111122, alpha: 0.95 })
         .stroke({ color: 0x4a4a8a, width: 1 });
     });
