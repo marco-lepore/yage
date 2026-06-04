@@ -18,13 +18,16 @@ import {
 } from "@yagejs/renderer";
 import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type { PresentedLine } from "../core/session.js";
-import { bubbleContentHeight } from "../render/bubbleSizing.js";
+import { bubbleSize } from "../render/bubbleSizing.js";
 import type { ChromePresenter } from "./DialogueUiAdapter.js";
 
 export interface BubbleChromeConfig {
   /** World-space render layer. */
   readonly layer: string;
-  readonly width: number;
+  /** Snuggest width; the bubble widens to its text up to {@link maxWidth}. */
+  readonly minWidth: number;
+  /** Widest the bubble grows before its text wraps to more lines. */
+  readonly maxWidth: number;
   /** Minimum bubble height (px). The bubble grows past this to fit its text. */
   readonly height: number;
   readonly padding: number;
@@ -59,10 +62,12 @@ export class BubbleChrome implements ChromePresenter {
   private actor?: DialogueActor | undefined;
   private caretVisible = false;
   private caretTime = 0;
-  /** Current (content-sized) bubble height; grows per line to fit the text. */
+  /** Current (content-sized) bubble size; recomputed per line. */
+  private currentWidth: number;
   private currentHeight: number;
 
   constructor(private readonly cfg: BubbleChromeConfig) {
+    this.currentWidth = cfg.minWidth;
     this.currentHeight = cfg.height;
   }
 
@@ -104,8 +109,9 @@ export class BubbleChrome implements ChromePresenter {
     if (show && line) {
       const c = this.cfg;
       const plain = line.text.runs.map((r) => r.text).join("");
-      this.currentHeight = bubbleContentHeight(plain, {
-        width: c.width,
+      const size = bubbleSize(plain, {
+        minWidth: c.minWidth,
+        maxWidth: c.maxWidth,
         padding: c.padding,
         minHeight: c.height,
         textSize: c.textSize,
@@ -113,6 +119,8 @@ export class BubbleChrome implements ChromePresenter {
         fontFamily: c.fontFamily,
         bitmapFont: c.bitmapFont,
       });
+      this.currentWidth = size.width;
+      this.currentHeight = size.height;
       this.drawBubble();
     }
     if (this.gfx) this.gfx.graphics.visible = show;
@@ -177,23 +185,26 @@ export class BubbleChrome implements ChromePresenter {
     if (!this.actor) return;
     const a = this.actor.anchorWorld();
     const c = this.cfg;
+    const w = this.currentWidth;
     const h = this.currentHeight;
     this.transform?.setPosition(a.x, a.y);
     // Name: top-left corner of the bubble, lifted by the (grown) bubble height.
     this.name?.entity
       .tryGet(Transform)
-      ?.setPosition(a.x - c.width / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
+      ?.setPosition(a.x - w / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
     // Caret: bottom-right interior of the bubble (anchored near the bottom edge).
-    this.caretTransform?.setPosition(a.x + c.width / 2 - c.padding - 7, a.y - c.offsetY - c.padding - 2);
+    this.caretTransform?.setPosition(a.x + w / 2 - c.padding - 7, a.y - c.offsetY - c.padding - 2);
   }
 
   private drawBubble(): void {
     const c = this.cfg;
+    const w = this.currentWidth;
     const h = this.currentHeight;
-    const x = -c.width / 2;
+    const x = -w / 2;
     const y = -(c.offsetY + h);
+    this.gfx?.graphics.clear(); // re-drawn per line at a new size — don't accumulate
     this.gfx?.draw((g) => {
-      g.roundRect(x, y, c.width, h, c.cornerRadius)
+      g.roundRect(x, y, w, h, c.cornerRadius)
         .fill({ color: c.bgColor, alpha: c.bgAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
       // Tail pointing down toward the speaker (anchor at local 0,0).

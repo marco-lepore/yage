@@ -26,7 +26,11 @@ import { defaultTheme } from "./defaultTheme.js";
 import { compact } from "./compact.js";
 
 export interface BubbleGeometry {
-  readonly width: number;
+  /** Snuggest width; the bubble widens to its text up to {@link maxWidth}. */
+  readonly minWidth: number;
+  /** Widest the bubble grows before its text wraps to more lines. */
+  readonly maxWidth: number;
+  /** Minimum height; grows to fit wrapped text once `maxWidth` is reached. */
   readonly height: number;
   readonly padding: number;
   /** Gap between the actor's head anchor and the bubble's bottom edge. */
@@ -36,8 +40,9 @@ export interface BubbleGeometry {
 }
 
 export const DEFAULT_BUBBLE: BubbleGeometry = {
-  width: 150,
-  height: 46,
+  minWidth: 90,
+  maxWidth: 260,
+  height: 40,
   padding: 8,
   offsetY: 24,
   tail: 6,
@@ -74,7 +79,8 @@ export function createBubbleDialogue(
 
   const chrome = new BubbleChrome({
     layer: opts.worldLayer,
-    width: geo.width,
+    minWidth: geo.minWidth,
+    maxWidth: geo.maxWidth,
     height: geo.height,
     padding: geo.padding,
     offsetY: geo.offsetY,
@@ -102,7 +108,13 @@ export function createBubbleDialogue(
       layer: opts.worldLayer,
       ...textFonts,
     },
-    { width: geo.width, height: geo.height, padding: geo.padding, offsetY: geo.offsetY },
+    {
+      minWidth: geo.minWidth,
+      maxWidth: geo.maxWidth,
+      height: geo.height,
+      padding: geo.padding,
+      offsetY: geo.offsetY,
+    },
   );
 
   // Choices float in their own self-contained bubble panel over the actor
@@ -110,7 +122,7 @@ export function createBubbleDialogue(
   // frame and the prompt lives in the same bubble as the options.
   const choices = new BubbleChoicePresenter({
     layer: opts.worldLayer,
-    width: geo.width,
+    width: geo.maxWidth,
     padding: geo.padding,
     offsetY: geo.offsetY,
     tail: geo.tail,

@@ -9,15 +9,18 @@
 import type { Scene } from "@yagejs/core";
 import { actorRegistryFor } from "../actor/index.js";
 import type { PresentedLine } from "../core/session.js";
-import { bubbleContentHeight } from "./bubbleSizing.js";
+import { bubbleSize } from "./bubbleSizing.js";
 import {
   DialogueTextView,
   type DialogueTextConfig,
 } from "./DialogueTextView.js";
 
 export interface BubbleTextLayout {
-  readonly width: number;
-  /** Minimum bubble height (px); the text origin tracks the grown height. */
+  /** Snuggest width; the bubble widens to its text up to {@link maxWidth}. */
+  readonly minWidth: number;
+  /** Widest the bubble grows before its text wraps to more lines. */
+  readonly maxWidth: number;
+  /** Minimum bubble height (px); the text origin tracks the grown size. */
   readonly height: number;
   readonly padding: number;
   readonly offsetY: number;
@@ -48,7 +51,8 @@ export class BubbleTextView extends DialogueTextView {
   ) {
     super({
       ...cfg,
-      box: { x: 0, y: 0, width: bubble.width - 2 * bubble.padding },
+      // Initial wrap width; updated per line in present() as the bubble widens.
+      box: { x: 0, y: 0, width: bubble.maxWidth - 2 * bubble.padding },
     });
     this.body = {
       textSize: cfg.size,
@@ -68,11 +72,13 @@ export class BubbleTextView extends DialogueTextView {
       ? actorRegistryFor(this.sceneRef).resolve(line.speaker?.id)
       : undefined;
     const b = this.bubble;
-    // Grow the origin lift to the same height the chrome draws this line at, so
-    // the text sits inside the (content-sized) bubble.
+    // Size to the same width + height the chrome draws this line at, so the text
+    // sits inside the (content-sized) bubble. Update the wrap width too — the
+    // bubble may have widened/narrowed for this line.
     const plain = line.text.runs.map((r) => r.text).join("");
-    const h = bubbleContentHeight(plain, {
-      width: b.width,
+    const size = bubbleSize(plain, {
+      minWidth: b.minWidth,
+      maxWidth: b.maxWidth,
       padding: b.padding,
       minHeight: b.height,
       textSize: this.body.textSize,
@@ -80,13 +86,14 @@ export class BubbleTextView extends DialogueTextView {
       fontFamily: this.body.fontFamily,
       bitmapFont: this.body.bitmapFont,
     });
+    this.setBox(0, 0, size.width - 2 * b.padding);
     this.setOrigin(
       actor
         ? () => {
             const a = actor.anchorWorld();
             const o = {
-              x: a.x - b.width / 2 + b.padding,
-              y: a.y - (b.offsetY + h) + b.padding,
+              x: a.x - size.width / 2 + b.padding,
+              y: a.y - (b.offsetY + size.height) + b.padding,
             };
             this.originX = o.x;
             this.originY = o.y;
