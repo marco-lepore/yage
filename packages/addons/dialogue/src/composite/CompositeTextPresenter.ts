@@ -7,10 +7,10 @@
  */
 
 import type { Scene } from "@yagejs/core";
-import type { PresentedLine, TextChannel } from "../core/session.js";
+import type { PresentedLine } from "../core/session.js";
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
 
-export class CompositeTextPresenter implements TextChannel {
+export class CompositeTextPresenter implements TextPresenter {
   private active?: TextPresenter | undefined;
   onRevealComplete?: () => void;
 
@@ -36,6 +36,18 @@ export class CompositeTextPresenter implements TextChannel {
     other.clear();
     this.active = target;
     target.present(line);
+  }
+
+  // ── glossary-term seam: forward to whichever sub-view is active, so a box
+  //    term works while a box line shows and a bubble term while a bubble shows.
+  get pointerSpace(): "screen" | "world" {
+    return this.active?.pointerSpace ?? "screen";
+  }
+  termAtPoint(x: number, y: number): string | undefined {
+    return this.active?.termAtPoint?.(x, y);
+  }
+  setHoveredTerm(id: string | undefined): void {
+    this.active?.setHoveredTerm?.(id);
   }
 
   completeReveal(): void {

@@ -522,6 +522,7 @@ export class DialogueTextView implements TextPresenter {
     const line = this.line;
     if (!line?.underline) return;
     const hovered = this.hoveredTerm;
+    line.underline.graphics.clear(); // re-drawn on hover — don't accumulate
     line.underline.draw((g) => {
       for (const s of line.spans) {
         const on = s.term === hovered;

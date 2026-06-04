@@ -388,6 +388,7 @@ class Hud extends Component {
     this.tipText.entity.get(Transform).setPosition(x + 10, y + 8);
     this.tipText.text.visible = true;
     this.tipBg.entity.get(Transform).setPosition(x, y);
+    this.tipBg.graphics.clear();
     this.tipBg.draw((g) => {
       g.roundRect(0, 0, Math.min(text.length * 7 + 20, 320), 28, 6)
         .fill({ color: 0x111122, alpha: 0.95 })
@@ -408,6 +409,7 @@ class Hud extends Component {
     const ff = this.input.isPressed("attack");
     const skipHeld = this.input.isPressed("skip");
     const skipT = clamp(this.input.getHoldDuration("skip") / SKIP_HOLD_MS, 0, 1);
+    this.meter.graphics.clear(); // redrawn every frame — don't accumulate
     this.meter.draw((g) => {
       if (ff) {
         g.poly([-9, -7, 0, 0, -9, 7]).fill({ color: 0xffffff, alpha: 0.9 });
@@ -569,11 +571,12 @@ class RoomScene extends Scene {
       }),
     );
 
-    // Eavesdrop pair: Ann & Bert chat on their own when you get close.
-    spawnNpc(this, { x: 380, y: 150, color: 0xf5a168, speaker: "ann" });
-    spawnNpc(this, { x: 430, y: 150, color: 0xaaaaaa, speaker: "bert" });
+    // Eavesdrop pair: Ann & Bert chat on their own when you get close. Placed
+    // with headroom above so their bubbles stay inside the room.
+    spawnNpc(this, { x: 360, y: 205, color: 0xf5a168, speaker: "ann" });
+    spawnNpc(this, { x: 430, y: 205, color: 0xaaaaaa, speaker: "bert" });
     const zone = this.spawn("gossip-zone");
-    zone.add(new Transform({ position: new Vec2(405, 160) }));
+    zone.add(new Transform({ position: new Vec2(395, 215) }));
     zone.add(
       new ProximityZone({
         radius: 110,

@@ -133,9 +133,9 @@ Headless channels (core): `TextChannel`, `ChoiceChannel`, `AvatarChannel`,
 `ChromeChannel`. Presenter adapters add the YAGE lifecycle (`mount`/`dispose`)
 and pointer seams: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
 Defaults: `DialogueChrome`, `ChoiceListPresenter`, `DialogueTextView` (box);
-`BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world; the bubble
-content-sizes to its wrapped text via the renderer's `measureWrappedText`).
-Composites
+`BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world; the bubble sizes
+to its text — grows width to `maxWidth`, then wraps + grows height — via the
+renderer's `measureWrappedText`). Composites
 (`CompositeChrome`/`CompositeTextPresenter`/`CompositeChoicePresenter`) route by
 `view`. Avatars: `PortraitPresenter`, `SceneFigurePresenter`,
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers

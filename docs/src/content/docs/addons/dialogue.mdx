@@ -94,9 +94,10 @@ files.
 `createBoxDialogue()` defaults its theme to `defaultTheme()`. Pass a theme to
 restyle: `createBoxDialogue(myTheme)`. For a diegetic look, use
 `createBubbleDialogue(theme?, { worldLayer })`; to mix both per line, use
-`createMixedDialogue(theme?, opts)`. Speech bubbles content-size to their wrapped
-text, so a long line grows the bubble instead of clipping (configure the bubble
-`height` as a minimum).
+`createMixedDialogue(theme?, opts)`. Speech bubbles size to their text — they grow
+**width first** (up to `maxWidth`), then wrap and grow height — so a long line
+widens the bubble instead of clipping (configure `minWidth` / `maxWidth` / `height`
+on the bubble geometry).
 </Aside>
 
 ## Writing a script

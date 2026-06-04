@@ -2,20 +2,24 @@
  * Shared speech-bubble sizing. The bubble chrome (`BubbleChrome`) and the bubble
  * body text (`BubbleTextView`) are independent presenters that the session drives
  * separately — and the chrome sizes *before* the text (`session.handleSay` calls
- * `chrome.present` then `text.present`). So they can't read a height off each
- * other; instead both compute it from the SAME inputs here, guaranteeing they
- * agree and the text sits inside its frame.
+ * `chrome.present` then `text.present`). So they can't read a size off each other;
+ * instead both compute it from the SAME inputs here, guaranteeing they agree and
+ * the text sits inside its frame.
  *
- * Canvas path wraps via the renderer's `measureWrappedText` metrics; the bitmap
- * path can't wrap, so it keeps the fixed minimum (bubbles with a bitmap font stay
- * a fixed size — author the geometry to fit).
+ * Bubbles grow **width first**: a short line gets a snug bubble that widens up to
+ * `maxWidth`; only past that does the text wrap and the bubble grow taller. That
+ * keeps bubbles short (less likely to run off the top of the screen) and reads
+ * more like a real speech bubble. The bitmap path can't wrap, so it keeps a fixed
+ * `maxWidth` × `minHeight`.
  */
 
 import { measureWrappedText } from "@yagejs/renderer";
 
 export interface BubbleSizeInput {
-  /** Outer bubble width (px); inner wrap width is `width - 2*padding`. */
-  readonly width: number;
+  /** Snuggest width (px). The bubble never gets narrower than this. */
+  readonly minWidth: number;
+  /** Widest the bubble grows before the text wraps to more lines. */
+  readonly maxWidth: number;
   readonly padding: number;
   /** Minimum content height; also the fixed height on the bitmap path. */
   readonly minHeight: number;
@@ -23,27 +27,52 @@ export interface BubbleSizeInput {
   readonly textSize: number;
   readonly lineHeight: number;
   readonly fontFamily?: string | undefined;
-  /** Set → bitmap font: keep `minHeight` (no wrap-aware measurement). */
+  /** Set → bitmap font: keep `maxWidth` × `minHeight` (no wrap-aware metrics). */
   readonly bitmapFont?: string | undefined;
 }
 
+export interface BubbleSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 /**
- * Content height a bubble needs to fit `plainText` (markup already stripped)
- * wrapped to its inner width — clamped to at least `minHeight`. Vertical only;
- * the bubble keeps its configured width.
+ * Outer bubble size to fit `plainText` (markup already stripped): widen to the
+ * text up to `maxWidth`, then wrap and grow height. Both clamped to the configured
+ * minimums.
  */
-export function bubbleContentHeight(
-  plainText: string,
-  cfg: BubbleSizeInput,
-): number {
-  if (cfg.bitmapFont) return cfg.minHeight;
-  const inner = Math.max(1, cfg.width - 2 * cfg.padding);
-  const m = measureWrappedText(plainText, {
+export function bubbleSize(plainText: string, cfg: BubbleSizeInput): BubbleSize {
+  const oneLine = cfg.lineHeight + 2 * cfg.padding;
+  if (cfg.bitmapFont) {
+    return { width: cfg.maxWidth, height: Math.max(cfg.minHeight, oneLine) };
+  }
+  const font = cfg.fontFamily;
+  const fontOpt = font !== undefined ? { fontFamily: font } : {};
+
+  // Natural single-line width — does it fit under maxWidth?
+  const natural = measureWrappedText(plainText, {
+    fontSize: cfg.textSize,
+    lineHeight: cfg.lineHeight,
+    ...fontOpt,
+  });
+  const wantWidth = natural.width + 2 * cfg.padding;
+  if (wantWidth <= cfg.maxWidth) {
+    return {
+      width: Math.max(cfg.minWidth, wantWidth),
+      height: Math.max(cfg.minHeight, oneLine),
+    };
+  }
+
+  // Too wide: cap the width, wrap, and grow the height to the line count.
+  const inner = cfg.maxWidth - 2 * cfg.padding;
+  const wrapped = measureWrappedText(plainText, {
     fontSize: cfg.textSize,
     lineHeight: cfg.lineHeight,
     wordWrapWidth: inner,
-    ...(cfg.fontFamily !== undefined ? { fontFamily: cfg.fontFamily } : {}),
+    ...fontOpt,
   });
-  const content = m.lineCount * cfg.lineHeight + 2 * cfg.padding;
-  return Math.max(cfg.minHeight, content);
+  return {
+    width: cfg.maxWidth,
+    height: Math.max(cfg.minHeight, wrapped.lineCount * cfg.lineHeight + 2 * cfg.padding),
+  };
 }
