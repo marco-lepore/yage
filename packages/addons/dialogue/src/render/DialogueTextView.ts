@@ -143,11 +143,10 @@ interface TermBox {
  *  space, so this follows a moving bubble for free). */
 interface TermSpan {
   readonly term: string;
-  /** Underline extent + baseline, split-relative. */
-  readonly x0: number;
-  readonly x1: number;
+  /** Underline baseline (split-relative). */
   readonly y: number;
-  /** Glyph index range into `chars`/`metas` (inclusive). */
+  /** Glyph index range into `chars`/`metas` (inclusive). The underline spans only
+   *  the REVEALED glyphs in this range, so it grows with the typewriter. */
   readonly first: number;
   readonly last: number;
 }
@@ -466,14 +465,7 @@ export class DialogueTextView implements TextPresenter {
           x1: this.layoutOriginX + maxX,
           y1: this.layoutOriginY + maxY,
         });
-        spans.push({
-          term: run.style.term,
-          x0: minX,
-          x1: maxX,
-          y: maxY,
-          first,
-          last,
-        });
+        spans.push({ term: run.style.term, y: maxY, first, last });
       }
       ns += runNonSpace;
     }
@@ -490,6 +482,7 @@ export class DialogueTextView implements TextPresenter {
     this.shownCount = shown;
     const chars = this.line.chars;
     for (let i = 0; i < chars.length; i++) chars[i]!.visible = i < shown;
+    this.drawUnderlines(); // grow the term underline with the reveal
   }
 
   /**
@@ -522,11 +515,21 @@ export class DialogueTextView implements TextPresenter {
     const line = this.line;
     if (!line?.underline) return;
     const hovered = this.hoveredTerm;
-    line.underline.graphics.clear(); // re-drawn on hover — don't accumulate
+    const shown = this.shownCount; // revealed non-space glyph count
+    // Re-drawn as the line reveals + on hover — clear so it doesn't accumulate
+    // and so it only underlines glyphs that are actually on screen yet.
+    line.underline.graphics.clear();
     line.underline.draw((g) => {
       for (const s of line.spans) {
+        const lastVisible = Math.min(s.last, shown - 1);
+        if (lastVisible < s.first) continue; // none of this term revealed yet
+        const a = line.metas[s.first];
+        const b = line.metas[lastVisible];
+        if (!a || !b) continue;
+        const x0 = a.splitX;
+        const x1 = b.splitX + b.width;
         const on = s.term === hovered;
-        g.rect(s.x0, s.y + 1, Math.max(0, s.x1 - s.x0), on ? 2 : 1).fill({
+        g.rect(x0, s.y + 1, Math.max(0, x1 - x0), on ? 2 : 1).fill({
           color: on ? this.termHoverColor : this.termColor,
           alpha: on ? 1 : 0.7,
         });

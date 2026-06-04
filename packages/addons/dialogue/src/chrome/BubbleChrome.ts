@@ -200,18 +200,33 @@ export class BubbleChrome implements ChromePresenter {
     const c = this.cfg;
     const w = this.currentWidth;
     const h = this.currentHeight;
-    const x = -w / 2;
-    const y = -(c.offsetY + h);
+    const L = -w / 2;
+    const R = w / 2;
+    const T = -(c.offsetY + h); // top edge
+    const B = -c.offsetY; // bottom edge (the tail hangs below it to the speaker)
+    const r = Math.max(0, Math.min(c.cornerRadius, w / 2 - 1, h / 2 - 1));
+    const half = c.tail; // tail base half-width
+    const tipX = -3; // slight lean
+    const tipY = -2; // just above the actor's head anchor (local 0,0)
     this.gfx?.graphics.clear(); // re-drawn per line at a new size — don't accumulate
+    // One closed silhouette (rounded rect + a tail notch on the bottom edge), so
+    // the border flows around the tail instead of cutting across it.
     this.gfx?.draw((g) => {
-      g.roundRect(x, y, w, h, c.cornerRadius)
+      g.moveTo(L + r, T)
+        .lineTo(R - r, T)
+        .arcTo(R, T, R, T + r, r) // top-right
+        .lineTo(R, B - r)
+        .arcTo(R, B, R - r, B, r) // bottom-right
+        .lineTo(half, B) // along the bottom edge to the tail base
+        .lineTo(tipX, tipY) // down to the tail tip
+        .lineTo(-half, B) // back up to the tail base
+        .lineTo(L + r, B)
+        .arcTo(L, B, L, B - r, r) // bottom-left
+        .lineTo(L, T + r)
+        .arcTo(L, T, L + r, T, r) // top-left
+        .closePath()
         .fill({ color: c.bgColor, alpha: c.bgAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
-      // Tail pointing down toward the speaker (anchor at local 0,0).
-      g.poly([-c.tail, -c.offsetY, c.tail, -c.offsetY, 0, -c.offsetY + c.tail]).fill({
-        color: c.bgColor,
-        alpha: c.bgAlpha,
-      });
     });
   }
 
