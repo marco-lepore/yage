@@ -6,10 +6,13 @@ import {
   unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
-import type { RenderFacetSnapshot, Vec2Like } from "@yagejs/core";
+import type { Vec2Like } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
 import type { Container } from "pixi.js";
-import { computeRenderFacet } from "./internal/renderFacet.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";

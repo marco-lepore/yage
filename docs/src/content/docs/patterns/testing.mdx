@@ -258,11 +258,11 @@ same applies to `tags` — filter client-side rather than expecting a built-in
 
 To assert what is actually *rendered* — not just the entity origin or the
 persisted component state — read the **render facet** off a world-scene
-snapshot. Each graphical component carries a derived `render` block with
-world-space `bounds` and component-local `visible`, computed on demand from the
-live display object. `SplitTextComponent` also reports per-glyph visibility and
-the visible substring, so a typewriter reveal is verifiable from the public API
-instead of reaching into Pixi:
+snapshot (published by `RendererPlugin` under `facets.render`). Each graphical
+component carries a derived facet with world-space `bounds` and component-local
+`visible`, computed on demand from the live display object. `SplitTextComponent`
+also reports per-glyph visibility and the visible substring, so a typewriter
+reveal is verifiable from the public API instead of reaching into Pixi:
 
 ```typescript
 import type { SplitTextRenderFacet } from "@yagejs/renderer";
@@ -273,7 +273,7 @@ const label = scene?.entities.find((e) =>
 );
 const split = label?.components.find(
   (c) => c.type === "SplitTextComponent",
-)?.render as SplitTextRenderFacet | undefined;
+)?.facets?.render as SplitTextRenderFacet | undefined;
 
 expect(split?.visibleText).toBe("Hel");
 expect(split?.glyphs.filter((g) => g.visible)).toHaveLength(3);

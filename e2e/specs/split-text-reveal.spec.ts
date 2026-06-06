@@ -10,7 +10,7 @@ type RenderFacet = SplitTextRenderFacet;
  * active scene snapshot — never touching live Pixi display objects. This is
  * the AGENTS.md "assert via the Inspector, not screenshots / Pixi internals"
  * path: per-glyph reveal state is observable purely from
- * `snapshotScene().entities[].render`.
+ * `snapshotScene().entities[].facets.render`.
  */
 async function readReveal(
   page: Page,
@@ -29,8 +29,8 @@ async function readReveal(
       (c) => c.type === "SplitTextComponent",
     );
     return {
-      entity: entity?.render as RenderFacet | undefined,
-      component: component?.render as RenderFacet | undefined,
+      entity: entity?.facets?.render as RenderFacet | undefined,
+      component: component?.facets?.render as RenderFacet | undefined,
     };
   });
 }

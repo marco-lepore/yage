@@ -1,8 +1,10 @@
 import { Component, serializable } from "@yagejs/core";
-import type { RenderFacetSnapshot } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
 import type { BitmapText, Container, Text } from "pixi.js";
-import { computeRenderFacet } from "./internal/renderFacet.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
 import { buildTextOptions } from "./internal/textConstruction.js";

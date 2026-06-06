@@ -1,6 +1,50 @@
-import type { RenderFacetSnapshot } from "@yagejs/core";
 import { Point } from "pixi.js";
 import type { Container } from "pixi.js";
+
+/**
+ * Derived, read-only rendered-geometry / visibility facet for a graphical
+ * component, computed on demand from its live display object — NOT from
+ * `serialize()` (which reports declared, persisted state). Where `serialize()`
+ * says a typewriter's full string is present, this reports the bounds actually
+ * painted.
+ *
+ * Owned by `@yagejs/renderer`: the renderer publishes it into the Inspector
+ * snapshot through the generic {@link InspectorFacetContributor} seam (see
+ * {@link RenderFacetContributor}), so `@yagejs/core` stays agnostic of any
+ * rendering concept.
+ *
+ * `bounds` / `visible` are the cross-cutting fields. A component reporting
+ * richer, mode-specific state (e.g. per-glyph visibility for split text) widens
+ * the shape via the `Extra` parameter on its own side.
+ */
+export type RenderFacetSnapshot<Extra = unknown> = {
+  /**
+   * Axis-aligned bounding box of the component's geometry, in world space (the
+   * same coordinate space the Inspector reports for `entity.transform` — pixels,
+   * before camera/viewport projection). Measured from the geometry itself, so a
+   * sized-but-hidden object still reports its real box; `null` means there is no
+   * measurable geometry at all (an empty `Graphics`, a zero-area object), NOT
+   * that the object is hidden. Read {@link RenderFacetSnapshot.visible} for the
+   * hidden/shown state.
+   */
+  bounds: { x: number; y: number; width: number; height: number } | null;
+  /**
+   * The component's own (local, non-inherited) visibility flag at snapshot
+   * time. A hidden ancestor (e.g. a parent/layer container set invisible) is
+   * NOT folded in — read the relevant parent separately if you need the fully
+   * resolved on-screen state.
+   */
+  visible: boolean;
+} & Extra;
+
+/**
+ * Renderer-internal contract a graphical component implements to publish its
+ * render facet. {@link RenderFacetContributor} duck-types this off each
+ * component when building an Inspector snapshot.
+ */
+export interface RenderInspectable {
+  inspectRender(): RenderFacetSnapshot;
+}
 
 /**
  * Compute the {@link RenderFacetSnapshot} for a single display object.

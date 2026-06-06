@@ -15,7 +15,7 @@ const container = setupContainer(WIDTH, HEIGHT);
  * visible per frame by toggling `chars[i].visible`. The string stays the
  * full "Hello world" in `serialize()`; only the live display objects change.
  * The E2E reads the actual revealed glyphs via the Inspector render facet
- * (`snapshotScene().entities[].render.glyphs` / `.visibleText`).
+ * (`snapshotScene().entities[].facets.render.glyphs` / `.visibleText`).
  */
 class Typewriter extends Component {
   private revealed = 0;

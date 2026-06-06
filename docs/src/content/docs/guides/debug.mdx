@@ -266,8 +266,9 @@ and for partial reveals (a typewriter `SplitTextComponent` that toggles
 `chars[i].visible`) the persisted `serialize()` state disagrees with the
 screen, reporting the full string with no per-glyph detail.
 
-Each graphical component therefore publishes a derived **render facet** on the
-snapshot, computed on demand from its live display object:
+When `RendererPlugin` is active it publishes a derived **render facet** for each
+graphical component on the snapshot, under `facets.render`, computed on demand
+from the live display object:
 
 ```typescript
 const scene = window.__yage__.inspector.snapshot().scenes[0];
@@ -276,17 +277,17 @@ const label = scene.entities.find((e) =>
 );
 
 // World-space bounds + component-local visibility, surfaced at the entity level
-// (first graphical component the entity added) and per component:
-label?.render;           // { bounds: { x, y, width, height } | null, visible }
-label?.components.find((c) => c.type === "SplitTextComponent")?.render;
+// (first painted component the entity added) and per component:
+label?.facets?.render;           // { bounds: { x, y, width, height } | null, visible }
+label?.components.find((c) => c.type === "SplitTextComponent")?.facets?.render;
 
 // SplitTextComponent additionally reports per-glyph state and the visible
 // substring — so a typewriter reveal is testable without touching Pixi.
-// `render` is typed as the base facet, so widen it to read the SplitText extras
-// (SplitTextRenderFacet is exported from @yagejs/renderer):
+// `facets.render` is typed as the base facet, so widen it to read the SplitText
+// extras (SplitTextRenderFacet is exported from @yagejs/renderer):
 const split = label?.components.find(
   (c) => c.type === "SplitTextComponent",
-)?.render as SplitTextRenderFacet | undefined;
+)?.facets?.render as SplitTextRenderFacet | undefined;
 split?.glyphs;           // [{ visible }, ...] in reading order
 split?.visibleText;      // e.g. "Hel" while only the first 3 glyphs show
 ```
@@ -302,11 +303,18 @@ not folded in. `glyphs` and `visibleText` cover only rendered glyph segments —
 `SplitText.chars` excludes whitespace, so a fully-revealed `"Hello world"`
 reports `"Helloworld"`; compare which glyphs are visible rather than treating it
 as the verbatim string. The facet is read-only and never part of
-`serialize()`, so it does not affect save/load. `SpriteComponent`,
+`serialize()`, so it does not affect save/load.
+
+The facet lives entirely in `@yagejs/renderer`, keeping `@yagejs/core`
+renderer-agnostic. The Inspector exposes a generic seam —
+`registerFacetContributor()` attaches namespaced `facets` to snapshots — and
+`RendererPlugin` registers a `RenderFacetContributor` for the `render` namespace
+(the same contributor idiom as a `DebugContributor` or a save
+`SnapshotContributor`). That contributor duck-types `inspectRender()` off each
+component, so a custom graphical component opts in simply by exposing an
+`inspectRender(): RenderFacetSnapshot` method. `SpriteComponent`,
 `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and
-`SplitTextComponent` all implement it; a custom component opts in by exposing
-an `inspectRender(): RenderFacetSnapshot` method, which the Inspector
-duck-types.
+`SplitTextComponent` all implement it.
 
 #### Honest limits
 

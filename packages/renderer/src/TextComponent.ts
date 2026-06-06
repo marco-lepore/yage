@@ -3,10 +3,12 @@ import {
   makeEntityScopedQueue,
   serializable,
 } from "@yagejs/core";
-import type { RenderFacetSnapshot } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
 import type { Container } from "pixi.js";
-import { computeRenderFacet } from "./internal/renderFacet.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";

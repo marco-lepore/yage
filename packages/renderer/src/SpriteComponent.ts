@@ -6,10 +6,12 @@ import {
   unmarkPointerConsumeContainer,
   serializable,
 } from "@yagejs/core";
-import type { RenderFacetSnapshot } from "@yagejs/core";
 import { Sprite } from "pixi.js";
 import type { Container } from "pixi.js";
-import { computeRenderFacet } from "./internal/renderFacet.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
 import { resolveTextureInput } from "./assets.js";

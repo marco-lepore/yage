@@ -2,6 +2,7 @@ import {
   AssetManagerKey,
   EventBusKey,
   GameLoopKey,
+  InspectorKey,
   isPointerConsumeContainer,
   makeGlobalScopedQueue,
   ProcessSystemKey,
@@ -30,6 +31,7 @@ import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
 import { DisplaySystem } from "./DisplaySystem.js";
+import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
 import type { GraphicsContext, TextStyle, TextureResource } from "./public-types.js";
@@ -105,6 +107,7 @@ export class RendererPlugin implements Plugin {
   fx!: EffectsHost;
   private _engineContext: EngineContext | null = null;
   private _unregisterSaveContributor: (() => void) | null = null;
+  private _unregisterFacetContributor: (() => void) | null = null;
   private _unregisterFullscreenListener: (() => void) | null = null;
   private _unregisterOrientationListener: (() => void) | null = null;
   private _unregisterSceneVisibility: (() => void) | null = null;
@@ -334,7 +337,20 @@ export class RendererPlugin implements Plugin {
       },
     });
 
-    // 12. Stash the context for use in onStart, where the snapshot bridge is
+    // 12. Publish the render facet (rendered geometry + visibility) into the
+    //     Inspector snapshot through the generic facet-contributor seam, so
+    //     `@yagejs/core` stays agnostic of any rendering concept. The Inspector
+    //     is always registered by the Engine, so — unlike the optional save
+    //     bridge below — this needs no dynamic-import dance and can wire up
+    //     here in install.
+    const inspector = context.tryResolve(InspectorKey);
+    if (inspector) {
+      this._unregisterFacetContributor = inspector.registerFacetContributor(
+        new RenderFacetContributor(),
+      );
+    }
+
+    // 13. Stash the context for use in onStart, where the snapshot bridge is
     //     wired up — we need to wait for every plugin to install before
     //     resolving SnapshotServiceKey, otherwise registration order matters.
     this._engineContext = context;
@@ -393,6 +409,8 @@ export class RendererPlugin implements Plugin {
     // instead of throwing on access.
     this._unregisterSaveContributor?.();
     this._unregisterSaveContributor = null;
+    this._unregisterFacetContributor?.();
+    this._unregisterFacetContributor = null;
     this._unregisterFullscreenListener?.();
     this._unregisterFullscreenListener = null;
     this._unregisterOrientationListener?.();

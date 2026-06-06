@@ -144,51 +144,55 @@ export interface ComponentStateSnapshot {
   type: string;
   state: unknown | null;
   /**
-   * Derived rendered-geometry / visibility facet, present only for graphical
-   * components that expose an `inspectRender()` hook. See {@link RenderFacetSnapshot}.
+   * Namespaced, derived facets contributed by registered
+   * {@link InspectorFacetContributor}s — e.g. the renderer publishes a `render`
+   * facet (world-space bounds + visibility). Present only when at least one
+   * contributor produced a facet for this component. Always computed live, never
+   * from `serialize()`.
    */
-  render?: RenderFacetSnapshot;
+  facets?: InspectorFacets;
 }
 
 /**
- * Derived, read-only rendered-geometry / visibility facet for a graphical
- * component, computed on demand from its live display object — NOT from
- * `serialize()` (which reports declared, persisted state). Where `serialize()`
- * says a typewriter's full string is present, this reports the bounds actually
- * painted.
- *
- * A renderer component opts in by exposing an `inspectRender(): RenderFacetSnapshot`
- * method; the Inspector duck-types it (no compile-time dependency on the
- * renderer package) and attaches the result to {@link WorldEntitySnapshot.render}.
- *
- * `bounds` / `visible` are the cross-cutting fields. A component reporting
- * richer, mode-specific state (e.g. per-glyph visibility for split text)
- * widens the shape via the `Extra` parameter on its own side — core stays
- * agnostic of any specific renderer component's payload.
+ * Open, augmentable map of namespaced Inspector facets. Core declares only the
+ * index signature and stays agnostic of what any namespace means; a plugin that
+ * registers an {@link InspectorFacetContributor} augments this interface via
+ * `declare module "@yagejs/core"` to type its own key (the renderer adds
+ * `render`, typed as its own `RenderFacetSnapshot`).
  */
-export type RenderFacetSnapshot<Extra = unknown> = {
-  /**
-   * Axis-aligned bounding box of the component's geometry, in world space (the
-   * same coordinate space as {@link WorldEntitySnapshot.transform} — pixels,
-   * before camera/viewport projection). Measured from the geometry itself, so a
-   * sized-but-hidden object still reports its real box; `null` means there is no
-   * measurable geometry at all (an empty `Graphics`, a zero-area object), NOT
-   * that the object is hidden. Read {@link RenderFacetSnapshot.visible} for the
-   * hidden/shown state.
-   */
-  bounds: { x: number; y: number; width: number; height: number } | null;
-  /**
-   * The component's own (local, non-inherited) visibility flag at snapshot
-   * time. A hidden ancestor (e.g. a parent/layer container set invisible) is
-   * NOT folded in — read the relevant parent separately if you need the fully
-   * resolved on-screen state.
-   */
-  visible: boolean;
-} & Extra;
+export interface InspectorFacets {
+  [namespace: string]: unknown;
+}
 
-/** Duck-typed hook a renderer component exposes to publish its render facet. */
-interface RenderInspectableLike {
-  inspectRender(): RenderFacetSnapshot;
+/**
+ * A plugin-registered contributor that augments component (and optionally
+ * entity) snapshots with a namespaced facet derived from live, non-serialized
+ * state — the seam that lets the renderer publish rendered geometry without
+ * core taking a dependency on, or knowing anything about, the renderer.
+ *
+ * Register via {@link Inspector.registerFacetContributor}. Mirrors the
+ * contributor pattern used elsewhere in the engine (`DebugContributor`,
+ * save's `SnapshotContributor`): the owning plugin pushes capability in, rather
+ * than core reaching out to grab it.
+ */
+export interface InspectorFacetContributor {
+  /** Stable key the facet is attached under (e.g. `"render"`). */
+  readonly namespace: string;
+  /**
+   * Facet for a single component, or `undefined`/`null` to contribute nothing.
+   * Called once per component per snapshot. Throwing is tolerated (the facet is
+   * simply omitted), but returning `undefined` is preferred.
+   */
+  inspectComponent(component: Component): unknown;
+  /**
+   * Optional entity-level facet, derived from the per-component facets this
+   * contributor produced for the entity, in `add()` insertion order (including
+   * `undefined` gaps for components that contributed nothing). Lets the owning
+   * plugin decide how to surface one representative facet at the entity level —
+   * e.g. the renderer picks the first painted component. Return
+   * `undefined`/`null` to contribute no entity-level facet.
+   */
+  inspectEntity?(componentFacets: readonly unknown[]): unknown;
 }
 
 export interface WorldEntitySnapshot {
@@ -204,14 +208,13 @@ export interface WorldEntitySnapshot {
   };
   components: ComponentStateSnapshot[];
   /**
-   * Entity-level render facet, derived from the first graphical component (in
-   * insertion order — the order the entity `add()`ed them) that exposes an
-   * `inspectRender()` hook. Present only when at least one such component
-   * exists. For entities with multiple graphical components this is just the
-   * first one; read the per-component facets on
-   * {@link ComponentStateSnapshot.render} to inspect the rest.
+   * Entity-level namespaced facets, each surfaced by the contributor that owns
+   * the namespace (see {@link InspectorFacetContributor.inspectEntity}). For the
+   * renderer's `render` namespace this is the first painted component's facet —
+   * a convenience for the common single-sprite/text case. Read the per-component
+   * facets on {@link ComponentStateSnapshot.facets} to inspect the rest.
    */
-  render?: RenderFacetSnapshot;
+  facets?: InspectorFacets;
 }
 
 export interface UINodeSnapshot {
@@ -364,6 +367,10 @@ interface EngineRef {
 export class Inspector {
   private readonly engine: EngineRef;
   private readonly extensions = new Map<string, object>();
+  private readonly facetContributors = new Map<
+    string,
+    InspectorFacetContributor
+  >();
   private readonly sceneIds = new WeakMap<Scene, string>();
   private nextSceneId = 0;
   private defaultSceneSeed: number | undefined;
@@ -631,6 +638,26 @@ export class Inspector {
     this.extensions.delete(namespace);
   }
 
+  /**
+   * Register an {@link InspectorFacetContributor} so a plugin can augment
+   * component/entity snapshots with a namespaced facet (e.g. the renderer's
+   * `render` geometry). Returns an unregister function; call it on plugin
+   * teardown. Re-registering a namespace replaces the prior contributor
+   * (mirrors save's `registerSnapshotExtra`).
+   */
+  registerFacetContributor(contributor: InspectorFacetContributor): () => void {
+    this.assertNonEmptyString(
+      contributor.namespace,
+      "Inspector.registerFacetContributor(namespace)",
+    );
+    this.facetContributors.set(contributor.namespace, contributor);
+    return () => {
+      if (this.facetContributors.get(contributor.namespace) === contributor) {
+        this.facetContributors.delete(contributor.namespace);
+      }
+    };
+  }
+
   /** Full deterministic state snapshot (stable ordering, serializable). */
   snapshot(): EngineSnapshot {
     const scenes = this.engine.scenes.all.map((scene) =>
@@ -852,6 +879,7 @@ export class Inspector {
       scene._setEntityEventObserver(undefined);
     }
     this.extensions.clear();
+    this.facetContributors.clear();
   }
 
   private requireTimeController(): InspectorTimeController {
@@ -1004,12 +1032,18 @@ export class Inspector {
     const transform = entity.has(Transform) ? entity.get(Transform) : undefined;
     const worldPosition = transform?.worldPosition;
     const worldScale = transform?.worldScale;
+    const contributors = [...this.facetContributors.values()];
+    // Per-namespace, ordered list of the facets each contributor produced for
+    // this entity's components — fed to `inspectEntity` so the owning plugin can
+    // surface one representative facet at the entity level. Built in component
+    // insertion order (the order the entity `add()`ed them).
+    const facetsByNamespace = new Map<string, unknown[]>();
     // Snapshot components in their insertion order first, then sort a copy for
-    // stable output. The entity-level facet is picked from the insertion-order
-    // list (below) so it is a deliberate "first graphical component the entity
-    // added", not an accident of where the class name happens to sort.
+    // stable output. Entity-level facets are derived from the insertion-order
+    // pass below so a contributor's "first such component" pick is deliberate,
+    // not an accident of where the class name happens to sort.
     const insertionOrder = [...entity.getAll()].map((component) =>
-      this.componentToSnapshot(component),
+      this.componentToSnapshot(component, contributors, facetsByNamespace),
     );
     const components = [...insertionOrder].sort((a, b) =>
       a.type < b.type ? -1 : a.type > b.type ? 1 : 0,
@@ -1028,14 +1062,19 @@ export class Inspector {
       },
       components,
     };
-    // Surface the first graphical component's facet at the entity level so the
-    // common single-sprite/text case needn't walk the component list.
-    const primaryRender = insertionOrder.find((c) => c.render)?.render;
-    if (primaryRender) snapshot.render = primaryRender;
+    const entityFacets = this.collectEntityFacets(
+      contributors,
+      facetsByNamespace,
+    );
+    if (entityFacets) snapshot.facets = entityFacets;
     return snapshot;
   }
 
-  private componentToSnapshot(component: Component): ComponentStateSnapshot {
+  private componentToSnapshot(
+    component: Component,
+    contributors: readonly InspectorFacetContributor[],
+    facetsByNamespace: Map<string, unknown[]>,
+  ): ComponentStateSnapshot {
     const snapshot: ComponentStateSnapshot = {
       type: component.constructor.name,
       state:
@@ -1043,9 +1082,47 @@ export class Inspector {
           ? trySerialize(component) ?? null
           : null,
     };
-    const render = tryInspectRender(component);
-    if (render) snapshot.render = render;
+    let facets: Record<string, unknown> | undefined;
+    for (const contributor of contributors) {
+      const facet = tryInspectComponentFacet(contributor, component);
+      let list = facetsByNamespace.get(contributor.namespace);
+      if (!list) {
+        list = [];
+        facetsByNamespace.set(contributor.namespace, list);
+      }
+      list.push(facet);
+      if (facet !== undefined) {
+        (facets ??= {})[contributor.namespace] = facet;
+      }
+    }
+    if (facets) snapshot.facets = facets;
     return snapshot;
+  }
+
+  /**
+   * Ask each contributor with an `inspectEntity` hook for its entity-level
+   * facet, derived from the per-component facets gathered during the component
+   * pass. Returns `undefined` when no contributor surfaced anything.
+   */
+  private collectEntityFacets(
+    contributors: readonly InspectorFacetContributor[],
+    facetsByNamespace: Map<string, unknown[]>,
+  ): Record<string, unknown> | undefined {
+    let facets: Record<string, unknown> | undefined;
+    for (const contributor of contributors) {
+      if (!contributor.inspectEntity) continue;
+      const list = facetsByNamespace.get(contributor.namespace) ?? [];
+      let facet: unknown;
+      try {
+        facet = contributor.inspectEntity(list);
+      } catch {
+        facet = undefined;
+      }
+      if (facet !== undefined && facet !== null) {
+        (facets ??= {})[contributor.namespace] = facet;
+      }
+    }
+    return facets;
   }
 
   private buildUISnapshot(scene: Scene): UITreeSnapshot | null {
@@ -1313,18 +1390,18 @@ function trySerialize(component: Component): unknown | undefined {
 }
 
 /**
- * Duck-type and invoke an optional `inspectRender()` hook on a component,
- * tolerating both an absent hook and one that throws (mid-teardown, no parent
- * yet, etc.) — mirroring {@link trySerialize}. Returns `undefined` when no
- * facet is available so the caller can omit the `render` key entirely.
+ * Invoke a contributor's `inspectComponent` hook, tolerating one that throws
+ * (mid-teardown, no parent yet, etc.) — mirroring {@link trySerialize}.
+ * Normalises a `null`/`undefined` result to `undefined` so the caller can omit
+ * the namespace entirely.
  */
-function tryInspectRender(component: Component): RenderFacetSnapshot | undefined {
-  const hook = (component as unknown as Partial<RenderInspectableLike>)
-    .inspectRender;
-  if (typeof hook !== "function") return undefined;
+function tryInspectComponentFacet(
+  contributor: InspectorFacetContributor,
+  component: Component,
+): unknown {
   try {
-    const facet = hook.call(component);
-    return facet && typeof facet === "object" ? facet : undefined;
+    const facet = contributor.inspectComponent(component);
+    return facet === undefined || facet === null ? undefined : facet;
   } catch {
     return undefined;
   }
