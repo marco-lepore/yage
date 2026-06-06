@@ -97,6 +97,21 @@ describe("computeRenderFacet — coordinate-space mapping", () => {
       ).bounds,
     ).toBeNull();
   });
+
+  it("returns null when either axis is collapsed (zero-area)", () => {
+    // A line / zero-height shape has zero area and paints nothing fillable, so
+    // it is null per the "zero-area object" contract — not just a zero-size point.
+    expect(
+      computeRenderFacet(
+        fakeDisplayObject({ localBounds: { x: 0, y: 0, width: 40, height: 0 } }),
+      ).bounds,
+    ).toBeNull();
+    expect(
+      computeRenderFacet(
+        fakeDisplayObject({ localBounds: { x: 0, y: 0, width: 0, height: 25 } }),
+      ).bounds,
+    ).toBeNull();
+  });
 });
 
 describe("computeRenderFacet — real Pixi Graphics", () => {

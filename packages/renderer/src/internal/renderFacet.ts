@@ -59,10 +59,12 @@ function computeWorldBounds(
   const local = displayObject.getLocalBounds();
   if (
     !isFiniteBox(local.x, local.y, local.width, local.height) ||
-    (local.width === 0 && local.height === 0)
+    local.width === 0 ||
+    local.height === 0
   ) {
-    // No measurable geometry (empty Graphics, zero-area object). This is the
-    // ONLY reason bounds are null — a hidden-but-sized object falls through.
+    // No measurable geometry: an empty Graphics, or a collapsed axis — a
+    // zero-area shape (a line, a zero-height rect) paints nothing fillable. This
+    // is the ONLY reason bounds are null — a hidden-but-sized object falls through.
     return null;
   }
 
