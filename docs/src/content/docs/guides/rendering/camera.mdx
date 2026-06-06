@@ -368,6 +368,74 @@ just don't depend on the manual value surviving the next frame. For
 permanent per-sprite biasing, fold it into the depth-key fn itself via
 `ySortBy`.
 
+#### Keeping multi-part entities together (`SortGroupComponent`)
+
+A layer `sort` keys **every** visual independently, because each sprite is
+a flat child of the layer. That's exactly what you want for a world full of
+single-sprite entities — but it splits a *multi-part* entity. Picture a
+character whose body sits at `y = 100` and whose held lantern (a child
+entity, offset toward the camera) sits at `y = 108`. Under `ySort` the two
+parts get keys `100` and `108`, and any unrelated entity at `y = 104`
+sorts **between** them — the lantern detaches and floats over the
+intruder while the body stays behind it. The character visually splits in
+half.
+
+`SortGroupComponent` fixes this by giving an entity its own stacking
+context — the same idea as Unity's `SortingGroup` or a y-sort-scoped
+subtree in Godot. The entity's visuals render into an owned sub-container:
+they sort *among themselves* inside it, while the container as a whole
+takes **one** slot in the layer's sort.
+
+```typescript
+import { SortGroupComponent, SpriteComponent } from "@yagejs/renderer";
+
+class Hero extends Entity {
+  setup() {
+    this.add(new Transform({ position: { x: 200, y: 200 } }));
+    // Add the group BEFORE the visuals it should gather.
+    this.add(new SortGroupComponent({ layer: "world" }));
+    this.add(new SpriteComponent({ texture: "hero-body", layer: "world" }));
+    // Child sprites on the same layer join the group automatically:
+    this.spawnChild("lantern", Lantern); // offset toward the camera
+    this.spawnChild("hat", Hat);
+  }
+}
+```
+
+Now the whole hero sorts as a single unit at the body's depth, and the
+intruder at `y = 104` resolves cleanly in front of or behind the entire
+hero — never between his parts.
+
+A few things worth knowing:
+
+- **The group sorts at the owning entity's footing.** It keys off that
+  entity's *own* sprite (so `ySort`/`ySortBy` read a real sprite's
+  position and offset). An entity with no sprite of its own — a purely
+  logical parent that just groups children — falls back to its `Transform`
+  position, which is usually exactly the right anchor.
+- **Members keep their order.** By default they render in the order they
+  were added, and you can bias one with a manual `zIndex` — a genuine
+  stacking context. Pass `innerSort: ySort` if you'd rather the parts
+  depth-sort among themselves.
+- **Only paint order changes.** The group container is an invisible
+  identity wrapper; your sprites keep their normal world transforms.
+  Rotating or scaling the parent still moves the children exactly as it
+  did before — that composition lives in the ECS `Transform`, not the
+  render tree.
+- **Layers stay independent.** A group gathers subtree visuals on *its*
+  layer; a child you deliberately put on another layer (a `"ground"`
+  shadow, say) is left out and sorts on its own. A `SortGroupComponent`
+  on a descendant entity simply starts its own separate unit.
+
+The tradeoff is the whole point and its own limitation: a grouped entity
+no longer interleaves with the world part-by-part. A tall tree wrapped in
+a group can't let a character walk behind its trunk while passing in front
+of its canopy — the whole tree sorts at one key. Reach for a group only on
+the entities that must stay welded; leave the scenery flat.
+
+The `world-ui` example wraps each enemy's body and floating crystal in a
+group, so the roaming player never slices an enemy down the middle.
+
 ### Pixi render groups with `isRenderGroup`
 
 `LayerDef.isRenderGroup: true` promotes the layer's container to a Pixi

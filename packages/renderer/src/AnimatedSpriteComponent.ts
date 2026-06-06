@@ -8,11 +8,13 @@ import {
 } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
+import type { Container } from "pixi.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
@@ -221,9 +223,16 @@ export class AnimatedSpriteComponent extends Component {
     return this._mask;
   }
 
+  /** The underlying Pixi display object. */
+  get renderObject(): Container {
+    return this.animatedSprite;
+  }
+
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
-    layer.container.addChild(this.animatedSprite);
+    const tree = this.use(SceneRenderTreeKey);
+    resolveRenderParent(this.entity, this.layerName, tree).addChild(
+      this.animatedSprite,
+    );
   }
 
   onDestroy(): void {

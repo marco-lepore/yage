@@ -560,6 +560,42 @@ const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
 
 Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
+### `SortGroupComponent` — keep a multi-part entity from splitting
+
+Under a layer `sort`, every visual is a flat child of the layer with its own independent depth key. So a multi-part entity — a body plus an offset child sprite (held item, mount, floating crystal) — can be **split**: an unrelated entity whose key lands between the parts renders *between* them. (Unity's `SortingGroup`, Godot's nested y-sort scopes.)
+
+`SortGroupComponent` gives an entity its own Pixi sub-container. Its members sort *within* the group; the group sorts as **one unit** against the rest of the layer.
+
+```ts
+import { SortGroupComponent, SpriteComponent } from "@yagejs/renderer";
+
+class Knight extends Entity {
+  setup() {
+    this.add(new Transform({ position: { x: 200, y: 200 } }));
+    this.add(new SortGroupComponent({ layer: "world" })); // add BEFORE the visuals
+    this.add(new SpriteComponent({ texture: "knight-body", layer: "world" }));
+    this.spawnChild("weapon", Weapon); // a "world" sprite offset toward the camera
+    this.spawnChild("plume", Plume);
+  }
+}
+```
+
+`new SortGroupComponent(options?)`:
+
+| Option | Meaning |
+|---|---|
+| `layer` | Layer the group renders into (default `"default"`). Subtree visuals targeting **this same layer** are gathered in; visuals on other layers are left alone (a child's shadow can stay on a separate `"ground"` layer). |
+| `innerSort` | Depth key for ordering the group's own members. Default (unset): members keep **insertion order**, and a member's manually-set `zIndex` is honoured (a real stacking context — like Unity's `SortingGroup`). Pass `ySort` to order members by position among themselves while the group still sorts as one unit. |
+
+Semantics:
+
+- **Sort key** — the group sorts in the layer by the owning entity's *own* sprite (so `ySort`/`ySortBy` read a real sprite's position/offset). A group-owning entity with no sprite of its own falls back to a proxy at its `Transform` world position — fine for a purely-logical parent that just groups children.
+- **Transforms are untouched.** The group container stays at identity/origin; members keep their normal world transforms. Adding a group changes paint **order** only — never position, rotation, or scale (those stay composed by the ECS `Transform`). Rotating the parent rotates the children exactly as before.
+- **Add the group before the visuals it should capture.** It also re-homes any already-present subtree visuals when added late, and re-homes after save/load (`@serializable`; `innerSort` is code-only and not serialized).
+- A `SortGroupComponent` on a *descendant* entity starts its own independent unit rather than nesting inside the ancestor's. Sort grouping and transform parenting are independent axes.
+
+Tradeoff: a grouped entity's parts no longer individually interleave with the world — the whole entity sorts at one key. That's the point (parts stay welded), but it means a tall entity can't have its base pass behind a tree while its top passes in front. Group only the entities that need to stay coherent.
+
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 
 `isRenderGroup: true` promotes the layer's container to a Pixi v8 render

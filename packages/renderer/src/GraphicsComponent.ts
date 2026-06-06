@@ -4,7 +4,9 @@ import {
   serializable,
 } from "@yagejs/core";
 import { Graphics } from "pixi.js";
+import type { Container } from "pixi.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
@@ -102,9 +104,16 @@ export class GraphicsComponent extends Component {
     return this._mask;
   }
 
+  /** The underlying Pixi display object. */
+  get renderObject(): Container {
+    return this.graphics;
+  }
+
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
-    layer.container.addChild(this.graphics);
+    const tree = this.use(SceneRenderTreeKey);
+    resolveRenderParent(this.entity, this.layerName, tree).addChild(
+      this.graphics,
+    );
   }
 
   onDestroy(): void {

@@ -46,6 +46,12 @@ export type {
   SplitTextData,
   SegmentAnchor,
 } from "./SplitTextComponent.js";
+export { SortGroupComponent, resolveRenderParent } from "./SortGroupComponent.js";
+export type {
+  SortGroupComponentOptions,
+  SortGroupData,
+  LayerRenderable,
+} from "./SortGroupComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
 export {
   buildTextOptions,
