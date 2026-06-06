@@ -11,6 +11,7 @@ import {
   GraphicsComponent,
   RendererPlugin,
   ScreenFollow,
+  SortGroupComponent,
   ySort,
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
@@ -81,6 +82,31 @@ class FaceTowardsPlayer extends Component {
     const delta = target.sub(myWorld);
     // Parent Enemy doesn't rotate, so local = world for this Transform.
     this.localTransform.setRotation(Math.atan2(delta.y, delta.x) + Math.PI / 2);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Enemy crystal (child of Enemy): a gem offset toward the camera (+Y), so a
+// raw ySort would paint it *in front* of the body — and any unrelated entity
+// (the roaming player) whose Y lands between the two would slot *between* them,
+// slicing the enemy in half. The SortGroupComponent on the Enemy binds the body
+// and crystal into one stacking context, so the pair sorts as a single unit at
+// the enemy's footing and the player always passes cleanly in front of or
+// behind the whole enemy.
+// ---------------------------------------------------------------------------
+class EnemyCrystal extends Entity {
+  setup(params: { color: number }): void {
+    this.add(new Transform({ position: new Vec2(0, 26) }));
+    this.add(
+      new GraphicsComponent({ layer: "world" }).draw((g) => {
+        g.poly([0, -7, 5, 0, 0, 7, -5, 0]).fill({ color: params.color });
+        g.poly([0, -7, 5, 0, 0, 7, -5, 0]).stroke({
+          color: 0xffffff,
+          alpha: 0.9,
+          width: 1,
+        });
+      }),
+    );
   }
 }
 
@@ -172,7 +198,10 @@ class HealthBarSync extends Component {
 // ---------------------------------------------------------------------------
 // Enemy — logical root (Transform + state, no visual of its own). The body,
 // nameplate, and HP bar are all siblings parented under this entity so
-// cascade-destroy cleans them up when the enemy dies.
+// cascade-destroy cleans them up when the enemy dies. The SortGroupComponent
+// gathers this entity's "world"-layer visuals (body + crystal) into one
+// stacking context; the group sorts as a unit at the root's footing (the
+// nameplate / HP bar live on the screen-space "ui" layer, so they're left out).
 // ---------------------------------------------------------------------------
 class Enemy extends Entity {
   setup(params: {
@@ -184,7 +213,10 @@ class Enemy extends Entity {
   }): void {
     this.add(new Transform({ position: new Vec2(params.x, params.y) }));
     this.add(new Health({ max: 100 }));
+    // Add the group before the visuals it should capture.
+    this.add(new SortGroupComponent({ layer: "world" }));
     this.spawnChild("body", EnemyBody, { color: params.color });
+    this.spawnChild("crystal", EnemyCrystal, { color: params.color });
     this.spawnChild("nameplate", EnemyNameplate, {
       target: this,
       camera: params.camera,
@@ -289,7 +321,9 @@ class DemoScene extends Scene {
   readonly layers: readonly LayerDef[] = [
     { name: "bg", order: -10 },
     // Top-down view: ySort means a Mage standing south of the Grunt
-    // correctly paints over them when their sprites overlap.
+    // correctly paints over them when their sprites overlap. Each enemy's
+    // body + crystal stay welded together via a SortGroupComponent, so the
+    // roaming player never slices between an enemy's parts.
     { name: "world", order: 0, sort: ySort },
     // The "ui" layer is auto-provisioned screen-space by @yagejs/ui on
     // first use — our nameplate + health bar entities land there.

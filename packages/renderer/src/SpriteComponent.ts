@@ -8,8 +8,10 @@ import {
 } from "@yagejs/core";
 import type { RenderFacetSnapshot } from "@yagejs/core";
 import { Sprite } from "pixi.js";
+import type { Container } from "pixi.js";
 import { computeRenderFacet } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { resolveRenderParent } from "./SortGroupComponent.js";
 import { resolveTextureInput } from "./assets.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
@@ -249,9 +251,14 @@ export class SpriteComponent extends Component {
     return computeRenderFacet(this.sprite);
   }
 
+  /** The underlying Pixi display object. */
+  get renderObject(): Container {
+    return this.sprite;
+  }
+
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
-    layer.container.addChild(this.sprite);
+    const tree = this.use(SceneRenderTreeKey);
+    resolveRenderParent(this.entity, this.layerName, tree).addChild(this.sprite);
   }
 
   onDestroy(): void {

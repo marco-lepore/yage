@@ -8,6 +8,7 @@ import { GraphicsComponent } from "./GraphicsComponent.js";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { TextComponent } from "./TextComponent.js";
 import { SplitTextComponent } from "./SplitTextComponent.js";
+import { SortGroupComponent, sortGroupForContainer } from "./SortGroupComponent.js";
 import type { Container } from "pixi.js";
 
 /**
@@ -26,6 +27,7 @@ export class DisplaySystem extends System {
   private textQuery!: QueryResult;
   private splitTextQuery!: QueryResult;
   private cameraQuery!: QueryResult;
+  private sortGroupQuery!: QueryResult;
   private treeProvider!: SceneRenderTreeProvider;
 
   onRegister(context: EngineContext): void {
@@ -39,6 +41,7 @@ export class DisplaySystem extends System {
     this.textQuery = queryCache.register([Transform, TextComponent]);
     this.splitTextQuery = queryCache.register([Transform, SplitTextComponent]);
     this.cameraQuery = queryCache.register([CameraComponent]);
+    this.sortGroupQuery = queryCache.register([SortGroupComponent]);
     this.treeProvider = context.resolve(SceneRenderTreeProviderKey);
   }
 
@@ -99,16 +102,39 @@ export class DisplaySystem extends System {
    * `zIndex` setter marks `sortDirty` automatically, so we don't need
    * to flip it ourselves.
    *
+   * A `SortGroupComponent`'s container is a direct child of the layer too, but
+   * sorting it by its own (origin) position would be meaningless — it's keyed
+   * off the group's anchor instead, so the whole group sorts as one unit. The
+   * group's members are nested inside it, so this layer-level pass never
+   * touches them; an optional `innerSort` re-keys them in a second pass.
+   *
    * Layers without a `sort` keep insertion order.
    */
   private applyLayerSort(): void {
+    // Pass 1: key every sorted layer's direct children. A group container is
+    // keyed off its anchor (so the whole group sorts as one unit); everything
+    // else by the layer's depth-key fn. `sortGroupForContainer` is an O(1)
+    // registry lookup — no per-frame allocation in this hot path.
     for (const [, tree] of this.treeProvider.allTrees()) {
       for (const layer of tree.getAll()) {
         const sort = layer.sort;
         if (!sort) continue;
         for (const child of layer.container.children) {
-          child.zIndex = sort(child);
+          const group = sortGroupForContainer(child);
+          child.zIndex = group ? group.resolveSortKey(sort) : sort(child);
         }
+      }
+    }
+
+    // Pass 2: intra-group member ordering. A group with an `innerSort` re-keys
+    // its own members each frame (independent of whether its layer has a sort);
+    // groups without one keep insertion order and honour a manual `zIndex`.
+    for (const entity of this.sortGroupQuery) {
+      const group = entity.get(SortGroupComponent);
+      const inner = group.innerSort;
+      if (!inner) continue;
+      for (const member of group.container.children) {
+        member.zIndex = inner(member);
       }
     }
   }

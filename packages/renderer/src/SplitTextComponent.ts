@@ -4,6 +4,7 @@ import { SplitText, SplitBitmapText } from "pixi.js";
 import type { BitmapText, Container, Text } from "pixi.js";
 import { computeRenderFacet } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { resolveRenderParent } from "./SortGroupComponent.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type { TextStyle } from "./public-types.js";
 
@@ -315,9 +316,16 @@ export class SplitTextComponent extends Component {
     return { ...facet, glyphs, visibleText };
   }
 
+  /** The underlying Pixi display object. */
+  get renderObject(): Container {
+    return this.splitText;
+  }
+
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
-    layer.container.addChild(this.splitText);
+    const tree = this.use(SceneRenderTreeKey);
+    resolveRenderParent(this.entity, this.layerName, tree).addChild(
+      this.splitText,
+    );
   }
 
   onDestroy(): void {

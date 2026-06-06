@@ -5,11 +5,13 @@ import {
 } from "@yagejs/core";
 import type { RenderFacetSnapshot } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
+import type { Container } from "pixi.js";
 import { computeRenderFacet } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
+import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { buildTextOptions, resolveTextStyle } from "./internal/textConstruction.js";
+import { buildTextOptions } from "./internal/textConstruction.js";
 import { attachMask, restoreMask } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
@@ -134,7 +136,17 @@ export class TextComponent extends Component {
    * properties while keeping the rest, use {@link mergeStyle}.
    */
   setStyle(style: TextStyle): void {
-    this.text.style = resolveTextStyle(style) ?? style;
+    // Route through buildTextOptions so the bitmap-variant redirect (synthetic
+    // bold/italic via baked variant atlases) runs on the update path too —
+    // calling resolveTextStyle directly would let `fontWeight`/`fontStyle`
+    // changes silently land on the base atlas on a `bitmap: true` text.
+    const { options } = buildTextOptions(
+      this.text.text,
+      style,
+      this._bitmap,
+      undefined,
+    );
+    this.text.style = options.style ?? style;
     this._styleOptions = { ...style };
   }
 
@@ -244,9 +256,14 @@ export class TextComponent extends Component {
     return computeRenderFacet(this.text);
   }
 
+  /** The underlying Pixi display object. */
+  get renderObject(): Container {
+    return this.text;
+  }
+
   onAdd(): void {
-    const layer = this.use(SceneRenderTreeKey).get(this.layerName);
-    layer.container.addChild(this.text);
+    const tree = this.use(SceneRenderTreeKey);
+    resolveRenderParent(this.entity, this.layerName, tree).addChild(this.text);
   }
 
   onDestroy(): void {

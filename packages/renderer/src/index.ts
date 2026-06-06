@@ -48,6 +48,12 @@ export type {
   SplitTextRenderFacet,
   SplitTextRenderFacetExtras,
 } from "./SplitTextComponent.js";
+export { SortGroupComponent, resolveRenderParent } from "./SortGroupComponent.js";
+export type {
+  SortGroupComponentOptions,
+  SortGroupData,
+  LayerRenderable,
+} from "./SortGroupComponent.js";
 /** @internal - shared Text/BitmapText constructor logic for @yagejs/ui, not for public consumption. */
 export {
   buildTextOptions,
@@ -146,9 +152,15 @@ export {
   sliceTextureFrames,
   spritesheet,
   texture,
+  uninstallBitmapFont,
   webFont,
 } from "./assets.js";
-export type { InstallBitmapFontOptions, WebFontOptions } from "./assets.js";
+export type {
+  BitmapFontVariant,
+  InstallBitmapFontOptions,
+  WebFontBakeOptions,
+  WebFontOptions,
+} from "./assets.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";

@@ -1,5 +1,6 @@
 import { devWarn } from "@yagejs/core";
 import type { TextOptions } from "pixi.js";
+import { resolveBitmapFontVariant } from "./bitmapFontVariants.js";
 import type { TextStyle } from "../public-types.js";
 
 /**
@@ -80,7 +81,9 @@ export function buildTextOptions(
   // `bitmap`-in-`style` warning lives in `resolveTextStyle` (the shared
   // chokepoint), so construction and the `setStyle` paths all surface it.
   const useBitmap = bitmap === true;
-  const resolvedStyle = resolveTextStyle(style, extraDefault);
+  const resolvedStyle = useBitmap
+    ? selectBitmapVariant(resolveTextStyle(style, extraDefault))
+    : resolveTextStyle(style, extraDefault);
   return {
     bitmap: useBitmap,
     options: {
@@ -89,4 +92,37 @@ export function buildTextOptions(
       ...(!useBitmap && resolution !== undefined ? { resolution } : {}),
     },
   };
+}
+
+/**
+ * Honour `fontWeight` / `fontStyle` on bitmap text by swapping `fontFamily`
+ * to the emphasis variant atlas baked under that family (issue #90 gap 3,
+ * delivered via {@link installBitmapFont}'s `variants`). Plain `BitmapText`
+ * ignores those props — but if `installBitmapFont` registered a matching bold/
+ * italic atlas, redirect the family to it so the synthetic emphasis renders.
+ *
+ * The variant atlas already baked its weight/slant, and Pixi resolves a
+ * `BitmapText` font by the `fontFamily` cache key alone, so the original
+ * `fontWeight`/`fontStyle` are dropped from the redirected style to avoid a
+ * second dynamic bake. When no variant is registered for the family the style
+ * is returned untouched (regular text, an unbaked family, or a font without
+ * variants all fall through unchanged).
+ *
+ * @internal
+ */
+function selectBitmapVariant(
+  style: TextStyle | undefined,
+): TextStyle | undefined {
+  if (!style || typeof style.fontFamily !== "string") return style;
+  const variantName = resolveBitmapFontVariant(style.fontFamily, {
+    ...(style.fontWeight !== undefined ? { fontWeight: style.fontWeight } : {}),
+    ...(style.fontStyle !== undefined ? { fontStyle: style.fontStyle } : {}),
+  });
+  if (variantName === undefined || variantName === style.fontFamily) {
+    return style;
+  }
+  const redirected: TextStyle = { ...style, fontFamily: variantName };
+  delete redirected.fontWeight;
+  delete redirected.fontStyle;
+  return redirected;
 }

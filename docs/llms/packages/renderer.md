@@ -560,6 +560,42 @@ const sort = ySortBy((c) => (c as { depthOffset?: number }).depthOffset);
 
 Game code that manually writes `child.zIndex` on individual sprites doesn't need `sort` — once `sortableChildren` is on, Pixi sorts them. `sort` is for the common case where the depth key is a function of the sprite's current state (position, depth offset) and needs to be recomputed each frame. The two paths compose: a `sort` fn handles the bulk of a layer, and individual sprites can still write their own `zIndex` between updates to bias themselves above or below the depth key.
 
+### `SortGroupComponent` — keep a multi-part entity from splitting
+
+Under a layer `sort`, every visual is a flat child of the layer with its own independent depth key. So a multi-part entity — a body plus an offset child sprite (held item, mount, floating crystal) — can be **split**: an unrelated entity whose key lands between the parts renders *between* them. (Unity's `SortingGroup`, Godot's nested y-sort scopes.)
+
+`SortGroupComponent` gives an entity its own Pixi sub-container. Its members sort *within* the group; the group sorts as **one unit** against the rest of the layer.
+
+```ts
+import { SortGroupComponent, SpriteComponent } from "@yagejs/renderer";
+
+class Knight extends Entity {
+  setup() {
+    this.add(new Transform({ position: { x: 200, y: 200 } }));
+    this.add(new SortGroupComponent({ layer: "world" })); // add BEFORE the visuals
+    this.add(new SpriteComponent({ texture: "knight-body", layer: "world" }));
+    this.spawnChild("weapon", Weapon); // a "world" sprite offset toward the camera
+    this.spawnChild("plume", Plume);
+  }
+}
+```
+
+`new SortGroupComponent(options?)`:
+
+| Option | Meaning |
+|---|---|
+| `layer` | Layer the group renders into (default `"default"`). Subtree visuals targeting **this same layer** are gathered in; visuals on other layers are left alone (a child's shadow can stay on a separate `"ground"` layer). |
+| `innerSort` | Depth key for ordering the group's own members. Default (unset): members keep **insertion order**, and a member's manually-set `zIndex` is honoured (a real stacking context — like Unity's `SortingGroup`). Pass `ySort` to order members by position among themselves while the group still sorts as one unit. |
+
+Semantics:
+
+- **Sort key** — the group sorts in the layer by the owning entity's *own* sprite (so `ySort`/`ySortBy` read a real sprite's position/offset). A group-owning entity with no sprite of its own falls back to a proxy at its `Transform` world position — fine for a purely-logical parent that just groups children.
+- **Transforms are untouched.** The group container stays at identity/origin; members keep their normal world transforms. Adding a group changes paint **order** only — never position, rotation, or scale (those stay composed by the ECS `Transform`). Rotating the parent rotates the children exactly as before.
+- **Add the group before the visuals it should capture.** It also re-homes any already-present subtree visuals when added late, and re-homes after save/load (`@serializable`; `innerSort` is code-only and not serialized).
+- A `SortGroupComponent` on a *descendant* entity starts its own independent unit rather than nesting inside the ancestor's. Sort grouping and transform parenting are independent axes.
+
+Tradeoff: a grouped entity's parts no longer individually interleave with the world — the whole entity sorts at one key. That's the point (parts stay welded), but it means a tall entity can't have its base pass behind a tree while its top passes in front. Group only the entities that need to stay coherent.
+
 ### `LayerDef.isRenderGroup` — Pixi render-group opt-in
 
 `isRenderGroup: true` promotes the layer's container to a Pixi v8 render
@@ -807,6 +843,10 @@ const pixelFont = bitmapFont("fonts/press-start.fnt");
 // Pixi derive it from the file name. Preload it so the face is ready before the
 // first draw — Pixi caches fallback metrics on first paint otherwise.
 const uiFont = webFont("fonts/Inter.woff2", { family: "Inter" });
+// Pass `bitmap` to ALSO bake a BitmapText atlas under the same family, so the
+// one declared font works as canvas Text (no `bitmap`) and as a bitmap atlas
+// (`bitmap: true`) — see `webFont({ bitmap })` below.
+const dualFont = webFont("fonts/Inter.woff2", { family: "Inter", bitmap: true });
 
 // Use in Scene.preload:
 class MyScene extends Scene {
@@ -830,3 +870,47 @@ entity.add(new TextComponent({ text: "READY", bitmap: true, style: { fontFamily:
 ```
 
 Glyphs bake **white** by default so a per-text `fill` / `tint` (multiplied over the atlas) can recolour them — a black atlas would yield `black × tint = black`. Set `style.fill` only to bake a fixed colour. To recolour at runtime use `mergeStyle({ fill })` so `fontFamily` survives — `setStyle({ fill })` replaces the style and drops the font.
+
+**Teardown — `uninstallBitmapFont(name)`.** Frees the baked atlas (and every variant) plus the source face when a font is no longer rendered; the symmetric counterpart of `installBitmapFont` (without it an install-once atlas lives until the page unloads). Baked bitmap fonts are **reference-counted by family name**, so a family shared by an `installBitmapFont` *and* a `webFont({ bitmap })` (or two web-font loads) is only destroyed once the **last** owner releases it — `uninstallBitmapFont` and `webFont` unload are safe to interleave on a shared family. (The same family name pointing at two *different* source fonts still collides in Pixi's global registry — last bake wins — so keep family names unique.)
+
+**Synthetic bold / italic — `variants`.** Plain `BitmapText` ignores `style.fontWeight` / `fontStyle` (only canvas `Text` honours them). Pass `variants` to bake emphasis atlases from the same `.ttf` alongside the base; a `BitmapText` whose style asks for bold/italic then renders from the matching atlas automatically. Variants register under derived names internally — you never name or select them by hand:
+
+```ts
+await installBitmapFont("fonts/Body.ttf", {
+  name: "Body",
+  variants: [
+    { fontWeight: "bold" },                    // → "Body bold"
+    { fontStyle: "italic" },                   // → "Body italic"
+    { fontWeight: "bold", fontStyle: "italic" }, // → "Body bold italic"
+  ],
+});
+
+// Resolves the bold atlas — no manual font name needed:
+new TextComponent({ text: "HP", bitmap: true, style: { fontFamily: "Body", fontWeight: "bold" } });
+```
+
+`BitmapFontVariant` is `{ fontWeight?, fontStyle?, style? }`; the optional per-variant `style` layers extra `TextStyle` props onto that atlas only. `fontWeight` is matched on the bold axis (`"bold"`/`"bolder"` or numeric `>= 600`), `fontStyle` on the slant axis (`"italic"`/`"oblique"`); a request with no matching variant falls back to the base atlas.
+
+All variants are **baseline-aligned** to the base atlas at bake time: each variant's `baseLineOffset` and `lineHeight` are normalized to the base font's, so a bold span and regular text sit on one shared baseline with no vertical drift (synthetic faux-bold/italic otherwise measure to a different baseline even from one source font).
+
+**Declarative bitmap bake — `webFont({ bitmap })`.** A `webFont` can bake a bitmap atlas from the same loaded face during the scene's `preload`, so one declared font is usable as both canvas `Text` and `BitmapText` under a single family — no separate `installBitmapFont` call, no second name. The canvas face and the baked atlas live in separate Pixi registries, so there's no collision.
+
+```ts
+import { webFont, TextComponent } from "@yagejs/renderer";
+
+class HudScene extends Scene {
+  readonly preload = [
+    // `bitmap: true` bakes with defaults; pass an object to tune it.
+    webFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24, variants: [{ fontWeight: "bold" }] },
+    }),
+  ];
+}
+
+// Same family, both paths:
+new TextComponent({ text: "menu", style: { fontFamily: "Inter" } });                 // canvas Text
+new TextComponent({ text: "SCORE", bitmap: true, style: { fontFamily: "Inter" } });  // bitmap atlas
+```
+
+`WebFontBakeOptions` is `{ size?, chars?, resolution?, padding?, style?, variants? }` — the same knobs as `installBitmapFont` minus `name`/`family` (the atlas always registers under the web font's `family`). `bitmap` **requires** `family`; without it the bake is skipped with a warning (the atlas needs a stable name to register under and uninstall on scene teardown). When the web font is unloaded, its canvas face is dropped and its hold on the baked atlas is released — the atlas (base + variants) is `BitmapFont.uninstall`ed only once every owner sharing the family (another web-font load, or an `installBitmapFont`) has released it. Two scenes preloading the same `webFont` are reference-counted by the `AssetManager`, so the atlas survives until the last scene unloads it.

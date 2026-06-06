@@ -131,6 +131,74 @@ describe("AssetManager", () => {
     expect(() => am.unload(handle)).not.toThrow();
   });
 
+  // ---------- reference counting ----------
+
+  it("keeps a shared asset alive until the last reference is released", async () => {
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("texture", loader);
+
+    // Two "scenes" preload the same handle — one load, two references.
+    const sceneA = new AssetHandle<string>("texture", "shared.png");
+    const sceneB = new AssetHandle<string>("texture", "shared.png");
+    await am.loadAll([sceneA]);
+    await am.loadAll([sceneB]);
+    expect(loader.load).toHaveBeenCalledTimes(1);
+
+    // First unload only decrements — the asset is still held by scene B.
+    am.unload(sceneA);
+    expect(am.has(sceneA)).toBe(true);
+    expect(loader.unload).not.toHaveBeenCalled();
+
+    // Last unload actually frees it.
+    am.unload(sceneB);
+    expect(am.has(sceneB)).toBe(false);
+    expect(loader.unload).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts a handle once per loadAll call, even if listed twice", async () => {
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("texture", loader);
+
+    const handle = new AssetHandle<string>("texture", "a.png");
+    // Duplicate within one call loads once and takes a single reference.
+    await am.loadAll([handle, handle]);
+    expect(loader.load).toHaveBeenCalledTimes(1);
+
+    am.unload(handle);
+    expect(am.has(handle)).toBe(false);
+    expect(loader.unload).toHaveBeenCalledTimes(1);
+  });
+
+  it("clear() frees shared assets regardless of reference count", async () => {
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("texture", loader);
+
+    const handle = new AssetHandle<string>("texture", "a.png");
+    await am.loadAll([handle]);
+    await am.loadAll([handle]); // refcount 2
+
+    am.clear();
+
+    expect(am.has(handle)).toBe(false);
+    expect(loader.unload).toHaveBeenCalledTimes(1);
+  });
+
+  it("a reference taken after clear() reloads and unloads independently", async () => {
+    const loader = fakeLoader((p) => `loaded:${p}`);
+    am.registerLoader("texture", loader);
+
+    const handle = new AssetHandle<string>("texture", "a.png");
+    await am.loadAll([handle]);
+    am.clear();
+
+    // Count was reset by clear — a fresh load reloads, and one unload frees it.
+    await am.loadAll([handle]);
+    expect(loader.load).toHaveBeenCalledTimes(2);
+    am.unload(handle);
+    expect(am.has(handle)).toBe(false);
+    expect(loader.unload).toHaveBeenCalledTimes(2);
+  });
+
   // ---------- clear ----------
 
   it("clear() unloads all cached assets", async () => {

@@ -120,11 +120,72 @@ Recolour at runtime with `mergeStyle({ fill })` so the `fontFamily` is
 preserved — a plain `setStyle({ fill })` replaces the style and drops
 the font.
 
+When a font is no longer rendered, free its atlas (and every variant)
+plus the source face with `uninstallBitmapFont(name)` — the symmetric
+counterpart of `installBitmapFont`. Baked bitmap fonts are
+reference-counted by family name, so a family shared by an
+`installBitmapFont` and a [`webFont({ bitmap })`](#one-font-both-canvas-and-bitmap-webfont-bitmap)
+(or by two web-font loads) is destroyed only once the **last** owner
+releases it — `uninstallBitmapFont` and web-font unload are safe to
+interleave. Pointing one family name at two *different* source fonts
+still collides in Pixi's global registry (the last bake wins), so keep
+family names unique.
+
 For a pre-built BMFont (`.fnt`/`.xml` + atlas), preload the
 `bitmapFont("fonts/x.fnt")` handle through a scene's `preload` and pass
 the `fontFamily` declared in the descriptor as `style.fontFamily`.
 Bitmap text honours the same Yoga word-wrap / `truncate` behaviour as
 canvas text inside a `UIPanel`.
+
+### Synthetic bold and italic on bitmap fonts
+
+Canvas `Text` synthesises bold and italic from `style.fontWeight` /
+`fontStyle`, but a plain `BitmapText` has only the one atlas it was baked
+from, so those props are silently ignored. To get emphasis on bitmap
+text, bake the variants up front with `installBitmapFont`'s `variants`
+option — each entry produces a sibling atlas from the same `.ttf`:
+
+```typescript
+await installBitmapFont("fonts/Body.ttf", {
+  name: "Body",
+  variants: [
+    { fontWeight: "bold" },
+    { fontStyle: "italic" },
+    { fontWeight: "bold", fontStyle: "italic" },
+  ],
+});
+
+// Asks for the bold atlas — selected automatically by fontWeight:
+entity.add(
+  new TextComponent({
+    text: "GAME OVER",
+    bitmap: true,
+    style: { fontFamily: "Body", fontWeight: "bold" },
+  }),
+);
+```
+
+You never name or look up the variant atlases yourself — set
+`fontWeight` / `fontStyle` on the `BitmapText` exactly as you would for
+canvas text and the matching atlas is resolved by `fontFamily`. A
+`fontWeight` of `"bold"`/`"bolder"` or numeric `"600"`+ lands on the
+bold axis; `"italic"`/`"oblique"` on the slant axis. A request with no
+matching variant (or a font baked without `variants`) falls back to the
+base atlas, so regular text is unaffected.
+
+Each `BitmapFontVariant` is `{ fontWeight?, fontStyle?, style? }` — the
+optional per-variant `style` layers extra `TextStyle` props onto that
+atlas alone.
+
+:::tip[Variants share one baseline]
+Synthesised faux-bold/italic glyphs measure to a slightly different
+baseline than the regular face — even from the same source font — which
+would make a bold span drift vertically against the regular text on the
+same line. `installBitmapFont` normalizes every variant's
+`baseLineOffset` and `lineHeight` to the base atlas at bake time, so all
+the siblings of one font sit on a single shared baseline. Mix weights on
+one line freely.
+:::
 
 ## Loading a web font (canvas `Text`)
 
@@ -149,6 +210,60 @@ class MenuScene extends Scene {
 
 The `family` you pass is what you set as `style.fontFamily`; omit it to
 let Pixi derive the family from the file name.
+
+### One font, both canvas and bitmap (`webFont({ bitmap })`)
+
+A `webFont` can bake a `BitmapText` atlas from the same loaded face, so a
+single declared font is usable both as canvas `Text` **and** as a
+`bitmap` atlas under one family — no separate `installBitmapFont` call,
+no second name to keep in sync. Pass `bitmap` to the handle:
+
+```typescript
+import { webFont, TextComponent, Scene } from "@yagejs/renderer";
+
+class HudScene extends Scene {
+  readonly preload = [
+    // `bitmap: true` bakes with defaults; pass an object to tune the bake.
+    webFont("fonts/Inter.woff2", {
+      family: "Inter",
+      bitmap: { size: 24, variants: [{ fontWeight: "bold" }] },
+    }),
+  ];
+
+  onEnter() {
+    // Crisp UI prose, GPU-rasterised canvas Text:
+    this.spawn(/* … */).add(
+      new TextComponent({ text: "Settings", style: { fontFamily: "Inter" } }),
+    );
+    // Same family, drawn from the baked atlas — stays sharp under camera zoom:
+    this.spawn(/* … */).add(
+      new TextComponent({
+        text: "SCORE 9000",
+        bitmap: true,
+        style: { fontFamily: "Inter", fontWeight: "bold" },
+      }),
+    );
+  }
+}
+```
+
+The canvas face and the baked atlas live in separate Pixi registries, so
+sharing the one `family` between them never collides. `bitmap` accepts
+`true` (bake with defaults) or a `WebFontBakeOptions` object —
+`{ size?, chars?, resolution?, padding?, style?, variants? }`, the same
+knobs as [`installBitmapFont`](#pixel-art-text-bitmap) minus
+`name`/`family` (the atlas always registers under the web font's
+`family`). Emphasis `variants` work exactly as they do for
+`installBitmapFont`.
+
+`bitmap` **requires** an explicit `family`: the baked atlas needs a
+stable name to register under and to uninstall when the scene unloads, so
+the bake is skipped (with a console warning) when `family` is omitted.
+Unloading the web font drops its canvas face and releases its hold on the
+baked atlas, which is destroyed once every owner sharing the family has
+released it — so two scenes preloading the same `webFont`, or a `webFont`
+that shares a family with an `installBitmapFont`, never tear the atlas out
+from under each other.
 
 ## Engine-level default text style
 
