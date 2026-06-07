@@ -258,11 +258,69 @@ a time) over `clock.step(bigDt)` (collapses the interval into one fat frame).
 `bigDt` under the latter, which diverges from real gameplay even though
 physics still substeps correctly.
 
+### Reading rendered geometry and visibility
+
+The entity `transform` in a snapshot is the entity *origin*. It does not tell
+you where a component actually paints, how big it is, or whether it is hidden —
+and for partial reveals (a typewriter `SplitTextComponent` that toggles
+`chars[i].visible`) the persisted `serialize()` state disagrees with the
+screen, reporting the full string with no per-glyph detail.
+
+When `RendererPlugin` is active it publishes a derived **render facet** for each
+graphical component on the snapshot, under `facets.render`, computed on demand
+from the live display object:
+
+```typescript
+const scene = window.__yage__.inspector.snapshot().scenes[0];
+const label = scene.entities.find((e) =>
+  e.components.some((c) => c.type === "SplitTextComponent"),
+);
+
+// World-space bounds + component-local visibility, surfaced at the entity level
+// (first painted component the entity added) and per component:
+label?.facets?.render;           // { bounds: { x, y, width, height } | null, visible }
+label?.components.find((c) => c.type === "SplitTextComponent")?.facets?.render;
+
+// SplitTextComponent additionally reports per-glyph state and the visible
+// substring — so a typewriter reveal is testable without touching Pixi.
+// `facets.render` is typed as the base facet, so widen it to read the SplitText
+// extras (SplitTextRenderFacet is exported from @yagejs/renderer):
+const split = label?.components.find(
+  (c) => c.type === "SplitTextComponent",
+)?.facets?.render as SplitTextRenderFacet | undefined;
+split?.glyphs;           // [{ visible }, ...] in reading order
+split?.visibleText;      // e.g. "Hel" while only the first 3 glyphs show
+```
+
+`bounds` are world-space pixels — the same space as `transform`, before the
+camera and responsive `fit` transform — measured from the geometry itself, so a
+sized-but-hidden object still reports its real box. `bounds` is `null` only when
+there is no geometry to measure (an empty `Graphics`, a zero-area object), never
+merely because the object is hidden — read `visible` for that. `visible` is the
+component's own (local) flag; Pixi
+v8 exposes no world-resolved visibility, so a hidden parent/layer container is
+not folded in. `glyphs` and `visibleText` cover only rendered glyph segments —
+`SplitText.chars` excludes whitespace, so a fully-revealed `"Hello world"`
+reports `"Helloworld"`; compare which glyphs are visible rather than treating it
+as the verbatim string. The facet is read-only and never part of
+`serialize()`, so it does not affect save/load.
+
+The facet lives entirely in `@yagejs/renderer`, keeping `@yagejs/core`
+renderer-agnostic. The Inspector exposes a generic seam —
+`registerFacetContributor()` attaches namespaced `facets` to snapshots — and
+`RendererPlugin` registers a `RenderFacetContributor` for the `render` namespace
+(the same contributor idiom as a `DebugContributor` or a save
+`SnapshotContributor`). That contributor duck-types `inspectRender()` off each
+component, so a custom graphical component opts in simply by exposing an
+`inspectRender(): RenderFacetSnapshot` method. `SpriteComponent`,
+`AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and
+`SplitTextComponent` all implement it.
+
 #### Honest limits
 
 These are truths, not bugs to fix — keep them in mind when interpreting probe results:
 
-- **Visuals**: `snapshotJSON()` covers structural state — positions, components, scene stack — not pixel output. `page.screenshot()` helps but agent-grade interpretation of pixels is imperfect. Combine both for confidence.
+- **Visuals**: `snapshotJSON()` covers structural state — positions, components, scene stack — plus the render facet's world-space bounds and visibility, but still not pixel output (colours, shaders, exact rasterisation). `page.screenshot()` helps but agent-grade interpretation of pixels is imperfect. Combine both for confidence.
 - **Audio**: no introspection surface, and WebAudio doesn't pause in step mode. Probes can't tell you whether a sound effect played at the right frame.
 - **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. No callers in core YAGE today, but custom plugins might.
 - **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic. Always prefer the latter in probes.

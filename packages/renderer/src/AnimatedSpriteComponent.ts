@@ -9,6 +9,10 @@ import {
 import type { Vec2Like } from "@yagejs/core";
 import { AnimatedSprite } from "pixi.js";
 import type { Container } from "pixi.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { resolveTextureInput } from "./assets.js";
 import type { TextureInput, TextureResource } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
@@ -221,6 +225,16 @@ export class AnimatedSpriteComponent extends Component {
    */
   get mask(): MaskHandle | undefined {
     return this._mask;
+  }
+
+  /**
+   * Derived render facet for the Inspector — world-space `bounds` and the
+   * component's own (local, non-inherited) `visible` flag of the current
+   * animation frame, computed on demand. Not part of `serialize()`; see
+   * {@link computeRenderFacet} for the bounds coordinate space.
+   */
+  inspectRender(): RenderFacetSnapshot {
+    return computeRenderFacet(this.animatedSprite);
   }
 
   /** The underlying Pixi display object. */

@@ -1,10 +1,31 @@
 import { Component, serializable } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
 import type { BitmapText, Container, Text } from "pixi.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type { TextStyle } from "./public-types.js";
+
+/**
+ * Renderer-specific extras `SplitTextComponent.inspectRender()` attaches on
+ * top of the shared {@link RenderFacetSnapshot} base. Lets a typewriter reveal
+ * be observed purely through the Inspector — `glyphs[i].visible` mirrors the
+ * per-character display objects, and `visibleText` is the currently-painted
+ * substring (whitespace-stripped: Pixi treats spaces as separators between
+ * `words`/`lines`, not as `chars`, so a fully-revealed `"Hello world"` reports
+ * `"Helloworld"`).
+ */
+export interface SplitTextRenderFacetExtras {
+  glyphs: Array<{ visible: boolean }>;
+  visibleText: string;
+}
+
+/** The full render facet shape returned by {@link SplitTextComponent.inspectRender}. */
+export type SplitTextRenderFacet = RenderFacetSnapshot<SplitTextRenderFacetExtras>;
 
 /**
  * Transform origin for a text segment, normalized 0–1. `0` is top-left, `0.5`
@@ -268,6 +289,33 @@ export class SplitTextComponent extends Component {
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.visible !== undefined) opts.visible = data.visible;
     return new SplitTextComponent(opts);
+  }
+
+  /**
+   * Derived render facet for the Inspector. Beyond the shared world-space
+   * `bounds` and container-level `visible`, this walks the per-character
+   * segments and reports `glyphs` (one `{ visible }` per char in reading
+   * order) plus `visibleText` — the substring currently painted. This is the
+   * read-only window into a typewriter reveal: where `serialize()` reports the
+   * full declared string, `visibleText` reports only the glyphs whose
+   * `chars[i].visible` is still on. Not part of `serialize()`; see
+   * {@link computeRenderFacet} for the bounds coordinate space.
+   *
+   * Note: Pixi's `chars` array (and therefore `glyphs` / `visibleText`)
+   * contains only the rendered glyph segments — whitespace is laid out via
+   * `words`/`lines` and is NOT a char. So `visibleText` strips spaces: a fully
+   * revealed `"Hello world"` reports `"Helloworld"`. Use it to compare *which
+   * glyphs* are on screen, not to reconstruct the original string verbatim.
+   */
+  inspectRender(): SplitTextRenderFacet {
+    const facet = computeRenderFacet(this.splitText);
+    const chars = this.splitText.chars;
+    const glyphs = chars.map((char) => ({ visible: char.visible }));
+    const visibleText = chars
+      .filter((char) => char.visible)
+      .map((char) => char.text)
+      .join("");
+    return { ...facet, glyphs, visibleText };
   }
 
   /** The underlying Pixi display object. */

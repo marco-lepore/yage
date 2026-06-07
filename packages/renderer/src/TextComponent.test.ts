@@ -50,10 +50,34 @@ const { mocks } = vi.hoisted(() => {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
+    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
+
+    getLocalBounds(): { x: number; y: number; width: number; height: number } {
+      return { ...this.boundsBox };
+    }
+
+    updateLocalTransform(): void {}
+
+    // Identity local transform → world bounds equal the local box, so the facet
+    // assertions below read straight through. renderFacet.test.ts covers the
+    // non-identity (zoom / rotation) mapping math against a real Pixi Matrix.
+    localTransform = {
+      apply(p: { x: number; y: number }): { x: number; y: number } {
+        return { x: p.x, y: p.y };
+      },
+    };
+
     destroy(): void {
       this.destroyed = true;
       this.removeFromParent();
     }
+  }
+
+  class MockPoint {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
   }
 
   class MockText extends MockContainer {
@@ -75,13 +99,14 @@ const { mocks } = vi.hoisted(() => {
   // Distinct subclass so tests can assert which Pixi class was constructed.
   class MockBitmapText extends MockText {}
 
-  return { mocks: { MockContainer, MockText, MockBitmapText } };
+  return { mocks: { MockContainer, MockText, MockBitmapText, MockPoint } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Text: mocks.MockText,
   BitmapText: mocks.MockBitmapText,
+  Point: mocks.MockPoint,
 }));
 
 import { Transform } from "@yagejs/core";
@@ -432,5 +457,39 @@ describe("TextComponent", () => {
     const data = new TextComponent({ text: "x" }).serialize();
     expect(data.bitmap).toBeUndefined();
     expect(data.resolution).toBeUndefined();
+  });
+
+  describe("inspectRender", () => {
+    it("reports world-space bounds and local visibility", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new TextComponent({ text: "score" }));
+      const text = comp.text as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      text.boundsBox = { x: 2, y: 3, width: 50, height: 18 };
+
+      const facet = comp.inspectRender();
+      expect(facet.bounds).toEqual({ x: 2, y: 3, width: 50, height: 18 });
+      expect(facet.visible).toBe(true);
+    });
+
+    it("reflects a visibility toggle", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new TextComponent({ text: "x", visible: false }));
+      const text = comp.text as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      text.boundsBox = { x: 0, y: 0, width: 8, height: 8 };
+
+      const facet = comp.inspectRender();
+      expect(facet.visible).toBe(false);
+      // Geometry-truthful: a hidden-but-sized object still reports its real box;
+      // `bounds: null` is reserved for genuinely empty geometry.
+      expect(facet.bounds).toEqual({ x: 0, y: 0, width: 8, height: 8 });
+    });
   });
 });

@@ -37,6 +37,23 @@ const { mocks } = vi.hoisted(() => {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
+    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
+
+    getLocalBounds(): { x: number; y: number; width: number; height: number } {
+      return { ...this.boundsBox };
+    }
+
+    updateLocalTransform(): void {}
+
+    // Identity local transform → world bounds equal the local box, so the facet
+    // assertions below read straight through. renderFacet.test.ts covers the
+    // non-identity (zoom / rotation) mapping math against a real Pixi Matrix.
+    localTransform = {
+      apply(p: { x: number; y: number }): { x: number; y: number } {
+        return { x: p.x, y: p.y };
+      },
+    };
+
     destroy(): void {
       this.destroyed = true;
       this.removeFromParent();
@@ -96,11 +113,18 @@ vi.mock("pixi.js", () => {
   class MockRectangle {
     constructor(public x: number, public y: number, public width: number, public height: number) {}
   }
+  class MockPoint {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
+  }
   return {
     Container: mocks.MockContainer,
     AnimatedSprite: mocks.MockAnimatedSprite,
     Texture: MockTexture,
     Rectangle: MockRectangle,
+    Point: MockPoint,
     Assets: { get: () => undefined },
   };
 });
@@ -273,6 +297,41 @@ describe("AnimatedSpriteComponent", () => {
       expect(() => new AnimatedSpriteComponent({} as never)).toThrow(
         /requires either/,
       );
+    });
+  });
+
+  describe("inspectRender", () => {
+    it("reports world-space bounds and local visibility", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new AnimatedSpriteComponent({ textures }));
+      const sprite = comp.animatedSprite as unknown as InstanceType<
+        typeof mocks.MockAnimatedSprite
+      >;
+      sprite.boundsBox = { x: 1, y: 2, width: 96, height: 48 };
+
+      const facet = comp.inspectRender();
+      expect(facet.bounds).toEqual({ x: 1, y: 2, width: 96, height: 48 });
+      expect(facet.visible).toBe(true);
+    });
+
+    it("reflects a visibility toggle", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new AnimatedSpriteComponent({ textures }));
+      const sprite = comp.animatedSprite as unknown as InstanceType<
+        typeof mocks.MockAnimatedSprite
+      >;
+      sprite.boundsBox = { x: 0, y: 0, width: 10, height: 10 };
+      comp.animatedSprite.visible = false;
+
+      const facet = comp.inspectRender();
+      expect(facet.visible).toBe(false);
+      // Geometry-truthful: a hidden-but-sized object still reports its real box;
+      // `bounds: null` is reserved for genuinely empty geometry.
+      expect(facet.bounds).toEqual({ x: 0, y: 0, width: 10, height: 10 });
     });
   });
 });

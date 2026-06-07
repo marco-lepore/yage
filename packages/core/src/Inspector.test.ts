@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Inspector } from "./Inspector.js";
+import type { InspectorFacetContributor } from "./Inspector.js";
 import { Scene } from "./Scene.js";
 import { Component } from "./Component.js";
 import { Transform } from "./Transform.js";
@@ -420,5 +421,232 @@ describe("Inspector", () => {
         payload: null,
       },
     ]);
+  });
+});
+
+// A fake graphical component + a registered contributor that reads it. Mirrors
+// how the renderer publishes its facet: core knows nothing about "render"; the
+// contributor owns the namespace and the duck-typing. No Pixi / renderer dep.
+class FakeRenderComponent extends Component {
+  constructor(
+    readonly facet: {
+      bounds: { x: number; y: number; width: number; height: number } | null;
+      visible: boolean;
+      glyphs?: Array<{ visible: boolean }>;
+    },
+  ) {
+    super();
+  }
+  inspectRender() {
+    return this.facet;
+  }
+  serialize() {
+    return { kind: "fake" };
+  }
+}
+
+class ThrowingRenderComponent extends Component {
+  inspectRender(): never {
+    throw new Error("display object not parented");
+  }
+  serialize() {
+    return { kind: "throws" };
+  }
+}
+
+interface RenderInspectableLike {
+  inspectRender(): unknown;
+}
+
+// The contributor under test — the renderer ships an equivalent. The Inspector
+// stays agnostic: it just calls `inspectComponent` per component and surfaces
+// `inspectEntity`'s pick at the entity level, attaching results under `facets`.
+const renderFacetContributor: InspectorFacetContributor = {
+  namespace: "render",
+  inspectComponent(component) {
+    const hook = (component as Partial<RenderInspectableLike>).inspectRender;
+    return typeof hook === "function" ? hook.call(component) : undefined;
+  },
+  inspectEntity(facets) {
+    return facets.find((facet) => facet != null);
+  },
+};
+
+describe("Inspector facet contributors", () => {
+  it("attaches a namespaced facet from a registered contributor", async () => {
+    const { inspector, scenes } = setup();
+    inspector.registerFacetContributor(renderFacetContributor);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("sprite");
+    e.add(new Transform({ position: new Vec2(100, 50) }));
+    e.add(
+      new FakeRenderComponent({
+        bounds: { x: 90, y: 40, width: 20, height: 20 },
+        visible: true,
+      }),
+    );
+
+    const entity = inspector.snapshot().scenes[0]?.entities.find(
+      (candidate) => candidate.id === String(e.id),
+    );
+    expect(entity?.facets?.["render"]).toEqual({
+      bounds: { x: 90, y: 40, width: 20, height: 20 },
+      visible: true,
+    });
+    const comp = entity?.components.find(
+      (c) => c.type === "FakeRenderComponent",
+    );
+    expect(comp?.facets?.["render"]).toEqual({
+      bounds: { x: 90, y: 40, width: 20, height: 20 },
+      visible: true,
+    });
+  });
+
+  it("passes a contributor's arbitrary payload through unchanged", async () => {
+    const { inspector, scenes } = setup();
+    inspector.registerFacetContributor(renderFacetContributor);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("split");
+    e.add(new Transform());
+    e.add(
+      new FakeRenderComponent({
+        bounds: { x: 0, y: 0, width: 30, height: 10 },
+        visible: true,
+        glyphs: [{ visible: true }, { visible: true }, { visible: false }],
+      }),
+    );
+
+    // The facet payload is opaque to core — extra keys like `glyphs` ride
+    // through untouched, which is what lets a renderer publish richer state.
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    const render = entity?.facets?.["render"] as
+      | { glyphs?: Array<{ visible: boolean }> }
+      | undefined;
+    expect(render?.glyphs).toEqual([
+      { visible: true },
+      { visible: true },
+      { visible: false },
+    ]);
+  });
+
+  it("leaves facets undefined when no contributor is registered", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("sprite");
+    e.add(new Transform());
+    e.add(
+      new FakeRenderComponent({
+        bounds: { x: 0, y: 0, width: 4, height: 4 },
+        visible: true,
+      }),
+    );
+
+    // Core never reaches into components on its own — without a contributor the
+    // facet seam is dormant and no `facets` key appears.
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.facets).toBeUndefined();
+    const comp = entity?.components.find(
+      (c) => c.type === "FakeRenderComponent",
+    );
+    expect(comp?.facets).toBeUndefined();
+  });
+
+  it("omits the facet for a component the contributor declines", async () => {
+    const { inspector, scenes } = setup();
+    inspector.registerFacetContributor(renderFacetContributor);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("plain");
+    e.add(new Transform());
+    e.add(new Health(42));
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.facets).toBeUndefined();
+    const comp = entity?.components.find((c) => c.type === "Health");
+    expect(comp?.facets).toBeUndefined();
+  });
+
+  it("tolerates a contributor whose inspectComponent throws", async () => {
+    const { inspector, scenes } = setup();
+    inspector.registerFacetContributor(renderFacetContributor);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("broken");
+    e.add(new Transform());
+    e.add(new ThrowingRenderComponent());
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.facets).toBeUndefined();
+    const comp = entity?.components.find(
+      (c) => c.type === "ThrowingRenderComponent",
+    );
+    // serialize() state is still captured; only the facet is omitted.
+    expect(comp?.state).toEqual({ kind: "throws" });
+    expect(comp?.facets).toBeUndefined();
+  });
+
+  it("surfaces the contributor's entity-level pick (first-added component)", async () => {
+    const { inspector, scenes } = setup();
+    inspector.registerFacetContributor(renderFacetContributor);
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("multi");
+    e.add(new Transform());
+    // Insertion order — NOT class-name order — feeds `inspectEntity`. `Zeta` is
+    // added first but sorts last alphabetically; `Alpha` is added second but
+    // sorts first. The entity facet must mirror `Zeta` (the first painted
+    // component), proving the contributor sees insertion order, not the
+    // alphabetical sort applied to `components`.
+    class Zeta extends FakeRenderComponent {}
+    class Alpha extends FakeRenderComponent {}
+    e.add(
+      new Zeta({ bounds: { x: 5, y: 5, width: 1, height: 1 }, visible: false }),
+    );
+    e.add(
+      new Alpha({ bounds: { x: 0, y: 0, width: 2, height: 2 }, visible: true }),
+    );
+
+    const entity = inspector.snapshot().scenes[0]?.entities[0];
+    expect(entity?.facets?.["render"]).toEqual({
+      bounds: { x: 5, y: 5, width: 1, height: 1 },
+      visible: false,
+    });
+    // The `components` array itself stays alphabetically sorted for stable
+    // snapshot output, independent of the insertion-order pick above.
+    expect(entity?.components.map((c) => c.type)).toEqual([
+      "Alpha",
+      "Transform",
+      "Zeta",
+    ]);
+  });
+
+  it("stops contributing after the unregister handle is called", async () => {
+    const { inspector, scenes } = setup();
+    const unregister = inspector.registerFacetContributor(
+      renderFacetContributor,
+    );
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const e = scene.spawn("sprite");
+    e.add(new Transform());
+    e.add(
+      new FakeRenderComponent({
+        bounds: { x: 0, y: 0, width: 4, height: 4 },
+        visible: true,
+      }),
+    );
+
+    expect(
+      inspector.snapshot().scenes[0]?.entities[0]?.facets?.["render"],
+    ).toBeDefined();
+
+    unregister();
+
+    expect(
+      inspector.snapshot().scenes[0]?.entities[0]?.facets,
+    ).toBeUndefined();
   });
 });

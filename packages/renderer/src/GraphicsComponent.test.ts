@@ -37,10 +37,34 @@ const { mocks } = vi.hoisted(() => {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
 
+    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
+
+    getLocalBounds(): { x: number; y: number; width: number; height: number } {
+      return { ...this.boundsBox };
+    }
+
+    updateLocalTransform(): void {}
+
+    // Identity local transform → world bounds equal the local box, so the facet
+    // assertions below read straight through. renderFacet.test.ts covers the
+    // non-identity (zoom / rotation) mapping math against a real Pixi Matrix.
+    localTransform = {
+      apply(p: { x: number; y: number }): { x: number; y: number } {
+        return { x: p.x, y: p.y };
+      },
+    };
+
     destroy(): void {
       this.destroyed = true;
       this.removeFromParent();
     }
+  }
+
+  class MockPoint {
+    constructor(
+      public x = 0,
+      public y = 0,
+    ) {}
   }
 
   class MockGraphics extends MockContainer {
@@ -72,12 +96,13 @@ const { mocks } = vi.hoisted(() => {
     }
   }
 
-  return { mocks: { MockContainer, MockGraphics } };
+  return { mocks: { MockContainer, MockGraphics, MockPoint } };
 });
 
 vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
   Graphics: mocks.MockGraphics,
+  Point: mocks.MockPoint,
 }));
 
 import { Transform } from "@yagejs/core";
@@ -135,5 +160,27 @@ describe("GraphicsComponent", () => {
     comp.onDestroy?.();
     expect(gfx.parent).toBeNull();
     expect(gfx.destroyed).toBe(true);
+  });
+
+  describe("inspectRender", () => {
+    it("reports world-space bounds of the drawn geometry", () => {
+      const { scene } = createRendererTestContext();
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new GraphicsComponent());
+      const gfx = comp.graphics as unknown as InstanceType<
+        typeof mocks.MockContainer
+      >;
+      gfx.boundsBox = { x: 0, y: 0, width: 40, height: 25 };
+
+      const facet = comp.inspectRender();
+      expect(facet.bounds).toEqual({ x: 0, y: 0, width: 40, height: 25 });
+      expect(facet.visible).toBe(true);
+    });
+
+    it("reports null bounds for an empty Graphics", () => {
+      const comp = new GraphicsComponent();
+      expect(comp.inspectRender().bounds).toBeNull();
+    });
   });
 });

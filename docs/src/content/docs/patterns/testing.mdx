@@ -256,6 +256,32 @@ type is a client-side `.filter()` on `e.components.includes("Health")`. The
 same applies to `tags` — filter client-side rather than expecting a built-in
 `getEntitiesByTag`.
 
+To assert what is actually *rendered* — not just the entity origin or the
+persisted component state — read the **render facet** off a world-scene
+snapshot (published by `RendererPlugin` under `facets.render`). Each graphical
+component carries a derived facet with world-space `bounds` and component-local
+`visible`, computed on demand from the live display object. `SplitTextComponent`
+also reports per-glyph visibility and the visible substring, so a typewriter
+reveal is verifiable from the public API instead of reaching into Pixi:
+
+```typescript
+import type { SplitTextRenderFacet } from "@yagejs/renderer";
+
+const scene = window.__yage__.inspector.snapshot().scenes[0];
+const label = scene?.entities.find((e) =>
+  e.components.some((c) => c.type === "SplitTextComponent"),
+);
+const split = label?.components.find(
+  (c) => c.type === "SplitTextComponent",
+)?.facets?.render as SplitTextRenderFacet | undefined;
+
+expect(split?.visibleText).toBe("Hel");
+expect(split?.glyphs.filter((g) => g.visible)).toHaveLength(3);
+```
+
+See the [debug guide](/guides/debug/#reading-rendered-geometry-and-visibility)
+for the full facet shape.
+
 ### The Agent Feedback Loop
 
 The Inspector is especially useful when an AI coding agent is authoring

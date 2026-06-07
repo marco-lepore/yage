@@ -30,6 +30,16 @@ export type {
 // Plugin
 export { RendererPlugin } from "./RendererPlugin.js";
 
+// Inspector render facet — the renderer owns this type and publishes it into the
+// Inspector snapshot via RenderFacetContributor (which also augments core's
+// `InspectorFacets` so `snapshot.entities[].facets?.render` is typed). Exporting
+// the contributor activates that `declare module` augmentation for consumers.
+export { RenderFacetContributor } from "./RenderFacetContributor.js";
+export type {
+  RenderFacetSnapshot,
+  RenderInspectable,
+} from "./internal/renderFacet.js";
+
 // Components
 export { SpriteComponent } from "./SpriteComponent.js";
 export type { SpriteComponentOptions, SpriteData } from "./SpriteComponent.js";
@@ -45,6 +55,8 @@ export type {
   SplitTextComponentOptions,
   SplitTextData,
   SegmentAnchor,
+  SplitTextRenderFacet,
+  SplitTextRenderFacetExtras,
 } from "./SplitTextComponent.js";
 export { SortGroupComponent, resolveRenderParent } from "./SortGroupComponent.js";
 export type {

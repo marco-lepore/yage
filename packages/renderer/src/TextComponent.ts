@@ -5,6 +5,10 @@ import {
 } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
 import type { Container } from "pixi.js";
+import {
+  computeRenderFacet,
+  type RenderFacetSnapshot,
+} from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 import { resolveRenderParent } from "./SortGroupComponent.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
@@ -242,6 +246,16 @@ export class TextComponent extends Component {
    */
   get mask(): MaskHandle | undefined {
     return this._mask;
+  }
+
+  /**
+   * Derived render facet for the Inspector — world-space `bounds` and the
+   * component's own (local, non-inherited) `visible` flag of the rendered text,
+   * computed on demand. Not part of `serialize()`; see {@link computeRenderFacet}
+   * for the bounds coordinate space.
+   */
+  inspectRender(): RenderFacetSnapshot {
+    return computeRenderFacet(this.text);
   }
 
   /** The underlying Pixi display object. */

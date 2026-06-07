@@ -47,6 +47,63 @@ await inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 inspector.snapshotJSON();                      // stable, sorted JSON for diffing
 ```
 
+### Render facet — rendered geometry / visibility
+
+`snapshot()` / `snapshotScene()` report each graphical component's *rendered*
+state alongside its `serialize()` output, under `facets.render`
+(`RenderFacetSnapshot` from `@yagejs/renderer`). This is computed on demand from
+the live display object — never from `serialize()` — so it reflects what is
+actually painted, not the declared/persisted state. The facet only appears when
+`RendererPlugin` is active (it registers the contributor that produces it).
+
+```ts
+const scene = inspector.snapshot().scenes[0];
+const e = scene.entities.find((ent) => ent.id === "3");
+
+// Entity-level facet (first painted component the entity added):
+e.facets?.render;            // { bounds: { x, y, width, height } | null, visible }
+
+// Per-component facet (read this for entities with several graphical components):
+e.components.find((c) => c.type === "SpriteComponent")?.facets?.render;
+```
+
+`bounds` are **world-space** pixels — the same coordinate space as
+`entity.transform`, before the camera and responsive `fit` transform are
+applied. They are measured from the geometry itself, so a sized-but-hidden
+object still reports its real box; `bounds` is `null` only when there is no
+geometry to measure (an empty `Graphics`, a zero-area object), never merely
+because the object is hidden — read `visible` for the hidden/shown state.
+
+`SplitTextComponent` adds per-glyph reporting, so a typewriter reveal is
+observable without touching Pixi internals — where `serialize()` reports the
+full declared string, the facet reports only what is on screen:
+
+```ts
+const split = e.components.find((c) => c.type === "SplitTextComponent")
+  ?.facets?.render;
+split?.glyphs;        // [{ visible }, ...] in reading order
+split?.visibleText;   // painted glyphs joined, e.g. "Hel"
+```
+
+`glyphs` / `visibleText` cover only rendered glyph segments — `SplitText.chars`
+excludes whitespace, so a fully-revealed `"Hello world"` reports `"Helloworld"`.
+Compare *which glyphs* are visible, not the verbatim string. `visible` is the
+component's own (local) flag; Pixi v8 has no world-resolved getter, so a hidden
+ancestor is not folded in.
+
+**How it is wired (no core↔renderer coupling).** `@yagejs/core`'s Inspector is
+renderer-agnostic: it exposes a generic facet seam — `registerFacetContributor()`
+attaches namespaced `facets` to component/entity snapshots — and knows nothing
+about "render". `RendererPlugin` registers a `RenderFacetContributor` (the same
+contributor idiom as `DebugContributor` / save's `SnapshotContributor`) that
+owns the `render` namespace: it duck-types `inspectRender()` off each graphical
+component and picks the first painted one for the entity-level facet. `bounds` /
+`visible` are the shared fields; a component reports richer, mode-specific state
+by widening `RenderFacetSnapshot<Extra>` (as `SplitTextComponent` does with
+`glyphs` / `visibleText`). The built-in graphical components (`SpriteComponent`,
+`AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`,
+`SplitTextComponent`) all implement `inspectRender()`.
+
 Renderer-aware diagnostics live under the inspector extension namespace `debug`
 (only present while `DebugPlugin` is installed). Pass `DebugDiagnostics` as the
 type parameter so the returned methods are typed:
