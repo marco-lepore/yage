@@ -291,7 +291,7 @@ is required** — this works in a pure imperative scene.
 ```ts
 import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
 
-const tip = attachTooltip(anchorNode, scene, {
+const tip = attachTooltip(panel, scene, { // a root UIPanel, or any UIElement
   content: () => {
     const card = new PanelNode({
       padding: 6,
@@ -307,20 +307,21 @@ const tip = attachTooltip(anchorNode, scene, {
   maxWidth: 200,    // px; content wraps + clamps to available space
 });
 // Activation is yours — wire it on hover (the usual case):
-anchorNode.update({ onHover: tip.setActive });
+panel.setPointerHandlers({ onHover: tip.setActive }); // root UIPanel
+// a child element instead? element.update({ onHover: tip.setActive })
 // later: tip.dispose();  // releases the overlay slot
 ```
 
 `attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
 controller — it wires **no input itself**, so it can't clobber the anchor's
-handlers. Drive it however you like; hover is a one-liner when the anchor does
-not already have an `onHover` (`anchor.update({ onHover: tip.setActive })`,
-`setActive(hovering)` lining up with the callback) — note `update({ onHover })`
-*replaces* that single slot. If the anchor already handles hover, compose
-explicitly (`onHover: (h) => { existing(h); tip.setActive(h); }`) — or use
-focus / long-press / a programmatic call. `anchor` is any UI primitive
-(`UIPanel._node` / `PanelNode`, `UIButton`, `UIImage`, …), read only for
-positioning. `content` is a factory (called once); **headless** — return a
+handlers. `anchor` is a root `UIPanel` or any `UIElement` (`UIButton`,
+`UIImage`, a nested `PanelNode`, …), read only for positioning. Drive it
+yourself: set `onHover` on a panel via `panel.setPointerHandlers({ onHover:
+tip.setActive })`, or on an element via `element.update({ onHover:
+tip.setActive })` — or trigger from focus / long-press / a programmatic call.
+Setting `onHover` *replaces* that single slot (which is what you want when the
+anchor has none); if it already handles hover, compose (`onHover: (h) => {
+existing(h); tip.setActive(h); }`). `content` is a factory (called once); **headless** — return a
 styled node for visuals, nothing is added for you. `setActive` stays a no-op
 after `dispose()`, so a lingering hover wiring is harmless.
 Requires the scene to have the `FloatingOverlay` (i.e. `UIPlugin` is

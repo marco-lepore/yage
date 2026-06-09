@@ -56,6 +56,7 @@ vi.mock("pixi.js", () => ({ Container: mocks.MockContainer }));
 
 import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
 import { attachTooltip } from "./attachTooltip.js";
+import { UIPanel } from "./UIPanel.js";
 import type { UIElement } from "./types.js";
 
 // A UIElement standing in for the laid-out tooltip content. Its yoga node
@@ -183,6 +184,31 @@ describe("attachTooltip", () => {
     // clobber the anchor's own handlers. Composition is the caller's
     // explicit `anchor.update({ onHover: tip.setActive })`.
     expect(anchor.updateCalls).toBe(0);
+  });
+
+  it("accepts a root UIPanel and anchors to its node", () => {
+    const { scene } = makeScene(overlay);
+    // A UIPanel is a Component wrapping a PanelNode. Stand one in without a
+    // real Yoga/Pixi build (Object.create skips the constructor), then point
+    // its `_node` at our geometry stub so we can assert attachTooltip unwraps.
+    const node = makeAnchor();
+    const panel = Object.create(UIPanel.prototype) as UIPanel;
+    (panel as unknown as { _node: UIElement })._node = node;
+    const content = makeContent(80, 24);
+
+    const tip = attachTooltip(panel, scene, {
+      content: () => content,
+      placement: "bottom",
+      offset: 6,
+    });
+    tip.setActive(true);
+    overlay.update(VIEWPORT);
+
+    const bubble = content.displayObject.parent!;
+    expect(bubble.visible).toBe(true);
+    // Positioned from the node's 40×40 geometry — proof the panel was unwrapped:
+    // bottom placement y = ref.y(0) + ref.h(40) + offset(6) = 46.
+    expect(bubble.position.y).toBe(46);
   });
 
   it("dispose releases the overlay slot and is safe to over-drive", () => {

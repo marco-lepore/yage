@@ -6,6 +6,7 @@ import {
 } from "./floating.js";
 import type { Placement } from "./positioning.js";
 import type { UIElement } from "./types.js";
+import { UIPanel } from "./UIPanel.js";
 
 /** Options for {@link attachTooltip}. */
 export interface AttachTooltipOptions {
@@ -59,17 +60,18 @@ export interface TooltipHandle {
  * live geometry.
  *
  * **Activation is yours.** This builds the floating parts and returns a
- * {@link TooltipHandle}; nothing shows until you call `setActive`. The
- * `anchor` is used only for positioning — `attachTooltip` never wires it for
- * hover, so it can't clobber the anchor's handlers. The common trigger is a
- * one-liner you own; note `update({ onHover })` *replaces* the anchor's
- * `onHover` (a single slot), which is what you want when it has none — if it
- * already has one, compose them yourself:
+ * {@link TooltipHandle}; nothing shows until you call `setActive`. `anchor`
+ * may be a root `UIPanel` or any `UIElement` (button, image, nested panel, …)
+ * and is used only for positioning — `attachTooltip` never wires it for hover,
+ * so it can't clobber the anchor's handlers. Drive it yourself; setting
+ * `onHover` *replaces* that single slot, which is what you want when the anchor
+ * has none — if it already has one, compose them:
  *
  * ```ts
- * const tip = attachTooltip(anchor, scene, { content });
- * anchor.update({ onHover: tip.setActive }); // anchor has no onHover of its own
- * // already has one? compose: onHover: (h) => { existing(h); tip.setActive(h); }
+ * const tip = attachTooltip(panel, scene, { content }); // a UIPanel, or any element
+ * panel.setPointerHandlers({ onHover: tip.setActive });  // root panel
+ * // a child element instead? element.update({ onHover: tip.setActive })
+ * // already has a hover handler? onHover: (h) => { existing(h); tip.setActive(h); }
  * // …or drive from any other source: focus, long-press, a timer, programmatic.
  * ```
  *
@@ -80,7 +82,7 @@ export interface TooltipHandle {
  * directly.
  */
 export function attachTooltip(
-  anchor: UIElement,
+  anchor: UIElement | UIPanel,
   scene: Scene,
   opts: AttachTooltipOptions,
 ): TooltipHandle {
@@ -92,10 +94,15 @@ export function attachTooltip(
     );
   }
 
+  // A root `UIPanel` is a Component wrapping the renderable `PanelNode`; unwrap
+  // to that element so callers can pass the panel they hold (or any child
+  // element) without reaching for `._node`.
+  const el = anchor instanceof UIPanel ? anchor._node : anchor;
+
   const content = opts.content();
   const handle = overlay.acquire();
   handle.container.addChild(content.displayObject);
-  handle.setReference(() => anchor);
+  handle.setReference(() => el);
   handle.setConfig({
     placement: opts.placement,
     offset: opts.offset ?? 6,

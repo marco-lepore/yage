@@ -60,7 +60,7 @@ class TooltipScene extends Scene {
     );
     panel.text("Goblin", { fontSize: 11, fill: 0xffffff });
 
-    const tip = attachTooltip(panel._node, this, {
+    const tip = attachTooltip(panel, this, {
       placement: "top",
       offset: 8,
       maxWidth: 200,
@@ -80,10 +80,10 @@ class TooltipScene extends Scene {
       },
     });
     // attachTooltip wires no input itself — drive it from the trigger's hover.
-    panel._node.update({ onHover: tip.setActive });
+    panel.setPointerHandlers({ onHover: tip.setActive });
 
     const overlay = this._resolveScoped(FloatingOverlayKey)!;
-    const triggerContainer = panel._node.container;
+    const triggerContainer = panel.container;
 
     // Probe for the spec. `show`/`hide` fire the trigger's Pixi pointer
     // events, which run the `onHover` wired above to `tip.setActive` — no real

@@ -235,9 +235,9 @@ triggers like the `ScreenFollow` namecard above.
 ```ts
 import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
 
-// `anchor` is any UI primitive — here the namecard's PanelNode. It's read
+// `anchor` is a root UIPanel (here the namecard) or any UIElement. It's read
 // only for positioning; attachTooltip never wires hover onto it.
-const tip = attachTooltip(panel._node, this.scene, {
+const tip = attachTooltip(panel, this.scene, {
   placement: "top", // side, or side-align (e.g. "bottom-start"); default "top"
   offset: 8,        // px gap between trigger and bubble (default 6)
   maxWidth: 200,    // px; long content wraps + clamps to available space
@@ -254,9 +254,9 @@ const tip = attachTooltip(panel._node, this.scene, {
   },
 });
 
-// Activation is yours — wire it on hover (the common case). You own this
-// `onHover`, so it composes with any hover styling the panel already has:
-panel._node.update({ onHover: tip.setActive });
+// Activation is yours — wire it on hover (the common case). On a root UIPanel
+// use setPointerHandlers; on a child element use its `update({ onHover })`.
+panel.setPointerHandlers({ onHover: tip.setActive });
 
 // When the namecard goes away, release the overlay slot:
 tip.dispose();
@@ -264,12 +264,13 @@ tip.dispose();
 
 `attachTooltip` builds the floating parts and hands back a `{ setActive,
 dispose }` controller — it wires **no input of its own**, so it can't clobber
-the anchor's handlers. You decide what shows the tooltip: hover is the usual
-choice and a one-liner when the anchor has no `onHover` of its own
-(`anchor.update({ onHover: tip.setActive })`) — note `update({ onHover })`
-**replaces** that single slot. If the anchor already handles hover, compose
-explicitly (`onHover: (h) => { existing(h); tip.setActive(h); }`); or drive it
-from focus, a long-press, or a programmatic call. It's
+the anchor's handlers. `anchor` may be a root `UIPanel` or any `UIElement`. You
+decide what shows the tooltip: set `onHover` — on a panel via
+`panel.setPointerHandlers({ onHover: tip.setActive })`, on a child element via
+its `update({ onHover: tip.setActive })` — or drive it from focus, a
+long-press, or a programmatic call. Setting `onHover` **replaces** that single
+slot (which is what you want when the anchor has none); if it already handles
+hover, compose (`onHover: (h) => { existing(h); tip.setActive(h); }`). It's
 **headless** like the React `<Tooltip>`: nothing is styled for you, so pass a
 `background` / `padding` on the content node. Own the returned `dispose()`
 (e.g. call it from a component's `onDestroy`) to free the slot; `setActive` is

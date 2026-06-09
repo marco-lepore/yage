@@ -182,7 +182,7 @@ class NameplateTooltip extends Component {
   }
 
   onAdd(): void {
-    const tip = attachTooltip(this.panel._node, this.scene, {
+    const tip = attachTooltip(this.panel, this.scene, {
       placement: "top",
       offset: 8,
       maxWidth: 200,
@@ -215,7 +215,7 @@ class NameplateTooltip extends Component {
     // attachTooltip wires no input of its own — drive it on hover here. This
     // owns the panel's `onHover`; compose (`(h) => { …; tip.setActive(h); }`)
     // if the namecard ever needs its own hover reaction too.
-    this.panel._node.update({ onHover: tip.setActive });
+    this.panel.setPointerHandlers({ onHover: tip.setActive });
     this.dispose = tip.dispose;
   }
 
