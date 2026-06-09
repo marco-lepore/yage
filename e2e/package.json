@@ -10,6 +10,8 @@
     "e2e": "playwright test -c ../playwright.config.ts"
   },
   "devDependencies": {
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
     "vite": "^8.0.0",
     "vite-plugin-wasm": "^3.6.0"
   },
