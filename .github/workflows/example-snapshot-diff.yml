@@ -66,6 +66,7 @@ jobs:
         env:
           BASE_REF: ${{ inputs.base }}
           TARGET_REF: ${{ github.ref_name }}
+          IMAGE_DIFF_DIR: ${{ runner.temp }}/imagediff
         run: |
           # Run on the target ref's tooling (checked out above).
           node e2e/scripts/diff-snapshots.mjs \
@@ -147,5 +148,6 @@ jobs:
           path: |
             ${{ runner.temp }}/base
             ${{ runner.temp }}/target
+            ${{ runner.temp }}/imagediff
             ${{ runner.temp }}/report.md
           if-no-files-found: warn

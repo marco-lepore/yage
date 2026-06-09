@@ -127,6 +127,14 @@ test.describe("Examples", () => {
       // confirms the example boots and reaches a scene cleanly.
       if (dumpDir) {
         writeFileSync(join(dumpDir, `${slug}.json`), `${stablePretty(json)}\n`);
+        // Also capture the rendered canvas so the diff workflow can do a
+        // pixel comparison. Best-effort: behavioural truth lives in the JSON
+        // snapshot; the image catches render-only regressions the inspector
+        // state can't see (shaders, blend modes, z-order fallout, …).
+        await page
+          .locator("canvas")
+          .first()
+          .screenshot({ path: join(dumpDir, `${slug}.png`) });
       }
 
       expect(errors, `console/page errors in ${slug}`).toEqual([]);
