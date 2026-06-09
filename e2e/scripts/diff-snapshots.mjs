@@ -82,6 +82,18 @@ function imageDiff(slug) {
   const a = PNG.sync.read(readFileSync(basePath));
   const b = PNG.sync.read(readFileSync(targetPath));
   if (a.width !== b.width || a.height !== b.height) {
+    // No per-pixel diff is possible, but a base|target composite still shows
+    // what the resize looks like.
+    if (imageDiffDir) {
+      mkdirSync(imageDiffDir, { recursive: true });
+      const composite = new PNG({
+        width: a.width + b.width,
+        height: Math.max(a.height, b.height),
+      });
+      PNG.bitblt(a, composite, 0, 0, a.width, a.height, 0, 0);
+      PNG.bitblt(b, composite, 0, 0, b.width, b.height, a.width, 0);
+      writeFileSync(join(imageDiffDir, `${slug}.png`), PNG.sync.write(composite));
+    }
     return { dims: `${a.width}×${a.height} → ${b.width}×${b.height}` };
   }
 
