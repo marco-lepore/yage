@@ -5,14 +5,16 @@ name: Example Snapshot Diff
 # SAME runner (so float/render jitter cancels out), captures each example's
 # inspector snapshot, and reports the per-example differences. This is a
 # review aid, not a gate — it never fails on differences, it just surfaces
-# them in the run summary and as artifacts.
+# them in the run summary, as artifacts, and as a comment on the branch's
+# open PR (if one exists).
+#
+# The TARGET branch is whatever you pick in the "Use workflow from" branch
+# dropdown when dispatching the run — GitHub's native branch picker — so
+# there's no ref to type. Only the base (default: main) is a text input.
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: "Branch/ref to test"
-        required: true
       base:
         description: "Branch/ref to compare against"
         required: false
@@ -20,10 +22,11 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   diff:
-    name: Diff ${{ inputs.target }} vs ${{ inputs.base }}
+    name: Diff ${{ github.ref_name }} vs ${{ inputs.base }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (all history)
@@ -48,10 +51,10 @@ jobs:
           npx playwright install --with-deps chromium
           EXAMPLE_SNAPSHOT_DIR="$RUNNER_TEMP/base" npx playwright test --project=examples
 
-      - name: Capture target snapshots (${{ inputs.target }})
+      - name: Capture target snapshots (${{ github.ref_name }})
         continue-on-error: true
         env:
-          TARGET_REF: ${{ inputs.target }}
+          TARGET_REF: ${{ github.ref_name }}
         run: |
           git checkout "$TARGET_REF"
           npm ci
@@ -62,13 +65,79 @@ jobs:
       - name: Diff and report
         env:
           BASE_REF: ${{ inputs.base }}
-          TARGET_REF: ${{ inputs.target }}
+          TARGET_REF: ${{ github.ref_name }}
         run: |
           # Run on the target ref's tooling (checked out above).
           node e2e/scripts/diff-snapshots.mjs \
             "$RUNNER_TEMP/base" "$RUNNER_TEMP/target" \
             "$BASE_REF" "$TARGET_REF" \
             | tee "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment on the target branch's PR
+        uses: actions/github-script@v7
+        env:
+          TARGET_REF: ${{ github.ref_name }}
+        with:
+          script: |
+            const fs = require("fs");
+            const branch = process.env.TARGET_REF;
+
+            const prs = await github.rest.pulls.list({
+              ...context.repo,
+              state: "open",
+              head: `${context.repo.owner}:${branch}`,
+              per_page: 1,
+            });
+            if (prs.data.length === 0) {
+              core.notice(
+                `No open PR for ${branch} — report is in the step summary and artifacts.`,
+              );
+              return;
+            }
+            const pr = prs.data[0];
+
+            const marker = "<!-- example-snapshot-diff -->";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const footer = `\n---\n_[Workflow run](${runUrl}) — full report and raw snapshots are in the run artifacts._\n`;
+
+            // GitHub caps issue comments at 65536 chars. If the report is too
+            // big, cut at the last closed <details> block so we never leave a
+            // diff fence dangling, and point at the artifact for the rest.
+            let report = fs.readFileSync(`${process.env.RUNNER_TEMP}/report.md`, "utf8");
+            const budget = 65000 - marker.length - footer.length;
+            if (report.length > budget) {
+              const notice = "\n\n**Report truncated** — see the run artifacts for the full diff.\n";
+              const cut = report.lastIndexOf("</details>", budget - notice.length);
+              report =
+                (cut > 0
+                  ? report.slice(0, cut + "</details>".length)
+                  : report.slice(0, budget - notice.length - 20) + "\n```\n\n</details>") +
+                notice;
+            }
+            const body = `${marker}\n${report}${footer}`;
+
+            // Sticky comment: update the previous report instead of stacking
+            // a new comment per run.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: pr.number,
+                body,
+              });
+            }
+            core.notice(`Posted snapshot diff report on PR #${pr.number}.`);
 
       - name: Upload snapshots and report
         if: always()
