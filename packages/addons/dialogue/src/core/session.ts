@@ -32,6 +32,7 @@ import type {
   CommandTiming,
   DialogueScript,
   ParsedText,
+  RunMode,
   SayStep,
   SpeakerDef,
   VarMap,
@@ -183,11 +184,28 @@ export class DialogueSession {
   private autoAdvanceDefault: number | null = null;
   private resolved: readonly ResolvedChoice[] = [];
   private selected = 0;
-  /** True while a blocking line-command (show/afterReveal/advance) is awaited. */
-  private lineBlocked = false;
+  /** Count of in-flight blocking line-command batches (show/afterReveal/advance).
+   *  Input is gated while > 0. An ownership counter (not a shared boolean) so an
+   *  overlapping batch resolving — e.g. the afterReveal batch finishing while a
+   *  long blocking `show` command is still awaited — can't drop a gate it
+   *  doesn't own. */
+  private blockedCount = 0;
   /** True between an advance request and the runner stepping off the line —
    *  guards against a second advance double-firing `advance`-timed commands. */
   private advancing = false;
+  /** True once the current line's `advance`-timed commands have fired, so a
+   *  second advance() while the runner is still stepping (e.g. awaiting a
+   *  blocking command step) can't re-fire them against the stale line. */
+  private advanceFired = false;
+  /** True once the current line's `afterReveal`-timed commands have fired
+   *  (normally via handleRevealComplete; skip() fires them early when the line
+   *  hasn't finished revealing). */
+  private afterRevealFired = false;
+  /** Latched by the first confirm() until the runner produces its next state
+   *  (handleSay/handleChoice/handleEnd), so mashing confirm while the runner
+   *  awaits the option's blocking commands can't emit duplicate onChoiceMade
+   *  events (`mode` stays "choosing" for that whole window). */
+  private confirming = false;
   /** Bumped by every stop()/play(). A suspended async continuation from a prior
    *  conversation captures this and bails on resume if it changed, so it can't
    *  drive (advance / show the caret on) the runner of a *new* conversation. */
@@ -264,8 +282,11 @@ export class DialogueSession {
     this.saying = undefined;
     this.resolved = [];
     this.autoTimer = undefined;
-    this.lineBlocked = false;
+    this.blockedCount = 0;
     this.advancing = false;
+    this.advanceFired = false;
+    this.afterRevealFired = false;
+    this.confirming = false;
     this.channels.text.clear();
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
@@ -281,7 +302,11 @@ export class DialogueSession {
     if (!this.runner || this.mode !== "saying") return;
     if (this.autoTimer !== undefined && this.channels.text.isRevealComplete()) {
       this.autoTimer -= dt;
-      if (this.autoTimer <= 0) {
+      // Consume the timer only when advance() can actually act — a blocking
+      // line-command (or an in-flight advance) would silently refuse it, and
+      // nothing re-arms the timer afterwards (ambient soft-lock). Leave it
+      // expired (≤ 0) and retry next frame; it still fires exactly once.
+      if (this.autoTimer <= 0 && !this.lineBlocked && !this.advancing) {
         this.autoTimer = undefined;
         // Route through advance() (not runner.advance() directly) so auto-advance
         // fires the line's `advance`-timed commands and honours the in-flight
@@ -289,6 +314,11 @@ export class DialogueSession {
         this.advance();
       }
     }
+  }
+
+  /** True while any blocking line-command batch is awaited (input is gated). */
+  private get lineBlocked(): boolean {
+    return this.blockedCount > 0;
   }
 
   // ── input-agnostic API ────────────────────────────────────────────────────
@@ -311,7 +341,14 @@ export class DialogueSession {
     const gen = this.generation;
     this.advancing = true;
     try {
-      await this.fireLineCommands("advance");
+      // Fire the line's `advance` batch at most once: the runner can still be
+      // mid-step (awaiting a blocking command step) after this advance resolves,
+      // with `saying` still holding the old line — a second advance() must not
+      // re-fire that stale line's commands.
+      if (!this.advanceFired) {
+        this.advanceFired = true;
+        await this.fireLineCommands("advance");
+      }
       // Bail if stop()/play() swapped the conversation while we awaited — `mode`
       // can be "saying" again for a *different* runner (e.g. an ambient loop
       // restarting mid blocking-command), which would skip its first line.
@@ -329,7 +366,33 @@ export class DialogueSession {
    */
   skip(): void {
     if (this.mode !== "saying" || this.lineBlocked || this.advancing) return;
-    void this.runner?.skip();
+    void this.skipLine();
+  }
+
+  /**
+   * Fire the *displayed* line's not-yet-fired batches in skip mode — the runner
+   * fires every skipped line's commands for world reconstruction, so dropping
+   * the current line's `afterReveal`/`advance` batches would diverge from
+   * normal play — then fast-forward the runner.
+   */
+  private async skipLine(): Promise<void> {
+    const gen = this.generation;
+    this.advancing = true; // gate input for the whole skip turn
+    try {
+      if (!this.afterRevealFired) {
+        this.afterRevealFired = true;
+        await this.fireLineCommands("afterReveal", "skip");
+        if (gen !== this.generation || this.mode !== "saying") return;
+      }
+      if (!this.advanceFired) {
+        this.advanceFired = true;
+        await this.fireLineCommands("advance", "skip");
+        if (gen !== this.generation || this.mode !== "saying") return;
+      }
+      await this.runner?.skip();
+    } finally {
+      if (gen === this.generation) this.advancing = false;
+    }
   }
 
   /**
@@ -379,7 +442,7 @@ export class DialogueSession {
 
   /** Move the choice cursor by `delta` (wraps). No-op outside a choice. */
   moveSelection(delta: number): void {
-    if (this.mode !== "choosing") return;
+    if (this.mode !== "choosing" || this.confirming) return;
     const n = this.resolved.length;
     if (n === 0) return;
     this.selected = (this.selected + delta + n) % n;
@@ -388,7 +451,7 @@ export class DialogueSession {
 
   /** Highlight a choice by absolute position (e.g. pointer hover). No wrap. */
   selectAt(position: number): void {
-    if (this.mode !== "choosing") return;
+    if (this.mode !== "choosing" || this.confirming) return;
     const n = this.resolved.length;
     if (n === 0 || position < 0 || position >= n || position === this.selected)
       return;
@@ -398,9 +461,13 @@ export class DialogueSession {
 
   /** Commit the highlighted choice. */
   confirm(): void {
-    if (this.mode !== "choosing") return;
+    // The latch (not the runner) is what guarantees a single commit: `mode`
+    // stays "choosing" while the runner awaits the option's blocking commands,
+    // so without it a second confirm would emit a duplicate onChoiceMade.
+    if (this.mode !== "choosing" || this.confirming) return;
     const chosen = this.resolved[this.selected];
     if (!chosen) return;
+    this.confirming = true;
     const text = this.i18n.t(
       chosen.option.key,
       chosen.option.text,
@@ -412,7 +479,7 @@ export class DialogueSession {
 
   /** Commit by original option index (e.g. a direct pointer hit). */
   choose(optionIndex: number): void {
-    if (this.mode !== "choosing") return;
+    if (this.mode !== "choosing" || this.confirming) return;
     const pos = this.resolved.findIndex((c) => c.index === optionIndex);
     if (pos < 0) return;
     this.selected = pos;
@@ -447,6 +514,9 @@ export class DialogueSession {
     this.mode = "saying";
     this.saying = step;
     this.autoTimer = undefined;
+    this.advanceFired = false;
+    this.afterRevealFired = false;
+    this.confirming = false;
     const resolved = this.i18n.t(step.key, step.text, this.params);
     // Conditionally include the optional keys so we never assign `undefined`
     // to a `?:`-optional property (exactOptionalPropertyTypes).
@@ -492,6 +562,7 @@ export class DialogueSession {
     this.mode = "choosing";
     this.resolved = choices;
     this.selected = 0;
+    this.confirming = false;
 
     // Treat the choice like a line so the chrome switches to the right variant
     // (a composite box/bubble chrome otherwise leaves the previous speaker's
@@ -506,6 +577,14 @@ export class DialogueSession {
       ...(step.view !== undefined ? { view: step.view } : {}),
       ...(step.meta !== undefined ? { meta: step.meta } : {}),
     };
+
+    // Drive the avatar like a say-line would: the choice's speaker owns the
+    // portrait (a stale say-speaker must not linger through the choice, and an
+    // `expression` command on an option should route to the right face). No
+    // expression of its own and no talk-state — choices don't reveal.
+    this.channels.avatar?.setSpeaker(speaker);
+    this.channels.avatar?.setExpression(undefined);
+    this.channels.avatar?.setSpeaking(false);
 
     const ctx: ChoiceContext = {
       ...(step.view !== undefined ? { view: step.view } : {}),
@@ -565,6 +644,7 @@ export class DialogueSession {
     this.mode = "ended";
     this.saying = undefined;
     this.resolved = [];
+    this.confirming = false;
     this.channels.text.clear();
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
@@ -579,7 +659,12 @@ export class DialogueSession {
     const gen = this.generation;
     this.channels.avatar?.setSpeaking(false);
     // `afterReveal` commands run before the continue caret invites advancing.
-    await this.fireLineCommands("afterReveal");
+    // At most once per line — skip() may have fired them early (while a
+    // blocking one was awaited, the typewriter can have finished underneath).
+    if (!this.afterRevealFired) {
+      this.afterRevealFired = true;
+      await this.fireLineCommands("afterReveal");
+    }
     // Bail if stop()/play() swapped the conversation while we awaited, else we'd
     // show the continue caret on the new conversation's still-revealing line.
     if (gen !== this.generation || this.mode !== "saying") return;
@@ -593,20 +678,24 @@ export class DialogueSession {
    * Fire the current line's commands matching `at`, via the runner's command
    * pipeline (so `set`/blocking behave identically). While a blocking one is
    * awaited, `lineBlocked` gates input so the player can't advance through it.
+   * `mode` overrides the runner's run mode (skip() fires the displayed line's
+   * batches in skip mode).
    */
-  private async fireLineCommands(at: CommandTiming): Promise<void> {
+  private async fireLineCommands(at: CommandTiming, mode?: RunMode): Promise<void> {
     const all = this.saying?.commands;
     if (!all || !this.runner) return;
     const batch = all.filter((c) => (c.at ?? "show") === at);
     if (batch.length === 0) return;
     const gen = this.generation;
-    if (batch.some((c) => c.blocking)) this.lineBlocked = true;
+    const blocking = batch.some((c) => c.blocking);
+    if (blocking) this.blockedCount++;
     try {
-      await this.runner.runCommands(batch);
+      await this.runner.runCommands(batch, mode);
     } finally {
-      // Only clear the gate if still the same conversation, so a stop()/play()
-      // mid-await doesn't reset the new conversation's flag.
-      if (gen === this.generation) this.lineBlocked = false;
+      // Release only the gate this batch took, and only if still the same
+      // conversation — stop()/play() mid-await already reset the counter for
+      // the new conversation.
+      if (blocking && gen === this.generation) this.blockedCount--;
     }
   }
 
