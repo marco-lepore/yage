@@ -17,6 +17,7 @@ import {
   variantFontName,
   type BitmapFontEmphasis,
 } from "./internal/bitmapFontVariants.js";
+import { resolveTextStyle } from "./internal/textConstruction.js";
 import type {
   BitmapFontHandle,
   RendererAsset,
@@ -588,9 +589,9 @@ export interface MeasureTextOptions {
   /** Wrap width in px. Omit or `<= 0` to measure a single unwrapped line. */
   readonly wordWrapWidth?: number;
   /**
-   * Measure via the bitmap-font path (`BitmapFontManager`). Bitmap metrics do
-   * **not** word-wrap, so the result is single-line — callers using a bitmap
-   * font should keep fixed sizing rather than grow to wrapped content.
+   * Measure via the bitmap-font path (`BitmapFontManager`): `fontFamily` names
+   * a baked atlas. Wrap-aware like the canvas path, and returns px (the atlas's
+   * base-unit metrics are scaled to `fontSize`).
    */
   readonly bitmap?: boolean;
 }
@@ -604,14 +605,43 @@ export interface MeasuredText {
 }
 
 /**
- * Measure the natural size of a text string — wrap-aware on the canvas path —
- * without constructing a live text node. This is the renderer's text-metrics
- * primitive: reach for it (not a direct `pixi.js` import) when a layout needs to
- * size a panel to its text (e.g. a content-sized dialogue bubble).
+ * One reused mutable style for all measurement. Pixi keys its metrics caches on
+ * `style.styleKey` = `${uid}-${tick}` (identity-based), so a fresh `TextStyle`
+ * per call could never hit and would push a dead entry into the 1000-slot LRU
+ * each time. Reusing one instance keeps the key stable across identical
+ * consecutive measures (pixi setters no-op on same-value writes). Lazy so
+ * importing this module never constructs pixi state.
+ */
+let measureStyle: PixiTextStyle | undefined;
+/** Style keys applied by the previous measure (to reset what this one omits). */
+let measureStyleKeys: readonly string[] = [];
+
+/** Apply `resolved` onto the shared measurement style, clearing leftovers. */
+function applyMeasureStyle(resolved: TextStyle): PixiTextStyle {
+  const style = (measureStyle ??= new PixiTextStyle());
+  const target = style as unknown as Record<string, unknown>;
+  const next = resolved as Record<string, unknown>;
+  const defaults = PixiTextStyle.defaultTextStyle as Record<string, unknown>;
+  for (const key of measureStyleKeys) {
+    if (!(key in next)) target[key] = defaults[key];
+  }
+  for (const key in next) target[key] = next[key];
+  measureStyleKeys = Object.keys(next);
+  return style;
+}
+
+/**
+ * Measure the natural size of a text string — wrap-aware — without constructing
+ * a live text node. This is the renderer's text-metrics primitive: reach for it
+ * (not a direct `pixi.js` import) when a layout needs to size a panel to its
+ * text (e.g. a content-sized dialogue bubble).
  *
- * Canvas path uses Pixi's `CanvasTextMetrics` and honours `wordWrapWidth`, so
- * `lineCount` reflects the wrapped line count. The bitmap path
- * (`BitmapFontManager`) has no wrap support and returns single-line metrics.
+ * Both paths honour `wordWrapWidth`, so `lineCount` reflects the wrapped line
+ * count: canvas via Pixi's `CanvasTextMetrics`, bitmap via `BitmapFontManager`
+ * (whose base-unit metrics are scaled to `fontSize`, matching what a
+ * `BitmapText` renders at). Measurement resolves the engine-level
+ * `defaultTextStyle` under the given options — the same merge the render path
+ * applies — so the measured box matches the drawn text.
  *
  * Requires a DOM/canvas at runtime (the browser) for the canvas path; unit tests
  * mock `CanvasTextMetrics` (there is no canvas under the node test env).
@@ -621,20 +651,29 @@ export function measureWrappedText(
   options: MeasureTextOptions,
 ): MeasuredText {
   const wrap = options.wordWrapWidth !== undefined && options.wordWrapWidth > 0;
-  const style = new PixiTextStyle({
-    fontSize: options.fontSize,
-    ...(options.fontFamily !== undefined
-      ? { fontFamily: options.fontFamily }
-      : {}),
-    ...(options.lineHeight !== undefined
-      ? { lineHeight: options.lineHeight }
-      : {}),
-    wordWrap: wrap,
-    ...(wrap ? { wordWrapWidth: options.wordWrapWidth } : {}),
-  });
+  const resolved =
+    resolveTextStyle({
+      fontSize: options.fontSize,
+      ...(options.fontFamily !== undefined
+        ? { fontFamily: options.fontFamily }
+        : {}),
+      ...(options.lineHeight !== undefined
+        ? { lineHeight: options.lineHeight }
+        : {}),
+      wordWrap: wrap,
+      ...(wrap ? { wordWrapWidth: options.wordWrapWidth } : {}),
+    }) ?? {};
+  const style = applyMeasureStyle(resolved);
   if (options.bitmap) {
-    const m = BitmapFontManager.measureText(text, style);
-    return { width: m.width, height: m.height, lineCount: text.split("\n").length };
+    // `getLayout` (what `measureText` delegates to, with `lines` in its type)
+    // returns font base-measurement units; scale to px the same way pixi's own
+    // `BitmapText.updateBounds` does.
+    const m = BitmapFontManager.getLayout(text, style);
+    return {
+      width: m.width * m.scale,
+      height: m.height * m.scale,
+      lineCount: m.lines.length,
+    };
   }
   const m = CanvasTextMetrics.measureText(text, style);
   return { width: m.width, height: m.height, lineCount: m.lines.length };

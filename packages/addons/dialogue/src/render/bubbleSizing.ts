@@ -9,8 +9,8 @@
  * Bubbles grow **width first**: a short line gets a snug bubble that widens up to
  * `maxWidth`; only past that does the text wrap and the bubble grow taller. That
  * keeps bubbles short (less likely to run off the top of the screen) and reads
- * more like a real speech bubble. The bitmap path can't wrap, so it keeps a fixed
- * `maxWidth` × `minHeight`.
+ * more like a real speech bubble. Bitmap fonts size the same way — the renderer's
+ * `measureWrappedText` is wrap-aware on both paths.
  */
 
 import { measureWrappedText } from "@yagejs/renderer";
@@ -21,13 +21,13 @@ export interface BubbleSizeInput {
   /** Widest the bubble grows before the text wraps to more lines. */
   readonly maxWidth: number;
   readonly padding: number;
-  /** Minimum content height; also the fixed height on the bitmap path. */
+  /** Minimum content height. */
   readonly minHeight: number;
   /** Body-text size + line advance (must match the text view's). */
   readonly textSize: number;
   readonly lineHeight: number;
   readonly fontFamily?: string | undefined;
-  /** Set → bitmap font: keep `maxWidth` × `minHeight` (no wrap-aware metrics). */
+  /** Set → measure via this baked bitmap-font atlas instead of `fontFamily`. */
   readonly bitmapFont?: string | undefined;
 }
 
@@ -43,17 +43,16 @@ export interface BubbleSize {
  */
 export function bubbleSize(plainText: string, cfg: BubbleSizeInput): BubbleSize {
   const oneLine = cfg.lineHeight + 2 * cfg.padding;
-  if (cfg.bitmapFont) {
-    return { width: cfg.maxWidth, height: Math.max(cfg.minHeight, oneLine) };
-  }
-  const font = cfg.fontFamily;
+  const font = cfg.bitmapFont ?? cfg.fontFamily;
   const fontOpt = font !== undefined ? { fontFamily: font } : {};
+  const bitmapOpt = cfg.bitmapFont !== undefined ? { bitmap: true } : {};
 
   // Natural single-line width — does it fit under maxWidth?
   const natural = measureWrappedText(plainText, {
     fontSize: cfg.textSize,
     lineHeight: cfg.lineHeight,
     ...fontOpt,
+    ...bitmapOpt,
   });
   const wantWidth = natural.width + 2 * cfg.padding;
   if (wantWidth <= cfg.maxWidth) {
@@ -70,6 +69,7 @@ export function bubbleSize(plainText: string, cfg: BubbleSizeInput): BubbleSize 
     lineHeight: cfg.lineHeight,
     wordWrapWidth: inner,
     ...fontOpt,
+    ...bitmapOpt,
   });
   return {
     width: cfg.maxWidth,
