@@ -28,9 +28,11 @@ export class IdentityI18n implements I18nAdapter {
   }
 }
 
-/** Replace `{token}` with `params.token`; leaves unknown tokens untouched. */
+/** Replace `{token}` with `params.token`; leaves unknown tokens untouched.
+ *  Own-property check only — `{constructor}`/`{toString}` must not stringify
+ *  inherited Object.prototype members. */
 export function interpolate(text: string, params: Readonly<Record<string, unknown>>): string {
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in params ? String(params[name]) : whole,
+    Object.hasOwn(params, name) ? String(params[name]) : whole,
   );
 }

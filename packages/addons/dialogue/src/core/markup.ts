@@ -119,6 +119,18 @@ export function parseMarkup(input: string): ParsedText {
   TAG_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = TAG_RE.exec(input)) !== null) {
+    // Escape-awareness: count the contiguous backslashes immediately before the
+    // `[`. An odd count means the bracket itself is escaped (`\[b]` → literal
+    // "[b]"), so emit the tag text verbatim — consuming the escaping backslash —
+    // instead of acting on it. An even count is just escaped backslashes
+    // (`\\[b]` → "\" + a REAL [b] tag), handled by unescape() as usual.
+    let backslashes = 0;
+    for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
+    if (backslashes % 2 === 1) {
+      buffer += unescape(input.slice(lastIndex, m.index - 1)) + m[0];
+      lastIndex = TAG_RE.lastIndex;
+      continue;
+    }
     const literal = input.slice(lastIndex, m.index);
     buffer += unescape(literal);
     lastIndex = TAG_RE.lastIndex;
