@@ -77,7 +77,13 @@ vi.mock("pixi.js", () => {
       },
     },
     BitmapFontManager: {
-      getLayout: (text: string, style: StyleBag) => {
+      /** `{fontFamily, fontWeight}` per getLayout call (variant-redirect spy). */
+      layoutFonts: [] as Array<{ fontFamily: unknown; fontWeight: unknown }>,
+      getLayout(text: string, style: StyleBag) {
+        this.layoutFonts.push({
+          fontFamily: style.fontFamily,
+          fontWeight: style.fontWeight,
+        });
         const base = 100; // baseMeasurementFontSize
         const scale = (style.fontSize as number) / base;
         const charW = 50; // glyph advance in base units
@@ -103,9 +109,19 @@ vi.mock("pixi.js", () => {
   };
 });
 
-import { TextStyle as MockTextStyle } from "pixi.js";
+import { BitmapFontManager, TextStyle as MockTextStyle } from "pixi.js";
 import { measureWrappedText } from "./assets.js";
+import {
+  registerBitmapFontVariant,
+  unregisterBitmapFontVariants,
+} from "./internal/bitmapFontVariants.js";
 import { setDefaultTextStyle } from "./internal/textConstruction.js";
+
+const layoutFonts = (
+  BitmapFontManager as unknown as {
+    layoutFonts: Array<{ fontFamily: unknown; fontWeight: unknown }>;
+  }
+).layoutFonts;
 
 afterEach(() => setDefaultTextStyle(undefined));
 
@@ -168,6 +184,22 @@ describe("measureWrappedText", () => {
     setDefaultTextStyle({ lineHeight: 99 });
     const m = measureWrappedText(text, { fontSize: 16, lineHeight: 20 });
     expect(m.height).toBe(20);
+  });
+
+  it("measures bitmap text through the emphasis-variant atlas, like rendering", () => {
+    registerBitmapFontVariant("Pixel", {}, "Pixel");
+    registerBitmapFontVariant("Pixel", { fontWeight: "bold" }, "Pixel bold");
+    try {
+      setDefaultTextStyle({ fontWeight: "bold" });
+      measureWrappedText("ab", { fontSize: 20, fontFamily: "Pixel", bitmap: true });
+      const last = layoutFonts.at(-1);
+      // The render path's selectBitmapVariant redirect: family swapped to the
+      // bold atlas, fontWeight dropped (the variant already baked its weight).
+      expect(last?.fontFamily).toBe("Pixel bold");
+      expect(last?.fontWeight).toBe("normal"); // pixi default, not "bold"
+    } finally {
+      unregisterBitmapFontVariants("Pixel");
+    }
   });
 
   it("reuses one style without leaking fields across different calls", () => {
