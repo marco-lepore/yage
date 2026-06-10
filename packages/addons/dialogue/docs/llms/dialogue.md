@@ -164,7 +164,8 @@ suppresses the line advance on a term tap. Keyboard-only bindings no-op
 
 ## Glossary terms
 
-`[term=id]word[/term]` spans are underlined (`theme.termColor`), hover-highlighted,
+`[term=id]word[/term]` spans are underlined (fixed soft-blue; not yet themeable),
+hover-highlighted,
 and hit-tested by the text presenter (`termAtPoint` + `setHoveredTerm`). The
 pointer binding is the single seam: on hover/tap it highlights the span and the
 `DialogueController` re-surfaces it as `onTermActivate({ id, screen, kind })` + a
@@ -177,18 +178,22 @@ pointer-capable binding (e.g. `fullControls(...)`).
 
 `DialogueTheme` is one flat data object: `box`, `padding`, frame colours,
 `nameColor/Size`, `textSize/lineHeight/textColor/charsPerSec`, choice colours,
-fonts, `layerFrame/layerText`, `skipMultiplier?`, `termColor?`, `portrait?`,
-`textured?`. `defaultTheme()` returns a fresh zero-asset instance — spread to
-tweak: `{ ...defaultTheme(), textColor: 0xff0000 }`.
+fonts, `layerFrame/layerText`, `skipMultiplier?`. `defaultTheme()` returns a
+fresh zero-asset instance — spread to tweak:
+`{ ...defaultTheme(), textColor: 0xff0000 }`. Known limitations: term colour is
+fixed (no theme field); the `portrait?` and `textured?` theme fields exist but
+are NOT consumed by any factory yet — see below for textured.
 
 - **Default**: Graphics chrome + canvas text (`fontFamily`). Zero assets.
 - **Bitmap fonts** (opt-in): set `bitmapFont` (+ `bitmapFontBold/Italic/BoldItalic`
   baked via `installBitmapFont` variant atlases) for a crisp pixel atlas.
-- **Textured nine-slice** (opt-in): set `theme.textured = { frameTexture, insets,
-  bubbleTexture?, bubbleInsets? }`. Factories auto-pick `TexturedChrome` /
-  `TexturedBubble` (via `@yagejs/renderer`'s `createNineSlice` primitive — no
-  direct pixi or `@yagejs/ui` dependency). `TextureInput` = string key or Texture,
-  so themes stay serializable.
+- **Textured nine-slice** (opt-in, MANUAL): `TexturedChrome` / `TexturedBubble`
+  are exported from `./presenters` (via `@yagejs/renderer`'s `createNineSlice`
+  primitive — no direct pixi or `@yagejs/ui` dependency; `TextureInput` = string
+  key or Texture). NO factory reads `theme.textured` — construct the chrome
+  yourself and pass it as `bundle.chrome`:
+  `{ ...createBoxDialogue(theme), chrome: new TexturedChrome(cfg) }`. Caveat:
+  `TexturedBubble` is fixed-size (no content sizing yet).
 
 ## Experimental radial choice presenter
 
@@ -198,9 +203,9 @@ bundle, unpolished, geometry/API may change. Opt-in only.
 
 ## Save / load — DEFERRED to v1.1
 
-No snapshot/restore is built yet, and `@yagejs/save` is NOT a dependency. The
-runner cursor stays reachable through read-only getters so a `SnapshotContributor`
-can be added later WITHOUT a breaking change: `runner.getVars()`,
-`getNodeId()`, `getStepIndex()`, `getChosenOnce()`. Capture the WHOLE cursor
-(`{ nodeId, stepIndex, vars, chosenOnce }`) — omitting `chosenOnce` resurrects
-spent `once` choices.
+Mid-dialogue save/restore is NOT supported yet: no snapshot/restore exists,
+`@yagejs/save` is NOT a dependency, and the runner's cursor getters
+(`getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are NOT
+reachable through `DialogueController`/`DialogueSession` today — do not try to
+capture a conversation cursor. Save outside conversations (or replay the script)
+until v1.1 adds the seam.
