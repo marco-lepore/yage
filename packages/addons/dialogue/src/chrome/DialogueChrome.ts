@@ -57,6 +57,9 @@ export class DialogueChrome implements ChromePresenter {
         .fill({ color: cfg.frameColor, alpha: cfg.frameAlpha })
         .stroke({ color: cfg.borderColor, alpha: 1, width: 2 });
     });
+    // Hidden until a line arrives (present()) — matching CompositeChrome —
+    // so a box-only bundle doesn't show an empty frame from scene start.
+    this.frameGfx.graphics.visible = false;
     this.frame = frame;
 
     // Name plate.
@@ -89,8 +92,17 @@ export class DialogueChrome implements ChromePresenter {
       this.name.comp.setText(name);
       this.name.comp.text.visible = true;
     } else {
+      // The session signals "no line" (conversation end / suppressed prompt)
+      // via setNameplate(undefined) — hide everything, matching BubbleChrome /
+      // CompositeChrome. A speakerless line re-shows the frame via present().
       this.name.comp.text.visible = false;
+      this.setVisible(false);
     }
+  }
+
+  /** A line arrived — show the frame (it starts hidden at mount). */
+  present(): void {
+    if (this.frameGfx) this.frameGfx.graphics.visible = true;
   }
 
   setContinueVisible(visible: boolean): void {

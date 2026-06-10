@@ -35,7 +35,12 @@ export const FULL_ACTIONS: DialogueActions = {
 };
 
 export interface InputBinding {
-  /** Wire a device to a session. Called by the host once both exist. */
+  /**
+   * Wire a device to a session. Called by the host once both exist. A binding
+   * has a single owner: re-binding re-targets it (implementations must release
+   * any resources held for the previous bind) — don't share one instance
+   * between two live controllers.
+   */
   bind(input: InputManager, session: DialogueSession): void;
   /** Poll the device and drive the session. Called once per frame by the host. */
   poll(): void;
@@ -205,6 +210,10 @@ export class PointerInputBinding implements InputBinding {
   }
 
   bind(input: InputManager, session: DialogueSession): void {
+    // Self-heal a re-bind (component re-add, or a binding instance reused by a
+    // second controller): release the previous pointer subscription, which
+    // would otherwise leak past dispose() and keep driving the old session.
+    this.unsub?.();
     this.input = input;
     this.session = session;
     this.unsub = input.onPointerDown((info) => {
@@ -246,9 +255,14 @@ export class PointerInputBinding implements InputBinding {
     // (independent of choosing/advance). Re-emits on a fresh tap (below).
     if (this.termTarget?.termAtPoint) {
       const id = this.termAtPointer();
+      // Re-assert the highlight every poll, not just on change: the view resets
+      // its own hover state on each new line (which this binding can't observe),
+      // so a pointer resting over a same-id span across a line switch would
+      // otherwise never re-highlight. The view's own same-id guard makes the
+      // repeated call cheap.
+      this.termTarget.setHoveredTerm?.(id);
       if (id !== this.hoveredTerm) {
         this.hoveredTerm = id;
-        this.termTarget.setHoveredTerm?.(id);
         if (id !== undefined) {
           this.termActivate?.({
             id,
