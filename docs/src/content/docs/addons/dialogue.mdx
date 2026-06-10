@@ -270,8 +270,9 @@ it. An ambient (always auto-advancing) conversation simply attaches no binding.
 
 ## Glossary terms
 
-`[term=id]word[/term]` (alias `[gloss]`) spans are **underlined** (theme
-`termColor`) and **hover-highlighted**, so they read as interactable. Hit-testing
+`[term=id]word[/term]` (alias `[gloss]`) spans are **underlined** and
+**hover-highlighted**, so they read as interactable (the term colour is currently
+a fixed soft blue — a theme field for it is a known gap). Hit-testing
 and routing are the pointer binding's single responsibility: the controller wires
 the text view onto it automatically (you don't pass terms to `fullControls`), and
 on hover/tap it surfaces an `onTermActivate({ id, screen, kind })` callback **and**
@@ -313,13 +314,15 @@ createBoxDialogue(theme);
     `bitmapFontBoldItalic`, baked via `bakeBitmapFont` variant atlases) for a
     crisp pixel-font look. Not the default.
   </TabItem>
-  <TabItem label="Textured nine-slice (opt-in)">
-    Provide `theme.textured = { frameTexture, insets, bubbleTexture?, bubbleInsets? }`.
-    The factories auto-pick `TexturedChrome` / `TexturedBubble`, drawing a
+  <TabItem label="Textured nine-slice (opt-in, manual)">
+    `TexturedChrome` / `TexturedBubble` ship under `./presenters`, drawing a
     stretchable nine-slice frame from your texture (via `@yagejs/renderer`'s
-    `createNineSlice` primitive — no direct pixi or `@yagejs/ui` dependency). Textures are
-    referenced by `TextureInput` (string key or Texture) so themes stay
-    serializable.
+    `createNineSlice` primitive — no direct pixi or `@yagejs/ui` dependency).
+    No factory wires them up yet (the `theme.textured` field exists but is not
+    consumed) — construct one yourself and override the bundle's chrome:
+    `{ ...createBoxDialogue(theme), chrome: new TexturedChrome(cfg) }`. Note
+    that `TexturedBubble` is currently fixed-size — it does not grow to its
+    text the way the Graphics bubble does.
   </TabItem>
 </Tabs>
 
@@ -334,10 +337,10 @@ and passing it as the `choices` channel.
 ## Save / load
 
 <Aside type="caution" title="Deferred to v1.1">
-Snapshot/restore is **not built yet**, and `@yagejs/save` is **not** a
-dependency. The runner keeps its cursor reachable through read-only getters —
-`getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()` — so a
-`SnapshotContributor` can be added later **without a breaking change**. When it
-lands, capture the whole cursor (`{ nodeId, stepIndex, vars, chosenOnce }`):
-omitting `chosenOnce` would silently resurrect spent `once` choices after a load.
+Mid-dialogue save/restore is **not supported yet**. Snapshot/restore is not
+built, `@yagejs/save` is **not** a dependency, and the runner's read-only cursor
+getters (`getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are
+**not reachable** through `DialogueController` / `DialogueSession` today — there
+is no way to capture a conversation cursor from a game. Save outside
+conversations (or replay the script on load) until v1.1 adds the seam.
 </Aside>
