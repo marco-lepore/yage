@@ -108,9 +108,12 @@ export function buildTextOptions(
  * is returned untouched (regular text, an unbaked family, or a font without
  * variants all fall through unchanged).
  *
+ * Exported for `measureWrappedText`, which must resolve the same atlas the
+ * render path draws from (measure/render parity).
+ *
  * @internal
  */
-function selectBitmapVariant(
+export function selectBitmapVariant(
   style: TextStyle | undefined,
 ): TextStyle | undefined {
   if (!style || typeof style.fontFamily !== "string") return style;

@@ -17,7 +17,10 @@ import {
   variantFontName,
   type BitmapFontEmphasis,
 } from "./internal/bitmapFontVariants.js";
-import { resolveTextStyle } from "./internal/textConstruction.js";
+import {
+  resolveTextStyle,
+  selectBitmapVariant,
+} from "./internal/textConstruction.js";
 import type {
   BitmapFontHandle,
   RendererAsset,
@@ -663,7 +666,12 @@ export function measureWrappedText(
       wordWrap: wrap,
       ...(wrap ? { wordWrapWidth: options.wordWrapWidth } : {}),
     }) ?? {};
-  const style = applyMeasureStyle(resolved);
+  // Bitmap text redirects `fontFamily` to a registered emphasis-variant atlas
+  // (e.g. a defaultTextStyle `fontWeight` selecting the bold bake) — measure
+  // through the same atlas the render path draws from.
+  const style = applyMeasureStyle(
+    options.bitmap ? (selectBitmapVariant(resolved) ?? resolved) : resolved,
+  );
   if (options.bitmap) {
     // `getLayout` (what `measureText` delegates to, with `lines` in its type)
     // returns font base-measurement units; scale to px the same way pixi's own
