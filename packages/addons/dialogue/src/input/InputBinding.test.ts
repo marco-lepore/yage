@@ -151,6 +151,47 @@ describe("PointerInputBinding — single term seam", () => {
     expect(session.advanced).toBe(1);
   });
 
+  it("re-binding releases the previous pointer subscription (no leak)", () => {
+    const first = new FakeInput();
+    const second = new FakeInput();
+    const session = new FakeSession();
+    const b = new PointerInputBinding();
+    b.bind(first.asManager(), session.asSession());
+    b.bind(second.asManager(), session.asSession());
+
+    first.click(0); // a leaked first-input subscription would latch this click
+    b.poll();
+    expect(session.advanced).toBe(0);
+
+    second.click(0);
+    b.poll();
+    expect(session.advanced).toBe(1);
+  });
+
+  it("a same-id term under a resting pointer re-highlights after a line switch", () => {
+    const input = new FakeInput();
+    const session = new FakeSession();
+    const b = new PointerInputBinding();
+    b.bind(input.asManager(), session.asSession());
+
+    // Simulate the view side: it forgets its own hover state when a new line
+    // shows, which the binding cannot observe.
+    let viewHover: string | undefined;
+    const term: TermTarget = {
+      termAtPoint: () => "mana",
+      pointerSpace: "screen",
+      setHoveredTerm: (id) => (viewHover = id),
+    };
+    b.setTermSink(term, () => {});
+
+    b.poll();
+    expect(viewHover).toBe("mana");
+
+    viewHover = undefined; // next line presented: the view reset its hover
+    b.poll(); // the binding's cached id is unchanged — it must re-assert anyway
+    expect(viewHover).toBe("mana");
+  });
+
   it("hover fires once per entry and clears the highlight on exit", () => {
     const input = new FakeInput();
     const session = new FakeSession();
