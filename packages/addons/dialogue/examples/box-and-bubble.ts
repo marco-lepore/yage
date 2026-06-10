@@ -179,9 +179,14 @@ class DialogueProbe extends Component {
 
 class DialogueScene extends Scene {
   readonly name = "dialogue-addon";
-  // Opt into the dialogue render layers (frame / avatar / text), which sit above
-  // the world. The bubble draws on the frame layer so it follows the actor.
-  readonly layers = [...DIALOGUE_LAYERS];
+  // Opt into the dialogue render layers (frame / avatar / text) for the box,
+  // plus a world-space layer for the bubble: bubbles position via
+  // actor.anchorWorld() and hit-test in world space, so a screen-space layer
+  // only appears to work while the camera transform is identity.
+  readonly layers = [
+    { name: "bubble-world", order: 50, space: "world" } as const,
+    ...DIALOGUE_LAYERS,
+  ];
 
   private controller!: DialogueController;
 
@@ -201,7 +206,7 @@ class DialogueScene extends Scene {
     // Build the presenter bundle from the zero-asset default theme. `mixed`
     // gives both a bottom box AND a world bubble, routed per-line by `view`.
     const bundle = createMixedDialogue(defaultTheme(), {
-      worldLayer: DIALOGUE_LAYERS[0]!.name,
+      worldLayer: "bubble-world",
     });
 
     // A small probe component the e2e reads via the Inspector.
