@@ -114,6 +114,11 @@ import type { DebugDiagnostics } from "@yagejs/debug";
 const debug = window.__yage__.inspector.getExtension<DebugDiagnostics>("debug");
 debug?.getCameraStack();                       // every CameraComponent across the scene stack
 debug?.getLayerTransform("game", "world");
+debug?.isHudVisible();
+debug?.setHudVisible(false); // hide HUD text readouts (FPS, timings); world-space
+                             // debug graphics stay visible. Re-renders synchronously,
+                             // so it works under a frozen clock — use before canvas
+                             // captures to keep wall-clock text out of screenshots.
 ```
 
 Plugins can publish their own inspector helpers the same way:

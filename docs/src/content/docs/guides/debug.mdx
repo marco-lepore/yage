@@ -171,7 +171,14 @@ inventory?.listItems();
 const debug = window.__yage__.inspector.getExtension("debug");
 debug?.getCameraStack?.();
 debug?.getLayerTransform?.("game", "world");
+debug?.setHudVisible?.(false);
 ```
+
+`setHudVisible(false)` hides only the HUD text readouts (FPS, system timings,
+entity counts) — world-space debug graphics such as collider outlines stay
+visible. It re-renders the stage synchronously, so it takes effect even while
+the debug clock is frozen. Screenshot tooling uses it to keep wall-clock
+numbers out of captures that would otherwise differ on every run.
 
 ## StatsStore
 

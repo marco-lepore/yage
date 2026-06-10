@@ -92,6 +92,17 @@ export interface DebugDiagnostics {
     layerName: string,
   ): LayerTransformSnapshot | undefined;
   getCameraStack(): CameraStackSnapshot[];
+  /** Whether the HUD layer (text readouts) is currently visible. */
+  isHudVisible(): boolean;
+  /**
+   * Show/hide the HUD layer — the screen-space text readouts (FPS, system
+   * timings, entity counts). World-space debug graphics (collider outlines
+   * etc.) are unaffected. The stage re-renders immediately, so the change
+   * lands on the canvas even while the debug clock is frozen — capture
+   * tooling can hide the wall-clock-dependent text before screenshotting
+   * without stepping the simulation.
+   */
+  setHudVisible(visible: boolean): void;
 }
 
 /**
@@ -121,6 +132,7 @@ export class DebugPlugin implements Plugin {
   private scheduler!: SystemScheduler;
   private sceneManager!: SceneManager;
   private debugScene: DebugScene | null = null;
+  private hudContainer: Container | null = null;
   private provider: SceneRenderTreeProvider | null = null;
   private eventUnsubs: Array<() => void> = [];
   private clock: DebugClock | null = null;
@@ -336,6 +348,7 @@ export class DebugPlugin implements Plugin {
       this.config.maxGraphics,
     );
     this.textPool = new TextPool(hudContainer, this.config.maxHudLines);
+    this.hudContainer = hudContainer;
 
     this.worldApi = new WorldDebugApiImpl(
       this.graphicsPool,
@@ -373,6 +386,7 @@ export class DebugPlugin implements Plugin {
     this.textPool = null;
     this.worldApi = null;
     this.hudApi = null;
+    this.hudContainer = null;
   }
 
   private registerInspectorDiagnostics(): void {
@@ -410,6 +424,16 @@ export class DebugPlugin implements Plugin {
           }
         }
         return cameras;
+      },
+      isHudVisible: () => this.hudContainer?.visible ?? false,
+      setHudVisible: (visible) => {
+        if (!this.hudContainer || this.hudContainer.visible === visible) {
+          return;
+        }
+        this.hudContainer.visible = visible;
+        // Render synchronously so the toggle reaches the canvas even while
+        // the debug clock is frozen (no ticker frames are running).
+        this.renderer.application.render();
       },
     };
     this.context.resolve(InspectorKey).addExtension("debug", diagnostics);

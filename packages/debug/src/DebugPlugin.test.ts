@@ -471,4 +471,37 @@ describe("DebugPlugin", () => {
 
     expect(inspector.getExtension("debug")).toBeUndefined();
   });
+
+  it("toggles HUD visibility through the debug extension and re-renders", async () => {
+    const { context, scheduler, app, inspector } = createContext();
+    const plugin = new DebugPlugin();
+
+    plugin.install(context);
+    plugin.registerSystems(scheduler);
+    await plugin.onStart();
+
+    const diagnostics = inspector.getExtension("debug") as {
+      isHudVisible(): boolean;
+      setHudVisible(visible: boolean): void;
+    };
+
+    expect(diagnostics.isHudVisible()).toBe(true);
+
+    const rendersBefore = app.render.mock.calls.length;
+    diagnostics.setHudVisible(false);
+    expect(diagnostics.isHudVisible()).toBe(false);
+    // Renders synchronously so the toggle reaches the canvas under a frozen
+    // clock, when no ticker frames are running.
+    expect(app.render.mock.calls.length).toBe(rendersBefore + 1);
+
+    // No-op when the state doesn't change — no spurious render.
+    diagnostics.setHudVisible(false);
+    expect(app.render.mock.calls.length).toBe(rendersBefore + 1);
+
+    diagnostics.setHudVisible(true);
+    expect(diagnostics.isHudVisible()).toBe(true);
+    expect(app.render.mock.calls.length).toBe(rendersBefore + 2);
+
+    plugin.onDestroy();
+  });
 });

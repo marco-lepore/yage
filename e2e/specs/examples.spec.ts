@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { DebugDiagnostics } from "@yagejs/debug";
 import { mkdirSync, readdirSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -131,6 +132,18 @@ test.describe("Examples", () => {
         // pixel comparison. Best-effort: behavioural truth lives in the JSON
         // snapshot; the image catches render-only regressions the inspector
         // state can't see (shaders, blend modes, z-order fallout, …).
+        //
+        // Hide the debug HUD's text readouts first — FPS and system timings
+        // are wall-clock measurements that differ every run and would drown
+        // real visual diffs in noise. World-space debug graphics (collider
+        // outlines etc.) stay visible. setHudVisible re-renders the stage
+        // synchronously, so the frozen clock never steps and the PNG shows
+        // the same frame as the JSON above.
+        await page.evaluate(() => {
+          window.__yage__!.inspector
+            .getExtension<DebugDiagnostics>("debug")
+            ?.setHudVisible(false);
+        });
         await page
           .locator("canvas")
           .first()
