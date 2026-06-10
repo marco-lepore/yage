@@ -115,4 +115,10 @@ export class BubbleTextView extends DialogueTextView {
   override termAtPoint(x: number, y: number): string | undefined {
     return super.termAtPoint(x - this.originX, y - this.originY);
   }
+
+  override clear(): void {
+    super.clear(); // drops the origin provider (actor closure)
+    this.originX = 0;
+    this.originY = 0;
+  }
 }
