@@ -1,15 +1,14 @@
 import { System, Phase, QueryCacheKey } from "@yagejs/core";
-import type { EngineContext, QueryResult, Scene } from "@yagejs/core";
-import { RendererKey } from "@yagejs/renderer";
+import type { EngineContext, QueryResult } from "@yagejs/core";
 import { UIRoot } from "./UIRoot.js";
-import { FloatingOverlayKey } from "./floating.js";
 
 /**
- * Runs Yoga layout / anchor positioning for every `UIRoot`, then re-anchors
- * the scene's floating overlay (tooltips/popovers). Lives in `LateUpdate`
- * so `Transform` writes from `Phase.Update` components (e.g. `ScreenFollow`)
- * are visible, and the overlay tick runs *after* trigger layout so floats
- * read up-to-date geometry.
+ * Runs Yoga layout / anchor positioning for every `UIRoot`. Lives in
+ * `LateUpdate` so `Transform` writes from `Phase.Update` components (e.g.
+ * `ScreenFollow`) are visible. The scene's floating overlay is re-anchored
+ * separately by `@yagejs/ui`'s `FloatingOverlaySystem` (priority `201`,
+ * after this system at `200`), so floats read up-to-date trigger geometry
+ * whether or not a `UIRoot` is present.
  */
 export class UIRootLayoutSystem extends System {
   readonly phase = Phase.LateUpdate;
@@ -23,18 +22,10 @@ export class UIRootLayoutSystem extends System {
   }
 
   update(): void {
-    const scenes = new Set<Scene>();
     for (const entity of this.rootQuery) {
       const root = entity.get(UIRoot);
       if (!root.enabled) continue;
       root._layoutAndAnchor();
-      scenes.add(entity.scene);
-    }
-
-    if (scenes.size === 0) return;
-    const viewport = this.context.resolve(RendererKey).virtualSize;
-    for (const scene of scenes) {
-      scene._resolveScoped(FloatingOverlayKey)?.update(viewport);
     }
   }
 }

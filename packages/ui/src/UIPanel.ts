@@ -31,6 +31,7 @@ import type {
   UIPanelOptions,
   UIButtonProps,
   PanelProps,
+  PointerEventProps,
   ScrollViewProps,
 } from "./types.js";
 import type { Anchor } from "./types.js";
@@ -361,6 +362,19 @@ export class UIPanel extends Component {
   /** The PixiJS Container for this panel. */
   get container(): Container {
     return this._node.container;
+  }
+
+  /**
+   * Set this panel's pointer / hover handlers (`onHover`, `onPointerOver`,
+   * `onPointerOut`) after construction — forwarded to the underlying node.
+   * (`update()` can't double as the prop setter here: on a `Component` it's
+   * the per-frame lifecycle hook the engine calls.) Like the element `update`,
+   * a present key replaces that handler and an absent key leaves it intact, so
+   * a partial `setPointerHandlers({ onHover })` won't drop the others. Handy
+   * for wiring `attachTooltip`: `panel.setPointerHandlers({ onHover: tip.setActive })`.
+   */
+  setPointerHandlers(handlers: PointerEventProps): void {
+    this._node.update(handlers);
   }
 
   /** Add a text element. */

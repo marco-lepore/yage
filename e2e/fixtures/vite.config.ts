@@ -39,6 +39,7 @@ export default defineConfig({
         "camera-lifecycle": resolve(__dirname, "camera-lifecycle.html"),
         "loading-scene": resolve(__dirname, "loading-scene.html"),
         "split-text-reveal": resolve(__dirname, "split-text-reveal.html"),
+        "tooltip-glued": resolve(__dirname, "tooltip-glued.html"),
         platformer: resolve(__dirname, "platformer.html"),
       },
     },

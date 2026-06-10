@@ -288,6 +288,19 @@ describe("UIPanel", () => {
     });
   });
 
+  describe("setPointerHandlers", () => {
+    it("forwards pointer/hover handlers to the underlying node", () => {
+      const panel = new UIPanel();
+      const update = vi.spyOn(panel._node, "update");
+      const onHover = vi.fn();
+      panel.setPointerHandlers({ onHover });
+      // Delegates to the node's element `update` (where PointerEvents picks the
+      // handler up). `UIPanel.update` can't be used for this — on a Component
+      // it's the per-frame lifecycle hook the engine calls.
+      expect(update).toHaveBeenCalledWith({ onHover });
+    });
+  });
+
   describe("visibility toggle", () => {
     it("toggling visible property works", () => {
       const panel = new UIPanel();

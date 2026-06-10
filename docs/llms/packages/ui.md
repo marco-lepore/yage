@@ -275,6 +275,80 @@ The React layer (`@yagejs/ui-react`) exposes these props on the matching
 JSX components plus a Mantine-style `<Tooltip content=…>` built on
 `onHover`.
 
+## Floating UI (tooltips / popovers / menus)
+
+`UIPlugin` provisions one scene-scoped `FloatingOverlay` per scene — a
+top-most, screen-space surface that floating elements parent into. It draws
+above all other UI, escapes any `<ScrollView>` clip, never reflows siblings,
+and anchors correctly even for world-space / camera-transformed triggers
+(e.g. a `ScreenFollow` namecard). A `FloatingOverlaySystem` (registered by
+`UIPlugin`, `Phase.LateUpdate` priority `201` — after `UILayoutSystem`)
+re-anchors every active scene's overlay each frame. **No `<UIRoot>` or React
+is required** — this works in a pure imperative scene.
+
+### attachTooltip (imperative, headless)
+
+```ts
+import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
+
+const tip = attachTooltip(panel, scene, { // a root UIPanel, or any UIElement
+  content: () => {
+    const card = new PanelNode({
+      padding: 6,
+      gap: 4,
+      background: { color: 0x111827, alpha: 0.95, radius: 6 },
+    });
+    card.addElement(new UIText({ children: "Goblin", style: { fontSize: 13 } }));
+    card.addElement(new UIText({ children: "HP 100/100", style: { fontSize: 11 } }));
+    return card;
+  },
+  placement: "top", // Placement: side or side-align (default "top", centered)
+  offset: 8,        // px gap between trigger and bubble (default 6)
+  maxWidth: 200,    // px; content wraps + clamps to available space
+});
+// Activation is yours — wire it on hover (the usual case):
+panel.setPointerHandlers({ onHover: tip.setActive }); // root UIPanel
+// a child element instead? element.update({ onHover: tip.setActive })
+// later: tip.dispose();  // releases the overlay slot
+```
+
+`attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
+controller — it wires **no input itself**, so it can't clobber the anchor's
+handlers. `anchor` is a root `UIPanel` or any `UIElement` (`UIButton`,
+`UIImage`, a nested `PanelNode`, …), read only for positioning. Drive it
+yourself: set `onHover` on a panel via `panel.setPointerHandlers({ onHover:
+tip.setActive })`, or on an element via `element.update({ onHover:
+tip.setActive })` — or trigger from focus / long-press / a programmatic call.
+Setting `onHover` *replaces* that single slot (which is what you want when the
+anchor has none); if it already handles hover, compose (`onHover: (h) => {
+existing(h); tip.setActive(h); }`). `content` is a factory (called once); **headless** — return a
+styled node for visuals, nothing is added for you. `setActive` stays a no-op
+after `dispose()`, so a lingering hover wiring is harmless.
+Requires the scene to have the `FloatingOverlay` (i.e. `UIPlugin` is
+registered); throws otherwise. The bubble flips to the opposite side and
+shifts along the cross axis to stay on-screen, and z-stacks above other floats
+on each (re)open.
+
+### Escape hatches
+
+For custom popovers / menus reach for the lower-level pieces directly:
+
+- `scene._resolveScoped(FloatingOverlayKey).acquire()` → a
+  `FloatingHandle` with `setReference(get)`, `setConfig(FloatConfig)`,
+  `setLayout(fn)`, `setActive(bool)`, `bringToFront()`, `release()`, and a
+  `container` to parent content into. `FloatingOverlayKey` is a
+  scene-scoped `ServiceKey`; resolve it on the scene first, then call
+  `acquire()` on the resulting `FloatingOverlay`.
+- `computePosition(reference, floating, viewport, config)` — the pure
+  positioning engine (`offset → flip → shift → size`), no Pixi / engine
+  deps. Returns `{ x, y, placement, available }`. `Placement` / `Side` /
+  `Align` / `Rect` / `Dimensions` are exported.
+- `layoutFloat(nodes, maxWidth)` — shrink-to-content layout of a UI node
+  stack (what a `setLayout` callback feeds the overlay).
+
+The React layer (`@yagejs/ui-react`) builds `<Tooltip>` / `useFloating` on
+this exact overlay.
+
 ## Background Options
 
 ```ts

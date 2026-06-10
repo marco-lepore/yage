@@ -33,12 +33,12 @@ import type {
   LayoutValue,
   Padding,
   PixiViewType,
+  Placement,
   PointerEventProps,
   ScrollbarOptions,
   UIElement,
 } from "@yagejs/ui";
 import { useFloating } from "./use-floating.js";
-import type { Placement } from "./positioning.js";
 
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements

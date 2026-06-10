@@ -91,3 +91,21 @@ export {
   resolveAnchor,
   pivotOffsetFromAnchor,
 } from "./UILayoutSystem.js";
+
+// Floating UI (tooltips/popovers/menus) — framework-agnostic overlay,
+// pure positioning engine, and the imperative tooltip helper.
+export { FloatingOverlay, FloatingOverlayKey, layoutFloat } from "./floating.js";
+export type { FloatConfig, FloatingHandle } from "./floating.js";
+export { FloatingOverlaySystem } from "./FloatingOverlaySystem.js";
+export { computePosition, parsePlacement } from "./positioning.js";
+export type {
+  Placement,
+  Side,
+  Align,
+  Rect,
+  Dimensions,
+  ComputePositionConfig,
+  ComputePositionResult,
+} from "./positioning.js";
+export { attachTooltip } from "./attachTooltip.js";
+export type { AttachTooltipOptions, TooltipHandle } from "./attachTooltip.js";

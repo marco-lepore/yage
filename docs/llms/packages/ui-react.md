@@ -196,7 +196,10 @@ the scene overlay while `open`, returns `null` when closed / no overlay).
 Use for custom popovers, menus, hovercards. `computePosition()` (the pure
 engine: `offset` → `flip` → `shift` → `size`) and `Placement` are exported
 for fully custom layers. The scene overlay is a scene-scoped
-`FloatingOverlay` provided by `UIReactPlugin`.
+`FloatingOverlay` provided by `UIPlugin` (so floating UI works with or
+without React) and re-anchored each frame by `@yagejs/ui`'s
+`FloatingOverlaySystem`. For a non-React scene, use `attachTooltip` from
+`@yagejs/ui` directly.
 
 ## Hooks
 

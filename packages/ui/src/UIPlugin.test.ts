@@ -3,9 +3,13 @@ import type { EngineContext } from "@yagejs/core";
 import { UIPlugin } from "./UIPlugin.js";
 import { getUIDefaultTextStyle, setUIDefaultTextStyle } from "./text-defaults.js";
 
-// install() only needs tryResolve (AssetManager is optional) and loads Yoga
-// via dynamic import; a bare stub is enough to exercise the lifecycle.
-const stubContext = { tryResolve: () => undefined } as unknown as EngineContext;
+// install() needs tryResolve (AssetManager is optional), resolve (the scene
+// hook registry, for the floating overlay), and loads Yoga via dynamic
+// import; a bare stub is enough to exercise the text-style lifecycle.
+const stubContext = {
+  tryResolve: () => undefined,
+  resolve: () => ({ register: () => () => {} }),
+} as unknown as EngineContext;
 
 describe("UIPlugin default text style lifecycle", () => {
   it("sets the UI default on install and restores the prior value on destroy", async () => {

@@ -1,9 +1,10 @@
 import { useContext, useRef, useState, useEffect } from "react";
 import type { ReactNode, ReactPortal } from "react";
 import type { UIElement } from "@yagejs/ui";
+import { layoutFloat } from "@yagejs/ui";
 import { FloatingOverlayCtx } from "./floating.js";
 import type { FloatConfig, FloatingHandle } from "./floating.js";
-import { createPortal } from "./reconciler.js";
+import { createPortal, getRootInstances } from "./reconciler.js";
 
 export interface UseFloatingOptions extends FloatConfig {
   /** Whether the floating element is shown. */
@@ -43,6 +44,9 @@ export function useFloating(opts: UseFloatingOptions): UseFloatingResult {
     if (!overlay) return;
     const h = overlay.acquire();
     h.setReference(() => triggerRef.current);
+    // Lay out the reconciler roots portaled into the float container. Kept
+    // reconciler-specific here so the shared overlay stays framework-agnostic.
+    h.setLayout((mw) => layoutFloat(getRootInstances(h.container) ?? [], mw));
     setHandle(h);
     return () => {
       h.release();

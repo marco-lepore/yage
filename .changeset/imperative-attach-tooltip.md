@@ -1,0 +1,15 @@
+---
+"@yagejs/ui": minor
+"@yagejs/ui-react": patch
+---
+
+Bring the floating/tooltip system to the non-React `@yagejs/ui` layer with a new headless `attachTooltip`.
+
+The `FloatingOverlay`, its `FloatingOverlayKey`, the pure `computePosition` positioning engine, `FloatConfig` / `FloatingHandle`, and the `layoutFloat` helper now live in `@yagejs/ui` (previously React-only). The overlay is framework-agnostic: `FloatingHandle` carries a `setLayout(fn)` callback so the overlay no longer reaches into the React reconciler to measure its content.
+
+- **`@yagejs/ui` — `attachTooltip(anchor, scene, { content, placement, offset, maxWidth })`**. Imperative, headless tooltip that parents a content node into the scene overlay and anchors it to a root `UIPanel` or any `UIElement` (`UIButton`, `UIImage`, a nested `PanelNode`, …). It builds the floating parts and returns a `{ setActive, dispose }` controller — it wires **no input of its own**, so it never clobbers the anchor's handlers. You drive activation: set `onHover` on a panel via `panel.setPointerHandlers({ onHover: tip.setActive })` or on an element via `element.update({ onHover: tip.setActive })` (setting it replaces that single slot, so compose explicitly if the anchor already has one), or trigger from focus / long-press / programmatically. `anchor` is read only for positioning, and `setActive` stays a safe no-op after `dispose()`. Works in a pure imperative scene with **no `<UIRoot>` / React** — diegetic UI like `ScreenFollow` namecards can now have tooltips.
+- **`@yagejs/ui` — `UIPanel.setPointerHandlers(props)`** + `attachTooltip` accepting a `UIPanel` directly. A root `UIPanel` is a `Component` wrapping the renderable `PanelNode`; `attachTooltip` now unwraps it, and `setPointerHandlers` forwards pointer/hover props (`onHover`, `onPointerOver`, `onPointerOut`) to the node — so anchoring a tooltip to a whole panel no longer needs the `@internal` `._node`. (`update()` can't double as the panel's prop setter — on a `Component` it's the per-frame lifecycle hook.) The deeper `UIPanel`/`PanelNode` rename is tracked in #124.
+- **`@yagejs/ui` — `FloatingOverlaySystem`** (`Phase.LateUpdate`, priority `201`, registered by `UIPlugin`). Walks `SceneManager.activeScenes` and re-anchors each scene's overlay every frame after `UILayoutSystem`, with or without a `UIRoot`.
+- **`@yagejs/ui` — `UIPlugin`** now provisions the scene-scoped `FloatingOverlay` (via scene hooks) so floating UI exists independently of React. `computePosition`, `parsePlacement`, `Placement` / `Side` / `Align` / `Rect` / `Dimensions`, `FloatConfig`, `FloatingHandle`, `FloatingOverlay`, `FloatingOverlayKey`, and `layoutFloat` are exported as escape hatches for custom popovers / menus.
+
+`@yagejs/ui-react` re-exports the moved symbols from `@yagejs/ui` for back-compat (`FloatingOverlayCtx` stays React-only), `useFloating` supplies the reconciler-specific `setLayout`, and `UIReactPlugin` no longer double-registers the overlay (now owned by `UIPlugin`). The React `<Tooltip>` / `useFloating` API is unchanged.
