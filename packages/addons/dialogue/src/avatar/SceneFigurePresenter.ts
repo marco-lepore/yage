@@ -31,8 +31,11 @@ export class SceneFigurePresenter implements AvatarPresenter {
   private transform: Transform | undefined;
   private speaking = false;
   private bobMs = 0;
-  private baseX = 0;
-  private baseY = 0;
+  /** Bob displacement currently applied to the figure's Transform. The bob is
+   *  a *relative* offset (delta-translated each frame), so external movement —
+   *  an NPC walking mid-line — is preserved instead of being pinned back to a
+   *  position captured at setSpeaker time. */
+  private bobOffset = 0;
 
   constructor(private readonly cfg: SceneFigurePresenterConfig = {}) {}
 
@@ -54,11 +57,6 @@ export class SceneFigurePresenter implements AvatarPresenter {
     this.actor = actorRegistryFor(this.scene).resolve(speaker?.id);
     this.figure = this.actor?.entity ?? this.scene.findEntity(av.ref);
     this.transform = this.figure?.tryGet(Transform);
-    if (this.transform) {
-      const p = this.transform.position;
-      this.baseX = p.x;
-      this.baseY = p.y;
-    }
   }
 
   setExpression(expression: string | undefined): void {
@@ -76,7 +74,11 @@ export class SceneFigurePresenter implements AvatarPresenter {
   update(dt: number): void {
     if (!this.speaking || !this.transform || this.cfg.bob === false) return;
     this.bobMs += dt;
-    this.transform.setPosition(this.baseX, this.baseY + Math.sin(this.bobMs / 130) * 1.2);
+    const next = Math.sin(this.bobMs / 130) * 1.2;
+    // Apply only the delta on top of wherever the figure is NOW, so movement
+    // systems (walking NPCs, knockback…) keep full ownership of the position.
+    this.transform.translate(0, next - this.bobOffset);
+    this.bobOffset = next;
   }
 
   dispose(): void {
@@ -85,8 +87,13 @@ export class SceneFigurePresenter implements AvatarPresenter {
     this.transform = undefined;
   }
 
+  /** Remove only the residual bob displacement — never teleport to a captured
+   *  base, which would undo legitimate movement since speaking began. */
   private releaseBob(): void {
-    if (this.transform) this.transform.setPosition(this.baseX, this.baseY);
+    if (this.transform && this.bobOffset !== 0) {
+      this.transform.translate(0, -this.bobOffset);
+    }
+    this.bobOffset = 0;
     this.bobMs = 0;
   }
 }
