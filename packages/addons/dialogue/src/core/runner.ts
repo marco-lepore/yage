@@ -128,11 +128,13 @@ export class DialogueRunner {
   /**
    * Run a command list now — the seam the host's Session uses to fire a `say`
    * line's commands at show / after-reveal / advance time. Handles built-in
-   * `set`, surfaces the rest with the current mode, and awaits `blocking` ones.
-   * Does not touch the runner's wait-state (the Session gates its own input).
+   * `set`, surfaces the rest with the current mode (or `mode`, when the Session
+   * fires the displayed line's batches as part of its own skip), and awaits
+   * `blocking` ones. Does not touch the runner's wait-state (the Session gates
+   * its own input).
    */
-  runCommands(commands: readonly Command[] | undefined): Promise<void> {
-    return this.execCommands(commands);
+  runCommands(commands: readonly Command[] | undefined, mode?: RunMode): Promise<void> {
+    return this.execCommands(commands, mode);
   }
 
   /** Pick choice `index` (the original option index). */
@@ -273,14 +275,25 @@ export class DialogueRunner {
    * current mode; awaits `blocking` handlers and fire-and-forgets the others.
    * Touches no wait-state of its own.
    */
-  private async execCommands(commands: readonly Command[] | undefined): Promise<void> {
+  private async execCommands(
+    commands: readonly Command[] | undefined,
+    mode: RunMode = this.runMode,
+  ): Promise<void> {
     if (!commands) return;
     for (const cmd of commands) {
       if (cmd.type === "set" && typeof cmd.var === "string") {
         this.vars[cmd.var] = cmd.value as VarValue;
         continue;
       }
-      const result = this.handlers.onCommand(cmd, { mode: this.runMode });
+      let result: void | Promise<void>;
+      try {
+        result = this.handlers.onCommand(cmd, { mode });
+      } catch {
+        // A handler that throws *synchronously* must not wedge the conversation
+        // either (same contract as the blocking-await catch below): swallow and
+        // keep executing, so the caller's state transition still runs.
+        continue;
+      }
       if (!isPromise(result)) continue;
       if (cmd.blocking) {
         try {

@@ -11,7 +11,7 @@ import type {
   PresentedLine,
   TextChannel,
 } from "./session.js";
-import type { DialogueScript, SpeakerDef } from "./types.js";
+import type { Command, DialogueScript, SpeakerDef } from "./types.js";
 
 /**
  * A controllable text channel. Reveal does NOT advance on its own — a test
@@ -751,5 +751,316 @@ describe("DialogueSession — channels without optional avatar/chrome", () => {
     await flush();
     expect(session.isChoosing()).toBe(true);
     expect(choices.lastLabels).toEqual(["bye"]);
+  });
+});
+
+describe("DialogueSession — command-gate races (regressions)", () => {
+  /** A gate the test opens, handed out for commands of `type`. */
+  function gatedCommand(type: string) {
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const onCommand = vi.fn((cmd: Command) =>
+      cmd.type === type ? gate : undefined,
+    );
+    return { onCommand, open, gate };
+  }
+
+  it("an afterReveal batch resolving does not drop the gate of an in-flight blocking show command", async () => {
+    const { onCommand, open, gate } = gatedCommand("long");
+    const h = makeHarness({ onCommand });
+    const script: DialogueScript = {
+      id: "f02",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: "one",
+              commands: [
+                { type: "long", at: "show", blocking: true },
+                { type: "ping", at: "afterReveal" },
+              ],
+            },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    await flush(); // blocking show command now in flight
+    h.text.finishReveal(); // afterReveal batch fires and resolves immediately
+    await flush();
+    h.session.advance(); // must still be gated by the show command
+    expect(h.text.lastText).toBe("one");
+    open();
+    await gate;
+    await flush();
+    h.session.advance();
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("auto-advance is not consumed while a blocking command gates the line (no soft-lock)", async () => {
+    const { onCommand, open, gate } = gatedCommand("long");
+    const h = makeHarness({ onCommand });
+    const script: DialogueScript = {
+      id: "f03",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: "one",
+              autoAdvanceMs: 50,
+              commands: [{ type: "long", at: "show", blocking: true }],
+            },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    h.text.finishReveal(); // arms the 50ms auto-timer; show command still blocking
+    await flush();
+    h.session.update(100); // timer expires while gated — must not be swallowed
+    await flush();
+    expect(h.text.lastText).toBe("one");
+    open();
+    await gate;
+    await flush();
+    h.session.update(1); // retried once unblocked — fires exactly once
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("a second advance during a blocking command step does not re-fire the old line's advance commands", async () => {
+    const { onCommand, open, gate } = gatedCommand("wait");
+    const h = makeHarness({ onCommand });
+    const script: DialogueScript = {
+      id: "f04",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one", commands: [{ type: "give", at: "advance" }] },
+            { kind: "command", commands: [{ type: "wait", blocking: true }] },
+            { kind: "say", text: "two" },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    h.text.finishReveal();
+    h.session.advance(); // fires "give", steps into the blocking command step
+    await flush();
+    h.session.advance(); // stale double-advance while the runner awaits "wait"
+    await flush();
+    const gives = onCommand.mock.calls.filter((c) => c[0].type === "give");
+    expect(gives).toHaveLength(1);
+    open();
+    await gate;
+    await flush();
+    expect(h.text.lastText).toBe("two");
+  });
+
+  it("skip() fires the displayed line's afterReveal + advance batches in skip mode", async () => {
+    const onCommand = vi.fn();
+    const h = makeHarness({ onCommand });
+    const script: DialogueScript = {
+      id: "f05",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "say",
+              text: "one",
+              commands: [
+                { type: "leave", at: "advance" },
+                { type: "after", at: "afterReveal" },
+              ],
+            },
+            { kind: "say", text: "two", commands: [{ type: "mid" }] },
+            { kind: "choice", options: [{ text: "ok" }] },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    h.session.skip(); // line one still revealing
+    // skip() now awaits the current line's two batches before the runner walk,
+    // so the chain is deeper than one flush() covers.
+    await flush();
+    await flush();
+    expect(h.session.isChoosing()).toBe(true);
+    // Current line's unfired batches first (afterReveal, then advance), then
+    // the skipped line's commands — all in skip mode for idempotent handlers.
+    expect(onCommand.mock.calls.map((c) => c[0].type)).toEqual([
+      "after",
+      "leave",
+      "mid",
+    ]);
+    for (const call of onCommand.mock.calls) {
+      expect(call[1]).toMatchObject({ mode: "skip" });
+    }
+    // "two" was never presented.
+    expect(h.text.presented).toHaveLength(1);
+  });
+
+  it("skip() does not re-fire afterReveal commands already fired by the reveal", async () => {
+    const onCommand = vi.fn();
+    const h = makeHarness({ onCommand });
+    const script: DialogueScript = {
+      id: "f05b",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "one", commands: [{ type: "after", at: "afterReveal" }] },
+            { kind: "choice", options: [{ text: "ok" }] },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    h.text.finishReveal(); // fires "after" normally (play mode)
+    await flush();
+    h.session.skip();
+    await flush();
+    const afters = onCommand.mock.calls.filter((c) => c[0].type === "after");
+    expect(afters).toHaveLength(1);
+  });
+});
+
+describe("DialogueSession — confirm latch (regressions)", () => {
+  const blockingChoice: DialogueScript = {
+    id: "f06",
+    start: "a",
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          {
+            kind: "choice",
+            options: [
+              { text: "left", commands: [{ type: "wait", blocking: true }], target: "L" },
+              { text: "right", target: "R" },
+            ],
+          },
+        ],
+      },
+      L: { id: "L", steps: [{ kind: "say", text: "went-left" }] },
+      R: { id: "R", steps: [{ kind: "say", text: "went-right" }] },
+    },
+  };
+
+  it("mashing confirm during a blocking choice command emits onChoiceMade once", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const onCommand = vi.fn((cmd: Command) => (cmd.type === "wait" ? gate : undefined));
+    const onChoiceMade = vi.fn();
+    const h = makeHarness({ onCommand, onChoiceMade });
+    h.session.play(blockingChoice);
+    h.session.confirm();
+    h.session.confirm(); // mash — mode is still "choosing" while "wait" is awaited
+    h.session.moveSelection(1); // must not move the (committed) selection
+    h.session.confirm(); // a third mash can't emit a different index either
+    await flush();
+    expect(onChoiceMade).toHaveBeenCalledTimes(1);
+    expect(onChoiceMade).toHaveBeenCalledWith({ index: 0, text: "left" });
+    expect(h.choices.highlights).not.toContain(1);
+    open();
+    await gate;
+    await flush();
+    expect(h.text.lastText).toBe("went-left");
+  });
+
+  it("the latch releases on the next presentation (a later choice still works)", async () => {
+    const onChoiceMade = vi.fn();
+    const h = makeHarness({ onChoiceMade });
+    const script: DialogueScript = {
+      id: "f06b",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "choice", options: [{ text: "first" }] },
+            { kind: "choice", options: [{ text: "second" }] },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    h.session.confirm();
+    await flush();
+    h.session.confirm();
+    await flush();
+    expect(onChoiceMade).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("DialogueSession — avatar on choices (regression)", () => {
+  it("handleChoice drives the avatar with the choice's speaker", async () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "f46",
+      start: "a",
+      speakers: {
+        hero: { id: "hero", name: "Hero" },
+        gwen: { id: "gwen", name: "Gwen" },
+      },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", speaker: "hero", text: "hi", expression: "happy" },
+            { kind: "choice", speaker: "gwen", options: [{ text: "x" }] },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    h.text.finishReveal();
+    h.session.advance();
+    await flush();
+    expect(h.session.isChoosing()).toBe(true);
+    // The choice's speaker owns the portrait now; the say-line's expression and
+    // talk-state must not linger.
+    expect(h.avatar.speakers.at(-1)).toMatchObject({ id: "gwen" });
+    expect(h.avatar.expressions.at(-1)).toBeUndefined();
+    expect(h.avatar.speaking.at(-1)).toBe(false);
+  });
+
+  it("a speakerless choice clears the previous speaker's portrait", async () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "f46b",
+      start: "a",
+      speakers: { hero: { id: "hero", name: "Hero" } },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", speaker: "hero", text: "hi" },
+            { kind: "choice", options: [{ text: "x" }] },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    h.text.finishReveal();
+    h.session.advance();
+    await flush();
+    expect(h.session.isChoosing()).toBe(true);
+    expect(h.avatar.speakers.at(-1)).toBeUndefined();
   });
 });

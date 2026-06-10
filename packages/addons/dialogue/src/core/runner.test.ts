@@ -696,3 +696,67 @@ describe("evalCondition", () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 });
+
+describe("DialogueRunner — a synchronously-throwing command handler", () => {
+  it("does not wedge a chosen option's command path", async () => {
+    const script: DialogueScript = {
+      id: "sync-throw-choice",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [{ text: "go", commands: [{ type: "boom" }], target: "b" }],
+            },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "say", text: "after-boom" }] },
+      },
+    };
+    const rec = makeRecorder((cmd) => {
+      if (cmd.type === "boom") throw new Error("handler exploded");
+    });
+    const runner = new DialogueRunner(script, rec.handlers);
+    runner.start();
+    await flush();
+    await runner.choose(0);
+    await flush();
+    // Without the sync-path protection the rejection stranded the runner in
+    // `awaiting-command` forever; the branch must still be taken.
+    expect(lineTexts(rec)).toEqual(["after-boom"]);
+  });
+
+  it("does not wedge a command step, and later commands still run", async () => {
+    const script: DialogueScript = {
+      id: "sync-throw-step",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                { type: "boom", blocking: true },
+                { type: "after-boom-cmd" },
+              ],
+            },
+            { kind: "say", text: "alive" },
+          ],
+        },
+      },
+    };
+    const rec = makeRecorder((cmd) => {
+      if (cmd.type === "boom") throw new Error("handler exploded");
+    });
+    new DialogueRunner(script, rec.handlers).start();
+    await flush();
+    expect(rec.commands.map((c) => c.command.type)).toEqual([
+      "boom",
+      "after-boom-cmd",
+    ]);
+    expect(lineTexts(rec)).toEqual(["alive"]);
+  });
+});
