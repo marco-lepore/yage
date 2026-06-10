@@ -63,7 +63,10 @@ export class CompositeTextPresenter implements TextPresenter {
   }
 
   setSpeedMultiplier(multiplier: number): void {
-    this.active?.setSpeedMultiplier(multiplier);
+    // Both, not just the active view: the inactive one would keep a stale
+    // multiplier into its next line (both setters are trivially cheap).
+    this.box.setSpeedMultiplier(multiplier);
+    this.bubble.setSpeedMultiplier(multiplier);
   }
 
   update(dt: number): void {

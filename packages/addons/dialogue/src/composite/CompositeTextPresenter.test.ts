@@ -6,6 +6,7 @@ import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 /** A stub text view with a fixed term + pointer space, recording hover calls. */
 class StubView implements TextPresenter {
   hovered: string | undefined = "<unset>";
+  speedMultiplier = 1;
   constructor(
     readonly pointerSpace: "screen" | "world",
     private readonly term: string | undefined,
@@ -18,7 +19,9 @@ class StubView implements TextPresenter {
   isRevealing(): boolean {
     return false;
   }
-  setSpeedMultiplier(): void {}
+  setSpeedMultiplier(m: number): void {
+    this.speedMultiplier = m;
+  }
   update(): void {}
   clear(): void {}
   mount(): void {}
@@ -60,5 +63,23 @@ describe("CompositeTextPresenter — term seam forwards to the active view", () 
     expect(c.pointerSpace).toBe("world");
     c.setHoveredTerm(undefined);
     expect(bubble.hovered).toBeUndefined();
+  });
+});
+
+describe("CompositeTextPresenter — fast-forward multiplier", () => {
+  it("setSpeedMultiplier reaches BOTH sub-views, not just the active one", () => {
+    const box = new StubView("screen", undefined);
+    const bubble = new StubView("world", undefined);
+    const c = new CompositeTextPresenter(box, bubble);
+
+    c.present(line()); // box active
+    c.setSpeedMultiplier(4);
+    expect(box.speedMultiplier).toBe(4);
+    // The inactive bubble must not keep a stale multiplier into its next line.
+    expect(bubble.speedMultiplier).toBe(4);
+
+    c.setSpeedMultiplier(1);
+    expect(box.speedMultiplier).toBe(1);
+    expect(bubble.speedMultiplier).toBe(1);
   });
 });
