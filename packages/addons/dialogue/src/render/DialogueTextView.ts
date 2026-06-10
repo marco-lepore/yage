@@ -132,6 +132,9 @@ interface CharMeta {
 
 interface TermBox {
   readonly term: string;
+  /** First glyph index of the span (matches the TermSpan), so hit-testing can
+   *  be gated on the reveal cursor like the underline is. */
+  readonly first: number;
   readonly x0: number;
   readonly y0: number;
   readonly x1: number;
@@ -257,7 +260,7 @@ export class DialogueTextView implements TextPresenter {
 
   /** Build the split for a parsed line and start revealing. */
   show(parsed: ParsedText, lineSpeed = 1): void {
-    this.clear();
+    this.clearLine();
     this.parsed = parsed;
     this.lineSpeed = lineSpeed > 0 ? lineSpeed : 1;
     this.revealed = 0;
@@ -265,6 +268,9 @@ export class DialogueTextView implements TextPresenter {
     this.pauseTimer = 0;
     this.pauseIdx = 0;
     this.shownCount = -1;
+    // A stale hold-to-fast-forward multiplier must not leak into a new line
+    // (an active binding re-asserts it next poll anyway).
+    this.speedMul = 1;
     this.done = parsed.length === 0;
     this.completed = false;
     if (!this.done) this.buildLine(parsed);
@@ -308,6 +314,17 @@ export class DialogueTextView implements TextPresenter {
   }
 
   clear(): void {
+    this.clearLine();
+    // Channel-level clear ends the conversation's visuals — also drop the
+    // origin closure, which captures the speaking actor's entity and would
+    // otherwise keep a despawned NPC reachable until the next present().
+    // (Per-line resets must NOT do this: a bubble view sets the next line's
+    // origin BEFORE present() reaches show().)
+    this.originProvider = undefined;
+  }
+
+  /** Per-line teardown (also the first step of `show()`). */
+  private clearLine(): void {
     this.line?.entity.destroy(); // destroys the split + underline + glyphs
     this.line = undefined;
     this.parsed = undefined;
@@ -460,6 +477,7 @@ export class DialogueTextView implements TextPresenter {
         }
         boxes.push({
           term: run.style.term,
+          first,
           x0: this.layoutOriginX + minX,
           y0: this.layoutOriginY + minY,
           x1: this.layoutOriginX + maxX,
@@ -495,6 +513,10 @@ export class DialogueTextView implements TextPresenter {
   termAtPoint(x: number, y: number): string | undefined {
     if (!this.line) return undefined;
     for (const t of this.line.terms) {
+      // Only revealed spans are interactable (same gating as drawUnderlines):
+      // mid-typewriter, a tap where a hidden term will appear must not register
+      // (it would suppress the advance and tooltip unseen text).
+      if (t.first >= this.shownCount) continue;
       if (x >= t.x0 && x <= t.x1 && y >= t.y0 && y <= t.y1) return t.term;
     }
     return undefined;
@@ -590,9 +612,15 @@ export class DialogueTextView implements TextPresenter {
     const pauses = this.parsed?.pauses;
     if (!pauses) return;
     while (this.pauseIdx < pauses.length && reveal >= pauses[this.pauseIdx]!.atChar) {
-      this.pauseTimer = pauses[this.pauseIdx]!.ms;
+      const pause = pauses[this.pauseIdx]!;
+      this.pauseTimer = pause.ms;
       this.pauseIdx++;
-      if (this.pauseTimer > 0) return; // hold here this frame
+      if (this.pauseTimer > 0) {
+        // One frame's advance can overshoot the marker — clamp the cursor back
+        // to the FIRST armed pause so glyphs past the beat don't pop in early.
+        this.revealed = Math.min(this.revealed, pause.atChar);
+        return; // hold here this frame
+      }
     }
   }
 
