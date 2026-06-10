@@ -28,6 +28,17 @@ export function loadScript(raw: DialogueScript): DialogueScript {
     throw new DialogueScriptError(`start node "${start}" not found in "${raw.id}"`);
   }
 
+  // Speakers are resolved by record KEY at runtime but presenters look actors
+  // up by `SpeakerDef.id` — a mismatch silently splits nameplate vs actor
+  // anchoring, so the two must agree (same rule as node key ↔ node.id).
+  for (const [key, speaker] of Object.entries(raw.speakers ?? {})) {
+    if (speaker.id !== key) {
+      throw new DialogueScriptError(
+        `speaker key "${key}" != speaker.id "${speaker.id}"`,
+      );
+    }
+  }
+
   // Each node's id must match its key; every jump target must resolve.
   for (const [id, node] of Object.entries(raw.nodes)) {
     validateNode(raw, id, node);
@@ -54,22 +65,38 @@ function validateStep(script: DialogueScript, nodeId: string, step: Step): void 
       );
     }
   };
+  // Node typos throw, so speaker typos must too — an unknown speaker would
+  // otherwise silently render as a narrator line (and never find its actor).
+  const speakerExists = (s: string | undefined): void => {
+    if (s !== undefined && !script.speakers?.[s]) {
+      throw new DialogueScriptError(
+        `node "${nodeId}": speaker "${s}" is not in script.speakers`,
+      );
+    }
+  };
   switch (step.kind) {
     case "say":
       if (typeof step.text !== "string") {
         throw new DialogueScriptError(`node "${nodeId}": say.text must be a string`);
       }
+      speakerExists(step.speaker);
       break;
     case "choice":
       if (!Array.isArray(step.options) || step.options.length === 0) {
         throw new DialogueScriptError(`node "${nodeId}": choice has no options`);
       }
+      speakerExists(step.speaker);
       for (const opt of step.options) targetExists(opt.target);
       break;
     case "command":
       targetExists(step.target);
       break;
     case "goto":
+      // GotoStep types `target` as required, but hand-authored JSON can omit it
+      // — and an undefined target silently ends the conversation at jump time.
+      if (step.target === undefined) {
+        throw new DialogueScriptError(`node "${nodeId}": goto has no target`);
+      }
       targetExists(step.target);
       break;
     case "end":
