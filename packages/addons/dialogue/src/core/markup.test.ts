@@ -170,6 +170,41 @@ describe("parseMarkup — robustness", () => {
   });
 });
 
+describe("parseMarkup — escaped tag-shaped sequences", () => {
+  it("\\[b] renders the literal text instead of opening bold", () => {
+    const r = parseMarkup("Press \\[b] to block");
+    expect(r.runs).toEqual([{ text: "Press [b] to block", style: {} }]);
+  });
+
+  it("\\[pause=400] is literal text, not a reveal pause", () => {
+    const r = parseMarkup("wait \\[pause=400] here");
+    expect(r.runs).toEqual([{ text: "wait [pause=400] here", style: {} }]);
+    expect(r.pauses).toEqual([]);
+  });
+
+  it("\\[unknowntag] is kept literally rather than silently swallowed", () => {
+    expect(stripMarkup("a \\[unknowntag] b")).toBe("a [unknowntag] b");
+  });
+
+  it("\\\\[b] is an escaped backslash followed by a REAL bold tag", () => {
+    const r = parseMarkup("x \\\\[b]y[/b]");
+    expect(r.runs).toEqual([
+      { text: "x \\", style: {} },
+      { text: "y", style: { bold: true } },
+    ]);
+  });
+
+  it("\\\\\\[b] is an escaped backslash followed by an escaped bracket", () => {
+    const r = parseMarkup("\\\\\\[b]");
+    expect(r.runs).toEqual([{ text: "\\[b]", style: {} }]);
+  });
+
+  it("an escaped closing tag stays literal and does not pop the stack", () => {
+    const r = parseMarkup("[b]a\\[/b]b[/b]");
+    expect(r.runs).toEqual([{ text: "a[/b]b", style: { bold: true } }]);
+  });
+});
+
 describe("stripMarkup", () => {
   it("returns plain text with all tags removed", () => {
     expect(stripMarkup("[b]hi[/b] [color=gold]there[/color]")).toBe("hi there");
