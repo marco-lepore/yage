@@ -168,7 +168,13 @@ class DialogueProbe extends Component {
 
 class DialogueScene extends Scene {
   readonly name = "dialogue-addon-scene";
-  readonly layers = [...DIALOGUE_LAYERS];
+  // Bubbles position via actor.anchorWorld() and hit-test in world space, so
+  // they need a real world-space layer — the screen-space DIALOGUE_LAYERS only
+  // appear to work while the camera transform is identity.
+  readonly layers = [
+    { name: "bubble-world", order: 50, space: "world" } as const,
+    ...DIALOGUE_LAYERS,
+  ];
 
   onEnter(): void {
     const cam = this.spawn(CameraEntity, {
@@ -183,7 +189,7 @@ class DialogueScene extends Scene {
     guide.add(new Guide());
 
     const bundle = createMixedDialogue(defaultTheme(), {
-      worldLayer: DIALOGUE_LAYERS[0]!.name,
+      worldLayer: "bubble-world",
     });
 
     const host: Entity = this.spawn("dialogue-host");
