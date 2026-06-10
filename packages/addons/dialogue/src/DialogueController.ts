@@ -14,7 +14,7 @@
  *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, params }));
  */
 
-import { Component } from "@yagejs/core";
+import { Component, LoggerKey, type Logger } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
@@ -87,6 +87,10 @@ export class DialogueController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly binding: InputBinding;
   private session!: DialogueSession;
+  /** Captured at onAdd (the scene is gone by the time a stale play() arrives). */
+  private logger: Logger | undefined;
+  /** Set by onDestroy — the presenters are disposed, so play() must refuse. */
+  private destroyed = false;
 
   constructor(private readonly opts: DialogueControllerOptions) {
     super();
@@ -94,6 +98,7 @@ export class DialogueController extends Component {
   }
 
   onAdd(): void {
+    this.logger = this.context.tryResolve(LoggerKey);
     this.opts.chrome.mount(this.scene);
     this.opts.choices.mount(this.scene);
     this.opts.avatar?.mount(this.scene);
@@ -145,6 +150,7 @@ export class DialogueController extends Component {
   }
 
   onDestroy(): void {
+    this.destroyed = true;
     // Stop first: bumps the session generation so an in-flight blocking-command
     // continuation bails instead of presenting onto presenters we're about to
     // dispose; also clears visuals while they're still valid.
@@ -161,6 +167,23 @@ export class DialogueController extends Component {
     script: DialogueScript,
     params?: Readonly<Record<string, unknown>>,
   ): void {
+    // A stale reference calling play() after the component was removed (e.g. a
+    // game keeping the controller in an interact closure past
+    // `DialogueEndedEvent → host.destroy()`) would run a new conversation into
+    // disposed presenters: orphan entities, frozen reveal, no error. Refuse.
+    if (this.destroyed) {
+      this.logger?.warn(
+        "dialogue",
+        "DialogueController.play() ignored: the component has been removed/destroyed.",
+        { scriptId: script.id },
+      );
+      return;
+    }
+    if (!this.session) {
+      throw new Error(
+        "DialogueController.play() called before the component was added to an entity (onAdd has not run yet).",
+      );
+    }
     this.session.play(script, params);
   }
 
