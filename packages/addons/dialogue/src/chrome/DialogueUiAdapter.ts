@@ -33,24 +33,11 @@ export interface ChoicePresenter extends ChoiceChannel, Mountable {
 
 /**
  * Body-text presenter: the headless {@link TextChannel} (reveal timing) plus the
- * YAGE lifecycle and the optional glossary-term pointer seam the host drives.
+ * YAGE lifecycle the host drives.
  *
- * These contracts live in this pixi-free adapter module — NOT on the concrete,
+ * This contract lives in this pixi-free adapter module — NOT on the concrete,
  * renderer-backed `DialogueTextView` — so the headless root entry (`"."`) can
- * reach them through the `DialogueController` without transitively importing
+ * reach it through the `DialogueController` without transitively importing
  * `@yagejs/renderer`. The renderer-backed views only *implement* this shape.
  */
-export interface TextPresenter extends TextChannel, Mountable {
-  /**
-   * Hit-test a point (in this presenter's {@link pointerSpace}) to a `[term=…]`
-   * id, or undefined. Optional seam — the pointer binding only routes term
-   * events when a presenter implements it. Mirrors
-   * {@link ChoicePresenter.choiceAtPoint}.
-   */
-  termAtPoint?(x: number, y: number): string | undefined;
-  /** Coordinate space {@link termAtPoint} reads (screen default; bubble = world). */
-  readonly pointerSpace?: "screen" | "world";
-  /** Highlight the hovered term (or clear it) so it reads as interactable. The
-   *  pointer binding drives this; the view renders the highlight. */
-  setHoveredTerm?(id: string | undefined): void;
-}
+export interface TextPresenter extends TextChannel, Mountable {}

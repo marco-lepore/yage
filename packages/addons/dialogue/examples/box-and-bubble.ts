@@ -8,8 +8,6 @@
  *
  *   • a box line,
  *   • a `[wave]` / `[shake]` per-glyph effect,
- *   • a `[term=…]` glossary span (highlighted + hit-tested; the game owns the
- *     tooltip — here we just record the activated id),
  *   • a bubble line spoken by an in-world actor,
  *   • a branching choice that advances the conversation.
  *
@@ -40,7 +38,6 @@ import {
   DialogueController,
   DialogueLineEvent,
   DialogueChoiceMadeEvent,
-  DialogueTermActivatedEvent,
   DialogueEndedEvent,
   fullControls,
   type DialogueScript,
@@ -57,7 +54,7 @@ const HEIGHT = 600;
 
 // ── the dialogue script ────────────────────────────────────────────────────
 // `view` routes each step: the narrator talks in the bottom box; "guide" talks
-// in a bubble over its in-world actor. Markup ([wave]/[shake]/[term]) is parsed
+// in a bubble over its in-world actor. Markup ([wave]/[shake]) is parsed
 // by the headless core and interpreted by the presenters.
 const SCRIPT: DialogueScript = {
   id: "demo",
@@ -78,7 +75,7 @@ const SCRIPT: DialogueScript = {
         {
           kind: "say",
           speaker: "narrator",
-          text: "It can [shake]shout[/shake], and it knows about the [term=mana]mana[/term] system.",
+          text: "It can [shake]shout[/shake], and it knows about the [b]mana[/b] system.",
         },
         {
           kind: "say",
@@ -103,7 +100,7 @@ const SCRIPT: DialogueScript = {
         {
           kind: "say",
           speaker: "narrator",
-          text: "Branching, choices, effects, glossary terms — all from one script.",
+          text: "Branching, choices, effects — all from one script.",
         },
         { kind: "goto", target: "done" },
       ],
@@ -143,7 +140,6 @@ class DialogueProbe extends Component {
   lastLine = "";
   lineCount = 0;
   lastChoice = "";
-  lastTerm = "";
   ended = false;
 
   onLine(text: string): void {
@@ -153,9 +149,6 @@ class DialogueProbe extends Component {
   onChoiceMade(text: string): void {
     this.lastChoice = text;
   }
-  onTerm(term: string): void {
-    this.lastTerm = term;
-  }
   onEnded(): void {
     this.ended = true;
   }
@@ -164,14 +157,12 @@ class DialogueProbe extends Component {
     lastLine: string;
     lineCount: number;
     lastChoice: string;
-    lastTerm: string;
     ended: boolean;
   } {
     return {
       lastLine: this.lastLine,
       lineCount: this.lineCount,
       lastChoice: this.lastChoice,
-      lastTerm: this.lastTerm,
       ended: this.ended,
     };
   }
@@ -215,16 +206,11 @@ class DialogueScene extends Scene {
 
     // The controller is a Component. `fullControls(bundle.choices)` adds pointer
     // hover/tap on top of the keyboard binding; passing the choices presenter
-    // lets it hit-test rows. Glossary-term activation surfaces via
-    // `onTermActivate` (and the `DialogueTermActivatedEvent` below) — the game
-    // owns the tooltip; the addon only emits the id.
+    // lets it hit-test rows.
     this.controller = host.add(
       new DialogueController({
         ...bundle,
         input: fullControls(bundle.choices),
-        // The addon only emits the opaque term id (+ screen pos + hover/tap kind);
-        // the game owns the tooltip. Here we just record the id for the demo.
-        onTermActivate: (e) => probe.onTerm(e.id),
       }),
     );
 
@@ -232,7 +218,6 @@ class DialogueScene extends Scene {
     // the scene, so `this.on(...)` would work too.
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoiceMade(e.text));
-    host.on(DialogueTermActivatedEvent, (e) => probe.onTerm(e.id));
     host.on(DialogueEndedEvent, () => probe.onEnded());
 
     this.controller.play(SCRIPT);

@@ -177,14 +177,6 @@ export interface RunStyle {
   readonly effect?: EffectId;
   /** Reveal-speed multiplier for characters in this run. */
   readonly speed?: number;
-  /**
-   * Glossary/interactable term id (`[term=cauldron]…[/term]`). Opaque to the
-   * system — the presenter highlights + hit-tests the span; the game maps the
-   * id to a definition and renders any tooltip (the system only emits the id).
-   * Pointer activation is routed through the text presenter's `termAtPoint`
-   * seam and surfaced to the host as `DialogueTermActivatedEvent`.
-   */
-  readonly term?: string;
 }
 
 export type EffectId = "wave" | "shake" | "pulse" | "rainbow";

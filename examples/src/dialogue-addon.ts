@@ -5,9 +5,8 @@
  * dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text). Walk
  * up to an NPC and press F to talk; each starts a different conversation:
  *
- *   • Mira (box)   — `[wave]`/`[shake]` effects, a clickable `[term=mana]`
- *                    glossary span (underlined; tap → tooltip, no accidental
- *                    advance), timed `[pause]` / `[speed]` markup, a branch.
+ *   • Mira (box)   — `[wave]`/`[shake]` effects, timed `[pause]` / `[speed]`
+ *                    markup, and a branch.
  *   • Sage (bubble) — a long line that the speech bubble now grows to fit.
  *
  * Stand near Ann & Bert to **eavesdrop**: a proximity zone starts an ambient,
@@ -15,7 +14,7 @@
  *
  * Controls demo: hold **J** to fast-forward, hold **X** to skip (a ring fills),
  * press **V** to toggle auto-advance, and the pointer works too (click to
- * advance, click/hover choices, hover/tap the `mana` term).
+ * advance, click/hover choices).
  *
  * The **Font** button under the canvas swaps every dialogue presenter to a
  * bitmap font (baked on first use from the example `.ttf`) and back — bitmap
@@ -39,7 +38,6 @@ import {
   GraphicsComponent,
   TextComponent,
   installBitmapFont,
-  measureWrappedText,
   type LayerDef,
 } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
@@ -50,7 +48,6 @@ import {
   CompositeInputBinding,
   fullControls,
   type DialogueScript,
-  type TermActivation,
 } from "@yagejs-addons/dialogue";
 import {
   defaultTheme,
@@ -67,10 +64,6 @@ const HEIGHT = 600;
 const SKIP_HOLD_MS = 600; // hold X this long to confirm a skip
 const AUTO_ADVANCE_MS = 1500; // delay between lines when auto-advance is on
 const PLAYER_SPEED = 150; // px/sec
-const TIP_FONT = 13;
-const TIP_LINE = 17;
-const TIP_WRAP = 260; // term-tooltip wrap width (px)
-const TIP_PAD = 8;
 
 /** World-space render layers (under the camera) + the screen-space HUD. The
  *  dialogue box rides DIALOGUE_LAYERS (screen); bubbles ride BUBBLE_LAYER. */
@@ -86,11 +79,6 @@ const LAYERS: LayerDef[] = [
 
 /** Walkable area (world coords); leaves headroom for the bottom dialogue box. */
 const BOUNDS = { minX: 40, maxX: WIDTH - 40, minY: 90, maxY: 360 };
-
-/** Glossary the game owns — the addon only emits the opaque term id. */
-const GLOSSARY: Record<string, string> = {
-  mana: "Mana — the energy that powers spells. Regenerates while you rest.",
-};
 
 // ── scripts ──────────────────────────────────────────────────────────────────
 
@@ -110,7 +98,7 @@ const MIRA: DialogueScript = {
         {
           kind: "say",
           speaker: "mira",
-          text: "Magic here runs on [term=mana]mana[/term] — hover or tap that word.",
+          text: "Magic here runs on [b]mana[/b] — spend it wisely.",
         },
         {
           kind: "say",
@@ -134,7 +122,7 @@ const MIRA: DialogueScript = {
         {
           kind: "say",
           speaker: "mira",
-          text: "Branching, effects, glossary terms, timed reveals — one script.",
+          text: "Branching, effects, timed reveals — one script.",
         },
         { kind: "goto", target: "bye" },
       ],
@@ -344,16 +332,13 @@ function spawnNpc(
   return npc;
 }
 
-// ── HUD (screen space): hint, auto toggle, fast-forward + skip ring, tooltip ──
+// ── HUD (screen space): hint, auto toggle, fast-forward + skip ring ──────────
 
 class Hud extends Component {
   private readonly input = this.service(InputManagerKey);
   private auto = false;
   private autoLabel!: TextComponent;
   private meter!: GraphicsComponent;
-  private tipBg!: GraphicsComponent;
-  private tipText!: TextComponent;
-  private tipTimer = 0;
 
   /** Set by the scene once the controller exists (toggled by the V key). */
   onAutoToggle?: (on: boolean) => void;
@@ -379,61 +364,9 @@ class Hud extends Component {
     const meterEntity = this.scene.spawn("hud-meter");
     meterEntity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 28) }));
     this.meter = meterEntity.add(new GraphicsComponent({ layer: HUD_LAYER }));
-
-    const bg = this.scene.spawn("hud-tip-bg");
-    bg.add(new Transform());
-    this.tipBg = bg.add(new GraphicsComponent({ layer: HUD_LAYER }));
-    this.tipBg.graphics.visible = false;
-
-    const tip = this.scene.spawn("hud-tip-text");
-    tip.add(new Transform());
-    this.tipText = tip.add(
-      new TextComponent({
-        text: "",
-        style: {
-          fontSize: TIP_FONT,
-          fill: 0xffffff,
-          fontFamily: "sans-serif",
-          lineHeight: TIP_LINE,
-          wordWrap: true,
-          wordWrapWidth: TIP_WRAP,
-        },
-        layer: HUD_LAYER,
-        anchor: { x: 0, y: 0 },
-      }),
-    );
-    this.tipText.text.visible = false;
   }
 
-  /** Show a glossary tooltip near a screen position, sized to the text (auto-hides). */
-  showTerm(e: TermActivation): void {
-    const text = GLOSSARY[e.id];
-    if (!text) return;
-    const m = measureWrappedText(text, {
-      fontSize: TIP_FONT,
-      lineHeight: TIP_LINE,
-      wordWrapWidth: TIP_WRAP,
-      fontFamily: "sans-serif",
-    });
-    const w = m.width + 2 * TIP_PAD;
-    const h = m.height + 2 * TIP_PAD;
-    const x = clamp(e.screen.x + 14, 8, WIDTH - w - 8);
-    const y = clamp(e.screen.y + 14, 8, HEIGHT - h - 8);
-    this.tipText.setText(text);
-    this.tipText.entity.get(Transform).setPosition(x + TIP_PAD, y + TIP_PAD);
-    this.tipText.text.visible = true;
-    this.tipBg.entity.get(Transform).setPosition(x, y);
-    this.tipBg.graphics.clear();
-    this.tipBg.draw((g) => {
-      g.roundRect(0, 0, w, h, 6)
-        .fill({ color: 0x111122, alpha: 0.95 })
-        .stroke({ color: 0x4a4a8a, width: 1 });
-    });
-    this.tipBg.graphics.visible = true;
-    this.tipTimer = 2600;
-  }
-
-  update(dt: number): void {
+  update(): void {
     if (this.input.isJustPressed("auto")) {
       this.auto = !this.auto;
       this.onAutoToggle?.(this.auto);
@@ -458,14 +391,6 @@ class Hud extends Component {
         });
       }
     });
-
-    if (this.tipTimer > 0) {
-      this.tipTimer -= dt;
-      if (this.tipTimer <= 0) {
-        this.tipBg.graphics.visible = false;
-        this.tipText.text.visible = false;
-      }
-    }
   }
 
   private autoText(): string {
@@ -499,7 +424,6 @@ class DialogueProbe extends Component {
   lastLine = "";
   lineCount = 0;
   lastChoice = "";
-  lastTerm = "";
 
   onLine(text: string): void {
     this.lastLine = text;
@@ -508,21 +432,16 @@ class DialogueProbe extends Component {
   onChoice(text: string): void {
     this.lastChoice = text;
   }
-  onTerm(id: string): void {
-    this.lastTerm = id;
-  }
 
   serialize(): {
     lastLine: string;
     lineCount: number;
     lastChoice: string;
-    lastTerm: string;
   } {
     return {
       lastLine: this.lastLine,
       lineCount: this.lineCount,
       lastChoice: this.lastChoice,
-      lastTerm: this.lastTerm,
     };
   }
 }
@@ -580,10 +499,6 @@ class RoomScene extends Scene {
       new DialogueController({
         ...bundle,
         input: fullControls(bundle.choices, { skipHoldMs: SKIP_HOLD_MS }),
-        onTermActivate: (e) => {
-          probe.onTerm(e.id);
-          hud.showTerm(e);
-        },
       }),
     );
     hud.onAutoToggle = (on) =>

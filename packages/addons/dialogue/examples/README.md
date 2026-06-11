@@ -1,7 +1,7 @@
 # @yagejs-addons/dialogue — example
 
 `box-and-bubble.ts` is the canonical, copy-pasteable example: a small scene that
-shows **box dialogue + bubble dialogue + a branching choice + a glossary term +
+shows **box dialogue + bubble dialogue + a branching choice +
 `[wave]`/`[shake]` per-glyph effects**, all from `defaultTheme()` with **zero
 bundled assets**.
 
@@ -31,7 +31,6 @@ See `examples/src/dialogue-addon.ts` (a thin wrapper that calls this example's
 | Box dialogue         | narrator lines (default `view`)                              |
 | Bubble dialogue      | the `guide` line with `view: "bubble"` over a `DialogueActor` |
 | Branching choice     | the `choice` step with `target` jumps + a `goto`            |
-| Glossary term        | `[term=mana]…` → highlight + hit-test → `onTermActivate`    |
 | `[wave]` / `[shake]` | per-glyph animated effects on narrator lines                |
 | Zero assets          | `defaultTheme()` (Graphics chrome + canvas SplitText/Text)  |
 

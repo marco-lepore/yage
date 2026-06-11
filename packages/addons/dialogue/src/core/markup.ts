@@ -192,9 +192,6 @@ function styleForTag(name: string, arg?: string): Partial<RunStyle> | null {
       const s = Number(arg);
       return Number.isFinite(s) && s > 0 ? { speed: s } : null;
     }
-    case "term":
-    case "gloss":
-      return arg ? { term: arg } : null;
     default:
       if (EFFECTS.has(name as EffectId)) return { effect: name as EffectId };
       return null;
@@ -226,8 +223,7 @@ function sameStyle(a: RunStyle, b: RunStyle): boolean {
     !!a.italic === !!b.italic &&
     a.color === b.color &&
     a.effect === b.effect &&
-    (a.speed ?? 1) === (b.speed ?? 1) &&
-    a.term === b.term
+    (a.speed ?? 1) === (b.speed ?? 1)
   );
 }
 

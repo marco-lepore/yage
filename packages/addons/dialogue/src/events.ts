@@ -28,19 +28,3 @@ export const DialogueCommandEvent = defineEvent<{ command: Command; mode: RunMod
 );
 
 export const DialogueEndedEvent = defineEvent<{ scriptId: string }>("dialogue:ended");
-
-/**
- * A `[term=…]` glossary span was activated (pointer hover/tap routed through the
- * text presenter's `termAtPoint` seam). The system only emits the opaque term
- * `id` plus the activating pointer's screen position — the game maps the id to a
- * definition and renders any tooltip. `kind` distinguishes a hover from a commit
- * tap so a host can show-on-hover / pin-on-tap.
- */
-export const DialogueTermActivatedEvent = defineEvent<{
-  /** Opaque glossary id from `[term=<id>]…[/term]`. */
-  id: string;
-  /** Pointer position (screen px) when the term was activated. */
-  screen: { x: number; y: number };
-  /** "hover" while the pointer rests over the span; "tap" on a primary click. */
-  kind: "hover" | "tap";
-}>("dialogue:term-activated");
