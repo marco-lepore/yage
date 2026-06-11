@@ -337,6 +337,9 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
       }
 
       const entity = new EntityClass();
+      if (entityEntry.timeScale !== undefined) {
+        entity.timeScale = entityEntry.timeScale;
+      }
       scene._addExistingEntity(entity);
       const restoredComponents = this.restoreEntityComponents(
         entity,
@@ -402,6 +405,11 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
       components,
       userData,
     };
+
+    // Persist a non-default per-entity timeScale; absence implies 1.
+    if (entity.timeScale !== 1) {
+      result.timeScale = entity.timeScale;
+    }
 
     // Capture parent/child relationship
     if (entity.parent && isSerializable(entity.parent)) {

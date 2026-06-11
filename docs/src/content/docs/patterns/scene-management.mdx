@@ -96,6 +96,32 @@ if (keys.has("2")) scene.timeScale = 1;
 if (keys.has("3")) scene.timeScale = 2;
 ```
 
+### Per-Entity Time Scale
+
+Individual entities also carry a `timeScale` multiplier that composes on top of
+the scene's:
+
+```typescript
+entity.timeScale = 0;    // freeze this one entity (scene keeps running)
+entity.timeScale = 0.5;  // this entity runs at half the scene's speed
+entity.timeScale = 2;    // ...or double it
+```
+
+The engine feeds each entity's components the delta time
+`dt * scene.timeScale * entity.timeScale`. This affects the entity's component
+`update()` / `fixedUpdate()`, its `ProcessComponent` (tweens), and its particle
+emitters — handy for a single frozen boss, a hasted player, or a bullet-time
+target while everything else moves normally.
+
+:::caution[Physics is not per-entity scaled]
+`entity.timeScale` does **not** affect physics. A scene shares one Rapier world
+stepped once per (scene-scaled) fixed tick, so a rigid body cannot be
+individually slowed or sped up. Scale the whole scene with `scene.timeScale`, or
+use a kinematic body / manual velocity scaling for per-body time control.
+:::
+
+`entity.timeScale` is captured by the save system and restored on load.
+
 ## HUD Across Pause
 
 If your HUD lives in the game scene, it continues rendering while paused

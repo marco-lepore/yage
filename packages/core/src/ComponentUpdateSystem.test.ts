@@ -202,6 +202,79 @@ describe("ComponentUpdateSystem", () => {
     });
   });
 
+  describe("entity.timeScale", () => {
+    it("composes entity.timeScale on top of scene.timeScale (update)", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 0.5;
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      entity.timeScale = 2;
+      const comp = new UpdatingComponent();
+      entity.add(comp);
+      updateSys.update(10);
+      // 10 * 0.5 * 2 = 10
+      expect(comp.calls).toEqual([10]);
+    });
+
+    it("composes entity.timeScale on top of scene.timeScale (fixedUpdate)", () => {
+      const { fixedSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 2;
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      entity.timeScale = 0.25;
+      const comp = new FixedUpdatingComponent();
+      entity.add(comp);
+      fixedSys.update(8);
+      // 8 * 2 * 0.25 = 4
+      expect(comp.calls).toEqual([4]);
+    });
+
+    it("entity.timeScale 0 freezes the entity even when scene runs", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 1;
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      entity.timeScale = 0;
+      const comp = new UpdatingComponent();
+      entity.add(comp);
+      updateSys.update(16);
+      // 16 * 1 * 0 = 0
+      expect(comp.calls).toEqual([0]);
+    });
+
+    it("defaults to 1 (no effect) when unset", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene = new MockScene();
+      sceneManager.activeScene = scene;
+      const entity = scene.spawn("test");
+      const comp = new UpdatingComponent();
+      entity.add(comp);
+      updateSys.update(16);
+      expect(comp.calls).toEqual([16]);
+    });
+
+    it("scales entities independently within the same scene", () => {
+      const { updateSys, sceneManager } = setup();
+      const scene = new MockScene();
+      scene.timeScale = 1;
+      sceneManager.activeScene = scene;
+      const slow = scene.spawn("slow");
+      slow.timeScale = 0.5;
+      const cSlow = new UpdatingComponent();
+      slow.add(cSlow);
+      const fast = scene.spawn("fast");
+      fast.timeScale = 2;
+      const cFast = new UpdatingComponent();
+      fast.add(cFast);
+      updateSys.update(10);
+      expect(cSlow.calls).toEqual([5]);
+      expect(cFast.calls).toEqual([20]);
+    });
+  });
+
   describe("multi-scene", () => {
     it("iterates all active scenes", () => {
       const { updateSys, sceneManager } = setup();

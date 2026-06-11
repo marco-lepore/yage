@@ -40,11 +40,12 @@ export class ComponentFixedUpdateSystem extends BaseComponentUpdateSystem {
       const sceneDt = dt * scene.timeScale;
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed) continue;
+        const entityDt = sceneDt * entity.timeScale;
         for (const component of entity.getAll()) {
           if (!component.enabled || !component.fixedUpdate) continue;
           const fixedUpdate = component.fixedUpdate;
           this.errorBoundary.wrapComponent(component, () =>
-            fixedUpdate.call(component, sceneDt),
+            fixedUpdate.call(component, entityDt),
           );
         }
       }
@@ -61,11 +62,12 @@ export class ComponentUpdateSystem extends BaseComponentUpdateSystem {
       const sceneDt = dt * scene.timeScale;
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed) continue;
+        const entityDt = sceneDt * entity.timeScale;
         for (const component of entity.getAll()) {
           if (!component.enabled || !component.update) continue;
           const update = component.update;
           this.errorBoundary.wrapComponent(component, () =>
-            update.call(component, sceneDt),
+            update.call(component, entityDt),
           );
         }
       }

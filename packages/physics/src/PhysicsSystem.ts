@@ -23,6 +23,13 @@ import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
  *
  * Each active scene with physics gets its own sub-accumulator scaled by
  * `scene.timeScale`. Paused scenes are simply not stepped — no sleep/wake needed.
+ *
+ * NOTE: `entity.timeScale` is intentionally NOT applied here. The whole scene
+ * shares one Rapier world stepped once per (scaled) fixed tick, so there is no
+ * per-body notion of time — a single entity cannot be individually slowed or
+ * sped up. `entity.timeScale` only affects component `update`/`fixedUpdate`,
+ * the entity's `ProcessComponent`, and its particle emitters. For per-body
+ * time control, use a kinematic body or scale velocities manually.
  */
 export class PhysicsSystem extends System {
   readonly phase = Phase.FixedUpdate;

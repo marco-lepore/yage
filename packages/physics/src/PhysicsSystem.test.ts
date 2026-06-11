@@ -403,6 +403,31 @@ describe("PhysicsSystem", () => {
       expect(mockWorld2.stepSpy).toHaveBeenCalledTimes(2);
     });
 
+    it("ignores entity.timeScale — step count is driven by scene.timeScale only", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+
+      // Two bodies in the same shared world with wildly different
+      // per-entity timeScales. The world steps once per scaled fixed tick
+      // regardless — there is no per-body time.
+      const frozen = spawnEntityInScene(scene, "frozen");
+      frozen.timeScale = 0;
+      frozen.add(new Transform());
+      frozen.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const fast = spawnEntityInScene(scene, "fast");
+      fast.timeScale = 8;
+      fast.add(new Transform());
+      fast.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const world = (physicsWorld as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+      // scene.timeScale defaults to 1 → exactly one step for 16.67ms.
+      system.update(16.67);
+      expect(world.stepSpy).toHaveBeenCalledTimes(1);
+    });
+
     it("per-scene accumulators are independent", async () => {
       const { scene, manager, sceneManager, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();

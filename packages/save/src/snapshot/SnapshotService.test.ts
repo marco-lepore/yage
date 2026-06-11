@@ -326,6 +326,49 @@ describe("SnapshotService", () => {
       expect(h.hp).toBe(42);
     });
 
+    it("round-trips a non-default entity.timeScale", async () => {
+      const { service, sceneManager } = createTestContext();
+
+      await sceneManager.push(new MockScene());
+      const originalScene = sceneManager.active as MockScene;
+
+      const mockEntity = [...originalScene.getEntities()].find(
+        (e) => e instanceof MockEntity,
+      ) as MockEntity;
+      mockEntity.timeScale = 0.25;
+
+      service.saveSnapshot("test");
+      await service.loadSnapshot("test");
+
+      const restoredScene = sceneManager.active as MockScene;
+      const restoredMock = [...restoredScene.getEntities()].find(
+        (e) => e instanceof MockEntity,
+      ) as MockEntity;
+      expect(restoredMock.timeScale).toBe(0.25);
+
+      // The untouched SimpleEntity keeps the default.
+      const simple = [...restoredScene.getEntities()].find(
+        (e) => e instanceof SimpleEntity,
+      ) as SimpleEntity;
+      expect(simple.timeScale).toBe(1);
+    });
+
+    it("omits a default entity.timeScale from the snapshot", async () => {
+      const { service, sceneManager, storage } = createTestContext();
+
+      await sceneManager.push(new MockScene());
+      service.saveSnapshot("test");
+
+      const raw = JSON.parse(storage.load("yage:snapshot:test")!) as {
+        scenes: { entities: { timeScale?: number }[] }[];
+      };
+      for (const sceneEntry of raw.scenes) {
+        for (const entityEntry of sceneEntry.entities) {
+          expect(entityEntry.timeScale).toBeUndefined();
+        }
+      }
+    });
+
     it("unknown entity types produce warnings and are skipped", async () => {
       const { service, storage } = createTestContext();
 

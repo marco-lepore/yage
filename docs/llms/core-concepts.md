@@ -115,6 +115,11 @@ parent.addChild("arm", childEntity);
 parent.getChild("arm");
 parent.removeChild("arm");
 
+// Per-entity time scale (composes with scene.timeScale; saved/restored)
+e.timeScale = 0.5; // components get dt * scene.timeScale * entity.timeScale
+// Affects component update/fixedUpdate, the entity's ProcessComponent, and its
+// particle emitters. NOT physics (shared Rapier world steps under scene scale only).
+
 // Destruction (deferred to EndOfFrame)
 e.destroy();
 ```

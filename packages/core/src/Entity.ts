@@ -46,6 +46,21 @@ export class Entity {
    */
   readonly key?: string;
 
+  /**
+   * Per-entity time-scale multiplier. Mirrors {@link Scene.timeScale} but
+   * scoped to this single entity: the engine composes the delta time passed
+   * to this entity's components (and its `ProcessComponent`, particle
+   * emitters) as `dt * scene.timeScale * entity.timeScale`. `1` = normal
+   * speed, `0.5` = half speed, `0` = frozen, `2` = double speed.
+   *
+   * Physics is deliberately NOT affected: `PhysicsSystem` steps a single
+   * shared Rapier world per scene under `scene.timeScale` only, so a
+   * rigid-body entity's simulation cannot be individually slowed or sped up
+   * via this field. Use a kinematic body or scale velocities manually if you
+   * need per-body time control.
+   */
+  timeScale = 1;
+
   private components = new Map<ComponentClass, Component>();
   private _destroyed = false;
   private _scene: Scene | null = null;
