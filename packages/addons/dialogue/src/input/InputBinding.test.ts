@@ -1,11 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { InputManager } from "@yagejs/input";
 import type { DialogueSession } from "../core/session.js";
 import {
   FULL_ACTIONS,
   KeyboardInputBinding,
   PointerInputBinding,
-  type TermTarget,
 } from "./InputBinding.js";
 
 /** Minimal InputManager stub — only the methods the bindings touch. */
@@ -110,41 +109,12 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
   });
 });
 
-describe("PointerInputBinding — single term seam", () => {
-  it("a tap on a term activates it and does NOT advance the line", () => {
+describe("PointerInputBinding", () => {
+  it("a tap during a line advances it", () => {
     const input = new FakeInput();
     const session = new FakeSession();
     const b = new PointerInputBinding();
     b.bind(input.asManager(), session.asSession());
-
-    const activations: { id: string; kind: string }[] = [];
-    const setHoveredTerm = vi.fn();
-    const term: TermTarget = {
-      termAtPoint: () => "mana",
-      pointerSpace: "screen",
-      setHoveredTerm,
-    };
-    b.setTermSink(term, (e) => activations.push({ id: e.id, kind: e.kind }));
-
-    input.click(0);
-    b.poll();
-
-    expect(session.advanced).toBe(0); // the tap is consumed by the term
-    expect(activations.some((a) => a.kind === "tap" && a.id === "mana")).toBe(
-      true,
-    );
-    expect(setHoveredTerm).toHaveBeenCalledWith("mana"); // hover highlight wired
-  });
-
-  it("a tap off any term advances the line", () => {
-    const input = new FakeInput();
-    const session = new FakeSession();
-    const b = new PointerInputBinding();
-    b.bind(input.asManager(), session.asSession());
-    b.setTermSink(
-      { termAtPoint: () => undefined, pointerSpace: "screen" },
-      () => {},
-    );
 
     input.click(0);
     b.poll();
@@ -168,52 +138,4 @@ describe("PointerInputBinding — single term seam", () => {
     expect(session.advanced).toBe(1);
   });
 
-  it("a same-id term under a resting pointer re-highlights after a line switch", () => {
-    const input = new FakeInput();
-    const session = new FakeSession();
-    const b = new PointerInputBinding();
-    b.bind(input.asManager(), session.asSession());
-
-    // Simulate the view side: it forgets its own hover state when a new line
-    // shows, which the binding cannot observe.
-    let viewHover: string | undefined;
-    const term: TermTarget = {
-      termAtPoint: () => "mana",
-      pointerSpace: "screen",
-      setHoveredTerm: (id) => (viewHover = id),
-    };
-    b.setTermSink(term, () => {});
-
-    b.poll();
-    expect(viewHover).toBe("mana");
-
-    viewHover = undefined; // next line presented: the view reset its hover
-    b.poll(); // the binding's cached id is unchanged — it must re-assert anyway
-    expect(viewHover).toBe("mana");
-  });
-
-  it("hover fires once per entry and clears the highlight on exit", () => {
-    const input = new FakeInput();
-    const session = new FakeSession();
-    const b = new PointerInputBinding();
-    b.bind(input.asManager(), session.asSession());
-
-    let under: string | undefined = "mana";
-    const setHoveredTerm = vi.fn();
-    const hovers: string[] = [];
-    b.setTermSink(
-      { termAtPoint: () => under, pointerSpace: "screen", setHoveredTerm },
-      (e) => {
-        if (e.kind === "hover") hovers.push(e.id);
-      },
-    );
-
-    b.poll(); // enter "mana"
-    b.poll(); // still on "mana" — no refire
-    under = undefined;
-    b.poll(); // leave
-
-    expect(hovers).toEqual(["mana"]);
-    expect(setHoveredTerm).toHaveBeenLastCalledWith(undefined);
-  });
 });

@@ -1,6 +1,6 @@
 ---
 title: Dialogue
-description: Branching dialogue with a typewriter box or speech bubbles, inline markup, glossary terms, and swappable themeable presenters
+description: Branching dialogue with a typewriter box or speech bubbles, inline markup, and swappable themeable presenters
 ---
 
 import { Aside, Steps, Tabs, TabItem } from "@astrojs/starlight/components";
@@ -8,9 +8,8 @@ import { Aside, Steps, Tabs, TabItem } from "@astrojs/starlight/components";
 `@yagejs-addons/dialogue` is the first **YAGE addon**: an installable,
 opinionated dialogue system. A headless branching runner drives a swappable,
 themeable presentation layer, so you drop it into a scene, point it at a script,
-and get a working typewriter box (or speech bubble) with branching choices,
-inline markup, and glossary-term highlighting — then re-theme or replace any
-piece without forking.
+and get a working typewriter box (or speech bubble) with branching choices and
+inline markup — then re-theme or replace any piece without forking.
 
 ## Install
 
@@ -170,7 +169,6 @@ silently.
 | `[wave]` `[shake]` `[pulse]` `[rainbow]` | per-glyph animated effects |
 | `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
 | `[pause=400]` | zero-width reveal pause, in ms |
-| `[term=cauldron]…[/term]` (alias `[gloss]`) | a glossary term (highlight + hit-test) |
 | `\[` `\]` | a literal bracket |
 
 `parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
@@ -213,7 +211,6 @@ a scene can listen with `this.on(...)`):
 | `DialogueChoiceMadeEvent` | `{ index, text }` |
 | `DialogueCommandEvent` | `{ command, mode }` |
 | `DialogueEndedEvent` | `{ scriptId }` |
-| `DialogueTermActivatedEvent` | `{ id, screen, kind }` |
 
 `DialogueController` is multi-instance friendly: several ambient conversations
 can run at once. *Which one is interactive* and *whether the world pauses* are
@@ -267,31 +264,6 @@ new DialogueController({
 For a VN-style **auto-advance** toggle, call `controller.setAutoAdvance(ms)` (and
 `setAutoAdvance(null)` to turn it off); a per-line `autoAdvanceMs` still overrides
 it. An ambient (always auto-advancing) conversation simply attaches no binding.
-
-## Glossary terms
-
-`[term=id]word[/term]` (alias `[gloss]`) spans are **underlined** and
-**hover-highlighted**, so they read as interactable (the term colour is currently
-a fixed soft blue — a theme field for it is a known gap). Hit-testing
-and routing are the pointer binding's single responsibility: the controller wires
-the text view onto it automatically (you don't pass terms to `fullControls`), and
-on hover/tap it surfaces an `onTermActivate({ id, screen, kind })` callback **and**
-a `DialogueTermActivatedEvent`. A tap on a term opens its tooltip **without
-advancing the line**.
-
-```ts
-new DialogueController({
-  ...createBoxDialogue(),
-  input: fullControls(bundle.choices), // a pointer binding — terms need one
-  onTermActivate({ id, screen }) {
-    tooltip.show(glossary[id], screen); // the game owns the tooltip UI
-  },
-});
-```
-
-The addon only emits the term id (plus a screen position and `"hover" | "tap"`) —
-it ships no default tooltip. Terms need a pointer-capable binding; a keyboard-only
-binding has nothing to hover/tap with.
 
 ## Theming
 

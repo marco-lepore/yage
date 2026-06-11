@@ -171,7 +171,7 @@ reuse, to avoid sprawl.
   shape and `packages/addons/dialogue/` for the worked example.
 - Input bindings over `@yagejs/input` (not pixi) belong with the **root** entry
   alongside the controller. When the controller needs view geometry (e.g.
-  pointer hit-testing a glossary term), it must reach the presenter **through an
+  pointer hit-testing a choice row), it must reach the presenter **through an
   interface seam**, never by importing the presenter module — that preserves the
   no-pixi guarantee on root.
 - **Copy tooling from `packages/particles/`**: `tsconfig.json` (extends
@@ -256,13 +256,11 @@ Texture-driven re-theming (`TexturedChrome` / `TexturedBubble`) uses `@yagejs/re
 
 Save/load is deferred to v1.1 — do NOT build snapshot/restore. But keep the runner cursor reachable so a `SnapshotContributor` (type at `packages/save/src/snapshot/types.ts`) can be added later WITHOUT a breaking change. `runner.ts` exposes read-only `getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()` under a commented "v1.1 save seam" block. This is documented in code comments and the authoring doc.
 
-### Event-only glossary-term pointer wiring mirrors PointerChoiceTarget
+### Glossary terms were CUT from the first release (2026-06-11)
 
-Terms are markup (`[term=id]`/`[gloss=id]` -> `RunStyle.term`), highlighted + hit-tested in the text view (`termAtPoint(x,y)`). Routing is event-only — the system emits the term id (+ raw screen pos + hover/tap kind); the GAME owns the tooltip. Two reachable paths, both mirroring the existing choice plumbing exactly:
-1. `DialogueController.pollTerms()` edge-triggers hover/tap, emits `DialogueTermActivatedEvent` and calls `opts.onTermActivate`.
-2. `PointerInputBinding` (pixi-free, `input/`) gained a `TermTarget` interface and `PointerInputBindingOptions` bag `{ choices?, terms?, onTermActivate? }`, mirroring `PointerChoiceTarget`. Its ctor accepts EITHER a bare `PointerChoiceTarget` (back-compat) OR the bag. A term tap returns before advancing so it doesn't also advance the line.
+The `[term=id]`/`[gloss=id]` markup, the text-view hit-testing/underline machinery, the `TermTarget`/`setTermSink` binding seam, and `DialogueTermActivatedEvent` were removed before first publish — the feature crossed all three layers (presenter -> input -> controller) and generated a disproportionate share of review findings for a phase-1 addon. Unknown tags drop silently, so scripts containing `[term]` still parse. If re-introduced, design it post-Design-C with the theming/extensibility story, mirroring `PointerChoiceTarget` the way the original did (see git history on `feat/dialogue-addon`).
 
-exactOptionalPropertyTypes gotcha: the new fields are declared `field: T | undefined` (NOT `field?: T`) because the ctor assigns possibly-undefined parsed options — `?:` would reject the assignment. Match the file's existing `unsub` field pattern.
+exactOptionalPropertyTypes gotcha (still applies generally): fields assigned possibly-undefined ctor options are declared `field: T | undefined` (NOT `field?: T`) — `?:` would reject the assignment. Match `PointerInputBinding`'s `unsub` field pattern.
 
 ### Independent versioning + changeset
 

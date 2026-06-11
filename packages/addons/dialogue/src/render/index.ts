@@ -2,7 +2,6 @@ export { DialogueTextView } from "./DialogueTextView.js";
 export type {
   DialogueTextConfig,
   TextPresenter,
-  PointerTermTarget,
 } from "./DialogueTextView.js";
 export { BubbleTextView } from "./BubbleTextView.js";
 export type { BubbleTextLayout } from "./BubbleTextView.js";

@@ -89,9 +89,9 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 
 BBCode-ish, survives translation, nests, unknown tags dropped silently:
 `[b]` `[i]` `[color=#ffcc00]`/`[color=gold]` `[wave]` `[shake]` `[pulse]`
-`[rainbow]` `[speed=2]` `[pause=400]` (zero-width ms) and the glossary
-`[term=id]…[/term]` (alias `[gloss]`). `\[` escapes a literal bracket.
-(NOTE: ruby/furigana markup was intentionally removed.)
+`[rainbow]` `[speed=2]` `[pause=400]` (zero-width ms). `\[` escapes a literal
+bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]` markup were
+intentionally removed — unknown tags drop silently, so old scripts still parse.)
 
 ## Commands — rules in, consequences out
 
@@ -113,7 +113,6 @@ new DialogueController({
   input,                           // optional InputBinding (default: KeyboardInputBinding)
   onCommand: (cmd, ctx) => {},     // fires in addition to the event
   onEnded: () => {},
-  onTermActivate: (e) => {},       // glossary hover/tap; e = { id, screen, kind }
 });
 ```
 
@@ -125,7 +124,7 @@ pause" are the game's policy (no global singleton).
 Events (entity → scene bubbling): `DialogueStartedEvent`, `DialogueLineEvent`
 (`{ speaker?, text }` plain text), `DialogueChoiceShownEvent`,
 `DialogueChoiceMadeEvent`, `DialogueCommandEvent` (`{ command, mode }`),
-`DialogueEndedEvent`, `DialogueTermActivatedEvent` (`{ id, screen, kind }`).
+`DialogueEndedEvent`.
 
 ## Channels + presenters (L3 capability channels)
 
@@ -142,8 +141,8 @@ renderer's `measureWrappedText`). Composites
 by speaker id) + `actorRegistryFor(scene)`.
 
 `DialogueTextView` renders one `SplitTextComponent` per line, reveals glyphs by
-toggling `chars[i].visible`, applies per-run colour/bold/italic and per-glyph
-effects, and hit-tests `[term]` spans.
+toggling `chars[i].visible`, and applies per-run colour/bold/italic and per-glyph
+effects.
 
 ## Input (root entry, `@yagejs/input` — not pixi)
 
@@ -156,33 +155,15 @@ the `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test
 choice rows without owning geometry. Ambient/auto-advancing dialogue attaches no
 binding.
 
-Glossary terms ride the binding's single seam `setTermSink(target, onActivate)` —
-the `DialogueController` calls it for you, pointing the text view in. The pointer
-binding owns term hit-testing, highlights the hovered span (`setHoveredTerm`), and
-suppresses the line advance on a term tap. Keyboard-only bindings no-op
-`setTermSink` (terms need a pointer).
-
-## Glossary terms
-
-`[term=id]word[/term]` spans are underlined (fixed soft-blue; not yet themeable),
-hover-highlighted,
-and hit-tested by the text presenter (`termAtPoint` + `setHoveredTerm`). The
-pointer binding is the single seam: on hover/tap it highlights the span and the
-`DialogueController` re-surfaces it as `onTermActivate({ id, screen, kind })` + a
-`DialogueTermActivatedEvent`. A tap on a term does **not** advance the line. The
-game owns `id → definition` and renders any tooltip; the addon only emits the id
-(+ screen position + `"hover" | "tap"`). No default tooltip UI. Terms need a
-pointer-capable binding (e.g. `fullControls(...)`).
-
 ## Theming
 
 `DialogueTheme` is one flat data object: `box`, `padding`, frame colours,
 `nameColor/Size`, `textSize/lineHeight/textColor/charsPerSec`, choice colours,
 fonts, `layerFrame/layerText`, `skipMultiplier?`. `defaultTheme()` returns a
 fresh zero-asset instance — spread to tweak:
-`{ ...defaultTheme(), textColor: 0xff0000 }`. Known limitations: term colour is
-fixed (no theme field); the `portrait?` and `textured?` theme fields exist but
-are NOT consumed by any factory yet — see below for textured.
+`{ ...defaultTheme(), textColor: 0xff0000 }`. Known limitation: the `portrait?`
+and `textured?` theme fields exist but are NOT consumed by any factory yet — see
+below for textured.
 
 - **Default**: Graphics chrome + canvas text (`fontFamily`). Zero assets.
 - **Bitmap fonts** (opt-in): set `bitmapFont` (+ `bitmapFontBold/Italic/BoldItalic`

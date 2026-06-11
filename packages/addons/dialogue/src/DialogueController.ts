@@ -38,7 +38,6 @@ import {
   DialogueEndedEvent,
   DialogueLineEvent,
   DialogueStartedEvent,
-  DialogueTermActivatedEvent,
 } from "./events.js";
 
 /** The presenter trio a factory assembles (see `createBoxDialogue`). */
@@ -68,19 +67,6 @@ export interface DialogueControllerOptions extends DialogueBundle {
   ) => void | Promise<void>;
   /** Called once when a conversation ends (in addition to the scene event). */
   readonly onEnded?: () => void;
-  /**
-   * Called when a `[term=…]` glossary span is activated by the pointer (in
-   * addition to {@link DialogueTermActivatedEvent}). The system only reports the
-   * opaque term `id` and the activating pointer's screen position — the game
-   * maps the id to a definition and renders any tooltip. `kind` is "hover" while
-   * the pointer rests over the span and "tap" on a primary click. Requires the
-   * text presenter to implement the `termAtPoint` seam (the default views do).
-   */
-  readonly onTermActivate?: (e: {
-    id: string;
-    screen: { x: number; y: number };
-    kind: "hover" | "tap";
-  }) => void;
 }
 
 export class DialogueController extends Component {
@@ -137,16 +123,6 @@ export class DialogueController extends Component {
       },
     );
     this.binding.bind(this.input, this.session);
-
-    // Single glossary-term seam: the pointer binding owns hover/tap hit-testing
-    // (it gates the line advance, so a tap on a term doesn't also turn the page)
-    // and highlights the hovered span on the text view; here we just re-surface
-    // each activation as a scene event + the optional callback. Needs a
-    // pointer-capable binding (the default keyboard one no-ops `setTermSink`).
-    this.binding.setTermSink?.(this.opts.text, (e) => {
-      this.entity.emit(DialogueTermActivatedEvent, e);
-      this.opts.onTermActivate?.(e);
-    });
   }
 
   onDestroy(): void {

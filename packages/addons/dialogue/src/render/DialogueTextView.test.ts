@@ -9,9 +9,9 @@ import {
 /**
  * These tests run the view UNMOUNTED (no scene): no glyph nodes are built, but
  * the reveal cursor / pause / completion machinery runs in full, which is what
- * F13 needs. The term/origin tests poke the two private fields involved
- * directly — building a real glyph tree headless would need the whole renderer
- * service graph for no extra coverage.
+ * F13 needs. The origin test pokes the private field directly — building a
+ * real glyph tree headless would need the whole renderer service graph for no
+ * extra coverage.
  */
 
 const CFG: DialogueTextConfig = {
@@ -38,25 +38,6 @@ describe("DialogueTextView — pause clamp (F13)", () => {
     expect(completed).toBe(0);
     view.update(5);
     expect(completed).toBe(1);
-  });
-});
-
-describe("DialogueTextView — reveal-gated termAtPoint (F14)", () => {
-  it("ignores spans whose first glyph has not revealed yet", () => {
-    const view = new DialogueTextView(CFG);
-    const internals = view as unknown as { line: unknown; shownCount: number };
-    internals.line = {
-      terms: [{ term: "mana", first: 5, x0: 0, y0: 0, x1: 50, y1: 16 }],
-      spans: [],
-      chars: [],
-      metas: [],
-    };
-
-    internals.shownCount = 5; // glyphs 0..4 visible — the span starts at 5
-    expect(view.termAtPoint(10, 8)).toBeUndefined();
-
-    internals.shownCount = 6; // the span's first glyph is on screen
-    expect(view.termAtPoint(10, 8)).toBe("mana");
   });
 });
 

@@ -75,7 +75,7 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(first?.lineCount).toBeGreaterThan(0);
     expect(first?.lastLine).toContain("Welcome to the");
 
-    // Walk the three lines (welcome → mana term → bubble) to the choice.
+    // Walk the three lines (welcome → mana → bubble) to the choice.
     await advanceUntilChoosing(page);
 
     const beforeChoice = await probe(page);
