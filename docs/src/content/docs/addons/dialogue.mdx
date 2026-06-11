@@ -173,6 +173,14 @@ silently.
 
 `parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
 
+Every character count in the parsed result — `ParsedText.length`,
+`TextRun.graphemeCount`, a pause's `atChar`, and the `charsPerSec` reveal rate —
+is in **graphemes** (user-perceived characters), not UTF-16 code units. An
+emoji like 🔥, a ZWJ sequence like 👩‍🚀, or an accent composed with a combining
+mark counts as one character, matching the glyphs the renderer actually draws,
+so reveal timing and `[pause]` positions stay put in any language.
+`splitGraphemes(str)` exposes the same segmentation for tooling.
+
 ## Commands — rules in, consequences out
 
 The runner owns exactly one built-in command: `set`, which writes a branching

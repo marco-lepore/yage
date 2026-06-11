@@ -93,6 +93,12 @@ BBCode-ish, survives translation, nests, unknown tags dropped silently:
 bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]` markup were
 intentionally removed — unknown tags drop silently, so old scripts still parse.)
 
+All character counts are **graphemes** (user-perceived characters, via
+`Intl.Segmenter` — the same segmentation pixi's SplitText renders one glyph
+per): `ParsedText.length`, `TextRun.graphemeCount`, `PauseToken.atChar`, and
+the reveal rate (`charsPerSec` = graphemes/second). An emoji, ZWJ sequence, or
+base+combining-mark cluster counts as 1. `splitGraphemes(str)` is exported.
+
 ## Commands — rules in, consequences out
 
 Runner owns built-in `set` (writes branching `vars`). Every other command

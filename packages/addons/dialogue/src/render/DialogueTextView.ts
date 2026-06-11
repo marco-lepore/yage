@@ -17,15 +17,20 @@
  * Pixi nests the split `root → line → word → char`, so a glyph's position in the
  * split's own space is the sum up its parent chain ({@link localInSplit}).
  *
- * `SplitText.chars` drops whitespace, but our runs / reveal cursor / `[pause]`
- * offsets count it, so we map "global char index (with spaces) → non-space glyph
- * index" via a prefix table.
+ * All reveal bookkeeping counts GRAPHEMES (`splitGraphemes` — the same
+ * segmentation SplitText uses to make one glyph node per user-perceived
+ * character), so emoji / ZWJ sequences / combining marks stay aligned between
+ * the cursor, `[pause]` offsets, per-glyph styles, and the rendered glyphs.
+ * `SplitText.chars` additionally drops whitespace, but our runs / reveal
+ * cursor / `[pause]` offsets count it, so we map "global grapheme index (with
+ * spaces) → non-space glyph index" via a prefix table.
  *
  * This file is the only renderer-coupled part of text rendering; it takes the
  * scene + a font/layout config so nothing here is game-specific.
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
+import { splitGraphemes } from "../core/markup.js";
 import {
   SplitTextComponent,
   type SplitTextComponentOptions,
@@ -46,7 +51,7 @@ export interface DialogueTextConfig {
   readonly lineHeight: number;
   /** Colour for runs that don't override it (0xRRGGBB). */
   readonly defaultColor: number;
-  /** Base reveal rate (characters/second). Scaled by per-run + hold speed. */
+  /** Base reveal rate (graphemes/second). Scaled by per-run + hold speed. */
   readonly charsPerSec: number;
   /** Render layer name (screen-space). */
   readonly layer: string;
@@ -114,10 +119,12 @@ export class DialogueTextView implements TextPresenter {
   /** Optional per-frame origin (a moving NPC's head) for diegetic bubbles. */
   private originProvider?: (() => { x: number; y: number }) | undefined;
 
-  /** `nonSpacePrefix[k]` = count of non-space chars in `text.slice(0, k)`. */
+  /** `nonSpacePrefix[k]` = count of non-space graphemes among the first `k`. */
   private nonSpacePrefix = new Int32Array(1);
+  /** Non-space glyphs currently visible. */
   private shownCount = -1;
 
+  /** Reveal cursor, in graphemes (fractional while typing). */
   private revealed = 0;
   private elapsedMs = 0;
   private pauseTimer = 0;
@@ -268,7 +275,6 @@ export class DialogueTextView implements TextPresenter {
   private buildLine(parsed: ParsedText): void {
     if (!this.scene) return;
     const text = parsed.runs.map((r) => r.text).join("");
-    this.buildNonSpacePrefix(text);
 
     this.layoutOriginX = this.boxX;
     this.layoutOriginY = this.boxY;
@@ -280,7 +286,7 @@ export class DialogueTextView implements TextPresenter {
     const root = comp.splitText;
 
     // One run-style per non-space glyph, in reading order (1:1 with `chars`).
-    const styles = this.charStyles(parsed);
+    const styles = this.buildRevealTables(parsed);
 
     const metas: CharMeta[] = chars.map((node, i) => {
       const style = styles[i] ?? {};
@@ -302,27 +308,30 @@ export class DialogueTextView implements TextPresenter {
     this.line = { entity, comp, chars, metas };
   }
 
-  /** Run-style for each NON-SPACE glyph, in reading order (matches `chars`). */
-  private charStyles(parsed: ParsedText): RunStyle[] {
-    const out: RunStyle[] = [];
+  /**
+   * One grapheme-segmentation pass per line (build-time only — nothing
+   * re-segments per frame), producing both reveal tables:
+   *   - `nonSpacePrefix`: grapheme cursor → count of non-space glyphs shown
+   *   - returned styles: the run-style for each NON-SPACE glyph, in reading
+   *     order (1:1 with SplitText's `chars`, which drops whitespace)
+   * Segmenting per run matches how markup.ts counted `length`/`atChar`, so
+   * the cursor, pauses, and styles all share one basis.
+   */
+  private buildRevealTables(parsed: ParsedText): RunStyle[] {
+    const styles: RunStyle[] = [];
+    const prefix: number[] = [];
+    let shown = 0;
     for (const run of parsed.runs) {
-      for (const ch of run.text) {
-        if (/\s/.test(ch)) continue;
-        out.push(run.style);
+      for (const g of splitGraphemes(run.text)) {
+        prefix.push(shown);
+        if (/\s/.test(g)) continue;
+        shown++;
+        styles.push(run.style);
       }
     }
-    return out;
-  }
-
-  private buildNonSpacePrefix(text: string): void {
-    const p = new Int32Array(text.length + 1);
-    let c = 0;
-    for (let i = 0; i < text.length; i++) {
-      p[i] = c;
-      if (!/\s/.test(text[i]!)) c++;
-    }
-    p[text.length] = c;
-    this.nonSpacePrefix = p;
+    prefix.push(shown);
+    this.nonSpacePrefix = Int32Array.from(prefix);
+    return styles;
   }
 
   /**
@@ -397,8 +406,8 @@ export class DialogueTextView implements TextPresenter {
     const cursor = Math.floor(reveal);
     let acc = 0;
     for (const run of this.parsed.runs) {
-      if (cursor < acc + run.text.length) return run.style.speed ?? 1;
-      acc += run.text.length;
+      if (cursor < acc + run.graphemeCount) return run.style.speed ?? 1;
+      acc += run.graphemeCount;
     }
     return 1;
   }
