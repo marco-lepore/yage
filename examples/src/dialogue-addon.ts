@@ -17,6 +17,10 @@
  * press **V** to toggle auto-advance, and the pointer works too (click to
  * advance, click/hover choices, hover/tap the `mana` term).
  *
+ * The **Font** button under the canvas swaps every dialogue presenter to a
+ * bitmap font (baked on first use from the example `.ttf`) and back — bitmap
+ * bubbles content-size exactly like canvas ones.
+ *
  * Export split: runner / controller / events / input come from the pixi-free
  * root entry; presenters + theme come from the `/presenters` subpath.
  */
@@ -34,6 +38,7 @@ import {
   CameraEntity,
   GraphicsComponent,
   TextComponent,
+  installBitmapFont,
   measureWrappedText,
   type LayerDef,
 } from "@yagejs/renderer";
@@ -54,7 +59,7 @@ import {
   DialogueActor,
   DIALOGUE_LAYERS,
 } from "@yagejs-addons/dialogue/presenters";
-import { setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -528,6 +533,11 @@ class RoomScene extends Scene {
   readonly name = "dialogue-addon";
   readonly layers = LAYERS;
 
+  /** Baked bitmap-font name; omit for the default canvas text. */
+  constructor(private readonly bitmapFont?: string) {
+    super();
+  }
+
   onEnter(): void {
     const cam = this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
@@ -547,9 +557,22 @@ class RoomScene extends Scene {
     player.add(new DialogueActor({ speaker: "you", anchor: { x: 0, y: -20 } }));
     const playerPos = (): Vec2 => player.get(Transform).position;
 
-    // Interactive controller (box + bubble), shared by Mira and Sage.
-    const theme = defaultTheme();
-    const bundle = createMixedDialogue(theme, { worldLayer: BUBBLE_LAYER });
+    // Interactive controller (box + bubble), shared by Mira and Sage. The
+    // bitmap variant proves bitmap bubbles content-size like canvas ones (the
+    // atlas bakes at 32px and renders at theme.textSize — measurement has to
+    // scale, wrap, and count lines correctly for the bubble to fit). The pixel
+    // font is wide, so it renders smaller and gets a wider bubble cap — keeps
+    // Sage's longest line from growing the bubble past the top of the canvas.
+    const bitmapFont = this.bitmapFont;
+    const theme =
+      bitmapFont !== undefined
+        ? { ...defaultTheme(), bitmapFont, textSize: 14, lineHeight: 19 }
+        : defaultTheme();
+    const bubbleOpts = {
+      worldLayer: BUBBLE_LAYER,
+      ...(bitmapFont !== undefined ? { bubble: { maxWidth: 320 } } : {}),
+    };
+    const bundle = createMixedDialogue(theme, bubbleOpts);
     const host = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
     const hud = host.add(new Hud());
@@ -574,7 +597,7 @@ class RoomScene extends Scene {
     // Ambient controller (bubble, no input) for the eavesdropped gossip.
     const ambient = this.spawn("ambient-host").add(
       new DialogueController({
-        ...createBubbleDialogue(theme, { worldLayer: BUBBLE_LAYER }),
+        ...createBubbleDialogue(theme, bubbleOpts),
         input: new CompositeInputBinding([]),
       }),
     );
@@ -676,6 +699,41 @@ async function main(): Promise<void> {
 
   await engine.start();
   await engine.scenes.push(new RoomScene());
+  wireFontToggle(engine);
+}
+
+/**
+ * The "Font: Canvas / Bitmap" button under the canvas. Bakes a bitmap atlas
+ * from the example `.ttf` on first use (32px glyphs, rendered at the bitmap
+ * theme's 14px — exercising the measurement scaling), then rebuilds the room
+ * with the other theme. A scene swap (not a live restyle): presenters take
+ * their font at construction.
+ */
+function wireFontToggle(engine: Engine): void {
+  const button = document.getElementById("font-toggle");
+  if (!(button instanceof HTMLButtonElement)) return;
+  injectStyles(`
+    .controls button {
+      background: #222; border: 1px solid #444; border-radius: 4px;
+      padding: 2px 10px; font-size: 0.85rem; color: #fff; cursor: pointer;
+    }
+    .controls button:hover { border-color: #4a4a8a; }
+  `);
+
+  let bitmap = false;
+  let fontName: string | undefined;
+  button.addEventListener("click", () => {
+    void (async () => {
+      button.disabled = true;
+      bitmap = !bitmap;
+      fontName ??= await installBitmapFont("/assets/Kenney Future.ttf", {
+        name: "Kenney Bitmap",
+      });
+      await engine.scenes.replace(new RoomScene(bitmap ? fontName : undefined));
+      button.textContent = bitmap ? "Font: Bitmap" : "Font: Canvas";
+      button.disabled = false;
+    })();
+  });
 }
 
 main().catch(console.error);
