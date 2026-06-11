@@ -103,27 +103,11 @@ describe("parseMarkup — pauses", () => {
   });
 });
 
-describe("parseMarkup — term / glossary (KEPT)", () => {
-  it("[term=id] tags the run with an opaque term id", () => {
+describe("parseMarkup — term / glossary is REMOVED", () => {
+  it("[term]/[gloss] tags are treated as unknown and dropped (text flows through)", () => {
     const r = parseMarkup("a [term=cauldron]cauldron[/term] b");
-    const termRun = r.runs.find((run) => run.style.term !== undefined);
-    expect(termRun).toEqual({ text: "cauldron", style: { term: "cauldron" } });
-    // The term text counts toward the visible length like any other run.
-    expect(r.length).toBe("a cauldron b".length);
-  });
-
-  it("[gloss=id] is an accepted alias for [term]", () => {
-    const r = parseMarkup("[gloss=mana]mana[/gloss]");
-    expect(r.runs[0]!.style.term).toBe("mana");
-  });
-
-  it("a term without an argument applies no style", () => {
-    expect(parseMarkup("[term]x[/term]").runs).toEqual([{ text: "x", style: {} }]);
-  });
-
-  it("a term can carry nested styling (bold term)", () => {
-    const r = parseMarkup("[term=t][b]X[/b][/term]");
-    expect(r.runs[0]!.style).toEqual({ term: "t", bold: true });
+    expect(r.runs).toEqual([{ text: "a cauldron b", style: {} }]);
+    expect(stripMarkup("[gloss=mana]mana[/gloss]")).toBe("mana");
   });
 });
 
@@ -210,7 +194,7 @@ describe("stripMarkup", () => {
     expect(stripMarkup("[b]hi[/b] [color=gold]there[/color]")).toBe("hi there");
   });
 
-  it("keeps term text but drops the markup", () => {
+  it("keeps unknown-tag text but drops the markup", () => {
     expect(stripMarkup("the [term=cauldron]cauldron[/term] bubbles")).toBe(
       "the cauldron bubbles",
     );

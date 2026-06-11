@@ -2,8 +2,6 @@ export type {
   InputBinding,
   DialogueActions,
   PointerChoiceTarget,
-  TermTarget,
-  TermActivation,
 } from "./InputBinding.js";
 export {
   KeyboardInputBinding,

@@ -3,8 +3,8 @@
 The first **YAGE addon** — an installable, opinionated dialogue system: a
 headless branching runner plus swappable, themeable presenters. Drop it into a
 scene, point it at a dialogue script, and get a working typewriter box (or
-speech bubble) with branching choices, inline markup, and glossary-term
-highlighting — then re-theme or replace any piece without forking.
+speech bubble) with branching choices and inline markup — then re-theme or
+replace any piece without forking.
 
 Addons are the layer between engine plugins (`@yagejs/core`, `@yagejs/renderer`,
 …) and your game: real implementations of common gameplay patterns, opinionated
@@ -59,10 +59,6 @@ import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/present
   variant; pass texture fields on the theme.
 - **Radial choice presenter** is exported under `./presenters` as
   **`@experimental`** — not polished, opt-in only.
-- **Glossary terms** (`[term]…[gloss]` markup) are highlighted and hit-tested;
-  pointer hover/tap routes to an `onTermActivate(id)` callback. The game owns the
-  tooltip UI — the addon only emits the term id (plus an optional screen
-  position).
 
 ## Save / load
 

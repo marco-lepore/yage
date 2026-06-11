@@ -67,7 +67,7 @@ const SCRIPT: DialogueScript = {
         {
           kind: "say",
           speaker: "narrator",
-          text: "It knows about the [term=mana]mana[/term] system.",
+          text: "It knows about the [b]mana[/b] system.",
         },
         {
           kind: "say",

@@ -23,7 +23,7 @@ export type {
   DialogueBundle,
 } from "./DialogueController.js";
 
-// Engine-scoped lifecycle / command / glossary-term events.
+// Engine-scoped lifecycle / command events.
 export {
   DialogueStartedEvent,
   DialogueLineEvent,
@@ -31,7 +31,6 @@ export {
   DialogueChoiceMadeEvent,
   DialogueCommandEvent,
   DialogueEndedEvent,
-  DialogueTermActivatedEvent,
 } from "./events.js";
 
 // @yagejs/input device bindings (pixi-free).
@@ -47,6 +46,4 @@ export type {
   InputBinding,
   DialogueActions,
   PointerChoiceTarget,
-  TermTarget,
-  TermActivation,
 } from "./input/index.js";

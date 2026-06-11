@@ -3,15 +3,14 @@ import type { PresentedLine } from "../core/session.js";
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
 import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 
-/** A stub text view with a fixed term + pointer space, recording hover calls. */
+/** A stub text view recording presents/clears and the speed multiplier. */
 class StubView implements TextPresenter {
-  hovered: string | undefined = "<unset>";
+  presented = 0;
+  cleared = 0;
   speedMultiplier = 1;
-  constructor(
-    readonly pointerSpace: "screen" | "world",
-    private readonly term: string | undefined,
-  ) {}
-  present(): void {}
+  present(): void {
+    this.presented++;
+  }
   completeReveal(): void {}
   isRevealComplete(): boolean {
     return true;
@@ -23,15 +22,11 @@ class StubView implements TextPresenter {
     this.speedMultiplier = m;
   }
   update(): void {}
-  clear(): void {}
+  clear(): void {
+    this.cleared++;
+  }
   mount(): void {}
   dispose(): void {}
-  termAtPoint(): string | undefined {
-    return this.term;
-  }
-  setHoveredTerm(id: string | undefined): void {
-    this.hovered = id;
-  }
 }
 
 const line = (view?: string): PresentedLine => ({
@@ -40,36 +35,26 @@ const line = (view?: string): PresentedLine => ({
   ...(view !== undefined ? { view } : {}),
 });
 
-describe("CompositeTextPresenter — term seam forwards to the active view", () => {
-  it("routes termAtPoint / pointerSpace / setHoveredTerm to whichever view is showing", () => {
-    const box = new StubView("screen", "mana");
-    const bubble = new StubView("world", "glow");
+describe("CompositeTextPresenter — routing", () => {
+  it("presents on the routed view and clears the other", () => {
+    const box = new StubView();
+    const bubble = new StubView();
     const c = new CompositeTextPresenter(box, bubble);
 
-    // No line presented yet → nothing active.
-    expect(c.termAtPoint(0, 0)).toBeUndefined();
-    expect(c.pointerSpace).toBe("screen");
+    c.present(line()); // no view hint → box
+    expect(box.presented).toBe(1);
+    expect(bubble.cleared).toBe(1);
 
-    // A box line (no view hint) → the box view is active.
-    c.present(line());
-    expect(c.termAtPoint(0, 0)).toBe("mana");
-    expect(c.pointerSpace).toBe("screen");
-    c.setHoveredTerm("mana");
-    expect(box.hovered).toBe("mana");
-
-    // A bubble line → the bubble view is active; the seam follows it.
     c.present(line("bubble"));
-    expect(c.termAtPoint(0, 0)).toBe("glow");
-    expect(c.pointerSpace).toBe("world");
-    c.setHoveredTerm(undefined);
-    expect(bubble.hovered).toBeUndefined();
+    expect(bubble.presented).toBe(1);
+    expect(box.cleared).toBe(1);
   });
 });
 
 describe("CompositeTextPresenter — fast-forward multiplier", () => {
   it("setSpeedMultiplier reaches BOTH sub-views, not just the active one", () => {
-    const box = new StubView("screen", undefined);
-    const bubble = new StubView("world", undefined);
+    const box = new StubView();
+    const bubble = new StubView();
     const c = new CompositeTextPresenter(box, bubble);
 
     c.present(line()); // box active
