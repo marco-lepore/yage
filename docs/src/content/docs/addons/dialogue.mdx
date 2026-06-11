@@ -173,6 +173,14 @@ silently.
 
 `parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
 
+<Aside type="note" title="Glossary terms — temporarily removed">
+Early previews shipped interactable `[term=id]…[/term]` (alias `[gloss]`)
+glossary spans with hover/tap routing. The feature was cut from the first
+release and is planned to return in a later version, redesigned on top of the
+upcoming presenter/theming rework. Unknown tags drop silently, so scripts that
+still contain `[term]` render the inner text as plain text.
+</Aside>
+
 ## Commands — rules in, consequences out
 
 The runner owns exactly one built-in command: `set`, which writes a branching

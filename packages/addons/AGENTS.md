@@ -256,9 +256,9 @@ Texture-driven re-theming (`TexturedChrome` / `TexturedBubble`) uses `@yagejs/re
 
 Save/load is deferred to v1.1 — do NOT build snapshot/restore. But keep the runner cursor reachable so a `SnapshotContributor` (type at `packages/save/src/snapshot/types.ts`) can be added later WITHOUT a breaking change. `runner.ts` exposes read-only `getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()` under a commented "v1.1 save seam" block. This is documented in code comments and the authoring doc.
 
-### Glossary terms were CUT from the first release (2026-06-11)
+### Glossary terms were TEMPORARILY cut from the first release (2026-06-11)
 
-The `[term=id]`/`[gloss=id]` markup, the text-view hit-testing/underline machinery, the `TermTarget`/`setTermSink` binding seam, and `DialogueTermActivatedEvent` were removed before first publish — the feature crossed all three layers (presenter -> input -> controller) and generated a disproportionate share of review findings for a phase-1 addon. Unknown tags drop silently, so scripts containing `[term]` still parse. If re-introduced, design it post-Design-C with the theming/extensibility story, mirroring `PointerChoiceTarget` the way the original did (see git history on `feat/dialogue-addon`).
+The `[term=id]`/`[gloss=id]` markup, the text-view hit-testing/underline machinery, the `TermTarget`/`setTermSink` binding seam, and `DialogueTermActivatedEvent` were removed before first publish — the feature crossed all three layers (presenter -> input -> controller) and generated a disproportionate share of review findings for a phase-1 addon. Unknown tags drop silently, so scripts containing `[term]` still parse. The removal is intended to be temporary: re-introduce after the presentation-platform rework (Design C), designed against its theming/extensibility story, mirroring `PointerChoiceTarget` the way the original did (prior art in the pre-cut `feat/dialogue-addon` git history).
 
 exactOptionalPropertyTypes gotcha (still applies generally): fields assigned possibly-undefined ctor options are declared `field: T | undefined` (NOT `field?: T`) — `?:` would reject the assignment. Match `PointerInputBinding`'s `unsub` field pattern.
 

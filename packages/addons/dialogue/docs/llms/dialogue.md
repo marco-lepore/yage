@@ -90,8 +90,11 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 BBCode-ish, survives translation, nests, unknown tags dropped silently:
 `[b]` `[i]` `[color=#ffcc00]`/`[color=gold]` `[wave]` `[shake]` `[pulse]`
 `[rainbow]` `[speed=2]` `[pause=400]` (zero-width ms). `\[` escapes a literal
-bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]` markup were
-intentionally removed — unknown tags drop silently, so old scripts still parse.)
+bracket. NOT available: glossary `[term]`/`[gloss]` markup is TEMPORARILY
+removed (cut from the first release; planned to return with the presentation-
+platform rework — do NOT generate code against it); ruby/furigana markup was
+removed permanently. Unknown tags drop silently, so scripts containing either
+still parse as plain text.
 
 ## Commands — rules in, consequences out
 
