@@ -1,5 +1,5 @@
 export * from "./types.js";
-export { parseMarkup, stripMarkup } from "./markup.js";
+export { parseMarkup, stripMarkup, splitGraphemes } from "./markup.js";
 export { loadScript, DialogueScriptError } from "./formats/canonical.js";
 export { DialogueRunner, evalCondition } from "./runner.js";
 export type { RunnerHandlers, ResolvedChoice } from "./runner.js";

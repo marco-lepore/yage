@@ -185,11 +185,18 @@ export type EffectId = "wave" | "shake" | "pulse" | "rainbow";
 export interface TextRun {
   readonly text: string;
   readonly style: RunStyle;
+  /**
+   * Number of graphemes (user-perceived characters) in `text` — NOT
+   * `text.length`. All reveal bookkeeping counts graphemes, because that is
+   * the unit the renderer splits into glyph nodes (one per grapheme), so an
+   * emoji / ZWJ sequence / combining mark counts as 1.
+   */
+  readonly graphemeCount: number;
 }
 
 /** A zero-width control marker interleaved between runs during reveal. */
 export interface PauseToken {
-  /** Index into the flattened character stream where the pause occurs. */
+  /** Grapheme index into the flattened text where the pause occurs. */
   readonly atChar: number;
   readonly ms: number;
 }
@@ -198,6 +205,6 @@ export interface PauseToken {
 export interface ParsedText {
   readonly runs: readonly TextRun[];
   readonly pauses: readonly PauseToken[];
-  /** Total visible character count across all runs (reveal denominator). */
+  /** Total grapheme count across all runs (the reveal denominator). */
   readonly length: number;
 }
