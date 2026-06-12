@@ -100,6 +100,28 @@ function stripUndefined(s: Partial<RunStyle>): Partial<RunStyle> {
 
 const TAG_RE = /\[(\/?)([a-zA-Z]+)(?:=([^\]]*))?\]/g;
 
+/**
+ * Grapheme segmenter for all reveal bookkeeping. Pixi's `SplitText` /
+ * `SplitBitmapText` create one glyph node per grapheme via
+ * `CanvasTextMetrics.graphemeSegmenter`, which is `new Intl.Segmenter()`
+ * (default "grapheme" granularity). We intentionally use the same segmentation
+ * — without importing pixi (this file is in the pixi-free root entry) — so run
+ * lengths, pause offsets, and per-glyph styles line up with rendered glyphs on
+ * emoji / ZWJ sequences / combining marks.
+ */
+const GRAPHEME_SEGMENTER = new Intl.Segmenter();
+
+/**
+ * Split a string into graphemes (user-perceived characters) — the unit the
+ * renderer creates one glyph node per, and the unit every reveal-side count
+ * (`ParsedText.length`, `TextRun.graphemeCount`, `PauseToken.atChar`) uses.
+ */
+export function splitGraphemes(text: string): string[] {
+  const out: string[] = [];
+  for (const s of GRAPHEME_SEGMENTER.segment(text)) out.push(s.segment);
+  return out;
+}
+
 export function parseMarkup(input: string): ParsedText {
   const runs: TextRun[] = [];
   const pauses: PauseToken[] = [];
@@ -109,8 +131,10 @@ export function parseMarkup(input: string): ParsedText {
 
   const flush = (): void => {
     if (buffer.length === 0) return;
-    runs.push({ text: buffer, style: effectiveStyle(stack) });
-    charCount += buffer.length;
+    // Segment once per flushed run (O(n) over the whole input in total).
+    const graphemeCount = splitGraphemes(buffer).length;
+    runs.push({ text: buffer, style: effectiveStyle(stack), graphemeCount });
+    charCount += graphemeCount;
     buffer = "";
   };
 
@@ -209,7 +233,17 @@ function mergeAdjacent(runs: readonly TextRun[]): TextRun[] {
   for (const run of runs) {
     const prev = out[out.length - 1];
     if (prev && sameStyle(prev.style, run.style)) {
-      out[out.length - 1] = { text: prev.text + run.text, style: prev.style };
+      // Sum the per-flush counts rather than re-segmenting the joined text:
+      // pause offsets were tallied per flush, so this keeps `length`/`atChar`/
+      // run counts on one consistent basis. (A grapheme split across a tag
+      // boundary — e.g. a combining mark right after `[/b]` — would join when
+      // the renderer segments the full line; the cursor then finishes one
+      // step past the last glyph, which the reveal clamps harmlessly.)
+      out[out.length - 1] = {
+        text: prev.text + run.text,
+        style: prev.style,
+        graphemeCount: prev.graphemeCount + run.graphemeCount,
+      };
     } else {
       out.push(run);
     }
