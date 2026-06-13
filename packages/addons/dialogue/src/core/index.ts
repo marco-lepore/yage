@@ -11,10 +11,11 @@ export type {
   VarsOf,
   PlayBindingArgs,
 } from "./defineScript.js";
-export { VarStore } from "./vars.js";
+// `VarStore` (vars.ts) and `tokensIn` (i18n.ts) are intentionally NOT exported —
+// internal binding-model plumbing; `session.ts`/`validate.ts` import them by path.
 export { DialogueRunner, evalCondition } from "./runner.js";
 export type { RunnerHandlers, ResolvedChoice } from "./runner.js";
-export { IdentityI18n, interpolate, tokensIn } from "./i18n.js";
+export { IdentityI18n, interpolate } from "./i18n.js";
 export type { I18nAdapter } from "./i18n.js";
 export { DialogueSession } from "./session.js";
 export type {

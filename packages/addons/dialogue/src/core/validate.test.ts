@@ -176,6 +176,13 @@ describe("validateBinding — play-time binding check", () => {
     ).toThrow(/external "gold" must be number, got string/);
   });
 
+  it("rejects a null external (the typed path forbids it too)", () => {
+    const a = analyzeScript(ext());
+    expect(() =>
+      validateBinding(a, { state: { gold: () => null, name: "Mara" } }),
+    ).toThrow(/external "gold" must be number, got null/);
+  });
+
   it("rejects a getter bound to a dialogue var (vars are by-value)", () => {
     const s = loadScript(
       script({ vars: { greeted: false }, nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } } }),

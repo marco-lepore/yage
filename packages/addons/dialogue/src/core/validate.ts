@@ -262,8 +262,16 @@ function checkBoundType(
   declared: ValueType | undefined,
   kind: "var" | "external",
 ): void {
-  // Unknown var type (default null) accepts anything; `null` clears/absents.
-  if (declared === undefined || declared === "null" || value === null) return;
+  // Unknown var type (default null) accepts anything.
+  if (declared === undefined || declared === "null") return;
+  if (value === null) {
+    // Vars are genuinely nullable (a `set`/override can clear them). Externals
+    // are NOT: the typed `defineScript` path types a getter as `() => number`
+    // (non-null), so reject null here to keep the JSON path consistent — a
+    // wrong-typed getter result is caught at play rather than coercing later.
+    if (kind === "var") return;
+    throw new DialogueBindingError(`external "${name}" must be ${declared}, got null`);
+  }
   if (typeof value !== declared) {
     throw new DialogueBindingError(
       `${kind} "${name}" must be ${declared}, got ${typeof value}`,
