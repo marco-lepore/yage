@@ -8,51 +8,52 @@
 
 import type { EffectId } from "../core/types.js";
 
+/** Mutable so a per-frame caller can reuse one scratch instance (see `out`). */
 export interface EffectOutput {
   /** Offset from the run's resting position, in px. */
-  readonly dx: number;
-  readonly dy: number;
+  dx: number;
+  dy: number;
   /** Uniform scale multiplier (1 = none). */
-  readonly scale: number;
+  scale: number;
   /** Tint override (0xRRGGBB), or undefined to keep the run's base colour. */
-  readonly tint?: number;
+  tint: number | undefined;
 }
-
-const STILL: EffectOutput = { dx: 0, dy: 0, scale: 1 };
 
 /**
  * @param effect    which effect (undefined → no motion)
  * @param timeMs    elapsed time the run has been on screen
  * @param phase     a per-run phase seed (use the run's resting x) so adjacent
  *                  runs animate out of sync instead of in lockstep
+ * @param out       optional scratch object, reset and returned — pass one per
+ *                  caller to avoid an allocation per animated glyph per frame
  */
 export function evaluateEffect(
   effect: EffectId | undefined,
   timeMs: number,
   phase: number,
+  out: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined },
 ): EffectOutput {
+  out.dx = 0;
+  out.dy = 0;
+  out.scale = 1;
+  out.tint = undefined;
   switch (effect) {
     case "wave":
-      return { dx: 0, dy: Math.sin(timeMs / 260 + phase / 14) * 1.6, scale: 1 };
+      out.dy = Math.sin(timeMs / 260 + phase / 14) * 1.6;
+      break;
     case "shake":
       // Time-quantised jitter so it reads as a buzz, not per-frame noise.
-      return {
-        dx: pseudoNoise(timeMs, phase) * 1.3,
-        dy: pseudoNoise(timeMs, phase + 99) * 1.3,
-        scale: 1,
-      };
+      out.dx = pseudoNoise(timeMs, phase) * 1.3;
+      out.dy = pseudoNoise(timeMs, phase + 99) * 1.3;
+      break;
     case "pulse":
-      return { dx: 0, dy: 0, scale: 1 + 0.09 * Math.sin(timeMs / 220 + phase / 18) };
+      out.scale = 1 + 0.09 * Math.sin(timeMs / 220 + phase / 18);
+      break;
     case "rainbow":
-      return {
-        dx: 0,
-        dy: 0,
-        scale: 1,
-        tint: hsv((timeMs / 18 + phase * 4) % 360, 0.55, 1),
-      };
-    default:
-      return STILL;
+      out.tint = hsv((timeMs / 18 + phase * 4) % 360, 0.55, 1);
+      break;
   }
+  return out;
 }
 
 /** True if the effect needs a tint each frame (so the view skips static tint). */

@@ -10,18 +10,15 @@
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import {
-  GraphicsComponent,
-  TextComponent,
-  type TextComponentOptions,
-  type TextStyle,
-} from "@yagejs/renderer";
+import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type { PresentedLine } from "../core/session.js";
 import { bubbleSize } from "../render/bubbleSizing.js";
+import { caretAlpha, drawCaret } from "./caret.js";
 import type { ChromePresenter } from "./DialogueUiAdapter.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
-export interface BubbleChromeConfig {
+export interface BubbleChromeConfig extends FontConfig {
   /** World-space render layer. */
   readonly layer: string;
   /** Snuggest width; the bubble widens to its text up to {@link maxWidth}. */
@@ -46,9 +43,6 @@ export interface BubbleChromeConfig {
    *  matching the companion `BubbleTextView`. */
   readonly textSize: number;
   readonly lineHeight: number;
-  readonly bitmapFont?: string | undefined;
-  readonly fontFamily?: string | undefined;
-  readonly resolution?: number | undefined;
 }
 
 export class BubbleChrome implements ChromePresenter {
@@ -57,10 +51,10 @@ export class BubbleChrome implements ChromePresenter {
   private gfx?: GraphicsComponent | undefined;
   private transform?: Transform | undefined;
   private name?: TextComponent | undefined;
+  private nameTransform?: Transform | undefined;
   private caret?: GraphicsComponent | undefined;
   private caretTransform?: Transform | undefined;
   private actor?: DialogueActor | undefined;
-  private caretVisible = false;
   private caretTime = 0;
   /** Current (content-sized) bubble size; recomputed per line. */
   private currentWidth: number;
@@ -82,9 +76,9 @@ export class BubbleChrome implements ChromePresenter {
 
     // Name floats just above the bubble; left-aligned to the inner edge.
     const nameEntity = scene.spawn("dlg-bubble-name");
-    nameEntity.add(new Transform()).setPosition(0, 0);
+    this.nameTransform = nameEntity.add(new Transform());
     this.name = nameEntity.add(
-      new TextComponent(this.textOptions("", c.nameSize, c.nameColor)),
+      new TextComponent(makeTextOptions(c, "", c.nameSize, c.nameColor, c.layer)),
     );
     this.name.text.visible = false;
 
@@ -92,9 +86,7 @@ export class BubbleChrome implements ChromePresenter {
     this.caretTransform = caretEntity.add(new Transform());
     this.caret = caretEntity.add(new GraphicsComponent({ layer: c.layer }));
     // Drawn once in local coords; positioned each frame via the transform.
-    this.caret.draw((g) => {
-      g.poly([0, 0, 7, 0, 3.5, 5]).fill({ color: c.indicatorColor, alpha: 1 });
-    });
+    this.caret.draw((g) => drawCaret(g, c.indicatorColor));
     this.caret.graphics.visible = false;
 
     this.root = root;
@@ -146,8 +138,7 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   setContinueVisible(visible: boolean): void {
-    this.caretVisible = visible && this.actor !== undefined;
-    if (this.caret) this.caret.graphics.visible = this.caretVisible;
+    if (this.caret) this.caret.graphics.visible = visible && this.actor !== undefined;
     this.caretTime = 0;
   }
 
@@ -162,9 +153,12 @@ export class BubbleChrome implements ChromePresenter {
 
   update(dt: number): void {
     this.follow();
-    if (this.caret && this.caretVisible) {
+    // Read pixi's `visible` directly — a parallel boolean could desync (e.g.
+    // keep animating a caret that `setVisible(false)` hid).
+    const gfx = this.caret?.graphics;
+    if (gfx?.visible) {
       this.caretTime += dt;
-      this.caret.graphics.alpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(this.caretTime / 260));
+      gfx.alpha = caretAlpha(this.caretTime);
     }
   }
 
@@ -176,6 +170,7 @@ export class BubbleChrome implements ChromePresenter {
     this.gfx = undefined;
     this.transform = undefined;
     this.name = undefined;
+    this.nameTransform = undefined;
     this.caret = undefined;
     this.caretTransform = undefined;
   }
@@ -189,9 +184,7 @@ export class BubbleChrome implements ChromePresenter {
     const h = this.currentHeight;
     this.transform?.setPosition(a.x, a.y);
     // Name: top-left corner of the bubble, lifted by the (grown) bubble height.
-    this.name?.entity
-      .tryGet(Transform)
-      ?.setPosition(a.x - w / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
+    this.nameTransform?.setPosition(a.x - w / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
     // Caret: bottom-right interior of the bubble (anchored near the bottom edge).
     this.caretTransform?.setPosition(a.x + w / 2 - c.padding - 7, a.y - c.offsetY - c.padding - 2);
   }
@@ -230,19 +223,4 @@ export class BubbleChrome implements ChromePresenter {
     });
   }
 
-  private styleFor(size: number, color: number): TextStyle {
-    const style: TextStyle = { fontSize: size, fill: color };
-    if (this.cfg.fontFamily) style.fontFamily = this.cfg.fontFamily;
-    return style;
-  }
-
-  private textOptions(text: string, size: number, color: number): TextComponentOptions {
-    const style = this.styleFor(size, color);
-    if (this.cfg.bitmapFont) style.fontFamily = this.cfg.bitmapFont;
-    const base: TextComponentOptions = { text, style, layer: this.cfg.layer, anchor: { x: 0, y: 0 } };
-    if (this.cfg.bitmapFont) base.bitmap = true;
-    // `exactOptionalPropertyTypes` rejects `resolution: undefined`; omit when unset.
-    else if (this.cfg.resolution !== undefined) base.resolution = this.cfg.resolution;
-    return base;
-  }
 }

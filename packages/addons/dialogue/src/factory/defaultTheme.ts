@@ -17,10 +17,8 @@ import { DIALOGUE_LAYER_FRAME, DIALOGUE_LAYER_TEXT } from "../render/layers.js";
  * ```
  *
  * The `box` is a sensible bottom-anchored default; override it for your virtual
- * resolution. Bitmap fonts (`bitmapFont*`, via `bakeBitmapFont` variant
- * atlases) and textured nine-slice chrome (the `textured` field +
- * {@link TexturedChrome} / {@link TexturedBubble}) are OPT-IN re-theming paths,
- * intentionally absent here.
+ * resolution. Bitmap fonts (`bitmapFont`) and textured nine-slice chrome (the
+ * `textured` field) are OPT-IN re-theming paths, intentionally absent here.
  */
 export function defaultTheme(): DialogueTheme {
   return {
@@ -46,7 +44,7 @@ export function defaultTheme(): DialogueTheme {
     choiceSelectedColor: 0xffffff,
     highlightColor: 0x4a4a8a,
 
-    // No bitmapFont* → canvas SplitText/Text path (zero assets).
+    // No bitmapFont → canvas SplitText/Text path (zero assets).
     fontFamily: "sans-serif",
 
     layerFrame: DIALOGUE_LAYER_FRAME,

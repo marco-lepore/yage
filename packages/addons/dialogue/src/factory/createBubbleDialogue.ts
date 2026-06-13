@@ -23,7 +23,7 @@ import { BubbleTextView } from "../render/BubbleTextView.js";
 import type { DialogueBundle } from "../DialogueController.js";
 import type { DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
-import { compact } from "./compact.js";
+import { themeFonts } from "./themeFonts.js";
 
 export interface BubbleGeometry {
   /** Snuggest width; the bubble widens to its text up to {@link maxWidth}. */
@@ -59,23 +59,7 @@ export function createBubbleDialogue(
   opts: BubbleDialogueOptions,
 ): DialogueBundle {
   const geo: BubbleGeometry = { ...DEFAULT_BUBBLE, ...opts.bubble };
-
-  // Optional font fields are `T | undefined` on the theme but `?: T` on the
-  // presenter configs; `compact` drops the undefined keys so they satisfy the
-  // stricter config types under exactOptionalPropertyTypes.
-  const fonts = compact({
-    bitmapFont: theme.bitmapFont,
-    fontFamily: theme.fontFamily,
-    resolution: theme.resolution,
-  });
-  const textFonts = compact({
-    bitmapFont: theme.bitmapFont,
-    bitmapFontBold: theme.bitmapFontBold,
-    bitmapFontItalic: theme.bitmapFontItalic,
-    bitmapFontBoldItalic: theme.bitmapFontBoldItalic,
-    fontFamily: theme.fontFamily,
-    resolution: theme.resolution,
-  });
+  const fonts = themeFonts(theme);
 
   const chrome = new BubbleChrome({
     layer: opts.worldLayer,
@@ -106,7 +90,7 @@ export function createBubbleDialogue(
       defaultColor: theme.textColor,
       charsPerSec: theme.charsPerSec,
       layer: opts.worldLayer,
-      ...textFonts,
+      ...fonts,
     },
     {
       minWidth: geo.minWidth,
@@ -138,10 +122,5 @@ export function createBubbleDialogue(
     ...fonts,
   });
 
-  return {
-    chrome,
-    text,
-    choices,
-    ...(theme.skipMultiplier !== undefined ? { skipMultiplier: theme.skipMultiplier } : {}),
-  };
+  return { chrome, text, choices, skipMultiplier: theme.skipMultiplier };
 }

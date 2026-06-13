@@ -3,8 +3,8 @@
  *
  * Everything that imports `@yagejs/renderer` / `pixi.js` lives here: chrome
  * (box / bubble / choice list / choice bubble), text views, composites,
- * avatars, factories, the zero-asset `defaultTheme()`, the opt-in textured
- * nine-slice variants, and the opt-in @experimental radial choice presenter.
+ * avatars, factories, the zero-asset `defaultTheme()`, and the opt-in
+ * @experimental radial choice presenter.
  *
  * Consumers reach this via the `./presenters` subpath
  * (`import { defaultTheme } from "@yagejs-addons/dialogue/presenters"`), which
@@ -35,6 +35,9 @@ export type {
   ChoicePresenter,
   TextPresenter,
 } from "./chrome/DialogueUiAdapter.js";
+// The font triplet shared by every presenter config ({bitmapFont, fontFamily,
+// resolution}); themes map onto it via the factories.
+export type { FontConfig } from "./chrome/textOptions.js";
 export { DialogueChrome } from "./chrome/DialogueChrome.js";
 export type { DialogueChromeConfig } from "./chrome/DialogueChrome.js";
 export { ChoiceListPresenter } from "./chrome/ChoiceListPresenter.js";
@@ -43,11 +46,6 @@ export { BubbleChrome } from "./chrome/BubbleChrome.js";
 export type { BubbleChromeConfig } from "./chrome/BubbleChrome.js";
 export { BubbleChoicePresenter } from "./chrome/BubbleChoicePresenter.js";
 export type { BubbleChoiceConfig } from "./chrome/BubbleChoicePresenter.js";
-
-// NOTE: the opt-in textured (nine-slice) chrome variants — `TexturedChrome`,
-// `TexturedBubble`, and their configs — plus the nine-slice helpers are
-// re-exported through the factory barrel below (it owns the textured re-theming
-// surface), so they are intentionally NOT listed here to avoid duplicate exports.
 
 /**
  * Opt-in @experimental radial choice wheel. Not part of the default factory
@@ -67,12 +65,9 @@ export {
 export * from "./avatar/index.js";
 export * from "./actor/index.js";
 
-// ── factories + themes (defaultTheme, bundle factories, textured re-theming) ─
+// ── factories + themes ──────────────────────────────────────────────────────
 // The factory barrel owns: the bundle factories (createBox/Bubble/Mixed), the
 // zero-asset `defaultTheme()`, the flat `DialogueTheme` (+ `BoxRect`,
-// `PortraitTheme`, `TexturedTheme`, `NineSliceInsets`) tokens, bubble geometry
-// (`DEFAULT_BUBBLE`, `BubbleGeometry`, `BubbleDialogueOptions`), the opt-in
-// textured nine-slice chrome variants (`TexturedChrome`/`TexturedBubble` +
-// configs), and the nine-slice helpers. Re-exported wholesale so the textured
-// re-theming surface lives in exactly one place.
+// `TexturedTheme`, `NineSliceInsets`) tokens, and bubble geometry
+// (`DEFAULT_BUBBLE`, `BubbleGeometry`, `BubbleDialogueOptions`).
 export * from "./factory/index.js";

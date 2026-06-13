@@ -165,22 +165,17 @@ binding.
 
 `DialogueTheme` is one flat data object: `box`, `padding`, frame colours,
 `nameColor/Size`, `textSize/lineHeight/textColor/charsPerSec`, choice colours,
-fonts, `layerFrame/layerText`, `skipMultiplier?`. `defaultTheme()` returns a
-fresh zero-asset instance — spread to tweak:
-`{ ...defaultTheme(), textColor: 0xff0000 }`. Known limitation: the `portrait?`
-and `textured?` theme fields exist but are NOT consumed by any factory yet — see
-below for textured.
+fonts (`bitmapFont/fontFamily/resolution` — the shared `FontConfig` triplet every
+presenter config extends), `layerFrame/layerText`, `skipMultiplier?`.
+`defaultTheme()` returns a fresh zero-asset instance — spread to tweak:
+`{ ...defaultTheme(), textColor: 0xff0000 }`. Known limitation: the `textured?`
+theme field exists but is NOT consumed by anything yet (a nine-slice chrome
+branch is planned; until it lands the Graphics chrome is the only frame).
 
 - **Default**: Graphics chrome + canvas text (`fontFamily`). Zero assets.
-- **Bitmap fonts** (opt-in): set `bitmapFont` (+ `bitmapFontBold/Italic/BoldItalic`
-  baked via `installBitmapFont` variant atlases) for a crisp pixel atlas.
-- **Textured nine-slice** (opt-in, MANUAL): `TexturedChrome` / `TexturedBubble`
-  are exported from `./presenters` (via `@yagejs/renderer`'s `createNineSlice`
-  primitive — no direct pixi or `@yagejs/ui` dependency; `TextureInput` = string
-  key or Texture). NO factory reads `theme.textured` — construct the chrome
-  yourself and pass it as `bundle.chrome`:
-  `{ ...createBoxDialogue(theme), chrome: new TexturedChrome(cfg) }`. Caveat:
-  `TexturedBubble` is fixed-size (no content sizing yet).
+- **Bitmap fonts** (opt-in): set `bitmapFont` (baked via `installBitmapFont`)
+  for a crisp pixel atlas. Bold/italic are synthesised on the regular atlas
+  (skew + double-draw); there are no variant-atlas fields.
 
 ## Experimental radial choice presenter
 

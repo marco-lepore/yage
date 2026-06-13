@@ -38,37 +38,42 @@ import type {
   VarMap,
 } from "./types.js";
 
+// The addon's own output types declare optional fields as `T | undefined`
+// (not bare `?: T`): producers can then assign possibly-undefined inputs
+// directly under `exactOptionalPropertyTypes`, and consumers test values, not
+// key presence — so the shapes stay spread-free to construct.
+
 /** One previewed line: speaker name + plain (markup-stripped) text. */
 export interface PreviewedLine {
-  readonly speaker?: string;
+  readonly speaker?: string | undefined;
   readonly text: string;
 }
 
 /** Resolved speaker descriptor on a presented line (for nameplates / anchoring). */
 export interface SpeakerView {
   readonly id: string;
-  readonly name?: string;
-  readonly color?: number;
+  readonly name?: string | undefined;
+  readonly color?: number | undefined;
 }
 
 /** A fully-resolved line (i18n + markup already applied) handed to presenters. */
 export interface PresentedLine {
   /** Who's speaking (if anyone) — lets world presenters anchor to their actor. */
-  readonly speaker?: SpeakerView;
+  readonly speaker?: SpeakerView | undefined;
   readonly text: ParsedText;
   /** Per-line reveal-speed multiplier (`say.speed`, default 1). */
   readonly speed: number;
   /** Opaque preset name for per-line layout/variant (presenter interprets). */
-  readonly view?: string;
-  readonly meta?: Readonly<Record<string, unknown>>;
+  readonly view?: string | undefined;
+  readonly meta?: Readonly<Record<string, unknown>> | undefined;
   /** Voice-clip id (audio handler interprets; reveal may sync to it). */
-  readonly voice?: string;
+  readonly voice?: string | undefined;
 }
 
 /** One selectable choice, resolved to a display label. Position = array index. */
 export interface PresentedChoice {
   readonly label: string;
-  readonly meta?: Readonly<Record<string, unknown>>;
+  readonly meta?: Readonly<Record<string, unknown>> | undefined;
 }
 
 /**
@@ -93,11 +98,11 @@ export interface TextChannel {
  *  way lines do (box list vs a bubble over `speaker`'s actor) and optionally
  *  render the prompt itself. */
 export interface ChoiceContext {
-  readonly view?: string;
-  readonly speaker?: SpeakerView;
+  readonly view?: string | undefined;
+  readonly speaker?: SpeakerView | undefined;
   /** The (resolved + parsed) prompt, made available so a presenter can render
    *  it itself (see {@link ChoiceChannel.ownsPrompt}). Empty when no prompt. */
-  readonly prompt?: ParsedText;
+  readonly prompt?: ParsedText | undefined;
 }
 
 /** Choice channel. Selection nav lives in the Session; pointer/touch commits
@@ -136,19 +141,19 @@ export interface ChromeChannel {
 export interface DialogueChannels {
   readonly text: TextChannel;
   readonly choices: ChoiceChannel;
-  readonly avatar?: AvatarChannel;
-  readonly chrome?: ChromeChannel;
+  readonly avatar?: AvatarChannel | undefined;
+  readonly chrome?: ChromeChannel | undefined;
 }
 
 export interface DialogueSessionOptions {
-  readonly i18n?: I18nAdapter;
+  readonly i18n?: I18nAdapter | undefined;
   /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
-  readonly params?: Readonly<Record<string, unknown>>;
+  readonly params?: Readonly<Record<string, unknown>> | undefined;
   /** Hold-to-fast-forward multiplier. Default 4. */
-  readonly skipMultiplier?: number;
+  readonly skipMultiplier?: number | undefined;
   readonly onStarted?: (e: { scriptId: string }) => void;
   /** Plain (markup-stripped) line text — for logs / a11y / history. */
-  readonly onLine?: (e: { speaker?: string; text: string }) => void;
+  readonly onLine?: (e: { speaker?: string | undefined; text: string }) => void;
   readonly onChoiceShown?: (e: { options: readonly string[] }) => void;
   readonly onChoiceMade?: (e: { index: number; text: string }) => void;
   /**
@@ -419,7 +424,7 @@ export class DialogueSession {
           ? this.i18n.t(speaker.nameKey, speaker.name, this.params)
           : undefined;
         out.push({
-          ...(name !== undefined ? { speaker: name } : {}),
+          speaker: name,
           text: stripMarkup(this.i18n.t(step.key, step.text, this.params)),
         });
         i++;
@@ -518,16 +523,13 @@ export class DialogueSession {
     this.afterRevealFired = false;
     this.confirming = false;
     const resolved = this.i18n.t(step.key, step.text, this.params);
-    // Conditionally include the optional keys so we never assign `undefined`
-    // to a `?:`-optional property (exactOptionalPropertyTypes).
-    const sv = this.speakerView(speaker);
     const line: PresentedLine = {
-      ...(sv ? { speaker: sv } : {}),
+      speaker: this.speakerView(speaker),
       text: parseMarkup(resolved),
       speed: step.speed ?? 1,
-      ...(step.view !== undefined ? { view: step.view } : {}),
-      ...(step.meta !== undefined ? { meta: step.meta } : {}),
-      ...(step.voice !== undefined ? { voice: step.voice } : {}),
+      view: step.view,
+      meta: step.meta,
+      voice: step.voice,
     };
 
     this.channels.choices.clear();
@@ -544,9 +546,8 @@ export class DialogueSession {
     this.channels.chrome?.present?.(line);
     this.channels.text.present(line);
 
-    const lineName = this.speakerName(speaker);
     this.opts.onLine?.({
-      ...(lineName !== undefined ? { speaker: lineName } : {}),
+      speaker: this.speakerName(speaker),
       text: stripMarkup(resolved),
     });
 
@@ -567,15 +568,14 @@ export class DialogueSession {
     // Treat the choice like a line so the chrome switches to the right variant
     // (a composite box/bubble chrome otherwise leaves the previous speaker's
     // bubble up behind a frameless choice list).
-    const sv = this.speakerView(speaker);
     const line: PresentedLine = {
-      ...(sv ? { speaker: sv } : {}),
+      speaker: this.speakerView(speaker),
       text: step.text
         ? parseMarkup(this.i18n.t(step.key, step.text, this.params))
         : { runs: [], pauses: [], length: 0 },
       speed: 1,
-      ...(step.view !== undefined ? { view: step.view } : {}),
-      ...(step.meta !== undefined ? { meta: step.meta } : {}),
+      view: step.view,
+      meta: step.meta,
     };
 
     // Drive the avatar like a say-line would: the choice's speaker owns the
@@ -587,8 +587,8 @@ export class DialogueSession {
     this.channels.avatar?.setSpeaking(false);
 
     const ctx: ChoiceContext = {
-      ...(step.view !== undefined ? { view: step.view } : {}),
-      ...(line.speaker ? { speaker: line.speaker } : {}),
+      view: step.view,
+      speaker: line.speaker,
       prompt: line.text,
     };
     // A self-contained presenter (e.g. a bubble panel) draws its own frame +
@@ -617,8 +617,7 @@ export class DialogueSession {
     );
     const presented: PresentedChoice[] = choices.map((c, i) => ({
       label: labels[i]!,
-      // Conditionally include `meta` (exactOptionalPropertyTypes).
-      ...(c.option.meta !== undefined ? { meta: c.option.meta } : {}),
+      meta: c.option.meta,
     }));
     this.channels.choices.present(presented, ctx);
     this.channels.choices.highlight(0);
@@ -708,12 +707,10 @@ export class DialogueSession {
     speaker: SpeakerDef | undefined,
   ): SpeakerView | undefined {
     if (!speaker) return undefined;
-    const name = this.speakerName(speaker);
-    // Conditionally include optional keys (exactOptionalPropertyTypes).
     return {
       id: speaker.id,
-      ...(name !== undefined ? { name } : {}),
-      ...(speaker.color !== undefined ? { color: speaker.color } : {}),
+      name: this.speakerName(speaker),
+      color: speaker.color,
     };
   }
 }
