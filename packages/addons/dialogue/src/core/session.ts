@@ -25,11 +25,17 @@ import {
   evalCondition,
   type ResolvedChoice,
 } from "./runner.js";
+import { VarStore } from "./vars.js";
+import { analyzeScript, validateBinding } from "./validate.js";
+import type { PlayBindingArgs, VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
   Command,
   CommandContext,
+  CommandHandler,
   CommandTiming,
+  DialogueBinding,
+  DialogueHandle,
   DialogueScript,
   ParsedText,
   RunMode,
@@ -37,6 +43,9 @@ import type {
   SpeakerDef,
   VarMap,
 } from "./types.js";
+
+/** Stale-handle snapshot — frozen so a no-op `getVars()` can't be mutated. */
+const EMPTY_VARS: Readonly<VarMap> = Object.freeze({});
 
 // The addon's own output types declare optional fields as `T | undefined`
 // (not bare `?: T`): producers can then assign possibly-undefined inputs
@@ -147,8 +156,6 @@ export interface DialogueChannels {
 
 export interface DialogueSessionOptions {
   readonly i18n?: I18nAdapter | undefined;
-  /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
-  readonly params?: Readonly<Record<string, unknown>> | undefined;
   /** Hold-to-fast-forward multiplier. Default 4. */
   readonly skipMultiplier?: number | undefined;
   readonly onStarted?: (e: { scriptId: string }) => void;
@@ -157,13 +164,12 @@ export interface DialogueSessionOptions {
   readonly onChoiceShown?: (e: { options: readonly string[] }) => void;
   readonly onChoiceMade?: (e: { index: number; text: string }) => void;
   /**
-   * A game command fired. Receives `ctx.mode` (play/skip). For a `blocking`
-   * command, return a promise and the conversation waits for it to resolve.
+   * Observation hook fired for every non-built-in command (after `expression`,
+   * never for `set`) — the host forwards it to {@link DialogueCommandEvent}. The
+   * actual *handling* (and any `blocking` await) is the binding's `commands`
+   * map / `fallbackCommand`, not this; this returns nothing.
    */
-  readonly onCommand?: (
-    command: Command,
-    ctx: CommandContext,
-  ) => void | Promise<void>;
+  readonly onCommand?: (command: Command, ctx: CommandContext) => void;
   readonly onEnded?: (e: { scriptId: string }) => void;
 }
 
@@ -172,7 +178,9 @@ type Mode = "idle" | "saying" | "choosing" | "ended";
 export class DialogueSession {
   private readonly i18n: I18nAdapter;
   private readonly skipMul: number;
-  private params: Readonly<Record<string, unknown>>;
+  /** Game-command handlers + fallback, taken from the current play()'s binding. */
+  private commands: Readonly<Record<string, CommandHandler>> = {};
+  private fallbackCommand: CommandHandler | undefined;
 
   // Fields use explicit `| undefined` (not `?`) so reassigning `undefined`
   // (e.g. `stop()` nulling the cursor) is legal under the repo's
@@ -222,7 +230,6 @@ export class DialogueSession {
   ) {
     this.i18n = opts.i18n ?? new IdentityI18n();
     this.skipMul = opts.skipMultiplier ?? 4;
-    this.params = opts.params ?? {};
     this.channels.text.onRevealComplete = () => this.handleRevealComplete();
     this.channels.choices.onChoiceChosen = (position) => {
       this.selected = position;
@@ -230,12 +237,18 @@ export class DialogueSession {
     };
   }
 
-  /** Begin a conversation. `params` merges into the shared interpolation context. */
-  play(
-    rawScript: DialogueScript,
-    params?: Readonly<Record<string, unknown>>,
-  ): void {
-    if (params) this.params = { ...this.params, ...params };
+  /**
+   * Begin a conversation. The `binding` (required when the script declares
+   * externals) bridges game state in (`state`: every external as a constant or
+   * live getter, plus optional var overrides) and game logic out (`commands`
+   * map + `fallbackCommand`). Returns a generation-stamped {@link DialogueHandle}
+   * for live `setVar` / `getVars`.
+   */
+  play<S extends DialogueScript>(
+    rawScript: S,
+    ...args: PlayBindingArgs<S>
+  ): DialogueHandle<VarsOf<S>> {
+    const binding: DialogueBinding = (args[0] as DialogueBinding | undefined) ?? {};
     // Abandon any in-flight conversation first. `stop()` bumps the generation,
     // so a still-pending async continuation from the previous line (e.g. an
     // awaited `afterReveal`/`advance` command) bails on resume instead of
@@ -244,8 +257,22 @@ export class DialogueSession {
     this.stop();
 
     const script = loadScript(rawScript);
+    const analysis = analyzeScript(script);
+    validateBinding(analysis, binding); // hard error on a mismatched binding
     this.script = script;
     this.scriptId = script.id;
+    this.commands = binding.commands ?? {};
+    this.fallbackCommand = binding.fallbackCommand;
+
+    // One namespace, declarations decide ownership: script.vars are mutable
+    // dialogue-locals, externals are read-only views the binding provides.
+    const store = new VarStore(
+      script.vars ?? {},
+      analysis.varNames,
+      analysis.externalNames,
+      binding.state ?? {},
+    );
+
     // Stamp this runner's callbacks with the current generation. A later
     // stop()/play() bumps it, so a *prior* runner resuming an async step (e.g.
     // a blocking command awaited inside skip() or a command step) finds itself
@@ -253,7 +280,7 @@ export class DialogueSession {
     // corrupting — the new conversation's session state.
     const gen = this.generation;
     const live = () => gen === this.generation;
-    this.runner = new DialogueRunner(script, {
+    const runner = new DialogueRunner(script, store, {
       onSay: (step, speaker) => {
         if (live()) this.handleSay(step, speaker);
       },
@@ -266,8 +293,22 @@ export class DialogueSession {
         if (live()) this.handleEnd();
       },
     });
+    this.runner = runner;
     this.opts.onStarted?.({ scriptId: this.scriptId });
-    this.runner.start();
+    runner.start();
+
+    // Typed, generation-stamped handle (D4): after stop()/replay it no-ops
+    // (setVar) / returns an empty snapshot (getVars), so a stale reference can't
+    // poke a different conversation's vars.
+    return {
+      setVar: (key, value) => {
+        if (gen === this.generation) runner.setVar(key, value);
+      },
+      getVars: () =>
+        (gen === this.generation ? runner.getVars() : EMPTY_VARS) as Readonly<
+          VarsOf<S>
+        >,
+    };
   }
 
   isActive(): boolean {
@@ -324,6 +365,16 @@ export class DialogueSession {
   /** True while any blocking line-command batch is awaited (input is gated). */
   private get lineBlocked(): boolean {
     return this.blockedCount > 0;
+  }
+
+  /**
+   * The merged read view (dialogue vars + externals, getters invoked now) for
+   * interpolation at *this* present-time. Materialized per evaluation so an
+   * earlier command's `set` shows up on a later line (scenario 3); already-shown
+   * lines never re-render.
+   */
+  private readView(): VarMap {
+    return this.runner?.getReadView() ?? {};
   }
 
   // ── input-agnostic API ────────────────────────────────────────────────────
@@ -409,7 +460,9 @@ export class DialogueSession {
   preview(nodeId: string, limit = 64): PreviewedLine[] {
     const script = this.script;
     if (!script) return [];
-    const vars: Readonly<VarMap> = this.runner?.getVars() ?? {};
+    // Same merged view for conditions AND interpolation (vars + externals),
+    // materialized once for this side-effect-free lookahead.
+    const view = this.readView();
     const out: PreviewedLine[] = [];
     let node = nodeId;
     let i = 0;
@@ -421,15 +474,15 @@ export class DialogueSession {
           ? script.speakers?.[step.speaker]
           : undefined;
         const name = speaker
-          ? this.i18n.t(speaker.nameKey, speaker.name, this.params)
+          ? this.i18n.t(speaker.nameKey, speaker.name, view)
           : undefined;
         out.push({
           speaker: name,
-          text: stripMarkup(this.i18n.t(step.key, step.text, this.params)),
+          text: stripMarkup(this.i18n.t(step.key, step.text, view)),
         });
         i++;
       } else if (step.kind === "command") {
-        if (step.target !== undefined && testCondition(step.condition, vars)) {
+        if (step.target !== undefined && testCondition(step.condition, view)) {
           node = step.target;
           i = 0;
         } else {
@@ -476,7 +529,7 @@ export class DialogueSession {
     const text = this.i18n.t(
       chosen.option.key,
       chosen.option.text,
-      this.params,
+      this.readView(),
     );
     this.opts.onChoiceMade?.({ index: chosen.index, text });
     this.runner?.choose(chosen.index);
@@ -522,9 +575,12 @@ export class DialogueSession {
     this.advanceFired = false;
     this.afterRevealFired = false;
     this.confirming = false;
-    const resolved = this.i18n.t(step.key, step.text, this.params);
+    // Materialize the read view once for this line (an external getter fires
+    // exactly once per present, shared by text + nameplate).
+    const view = this.readView();
+    const resolved = this.i18n.t(step.key, step.text, view);
     const line: PresentedLine = {
-      speaker: this.speakerView(speaker),
+      speaker: this.speakerView(speaker, view),
       text: parseMarkup(resolved),
       speed: step.speed ?? 1,
       view: step.view,
@@ -535,7 +591,7 @@ export class DialogueSession {
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
     this.channels.chrome?.setNameplate(
-      this.speakerName(speaker),
+      this.speakerName(speaker, view),
       speaker?.color,
     );
 
@@ -547,7 +603,7 @@ export class DialogueSession {
     this.channels.text.present(line);
 
     this.opts.onLine?.({
-      speaker: this.speakerName(speaker),
+      speaker: this.speakerName(speaker, view),
       text: stripMarkup(resolved),
     });
 
@@ -564,14 +620,15 @@ export class DialogueSession {
     this.resolved = choices;
     this.selected = 0;
     this.confirming = false;
+    const view = this.readView();
 
     // Treat the choice like a line so the chrome switches to the right variant
     // (a composite box/bubble chrome otherwise leaves the previous speaker's
     // bubble up behind a frameless choice list).
     const line: PresentedLine = {
-      speaker: this.speakerView(speaker),
+      speaker: this.speakerView(speaker, view),
       text: step.text
-        ? parseMarkup(this.i18n.t(step.key, step.text, this.params))
+        ? parseMarkup(this.i18n.t(step.key, step.text, view))
         : { runs: [], pauses: [], length: 0 },
       speed: 1,
       view: step.view,
@@ -603,7 +660,7 @@ export class DialogueSession {
     } else {
       // Always set (undefined when no speaker) so a stale nameplate doesn't linger.
       this.channels.chrome?.setNameplate(
-        this.speakerName(speaker),
+        this.speakerName(speaker, view),
         speaker?.color,
       );
       this.channels.chrome?.present?.(line);
@@ -613,7 +670,7 @@ export class DialogueSession {
     }
 
     const labels = choices.map((c) =>
-      stripMarkup(this.i18n.t(c.option.key, c.option.text, this.params)),
+      stripMarkup(this.i18n.t(c.option.key, c.option.text, view)),
     );
     const presented: PresentedChoice[] = choices.map((c, i) => ({
       label: labels[i]!,
@@ -634,9 +691,13 @@ export class DialogueSession {
       this.channels.avatar?.setExpression(command.value);
       return;
     }
-    // Returning the host's (possibly async) result lets blocking commands pause
-    // the runner until the game finishes handling them.
-    return this.opts.onCommand?.(command, ctx);
+    // Observation first (the host emits DialogueCommandEvent); then the binding's
+    // handler does the actual work. Returning its (possibly async) result lets a
+    // blocking command pause the runner until the game finishes handling it.
+    // validateBinding guarantees a handler/fallback exists for every command type.
+    this.opts.onCommand?.(command, ctx);
+    const handler = this.commands[command.type] ?? this.fallbackCommand;
+    return handler?.(command, ctx);
   }
 
   private handleEnd(): void {
@@ -698,18 +759,22 @@ export class DialogueSession {
     }
   }
 
-  private speakerName(speaker: SpeakerDef | undefined): string | undefined {
+  private speakerName(
+    speaker: SpeakerDef | undefined,
+    view: VarMap,
+  ): string | undefined {
     if (!speaker) return undefined;
-    return this.i18n.t(speaker.nameKey, speaker.name, this.params);
+    return this.i18n.t(speaker.nameKey, speaker.name, view);
   }
 
   private speakerView(
     speaker: SpeakerDef | undefined,
+    view: VarMap,
   ): SpeakerView | undefined {
     if (!speaker) return undefined;
     return {
       id: speaker.id,
-      name: this.speakerName(speaker),
+      name: this.speakerName(speaker, view),
       color: speaker.color,
     };
   }

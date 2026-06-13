@@ -4,7 +4,7 @@
  * (frame + nameplate + caret, a typewriter body, a vertical choice list). Spread
  * it into a controller and override any one piece:
  *
- *   new DialogueController({ ...createBoxDialogue(theme), avatar, params });
+ *   new DialogueController({ ...createBoxDialogue(theme), avatar, binding });
  *
  * It only assembles configs + presenters from the theme — no scene, no input —
  * so the host stays in charge of lifecycle.

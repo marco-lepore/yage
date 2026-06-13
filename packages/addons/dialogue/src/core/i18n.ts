@@ -28,11 +28,22 @@ export class IdentityI18n implements I18nAdapter {
   }
 }
 
+/** Matches an interpolation token `{name}` (word chars only). */
+const TOKEN = /\{(\w+)\}/g;
+
 /** Replace `{token}` with `params.token`; leaves unknown tokens untouched.
  *  Own-property check only — `{constructor}`/`{toString}` must not stringify
  *  inherited Object.prototype members. */
 export function interpolate(text: string, params: Readonly<Record<string, unknown>>): string {
-  return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
+  return text.replace(TOKEN, (whole, name: string) =>
     Object.hasOwn(params, name) ? String(params[name]) : whole,
   );
+}
+
+/** Distinct `{token}` names in `text` — used by load-time validation to check
+ *  every interpolation target resolves to a declared var/external. */
+export function tokensIn(text: string): string[] {
+  const names = new Set<string>();
+  for (const m of text.matchAll(TOKEN)) names.add(m[1]!);
+  return [...names];
 }

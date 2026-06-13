@@ -55,17 +55,23 @@ class TalkScene extends Scene {
 speech bubble following a `DialogueActor`. `createMixedDialogue(theme?, opts)` —
 routes each line/choice to box or bubble by its `view` hint.
 
-## Script model (plain JSON-able data)
+## Script model — TS-first via `defineScript` (JSON-able)
+
+`defineScript(...)` is an identity helper that captures the script's var/external
+types so `play()` requires a matching binding and returns a typed handle. A plain
+`DialogueScript` literal still works and gets the SAME runtime validation — the
+brand is compile-time only.
 
 ```ts
-const script: DialogueScript = {
+const script = defineScript({
   id: "intro",
   start: "n1",
-  vars: { metBefore: false },
+  vars: { rude: false },                 // dialogue vars: conversation-local, mutable
+  external: { gold: "number" },          // externals: game state, READ-ONLY to the script
   speakers: { gwen: { id: "gwen", name: "Gwen", color: 0xffd866 } },
   nodes: {
     n1: { id: "n1", steps: [
-      { kind: "say", speaker: "gwen", text: "Hello, [b]traveler[/b]." },
+      { kind: "say", speaker: "gwen", text: "You carry {gold} gold, [b]traveler[/b]." },
       { kind: "choice", text: "Well?", options: [
         { text: "Hi.", target: "n2" },
         { text: "Leave.", once: true, commands: [{ type: "set", var: "rude", value: true }] },
@@ -73,7 +79,7 @@ const script: DialogueScript = {
     ] },
     n2: { id: "n2", steps: [{ kind: "say", text: "Safe travels." }, { kind: "end" }] },
   },
-};
+});
 ```
 
 Step kinds: `say` | `choice` | `command` | `goto` | `end`.
@@ -81,9 +87,35 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
   `autoAdvanceMs?`, `commands?`, `view?`, `meta?`, `voice?`.
 - `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
-- `Condition`: a var key (truthy), `{ var, op, value }` (op =
-  `== != > >= < <= truthy falsy`), or `(vars) => boolean` (TS-only, not JSON).
-- `loadScript(raw)` validates + freezes; throws `DialogueScriptError`.
+- `Condition`: a var/external key (truthy), `{ var, op, value }` (op =
+  `== != > >= < <= truthy falsy`), or `(vars) => boolean` (TS-only, not JSON;
+  receives the merged vars+externals view).
+
+### vars vs external (one lookup namespace, two ownership classes)
+
+- **`vars`** — conversation-lifetime branching state. Each entry is its own
+  declaration + default + (by `typeof`) type. Reset fresh on every `play()` (so
+  a stale value can't leak between plays), written by `set` / `ctx.setVar` /
+  `handle.setVar`.
+- **`external`** — game-lifetime state the script only READS, declared `name →
+  "string"|"number"|"boolean"`. The host supplies each at `play()` as a constant
+  or a live getter. Scripts mutate game state via **commands**, never `set`
+  (rules-in / consequences-out, enforced structurally).
+
+Conditions, `{token}` interpolation, and choice gates all read the merged view.
+A `{gold}` token resolves **at line-present time** (an earlier command's effect
+shows on a later line); already-shown lines never re-render, and a choice menu's
+conditions don't live-refresh while open.
+
+### Validation (two hard-error stages)
+- **Load-time** (`loadScript` / `defineScript` path, binding-free): every
+  condition `var`, `set` target, and default-locale `{token}` must resolve to a
+  declared `vars`/`external`; `set` targets must be ∈ `vars`; numeric ops on a
+  non-number declared operand error. Throws `DialogueScriptError`. (Tokens inside
+  *translated* strings are checked against default-locale text only.)
+- **Play-time** (`validateBinding`): the binding must cover every declared
+  external with `typeof`-correct values/getter results, and resolve every command
+  `type` to a handler/fallback. Throws `DialogueBindingError`.
 
 ## Inline markup (`parseMarkup` / `stripMarkup`)
 
@@ -99,14 +131,43 @@ per): `ParsedText.length`, `TextRun.graphemeCount`, `PauseToken.atChar`, and
 the reveal rate (`charsPerSec` = graphemes/second). An emoji, ZWJ sequence, or
 base+combining-mark cluster counts as 1. `splitGraphemes(str)` is exported.
 
-## Commands — rules in, consequences out
+## Binding — game state in, the typed handle out
 
-Runner owns built-in `set` (writes branching `vars`). Every other command
-surfaces to the host via `onCommand(cmd, ctx)` **and** `DialogueCommandEvent`.
-`ctx.mode` is `"play" | "skip"`. A `say` line's commands fire by timing
-`at: "show" | "afterReveal" | "advance"` (default `show`). `blocking: true` +
-an async handler pauses the conversation until it resolves (cinematic
-sequencing). `{ type: "expression", value }` is routed to the avatar built-in.
+`play(script, binding)` is the single bridge (replaces the old `params` +
+`onCommand`). The binding (required when the script declares externals):
+
+```ts
+const handle = controller.play(script, {
+  state: { gold: () => player.gold,   // external getter — live read
+           rude: false },             // optional override of a var default (by value)
+  commands: {                          // command type → handler (game logic)
+    "give-item": (cmd, ctx) => { player.give(cmd.id); },
+    "skill-check": async (cmd, ctx) => { ctx.setVar("passed", await roll(cmd.stat)); },
+  },
+  fallbackCommand: (cmd) => log(cmd),  // optional, catches dynamically-typed commands
+});
+handle.setVar("rude", true);           // live poke (typed keyof vars); no-ops after stop/replay
+handle.getVars();                      // snapshot of dialogue vars (externals excluded)
+```
+
+- **Getters must be cheap + side-effect-free** — called on every condition test
+  and present.
+- **`ctx.setVar(key, value)`** writes a dialogue var only (the skill-check seam:
+  a result that matters to THIS conversation, not game state). Throws on an
+  external/unknown name. Keyed `keyof vars` on the typed path.
+- Controller-level defaults: `new DialogueController({ binding })` merge under
+  the per-`play()` binding (call-site wins key-by-key).
+
+### Commands — rules in, consequences out
+
+Runner owns built-in `set` (writes a dialogue `var`, guarded). Every other
+command dispatches to `binding.commands[type]` (or `fallbackCommand`) **and**
+fires `DialogueCommandEvent` (observation). `ctx.mode` is `"play" | "skip"`. A
+`say` line's commands fire by timing `at: "show" | "afterReveal" | "advance"`
+(default `show`). `blocking: true` + an async handler pauses the conversation
+until it resolves (cinematic sequencing). `{ type: "expression", value }` is the
+avatar built-in (no handler needed). Every non-built-in command `type` a script
+uses must resolve to a handler/fallback, else play-time error.
 
 ## DialogueController (L2a Component) — host owns focus/pause
 
@@ -115,17 +176,18 @@ new DialogueController({
   ...createBoxDialogue(theme),    // DialogueBundle: { chrome, text, choices, avatar?, skipMultiplier? }
   avatar,                          // optional AvatarPresenter override
   i18n,                            // optional I18nAdapter
-  params: { playerName: "Ada" },   // shared {token} interpolation
+  binding: { state, commands },    // optional controller-level binding defaults (see Binding)
   input,                           // optional InputBinding (default: KeyboardInputBinding)
-  onCommand: (cmd, ctx) => {},     // fires in addition to the event
   onEnded: () => {},
 });
 ```
 
-Methods: `play(script, params?)`, `isActive()`, `stop()`, `skip()`,
-`setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`. It is multi-instance friendly — several
-ambient conversations can run at once; "which is interactive" and "does the world
-pause" are the game's policy (no global singleton).
+Methods: `play(script, binding?): DialogueHandle | undefined` (undefined if the
+component was removed), `isActive()`, `stop()`, `skip()`,
+`setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`. It is
+multi-instance friendly — several ambient conversations can run at once; "which
+is interactive" and "does the world pause" are the game's policy (no global
+singleton).
 
 Events (entity → scene bubbling): `DialogueStartedEvent`, `DialogueLineEvent`
 (`{ speaker?, text }` plain text), `DialogueChoiceShownEvent`,
@@ -185,9 +247,12 @@ bundle, unpolished, geometry/API may change. Opt-in only.
 
 ## Save / load — DEFERRED to v1.1
 
-Mid-dialogue save/restore is NOT supported yet: no snapshot/restore exists,
-`@yagejs/save` is NOT a dependency, and the runner's cursor getters
-(`getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are NOT
-reachable through `DialogueController`/`DialogueSession` today — do not try to
-capture a conversation cursor. Save outside conversations (or replay the script)
-until v1.1 adds the seam.
+Mid-dialogue *cursor* save/restore is NOT supported yet: no snapshot/restore
+exists, `@yagejs/save` is NOT a dependency, and the runner's positional getters
+(`getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are NOT reachable through
+`DialogueController`/`DialogueSession` — do not try to capture a conversation
+cursor. (`handle.getVars()` IS reachable, but it's the dialogue-var snapshot, not
+a resumable cursor.) The binding model makes the future API purely additive
+(`handle.getCursor()` = mutable var map + `{ nodeId, stepIndex, chosenOnce }`;
+externals are excluded by construction — the game's own save owns them). Save
+outside conversations (or replay the script) until v1.1 adds the seam.

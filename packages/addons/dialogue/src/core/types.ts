@@ -40,9 +40,28 @@ export interface Command {
 export type RunMode = "play" | "skip";
 
 /** Context handed to every command handler. */
-export interface CommandContext {
+export interface CommandContext<Vars extends VarMap = VarMap> {
   readonly mode: RunMode;
+  /**
+   * Write a dialogue var (a name declared in `script.vars`) — the skill-check
+   * seam: a result that only matters to THIS conversation is written here
+   * instead of round-tripping through game state. Throws on an external or
+   * unknown name (game state is read-only to the script; mutate it via a
+   * command). A stale ctx (after stop/replay) writes the abandoned
+   * conversation's vars and has no effect on the live one.
+   */
+  setVar(key: keyof Vars & string, value: VarValue): void;
 }
+
+/**
+ * A command handler. Return a promise from a `blocking` command to pause the
+ * conversation until it resolves (cinematic sequencing). Handlers are injected
+ * through a {@link DialogueBinding} (`commands` map + optional `fallbackCommand`).
+ */
+export type CommandHandler<Vars extends VarMap = VarMap> = (
+  command: Command,
+  ctx: CommandContext<Vars>,
+) => void | Promise<void>;
 
 /**
  * A boolean guard on a choice or step. Either a key into the runner's `vars`
@@ -58,6 +77,58 @@ export type CompareOp = "==" | "!=" | ">" | ">=" | "<" | "<=" | "truthy" | "fals
 
 export type VarValue = string | number | boolean | null;
 export type VarMap = Record<string, VarValue>;
+
+/**
+ * Declared type of an **external** (game-state) name. String-literal names so
+ * `script.external` stays plain JSON data. The host's binding must provide a
+ * matching value/getter for every declared external (see {@link DialogueBinding}).
+ */
+export type ExternalTypeName = "string" | "number" | "boolean";
+
+/**
+ * A live read into game state. Bound for an **external** name and invoked at
+ * read time, so `{gold}` / a choice gate reflects the latest value. MUST be
+ * cheap and side-effect-free — the runner may call it on every condition test
+ * and every line/choice present.
+ */
+export type VarGetter = () => VarValue;
+
+/** A binding entry: a constant (vars or externals) or a getter (externals only
+ *  — dialogue vars are conversation-local and bound by value). */
+export type BindingValue = VarValue | VarGetter;
+
+/**
+ * The host's bridge into a conversation, supplied at `play()` (and/or as a
+ * controller-level default that the call-site binding overrides). It is the one
+ * coherent vars story that replaces the old `params` + `onCommand`:
+ *
+ * - `state` provides every declared **external** (constant or getter) and may
+ *   override a declared **var**'s default (by value). Names not in
+ *   `script.vars` ∪ `script.external` are a play-time error.
+ * - `commands` maps a command `type` → handler; `fallbackCommand` catches
+ *   dynamically-typed commands. Every command `type` a script uses must resolve
+ *   to a handler (or the fallback), else play-time error — the `set`/`expression`
+ *   built-ins are exempt.
+ */
+export interface DialogueBinding<Vars extends VarMap = VarMap> {
+  readonly state?: Readonly<Record<string, BindingValue>> | undefined;
+  readonly commands?: Readonly<Record<string, CommandHandler<Vars>>> | undefined;
+  readonly fallbackCommand?: CommandHandler<Vars> | undefined;
+}
+
+/**
+ * The typed, per-conversation handle returned by `play()`. Lets the host poke
+ * dialogue vars live (`setVar`) and read them back (`getVars`) without growing
+ * string-keyed methods on the controller. Generation-stamped: after
+ * `stop()`/replay a stale handle no-ops (`setVar`) / returns an empty snapshot
+ * (`getVars`).
+ */
+export interface DialogueHandle<Vars extends VarMap = VarMap> {
+  /** Write a dialogue var (∈ `script.vars`). Throws on an external/unknown name. */
+  setVar(key: keyof Vars & string, value: VarValue): void;
+  /** Snapshot of the current dialogue vars (externals excluded). */
+  getVars(): Readonly<Vars>;
+}
 
 /** A single line of dialogue spoken by an optional speaker. */
 export interface SayStep {
@@ -162,8 +233,20 @@ export interface DialogueScript {
   readonly start: NodeId;
   readonly nodes: Record<NodeId, DialogueNode>;
   readonly speakers?: Record<SpeakerId, SpeakerDef>;
-  /** Initial branching variables. */
+  /**
+   * Dialogue vars: conversation-lifetime branching state. Each entry declares a
+   * name, its default value, and (by `typeof`) its type. Reset fresh on every
+   * `play()`; mutated by `set` / `ctx.setVar` / `handle.setVar`; a binding may
+   * override a default by value.
+   */
   readonly vars?: VarMap;
+  /**
+   * Externals: game-lifetime state the script READS (never writes). Declared by
+   * name → type so the loader can type-check conditions/tokens without a binding
+   * present. The host supplies each one (constant or live getter) at `play()`;
+   * the script mutates them only as commands (rules-in / consequences-out).
+   */
+  readonly external?: Record<string, ExternalTypeName>;
 }
 
 // ── Parsed inline markup (produced by markup.ts) ───────────────────────────

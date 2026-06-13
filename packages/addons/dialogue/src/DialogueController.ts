@@ -18,11 +18,13 @@ import { Component, LoggerKey, type Logger } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
-  type Command,
-  type CommandContext,
+  type DialogueBinding,
+  type DialogueHandle,
   type DialogueScript,
   type I18nAdapter,
+  type PlayBindingArgs,
   type PreviewedLine,
+  type VarsOf,
 } from "./core/index.js";
 import type {
   ChromePresenter,
@@ -54,19 +56,15 @@ export interface DialogueBundle {
 
 export interface DialogueControllerOptions extends DialogueBundle {
   readonly i18n?: I18nAdapter | undefined;
-  /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
-  readonly params?: Readonly<Record<string, unknown>> | undefined;
+  /**
+   * Controller-level binding defaults, reused across every `play()` (e.g. global
+   * externals like `() => player.gold`, or a shared `commands` map). The
+   * per-`play()` binding is layered on top — its `state`/`commands` override
+   * these key-by-key, its `fallbackCommand` wins when set.
+   */
+  readonly binding?: DialogueBinding | undefined;
   /** Device → session binding. Omit for the default keyboard binding. */
   readonly input?: InputBinding;
-  /**
-   * Game command handler. Fires in addition to {@link DialogueCommandEvent}.
-   * Return a promise from a `blocking` command to pause the conversation until
-   * it resolves (cinematic sequencing). `ctx.mode` is "play" or "skip".
-   */
-  readonly onCommand?: (
-    command: Command,
-    ctx: CommandContext,
-  ) => void | Promise<void>;
   /** Called once when a conversation ends (in addition to the scene event). */
   readonly onEnded?: () => void;
 }
@@ -101,17 +99,16 @@ export class DialogueController extends Component {
       },
       {
         i18n: this.opts.i18n,
-        params: this.opts.params,
         skipMultiplier: this.opts.skipMultiplier,
         onStarted: (e) => this.entity.emit(DialogueStartedEvent, e),
         onLine: (e) => this.entity.emit(DialogueLineEvent, e),
         onChoiceShown: (e) =>
           this.entity.emit(DialogueChoiceShownEvent, { options: e.options }),
         onChoiceMade: (e) => this.entity.emit(DialogueChoiceMadeEvent, e),
-        onCommand: (command, ctx) => {
-          this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode });
-          return this.opts.onCommand?.(command, ctx);
-        },
+        // Observation only — the binding's `commands` map does the work; this
+        // mirrors every non-built-in command onto the scene event bus.
+        onCommand: (command, ctx) =>
+          this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode }),
         onEnded: (e) => {
           this.entity.emit(DialogueEndedEvent, e);
           this.opts.onEnded?.();
@@ -134,11 +131,16 @@ export class DialogueController extends Component {
     this.opts.avatar?.dispose();
   }
 
-  /** Begin a conversation. `params` merges into the shared interpolation context. */
-  play(
-    script: DialogueScript,
-    params?: Readonly<Record<string, unknown>>,
-  ): void {
+  /**
+   * Begin a conversation. The `binding` (required when the script declares
+   * externals) is layered over the controller-level {@link
+   * DialogueControllerOptions.binding} default. Returns a {@link DialogueHandle}
+   * for live `setVar` / `getVars`, or `undefined` if the controller was removed.
+   */
+  play<S extends DialogueScript>(
+    script: S,
+    ...args: PlayBindingArgs<S>
+  ): DialogueHandle<VarsOf<S>> | undefined {
     // A stale reference calling play() after the component was removed (e.g. a
     // game keeping the controller in an interact closure past
     // `DialogueEndedEvent → host.destroy()`) would run a new conversation into
@@ -149,14 +151,24 @@ export class DialogueController extends Component {
         "DialogueController.play() ignored: the component has been removed/destroyed.",
         { scriptId: script.id },
       );
-      return;
+      return undefined;
     }
     if (!this.session) {
       throw new Error(
         "DialogueController.play() called before the component was added to an entity (onAdd has not run yet).",
       );
     }
-    this.session.play(script, params);
+    const binding = mergeBindings(
+      this.opts.binding,
+      args[0] as DialogueBinding | undefined,
+    );
+    // The merged binding is structurally loose; the session re-validates it
+    // against the script and returns the typed handle.
+    const play = this.session.play.bind(this.session) as (
+      s: DialogueScript,
+      b?: DialogueBinding,
+    ) => DialogueHandle<VarsOf<S>>;
+    return play(script, binding);
   }
 
   isActive(): boolean {
@@ -217,4 +229,19 @@ export class DialogueController extends Component {
     this.session?.update(dt);
     this.binding.poll();
   }
+}
+
+/** Layer a per-`play()` binding over the controller-level default (later wins
+ *  key-by-key; the call-site `fallbackCommand` overrides when present). */
+function mergeBindings(
+  base: DialogueBinding | undefined,
+  over: DialogueBinding | undefined,
+): DialogueBinding {
+  if (!base) return over ?? {};
+  if (!over) return base;
+  return {
+    state: { ...base.state, ...over.state },
+    commands: { ...base.commands, ...over.commands },
+    fallbackCommand: over.fallbackCommand ?? base.fallbackCommand,
+  };
 }

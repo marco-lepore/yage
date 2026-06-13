@@ -348,33 +348,66 @@ describe("DialogueSession — auto-advance clock", () => {
 });
 
 describe("DialogueSession — i18n & interpolation", () => {
-  it("interpolates params into line text and speaker names", () => {
+  it("interpolates externals into line text and speaker names", () => {
     const onLine = vi.fn();
-    const h = makeHarness({ params: { playerName: "Mara" }, onLine });
+    const h = makeHarness({ onLine });
     const hero: SpeakerDef = { id: "hero", name: "{playerName}" };
     const script: DialogueScript = {
       id: "i18n",
       start: "a",
+      external: { playerName: "string" },
       speakers: { hero },
       nodes: {
         a: { id: "a", steps: [{ kind: "say", speaker: "hero", text: "Hi, I am {playerName}" }] },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { state: { playerName: "Mara" } });
     expect(onLine).toHaveBeenCalledWith({ speaker: "Mara", text: "Hi, I am Mara" });
     expect(h.chrome.nameplates.at(-1)).toEqual({ name: "Mara" });
   });
 
-  it("play(params) merges new params into the shared context", () => {
+  it("interpolation reads a live external getter at each present (scenario 3)", async () => {
     const onLine = vi.fn();
-    const h = makeHarness({ params: { a: "1" }, onLine });
+    const h = makeHarness({ onLine });
+    let gold = 5; // the host's game state
     const script: DialogueScript = {
-      id: "merge",
-      start: "n",
-      nodes: { n: { id: "n", steps: [{ kind: "say", text: "{a}-{b}" }] } },
+      id: "live-gold",
+      start: "a",
+      external: { gold: "number" },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "say", text: "You have {gold} gold." },
+            { kind: "say", text: "Now {gold}." },
+          ],
+        },
+      },
     };
-    h.session.play(script, { b: "2" });
-    expect(onLine).toHaveBeenCalledWith({ speaker: undefined, text: "1-2" });
+    h.session.play(script, { state: { gold: () => gold } });
+    expect(onLine).toHaveBeenLastCalledWith({
+      speaker: undefined,
+      text: "You have 5 gold.",
+    });
+    gold = 9; // changes between the two presents
+    h.text.finishReveal();
+    h.session.advance();
+    await flush();
+    // The already-shown line never re-renders; the NEXT line sees the new value.
+    expect(onLine).toHaveBeenLastCalledWith({ speaker: undefined, text: "Now 9." });
+  });
+
+  it("a play() binding overrides a script var default by value", () => {
+    const onLine = vi.fn();
+    const h = makeHarness({ onLine });
+    const script: DialogueScript = {
+      id: "var-override",
+      start: "a",
+      vars: { name: "stranger" },
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "Hi, {name}." }] } },
+    };
+    h.session.play(script, { state: { name: "Mara" } });
+    expect(onLine).toHaveBeenCalledWith({ speaker: undefined, text: "Hi, Mara." });
   });
 });
 
@@ -473,7 +506,7 @@ describe("DialogueSession — choices", () => {
 describe("DialogueSession — commands by timing", () => {
   it("fires `show`-timed commands when the line appears", async () => {
     const onCommand = vi.fn();
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "show-cmd",
       start: "a",
@@ -484,7 +517,7 @@ describe("DialogueSession — commands by timing", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     await Promise.resolve();
     expect(onCommand).toHaveBeenCalledTimes(1);
     expect(onCommand.mock.calls[0]![0]).toMatchObject({ type: "sfx" });
@@ -492,7 +525,7 @@ describe("DialogueSession — commands by timing", () => {
 
   it("defers `afterReveal` commands until the reveal completes", async () => {
     const onCommand = vi.fn();
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "after-cmd",
       start: "a",
@@ -503,7 +536,7 @@ describe("DialogueSession — commands by timing", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     await Promise.resolve();
     expect(onCommand).not.toHaveBeenCalled(); // not yet — still revealing
     h.text.finishReveal();
@@ -513,7 +546,7 @@ describe("DialogueSession — commands by timing", () => {
 
   it("fires `advance`-timed commands as the player leaves the line", async () => {
     const onCommand = vi.fn();
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "advance-cmd",
       start: "a",
@@ -527,7 +560,7 @@ describe("DialogueSession — commands by timing", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     h.text.finishReveal();
     expect(onCommand).not.toHaveBeenCalled();
     h.session.advance();
@@ -542,7 +575,7 @@ describe("DialogueSession — commands by timing", () => {
     let resolveCmd!: () => void;
     const gate = new Promise<void>((r) => (resolveCmd = r));
     const onCommand = vi.fn(() => gate);
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "blocking-line",
       start: "a",
@@ -556,7 +589,7 @@ describe("DialogueSession — commands by timing", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     h.text.finishReveal(); // triggers the blocking afterReveal command
     await Promise.resolve();
     // While blocked, advance is ignored (continue caret not yet shown either).
@@ -573,7 +606,7 @@ describe("DialogueSession — commands by timing", () => {
 
   it("routes a built-in `expression` command straight to the avatar", () => {
     const onCommand = vi.fn();
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "expr",
       start: "a",
@@ -587,9 +620,10 @@ describe("DialogueSession — commands by timing", () => {
         },
       },
     };
-    h.session.play(script);
+    // `expression` is a built-in, so no handler is required for it; the fallback
+    // is wired only to prove it is NOT reached.
+    h.session.play(script, { fallbackCommand: onCommand });
     expect(h.avatar.expressions).toContain("happy");
-    // `expression` is handled internally, not forwarded to the host.
     expect(onCommand).not.toHaveBeenCalled();
   });
 });
@@ -767,7 +801,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
 
   it("an afterReveal batch resolving does not drop the gate of an in-flight blocking show command", async () => {
     const { onCommand, open, gate } = gatedCommand("long");
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "f02",
       start: "a",
@@ -788,7 +822,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     await flush(); // blocking show command now in flight
     h.text.finishReveal(); // afterReveal batch fires and resolves immediately
     await flush();
@@ -804,7 +838,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
 
   it("auto-advance is not consumed while a blocking command gates the line (no soft-lock)", async () => {
     const { onCommand, open, gate } = gatedCommand("long");
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "f03",
       start: "a",
@@ -823,7 +857,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     await flush();
     h.text.finishReveal(); // arms the 50ms auto-timer; show command still blocking
     await flush();
@@ -840,7 +874,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
 
   it("a second advance during a blocking command step does not re-fire the old line's advance commands", async () => {
     const { onCommand, open, gate } = gatedCommand("wait");
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "f04",
       start: "a",
@@ -855,7 +889,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     h.text.finishReveal();
     h.session.advance(); // fires "give", steps into the blocking command step
     await flush();
@@ -871,7 +905,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
 
   it("skip() fires the displayed line's afterReveal + advance batches in skip mode", async () => {
     const onCommand = vi.fn();
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "f05",
       start: "a",
@@ -893,7 +927,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     h.session.skip(); // line one still revealing
     // skip() now awaits the current line's two batches before the runner walk,
     // so the chain is deeper than one flush() covers.
@@ -916,7 +950,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
 
   it("skip() does not re-fire afterReveal commands already fired by the reveal", async () => {
     const onCommand = vi.fn();
-    const h = makeHarness({ onCommand });
+    const h = makeHarness();
     const script: DialogueScript = {
       id: "f05b",
       start: "a",
@@ -930,7 +964,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
         },
       },
     };
-    h.session.play(script);
+    h.session.play(script, { fallbackCommand: onCommand });
     h.text.finishReveal(); // fires "after" normally (play mode)
     await flush();
     h.session.skip();
@@ -967,8 +1001,8 @@ describe("DialogueSession — confirm latch (regressions)", () => {
     const gate = new Promise<void>((r) => (open = r));
     const onCommand = vi.fn((cmd: Command) => (cmd.type === "wait" ? gate : undefined));
     const onChoiceMade = vi.fn();
-    const h = makeHarness({ onCommand, onChoiceMade });
-    h.session.play(blockingChoice);
+    const h = makeHarness({ onChoiceMade });
+    h.session.play(blockingChoice, { fallbackCommand: onCommand });
     h.session.confirm();
     h.session.confirm(); // mash — mode is still "choosing" while "wait" is awaited
     h.session.moveSelection(1); // must not move the (committed) selection
@@ -1062,5 +1096,66 @@ describe("DialogueSession — avatar on choices (regression)", () => {
     await flush();
     expect(h.session.isChoosing()).toBe(true);
     expect(h.avatar.speakers.at(-1)).toBeUndefined();
+  });
+});
+
+describe("DialogueSession — binding handle & play-time validation", () => {
+  it("play() returns a handle that reads and writes dialogue vars", () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "handle",
+      start: "a",
+      vars: { gold: 0 },
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
+    };
+    const handle = h.session.play(script);
+    expect(handle.getVars()).toEqual({ gold: 0 });
+    handle.setVar("gold", 42);
+    expect(handle.getVars()).toEqual({ gold: 42 });
+  });
+
+  it("a stale handle no-ops after the conversation is replaced", () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "stale",
+      start: "a",
+      vars: { n: 1 },
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
+    };
+    const first = h.session.play(script);
+    h.session.play(script); // replaces the conversation → bumps the generation
+    first.setVar("n", 99); // must not touch the live conversation
+    expect(first.getVars()).toEqual({}); // stale → empty snapshot
+  });
+
+  it("rejects a binding missing a declared external", () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "missing-ext",
+      start: "a",
+      external: { gold: "number" },
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold}" }] } },
+    };
+    expect(() => h.session.play(script, { state: {} })).toThrow(
+      /missing required external/,
+    );
+  });
+
+  it("rejects an unhandled (non-built-in) command type", () => {
+    const h = makeHarness();
+    const script: DialogueScript = {
+      id: "unhandled",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "give-item" }] },
+            { kind: "say", text: "x" },
+          ],
+        },
+      },
+    };
+    expect(() => h.session.play(script)).toThrow(/no handler for command type/);
   });
 });

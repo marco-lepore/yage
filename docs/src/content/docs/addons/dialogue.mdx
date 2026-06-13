@@ -101,17 +101,20 @@ on the bubble geometry).
 
 ## Writing a script
 
-A `DialogueScript` is plain data (JSON-able), so you can author it inline, import
-it, or load it from disk. `loadScript()` validates and freezes it and throws a
-`DialogueScriptError` on a bad reference.
+Author scripts with **`defineScript()`** — an identity helper (no runtime cost)
+that captures the script's var/external types so `play()` demands a matching
+binding and hands back a typed handle. A plain `DialogueScript` literal still
+works and is validated identically at runtime; the typing is the only thing you
+give up. Both are JSON-able, so you can also load a script from disk.
 
 ```ts
-import type { DialogueScript } from "@yagejs-addons/dialogue";
+import { defineScript } from "@yagejs-addons/dialogue";
 
-const script: DialogueScript = {
+const script = defineScript({
   id: "intro",
   start: "greeting",
-  vars: { metBefore: false },
+  vars: { rude: false },              // dialogue vars — conversation-local, mutable
+  external: { gold: "number" },        // externals — game state, read-only to the script
   speakers: {
     gwen: { id: "gwen", name: "Gwen", color: 0xffd866 },
   },
@@ -119,7 +122,7 @@ const script: DialogueScript = {
     greeting: {
       id: "greeting",
       steps: [
-        { kind: "say", speaker: "gwen", text: "Hello, [b]traveler[/b]." },
+        { kind: "say", speaker: "gwen", text: "Hello, [b]traveler[/b]. You carry {gold} gold." },
         {
           kind: "choice",
           text: "What do you say?",
@@ -139,8 +142,37 @@ const script: DialogueScript = {
       steps: [{ kind: "say", text: "Safe travels." }, { kind: "end" }],
     },
   },
-};
+});
 ```
+
+### vars vs external
+
+Both share **one lookup namespace** — conditions, `{token}` interpolation, and
+choice gates read across both — but they have different ownership:
+
+| | `vars` | `external` |
+| --- | --- | --- |
+| Lifetime | the conversation (reset fresh each `play()`) | the game |
+| Writable by the script? | yes — `set` / `ctx.setVar` / `handle.setVar` | **no** (read-only; mutate game state via a command) |
+| Declared as | `name: defaultValue` (type inferred) | `name: "string" \| "number" \| "boolean"` |
+| Supplied at `play()` | optional override (by value) | required — a constant or a live getter |
+
+`{gold}` (and any condition on `gold`) resolves **when the line is presented**, so
+an earlier command's effect shows up on a later line. Already-shown lines never
+re-render, and a choice menu's conditions don't live-refresh while it's open.
+
+### Validation
+
+The script is checked in two stages, both throwing hard errors so typos die early
+rather than silently mis-branching:
+
+- **Load-time** (`defineScript` / `loadScript`, no binding needed): every
+  condition `var`, `set` target, and default-locale `{token}` must resolve to a
+  declared `vars`/`external`; `set` targets must be a `var`; numeric comparisons
+  on a non-number operand are rejected. Throws `DialogueScriptError`.
+- **Play-time** (when you call `play`): the binding must provide every external
+  with the right type, and every command type the script uses must have a handler.
+  Throws `DialogueBindingError`.
 
 ### Step kinds
 
@@ -152,9 +184,10 @@ const script: DialogueScript = {
 | `goto`    | Unconditional jump to another node. |
 | `end`     | Ends the conversation. |
 
-A **condition** is a var key (truthy check), a comparison
+A **condition** is a var/external key (truthy check), a comparison
 `{ var, op, value }` (`op` is one of `== != > >= < <= truthy falsy`), or — in
-TypeScript only — a `(vars) => boolean` predicate.
+TypeScript only — a `(vars) => boolean` predicate (it receives the merged
+vars+externals view).
 
 ## Inline markup
 
@@ -181,22 +214,51 @@ mark counts as one character, matching the glyphs the renderer actually draws,
 so reveal timing and `[pause]` positions stay put in any language.
 `splitGraphemes(str)` exposes the same segmentation for tooling.
 
-## Commands — rules in, consequences out
+## Game state: the binding
 
-The runner owns exactly one built-in command: `set`, which writes a branching
-variable. **Every other command** is surfaced to your game — both via an
-`onCommand(command, ctx)` handler and as a `DialogueCommandEvent` — so *the game*
-decides what `give-item` or `play-sfx` actually mean.
+`play(script, binding)` is the single bridge between your game and a conversation
+(it replaces the older `params` + `onCommand` options). The binding is required
+whenever the script declares externals:
 
 ```ts
-host.add(new DialogueController({
-  ...createBoxDialogue(),
-  onCommand(command, ctx) {
-    if (command.type === "give-item") inventory.add(command.id as string);
-    // ctx.mode is "play" or "skip"
+const handle = dlg.play(script, {
+  state: {
+    gold: () => player.gold,   // external getter — read live at present-time
+    rude: false,               // optional: override a var's default by value
   },
-}));
+  commands: {
+    "give-item": (cmd) => inventory.add(cmd.id as string),
+    "skill-check": async (cmd, ctx) => {
+      ctx.setVar("passed", await roll(cmd.stat as string)); // result for THIS conversation
+    },
+  },
+  fallbackCommand: (cmd) => log(cmd), // optional: catch dynamically-typed commands
+});
+
+handle.setVar("rude", true); // poke a dialogue var live (typed to keyof vars)
+handle.getVars();            // read the current dialogue vars (externals excluded)
 ```
+
+- **External getters must be cheap and side-effect-free** — they're called on
+  every condition test and every line/choice presented.
+- **`ctx.setVar(key, value)`** writes a *dialogue var* — the skill-check seam for
+  a result that only matters to this conversation. Writing an external throws
+  (game state is yours to mutate, via a command).
+- A `DialogueController({ binding })` default merges *under* the per-`play()`
+  binding (the call-site wins key-by-key) — handy for globals like
+  `gold: () => player.gold` shared across every conversation.
+
+After the conversation, the **handle** no-ops harmlessly (a stale `setVar` is
+ignored; `getVars` returns an empty snapshot), so you can keep a reference past
+`DialogueEndedEvent` without guarding it.
+
+### Commands — rules in, consequences out
+
+The runner owns one built-in command: `set`, which writes a dialogue var
+(guarded — you can't `set` an external). **Every other command** dispatches to
+your `binding.commands[type]` handler (or `fallbackCommand`) *and* fires a
+`DialogueCommandEvent` for observation — so *the game* decides what `give-item`
+or `play-sfx` actually mean.
 
 - A `say` line's commands fire by timing: `at: "show"` (default), `"afterReveal"`
   (once typed), or `"advance"` (as the player leaves the line).
@@ -204,7 +266,9 @@ host.add(new DialogueController({
   conversation until it resolves — for cinematic sequencing ("wait for the NPC to
   walk off, then continue").
 - `{ type: "expression", value }` is a built-in convenience routed straight to
-  the avatar.
+  the avatar (no handler needed).
+- Every non-built-in command type a script uses must have a handler or a
+  `fallbackCommand`, or `play()` throws — no command silently does nothing.
 
 ## Lifecycle events
 
@@ -313,10 +377,14 @@ and passing it as the `choices` channel.
 ## Save / load
 
 <Aside type="caution" title="Deferred to v1.1">
-Mid-dialogue save/restore is **not supported yet**. Snapshot/restore is not
-built, `@yagejs/save` is **not** a dependency, and the runner's read-only cursor
-getters (`getVars()`, `getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are
-**not reachable** through `DialogueController` / `DialogueSession` today — there
-is no way to capture a conversation cursor from a game. Save outside
-conversations (or replay the script on load) until v1.1 adds the seam.
+Mid-dialogue **cursor** save/restore is **not supported yet**. Snapshot/restore
+is not built, `@yagejs/save` is **not** a dependency, and the runner's positional
+getters (`getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are **not reachable**
+through `DialogueController` / `DialogueSession` — there is no way to capture a
+resumable conversation cursor from a game. (`handle.getVars()` *is* reachable, but
+that's the dialogue-var snapshot, not a cursor.) The binding model makes the
+eventual API purely additive — `handle.getCursor()` returning the mutable var map
+plus `{ nodeId, stepIndex, chosenOnce }`, with externals excluded by construction
+(your own save owns game state). Save outside conversations (or replay the script
+on load) until v1.1 adds the seam.
 </Aside>
