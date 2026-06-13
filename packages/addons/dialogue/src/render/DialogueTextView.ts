@@ -29,22 +29,21 @@
  * scene + a font/layout config so nothing here is game-specific.
  */
 
-import { Transform, type Entity, type Scene } from "@yagejs/core";
+import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { splitGraphemes } from "../core/markup.js";
 import {
   SplitTextComponent,
+  type DisplayContainer,
   type SplitTextComponentOptions,
   type TextStyle,
 } from "@yagejs/renderer";
-import type { Mountable } from "../chrome/DialogueUiAdapter.js";
-import type { PresentedLine, TextChannel } from "../core/session.js";
-import type { ParsedText, RunStyle } from "../core/types.js";
-import { evaluateEffect, effectDrivesTint } from "./textEffects.js";
+import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
+import type { FontConfig } from "../chrome/textOptions.js";
+import type { PresentedLine } from "../core/session.js";
+import type { EffectId, ParsedText, RunStyle } from "../core/types.js";
+import { evaluateEffect, effectDrivesTint, type EffectOutput } from "./textEffects.js";
 
-/** The body-text channel plus the YAGE lifecycle the host drives. */
-export interface TextPresenter extends TextChannel, Mountable {}
-
-export interface DialogueTextConfig {
+export interface DialogueTextConfig extends FontConfig {
   /** Font size in px. */
   readonly size: number;
   /** Vertical advance between wrapped lines, in px. */
@@ -57,22 +56,6 @@ export interface DialogueTextConfig {
   readonly layer: string;
   /** Resting text region (screen px). Bubbles override per line via `setBox`. */
   readonly box?: { readonly x: number; readonly y: number; readonly width: number };
-  /** Use a baked bitmap font of this name. Omit for canvas text. */
-  readonly bitmapFont?: string;
-  /**
-   * Baked bold / italic / bold-italic atlases. Currently UNUSED by the renderer:
-   * swapping a glyph to another atlas shifts it vertically (each atlas has its own
-   * `baseLineOffset`), so bold/italic are synthesised on the regular glyph instead
-   * (skew + double-draw). Kept on the config for callers and a possible future
-   * crisp-atlas path (which would compensate the baseline delta).
-   */
-  readonly bitmapFontBold?: string;
-  readonly bitmapFontItalic?: string;
-  readonly bitmapFontBoldItalic?: string;
-  /** Canvas font family (when not bitmap). */
-  readonly fontFamily?: string;
-  /** Canvas render resolution (when not bitmap; unused by SplitText). */
-  readonly resolution?: number;
 }
 
 /**
@@ -89,21 +72,23 @@ const BOLD_OFFSET = 0.6;
 /** One per-glyph display object from the split (a `Text` or `BitmapText`). */
 type CharNode = SplitTextComponent["chars"][number];
 
-interface CharMeta {
+/** Per-frame animation bookkeeping for one EFFECT-BEARING glyph (static glyphs
+ *  need none — their tint/weight are applied once at build). */
+interface EffectMeta {
   readonly node: CharNode;
+  readonly effect: EffectId;
   /** Resting position within the glyph's own parent (word) — effects offset from this. */
   readonly baseX: number;
   readonly baseY: number;
   /** Horizontal position in the split's own space (effect phase input). */
   readonly splitX: number;
-  readonly style: RunStyle;
 }
 
 interface LineNodes {
   readonly entity: Entity;
   readonly comp: SplitTextComponent;
   readonly chars: CharNode[];
-  readonly metas: CharMeta[];
+  readonly effectMetas: EffectMeta[];
 }
 
 export class DialogueTextView implements TextPresenter {
@@ -133,6 +118,8 @@ export class DialogueTextView implements TextPresenter {
   private lineSpeed = 1;
   private done = false;
   private completed = false;
+  /** Scratch for {@link evaluateEffect} — one object reused across all glyphs. */
+  private readonly effectScratch: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined };
 
   /** Fired once when the whole line finishes revealing. */
   onRevealComplete?: () => void;
@@ -184,10 +171,6 @@ export class DialogueTextView implements TextPresenter {
 
   isRevealing(): boolean {
     return !this.done;
-  }
-
-  isDone(): boolean {
-    return this.done;
   }
 
   /** Build the split for a parsed line and start revealing. */
@@ -288,24 +271,27 @@ export class DialogueTextView implements TextPresenter {
     // One run-style per non-space glyph, in reading order (1:1 with `chars`).
     const styles = this.buildRevealTables(parsed);
 
-    const metas: CharMeta[] = chars.map((node, i) => {
+    // Static styling is applied once here; only effect-bearing glyphs need
+    // per-frame bookkeeping, so reposition() never touches the rest.
+    const effectMetas: EffectMeta[] = [];
+    chars.forEach((node, i) => {
       const style = styles[i] ?? {};
-      const sp = localInSplit(node, root);
-      const meta: CharMeta = {
-        node,
-        baseX: node.position.x,
-        baseY: node.position.y,
-        splitX: sp.x,
-        style,
-      };
       // Colour rides per-glyph `tint` (base fill is white); independent per glyph.
       node.tint = style.color ?? this.cfg.defaultColor;
       node.visible = false;
       this.applyWeight(node, style);
-      return meta;
+      if (style.effect) {
+        effectMetas.push({
+          node,
+          effect: style.effect,
+          baseX: node.position.x,
+          baseY: node.position.y,
+          splitX: localInSplit(node, root).x,
+        });
+      }
     });
 
-    this.line = { entity, comp, chars, metas };
+    this.line = { entity, comp, chars, effectMetas };
   }
 
   /**
@@ -350,11 +336,16 @@ export class DialogueTextView implements TextPresenter {
     if (this.cfg.bitmapFont) {
       if (style.italic) node.skew.x = ITALIC_SKEW;
       if (style.bold) {
-        const Ctor = node.constructor as new (o: { text: string; style: unknown }) => CharNode;
-        const dup = new Ctor({ text: (node as unknown as { text: string }).text, style: node.style });
+        // Same class as the glyph (Text or BitmapText) without importing pixi
+        // values — `constructor` is typed `Function`, so one cast is needed.
+        const Ctor = node.constructor as new (o: {
+          text: string;
+          style: CharNode["style"];
+        }) => CharNode;
+        const dup = new Ctor({ text: node.text, style: node.style });
         dup.position.set(BOLD_OFFSET, 0);
         dup.tint = 0xffffff; // the real colour comes from the parent glyph's tint (cascades)
-        (node as unknown as { addChild(child: CharNode): void }).addChild(dup);
+        node.addChild(dup);
       }
       return;
     }
@@ -371,32 +362,38 @@ export class DialogueTextView implements TextPresenter {
 
   private applyReveal(): void {
     if (!this.line) return;
-    const cursor = clamp(Math.floor(this.revealed), 0, this.nonSpacePrefix.length - 1);
+    const cursor = MathUtils.clamp(Math.floor(this.revealed), 0, this.nonSpacePrefix.length - 1);
     const shown = this.nonSpacePrefix[cursor]!;
     if (shown === this.shownCount) return;
-    this.shownCount = shown;
+    // Toggle only the glyphs whose visibility changed since the last step —
+    // buildLine hides every glyph, so the initial -1 state equals "0 shown".
+    const prev = this.shownCount < 0 ? 0 : this.shownCount;
     const chars = this.line.chars;
-    for (let i = 0; i < chars.length; i++) chars[i]!.visible = i < shown;
+    const lo = Math.min(prev, shown);
+    const hi = Math.max(prev, shown);
+    for (let i = lo; i < hi; i++) chars[i]!.visible = i < shown;
+    this.shownCount = shown;
   }
 
   /**
    * Per-frame placement: follow a moving origin (bubble mode) by moving the
    * split container's `Transform` — every glyph inherits it — then apply
    * per-glyph animated effects on top, in the glyph's own (parent) space.
+   * Only effect-bearing glyphs are walked; a static pinned line costs nothing.
    */
   private reposition(): void {
-    if (!this.line) return;
+    const line = this.line;
+    if (!line) return;
     if (this.originProvider) {
       const o = this.originProvider();
-      this.line.entity.get(Transform).setPosition(o.x, o.y);
+      line.entity.get(Transform).setPosition(o.x, o.y);
     }
-    for (const m of this.line.metas) {
-      const effect = m.style.effect;
-      if (!effect || m.node.visible === false) continue;
-      const out = evaluateEffect(effect, this.elapsedMs, m.splitX);
+    for (const m of line.effectMetas) {
+      if (!m.node.visible) continue;
+      const out = evaluateEffect(m.effect, this.elapsedMs, m.splitX, this.effectScratch);
       m.node.position.set(m.baseX + out.dx, m.baseY + out.dy);
       if (out.scale !== 1) m.node.scale.set(out.scale, out.scale);
-      if (effectDrivesTint(effect) && out.tint !== undefined) m.node.tint = out.tint;
+      if (effectDrivesTint(m.effect) && out.tint !== undefined) m.node.tint = out.tint;
     }
   }
 
@@ -464,16 +461,11 @@ export class DialogueTextView implements TextPresenter {
 function localInSplit(node: CharNode, root: unknown): { x: number; y: number } {
   let x = 0;
   let y = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let n: any = node;
+  let n: DisplayContainer | undefined = node;
   while (n && n !== root) {
     x += n.position.x;
     y += n.position.y;
-    n = n.parent;
+    n = n.parent ?? undefined;
   }
   return { x, y };
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
 }

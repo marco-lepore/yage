@@ -28,6 +28,7 @@ import {
   Engine,
   Scene,
   Component,
+  MathUtils,
   Transform,
   Vec2,
   type Entity,
@@ -204,10 +205,6 @@ const GOSSIP: DialogueScript = {
 
 // ── world entities (all Graphics, no assets) ─────────────────────────────────
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
-
 /** WASD/arrow movement, clamped to the room; idles while a conversation owns
  *  input (you can still walk while merely eavesdropping). */
 class PlayerMover extends Component {
@@ -227,8 +224,8 @@ class PlayerMover extends Component {
     const step = (PLAYER_SPEED * dt) / 1000;
     const p = this.transform.position;
     this.transform.setPosition(
-      clamp(p.x + (dx / len) * step, BOUNDS.minX, BOUNDS.maxX),
-      clamp(p.y + (dy / len) * step, BOUNDS.minY, BOUNDS.maxY),
+      MathUtils.clamp(p.x + (dx / len) * step, BOUNDS.minX, BOUNDS.maxX),
+      MathUtils.clamp(p.y + (dy / len) * step, BOUNDS.minY, BOUNDS.maxY),
     );
   }
 }
@@ -339,6 +336,11 @@ class Hud extends Component {
   private auto = false;
   private autoLabel!: TextComponent;
   private meter!: GraphicsComponent;
+  /** Last-drawn meter state — redraw only on change (idle frames skip the
+   *  Graphics clear+refill entirely). */
+  private meterFf = false;
+  private meterSkipHeld = false;
+  private meterSkipT = -1;
 
   /** Set by the scene once the controller exists (toggled by the V key). */
   onAutoToggle?: (on: boolean) => void;
@@ -376,8 +378,14 @@ class Hud extends Component {
     // Bottom-centre meter: fast-forward glyph while J held; skip ring while X held.
     const ff = this.input.isPressed("attack");
     const skipHeld = this.input.isPressed("skip");
-    const skipT = clamp(this.input.getHoldDuration("skip") / SKIP_HOLD_MS, 0, 1);
-    this.meter.graphics.clear(); // redrawn every frame — don't accumulate
+    const skipT = MathUtils.clamp(this.input.getHoldDuration("skip") / SKIP_HOLD_MS, 0, 1);
+    if (ff === this.meterFf && skipHeld === this.meterSkipHeld && skipT === this.meterSkipT) {
+      return;
+    }
+    this.meterFf = ff;
+    this.meterSkipHeld = skipHeld;
+    this.meterSkipT = skipT;
+    this.meter.graphics.clear(); // redrawn on change — don't accumulate
     this.meter.draw((g) => {
       if (ff) {
         g.poly([-9, -7, 0, 0, -9, 7]).fill({ color: 0xffffff, alpha: 0.9 });

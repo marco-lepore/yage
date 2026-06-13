@@ -7,26 +7,19 @@
  * and reports pointer commits back through {@link ChoiceChannel.onChoiceChosen}.
  */
 
-import { Transform, type Entity, type Scene } from "@yagejs/core";
-import {
-  GraphicsComponent,
-  TextComponent,
-  type TextComponentOptions,
-  type TextStyle,
-} from "@yagejs/renderer";
+import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
+import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
-export interface ChoiceListConfig {
+export interface ChoiceListConfig extends FontConfig {
   readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly padding: number;
   readonly choiceSize: number;
   readonly choiceColor: number;
   readonly choiceSelectedColor: number;
   readonly highlightColor: number;
-  readonly bitmapFont?: string | undefined;
-  readonly fontFamily?: string | undefined;
-  readonly resolution?: number | undefined;
   /** Selection highlight bar. */
   readonly layerFrame: string;
   /** Choice labels (drawn above the frame layer). */
@@ -71,7 +64,9 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
       const entity = this.scene!.spawn("dlg-choice");
       entity.add(new Transform()).setPosition(box.x + cfg.padding + 6, y);
       const comp = entity.add(
-        new TextComponent(this.textOptions(choice.label, cfg.choiceColor)),
+        new TextComponent(
+          makeTextOptions(cfg, choice.label, cfg.choiceSize, cfg.choiceColor, cfg.layerText),
+        ),
       );
       comp.text.visible = true;
       this.rows.push({ entity, comp });
@@ -112,7 +107,7 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
 
   private highlightAt(position: number): void {
     if (this.rows.length === 0) return;
-    this.selected = Math.max(0, Math.min(this.rows.length - 1, position));
+    this.selected = MathUtils.clamp(position, 0, this.rows.length - 1);
     this.rows.forEach((row, i) => {
       row.comp.text.style.fill =
         i === this.selected ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
@@ -135,20 +130,4 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
     });
   }
 
-  private styleFor(color: number): TextStyle {
-    const style: TextStyle = { fontSize: this.cfg.choiceSize, fill: color };
-    if (this.cfg.fontFamily) style.fontFamily = this.cfg.fontFamily;
-    return style;
-  }
-
-  private textOptions(text: string, color: number): TextComponentOptions {
-    // Colour via `style.fill`; the bitmap font name lives in `style.fontFamily`.
-    const style = this.styleFor(color);
-    if (this.cfg.bitmapFont) style.fontFamily = this.cfg.bitmapFont;
-    const base: TextComponentOptions = { text, style, layer: this.cfg.layerText, anchor: { x: 0, y: 0 } };
-    if (this.cfg.bitmapFont) base.bitmap = true;
-    // `exactOptionalPropertyTypes` rejects `resolution: undefined`; omit when unset.
-    else if (this.cfg.resolution !== undefined) base.resolution = this.cfg.resolution;
-    return base;
-  }
 }

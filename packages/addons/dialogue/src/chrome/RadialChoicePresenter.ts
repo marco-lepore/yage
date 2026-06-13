@@ -9,26 +9,19 @@
  * `./presenters` subpath; it is not part of the default factory bundles.
  */
 
-import { Transform, type Entity, type Scene } from "@yagejs/core";
-import {
-  GraphicsComponent,
-  TextComponent,
-  type TextComponentOptions,
-  type TextStyle,
-} from "@yagejs/renderer";
+import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
+import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
-export interface RadialChoiceConfig {
+export interface RadialChoiceConfig extends FontConfig {
   readonly center: { readonly x: number; readonly y: number };
   readonly radius: number;
   readonly choiceColor: number;
   readonly choiceSelectedColor: number;
   readonly hubColor: number;
   readonly size: number;
-  readonly bitmapFont?: string | undefined;
-  readonly fontFamily?: string | undefined;
-  readonly resolution?: number | undefined;
   readonly layerFrame: string;
   readonly layerText: string;
 }
@@ -71,7 +64,16 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
       const entity = this.scene!.spawn("dlg-radial");
       entity.add(new Transform()).setPosition(x, y);
       const comp = entity.add(
-        new TextComponent(this.textOptions(choice.label, this.cfg.choiceColor)),
+        new TextComponent(
+          makeTextOptions(
+            this.cfg,
+            choice.label,
+            this.cfg.size,
+            this.cfg.choiceColor,
+            this.cfg.layerText,
+            { x: 0.5, y: 0.5 },
+          ),
+        ),
       );
       comp.text.visible = true;
       this.spokes.push({ entity, comp, x, y });
@@ -81,7 +83,7 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
 
   highlight(position: number): void {
     if (this.spokes.length === 0) return;
-    this.selected = Math.max(0, Math.min(this.spokes.length - 1, position));
+    this.selected = MathUtils.clamp(position, 0, this.spokes.length - 1);
     this.spokes.forEach((s, i) => {
       const on = i === this.selected;
       s.comp.text.style.fill = on ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
@@ -128,16 +130,5 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
       }
       g.circle(c.x, c.y, 4).fill({ color: this.cfg.hubColor, alpha: 1 });
     });
-  }
-
-  private textOptions(text: string, color: number): TextComponentOptions {
-    const style: TextStyle = { fontSize: this.cfg.size, fill: color };
-    if (this.cfg.bitmapFont) style.fontFamily = this.cfg.bitmapFont;
-    else if (this.cfg.fontFamily) style.fontFamily = this.cfg.fontFamily;
-    const base: TextComponentOptions = { text, style, layer: this.cfg.layerText, anchor: { x: 0.5, y: 0.5 } };
-    if (this.cfg.bitmapFont) base.bitmap = true;
-    // `exactOptionalPropertyTypes` rejects `resolution: undefined`; omit when unset.
-    else if (this.cfg.resolution !== undefined) base.resolution = this.cfg.resolution;
-    return base;
   }
 }

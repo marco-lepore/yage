@@ -28,6 +28,6 @@ export function createMixedDialogue(
     text: new CompositeTextPresenter(box.text, bubble.text),
     chrome: new CompositeChrome(box.chrome, bubble.chrome),
     choices: new CompositeChoicePresenter(box.choices, bubble.choices),
-    ...(theme.skipMultiplier !== undefined ? { skipMultiplier: theme.skipMultiplier } : {}),
+    skipMultiplier: theme.skipMultiplier,
   };
 }

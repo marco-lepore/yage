@@ -19,25 +19,10 @@ import { DialogueTextView } from "../render/DialogueTextView.js";
 import type { DialogueBundle } from "../DialogueController.js";
 import type { DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
-import { compact } from "./compact.js";
+import { themeFonts } from "./themeFonts.js";
 
 export function createBoxDialogue(theme: DialogueTheme = defaultTheme()): DialogueBundle {
-  // Optional font fields are `T | undefined` on the theme but `?: T` on the
-  // presenter configs; `compact` drops the undefined keys so they satisfy the
-  // stricter config types under exactOptionalPropertyTypes.
-  const fonts = compact({
-    bitmapFont: theme.bitmapFont,
-    fontFamily: theme.fontFamily,
-    resolution: theme.resolution,
-  });
-  const textFonts = compact({
-    bitmapFont: theme.bitmapFont,
-    bitmapFontBold: theme.bitmapFontBold,
-    bitmapFontItalic: theme.bitmapFontItalic,
-    bitmapFontBoldItalic: theme.bitmapFontBoldItalic,
-    fontFamily: theme.fontFamily,
-    resolution: theme.resolution,
-  });
+  const fonts = themeFonts(theme);
 
   const chrome = new DialogueChrome({
     box: theme.box,
@@ -78,13 +63,8 @@ export function createBoxDialogue(theme: DialogueTheme = defaultTheme()): Dialog
       y: theme.box.y + theme.padding + theme.nameSize + 4,
       width: theme.box.width - 2 * theme.padding,
     },
-    ...textFonts,
+    ...fonts,
   });
 
-  return {
-    chrome,
-    text,
-    choices,
-    ...(theme.skipMultiplier !== undefined ? { skipMultiplier: theme.skipMultiplier } : {}),
-  };
+  return { chrome, text, choices, skipMultiplier: theme.skipMultiplier };
 }
