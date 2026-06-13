@@ -98,38 +98,38 @@ export class KeyboardInputBinding implements InputBinding {
   poll(): void {
     const { input, session } = this;
     if (!input || !session) return;
-    session.setFastForward(this.held(this.actions.speed));
-    this.pollSkip(session);
-    if (this.justPressed(this.actions.advance)) session.advance();
-    if (this.justPressed(this.actions.up)) session.moveSelection(-1);
-    else if (this.justPressed(this.actions.down)) session.moveSelection(1);
+    session.setFastForward(held(input, this.actions.speed));
+    this.pollSkip(input, session);
+    if (justPressed(input, this.actions.advance)) session.advance();
+    if (justPressed(input, this.actions.up)) session.moveSelection(-1);
+    else if (justPressed(input, this.actions.down)) session.moveSelection(1);
   }
 
   /** Fire skip once the action has been held `skipHoldMs` (hold-to-confirm),
    *  re-arming only after it's released. */
-  private pollSkip(session: DialogueSession): void {
+  private pollSkip(input: InputManager, session: DialogueSession): void {
     const skip = this.actions.skip;
     if (!skip) return;
     const ready = skip.some(
-      (a) => this.input!.isPressed(a) && this.input!.isHeldFor(a, this.skipHoldMs),
+      (a) => input.isPressed(a) && input.isHeldFor(a, this.skipHoldMs),
     );
     if (ready) {
       if (!this.skipFired) {
         session.skip();
         this.skipFired = true;
       }
-    } else if (!this.held(skip)) {
+    } else if (!held(input, skip)) {
       this.skipFired = false;
     }
   }
+}
 
-  private justPressed(actions: readonly string[]): boolean {
-    return actions.some((a) => this.input!.isJustPressed(a));
-  }
+function justPressed(input: InputManager, actions: readonly string[]): boolean {
+  return actions.some((a) => input.isJustPressed(a));
+}
 
-  private held(actions: readonly string[]): boolean {
-    return actions.some((a) => this.input!.isPressed(a));
-  }
+function held(input: InputManager, actions: readonly string[]): boolean {
+  return actions.some((a) => input.isPressed(a));
 }
 
 /**
@@ -150,6 +150,14 @@ export class PointerInputBinding implements InputBinding {
   // undefined argument under `exactOptionalPropertyTypes`.
   private readonly choices: PointerChoiceTarget | undefined;
 
+  /** Pointer position at the last hover hit-test, so an unmoved pointer
+   *  doesn't re-run the hit-test every frame. */
+  private lastX = Number.NaN;
+  private lastY = Number.NaN;
+  /** Whether the previous poll saw a choice up (a fresh choice set must be
+   *  hit-tested even under a stationary pointer). */
+  private wasChoosing = false;
+
   constructor(choices?: PointerChoiceTarget) {
     this.choices = choices;
   }
@@ -167,28 +175,36 @@ export class PointerInputBinding implements InputBinding {
   }
 
   /** Pointer position in the choice presenter's coordinate space. */
-  private pointer(): { x: number; y: number } {
+  private pointer(input: InputManager): { x: number; y: number } {
     return this.choices?.pointerSpace === "world"
-      ? this.input!.getPointerPosition()
-      : this.input!.getPointerScreenPosition();
+      ? input.getPointerPosition()
+      : input.getPointerScreenPosition();
   }
 
   poll(): void {
     const { input, session } = this;
     if (!input || !session) return;
 
-    // Hover-highlight the choice under the pointer.
-    if (session.isChoosing() && this.choices?.choiceAtPoint) {
-      const p = this.pointer();
-      const hovered = this.choices.choiceAtPoint(p.x, p.y);
-      if (hovered !== undefined) session.selectAt(hovered);
+    // Hover-highlight the choice under the pointer. Hit-test only when the
+    // result could have changed: the pointer moved (world coords also move
+    // with the camera), or a choice set just came up under a still pointer.
+    const choosing = session.isChoosing();
+    if (choosing && this.choices?.choiceAtPoint) {
+      const p = this.pointer(input);
+      if (!this.wasChoosing || p.x !== this.lastX || p.y !== this.lastY) {
+        this.lastX = p.x;
+        this.lastY = p.y;
+        const hovered = this.choices.choiceAtPoint(p.x, p.y);
+        if (hovered !== undefined) session.selectAt(hovered);
+      }
     }
+    this.wasChoosing = choosing;
 
     const clicked = this.clicked;
     this.clicked = false;
     if (!clicked) return;
-    if (session.isChoosing()) {
-      const p = this.pointer();
+    if (choosing) {
+      const p = this.pointer(input);
       const hit = this.choices?.choiceAtPoint?.(p.x, p.y);
       if (hit !== undefined) {
         session.selectAt(hit);

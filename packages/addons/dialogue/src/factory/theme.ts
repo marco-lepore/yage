@@ -9,9 +9,8 @@
  * (Graphics chrome + canvas text, no `bitmapFont*`), so the factories work with
  * no caller-supplied theme.
  *
- * Bitmap fonts (`bitmapFont*`, baked via `bakeBitmapFont` variant atlases) are
- * an OPT-IN crisp-pixel path. Textured nine-slice chrome ({@link TexturedChrome}
- * / {@link TexturedBubble}) is a separate opt-in re-theming path driven by the
+ * Bitmap fonts (`bitmapFont`) are an OPT-IN crisp-pixel path. Textured
+ * nine-slice chrome is a separate opt-in re-theming path driven by the
  * {@link textured} field.
  */
 
@@ -56,16 +55,15 @@ export interface DialogueTheme {
   readonly choiceSelectedColor: number;
   readonly highlightColor: number;
 
-  // --- Fonts (omit the bitmap fields for canvas text) ---
+  // --- Fonts (omit the bitmap field for canvas text) ---
   /**
    * Baked bitmap-font name (OPT-IN). Omit for canvas text. When set, the
    * presenters render with the crisp pixel atlas instead of canvas SplitText.
+   * Bold/italic are synthesised on the regular atlas (skew + double-draw);
+   * variant-atlas fields will return if a baseline-compensating crisp path
+   * lands in the renderer.
    */
   readonly bitmapFont?: string;
-  /** Baked bold / italic / bold-italic atlas names (OPT-IN). */
-  readonly bitmapFontBold?: string;
-  readonly bitmapFontItalic?: string;
-  readonly bitmapFontBoldItalic?: string;
   /** Canvas font family (used when {@link bitmapFont} is omitted). */
   readonly fontFamily?: string;
   /** Canvas render resolution (used when not bitmap). */
@@ -81,33 +79,13 @@ export interface DialogueTheme {
   /** Hold-to-fast-forward multiplier. Default 4 (applied by the session). */
   readonly skipMultiplier?: number;
 
-  // --- Optional avatar styling ---
-  readonly portrait?: PortraitTheme;
-
   /**
-   * Optional textured-chrome styling (OPT-IN). When present, the textured
-   * presenter variants ({@link TexturedChrome} / {@link TexturedBubble}) can
-   * render a nine-slice frame instead of the Graphics chrome. The Graphics
-   * fields above remain the fallback / default path.
+   * Optional textured-chrome styling (OPT-IN). NOT consumed yet: the planned
+   * nine-slice branch in the Graphics chromes (Design C, D1) will render the
+   * frame/bubble from these textures. The Graphics fields above remain the
+   * fallback / default path.
    */
   readonly textured?: TexturedTheme;
-}
-
-/**
- * PortraitTheme — optional avatar styling. Textures are referenced by
- * {@link TextureInput} (string key or Texture) so themes stay serializable.
- */
-export interface PortraitTheme {
-  /** Default portrait texture (overridden per-actor). */
-  readonly texture?: TextureInput;
-  /** Portrait box size in pixels. */
-  readonly size?: number;
-  /** Padding inside the portrait frame. */
-  readonly padding?: number;
-  /** Border colour (hex). */
-  readonly borderColor?: number;
-  /** Border thickness in pixels. */
-  readonly borderWidth?: number;
 }
 
 /**

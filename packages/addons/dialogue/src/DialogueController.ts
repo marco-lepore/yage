@@ -40,20 +40,22 @@ import {
   DialogueStartedEvent,
 } from "./events.js";
 
-/** The presenter trio a factory assembles (see `createBoxDialogue`). */
+/** The presenter trio a factory assembles (see `createBoxDialogue`).
+ *  Optional fields are `T | undefined` so factories and games can assign
+ *  possibly-undefined theme values directly (exactOptionalPropertyTypes). */
 export interface DialogueBundle {
   readonly chrome: ChromePresenter;
   readonly text: TextPresenter;
   readonly choices: ChoicePresenter;
-  readonly avatar?: AvatarPresenter;
+  readonly avatar?: AvatarPresenter | undefined;
   /** Hold-to-fast-forward multiplier. Default 4. */
-  readonly skipMultiplier?: number;
+  readonly skipMultiplier?: number | undefined;
 }
 
 export interface DialogueControllerOptions extends DialogueBundle {
-  readonly i18n?: I18nAdapter;
+  readonly i18n?: I18nAdapter | undefined;
   /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
-  readonly params?: Readonly<Record<string, unknown>>;
+  readonly params?: Readonly<Record<string, unknown>> | undefined;
   /** Device → session binding. Omit for the default keyboard binding. */
   readonly input?: InputBinding;
   /**
@@ -94,19 +96,13 @@ export class DialogueController extends Component {
       {
         text: this.opts.text,
         choices: this.opts.choices,
-        // Only include `avatar` when present — `exactOptionalPropertyTypes`
-        // rejects an explicit `undefined` for the optional channel.
-        ...(this.opts.avatar ? { avatar: this.opts.avatar } : {}),
+        avatar: this.opts.avatar,
         chrome: this.opts.chrome,
       },
       {
-        // Conditionally include the optional knobs so we never assign `undefined`
-        // to a `?:`-optional option (exactOptionalPropertyTypes).
-        ...(this.opts.i18n !== undefined ? { i18n: this.opts.i18n } : {}),
-        ...(this.opts.params !== undefined ? { params: this.opts.params } : {}),
-        ...(this.opts.skipMultiplier !== undefined
-          ? { skipMultiplier: this.opts.skipMultiplier }
-          : {}),
+        i18n: this.opts.i18n,
+        params: this.opts.params,
+        skipMultiplier: this.opts.skipMultiplier,
         onStarted: (e) => this.entity.emit(DialogueStartedEvent, e),
         onLine: (e) => this.entity.emit(DialogueLineEvent, e),
         onChoiceShown: (e) =>

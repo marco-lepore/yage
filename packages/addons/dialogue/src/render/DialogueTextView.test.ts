@@ -125,6 +125,50 @@ describe("splitGraphemes ↔ pixi SplitText parity", () => {
   });
 });
 
+describe("DialogueTextView — delta reveal (F16)", () => {
+  /** A fake glyph node that counts `visible` writes. */
+  function instrumentedChar(counter: { writes: number }): { visible: boolean } {
+    let v = false;
+    return {
+      get visible() {
+        return v;
+      },
+      set visible(next: boolean) {
+        v = next;
+        counter.writes++;
+      },
+    };
+  }
+
+  it("toggles only the [prevShown, shown) range per step; skipToEnd reveals the rest", () => {
+    const view = new DialogueTextView(CFG);
+    const parsed = parseMarkup("abcdef");
+    view.show(parsed); // unmounted: no real glyph tree is built
+    const internals = view as unknown as {
+      buildRevealTables(p: ParsedText): RunStyle[];
+      line: unknown;
+    };
+    // Fabricate the line the (skipped) buildLine would have produced, with
+    // instrumented chars so each visibility write is counted.
+    internals.buildRevealTables(parsed);
+    const counter = { writes: 0 };
+    const chars = Array.from({ length: 6 }, () => instrumentedChar(counter));
+    internals.line = { entity: undefined, comp: undefined, chars, effectMetas: [] };
+
+    view.update(2); // 1000 graphemes/s → 2 shown; writes [0, 2)
+    expect(chars.map((c) => c.visible)).toEqual([true, true, false, false, false, false]);
+    expect(counter.writes).toBe(2);
+
+    view.update(2); // 4 shown; writes only the delta [2, 4)
+    expect(chars.map((c) => c.visible)).toEqual([true, true, true, true, false, false]);
+    expect(counter.writes).toBe(4);
+
+    view.skipToEnd(); // writes only [4, 6)
+    expect(chars.every((c) => c.visible)).toBe(true);
+    expect(counter.writes).toBe(6);
+  });
+});
+
 describe("DialogueTextView — origin provider retention (F17)", () => {
   it("clear() drops the origin closure; the per-line reset keeps it", () => {
     const view = new DialogueTextView(CFG);

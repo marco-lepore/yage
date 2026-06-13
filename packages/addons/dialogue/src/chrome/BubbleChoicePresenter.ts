@@ -10,18 +10,18 @@
  * the panel is placed once on `present` rather than followed each frame.
  */
 
-import { Transform, type Entity, type Scene } from "@yagejs/core";
+import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import {
   GraphicsComponent,
   TextComponent,
   type TextComponentOptions,
-  type TextStyle,
 } from "@yagejs/renderer";
 import { actorRegistryFor } from "../actor/index.js";
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
-export interface BubbleChoiceConfig {
+export interface BubbleChoiceConfig extends FontConfig {
   /** World-space render layer (same as the bubble). */
   readonly layer: string;
   readonly width: number;
@@ -39,9 +39,6 @@ export interface BubbleChoiceConfig {
   readonly bgAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
-  readonly bitmapFont?: string | undefined;
-  readonly fontFamily?: string | undefined;
-  readonly resolution?: number | undefined;
 }
 
 interface Row {
@@ -140,7 +137,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
 
   highlight(position: number): void {
     if (this.rows.length === 0) return;
-    this.selected = Math.max(0, Math.min(this.rows.length - 1, position));
+    this.selected = MathUtils.clamp(position, 0, this.rows.length - 1);
     this.rows.forEach((row, i) => {
       row.comp.text.style.fill = i === this.selected ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
     });
@@ -201,17 +198,11 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   }
 
   private textOptions(text: string, color: number, wrapWidth?: number): TextComponentOptions {
-    const style: TextStyle = { fontSize: this.cfg.choiceSize, fill: color };
-    if (this.cfg.bitmapFont) style.fontFamily = this.cfg.bitmapFont;
-    else if (this.cfg.fontFamily) style.fontFamily = this.cfg.fontFamily;
+    const opts = makeTextOptions(this.cfg, text, this.cfg.choiceSize, color, this.cfg.layer);
     if (wrapWidth != null) {
-      style.wordWrap = true;
-      style.wordWrapWidth = wrapWidth;
+      opts.style.wordWrap = true;
+      opts.style.wordWrapWidth = wrapWidth;
     }
-    const base: TextComponentOptions = { text, style, layer: this.cfg.layer, anchor: { x: 0, y: 0 } };
-    if (this.cfg.bitmapFont) base.bitmap = true;
-    // `exactOptionalPropertyTypes` rejects `resolution: undefined`; omit when unset.
-    else if (this.cfg.resolution !== undefined) base.resolution = this.cfg.resolution;
-    return base;
+    return opts;
   }
 }

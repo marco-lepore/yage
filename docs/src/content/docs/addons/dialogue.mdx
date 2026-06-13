@@ -290,19 +290,15 @@ createBoxDialogue(theme);
     effects. Set `fontFamily` to choose the canvas font. No bundled files.
   </TabItem>
   <TabItem label="Bitmap fonts (opt-in)">
-    Set `bitmapFont` (plus `bitmapFontBold` / `bitmapFontItalic` /
-    `bitmapFontBoldItalic`, baked via `bakeBitmapFont` variant atlases) for a
-    crisp pixel-font look. Not the default.
+    Set `bitmapFont` (baked via `installBitmapFont`) for a crisp pixel-font
+    look. Bold/italic are synthesised on the regular atlas (skew +
+    double-draw), so no variant atlases are needed. Not the default.
   </TabItem>
-  <TabItem label="Textured nine-slice (opt-in, manual)">
-    `TexturedChrome` / `TexturedBubble` ship under `./presenters`, drawing a
-    stretchable nine-slice frame from your texture (via `@yagejs/renderer`'s
-    `createNineSlice` primitive — no direct pixi or `@yagejs/ui` dependency).
-    No factory wires them up yet (the `theme.textured` field exists but is not
-    consumed) — construct one yourself and override the bundle's chrome:
-    `{ ...createBoxDialogue(theme), chrome: new TexturedChrome(cfg) }`. Note
-    that `TexturedBubble` is currently fixed-size — it does not grow to its
-    text the way the Graphics bubble does.
+  <TabItem label="Textured nine-slice (planned)">
+    The `theme.textured` field (a nine-slice texture + insets) is declared but
+    **not consumed by anything yet** — a nine-slice branch in the Graphics
+    chromes is planned. Until it lands, the drawn Graphics frame is the only
+    chrome.
   </TabItem>
 </Tabs>
 

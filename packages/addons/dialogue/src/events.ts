@@ -10,7 +10,7 @@ import type { Command, RunMode } from "./core/types.js";
 export const DialogueStartedEvent = defineEvent<{ scriptId: string }>("dialogue:started");
 
 export const DialogueLineEvent = defineEvent<{
-  speaker?: string;
+  speaker?: string | undefined;
   /** Plain (markup-stripped) text — handy for logs, a11y, history. */
   text: string;
 }>("dialogue:line");

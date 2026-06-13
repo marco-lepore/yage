@@ -8,15 +8,12 @@
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import {
-  GraphicsComponent,
-  TextComponent,
-  type TextComponentOptions,
-  type TextStyle,
-} from "@yagejs/renderer";
+import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
+import { caretAlpha, drawCaret } from "./caret.js";
 import type { ChromePresenter } from "./DialogueUiAdapter.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
-export interface DialogueChromeConfig {
+export interface DialogueChromeConfig extends FontConfig {
   readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly padding: number;
   readonly frameColor: number;
@@ -26,9 +23,6 @@ export interface DialogueChromeConfig {
   readonly nameColor: number;
   readonly nameSize: number;
   readonly indicatorColor: number;
-  readonly bitmapFont?: string | undefined;
-  readonly fontFamily?: string | undefined;
-  readonly resolution?: number | undefined;
   /** Frame + continue indicator. */
   readonly layerFrame: string;
   /** Name plate (drawn above the frame layer). */
@@ -40,7 +34,6 @@ export class DialogueChrome implements ChromePresenter {
   private frameGfx?: GraphicsComponent | undefined;
   private name?: { entity: Entity; comp: TextComponent } | undefined;
   private indicator?: { entity: Entity; gfx: GraphicsComponent } | undefined;
-  private indicatorVisible = false;
   private indicatorTime = 0;
 
   constructor(private readonly cfg: DialogueChromeConfig) {}
@@ -66,19 +59,17 @@ export class DialogueChrome implements ChromePresenter {
     const nameEntity = scene.spawn("dlg-name");
     nameEntity.add(new Transform()).setPosition(box.x + cfg.padding, box.y + cfg.padding - 1);
     const nameComp = nameEntity.add(
-      new TextComponent(this.textOptions("", cfg.nameSize, cfg.nameColor)),
+      new TextComponent(makeTextOptions(cfg, "", cfg.nameSize, cfg.nameColor, cfg.layerText)),
     );
     this.name = { entity: nameEntity, comp: nameComp };
 
     // Continue indicator (blinking caret at bottom-right).
     const ind = scene.spawn("dlg-indicator");
-    ind.add(new Transform()).setPosition(0, 0);
+    ind
+      .add(new Transform())
+      .setPosition(box.x + box.width - cfg.padding - 7, box.y + box.height - cfg.padding - 6);
     const indGfx = ind.add(new GraphicsComponent({ layer: cfg.layerFrame }));
-    const ix = box.x + box.width - cfg.padding - 8;
-    const iy = box.y + box.height - cfg.padding - 6;
-    indGfx.draw((g) => {
-      g.poly([ix, iy, ix + 8, iy, ix + 4, iy + 5]).fill({ color: cfg.indicatorColor, alpha: 1 });
-    });
+    indGfx.draw((g) => drawCaret(g, cfg.indicatorColor));
     indGfx.graphics.visible = false;
     this.indicator = { entity: ind, gfx: indGfx };
   }
@@ -106,7 +97,6 @@ export class DialogueChrome implements ChromePresenter {
   }
 
   setContinueVisible(visible: boolean): void {
-    this.indicatorVisible = visible;
     if (this.indicator) this.indicator.gfx.graphics.visible = visible;
     this.indicatorTime = 0;
   }
@@ -121,9 +111,12 @@ export class DialogueChrome implements ChromePresenter {
   }
 
   update(dt: number): void {
-    if (this.indicator && this.indicatorVisible) {
+    // Read pixi's `visible` directly — a parallel boolean could desync (e.g.
+    // keep animating a caret that `setVisible(false)` hid).
+    const gfx = this.indicator?.gfx.graphics;
+    if (gfx?.visible) {
       this.indicatorTime += dt;
-      this.indicator.gfx.graphics.alpha = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(this.indicatorTime / 260));
+      gfx.alpha = caretAlpha(this.indicatorTime);
     }
   }
 
@@ -134,22 +127,5 @@ export class DialogueChrome implements ChromePresenter {
     this.frame = undefined;
     this.name = undefined;
     this.indicator = undefined;
-  }
-
-  private styleFor(size: number, color: number): TextStyle {
-    const style: TextStyle = { fontSize: size, fill: color };
-    if (this.cfg.fontFamily) style.fontFamily = this.cfg.fontFamily;
-    return style;
-  }
-
-  private textOptions(text: string, size: number, color: number): TextComponentOptions {
-    // Colour via `style.fill`; the bitmap font name lives in `style.fontFamily`.
-    const style = this.styleFor(size, color);
-    if (this.cfg.bitmapFont) style.fontFamily = this.cfg.bitmapFont;
-    const base: TextComponentOptions = { text, style, layer: this.cfg.layerText, anchor: { x: 0, y: 0 } };
-    if (this.cfg.bitmapFont) base.bitmap = true;
-    // `exactOptionalPropertyTypes` rejects `resolution: undefined`; omit when unset.
-    else if (this.cfg.resolution !== undefined) base.resolution = this.cfg.resolution;
-    return base;
   }
 }

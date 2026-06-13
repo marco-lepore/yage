@@ -1,8 +1,7 @@
-// Theme (flat visual config) + opt-in texture/portrait sub-themes.
+// Theme (flat visual config) + the opt-in texture sub-theme.
 export type {
   DialogueTheme,
   BoxRect,
-  PortraitTheme,
   TexturedTheme,
   NineSliceInsets,
 } from "./theme.js";
@@ -21,9 +20,3 @@ export type {
   BubbleGeometry,
 } from "./createBubbleDialogue.js";
 export { createMixedDialogue } from "./createMixedDialogue.js";
-
-// Opt-in textured (nine-slice) chrome variants + their configs.
-export { TexturedChrome } from "../chrome/TexturedChrome.js";
-export type { TexturedChromeConfig } from "../chrome/TexturedChrome.js";
-export { TexturedBubble } from "../chrome/TexturedBubble.js";
-export type { TexturedBubbleConfig } from "../chrome/TexturedBubble.js";
