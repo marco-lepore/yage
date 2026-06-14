@@ -1129,6 +1129,50 @@ describe("DialogueSession — handle & play-time validation", () => {
     expect(first.getVars()).toEqual({}); // stale → empty snapshot
   });
 
+  it("a stale blocking command's ctx.setVar does not mutate the storage after replace", async () => {
+    // The skill-check seam under a generation race (PR-A1 checklist): a slow
+    // blocking command captured before the conversation is replaced must not
+    // write through when it finally resolves. ctx.setVar and handle.setVar share
+    // the same generation-guarded storage view, so the guard covers both.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const storage = new MemoryVariableStorage();
+    const h = makeHarness({
+      storage,
+      commands: {
+        slow: async (_cmd, ctx) => {
+          await gate;
+          ctx.setVar("touched", true); // fires AFTER the conversation is replaced
+        },
+      },
+    });
+    const script: DialogueScript = {
+      id: "race",
+      start: "a",
+      declare: { touched: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "slow", blocking: true }] },
+            { kind: "say", text: "after" },
+          ],
+        },
+      },
+    };
+    h.session.play(script); // parks in the blocking command, awaiting the gate
+    await flush();
+    // Replace with a trivial conversation — stop() bumps the generation.
+    h.session.play({
+      id: "other",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "new" }] } },
+    });
+    release(); // resolve the abandoned command; its ctx.setVar must no-op
+    await flush();
+    expect(storage.get("touched")).toBe(false);
+  });
+
   it("rejects a read name that nothing provides", () => {
     const h = makeHarness();
     const script: DialogueScript = {

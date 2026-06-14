@@ -411,6 +411,24 @@ describe("DialogueRunner — storage + functions", () => {
     await flush();
     expect(runner.getVars()).toEqual({ gold: 42, greeted: false });
   });
+
+  it("a `set` targeting a read-only cell throws at runtime (no setter)", async () => {
+    const script: DialogueScript = {
+      id: "ro-set",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
+    };
+    // `hp` is bound as a read-only cell (a getter with no setter); the `set`
+    // built-in writes through storage, so the write throws. This is by design
+    // (D2 — "set on a read-only getter throws"); validatePlay can't catch it
+    // (a read-only cell lives in storage, not functions), so it surfaces here.
+    const runner = makeRunner(script, makeRecorder().handlers, {
+      storage: cells({ hp: () => 10 }),
+    });
+    await expect(
+      runner.runCommands([{ type: "set", var: "hp", value: 5 }]),
+    ).rejects.toThrow(/read-only/);
+  });
 });
 
 describe("DialogueRunner — choices", () => {
