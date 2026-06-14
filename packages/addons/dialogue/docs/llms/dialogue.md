@@ -57,17 +57,16 @@ routes each line/choice to box or bubble by its `view` hint.
 
 ## Script model — TS-first via `defineScript` (JSON-able)
 
-`defineScript(...)` is an identity helper that captures the script's var/external
-types so `play()` requires a matching binding and returns a typed handle. A plain
-`DialogueScript` literal still works and gets the SAME runtime validation — the
-brand is compile-time only.
+`defineScript(...)` is an identity helper that captures the script's declared
+variable types so `play()` returns a typed handle. A plain `DialogueScript`
+literal still works and gets the SAME runtime validation — the brand is
+compile-time only.
 
 ```ts
 const script = defineScript({
   id: "intro",
   start: "n1",
-  vars: { rude: false },                 // dialogue vars: conversation-local, mutable
-  external: { gold: "number" },          // externals: game state, READ-ONLY to the script
+  declare: { rude: false, timesTalked: 0 },   // variable defaults (seed-if-absent)
   speakers: { gwen: { id: "gwen", name: "Gwen", color: 0xffd866 } },
   nodes: {
     n1: { id: "n1", steps: [
@@ -87,35 +86,60 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
   `autoAdvanceMs?`, `commands?`, `view?`, `meta?`, `voice?`.
 - `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
-- `Condition`: a var/external key (truthy), `{ var, op, value }` (op =
-  `== != > >= < <= truthy falsy`), or `(vars) => boolean` (TS-only, not JSON;
-  receives the merged vars+externals view).
+- `Condition`: a variable name (truthy), the atomic `{ var, op, value }` (op =
+  `== != > >= < <= truthy falsy`), an `Expr` tree (see below), or `(vars) =>
+  boolean` (TS-only, not JSON; receives a materialized snapshot).
 
-### vars vs external (one lookup namespace, two ownership classes)
+### Variables, storage, and seed-if-absent
 
-- **`vars`** — conversation-lifetime branching state. Each entry is its own
-  declaration + default + (by `typeof`) type. Reset fresh on every `play()` (so
-  a stale value can't leak between plays), written by `set` / `ctx.setVar` /
-  `handle.setVar`.
-- **`external`** — game-lifetime state the script only READS, declared `name →
-  "string"|"number"|"boolean"`. The host supplies each at `play()` as a constant
-  or a live getter. Scripts mutate game state via **commands**, never `set`
-  (rules-in / consequences-out, enforced structurally).
+ONE opaque name namespace lives in a **`VariableStorage`** (Yarn-shaped:
+`get` / `set` / `has` / `entries`). The runtime imposes no meaning on a name's
+characters — scoping/prefixing is the host's policy. Storage is **installed once
+on the controller** and **persists across plays** (so cycling NPCs, `once`-spent
+choices, and quest counters survive). `play(script)` is **content-only**.
 
-Conditions, `{token}` interpolation, and choice gates all read the merged view.
-A `{gold}` token resolves **at line-present time** (an earlier command's effect
-shows on a later line); already-shown lines never re-render, and a choice menu's
-conditions don't live-refresh while open.
+- `script.declare` holds variable **defaults** (Yarn `<<declare>>` / `InitialValues`).
+  On `play()` each seeds the storage **only if absent** — a game-linked value
+  always wins, the addon never clobbers. To reset, re-init explicitly (`clear()` /
+  a fresh instance).
+- The default storage is `MemoryVariableStorage` (zero-config). Bridge game state
+  with `cells({ gold: { get, set } })` (two-way) or `cells({ hp: () => player.hp })`
+  (read-only), and `compose(cells(...), new MemoryVariableStorage())` to layer
+  (writes to an unknown name land in the **last** storage — put a writable store
+  last).
+
+Conditions, `{token}` interpolation, and choice gates read the storage at
+**line-present time** (an earlier command's effect shows on a later line);
+already-shown lines never re-render, and a choice menu's conditions don't
+live-refresh while open.
+
+### Expression IR (conditions + `set` values)
+
+`Condition`s and `set` values are expression **trees** (so `gold - 50` and
+`has_item("key") and not rude` are plain data). Nodes: `literal | varRef | call
+| unary | binary | group`. Operators (Yarn-modeled, word forms map 1:1):
+`== != > < >= <=` (+ `eq/neq/gt/lt/gte/lte/is`), `and`/`&&` `or`/`||` `xor`/`^`,
+`not`/`!`, `+ - * / %`. `+` concatenates when either side is a string. The atomic
+`{ var, op, value }` stays valid as the degenerate one-level tree.
+
+```ts
+// "set gold = gold - 50" as data (needs a writable `gold` cell):
+{ type: "set", var: "gold", value: { kind: "binary", op: "-",
+  left: { kind: "varRef", name: "gold" }, right: { kind: "literal", value: 50 } } }
+// a choice gated on an argument-read function:
+{ condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "key" }] } }
+```
 
 ### Validation (two hard-error stages)
-- **Load-time** (`loadScript` / `defineScript` path, binding-free): every
-  condition `var`, `set` target, and default-locale `{token}` must resolve to a
-  declared `vars`/`external`; `set` targets must be ∈ `vars`; numeric ops on a
-  non-number declared operand error. Throws `DialogueScriptError`. (Tokens inside
-  *translated* strings are checked against default-locale text only.)
-- **Play-time** (`validateBinding`): the binding must cover every declared
-  external with `typeof`-correct values/getter results, and resolve every command
-  `type` to a handler/fallback. Throws `DialogueBindingError`.
+- **Load-time** (`loadScript` / `defineScript`, environment-free): collects the
+  names read/written, functions called, command types fired; type-checks what's
+  statically knowable (atomic numeric op vs a declared non-number, a literal `set`
+  value vs the target's declared type). Throws `DialogueScriptError`. Undeclared
+  *references* are NOT rejected here — the storage/functions may provide them.
+- **Play-time** (`validatePlay`, on `play()`): every read name must be provided
+  (declared default or `storage.has`), every called function installed, every
+  command type handled (`commands`/`fallbackCommand`), no `set` target that's a
+  function, no declared-default/storage type conflict. Throws `DialoguePlayError`.
 
 ## Inline markup (`parseMarkup` / `stripMarkup`)
 
@@ -131,43 +155,50 @@ per): `ParsedText.length`, `TextRun.graphemeCount`, `PauseToken.atChar`, and
 the reveal rate (`charsPerSec` = graphemes/second). An emoji, ZWJ sequence, or
 base+combining-mark cluster counts as 1. `splitGraphemes(str)` is exported.
 
-## Binding — game state in, the typed handle out
+## Game state — storage / functions / commands, the typed handle out
 
-`play(script, binding)` is the single bridge (replaces the old `params` +
-`onCommand`). The binding (required when the script declares externals):
+Install the environment **on the controller**; `play(script)` is content-only.
+Per-`play()` `overrides` layer on top (a scoped `storage` replaces; `functions`/
+`commands` merge, call site wins).
 
 ```ts
-const handle = controller.play(script, {
-  state: { gold: () => player.gold,   // external getter — live read
-           rude: false },             // optional override of a var default (by value)
-  commands: {                          // command type → handler (game logic)
-    "give-item": (cmd, ctx) => { player.give(cmd.id); },
-    "skill-check": async (cmd, ctx) => { ctx.setVar("passed", await roll(cmd.stat)); },
+const dlg = host.add(new DialogueController({
+  ...createBoxDialogue(),
+  storage: compose(
+    cells({ gold: { get: () => player.gold, set: (v) => (player.gold = +v) } }), // two-way
+    new MemoryVariableStorage(),                                                  // locals + seeds
+  ),
+  functions: { has_item: (id) => player.has(String(id)) },   // argument-read for conditions
+  commands: {                                                 // game logic (rules in)
+    "give-item": (cmd) => player.give(cmd.id),
+    "skill-check": async (cmd, ctx) => ctx.setVar("passed", await roll(cmd.stat)),
   },
-  fallbackCommand: (cmd) => log(cmd),  // optional, catches dynamically-typed commands
-});
-handle.setVar("rude", true);           // live poke (typed keyof vars); no-ops after stop/replay
-handle.getVars();                      // snapshot of dialogue vars (externals excluded)
+  fallbackCommand: (cmd) => log(cmd),                         // optional catch-all
+}));
+const handle = dlg.play(script);       // content-only
+handle.setVar("rude", true);           // live poke (typed keyof declare); no-ops after stop/replay
+handle.getVars();                      // snapshot of the storage's variables
 ```
 
-- **Getters must be cheap + side-effect-free** — called on every condition test
-  and present.
-- **`ctx.setVar(key, value)`** writes a dialogue var only (the skill-check seam:
-  a result that matters to THIS conversation, not game state). Throws on an
-  external/unknown name. Keyed `keyof vars` on the typed path.
-- Controller-level defaults: `new DialogueController({ binding })` merge under
-  the per-`play()` binding (call-site wins key-by-key).
+- **`cells` getters/functions must be cheap + side-effect-free** — called on
+  every condition test and present.
+- **`ctx.setVar` / `handle.setVar` / `set`** all write through the storage
+  (guarded). A read-only `cells` getter (no setter) throws. The **preferred path
+  for game mutations is a command** (so game rules run): write-through `cells` is
+  for when the *script* owns the arithmetic (`set gold = gold - 50`).
+- `ctx.setVar(key, value)` is the skill-check seam — a blocking command computes a
+  result a later condition reads.
 
 ### Commands — rules in, consequences out
 
-Runner owns built-in `set` (writes a dialogue `var`, guarded). Every other
-command dispatches to `binding.commands[type]` (or `fallbackCommand`) **and**
-fires `DialogueCommandEvent` (observation). `ctx.mode` is `"play" | "skip"`. A
-`say` line's commands fire by timing `at: "show" | "afterReveal" | "advance"`
-(default `show`). `blocking: true` + an async handler pauses the conversation
-until it resolves (cinematic sequencing). `{ type: "expression", value }` is the
-avatar built-in (no handler needed). Every non-built-in command `type` a script
-uses must resolve to a handler/fallback, else play-time error.
+Runner owns built-in `set` (writes the storage, guarded). Every other command
+dispatches to `commands[type]` (or `fallbackCommand`) **and** fires
+`DialogueCommandEvent` (observation). `ctx.mode` is `"play" | "skip"`. A `say`
+line's commands fire by timing `at: "show" | "afterReveal" | "advance"` (default
+`show`). `blocking: true` + an async handler pauses the conversation until it
+resolves (cinematic sequencing). `{ type: "expression", value }` is the avatar
+built-in (no handler needed). Every non-built-in command `type` a script uses
+must resolve to a handler/fallback, else play-time error.
 
 ## DialogueController (L2a Component) — host owns focus/pause
 
@@ -176,13 +207,15 @@ new DialogueController({
   ...createBoxDialogue(theme),    // DialogueBundle: { chrome, text, choices, avatar?, skipMultiplier? }
   avatar,                          // optional AvatarPresenter override
   i18n,                            // optional I18nAdapter
-  binding: { state, commands },    // optional controller-level binding defaults (see Binding)
+  storage, functions, commands, fallbackCommand,  // installed once (see Game state)
   input,                           // optional InputBinding (default: KeyboardInputBinding)
   onEnded: () => {},
 });
 ```
 
-Methods: `play(script, binding?): DialogueHandle | undefined` (undefined if the
+`DialogueController<TStorage>` is generic over its storage type (the seam for
+future storage-aware checking; `play()` is typed by the script's declared vars).
+Methods: `play(script, overrides?): DialogueHandle | undefined` (undefined if the
 component was removed), `isActive()`, `stop()`, `skip()`,
 `setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`. It is
 multi-instance friendly — several ambient conversations can run at once; "which
@@ -251,8 +284,8 @@ Mid-dialogue *cursor* save/restore is NOT supported yet: no snapshot/restore
 exists, `@yagejs/save` is NOT a dependency, and the runner's positional getters
 (`getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are NOT reachable through
 `DialogueController`/`DialogueSession` — do not try to capture a conversation
-cursor. (`handle.getVars()` IS reachable, but it's the dialogue-var snapshot, not
-a resumable cursor.) The binding model makes the future API purely additive
-(`handle.getCursor()` = mutable var map + `{ nodeId, stepIndex, chosenOnce }`;
-externals are excluded by construction — the game's own save owns them). Save
+cursor. (`handle.getVars()` IS reachable, but it's the variable snapshot, not a
+resumable cursor.) The storage model makes the future API purely additive: a
+cursor is `{ nodeId, stepIndex, chosenOnce }` + the in-memory default store's
+contents (game-backed `cells` serialize through the game's own save). Save
 outside conversations (or replay the script) until v1.1 adds the seam.
