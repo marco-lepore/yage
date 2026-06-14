@@ -95,8 +95,10 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 ONE opaque name namespace lives in a **`VariableStorage`** (Yarn-shaped:
 `get` / `set` / `has` / `entries`). The runtime imposes no meaning on a name's
 characters — scoping/prefixing is the host's policy. Storage is **installed once
-on the controller** and **persists across plays** (so cycling NPCs, `once`-spent
-choices, and quest counters survive). `play(script)` is **content-only**.
+on the controller** and **persists across plays** — so cycling-NPC counters,
+quest flags, and anything written by `set` survive. (A choice's `once` flag is
+*per-conversation*, not stored — a fresh `play()` clears it; it belongs to the
+future save cursor.) `play(script)` is **content-only**.
 
 - `script.declare` holds variable **defaults** (Yarn `<<declare>>` / `InitialValues`).
   On `play()` each seeds the storage **only if absent** — a game-linked value

@@ -149,8 +149,10 @@ const script = defineScript({
 Variables live in **one opaque name namespace** — conditions, `{token}`
 interpolation, and choice gates all read it. The namespace is backed by a
 **`VariableStorage`** (Yarn's `get` / `set` / `has` shape) **installed once on the
-controller** and **persisted across plays** — which is what makes cycling NPCs,
-spent `once`-choices, and quest counters survive. `play(script)` is content-only.
+controller** and **persisted across plays** — which is what makes cycling-NPC
+counters and quest flags survive. (A choice's `once` flag is *per-conversation*
+state, not stored — a fresh `play()` starts it clear; it travels with the future
+save cursor.) `play(script)` is content-only.
 
 - **`declare`** holds variable *defaults*. On each `play()` a default seeds the
   storage **only if it's absent** (seed-if-absent) — a game-linked value always
