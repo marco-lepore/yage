@@ -1200,6 +1200,32 @@ describe("DialogueSession — handle & play-time validation", () => {
     };
     expect(() => h.session.play(script)).toThrow(/no handler for command type/);
   });
+
+  it("a play() that fails validation leaves the running conversation intact", async () => {
+    const h = makeHarness();
+    const alpha: DialogueScript = {
+      id: "alpha",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "alpha" }] } },
+    };
+    h.session.play(alpha);
+    await flush();
+    expect(h.session.isActive()).toBe(true);
+    expect(h.text.lastText).toBe("alpha");
+
+    // A second play() whose script reads an unprovided name must throw — and,
+    // because validation now runs before stop(), it must NOT abandon `alpha`.
+    const invalid: DialogueScript = {
+      id: "bad",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "{ghost}" }] } },
+    };
+    const clearsBefore = h.text.cleared;
+    expect(() => h.session.play(invalid)).toThrow(/reads "ghost"/);
+    expect(h.session.isActive()).toBe(true); // alpha still running
+    expect(h.text.lastText).toBe("alpha");
+    expect(h.text.cleared).toBe(clearsBefore); // nothing was torn down
+  });
 });
 
 describe("DialogueSession — storage model", () => {

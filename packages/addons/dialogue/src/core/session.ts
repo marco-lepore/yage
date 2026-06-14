@@ -277,13 +277,11 @@ export class DialogueSession {
     rawScript: S,
     overrides?: DialoguePlayOptions,
   ): DialogueHandle<VarsOf<S>> {
-    // Abandon any in-flight conversation first. `stop()` bumps the generation,
-    // so a still-pending async continuation from the previous line (e.g. an
-    // awaited `afterReveal`/`advance` command) bails on resume instead of
-    // stepping this new runner — important when `play()` restarts an
-    // ambient/eavesdrop loop while a line is mid-flight.
-    this.stop();
-
+    // Validate up front — load + analyze + resolve env + validatePlay are all
+    // synchronous and read-only w.r.t. session state. Doing them BEFORE stop()
+    // makes play() atomic: an invalid script / environment throws and leaves any
+    // running conversation untouched, instead of abandoning it on a play() that
+    // never starts.
     const script = loadScript(rawScript);
     const analysis = analyzeScript(script);
 
@@ -297,6 +295,13 @@ export class DialogueSession {
     // Hard error on an environment that can't satisfy the script — runs before
     // seeding so the declared-default/storage conflict check sees the host value.
     validatePlay(analysis, { storage, functions, commands, fallbackCommand });
+
+    // Past the point of failure — commit. Abandon any in-flight conversation:
+    // `stop()` bumps the generation, so a still-pending async continuation from
+    // the previous line (e.g. an awaited `afterReveal`/`advance` command) bails on
+    // resume instead of stepping this new runner — important when `play()` restarts
+    // an ambient/eavesdrop loop while a line is mid-flight.
+    this.stop();
 
     // Seed-if-absent (D3): a declared default applies only when the storage
     // doesn't already hold the name — never clobber a game-linked value.
