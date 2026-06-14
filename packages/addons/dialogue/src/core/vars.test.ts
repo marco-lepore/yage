@@ -42,6 +42,15 @@ describe("cells", () => {
     expect(s.get("b")).toBeUndefined();
     expect(() => s.set("b", 1)).toThrow(/no accessor/);
   });
+
+  it("does not leak Object.prototype names (own-property checks only)", () => {
+    const s = cells({ gold: () => 1 });
+    for (const proto of ["toString", "constructor", "hasOwnProperty"]) {
+      expect(s.has(proto)).toBe(false);
+      expect(s.get(proto)).toBeUndefined();
+      expect(() => s.set(proto, 1)).toThrow(/no accessor/);
+    }
+  });
 });
 
 describe("compose", () => {

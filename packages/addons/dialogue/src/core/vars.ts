@@ -67,19 +67,22 @@ export type Cell =
  * (`set gold = gold - 50`).
  */
 export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
-  const get = (name: string): VarValue => {
-    const cell = defs[name];
-    return typeof cell === "function" ? cell() : cell!.get();
+  // Own-property checks only (like i18n's `interpolate`): a bare `name in defs`
+  // walks the prototype chain, so `has("toString")` / `has("constructor")` would
+  // report true and read an inherited Object.prototype member as a cell.
+  const read = (name: string): VarValue => {
+    const cell = defs[name]!;
+    return typeof cell === "function" ? cell() : cell.get();
   };
   return {
     get(name) {
-      return name in defs ? get(name) : undefined;
+      return Object.hasOwn(defs, name) ? read(name) : undefined;
     },
     set(name, value) {
-      const cell = defs[name];
-      if (cell === undefined) {
+      if (!Object.hasOwn(defs, name)) {
         throw new Error(`dialogue: cells() has no accessor for "${name}"`);
       }
+      const cell = defs[name]!;
       if (typeof cell === "function" || cell.set === undefined) {
         throw new Error(
           `dialogue: "${name}" is read-only (a cells getter without a setter)`,
@@ -88,10 +91,10 @@ export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
       cell.set(value);
     },
     has(name) {
-      return name in defs;
+      return Object.hasOwn(defs, name);
     },
     *entries() {
-      for (const name of Object.keys(defs)) yield [name, get(name)] as const;
+      for (const name of Object.keys(defs)) yield [name, read(name)] as const;
     },
   };
 }
