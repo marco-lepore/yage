@@ -82,6 +82,9 @@ describe("defineScript", () => {
       // @ts-expect-error — "bogus" is not a declared variable.
       handle.setVar("bogus", 1);
 
+      // @ts-expect-error — `greeted` is a boolean; a number is rejected.
+      handle.setVar("greeted", 99);
+
       const greeted: boolean = handle.getVars().greeted; // typed by the declare
       void greeted;
     };

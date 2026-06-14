@@ -174,9 +174,12 @@ export interface DialoguePlayOptions {
  * (`getVars`).
  */
 export interface DialogueHandle<Vars extends VarMap = VarMap> {
-  /** Write a variable through the conversation's storage (guarded). Typed to the
-   *  script's declared names on the {@link defineScript} path. */
-  setVar(name: keyof Vars & string, value: VarValue): void;
+  /** Write a variable through the conversation's storage (guarded). On the
+   *  {@link defineScript} path both the name AND the value are typed to the
+   *  script's declared variables — a wrong-typed value is a compile error.
+   *  (`ctx.setVar` stays loosely typed: command handlers are installed on the
+   *  controller, not bound to any one script's variable types.) */
+  setVar<K extends keyof Vars & string>(name: K, value: Vars[K]): void;
   /** Snapshot of the storage's enumerable variables. */
   getVars(): Readonly<Vars>;
 }

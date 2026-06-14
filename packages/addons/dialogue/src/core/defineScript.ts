@@ -26,6 +26,7 @@ import type {
   SpeakerDef,
   SpeakerId,
   VarMap,
+  VarValue,
 } from "./types.js";
 
 declare const VARS_BRAND: unique symbol;
@@ -39,6 +40,19 @@ interface ScriptTypes<V extends VarMap> {
 /** A {@link DialogueScript} branded with its declared variable types. */
 export type TypedScript<V extends VarMap> = DialogueScript & ScriptTypes<V>;
 
+/** Widen a declared default's literal type to its base — a variable declared
+ *  `false` is a boolean (accepts `true`), `0` is a number, `"x"` is a string. A
+ *  `null` default is untyped, so it widens to the full {@link VarValue} union. */
+type Widen<T extends VarValue> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends boolean
+      ? boolean
+      : VarValue;
+
+type WidenVars<V extends VarMap> = { [K in keyof V]: Widen<V[K]> };
+
 export function defineScript<V extends VarMap = Record<never, never>>(
   script: Omit<DialogueScript, "declare"> & {
     readonly id: string;
@@ -47,8 +61,8 @@ export function defineScript<V extends VarMap = Record<never, never>>(
     readonly speakers?: Record<SpeakerId, SpeakerDef>;
     readonly declare?: V;
   },
-): TypedScript<V> {
-  return script as unknown as TypedScript<V>;
+): TypedScript<WidenVars<V>> {
+  return script as unknown as TypedScript<WidenVars<V>>;
 }
 
 /** Declared variable types captured for a script (the loose {@link VarMap} for a

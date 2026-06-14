@@ -149,6 +149,32 @@ describe("validatePlay — play-time environment check", () => {
     expect(() => validatePlay(a, env({ storage }))).toThrow(/reads "name"/);
   });
 
+  it("accepts an undeclared local that is written by `set` then read", () => {
+    // A flow-insensitive walk can't order read vs write; a name the script writes
+    // is provided by the script itself (D3 — locals are just names in the store).
+    const s = loadScript(
+      script({
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              { kind: "command", commands: [{ type: "set", var: "quest_stage", value: 1 }] },
+              {
+                kind: "command",
+                commands: [],
+                condition: { var: "quest_stage", op: ">=", value: 1 },
+                target: "b",
+              },
+              { kind: "say", text: "Stage {quest_stage}." },
+            ],
+          },
+          b: { id: "b", steps: [{ kind: "end" }] },
+        },
+      }),
+    );
+    expect(() => validatePlay(analyzeScript(s), env())).not.toThrow();
+  });
+
   it("counts a declared default as provided (it will be seeded)", () => {
     const s = loadScript(
       script({

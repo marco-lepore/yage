@@ -238,13 +238,22 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
     }
   }
 
-  // 2. Every name the script reads must be provided — declared (it'll be seeded)
-  //    or already in storage. A typo dies here.
+  // 2. Every name the script reads must be provided — declared (it'll be seeded),
+  //    already in storage, OR written by a `set` somewhere in the script (a local
+  //    the script manages itself). The walk is flow-insensitive, so it can't (and
+  //    per D3 needn't) reason about read-before-write order: a read of an as-yet-
+  //    unset local is a script logic bug, not a missing binding — at runtime it
+  //    reads null. A typo (a name that is read but never declared/stored/written)
+  //    still dies here.
   for (const name of analysis.readVars) {
-    if (!analysis.declaredTypes.has(name) && !env.storage.has(name)) {
+    if (
+      !analysis.declaredTypes.has(name) &&
+      !env.storage.has(name) &&
+      !analysis.setTargets.has(name)
+    ) {
       throw new DialoguePlayError(
         `script reads "${name}" but nothing provides it ` +
-          `(no declared default, no storage value; for an argument read use a function call)`,
+          `(no declared default, no storage value, no \`set\`; for an argument read use a function call)`,
       );
     }
   }
