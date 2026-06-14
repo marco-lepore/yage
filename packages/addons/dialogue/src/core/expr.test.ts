@@ -90,6 +90,19 @@ describe("evaluate — logical operators (symbol + word form)", () => {
     expect(ev(bin("^", T, T))).toBe(false);
     expect(ev(bin("xor", F, F))).toBe(false);
   });
+
+  it("and / or short-circuit — the guarded operand is not evaluated", () => {
+    const boom = vi.fn((): VarValue => {
+      throw new Error("should not run");
+    });
+    const s = createScope(new MemoryVariableStorage({ f: false, t: true }), { boom });
+    // `false and boom()` → false without calling boom; `true or boom()` → true.
+    expect(evaluate(bin("and", v("f"), call("boom")), s)).toBe(false);
+    expect(evaluate(bin("or", v("t"), call("boom")), s)).toBe(true);
+    expect(boom).not.toHaveBeenCalled();
+    // The right operand IS evaluated once the guard passes.
+    expect(evaluate(bin("and", v("t"), v("t")), s)).toBe(true);
+  });
 });
 
 describe("evaluate — arithmetic", () => {

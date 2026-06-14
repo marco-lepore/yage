@@ -72,8 +72,20 @@ export function evaluate(expr: Expr, scope: EvalScope): VarValue {
       );
     case "unary":
       return applyUnary(expr.op, evaluate(expr.operand, scope));
-    case "binary":
-      return applyBinary(expr.op, evaluate(expr.left, scope), evaluate(expr.right, scope));
+    case "binary": {
+      // Short-circuit `and`/`or` (Yarn-faithful) via JS &&/|| so a guarded right
+      // operand isn't evaluated when the left already decides — e.g.
+      // `has_item("key") and count("key") > 0` won't call `count` (which may
+      // throw) when the item is absent. `xor` and the rest need both operands.
+      const { op } = expr;
+      if (op === "and" || op === "&&") {
+        return truthy(evaluate(expr.left, scope)) && truthy(evaluate(expr.right, scope));
+      }
+      if (op === "or" || op === "||") {
+        return truthy(evaluate(expr.left, scope)) || truthy(evaluate(expr.right, scope));
+      }
+      return applyBinary(op, evaluate(expr.left, scope), evaluate(expr.right, scope));
+    }
   }
 }
 
