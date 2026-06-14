@@ -212,7 +212,9 @@ export interface ChoiceOption {
   /** Node to jump to when picked. Omit to just continue the current node. */
   readonly target?: NodeId;
   readonly condition?: Condition;
-  /** Hide this option once it has been picked (tracked in `vars`). */
+  /** Hide this option once it has been picked. Tracked as per-conversation
+   *  cursor state (resets on a fresh `play()`; the future save cursor captures
+   *  it), NOT in the variable storage. */
   readonly once?: boolean;
   readonly commands?: readonly Command[];
   /** Opaque per-choice hint bag (tone/icon/position for fancy choice UIs). */
@@ -293,8 +295,9 @@ export interface DialogueScript {
    * `has` the name** (seed-if-absent) — a game-linked value always wins, the
    * addon never clobbers. The default's value also fixes the variable's inferred
    * type on the {@link defineScript} path. Variables **persist** in storage
-   * across plays (required for cycling NPCs / `once`-choices / quest progress);
-   * a script re-inits a value explicitly to reset it.
+   * across plays (cycling-NPC counters, quest progress); a script re-inits a
+   * value explicitly to reset it. (A choice's `once` flag is per-conversation
+   * cursor state, not a stored variable — see {@link ChoiceOption.once}.)
    */
   readonly declare?: VarMap;
 }

@@ -65,6 +65,10 @@ export interface RunnerHandlers {
 type RunnerState = "idle" | "saying" | "choosing" | "awaiting-command" | "ended";
 
 export class DialogueRunner {
+  /** `option.once` keys already picked — per-conversation **cursor** state, NOT
+   *  the variable storage. Fresh per runner, so a new `play()` starts it empty
+   *  (a re-played conversation re-shows its `once` options until the v1.1 save
+   *  cursor captures/restores it via {@link getChosenOnce}). */
   private readonly chosenOnce = new Set<string>();
   private nodeId: string;
   private stepIndex = 0;
