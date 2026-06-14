@@ -1,41 +1,40 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  DialogueRunner,
-  evalCondition,
-  type ResolvedChoice,
-  type RunnerHandlers,
-} from "./runner.js";
-import { VarStore } from "./vars.js";
+import { createScope, evalCondition } from "./expr.js";
+import { DialogueRunner, type ResolvedChoice, type RunnerHandlers } from "./runner.js";
+import { MemoryVariableStorage, cells, compose } from "./vars.js";
 import type {
-  BindingValue,
   ChoiceStep,
   Command,
   CommandContext,
+  DialogueFunction,
   DialogueScript,
   SayStep,
   SpeakerDef,
+  VariableStorage,
   VarMap,
 } from "./types.js";
 
 /**
  * Build a runner the way the session does, but directly (these are low-level
- * runner tests that bypass loadScript). The {@link VarStore} declares its vars /
- * externals straight from the script — no binding, no validation — so a `set`
- * target must appear in `script.vars`.
+ * runner tests that bypass loadScript / validation). Declared defaults seed
+ * into an in-memory store (host `storage`, when given, takes precedence — it's
+ * composed first, mirroring `session.play`).
  */
 function makeRunner(
   script: DialogueScript,
   handlers: RunnerHandlers,
-  bindingState: Readonly<Record<string, BindingValue>> = {},
+  opts: {
+    storage?: VariableStorage;
+    functions?: Readonly<Record<string, DialogueFunction>>;
+  } = {},
 ): DialogueRunner {
-  const store = new VarStore(
-    script.vars ?? {},
-    new Set(Object.keys(script.vars ?? {})),
-    new Set(Object.keys(script.external ?? {})),
-    bindingState,
-  );
-  return new DialogueRunner(script, store, handlers);
+  const memory = new MemoryVariableStorage();
+  const storage = opts.storage ? compose(opts.storage, memory) : memory;
+  for (const [name, value] of Object.entries(script.declare ?? {})) {
+    if (!storage.has(name)) storage.set(name, value);
+  }
+  return new DialogueRunner(script, { storage, functions: opts.functions ?? {} }, handlers);
 }
 
 /**
@@ -204,7 +203,7 @@ describe("DialogueRunner — goto and branching", () => {
       const script: DialogueScript = {
         id: "cond-jump",
         start: "a",
-        vars: { gate },
+        declare: { gate },
         nodes: {
           a: {
             id: "a",
@@ -231,7 +230,7 @@ describe("DialogueRunner — set / vars", () => {
     const script: DialogueScript = {
       id: "set",
       start: "a",
-      vars: { flag: false },
+      declare: { flag: false },
       nodes: {
         a: {
           id: "a",
@@ -254,29 +253,63 @@ describe("DialogueRunner — set / vars", () => {
     expect(rec.commands).toHaveLength(0);
   });
 
-  it("seeds vars from the script and exposes them read-only via getVars", () => {
+  it("seeds vars from the script and exposes them via getVars", () => {
     const script: DialogueScript = {
       id: "seed",
       start: "a",
-      vars: { score: 3 },
+      declare: { score: 3 },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
     const rec = makeRecorder();
     const runner = makeRunner(script, rec.handlers);
     expect(runner.getVars().score).toBe(3);
-    // Mutating the script's vars after construction must not leak in (copied).
-    (script.vars as VarMap).score = 99;
+    // Mutating the script's declares after construction must not leak in (copied).
+    (script.declare as VarMap).score = 99;
     expect(runner.getVars().score).toBe(3);
+  });
+
+  it("evaluates an arithmetic `set` value (the `gold - 50` landmine)", async () => {
+    const script: DialogueScript = {
+      id: "set-expr",
+      start: "a",
+      declare: { gold: 100 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "set",
+                  var: "gold",
+                  value: {
+                    kind: "binary",
+                    op: "-",
+                    left: { kind: "varRef", name: "gold" },
+                    right: { kind: "literal", value: 50 },
+                  },
+                },
+              ],
+            },
+            { kind: "say", text: "x" },
+          ],
+        },
+      },
+    };
+    const runner = makeRunner(script, makeRecorder().handlers);
+    runner.start();
+    await flush();
+    expect(runner.getVars().gold).toBe(50);
   });
 });
 
-describe("DialogueRunner — binding model (externals, ctx.setVar)", () => {
-  it("reads an external getter live in a condition (granted mid-conversation)", async () => {
+describe("DialogueRunner — storage + functions", () => {
+  it("reads a cells getter live in a condition (granted mid-conversation)", async () => {
     let hasKey = false;
     const script: DialogueScript = {
       id: "ext-cond",
       start: "a",
-      external: { hasKey: "boolean" },
       nodes: {
         a: {
           id: "a",
@@ -288,22 +321,58 @@ describe("DialogueRunner — binding model (externals, ctx.setVar)", () => {
         b: { id: "b", steps: [{ kind: "say", text: "has-key" }] },
       },
     };
-    // Getter sees the value flip BEFORE the runner evaluates the gate.
+    // The cell sees the value flip BEFORE the runner evaluates the gate.
     hasKey = true;
     const rec = makeRecorder();
-    makeRunner(script, rec.handlers, { hasKey: () => hasKey }).start();
+    makeRunner(script, rec.handlers, {
+      storage: cells({ hasKey: () => hasKey }),
+    }).start();
     await flush();
     expect(lineTexts(rec)).toEqual(["has-key"]);
   });
 
-  it("ctx.setVar writes a dialogue var that a later condition reads (skill check)", async () => {
+  it("evaluates a function call in a condition (has_item)", async () => {
+    const inventory = new Set<string>();
+    const script: DialogueScript = {
+      id: "fn-cond",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [],
+              condition: {
+                kind: "call",
+                fn: "has_item",
+                args: [{ kind: "literal", value: "key" }],
+              },
+              target: "has",
+            },
+            { kind: "say", text: "no-key" },
+          ],
+        },
+        has: { id: "has", steps: [{ kind: "say", text: "has-key" }] },
+      },
+    };
+    inventory.add("key");
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers, {
+      functions: { has_item: (id) => inventory.has(String(id)) },
+    }).start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["has-key"]);
+  });
+
+  it("ctx.setVar writes a var that a later condition reads (skill check)", async () => {
     const rec = makeRecorder((cmd, ctx) => {
       if (cmd.type === "skill-check") ctx.setVar("passed", true);
     });
     const script: DialogueScript = {
       id: "skill",
       start: "a",
-      vars: { passed: false },
+      declare: { passed: false },
       nodes: {
         a: {
           id: "a",
@@ -323,29 +392,24 @@ describe("DialogueRunner — binding model (externals, ctx.setVar)", () => {
     expect(runner.getVars().passed).toBe(true);
   });
 
-  it("setVar() / store guard refuses an external name (read-only game state)", () => {
-    const script: DialogueScript = {
-      id: "guard",
-      start: "a",
-      external: { gold: "number" },
-      nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
-    };
-    const runner = makeRunner(script, makeRecorder().handlers, { gold: 5 });
-    expect(() => runner.setVar("gold", 10)).toThrow(/game state/);
-  });
-
-  it("getReadView merges dialogue vars and externals (getters invoked)", () => {
+  it("getVars materializes the storage (cells + locals)", async () => {
     const script: DialogueScript = {
       id: "view",
       start: "a",
-      vars: { greeted: true },
-      external: { gold: "number" },
-      nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
+      declare: { greeted: true },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "greeted", value: false }] }],
+        },
+      },
     };
-    const runner = makeRunner(script, makeRecorder().handlers, { gold: () => 42 });
-    expect(runner.getReadView()).toEqual({ greeted: true, gold: 42 });
-    // getVars() is dialogue-vars only (externals excluded).
-    expect(runner.getVars()).toEqual({ greeted: true });
+    const runner = makeRunner(script, makeRecorder().handlers, {
+      storage: cells({ gold: () => 42 }),
+    });
+    runner.start();
+    await flush();
+    expect(runner.getVars()).toEqual({ gold: 42, greeted: false });
   });
 });
 
@@ -409,7 +473,7 @@ describe("DialogueRunner — choices", () => {
     const script: DialogueScript = {
       id: "cond-choice",
       start: "a",
-      vars: { hasKey: false },
+      declare: { hasKey: false },
       nodes: {
         a: {
           id: "a",
@@ -447,7 +511,7 @@ describe("DialogueRunner — choices", () => {
     const script: DialogueScript = {
       id: "no-options",
       start: "a",
-      vars: { ok: false },
+      declare: { ok: false },
       nodes: {
         a: {
           id: "a",
@@ -623,7 +687,7 @@ describe("DialogueRunner — command surfacing", () => {
     const script: DialogueScript = {
       id: "choice-cmd",
       start: "a",
-      vars: { took: false },
+      declare: { took: false },
       nodes: {
         a: {
           id: "a",
@@ -660,7 +724,7 @@ describe("DialogueRunner — command surfacing", () => {
     const script: DialogueScript = {
       id: "runcommands",
       start: "a",
-      vars: { k: 0 },
+      declare: { k: 0 },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "line" }] } },
     };
     const runner = makeRunner(script, rec.handlers);
@@ -776,27 +840,60 @@ describe("DialogueRunner — speaker resolution", () => {
 
 describe("evalCondition", () => {
   const vars: VarMap = { n: 5, flag: true, name: "x", zero: 0 };
+  const scope = createScope(new MemoryVariableStorage(vars), {
+    half: (v) => Number(v) / 2,
+  });
 
   it("string key → truthy check", () => {
-    expect(evalCondition("flag", vars)).toBe(true);
-    expect(evalCondition("zero", vars)).toBe(false);
-    expect(evalCondition("missing", vars)).toBe(false);
+    expect(evalCondition("flag", scope)).toBe(true);
+    expect(evalCondition("zero", scope)).toBe(false);
+    expect(evalCondition("missing", scope)).toBe(false);
   });
 
-  it("comparison operators", () => {
-    expect(evalCondition({ var: "n", op: "==", value: 5 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: "!=", value: 4 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: ">", value: 4 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: ">=", value: 5 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: "<", value: 6 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: "<=", value: 5 }, vars)).toBe(true);
-    expect(evalCondition({ var: "flag", op: "truthy", value: null }, vars)).toBe(true);
-    expect(evalCondition({ var: "zero", op: "falsy", value: null }, vars)).toBe(true);
+  it("atomic comparison operators", () => {
+    expect(evalCondition({ var: "n", op: "==", value: 5 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: "!=", value: 4 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: ">", value: 4 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: ">=", value: 5 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: "<", value: 6 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: "<=", value: 5 }, scope)).toBe(true);
+    expect(evalCondition({ var: "flag", op: "truthy", value: null }, scope)).toBe(true);
+    expect(evalCondition({ var: "zero", op: "falsy", value: null }, scope)).toBe(true);
   });
 
-  it("predicate function", () => {
+  it("expression trees — logic, grouping, word forms, function calls", () => {
+    // (n >= 5) and not flagFalse  → true
+    expect(
+      evalCondition(
+        {
+          kind: "binary",
+          op: "and",
+          left: {
+            kind: "group",
+            expr: { kind: "binary", op: "gte", left: { kind: "varRef", name: "n" }, right: { kind: "literal", value: 5 } },
+          },
+          right: { kind: "unary", op: "not", operand: { kind: "varRef", name: "zero" } },
+        },
+        scope,
+      ),
+    ).toBe(true);
+    // half(n) == 2.5
+    expect(
+      evalCondition(
+        {
+          kind: "binary",
+          op: "==",
+          left: { kind: "call", fn: "half", args: [{ kind: "varRef", name: "n" }] },
+          right: { kind: "literal", value: 2.5 },
+        },
+        scope,
+      ),
+    ).toBe(true);
+  });
+
+  it("predicate function receives a materialized snapshot", () => {
     const fn = vi.fn((v: VarMap) => v.n === 5);
-    expect(evalCondition(fn, vars)).toBe(true);
+    expect(evalCondition(fn, scope)).toBe(true);
     expect(fn).toHaveBeenCalledOnce();
   });
 });

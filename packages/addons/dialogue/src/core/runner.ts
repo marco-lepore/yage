@@ -5,30 +5,39 @@
  * presentation is delegated via callbacks, so the same runner drives a
  * renderer-based box, a ui-react box, or a headless test.
  *
- * Branching reads one {@link VarStore} namespace (dialogue vars + read-only
- * externals): `set` / `ctx.setVar` write dialogue vars, conditions and `{token}`
- * interpolation read the merged view. The runner resolves built-in commands
- * (`set`) itself and surfaces every other command to the host through
- * `onCommand` — that's the seam where the game turns `{ type: "give-item",
- * id: "key" }` into an actual effect.
+ * Branching reads one {@link VariableStorage} namespace through an
+ * {@link EvalScope} (per-name reads + installed functions): `set` / `ctx.setVar`
+ * write storage, conditions and `set` values are evaluated as expression trees.
+ * The runner resolves built-in commands (`set`) itself and surfaces every other
+ * command to the host through `onCommand` — that's the seam where the game turns
+ * `{ type: "give-item", id: "key" }` into an actual effect.
  */
 
-import type { VarStore } from "./vars.js";
+import { createScope, evalCondition, evaluate, isExpr, type EvalScope } from "./expr.js";
+import { materialize } from "./vars.js";
 import type {
   ChoiceOption,
   ChoiceStep,
   Command,
   CommandContext,
-  CompareOp,
   Condition,
+  DialogueFunction,
   DialogueScript,
   RunMode,
   SayStep,
   SpeakerDef,
   Step,
+  VariableStorage,
   VarMap,
   VarValue,
 } from "./types.js";
+
+/** The runtime environment the session installs behind a running conversation:
+ *  the variable storage (read + guarded write) + the callable functions. */
+export interface RunnerEnv {
+  readonly storage: VariableStorage;
+  readonly functions: Readonly<Record<string, DialogueFunction>>;
+}
 
 export interface ResolvedChoice {
   readonly index: number; // index into the original options array
@@ -63,31 +72,26 @@ export class DialogueRunner {
   /** "play" normally; flipped to "skip" by a future fast-forward (see C2). */
   private runMode: RunMode = "play";
 
+  /** Storage (write through this so a read-only `cells` accessor throws) +
+   *  functions, wrapped once as the condition/`set`-value eval scope. */
+  private readonly storage: VariableStorage;
+  private readonly scope: EvalScope;
+
   constructor(
     private readonly script: DialogueScript,
-    /** The unified var/external lookup (built by the session from the binding). */
-    private readonly store: VarStore,
+    /** The variable storage + functions (built by the session per play()). */
+    env: RunnerEnv,
     private readonly handlers: RunnerHandlers,
   ) {
     this.nodeId = script.start;
+    this.storage = env.storage;
+    this.scope = createScope(env.storage, env.functions);
   }
 
-  /** Snapshot of the mutable dialogue vars (externals excluded) — the
-   *  `handle.getVars()` / future save-cursor view. */
+  /** Snapshot of the storage's variables — the `handle.getVars()` /
+   *  future save-cursor view. */
   getVars(): Readonly<VarMap> {
-    return this.store.getVars();
-  }
-
-  /** The merged read view (vars + externals, getters invoked) — interpolation
-   *  and preview evaluate conditions against this. */
-  getReadView(): VarMap {
-    return this.store.materialize();
-  }
-
-  /** Write a dialogue var (the `handle.setVar` seam). Throws on an external or
-   *  unknown name (game state is read-only to the script). */
-  setVar(name: string, value: VarValue): void {
-    this.store.write(name, value);
+    return materialize(this.storage);
   }
 
   // ── v1.1 save seam (read-only cursor getters) ─────────────────────────────
@@ -299,9 +303,14 @@ export class DialogueRunner {
     if (!commands) return;
     for (const cmd of commands) {
       if (cmd.type === "set" && typeof cmd.var === "string") {
-        // Guarded write — load-time validation guarantees the target is a
-        // declared var, so this won't throw for a loaded script.
-        this.store.write(cmd.var, cmd.value as VarValue);
+        // Built-in write: the value is a literal or an expression tree
+        // (`gold - 50`). Guarded by the storage — a read-only `cells` accessor
+        // throws here, matching the load-time set-target rules.
+        const value = cmd.value;
+        this.storage.set(
+          cmd.var,
+          isExpr(value) ? evaluate(value, this.scope) : (value as VarValue),
+        );
         continue;
       }
       let result: void | Promise<void>;
@@ -328,54 +337,17 @@ export class DialogueRunner {
     }
   }
 
-  /** The context handed to a command handler. `setVar` writes dialogue vars
-   *  through the same guarded path as `set`; a stale ctx (its store abandoned by
-   *  a later play()) writes the old conversation and has no effect on the live one. */
+  /** The context handed to a command handler. `setVar` writes through the
+   *  conversation's storage (guarded by the session for staleness), the same
+   *  path as the `set` built-in — so the skill-check seam and `set` share one
+   *  guarded write. */
   private commandContext(mode: RunMode): CommandContext {
-    return { mode, setVar: (key, value) => this.store.write(key, value) };
+    return { mode, setVar: (name, value) => this.storage.set(name, value) };
   }
 
   private test(condition: Condition | undefined): boolean {
-    if (condition === undefined) return true;
-    // Function conditions see the merged view; var lookups read one name live
-    // (so an external getter fires only when actually referenced).
-    if (typeof condition === "function") return condition(this.store.materialize());
-    if (typeof condition === "string") return Boolean(this.store.read(condition));
-    return compare(this.store.read(condition.var), condition.op, condition.value);
+    return condition === undefined ? true : evalCondition(condition, this.scope);
   }
-}
-
-/** Evaluate a condition against a flat, already-materialized var view (used by
- *  the session's side-effect-free preview; the runner reads through its store). */
-export function evalCondition(condition: Condition, vars: Readonly<VarMap>): boolean {
-  if (typeof condition === "function") return condition(vars as VarMap);
-  if (typeof condition === "string") return Boolean(vars[condition]);
-  return compare(vars[condition.var], condition.op, condition.value);
-}
-
-function compare(left: unknown, op: CompareOp, right: unknown): boolean {
-  switch (op) {
-    case "==":
-      return left === right;
-    case "!=":
-      return left !== right;
-    case ">":
-      return num(left) > num(right);
-    case ">=":
-      return num(left) >= num(right);
-    case "<":
-      return num(left) < num(right);
-    case "<=":
-      return num(left) <= num(right);
-    case "truthy":
-      return Boolean(left);
-    case "falsy":
-      return !left;
-  }
-}
-
-function num(v: unknown): number {
-  return typeof v === "number" ? v : Number(v);
 }
 
 function isPromise(v: unknown): v is Promise<unknown> {

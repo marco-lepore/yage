@@ -18,29 +18,29 @@
  */
 
 import { loadScript } from "./formats/canonical.js";
+import { createScope, evalCondition, type EvalScope } from "./expr.js";
 import { IdentityI18n, type I18nAdapter } from "./i18n.js";
 import { parseMarkup, stripMarkup } from "./markup.js";
-import {
-  DialogueRunner,
-  evalCondition,
-  type ResolvedChoice,
-} from "./runner.js";
-import { VarStore } from "./vars.js";
-import { analyzeScript, validateBinding } from "./validate.js";
-import type { PlayBindingArgs, VarsOf } from "./defineScript.js";
+import { DialogueRunner, type ResolvedChoice } from "./runner.js";
+import { MemoryVariableStorage, materialize } from "./vars.js";
+import { analyzeScript, validatePlay } from "./validate.js";
+import type { VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
   Command,
   CommandContext,
   CommandHandler,
   CommandTiming,
-  DialogueBinding,
+  Condition,
+  DialogueFunction,
   DialogueHandle,
+  DialoguePlayOptions,
   DialogueScript,
   ParsedText,
   RunMode,
   SayStep,
   SpeakerDef,
+  VariableStorage,
   VarMap,
 } from "./types.js";
 
@@ -158,6 +158,21 @@ export interface DialogueSessionOptions {
   readonly i18n?: I18nAdapter | undefined;
   /** Hold-to-fast-forward multiplier. Default 4. */
   readonly skipMultiplier?: number | undefined;
+  /**
+   * The variable storage installed for every `play()` (D1). Persists across
+   * plays. Omit for a zero-config {@link MemoryVariableStorage}; supply your own
+   * or {@link compose} several to bridge game state. A per-`play()`
+   * `overrides.storage` replaces it for that conversation.
+   */
+  readonly storage?: VariableStorage | undefined;
+  /** Argument-capable read functions (`has_item("key")`) for conditions/`set`
+   *  expressions. Per-`play()` `overrides.functions` merge on top. */
+  readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
+  /** Command handlers (`type` → handler). Per-`play()` `overrides.commands`
+   *  merge on top (call site wins). */
+  readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
+  /** Catch-all for command types with no explicit handler. */
+  readonly fallbackCommand?: CommandHandler | undefined;
   readonly onStarted?: (e: { scriptId: string }) => void;
   /** Plain (markup-stripped) line text — for logs / a11y / history. */
   readonly onLine?: (e: { speaker?: string | undefined; text: string }) => void;
@@ -178,7 +193,16 @@ type Mode = "idle" | "saying" | "choosing" | "ended";
 export class DialogueSession {
   private readonly i18n: I18nAdapter;
   private readonly skipMul: number;
-  /** Game-command handlers + fallback, taken from the current play()'s binding. */
+  /** Controller-installed environment (persists across plays); per-`play()`
+   *  overrides are layered on top into the resolved fields below. */
+  private readonly defaultStorage: VariableStorage;
+  private readonly defaultFunctions: Readonly<Record<string, DialogueFunction>>;
+  private readonly defaultCommands: Readonly<Record<string, CommandHandler>>;
+  private readonly defaultFallback: CommandHandler | undefined;
+
+  // Resolved per play() (controller install + call-site overrides).
+  private storage: VariableStorage | undefined;
+  private functions: Readonly<Record<string, DialogueFunction>> = {};
   private commands: Readonly<Record<string, CommandHandler>> = {};
   private fallbackCommand: CommandHandler | undefined;
 
@@ -230,6 +254,10 @@ export class DialogueSession {
   ) {
     this.i18n = opts.i18n ?? new IdentityI18n();
     this.skipMul = opts.skipMultiplier ?? 4;
+    this.defaultStorage = opts.storage ?? new MemoryVariableStorage();
+    this.defaultFunctions = opts.functions ?? {};
+    this.defaultCommands = opts.commands ?? {};
+    this.defaultFallback = opts.fallbackCommand;
     this.channels.text.onRevealComplete = () => this.handleRevealComplete();
     this.channels.choices.onChoiceChosen = (position) => {
       this.selected = position;
@@ -238,17 +266,17 @@ export class DialogueSession {
   }
 
   /**
-   * Begin a conversation. The `binding` (required when the script declares
-   * externals) bridges game state in (`state`: every external as a constant or
-   * live getter, plus optional var overrides) and game logic out (`commands`
-   * map + `fallbackCommand`). Returns a generation-stamped {@link DialogueHandle}
-   * for live `setVar` / `getVars`.
+   * Begin a conversation. `play(script)` is **content-only** — the storage,
+   * functions, and commands are installed on the session (D1); `overrides` layers
+   * per-conversation specifics on top (a scoped `storage`, extra `functions` /
+   * `commands`). Declared defaults seed into the storage **only if absent**
+   * (game-linked values win); variables persist across plays. Returns a
+   * generation-stamped {@link DialogueHandle} for live `setVar` / `getVars`.
    */
   play<S extends DialogueScript>(
     rawScript: S,
-    ...args: PlayBindingArgs<S>
+    overrides?: DialoguePlayOptions,
   ): DialogueHandle<VarsOf<S>> {
-    const binding: DialogueBinding = (args[0] as DialogueBinding | undefined) ?? {};
     // Abandon any in-flight conversation first. `stop()` bumps the generation,
     // so a still-pending async continuation from the previous line (e.g. an
     // awaited `afterReveal`/`advance` command) bails on resume instead of
@@ -258,20 +286,30 @@ export class DialogueSession {
 
     const script = loadScript(rawScript);
     const analysis = analyzeScript(script);
-    validateBinding(analysis, binding); // hard error on a mismatched binding
+
+    // Resolve the environment: controller install + call-site overrides
+    // (storage replaces; functions/commands merge, call site winning).
+    const storage = overrides?.storage ?? this.defaultStorage;
+    const functions = { ...this.defaultFunctions, ...overrides?.functions };
+    const commands = { ...this.defaultCommands, ...overrides?.commands };
+    const fallbackCommand = overrides?.fallbackCommand ?? this.defaultFallback;
+
+    // Hard error on an environment that can't satisfy the script — runs before
+    // seeding so the declared-default/storage conflict check sees the host value.
+    validatePlay(analysis, { storage, functions, commands, fallbackCommand });
+
+    // Seed-if-absent (D3): a declared default applies only when the storage
+    // doesn't already hold the name — never clobber a game-linked value.
+    for (const [name, value] of Object.entries(script.declare ?? {})) {
+      if (!storage.has(name)) storage.set(name, value);
+    }
+
     this.script = script;
     this.scriptId = script.id;
-    this.commands = binding.commands ?? {};
-    this.fallbackCommand = binding.fallbackCommand;
-
-    // One namespace, declarations decide ownership: script.vars are mutable
-    // dialogue-locals, externals are read-only views the binding provides.
-    const store = new VarStore(
-      script.vars ?? {},
-      analysis.varNames,
-      analysis.externalNames,
-      binding.state ?? {},
-    );
+    this.storage = storage;
+    this.functions = functions;
+    this.commands = commands;
+    this.fallbackCommand = fallbackCommand;
 
     // Stamp this runner's callbacks with the current generation. A later
     // stop()/play() bumps it, so a *prior* runner resuming an async step (e.g.
@@ -280,32 +318,47 @@ export class DialogueSession {
     // corrupting — the new conversation's session state.
     const gen = this.generation;
     const live = () => gen === this.generation;
-    const runner = new DialogueRunner(script, store, {
-      onSay: (step, speaker) => {
-        if (live()) this.handleSay(step, speaker);
+
+    // The runner writes through a generation-guarded view of the storage: a
+    // stale `set` / `ctx.setVar` (from an abandoned conversation's awaited
+    // blocking command) no-ops instead of mutating the now-shared persistent
+    // store. Reads pass straight through.
+    const guarded: VariableStorage = {
+      get: (name) => storage.get(name),
+      set: (name, value) => {
+        if (live()) storage.set(name, value);
       },
-      onChoice: (step, choices, speaker) => {
-        if (live()) this.handleChoice(step, choices, speaker);
+      has: (name) => storage.has(name),
+      entries: () => storage.entries(),
+    };
+
+    const runner = new DialogueRunner(
+      script,
+      { storage: guarded, functions },
+      {
+        onSay: (step, speaker) => {
+          if (live()) this.handleSay(step, speaker);
+        },
+        onChoice: (step, choices, speaker) => {
+          if (live()) this.handleChoice(step, choices, speaker);
+        },
+        onCommand: (command, ctx) =>
+          live() ? this.handleCommand(command, ctx) : undefined,
+        onEnd: () => {
+          if (live()) this.handleEnd();
+        },
       },
-      onCommand: (command, ctx) =>
-        live() ? this.handleCommand(command, ctx) : undefined,
-      onEnd: () => {
-        if (live()) this.handleEnd();
-      },
-    });
+    );
     this.runner = runner;
     this.opts.onStarted?.({ scriptId: this.scriptId });
     runner.start();
 
     // Typed, generation-stamped handle (D4): after stop()/replay it no-ops
-    // (setVar) / returns an empty snapshot (getVars), so a stale reference can't
-    // poke a different conversation's vars.
+    // (setVar via the guarded view) / returns an empty snapshot (getVars).
     return {
-      setVar: (key, value) => {
-        if (gen === this.generation) runner.setVar(key, value);
-      },
+      setVar: (name, value) => guarded.set(name, value),
       getVars: () =>
-        (gen === this.generation ? runner.getVars() : EMPTY_VARS) as Readonly<
+        (gen === this.generation ? materialize(storage) : EMPTY_VARS) as Readonly<
           VarsOf<S>
         >,
     };
@@ -368,13 +421,12 @@ export class DialogueSession {
   }
 
   /**
-   * The merged read view (dialogue vars + externals, getters invoked now) for
-   * interpolation at *this* present-time. Materialized per evaluation so an
-   * earlier command's `set` shows up on a later line (scenario 3); already-shown
-   * lines never re-render.
+   * The storage read view for `{token}` interpolation at *this* present-time.
+   * Materialized per evaluation so an earlier command's `set` shows up on a
+   * later line (scenario 3); already-shown lines never re-render.
    */
   private readView(): VarMap {
-    return this.runner?.getReadView() ?? {};
+    return this.storage ? materialize(this.storage) : {};
   }
 
   // ── input-agnostic API ────────────────────────────────────────────────────
@@ -459,10 +511,13 @@ export class DialogueSession {
    */
   preview(nodeId: string, limit = 64): PreviewedLine[] {
     const script = this.script;
-    if (!script) return [];
-    // Same merged view for conditions AND interpolation (vars + externals),
-    // materialized once for this side-effect-free lookahead.
-    const view = this.readView();
+    const storage = this.storage;
+    if (!script || !storage) return [];
+    // Interpolation reads a materialized snapshot; conditions evaluate through a
+    // scope (per-name reads + functions). Both off the current storage, for this
+    // side-effect-free lookahead.
+    const view = materialize(storage);
+    const scope = createScope(storage, this.functions);
     const out: PreviewedLine[] = [];
     let node = nodeId;
     let i = 0;
@@ -482,7 +537,7 @@ export class DialogueSession {
         });
         i++;
       } else if (step.kind === "command") {
-        if (step.target !== undefined && testCondition(step.condition, view)) {
+        if (step.target !== undefined && testCondition(step.condition, scope)) {
           node = step.target;
           i = 0;
         } else {
@@ -780,10 +835,7 @@ export class DialogueSession {
   }
 }
 
-/** True when no condition, else the parsed condition holds for `vars`. */
-function testCondition(
-  condition: Parameters<typeof evalCondition>[0] | undefined,
-  vars: Readonly<VarMap>,
-): boolean {
-  return condition === undefined ? true : evalCondition(condition, vars);
+/** True when no condition, else the condition holds against `scope`. */
+function testCondition(condition: Condition | undefined, scope: EvalScope): boolean {
+  return condition === undefined ? true : evalCondition(condition, scope);
 }

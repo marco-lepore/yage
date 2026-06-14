@@ -1,93 +1,140 @@
 /**
- * VarStore — the unified var/external lookup behind a running conversation.
+ * {@link VariableStorage} implementations — the read/write bridge between a
+ * conversation and game state (D1/D2). One **opaque** name namespace; scoping is
+ * the host's policy. Three building blocks:
  *
- * One namespace, two ownership classes (the partition is decided by the
- * script's *declarations*, not by the call kind):
+ *   • {@link MemoryVariableStorage} — the zero-config default. A plain Map; holds
+ *     dialogue-locals and seeded defaults, persists across plays.
+ *   • {@link cells} — first-class **two-way binding**: `{ gold: { get, set } }`
+ *     drives a value the *script* owns the arithmetic of (a read-only getter
+ *     throws on `set`). A bare `() => value` is the read-only shorthand.
+ *   • {@link compose} — layer several storages into one (reads/writes route to
+ *     the first that `has` the name; a brand-new name lands in the last —
+ *     so put a writable store last to catch seeds + locals).
  *
- *   • **Dialogue vars** (∈ `script.vars`) are mutable and conversation-local —
- *     `set` / `ctx.setVar` / `handle.setVar` write them.
- *   • **Externals** (∈ `script.external`) are read-only views into game state,
- *     bound by the host as a constant or a live getter (invoked at read time so
- *     `{gold}` / a choice gate reflects the latest value).
- *
- * Conditions, `{token}` interpolation, and choice gates all read through `read`
- * / `materialize`; writes funnel through the guarded `write`, so "you can't
- * mutate game state from a script" is enforced structurally, not by convention.
+ * The interface lives in `types.ts`; this file is the concrete kit. Seed-if-
+ * absent + persistence are policy of the *caller* (`session.play`), not the
+ * storage — these just hold values.
  */
 
-import type { BindingValue, VarMap, VarValue } from "./types.js";
+import type { VariableStorage, VarMap, VarValue } from "./types.js";
 
-export class VarStore {
-  /** Mutable dialogue vars (∈ declared `varNames`). */
-  private readonly vars: VarMap;
-  /** Read-only externals (∈ declared `externalNames`): constant or getter. */
-  private readonly externals = new Map<string, BindingValue>();
+/** Materialize a storage's enumerable variables into a plain map — backs
+ *  `{token}` interpolation params and `handle.getVars()`. */
+export function materialize(storage: VariableStorage): VarMap {
+  const out: VarMap = {};
+  for (const [name, value] of storage.entries()) out[name] = value;
+  return out;
+}
 
-  constructor(
-    defaults: Readonly<VarMap>,
-    private readonly varNames: ReadonlySet<string>,
-    private readonly externalNames: ReadonlySet<string>,
-    bindingState: Readonly<Record<string, BindingValue>>,
-  ) {
-    this.vars = { ...defaults };
-    for (const [name, entry] of Object.entries(bindingState)) {
-      if (this.externalNames.has(name)) {
-        this.externals.set(name, entry);
-      } else if (this.varNames.has(name)) {
-        // A var binding is validated to be a constant: it overrides the default.
-        this.vars[name] = entry as VarValue;
+/** The zero-config default storage: a Map-backed, fully-enumerable store. */
+export class MemoryVariableStorage implements VariableStorage {
+  private readonly map = new Map<string, VarValue>();
+
+  constructor(initial?: Readonly<VarMap>) {
+    if (initial) for (const [name, value] of Object.entries(initial)) this.map.set(name, value);
+  }
+
+  get(name: string): VarValue | undefined {
+    return this.map.get(name);
+  }
+  set(name: string, value: VarValue): void {
+    this.map.set(name, value);
+  }
+  has(name: string): boolean {
+    return this.map.has(name);
+  }
+  entries(): Iterable<readonly [string, VarValue]> {
+    return this.map.entries();
+  }
+  /** Drop everything — host-controlled reset (D3: variables persist by default). */
+  clear(): void {
+    this.map.clear();
+  }
+}
+
+/** A two-way (or read-only) binding for one game-owned value. A bare function is
+ *  the read-only shorthand for `{ get }`. */
+export type Cell =
+  | { get(): VarValue; set?(value: VarValue): void }
+  | (() => VarValue);
+
+/**
+ * A {@link VariableStorage} over named accessors into game state. `has` is true
+ * for exactly the declared names; `get` invokes the getter live; `set` writes
+ * through the setter, or throws if the cell is read-only (a getter with no
+ * setter). This is the seam for a value whose arithmetic the *script* owns
+ * (`set gold = gold - 50`).
+ */
+export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
+  const get = (name: string): VarValue => {
+    const cell = defs[name];
+    return typeof cell === "function" ? cell() : cell!.get();
+  };
+  return {
+    get(name) {
+      return name in defs ? get(name) : undefined;
+    },
+    set(name, value) {
+      const cell = defs[name];
+      if (cell === undefined) {
+        throw new Error(`dialogue: cells() has no accessor for "${name}"`);
       }
-      // Names in neither were rejected by validateBinding before we got here.
-    }
-  }
+      if (typeof cell === "function" || cell.set === undefined) {
+        throw new Error(
+          `dialogue: "${name}" is read-only (a cells getter without a setter)`,
+        );
+      }
+      cell.set(value);
+    },
+    has(name) {
+      return name in defs;
+    },
+    *entries() {
+      for (const name of Object.keys(defs)) yield [name, get(name)] as const;
+    },
+  };
+}
 
-  /**
-   * Unified read: a dialogue var's current value, or an external (the getter is
-   * invoked now, so the read is live). Unknown names read `null`.
-   */
-  read(name: string): VarValue {
-    if (this.varNames.has(name)) return this.vars[name] ?? null;
-    const ext = this.externals.get(name);
-    if (ext !== undefined) return typeof ext === "function" ? ext() : ext;
-    return null;
+/**
+ * Layer storages into one. `get`/`has` consult them in order (first that `has`
+ * the name wins); `set` writes through the first that `has` it, else the **last**
+ * storage — so a brand-new name (a dialogue-local or a seeded default) lands in
+ * whatever writable store you put last. Typical: `compose(cells(...game), new
+ * MemoryVariableStorage())`.
+ */
+export function compose(...storages: readonly VariableStorage[]): VariableStorage {
+  if (storages.length === 0) {
+    throw new Error("dialogue: compose() needs at least one storage");
   }
-
-  /** Guarded write: only declared dialogue vars are writable. */
-  write(name: string, value: VarValue): void {
-    if (this.varNames.has(name)) {
-      this.vars[name] = value;
-      return;
-    }
-    if (this.externalNames.has(name)) {
-      throw new Error(
-        `dialogue: "${name}" is game state (an external, read-only to the script); ` +
-          `mutate it via a command, not set/setVar.`,
-      );
-    }
-    throw new Error(
-      `dialogue: cannot set unknown var "${name}" (declare it in script.vars).`,
-    );
-  }
-
-  /**
-   * A plain merged snapshot (vars + externals, getters invoked) — the read view
-   * conditions and `{token}` interpolation evaluate against. Materialized per
-   * evaluation rather than proxied, so an earlier command's `set` shows up on a
-   * later line and a getter is only ever called, never stored.
-   */
-  materialize(): VarMap {
-    const out: VarMap = { ...this.vars };
-    for (const [name, ext] of this.externals) {
-      out[name] = typeof ext === "function" ? ext() : ext;
-    }
-    return out;
-  }
-
-  /**
-   * The mutable dialogue vars only (externals excluded) — the `handle.getVars()`
-   * / future save-cursor view.
-   */
-  getVars(): Readonly<VarMap> {
-    return this.vars;
-  }
+  const last = storages[storages.length - 1]!;
+  return {
+    get(name) {
+      for (const s of storages) if (s.has(name)) return s.get(name);
+      return undefined;
+    },
+    set(name, value) {
+      for (const s of storages) {
+        if (s.has(name)) {
+          s.set(name, value);
+          return;
+        }
+      }
+      last.set(name, value);
+    },
+    has(name) {
+      return storages.some((s) => s.has(name));
+    },
+    *entries() {
+      const seen = new Set<string>();
+      for (const s of storages) {
+        for (const [name, value] of s.entries()) {
+          if (!seen.has(name)) {
+            seen.add(name);
+            yield [name, value] as const;
+          }
+        }
+      }
+    },
+  };
 }

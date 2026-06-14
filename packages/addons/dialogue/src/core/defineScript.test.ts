@@ -32,8 +32,7 @@ describe("defineScript", () => {
     const raw = {
       id: "s",
       start: "a",
-      vars: { greeted: false },
-      external: { gold: "number" },
+      declare: { greeted: false },
       nodes: { a: { id: "a", steps: [{ kind: "end" }] } },
     } as const;
     const script = defineScript(raw);
@@ -41,7 +40,7 @@ describe("defineScript", () => {
     expect(Object.keys(script)).toEqual(Object.keys(raw));
   });
 
-  it("drives interpolation + a typed binding end-to-end", () => {
+  it("drives interpolation + a typed handle end-to-end (content-only play)", () => {
     const onLine = vi.fn();
     const session = new DialogueSession(
       { text: new NoopText(), choices: new NoopChoices() },
@@ -50,42 +49,41 @@ describe("defineScript", () => {
     const script = defineScript({
       id: "typed",
       start: "a",
-      vars: { name: "stranger" },
-      external: { gold: "number" },
+      declare: { name: "stranger" },
       nodes: {
-        a: { id: "a", steps: [{ kind: "say", text: "{name} has {gold} gold." }] },
+        a: { id: "a", steps: [{ kind: "say", text: "{name} greets you." }] },
       },
     });
-    // `state` is required (externals) and type-checked; the handle is typed.
-    const handle = session.play(script, { state: { gold: () => 7, name: "Mara" } });
+    // play(script) is content-only — storage is installed on the session; the
+    // declared default `name` seeds it, and the handle is typed to keyof declare.
+    const handle = session.play(script);
     expect(onLine).toHaveBeenCalledWith({
       speaker: undefined,
-      text: "Mara has 7 gold.",
+      text: "stranger greets you.",
     });
-    handle.setVar("name", "Mara the Bold");
-    expect(handle.getVars().name).toBe("Mara the Bold");
+    handle.setVar("name", "Mara");
+    expect(handle.getVars().name).toBe("Mara");
   });
 
-  it("enforces the binding shape at compile time", () => {
-    // Compile-time-only assertions: this closure is type-checked but never run
-    // (the bad calls would throw at play-time, which is the point — the type
-    // system is what should reject them first).
+  it("types the handle to the declared variables (compile-time)", () => {
+    // Compile-time-only assertions: this closure is type-checked but never run.
     const typeChecks = (session: DialogueSession): void => {
       const script = defineScript({
-        id: "needs-ext",
+        id: "typed",
         start: "a",
-        external: { gold: "number" },
+        declare: { greeted: false, gold: 0 },
         nodes: { a: { id: "a", steps: [{ kind: "end" }] } },
       });
 
-      // @ts-expect-error — a script with externals requires a binding.
-      session.play(script);
+      const handle = session.play(script);
+      handle.setVar("greeted", true); // ok
+      handle.setVar("gold", 5); // ok
 
-      // @ts-expect-error — `gold` must be a number (or () => number), not a string.
-      session.play(script, { state: { gold: "lots" } });
+      // @ts-expect-error — "bogus" is not a declared variable.
+      handle.setVar("bogus", 1);
 
-      // The correct call type-checks.
-      session.play(script, { state: { gold: 5 } });
+      const greeted: boolean = handle.getVars().greeted; // typed by the declare
+      void greeted;
     };
 
     expect(typeof typeChecks).toBe("function");

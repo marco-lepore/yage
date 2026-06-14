@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DialogueSession } from "./session.js";
+import { MemoryVariableStorage, cells, compose } from "./vars.js";
 import type {
   AvatarChannel,
   ChoiceChannel,
@@ -348,32 +349,30 @@ describe("DialogueSession — auto-advance clock", () => {
 });
 
 describe("DialogueSession — i18n & interpolation", () => {
-  it("interpolates externals into line text and speaker names", () => {
+  it("interpolates variables into line text and speaker names", () => {
     const onLine = vi.fn();
     const h = makeHarness({ onLine });
     const hero: SpeakerDef = { id: "hero", name: "{playerName}" };
     const script: DialogueScript = {
       id: "i18n",
       start: "a",
-      external: { playerName: "string" },
       speakers: { hero },
       nodes: {
         a: { id: "a", steps: [{ kind: "say", speaker: "hero", text: "Hi, I am {playerName}" }] },
       },
     };
-    h.session.play(script, { state: { playerName: "Mara" } });
+    h.session.play(script, { storage: new MemoryVariableStorage({ playerName: "Mara" }) });
     expect(onLine).toHaveBeenCalledWith({ speaker: "Mara", text: "Hi, I am Mara" });
     expect(h.chrome.nameplates.at(-1)).toEqual({ name: "Mara" });
   });
 
-  it("interpolation reads a live external getter at each present (scenario 3)", async () => {
+  it("interpolation reads a live storage value at each present (scenario 3)", async () => {
     const onLine = vi.fn();
     const h = makeHarness({ onLine });
-    let gold = 5; // the host's game state
+    let gold = 5; // the host's game state, behind a cells getter
     const script: DialogueScript = {
       id: "live-gold",
       start: "a",
-      external: { gold: "number" },
       nodes: {
         a: {
           id: "a",
@@ -384,7 +383,7 @@ describe("DialogueSession — i18n & interpolation", () => {
         },
       },
     };
-    h.session.play(script, { state: { gold: () => gold } });
+    h.session.play(script, { storage: cells({ gold: () => gold }) });
     expect(onLine).toHaveBeenLastCalledWith({
       speaker: undefined,
       text: "You have 5 gold.",
@@ -397,16 +396,16 @@ describe("DialogueSession — i18n & interpolation", () => {
     expect(onLine).toHaveBeenLastCalledWith({ speaker: undefined, text: "Now 9." });
   });
 
-  it("a play() binding overrides a script var default by value", () => {
+  it("a stored value wins over a declared default (seed-if-absent)", () => {
     const onLine = vi.fn();
     const h = makeHarness({ onLine });
     const script: DialogueScript = {
       id: "var-override",
       start: "a",
-      vars: { name: "stranger" },
+      declare: { name: "stranger" },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "Hi, {name}." }] } },
     };
-    h.session.play(script, { state: { name: "Mara" } });
+    h.session.play(script, { storage: new MemoryVariableStorage({ name: "Mara" }) });
     expect(onLine).toHaveBeenCalledWith({ speaker: undefined, text: "Hi, Mara." });
   });
 });
@@ -706,7 +705,7 @@ describe("DialogueSession — preview (side-effect-free lookahead)", () => {
     const script: DialogueScript = {
       id: "preview-cond",
       start: "a",
-      vars: { go: true },
+      declare: { go: true },
       nodes: {
         a: {
           id: "a",
@@ -1099,13 +1098,13 @@ describe("DialogueSession — avatar on choices (regression)", () => {
   });
 });
 
-describe("DialogueSession — binding handle & play-time validation", () => {
-  it("play() returns a handle that reads and writes dialogue vars", () => {
+describe("DialogueSession — handle & play-time validation", () => {
+  it("play() returns a handle that reads and writes variables", () => {
     const h = makeHarness();
     const script: DialogueScript = {
       id: "handle",
       start: "a",
-      vars: { gold: 0 },
+      declare: { gold: 0 },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
     };
     const handle = h.session.play(script);
@@ -1119,26 +1118,25 @@ describe("DialogueSession — binding handle & play-time validation", () => {
     const script: DialogueScript = {
       id: "stale",
       start: "a",
-      vars: { n: 1 },
+      declare: { n: 1 },
+      // A fresh storage per play so the persistent default store isn't shared
+      // between the two conversations (which would make `setVar` visible).
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
-    const first = h.session.play(script);
-    h.session.play(script); // replaces the conversation → bumps the generation
-    first.setVar("n", 99); // must not touch the live conversation
+    const first = h.session.play(script, { storage: new MemoryVariableStorage() });
+    h.session.play(script, { storage: new MemoryVariableStorage() }); // bumps generation
+    first.setVar("n", 99); // stale → no-op
     expect(first.getVars()).toEqual({}); // stale → empty snapshot
   });
 
-  it("rejects a binding missing a declared external", () => {
+  it("rejects a read name that nothing provides", () => {
     const h = makeHarness();
     const script: DialogueScript = {
-      id: "missing-ext",
+      id: "missing-read",
       start: "a",
-      external: { gold: "number" },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold}" }] } },
     };
-    expect(() => h.session.play(script, { state: {} })).toThrow(
-      /missing required external/,
-    );
+    expect(() => h.session.play(script)).toThrow(/reads "gold"/);
   });
 
   it("rejects an unhandled (non-built-in) command type", () => {
@@ -1157,5 +1155,233 @@ describe("DialogueSession — binding handle & play-time validation", () => {
       },
     };
     expect(() => h.session.play(script)).toThrow(/no handler for command type/);
+  });
+});
+
+describe("DialogueSession — storage model", () => {
+  // Scenario 1: a choice gated on an item the player is granted mid-conversation.
+  it("a give-item command grants a key a later choice gate reads (scenario 1)", async () => {
+    const inventory = new Set<string>();
+    const h = makeHarness({
+      functions: { has_item: (id) => inventory.has(String(id)) },
+      commands: { "give-item": (cmd) => void inventory.add(String(cmd.id)) },
+    });
+    const gate = {
+      kind: "call" as const,
+      fn: "has_item",
+      args: [{ kind: "literal" as const, value: "rusty-key" }],
+    };
+    const script: DialogueScript = {
+      id: "key-gate",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "give-item", id: "rusty-key" }] },
+            {
+              kind: "choice",
+              options: [
+                { text: "Hand over the rusty key", target: "give", condition: gate },
+                { text: "Say nothing", target: "none" },
+              ],
+            },
+          ],
+        },
+        give: { id: "give", steps: [{ kind: "say", text: "handed-over" }] },
+        none: { id: "none", steps: [{ kind: "say", text: "said-nothing" }] },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    // Both options are reachable — the key was granted by the earlier command.
+    expect(h.choices.lastLabels).toEqual(["Hand over the rusty key", "Say nothing"]);
+    h.session.choose(0);
+    await flush();
+    expect(h.text.lastText).toBe("handed-over");
+  });
+
+  // Scenario 2: a blocking skill-check writes a var the next node branches on.
+  it("a blocking skill-check ctx.setVar drives the next branch (scenario 2)", async () => {
+    const h = makeHarness({
+      commands: {
+        "skill-check": (_cmd, ctx) => {
+          ctx.setVar("passed", true);
+        },
+      },
+    });
+    const script: DialogueScript = {
+      id: "skill",
+      start: "a",
+      declare: { passed: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "skill-check", stat: "strength", blocking: true }] },
+            { kind: "command", commands: [], condition: "passed", target: "win" },
+            { kind: "say", text: "lose" },
+          ],
+        },
+        win: { id: "win", steps: [{ kind: "say", text: "win" }] },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    expect(h.text.lastText).toBe("win");
+  });
+
+  it("persists variables across plays on the same session", () => {
+    const h = makeHarness();
+    const bump: DialogueScript = {
+      id: "bump",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "set",
+                  var: "count",
+                  value: {
+                    kind: "binary",
+                    op: "+",
+                    left: { kind: "varRef", name: "count" },
+                    right: { kind: "literal", value: 1 },
+                  },
+                },
+              ],
+            },
+            { kind: "say", text: "x" },
+          ],
+        },
+      },
+    };
+    // Seed `count` once via a declared default, then increment across plays.
+    const seeded: DialogueScript = { ...bump, declare: { count: 0 } };
+    const a = h.session.play(seeded);
+    expect(a.getVars().count).toBe(1);
+    const b = h.session.play(seeded); // seed-if-absent: NOT reset to 0
+    expect(b.getVars().count).toBe(2);
+  });
+
+  // The cycling-NPC counter: talk to the same NPC repeatedly, dialogue changes.
+  it("a cycling NPC reads a persistent counter to change its line", async () => {
+    const h = makeHarness();
+    const incr = {
+      kind: "binary" as const,
+      op: "+" as const,
+      left: { kind: "varRef" as const, name: "timesTalked" },
+      right: { kind: "literal" as const, value: 1 },
+    };
+    const script: DialogueScript = {
+      id: "npc",
+      start: "a",
+      declare: { timesTalked: 0 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            // Increment on entry, then gate on the (now-persisted) prior count.
+            { kind: "command", commands: [{ type: "set", var: "timesTalked", value: incr }] },
+            { kind: "command", commands: [], condition: { var: "timesTalked", op: ">", value: 1 }, target: "again" },
+            { kind: "say", text: "first-meeting" },
+          ],
+        },
+        again: { id: "again", steps: [{ kind: "say", text: "we-meet-again" }] },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    expect(h.text.lastText).toBe("first-meeting"); // timesTalked: 0 → 1
+    h.session.play(script); // talk again — counter persisted (seed-if-absent skips)
+    await flush();
+    expect(h.text.lastText).toBe("we-meet-again"); // timesTalked: 1 → 2
+  });
+
+  it("a two-way cells accessor lets a `set` expression write through to game state", async () => {
+    let gold = 100; // the game owns this; the cell binds it two-way
+    const onLine = vi.fn();
+    const h = makeHarness({
+      onLine,
+      storage: compose(
+        cells({ gold: { get: () => gold, set: (v) => (gold = Number(v)) } }),
+        new MemoryVariableStorage(),
+      ),
+    });
+    const script: DialogueScript = {
+      id: "spend",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "set",
+                  var: "gold",
+                  value: {
+                    kind: "binary",
+                    op: "-",
+                    left: { kind: "varRef", name: "gold" },
+                    right: { kind: "literal", value: 50 },
+                  },
+                },
+              ],
+            },
+            { kind: "say", text: "You have {gold} gold." },
+          ],
+        },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    expect(gold).toBe(50); // written through the cells setter
+    expect(onLine).toHaveBeenLastCalledWith({ speaker: undefined, text: "You have 50 gold." });
+  });
+
+  it("an expression condition combines storage reads and a function call", async () => {
+    let rude = false;
+    const h = makeHarness({
+      functions: { afford: (cost) => 100 >= Number(cost) },
+      storage: cells({ rude: () => rude }),
+    });
+    const script: DialogueScript = {
+      id: "expr-cond",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [],
+              // afford(50) and not rude
+              condition: {
+                kind: "binary",
+                op: "and",
+                left: { kind: "call", fn: "afford", args: [{ kind: "literal", value: 50 }] },
+                right: { kind: "unary", op: "not", operand: { kind: "varRef", name: "rude" } },
+              },
+              target: "ok",
+            },
+            { kind: "say", text: "no" },
+          ],
+        },
+        ok: { id: "ok", steps: [{ kind: "say", text: "yes" }] },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    expect(h.text.lastText).toBe("yes");
+    rude = true;
+    h.session.play(script); // re-evaluate with rude flipped
+    await flush();
+    expect(h.text.lastText).toBe("no");
   });
 });

@@ -11,19 +11,21 @@
  * session (engine-agnostic). The presenter bundle usually comes from a factory
  * (`createBoxDialogue(theme)`), spread-and-overridden as needed:
  *
- *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, params }));
+ *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, storage }));
  */
 
 import { Component, LoggerKey, type Logger } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
-  type DialogueBinding,
+  type CommandHandler,
+  type DialogueFunction,
   type DialogueHandle,
+  type DialoguePlayOptions,
   type DialogueScript,
   type I18nAdapter,
-  type PlayBindingArgs,
   type PreviewedLine,
+  type VariableStorage,
   type VarsOf,
 } from "./core/index.js";
 import type {
@@ -54,22 +56,32 @@ export interface DialogueBundle {
   readonly skipMultiplier?: number | undefined;
 }
 
-export interface DialogueControllerOptions extends DialogueBundle {
+export interface DialogueControllerOptions<TStorage extends VariableStorage = VariableStorage>
+  extends DialogueBundle {
   readonly i18n?: I18nAdapter | undefined;
   /**
-   * Controller-level binding defaults, reused across every `play()` (e.g. global
-   * externals like `() => player.gold`, or a shared `commands` map). The
-   * per-`play()` binding is layered on top — its `state`/`commands` override
-   * these key-by-key, its `fallbackCommand` wins when set.
+   * The variable storage installed for every `play()` (D1). Persists across
+   * plays. Omit for a zero-config `MemoryVariableStorage`; supply your own (or
+   * `compose(cells(...), new MemoryVariableStorage())`) to bridge game state. A
+   * per-`play()` `overrides.storage` replaces it for that conversation.
    */
-  readonly binding?: DialogueBinding | undefined;
+  readonly storage?: TStorage | undefined;
+  /** Argument-capable read functions (`has_item("key")`) shared across plays. */
+  readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
+  /** Command handlers (`type` → handler) shared across plays; per-`play()`
+   *  `overrides.commands` merge on top (call site wins). */
+  readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
+  /** Catch-all for command types with no explicit handler. */
+  readonly fallbackCommand?: CommandHandler | undefined;
   /** Device → session binding. Omit for the default keyboard binding. */
   readonly input?: InputBinding;
   /** Called once when a conversation ends (in addition to the scene event). */
   readonly onEnded?: () => void;
 }
 
-export class DialogueController extends Component {
+export class DialogueController<
+  TStorage extends VariableStorage = VariableStorage,
+> extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly binding: InputBinding;
   private session!: DialogueSession;
@@ -78,7 +90,7 @@ export class DialogueController extends Component {
   /** Set by onDestroy — the presenters are disposed, so play() must refuse. */
   private destroyed = false;
 
-  constructor(private readonly opts: DialogueControllerOptions) {
+  constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
     this.binding = opts.input ?? new KeyboardInputBinding();
   }
@@ -100,13 +112,18 @@ export class DialogueController extends Component {
       {
         i18n: this.opts.i18n,
         skipMultiplier: this.opts.skipMultiplier,
+        // Controller-installed environment (D1) — persists across plays.
+        storage: this.opts.storage,
+        functions: this.opts.functions,
+        commands: this.opts.commands,
+        fallbackCommand: this.opts.fallbackCommand,
         onStarted: (e) => this.entity.emit(DialogueStartedEvent, e),
         onLine: (e) => this.entity.emit(DialogueLineEvent, e),
         onChoiceShown: (e) =>
           this.entity.emit(DialogueChoiceShownEvent, { options: e.options }),
         onChoiceMade: (e) => this.entity.emit(DialogueChoiceMadeEvent, e),
-        // Observation only — the binding's `commands` map does the work; this
-        // mirrors every non-built-in command onto the scene event bus.
+        // Observation only — the `commands` map does the work; this mirrors
+        // every non-built-in command onto the scene event bus.
         onCommand: (command, ctx) =>
           this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode }),
         onEnded: (e) => {
@@ -132,14 +149,15 @@ export class DialogueController extends Component {
   }
 
   /**
-   * Begin a conversation. The `binding` (required when the script declares
-   * externals) is layered over the controller-level {@link
-   * DialogueControllerOptions.binding} default. Returns a {@link DialogueHandle}
-   * for live `setVar` / `getVars`, or `undefined` if the controller was removed.
+   * Begin a conversation. `play(script)` is **content-only** — storage,
+   * functions, and commands are installed on the controller. `overrides` layers
+   * per-conversation specifics on top (a scoped `storage`, extra
+   * `functions`/`commands`). Returns a {@link DialogueHandle} for live `setVar` /
+   * `getVars`, or `undefined` if the controller was removed.
    */
   play<S extends DialogueScript>(
     script: S,
-    ...args: PlayBindingArgs<S>
+    overrides?: DialoguePlayOptions,
   ): DialogueHandle<VarsOf<S>> | undefined {
     // A stale reference calling play() after the component was removed (e.g. a
     // game keeping the controller in an interact closure past
@@ -158,17 +176,7 @@ export class DialogueController extends Component {
         "DialogueController.play() called before the component was added to an entity (onAdd has not run yet).",
       );
     }
-    const binding = mergeBindings(
-      this.opts.binding,
-      args[0] as DialogueBinding | undefined,
-    );
-    // The merged binding is structurally loose; the session re-validates it
-    // against the script and returns the typed handle.
-    const play = this.session.play.bind(this.session) as (
-      s: DialogueScript,
-      b?: DialogueBinding,
-    ) => DialogueHandle<VarsOf<S>>;
-    return play(script, binding);
+    return this.session.play(script, overrides);
   }
 
   isActive(): boolean {
@@ -229,19 +237,4 @@ export class DialogueController extends Component {
     this.session?.update(dt);
     this.binding.poll();
   }
-}
-
-/** Layer a per-`play()` binding over the controller-level default (later wins
- *  key-by-key; the call-site `fallbackCommand` overrides when present). */
-function mergeBindings(
-  base: DialogueBinding | undefined,
-  over: DialogueBinding | undefined,
-): DialogueBinding {
-  if (!base) return over ?? {};
-  if (!over) return base;
-  return {
-    state: { ...base.state, ...over.state },
-    commands: { ...base.commands, ...over.commands },
-    fallbackCommand: over.fallbackCommand ?? base.fallbackCommand,
-  };
 }

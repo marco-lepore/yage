@@ -1,20 +1,19 @@
 export * from "./types.js";
 export { parseMarkup, stripMarkup, splitGraphemes } from "./markup.js";
 export { loadScript, DialogueScriptError } from "./formats/canonical.js";
-export { DialogueBindingError } from "./validate.js";
+export { DialoguePlayError } from "./validate.js";
 export { defineScript } from "./defineScript.js";
-export type {
-  TypedScript,
-  TypedBinding,
-  BindingStateFor,
-  BindingFor,
-  VarsOf,
-  PlayBindingArgs,
-} from "./defineScript.js";
-// `VarStore` (vars.ts) and `tokensIn` (i18n.ts) are intentionally NOT exported —
-// internal binding-model plumbing; `session.ts`/`validate.ts` import them by path.
-export { DialogueRunner, evalCondition } from "./runner.js";
-export type { RunnerHandlers, ResolvedChoice } from "./runner.js";
+export type { TypedScript, VarsOf } from "./defineScript.js";
+// Variable storage kit (the host's bridge to game state).
+export { MemoryVariableStorage, cells, compose, materialize } from "./vars.js";
+export type { Cell } from "./vars.js";
+// Expression evaluator (conditions + `set` values).
+export { evaluate, evalCondition, isExpr } from "./expr.js";
+export type { EvalScope } from "./expr.js";
+// `createScope` (expr.ts) and `tokensIn` (i18n.ts) are intentionally NOT exported
+// — internal plumbing; `session.ts`/`runner.ts`/`validate.ts` import them by path.
+export { DialogueRunner } from "./runner.js";
+export type { RunnerHandlers, ResolvedChoice, RunnerEnv } from "./runner.js";
 export { IdentityI18n, interpolate } from "./i18n.js";
 export type { I18nAdapter } from "./i18n.js";
 export { DialogueSession } from "./session.js";

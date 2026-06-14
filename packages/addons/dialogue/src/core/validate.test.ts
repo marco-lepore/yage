@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { loadScript } from "./formats/canonical.js";
 import {
   analyzeScript,
-  validateBinding,
-  DialogueBindingError,
+  validatePlay,
+  DialoguePlayError,
   DialogueScriptError,
+  type PlayEnv,
 } from "./validate.js";
+import { MemoryVariableStorage, cells, compose } from "./vars.js";
 import type { DialogueScript } from "./types.js";
 
 function script(partial: Partial<DialogueScript>): DialogueScript {
@@ -18,77 +20,61 @@ function script(partial: Partial<DialogueScript>): DialogueScript {
   } as DialogueScript;
 }
 
-describe("analyzeScript — load-time reference + type walk", () => {
-  it("accepts conditions/tokens that resolve to declared vars or externals", () => {
-    const s = script({
-      vars: { greeted: false, gold: 0 },
-      external: { hp: "number" },
-      nodes: {
-        a: {
-          id: "a",
-          steps: [
-            { kind: "say", text: "You have {gold} gold and {hp} hp." },
-            { kind: "command", commands: [{ type: "set", var: "greeted", value: true }] },
-            { kind: "command", commands: [], condition: { var: "hp", op: ">", value: 5 }, target: "b" },
-            { kind: "say", text: "ok" },
-          ],
+/** A play-time env, defaulting every field so a test names only what it sets. */
+function env(over: Partial<PlayEnv> = {}): PlayEnv {
+  return {
+    storage: over.storage ?? new MemoryVariableStorage(),
+    functions: over.functions ?? {},
+    commands: over.commands ?? {},
+    fallbackCommand: over.fallbackCommand,
+  };
+}
+
+describe("analyzeScript — load-time walk + internal type checks", () => {
+  it("collects read vars, set targets, called functions, and command types", () => {
+    const s = loadScript(
+      script({
+        declare: { greeted: false, gold: 0 },
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              { kind: "say", text: "You have {gold} gold." },
+              { kind: "command", commands: [{ type: "set", var: "greeted", value: true }] },
+              {
+                kind: "command",
+                commands: [],
+                condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "key" }] },
+                target: "b",
+              },
+              { kind: "command", commands: [{ type: "give-item", id: "key" }] },
+              { kind: "say", text: "ok" },
+            ],
+          },
+          b: { id: "b", steps: [{ kind: "end" }] },
         },
-        b: { id: "b", steps: [{ kind: "end" }] },
+      }),
+    );
+    const a = analyzeScript(s);
+    expect([...a.readVars].sort()).toEqual(["gold"]);
+    expect([...a.setTargets]).toEqual(["greeted"]);
+    expect([...a.calledFunctions]).toEqual(["has_item"]);
+    expect([...a.commandTypes]).toEqual(["give-item"]);
+  });
+
+  it("does NOT reject an undeclared reference (storage may provide it at play)", () => {
+    const s = script({
+      nodes: {
+        a: { id: "a", steps: [{ kind: "command", commands: [], condition: "ghost", target: "a" }] },
       },
     });
+    // Load-time is environment-free — the typo surfaces at play, not here.
     expect(() => loadScript(s)).not.toThrow();
   });
 
-  it("rejects a condition var that is not declared", () => {
+  it("rejects a numeric operator against a declared boolean operand", () => {
     const s = script({
-      nodes: {
-        a: {
-          id: "a",
-          steps: [
-            { kind: "command", commands: [], condition: "ghost", target: "a" },
-          ],
-        },
-      },
-    });
-    expect(() => loadScript(s)).toThrow(DialogueScriptError);
-    expect(() => loadScript(s)).toThrow(/"ghost" is not a declared var or external/);
-  });
-
-  it("rejects an interpolation token that is not declared", () => {
-    const s = script({
-      nodes: { a: { id: "a", steps: [{ kind: "say", text: "Hi {name}." }] } },
-    });
-    expect(() => loadScript(s)).toThrow(/\{name\}.*not a declared/s);
-  });
-
-  it("rejects a set targeting an external (read-only game state)", () => {
-    const s = script({
-      external: { gold: "number" },
-      nodes: {
-        a: {
-          id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "gold", value: 1 }] }],
-        },
-      },
-    });
-    expect(() => loadScript(s)).toThrow(/set target "gold" is an external/);
-  });
-
-  it("rejects a set targeting an undeclared var", () => {
-    const s = script({
-      nodes: {
-        a: {
-          id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "flag", value: true }] }],
-        },
-      },
-    });
-    expect(() => loadScript(s)).toThrow(/set target "flag" is not a declared var/);
-  });
-
-  it("rejects a numeric operator against a boolean operand", () => {
-    const s = script({
-      vars: { flag: false },
+      declare: { flag: false },
       nodes: {
         a: {
           id: "a",
@@ -103,7 +89,7 @@ describe("analyzeScript — load-time reference + type walk", () => {
 
   it("rejects a numeric operator compared against a non-number value", () => {
     const s = script({
-      vars: { n: 0 },
+      declare: { n: 0 },
       nodes: {
         a: {
           id: "a",
@@ -116,24 +102,9 @@ describe("analyzeScript — load-time reference + type walk", () => {
     expect(() => loadScript(s)).toThrow(/compares against a number, got string/);
   });
 
-  it("rejects a name declared as both a var and an external", () => {
+  it("rejects a set whose literal value type mismatches the declared default", () => {
     const s = script({
-      vars: { gold: 0 },
-      external: { gold: "number" },
-    });
-    expect(() => loadScript(s)).toThrow(/declared as both a var and an external/);
-  });
-
-  it("rejects an invalid external type name", () => {
-    const s = script({
-      external: { gold: "int" as unknown as "number" },
-    });
-    expect(() => loadScript(s)).toThrow(/invalid type "int"/);
-  });
-
-  it("rejects a set whose value type mismatches the var's declared type", () => {
-    const s = script({
-      vars: { gold: 0 },
+      declare: { gold: 0 },
       nodes: {
         a: {
           id: "a",
@@ -143,61 +114,105 @@ describe("analyzeScript — load-time reference + type walk", () => {
     });
     expect(() => loadScript(s)).toThrow(/set "gold" expects number, got string/);
   });
+
+  it("allows a set to an undeclared name (a dialogue-local created on write)", () => {
+    const s = script({
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "local", value: true }] }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).not.toThrow();
+  });
 });
 
-describe("validateBinding — play-time binding check", () => {
-  const ext = (): DialogueScript =>
+describe("validatePlay — play-time environment check", () => {
+  const reads = (): DialogueScript =>
     loadScript(
       script({
-        external: { gold: "number", name: "string" },
         nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold} {name}" }] } },
       }),
     );
 
-  it("accepts a binding that provides every external with the right types", () => {
-    const a = analyzeScript(ext());
+  it("accepts an environment that provides every read name", () => {
+    const a = analyzeScript(reads());
+    const storage = new MemoryVariableStorage({ gold: 5, name: "Mara" });
+    expect(() => validatePlay(a, env({ storage }))).not.toThrow();
+  });
+
+  it("rejects a read name that nothing provides", () => {
+    const a = analyzeScript(reads());
+    const storage = new MemoryVariableStorage({ gold: 5 });
+    expect(() => validatePlay(a, env({ storage }))).toThrow(DialoguePlayError);
+    expect(() => validatePlay(a, env({ storage }))).toThrow(/reads "name"/);
+  });
+
+  it("counts a declared default as provided (it will be seeded)", () => {
+    const s = loadScript(
+      script({
+        declare: { gold: 0, name: "stranger" },
+        nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold} {name}" }] } },
+      }),
+    );
+    expect(() => validatePlay(analyzeScript(s), env())).not.toThrow();
+  });
+
+  it("rejects a called function that is not installed", () => {
+    const s = loadScript(
+      script({
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "command",
+                commands: [],
+                condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "key" }] },
+                target: "a",
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(() => validatePlay(analyzeScript(s), env())).toThrow(
+      /calls function "has_item"/,
+    );
     expect(() =>
-      validateBinding(a, { state: { gold: () => 5, name: "Mara" } }),
+      validatePlay(analyzeScript(s), env({ functions: { has_item: () => true } })),
     ).not.toThrow();
   });
 
-  it("rejects a missing external", () => {
-    const a = analyzeScript(ext());
-    expect(() => validateBinding(a, { state: { gold: 5 } })).toThrow(
-      DialogueBindingError,
-    );
-    expect(() => validateBinding(a, { state: { gold: 5 } })).toThrow(/name/);
-  });
-
-  it("rejects a wrong-typed external value", () => {
-    const a = analyzeScript(ext());
-    expect(() =>
-      validateBinding(a, { state: { gold: "lots", name: "Mara" } }),
-    ).toThrow(/external "gold" must be number, got string/);
-  });
-
-  it("rejects a null external (the typed path forbids it too)", () => {
-    const a = analyzeScript(ext());
-    expect(() =>
-      validateBinding(a, { state: { gold: () => null, name: "Mara" } }),
-    ).toThrow(/external "gold" must be number, got null/);
-  });
-
-  it("rejects a getter bound to a dialogue var (vars are by-value)", () => {
+  it("rejects a set target that is a function (read-only)", () => {
     const s = loadScript(
-      script({ vars: { greeted: false }, nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } } }),
+      script({
+        nodes: {
+          a: {
+            id: "a",
+            steps: [{ kind: "command", commands: [{ type: "set", var: "score", value: 1 }] }],
+          },
+        },
+      }),
     );
-    const a = analyzeScript(s);
-    expect(() => validateBinding(a, { state: { greeted: () => true } })).toThrow(
-      /must be a constant, not a getter/,
-    );
+    expect(() =>
+      validatePlay(analyzeScript(s), env({ functions: { score: () => 0 } })),
+    ).toThrow(/set target "score" is a function/);
   });
 
-  it("rejects a binding for an unknown name", () => {
-    const a = analyzeScript(ext());
-    expect(() =>
-      validateBinding(a, { state: { gold: 1, name: "x", bogus: 2 } }),
-    ).toThrow(/unknown name "bogus"/);
+  it("rejects a declared default whose type conflicts with the stored value", () => {
+    const s = loadScript(
+      script({
+        declare: { gold: 0 },
+        nodes: { a: { id: "a", steps: [{ kind: "say", text: "{gold}" }] } },
+      }),
+    );
+    // The host already holds `gold` as a string via a cell — a type clash.
+    const storage = compose(cells({ gold: () => "lots" }), new MemoryVariableStorage());
+    expect(() => validatePlay(analyzeScript(s), env({ storage }))).toThrow(
+      /declared default for "gold" is number but storage already holds string/,
+    );
   });
 
   it("accepts a fallbackCommand in place of per-type handlers", () => {
@@ -215,7 +230,15 @@ describe("validateBinding — play-time binding check", () => {
       }),
     );
     const a = analyzeScript(s);
-    expect(() => validateBinding(a, { fallbackCommand: () => {} })).not.toThrow();
-    expect(() => validateBinding(a, {})).toThrow(/no handler for command type/);
+    expect(() => validatePlay(a, env({ fallbackCommand: () => {} }))).not.toThrow();
+    expect(() => validatePlay(a, env())).toThrow(/no handler for command type/);
+  });
+});
+
+describe("error classes", () => {
+  it("are distinct subclasses of Error", () => {
+    expect(new DialogueScriptError("x")).toBeInstanceOf(Error);
+    expect(new DialoguePlayError("x")).toBeInstanceOf(Error);
+    expect(new DialoguePlayError("x")).not.toBeInstanceOf(DialogueScriptError);
   });
 });
