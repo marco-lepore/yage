@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DialogueSession } from "./session.js";
 import { MemoryVariableStorage, cells, compose } from "./vars.js";
+import { DialoguePlayError } from "./validate.js";
 import type {
   AvatarChannel,
   ChoiceChannel,
@@ -1225,6 +1226,35 @@ describe("DialogueSession — handle & play-time validation", () => {
     expect(h.session.isActive()).toBe(true); // alpha still running
     expect(h.text.lastText).toBe("alpha");
     expect(h.text.cleared).toBe(clearsBefore); // nothing was torn down
+  });
+
+  it("a seed the storage can't accept throws a DialoguePlayError, atomically", async () => {
+    const h = makeHarness();
+    const alpha: DialogueScript = {
+      id: "alpha",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "alpha" }] } },
+    };
+    h.session.play(alpha);
+    await flush();
+    expect(h.session.isActive()).toBe(true);
+
+    // A pure read-only cells() storage with no writable slot for the declared
+    // default — seeding `greeted` must fail cleanly, not as a raw error.
+    const readonly = cells({ hp: () => 10 });
+    const needsSeed: DialogueScript = {
+      id: "needs-seed",
+      start: "a",
+      declare: { greeted: false },
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
+    };
+    expect(() => h.session.play(needsSeed, { storage: readonly })).toThrow(DialoguePlayError);
+    expect(() => h.session.play(needsSeed, { storage: readonly })).toThrow(
+      /seed declared default "greeted"/,
+    );
+    // The failed seed ran before stop(), so alpha is untouched.
+    expect(h.session.isActive()).toBe(true);
+    expect(h.text.lastText).toBe("alpha");
   });
 });
 

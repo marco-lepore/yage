@@ -23,7 +23,7 @@ import { IdentityI18n, type I18nAdapter } from "./i18n.js";
 import { parseMarkup, stripMarkup } from "./markup.js";
 import { DialogueRunner, type ResolvedChoice } from "./runner.js";
 import { MemoryVariableStorage, materialize } from "./vars.js";
-import { analyzeScript, validatePlay } from "./validate.js";
+import { analyzeScript, validatePlay, DialoguePlayError } from "./validate.js";
 import type { VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
@@ -296,18 +296,33 @@ export class DialogueSession {
     // seeding so the declared-default/storage conflict check sees the host value.
     validatePlay(analysis, { storage, functions, commands, fallbackCommand });
 
+    // Seed-if-absent (D3): a declared default applies only when the storage
+    // doesn't already hold the name — never clobber a game-linked value. Done
+    // BEFORE stop() and wrapped, so a storage that can't accept the write (a pure
+    // read-only `cells()` with no writable slot for the name) fails as a clean
+    // `DialoguePlayError` while any running conversation is left untouched —
+    // play() stays atomic. Seeds are idempotent, so a partial seed before the
+    // throw is harmless on retry.
+    for (const [name, value] of Object.entries(script.declare ?? {})) {
+      if (storage.has(name)) continue;
+      try {
+        storage.set(name, value);
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new DialoguePlayError(
+          `cannot seed declared default "${name}": ${detail} ` +
+            `(a read-only / pure cells() storage has no writable slot — ` +
+            `compose it with a MemoryVariableStorage)`,
+        );
+      }
+    }
+
     // Past the point of failure — commit. Abandon any in-flight conversation:
     // `stop()` bumps the generation, so a still-pending async continuation from
     // the previous line (e.g. an awaited `afterReveal`/`advance` command) bails on
     // resume instead of stepping this new runner — important when `play()` restarts
     // an ambient/eavesdrop loop while a line is mid-flight.
     this.stop();
-
-    // Seed-if-absent (D3): a declared default applies only when the storage
-    // doesn't already hold the name — never clobber a game-linked value.
-    for (const [name, value] of Object.entries(script.declare ?? {})) {
-      if (!storage.has(name)) storage.set(name, value);
-    }
 
     this.script = script;
     this.scriptId = script.id;
