@@ -131,12 +131,8 @@ function applyBinary(op: string, l: VarValue, r: VarValue): VarValue {
     case "<=":
     case "lte":
       return num(l) <= num(r);
-    case "and":
-    case "&&":
-      return truthy(l) && truthy(r);
-    case "or":
-    case "||":
-      return truthy(l) || truthy(r);
+    // `and`/`or` (and `&&`/`||`) are short-circuited in evaluate() and never
+    // reach here; `xor` needs both operands, so it stays.
     case "xor":
     case "^":
       return truthy(l) !== truthy(r);
