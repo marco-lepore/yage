@@ -115,6 +115,31 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
     expect(() => loadScript(s)).toThrow(/set "gold" expects number, got string/);
   });
 
+  it("rejects a set command with no value (would write undefined)", () => {
+    const s = script({
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "gold" }] }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).toThrow(/set "gold" has no value/);
+  });
+
+  it("allows a set to null (an intentional clear)", () => {
+    const s = script({
+      declare: { note: "hi" },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "note", value: null }] }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).not.toThrow();
+  });
+
   it("allows a set to an undeclared name (a dialogue-local created on write)", () => {
     const s = script({
       nodes: {

@@ -150,6 +150,13 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
         }
         setTargets.add(target);
         const value = cmd["value"];
+        // A `set` with no `value` is malformed — it would write `undefined`,
+        // poisoning the name (`has` true, `get` undefined) and defeating
+        // seed-if-absent on the next play. Die here. (`value: null` is allowed —
+        // an intentional clear.)
+        if (value === undefined) {
+          throw new DialogueScriptError(`${where}: set "${target}" has no value`);
+        }
         if (isExpr(value)) {
           collectExpr(value);
         } else {
@@ -159,7 +166,6 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
             declared !== undefined &&
             declared !== "null" &&
             value !== null &&
-            value !== undefined &&
             typeof value !== declared
           ) {
             throw new DialogueScriptError(
