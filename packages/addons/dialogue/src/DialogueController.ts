@@ -126,6 +126,9 @@ export class DialogueController<
         // every non-built-in command onto the scene event bus.
         onCommand: (command, ctx) =>
           this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode }),
+        // Route non-fatal runtime diagnostics (e.g. a `set` to a read-only cell)
+        // through the engine logger rather than crashing or silently dropping.
+        onError: (message) => this.logger?.warn("dialogue", message),
         onEnded: (e) => {
           this.entity.emit(DialogueEndedEvent, e);
           this.opts.onEnded?.();

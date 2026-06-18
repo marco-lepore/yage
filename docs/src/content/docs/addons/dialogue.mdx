@@ -281,9 +281,11 @@ handle.getVars();            // read the storage's current variables
 - **`cells` getters and `functions` must be cheap and side-effect-free** —
   they're called on every condition test and every line/choice presented.
 - **`ctx.setVar` / `handle.setVar` / `set`** all write through the storage. A
-  read-only `cells` getter (no setter) throws. Prefer a **command** for game
-  mutations (so your game rules run); two-way `cells` are for when the *script*
-  owns the arithmetic (`set gold = gold - 50`).
+  read-only `cells` getter (no setter) rejects the write — `handle.setVar` throws
+  to you, while a script `set` is logged (via the engine logger) and ignored, so
+  a misconfigured script can't wedge the conversation. Prefer a **command** for
+  game mutations (so your game rules run); two-way `cells` are for when the
+  *script* owns the arithmetic (`set gold = gold - 50`).
 - A per-`play()` `overrides.storage` replaces the controller's for that
   conversation (`compose` it yourself to layer); `overrides.functions` /
   `overrides.commands` merge over the controller's, call site winning.
@@ -295,7 +297,8 @@ ignored; `getVars` returns an empty snapshot), so you can keep a reference past
 ### Commands — rules in, consequences out
 
 The runner owns one built-in command: `set`, which writes a variable through the
-storage (guarded — a read-only `cells` getter throws). **Every other command**
+storage (a write to a read-only `cells` getter is logged and ignored, never a
+wedge). **Every other command**
 dispatches to your `commands[type]` handler (or `fallbackCommand`) *and* fires a
 `DialogueCommandEvent` for observation — so *the game* decides what `give-item`
 or `play-sfx` actually mean.

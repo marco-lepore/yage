@@ -37,6 +37,14 @@ import type {
 export interface RunnerEnv {
   readonly storage: VariableStorage;
   readonly functions: Readonly<Record<string, DialogueFunction>>;
+  /**
+   * Surfaces a non-fatal runtime diagnostic — currently a `set` whose write the
+   * storage rejected (a getter-only `cells` accessor). The runner ignores the
+   * write and keeps the conversation running; the host (via the session →
+   * controller) routes the message to the engine logger. Engine-agnostic: the
+   * core never reaches for `console`/a logger directly.
+   */
+  readonly onError?: ((message: string, error: unknown) => void) | undefined;
 }
 
 export interface ResolvedChoice {
@@ -80,6 +88,7 @@ export class DialogueRunner {
    *  functions, wrapped once as the condition/`set`-value eval scope. */
   private readonly storage: VariableStorage;
   private readonly scope: EvalScope;
+  private readonly onError: ((message: string, error: unknown) => void) | undefined;
 
   constructor(
     private readonly script: DialogueScript,
@@ -90,6 +99,7 @@ export class DialogueRunner {
     this.nodeId = script.start;
     this.storage = env.storage;
     this.scope = createScope(env.storage, env.functions);
+    this.onError = env.onError;
   }
 
   /** Snapshot of the storage's variables — the `handle.getVars()` /
@@ -308,13 +318,20 @@ export class DialogueRunner {
     for (const cmd of commands) {
       if (cmd.type === "set" && typeof cmd.var === "string") {
         // Built-in write: the value is a literal or an expression tree
-        // (`gold - 50`). Guarded by the storage — a read-only `cells` accessor
-        // throws here, matching the load-time set-target rules.
+        // (`gold - 50`). The storage rejects a write to a read-only `cells`
+        // accessor — report it and keep going rather than let the throw escape
+        // the async run()/choose() chain and wedge the conversation (same
+        // contract as a throwing command handler below).
         const value = cmd.value;
-        this.storage.set(
-          cmd.var,
-          isExpr(value) ? evaluate(value, this.scope) : (value as VarValue),
-        );
+        const next = isExpr(value) ? evaluate(value, this.scope) : (value as VarValue);
+        try {
+          this.storage.set(cmd.var, next);
+        } catch (e) {
+          this.onError?.(
+            `ignored "set ${cmd.var}": ${e instanceof Error ? e.message : String(e)}`,
+            e,
+          );
+        }
         continue;
       }
       let result: void | Promise<void>;

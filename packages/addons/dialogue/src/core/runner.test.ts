@@ -27,6 +27,7 @@ function makeRunner(
   opts: {
     storage?: VariableStorage;
     functions?: Readonly<Record<string, DialogueFunction>>;
+    onError?: (message: string, error: unknown) => void;
   } = {},
 ): DialogueRunner {
   const memory = new MemoryVariableStorage();
@@ -34,7 +35,11 @@ function makeRunner(
   for (const [name, value] of Object.entries(script.declare ?? {})) {
     if (!storage.has(name)) storage.set(name, value);
   }
-  return new DialogueRunner(script, { storage, functions: opts.functions ?? {} }, handlers);
+  return new DialogueRunner(
+    script,
+    { storage, functions: opts.functions ?? {}, onError: opts.onError },
+    handlers,
+  );
 }
 
 /**
@@ -412,22 +417,27 @@ describe("DialogueRunner — storage + functions", () => {
     expect(runner.getVars()).toEqual({ gold: 42, greeted: false });
   });
 
-  it("a `set` targeting a read-only cell throws at runtime (no setter)", async () => {
+  it("a `set` to a read-only cell is reported via onError, not thrown (no wedge)", async () => {
     const script: DialogueScript = {
       id: "ro-set",
       start: "a",
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
-    // `hp` is bound as a read-only cell (a getter with no setter); the `set`
-    // built-in writes through storage, so the write throws. This is by design
-    // (D2 — "set on a read-only getter throws"); validatePlay can't catch it
-    // (a read-only cell lives in storage, not functions), so it surfaces here.
+    // `hp` is bound as a read-only cell (a getter with no setter), so the write
+    // throws inside storage. validatePlay can't catch it (a read-only cell lives
+    // in storage, not functions), so the runner catches it, reports via onError,
+    // and keeps going — the batch resolves rather than rejecting and wedging the
+    // async run()/choose() chain.
+    const errors: string[] = [];
     const runner = makeRunner(script, makeRecorder().handlers, {
       storage: cells({ hp: () => 10 }),
+      onError: (msg) => errors.push(msg),
     });
     await expect(
       runner.runCommands([{ type: "set", var: "hp", value: 5 }]),
-    ).rejects.toThrow(/read-only/);
+    ).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/read-only/);
   });
 });
 

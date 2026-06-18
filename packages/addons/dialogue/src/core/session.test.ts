@@ -1445,6 +1445,42 @@ describe("DialogueSession — storage model", () => {
     expect(onLine).toHaveBeenLastCalledWith({ speaker: undefined, text: "You have 50 gold." });
   });
 
+  it("a read-only `set` in an option's commands is reported, not a wedge", async () => {
+    // Greptile's choose() dead-lock: a `set` to a getter-only cell inside an
+    // option's commands used to throw out of the un-awaited choose() chain and
+    // freeze the choosing state. Now it's caught + reported, and the choice
+    // still branches.
+    const errors: string[] = [];
+    const h = makeHarness({
+      storage: cells({ hp: () => 10 }),
+      onError: (msg) => errors.push(msg),
+    });
+    const script: DialogueScript = {
+      id: "ro-choice",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "poke", target: "next", commands: [{ type: "set", var: "hp", value: 5 }] },
+              ],
+            },
+          ],
+        },
+        next: { id: "next", steps: [{ kind: "say", text: "after" }] },
+      },
+    };
+    h.session.play(script);
+    await flush();
+    h.session.choose(0);
+    await flush();
+    expect(h.text.lastText).toBe("after"); // branched instead of freezing
+    expect(errors.some((m) => /read-only/.test(m))).toBe(true);
+  });
+
   it("an expression condition combines storage reads and a function call", async () => {
     let rude = false;
     const h = makeHarness({

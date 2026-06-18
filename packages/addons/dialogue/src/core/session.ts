@@ -173,6 +173,10 @@ export interface DialogueSessionOptions {
   readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
   /** Catch-all for command types with no explicit handler. */
   readonly fallbackCommand?: CommandHandler | undefined;
+  /** Non-fatal runtime diagnostics (e.g. a `set` to a read-only `cells`
+   *  accessor that was ignored). The controller routes these to the engine
+   *  logger; a bare session may handle or drop them. */
+  readonly onError?: ((message: string, error: unknown) => void) | undefined;
   readonly onStarted?: (e: { scriptId: string }) => void;
   /** Plain (markup-stripped) line text — for logs / a11y / history. */
   readonly onLine?: (e: { speaker?: string | undefined; text: string }) => void;
@@ -354,7 +358,7 @@ export class DialogueSession {
 
     const runner = new DialogueRunner(
       script,
-      { storage: guarded, functions },
+      { storage: guarded, functions, onError: this.opts.onError },
       {
         onSay: (step, speaker) => {
           if (live()) this.handleSay(step, speaker);
