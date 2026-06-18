@@ -6,9 +6,10 @@
  * runner only ever sees the canonical model.
  */
 
+import { analyzeScript, DialogueScriptError } from "../validate.js";
 import type { DialogueScript, DialogueNode, Step } from "../types.js";
 
-export class DialogueScriptError extends Error {}
+export { DialogueScriptError };
 
 export function loadScript(raw: DialogueScript): DialogueScript {
   if (!raw || typeof raw !== "object") {
@@ -44,7 +45,12 @@ export function loadScript(raw: DialogueScript): DialogueScript {
     validateNode(raw, id, node);
   }
 
-  return Object.freeze({ ...raw, start });
+  const script = Object.freeze({ ...raw, start });
+  // Binding-free load-time walk: condition vars, set targets, and {token}s must
+  // resolve to declared vars/externals; type-incompatible ops error. Memoized on
+  // the frozen script, so the session's play-time re-check is free.
+  analyzeScript(script);
+  return script;
 }
 
 function validateNode(script: DialogueScript, id: string, node: DialogueNode): void {

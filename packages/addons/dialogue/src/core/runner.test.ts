@@ -1,20 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  DialogueRunner,
-  evalCondition,
-  type ResolvedChoice,
-  type RunnerHandlers,
-} from "./runner.js";
+import { createScope, evalCondition } from "./expr.js";
+import { DialogueRunner, type ResolvedChoice, type RunnerHandlers } from "./runner.js";
+import { MemoryVariableStorage, cells, compose } from "./vars.js";
 import type {
   ChoiceStep,
   Command,
   CommandContext,
+  DialogueFunction,
   DialogueScript,
   SayStep,
   SpeakerDef,
+  VariableStorage,
   VarMap,
 } from "./types.js";
+
+/**
+ * Build a runner the way the session does, but directly (these are low-level
+ * runner tests that bypass loadScript / validation). Declared defaults seed
+ * into an in-memory store (host `storage`, when given, takes precedence — it's
+ * composed first, mirroring `session.play`).
+ */
+function makeRunner(
+  script: DialogueScript,
+  handlers: RunnerHandlers,
+  opts: {
+    storage?: VariableStorage;
+    functions?: Readonly<Record<string, DialogueFunction>>;
+    onError?: (message: string, error: unknown) => void;
+  } = {},
+): DialogueRunner {
+  const memory = new MemoryVariableStorage();
+  const storage = opts.storage ? compose(opts.storage, memory) : memory;
+  for (const [name, value] of Object.entries(script.declare ?? {})) {
+    if (!storage.has(name)) storage.set(name, value);
+  }
+  return new DialogueRunner(
+    script,
+    { storage, functions: opts.functions ?? {}, onError: opts.onError },
+    handlers,
+  );
+}
 
 /**
  * Records everything the runner surfaces so a test can assert the exact
@@ -85,7 +111,7 @@ describe("DialogueRunner — linear flow", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
 
     runner.start();
     expect(lineTexts(rec)).toEqual(["one"]);
@@ -106,7 +132,7 @@ describe("DialogueRunner — linear flow", () => {
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     runner.start();
     expect(lineTexts(rec)).toEqual(["hi"]);
@@ -119,7 +145,7 @@ describe("DialogueRunner — linear flow", () => {
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     // Before start(): idle, advance ignored.
     runner.advance();
     expect(lineTexts(rec)).toEqual([]);
@@ -145,7 +171,7 @@ describe("DialogueRunner — linear flow", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     runner.advance(); // steps onto `end`
     expect(rec.ended).toBe(1);
@@ -167,7 +193,7 @@ describe("DialogueRunner — goto and branching", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     expect(runner.getNodeId()).toBe("a");
     runner.advance(); // a1 → goto b → b1
@@ -182,7 +208,7 @@ describe("DialogueRunner — goto and branching", () => {
       const script: DialogueScript = {
         id: "cond-jump",
         start: "a",
-        vars: { gate },
+        declare: { gate },
         nodes: {
           a: {
             id: "a",
@@ -195,7 +221,7 @@ describe("DialogueRunner — goto and branching", () => {
         },
       };
       const rec = makeRecorder();
-      new DialogueRunner(script, rec.handlers).start();
+      makeRunner(script, rec.handlers).start();
       await flush();
       return rec;
     };
@@ -209,6 +235,7 @@ describe("DialogueRunner — set / vars", () => {
     const script: DialogueScript = {
       id: "set",
       start: "a",
+      declare: { flag: false },
       nodes: {
         a: {
           id: "a",
@@ -222,7 +249,7 @@ describe("DialogueRunner — set / vars", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await flush();
     expect(lineTexts(rec)).toEqual(["yes"]);
@@ -231,19 +258,186 @@ describe("DialogueRunner — set / vars", () => {
     expect(rec.commands).toHaveLength(0);
   });
 
-  it("seeds vars from the script and exposes them read-only via getVars", () => {
+  it("seeds vars from the script and exposes them via getVars", () => {
     const script: DialogueScript = {
       id: "seed",
       start: "a",
-      vars: { score: 3 },
+      declare: { score: 3 },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     expect(runner.getVars().score).toBe(3);
-    // Mutating the script's vars after construction must not leak in (copied).
-    (script.vars as VarMap).score = 99;
+    // Mutating the script's declares after construction must not leak in (copied).
+    (script.declare as VarMap).score = 99;
     expect(runner.getVars().score).toBe(3);
+  });
+
+  it("evaluates an arithmetic `set` value (the `gold - 50` landmine)", async () => {
+    const script: DialogueScript = {
+      id: "set-expr",
+      start: "a",
+      declare: { gold: 100 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [
+                {
+                  type: "set",
+                  var: "gold",
+                  value: {
+                    kind: "binary",
+                    op: "-",
+                    left: { kind: "varRef", name: "gold" },
+                    right: { kind: "literal", value: 50 },
+                  },
+                },
+              ],
+            },
+            { kind: "say", text: "x" },
+          ],
+        },
+      },
+    };
+    const runner = makeRunner(script, makeRecorder().handlers);
+    runner.start();
+    await flush();
+    expect(runner.getVars().gold).toBe(50);
+  });
+});
+
+describe("DialogueRunner — storage + functions", () => {
+  it("reads a cells getter live in a condition (granted mid-conversation)", async () => {
+    let hasKey = false;
+    const script: DialogueScript = {
+      id: "ext-cond",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [], condition: "hasKey", target: "b" },
+            { kind: "say", text: "no-key" },
+          ],
+        },
+        b: { id: "b", steps: [{ kind: "say", text: "has-key" }] },
+      },
+    };
+    // The cell sees the value flip BEFORE the runner evaluates the gate.
+    hasKey = true;
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers, {
+      storage: cells({ hasKey: () => hasKey }),
+    }).start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["has-key"]);
+  });
+
+  it("evaluates a function call in a condition (has_item)", async () => {
+    const inventory = new Set<string>();
+    const script: DialogueScript = {
+      id: "fn-cond",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "command",
+              commands: [],
+              condition: {
+                kind: "call",
+                fn: "has_item",
+                args: [{ kind: "literal", value: "key" }],
+              },
+              target: "has",
+            },
+            { kind: "say", text: "no-key" },
+          ],
+        },
+        has: { id: "has", steps: [{ kind: "say", text: "has-key" }] },
+      },
+    };
+    inventory.add("key");
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers, {
+      functions: { has_item: (id) => inventory.has(String(id)) },
+    }).start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["has-key"]);
+  });
+
+  it("ctx.setVar writes a var that a later condition reads (skill check)", async () => {
+    const rec = makeRecorder((cmd, ctx) => {
+      if (cmd.type === "skill-check") ctx.setVar("passed", true);
+    });
+    const script: DialogueScript = {
+      id: "skill",
+      start: "a",
+      declare: { passed: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "skill-check", blocking: true }] },
+            { kind: "command", commands: [], condition: "passed", target: "win" },
+            { kind: "say", text: "lose" },
+          ],
+        },
+        win: { id: "win", steps: [{ kind: "say", text: "win" }] },
+      },
+    };
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    await flush();
+    expect(lineTexts(rec)).toEqual(["win"]);
+    expect(runner.getVars().passed).toBe(true);
+  });
+
+  it("getVars materializes the storage (cells + locals)", async () => {
+    const script: DialogueScript = {
+      id: "view",
+      start: "a",
+      declare: { greeted: true },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "greeted", value: false }] }],
+        },
+      },
+    };
+    const runner = makeRunner(script, makeRecorder().handlers, {
+      storage: cells({ gold: () => 42 }),
+    });
+    runner.start();
+    await flush();
+    expect(runner.getVars()).toEqual({ gold: 42, greeted: false });
+  });
+
+  it("a `set` to a read-only cell is reported via onError, not thrown (no wedge)", async () => {
+    const script: DialogueScript = {
+      id: "ro-set",
+      start: "a",
+      nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
+    };
+    // `hp` is bound as a read-only cell (a getter with no setter), so the write
+    // throws inside storage. validatePlay can't catch it (a read-only cell lives
+    // in storage, not functions), so the runner catches it, reports via onError,
+    // and keeps going — the batch resolves rather than rejecting and wedging the
+    // async run()/choose() chain.
+    const errors: string[] = [];
+    const runner = makeRunner(script, makeRecorder().handlers, {
+      storage: cells({ hp: () => 10 }),
+      onError: (msg) => errors.push(msg),
+    });
+    await expect(
+      runner.runCommands([{ type: "set", var: "hp", value: 5 }]),
+    ).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/read-only/);
   });
 });
 
@@ -272,7 +466,7 @@ describe("DialogueRunner — choices", () => {
 
   it("presents reachable choices and branches on the chosen option's target", async () => {
     const rec = makeRecorder();
-    const runner = new DialogueRunner(choiceScript(), rec.handlers);
+    const runner = makeRunner(choiceScript(), rec.handlers);
     runner.start();
     expect(rec.choiceSets).toHaveLength(1);
     expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual(["left", "right"]);
@@ -297,7 +491,7 @@ describe("DialogueRunner — choices", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await runner.choose(0);
     expect(lineTexts(rec)).toEqual(["after"]);
@@ -307,7 +501,7 @@ describe("DialogueRunner — choices", () => {
     const script: DialogueScript = {
       id: "cond-choice",
       start: "a",
-      vars: { hasKey: false },
+      declare: { hasKey: false },
       nodes: {
         a: {
           id: "a",
@@ -326,7 +520,7 @@ describe("DialogueRunner — choices", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     const presented = rec.choiceSets[0]!.choices;
     expect(presented.map((c) => c.option.text)).toEqual(["open"]);
@@ -345,7 +539,7 @@ describe("DialogueRunner — choices", () => {
     const script: DialogueScript = {
       id: "no-options",
       start: "a",
-      vars: { ok: false },
+      declare: { ok: false },
       nodes: {
         a: {
           id: "a",
@@ -357,7 +551,7 @@ describe("DialogueRunner — choices", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await flush();
     expect(rec.choiceSets).toHaveLength(0);
@@ -366,7 +560,7 @@ describe("DialogueRunner — choices", () => {
 
   it("choose() is a no-op outside the choosing state and ignores bad indices", async () => {
     const rec = makeRecorder();
-    const runner = new DialogueRunner(choiceScript(), rec.handlers);
+    const runner = makeRunner(choiceScript(), rec.handlers);
     // Before start: no-op.
     await runner.choose(0);
     expect(lineTexts(rec)).toEqual([]);
@@ -401,7 +595,7 @@ describe("DialogueRunner — `once` choices", () => {
       },
     };
     const rec = makeRecorder();
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual(["ask-once", "leave"]);
     expect(runner.getChosenOnce().size).toBe(0);
@@ -429,7 +623,7 @@ describe("DialogueRunner — command surfacing", () => {
       },
     };
     const rec = makeRecorder();
-    new DialogueRunner(script, rec.handlers).start();
+    makeRunner(script, rec.handlers).start();
     await flush();
     expect(rec.commands).toHaveLength(1);
     expect(rec.commands[0]!.command.type).toBe("give-item");
@@ -454,7 +648,7 @@ describe("DialogueRunner — command surfacing", () => {
         },
       },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await flush();
     // The blocking command is in flight — the next line has NOT surfaced yet.
@@ -482,7 +676,7 @@ describe("DialogueRunner — command surfacing", () => {
         },
       },
     };
-    new DialogueRunner(script, rec.handlers).start();
+    makeRunner(script, rec.handlers).start();
     await flush();
     // Continued past the pending promise straight away.
     expect(lineTexts(rec)).toEqual(["immediately"]);
@@ -508,7 +702,7 @@ describe("DialogueRunner — command surfacing", () => {
         },
       },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     // Let the rejected blocking promise settle and the continuation run.
     await flush();
@@ -521,6 +715,7 @@ describe("DialogueRunner — command surfacing", () => {
     const script: DialogueScript = {
       id: "choice-cmd",
       start: "a",
+      declare: { took: false },
       nodes: {
         a: {
           id: "a",
@@ -543,7 +738,7 @@ describe("DialogueRunner — command surfacing", () => {
         b: { id: "b", steps: [{ kind: "say", text: "next" }] },
       },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await runner.choose(0);
     // The non-builtin command surfaced; `set` applied; branch happened.
@@ -557,9 +752,10 @@ describe("DialogueRunner — command surfacing", () => {
     const script: DialogueScript = {
       id: "runcommands",
       start: "a",
+      declare: { k: 0 },
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "line" }] } },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start(); // now in `saying`
     await runner.runCommands([
       { type: "set", var: "k", value: 5 },
@@ -596,7 +792,7 @@ describe("DialogueRunner — skip / fast-forward", () => {
         b: { id: "b", steps: [{ kind: "say", text: "b1" }] },
       },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start(); // shows "one"
     await runner.skip();
     // Skipped past "two" and stopped at the choice; no further say lines shown.
@@ -619,7 +815,7 @@ describe("DialogueRunner — skip / fast-forward", () => {
         },
       },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await runner.skip();
     expect(runner.isEnded()).toBe(true);
@@ -633,7 +829,7 @@ describe("DialogueRunner — skip / fast-forward", () => {
       start: "a",
       nodes: { a: { id: "a", steps: [{ kind: "say", text: "x" }] } },
     };
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     await runner.skip(); // idle → no-op
     expect(lineTexts(rec)).toEqual([]);
   });
@@ -657,7 +853,7 @@ describe("DialogueRunner — speaker resolution", () => {
         },
       },
     };
-    const runner = new DialogueRunner(script, {
+    const runner = makeRunner(script, {
       onSay: (_step, speaker) => void seen.push(speaker),
       onChoice: () => {},
       onCommand: () => {},
@@ -672,27 +868,60 @@ describe("DialogueRunner — speaker resolution", () => {
 
 describe("evalCondition", () => {
   const vars: VarMap = { n: 5, flag: true, name: "x", zero: 0 };
+  const scope = createScope(new MemoryVariableStorage(vars), {
+    half: (v) => Number(v) / 2,
+  });
 
   it("string key → truthy check", () => {
-    expect(evalCondition("flag", vars)).toBe(true);
-    expect(evalCondition("zero", vars)).toBe(false);
-    expect(evalCondition("missing", vars)).toBe(false);
+    expect(evalCondition("flag", scope)).toBe(true);
+    expect(evalCondition("zero", scope)).toBe(false);
+    expect(evalCondition("missing", scope)).toBe(false);
   });
 
-  it("comparison operators", () => {
-    expect(evalCondition({ var: "n", op: "==", value: 5 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: "!=", value: 4 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: ">", value: 4 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: ">=", value: 5 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: "<", value: 6 }, vars)).toBe(true);
-    expect(evalCondition({ var: "n", op: "<=", value: 5 }, vars)).toBe(true);
-    expect(evalCondition({ var: "flag", op: "truthy", value: null }, vars)).toBe(true);
-    expect(evalCondition({ var: "zero", op: "falsy", value: null }, vars)).toBe(true);
+  it("atomic comparison operators", () => {
+    expect(evalCondition({ var: "n", op: "==", value: 5 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: "!=", value: 4 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: ">", value: 4 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: ">=", value: 5 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: "<", value: 6 }, scope)).toBe(true);
+    expect(evalCondition({ var: "n", op: "<=", value: 5 }, scope)).toBe(true);
+    expect(evalCondition({ var: "flag", op: "truthy", value: null }, scope)).toBe(true);
+    expect(evalCondition({ var: "zero", op: "falsy", value: null }, scope)).toBe(true);
   });
 
-  it("predicate function", () => {
+  it("expression trees — logic, grouping, word forms, function calls", () => {
+    // (n >= 5) and not flagFalse  → true
+    expect(
+      evalCondition(
+        {
+          kind: "binary",
+          op: "and",
+          left: {
+            kind: "group",
+            expr: { kind: "binary", op: "gte", left: { kind: "varRef", name: "n" }, right: { kind: "literal", value: 5 } },
+          },
+          right: { kind: "unary", op: "not", operand: { kind: "varRef", name: "zero" } },
+        },
+        scope,
+      ),
+    ).toBe(true);
+    // half(n) == 2.5
+    expect(
+      evalCondition(
+        {
+          kind: "binary",
+          op: "==",
+          left: { kind: "call", fn: "half", args: [{ kind: "varRef", name: "n" }] },
+          right: { kind: "literal", value: 2.5 },
+        },
+        scope,
+      ),
+    ).toBe(true);
+  });
+
+  it("predicate function receives a materialized snapshot", () => {
     const fn = vi.fn((v: VarMap) => v.n === 5);
-    expect(evalCondition(fn, vars)).toBe(true);
+    expect(evalCondition(fn, scope)).toBe(true);
     expect(fn).toHaveBeenCalledOnce();
   });
 });
@@ -718,7 +947,7 @@ describe("DialogueRunner — a synchronously-throwing command handler", () => {
     const rec = makeRecorder((cmd) => {
       if (cmd.type === "boom") throw new Error("handler exploded");
     });
-    const runner = new DialogueRunner(script, rec.handlers);
+    const runner = makeRunner(script, rec.handlers);
     runner.start();
     await flush();
     await runner.choose(0);
@@ -751,7 +980,7 @@ describe("DialogueRunner — a synchronously-throwing command handler", () => {
     const rec = makeRecorder((cmd) => {
       if (cmd.type === "boom") throw new Error("handler exploded");
     });
-    new DialogueRunner(script, rec.handlers).start();
+    makeRunner(script, rec.handlers).start();
     await flush();
     expect(rec.commands.map((c) => c.command.type)).toEqual([
       "boom",

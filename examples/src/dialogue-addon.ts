@@ -1,27 +1,42 @@
 /**
- * @yagejs-addons/dialogue — a small walkable room (the first YAGE addon).
+ * @yagejs-addons/dialogue — a walkable town that drives the game-state model.
  *
- * Zero bundled assets: the room, the player, and the NPCs are all Graphics; the
- * dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text). Walk
- * up to an NPC and press F to talk; each starts a different conversation:
+ * Zero bundled assets: the town, the player, and the NPCs are all Graphics; the
+ * dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text). The
+ * level is wider than the canvas, so a **follow camera** scrolls as you walk.
  *
- *   • Mira (box)   — `[wave]`/`[shake]` effects, timed `[pause]` / `[speed]`
- *                    markup, and a branch.
- *   • Sage (bubble) — a long line that the speech bubble now grows to fit.
+ * The interactive controller installs a `VariableStorage` ONCE, then every NPC's
+ * `play(script)` is content-only and shares it:
  *
- * Stand near Ann & Bert to **eavesdrop**: a proximity zone starts an ambient,
- * auto-advancing, input-less gossip loop that stops when you walk away.
+ *   • `storage`   — `compose(cells({ gold }), MemoryVariableStorage())`. `gold`
+ *                   is a two-way `cells` accessor into the game's purse; declared
+ *                   flags/counters (`paid`, `opened`, `timesTalked`) live in the
+ *                   in-memory store and **persist across conversations**.
+ *   • `functions` — `has_item("rusty-key")` (argument-capable reads for gates).
+ *   • `commands`  — `give-gold` / `give-item` / `take-item` / `open-gate` (the
+ *                   game decides what they do; rules-in / consequences-out).
  *
- * Controls demo: hold **J** to fast-forward, hold **X** to skip (a ring fills),
- * press **V** to toggle auto-advance, and the pointer works too (click to
- * advance, click/hover choices).
+ * Walk up to an NPC and press F:
+ *   • Mira (box)        — markup effects + a **cycling counter** (`timesTalked`
+ *                         persists, so she greets you differently each visit).
+ *   • Quartermaster     — pays a one-time stipend via `give-gold`, gated on a
+ *                         declared `paid` flag (a second visit knows you're paid).
+ *   • Vex the trader    — sells the rusty key for 50g: the buy option appears only
+ *                         when an **expression condition** (`gold >= 50 and not
+ *                         has_item("rusty-key")`) holds, then `set gold = gold - 50`
+ *                         writes through the cell and `give-item` hands you the key.
+ *   • Gate Guard        — opens the gate only if `has_item("rusty-key")`, spends
+ *                         the key (`take-item`), and runs `open-gate` (a world
+ *                         consequence that extends the walkable area).
+ *   • Sage (bubble)     — a long line the speech bubble grows to fit.
+ *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop.
  *
- * The **Font** button under the canvas swaps every dialogue presenter to a
- * bitmap font (baked on first use from the example `.ttf`) and back — bitmap
- * bubbles content-size exactly like canvas ones.
+ * The HUD shows your live gold + items. Hold **J** to fast-forward, hold **X** to
+ * skip, press **V** to toggle auto-advance; the pointer works too. The **Font**
+ * button swaps every presenter to a baked bitmap font and back.
  *
- * Export split: runner / controller / events / input come from the pixi-free
- * root entry; presenters + theme come from the `/presenters` subpath.
+ * Export split: runner / controller / events / input / the storage kit come from
+ * the pixi-free root entry; presenters + theme come from `/presenters`.
  */
 
 import {
@@ -47,8 +62,16 @@ import {
   DialogueLineEvent,
   DialogueChoiceMadeEvent,
   CompositeInputBinding,
+  cells,
+  compose,
   fullControls,
+  MemoryVariableStorage,
+  type BinaryOp,
+  type CommandHandler,
+  type DialogueFunction,
   type DialogueScript,
+  type Expr,
+  type VariableStorage,
 } from "@yagejs-addons/dialogue";
 import {
   defaultTheme,
@@ -61,10 +84,14 @@ import { injectStyles, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
+const WORLD_WIDTH = 1600; // wider than the canvas → the camera scrolls
 
 const SKIP_HOLD_MS = 600; // hold X this long to confirm a skip
 const AUTO_ADVANCE_MS = 1500; // delay between lines when auto-advance is on
-const PLAYER_SPEED = 150; // px/sec
+const PLAYER_SPEED = 165; // px/sec
+
+const KEY_PRICE = 50;
+const GATE_X = 1410; // the locked gate; blocks progress until unlocked
 
 /** World-space render layers (under the camera) + the screen-space HUD. The
  *  dialogue box rides DIALOGUE_LAYERS (screen); bubbles ride BUBBLE_LAYER. */
@@ -78,62 +105,221 @@ const LAYERS: LayerDef[] = [
   { name: HUD_LAYER, order: 1200, space: "screen" },
 ];
 
-/** Walkable area (world coords); leaves headroom for the bottom dialogue box. */
-const BOUNDS = { minX: 40, maxX: WIDTH - 40, minY: 90, maxY: 360 };
+/** Mutable walkable area (world coords). `maxX` starts at the gate and extends
+ *  when it opens; leaves headroom at the bottom for the dialogue box. */
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
 
-// ── scripts ──────────────────────────────────────────────────────────────────
+// ── shared game state (the "game" the dialogue bridges into) ──────────────────
 
+/** The host owns this; the dialogue reads/writes it only through the storage
+ *  cell (`gold`) and the command handlers (`inventory`). */
+interface GameState {
+  gold: number;
+  readonly inventory: Set<string>;
+}
+
+// ── expression helpers (keep the JSON-able IR readable) ──────────────────────
+
+const lit = (value: string | number | boolean): Expr => ({ kind: "literal", value });
+const ref = (name: string): Expr => ({ kind: "varRef", name });
+const call = (fn: string, ...args: Expr[]): Expr => ({ kind: "call", fn, args });
+const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({ kind: "binary", op, left, right });
+
+// ── scripts (all content-only; storage/functions/commands live on the host) ───
+
+/** Mira — markup effects + a persistent visit counter (cycling NPC). */
 const MIRA: DialogueScript = {
   id: "mira",
-  start: "intro",
+  start: "n",
+  declare: { timesTalked: 0 },
   speakers: { mira: { id: "mira", name: "Mira", color: 0xffd866 } },
   nodes: {
-    intro: {
-      id: "intro",
+    n: {
+      id: "n",
       steps: [
+        // Count this visit, then branch on the (persisted) prior count.
         {
-          kind: "say",
-          speaker: "mira",
-          text: "Welcome! This box can [wave]wave[/wave] and [shake]shout[/shake].",
+          kind: "command",
+          commands: [{ type: "set", var: "timesTalked", value: bin("+", ref("timesTalked"), lit(1)) }],
         },
+        { kind: "command", commands: [], condition: { var: "timesTalked", op: ">", value: 1 }, target: "again" },
         {
           kind: "say",
           speaker: "mira",
-          text: "Magic here runs on [b]mana[/b] — spend it wisely.",
+          text: "Welcome to town! This box can [wave]wave[/wave] and [shake]shout[/shake].",
         },
         {
           kind: "say",
           speaker: "mira",
           text: "Timing matters:[pause=400] this part is [speed=0.4]slow[/speed].",
         },
-        {
-          kind: "choice",
-          speaker: "mira",
-          text: "Want the tour?",
-          options: [
-            { text: "Tell me more", target: "more" },
-            { text: "I'm good", target: "bye" },
-          ],
-        },
+        { kind: "end" },
       ],
     },
-    more: {
-      id: "more",
+    again: {
+      id: "again",
       steps: [
         {
           kind: "say",
           speaker: "mira",
-          text: "Branching, effects, timed reveals — one script.",
+          text: "Back again? We've spoken [b]{timesTalked}[/b] times — the count [wave]persists[/wave].",
         },
-        { kind: "goto", target: "bye" },
+        { kind: "end" },
       ],
+    },
+  },
+};
+
+/** Quartermaster — a one-time stipend via `give-gold`, gated on a declared flag. */
+const QUARTERMASTER: DialogueScript = {
+  id: "quartermaster",
+  start: "n",
+  declare: { paid: false },
+  speakers: { quinn: { id: "quinn", name: "Quartermaster Quinn", color: 0x9ad17e } },
+  nodes: {
+    n: {
+      id: "n",
+      steps: [
+        { kind: "command", commands: [], condition: "paid", target: "already" },
+        { kind: "say", speaker: "quinn", text: "New recruit? Here's your stipend — 50 gold. Spend it well." },
+        {
+          kind: "command",
+          commands: [
+            { type: "give-gold", amount: 50 },
+            { type: "set", var: "paid", value: true },
+          ],
+        },
+        { kind: "say", speaker: "quinn", text: "You're carrying {gold} gold now. Vex sells a key you'll want." },
+        { kind: "end" },
+      ],
+    },
+    already: {
+      id: "already",
+      steps: [
+        { kind: "say", speaker: "quinn", text: "I already paid you — {gold} gold should be plenty for a key." },
+        { kind: "end" },
+      ],
+    },
+  },
+};
+
+/** Vex — buys the rusty key for gold: an expression-gated option that writes
+ *  through the two-way `gold` cell and hands over the item. */
+const MERCHANT: DialogueScript = {
+  id: "merchant",
+  start: "n",
+  speakers: { vex: { id: "vex", name: "Vex the Trader", color: 0xe6a3ff } },
+  nodes: {
+    n: {
+      id: "n",
+      steps: [
+        { kind: "say", speaker: "vex", text: "A rusty key? Fifty gold. You've got [b]{gold}[/b]." },
+        {
+          kind: "choice",
+          speaker: "vex",
+          text: "Well?",
+          options: [
+            {
+              text: "Buy the rusty key (50g)",
+              target: "bought",
+              // gold >= 50 AND you don't already own the key
+              condition: bin(
+                "and",
+                bin(">=", ref("gold"), lit(KEY_PRICE)),
+                { kind: "unary", op: "not", operand: call("has_item", lit("rusty-key")) },
+              ),
+              commands: [
+                // The script owns the arithmetic; the cell writes it back to the game.
+                { type: "set", var: "gold", value: bin("-", ref("gold"), lit(KEY_PRICE)) },
+                { type: "give-item", id: "rusty-key" },
+              ],
+            },
+            {
+              text: "(You already hold the key)",
+              target: "have",
+              condition: call("has_item", lit("rusty-key")),
+            },
+            { text: "Maybe later", target: "bye" },
+          ],
+        },
+      ],
+    },
+    bought: {
+      id: "bought",
+      steps: [
+        { kind: "say", speaker: "vex", text: "Pleasure doing business — {gold} gold left. The gate's east of here." },
+        { kind: "end" },
+      ],
+    },
+    have: {
+      id: "have",
+      steps: [{ kind: "say", speaker: "vex", text: "You've got it already. Go find that gate." }, { kind: "end" }],
     },
     bye: {
       id: "bye",
       steps: [
-        { kind: "say", speaker: "mira", text: "Safe travels!" },
+        { kind: "say", speaker: "vex", text: "Gold talks. Come back when you have fifty." },
         { kind: "end" },
       ],
+    },
+  },
+};
+
+/** Bron — opens the gate only with the key (a function gate), spends it, and
+ *  fires a world-consequence command. */
+const GUARD: DialogueScript = {
+  id: "guard",
+  start: "n",
+  declare: { opened: false },
+  speakers: { bron: { id: "bron", name: "Gate Guard Bron", color: 0xff9a6b } },
+  nodes: {
+    n: {
+      id: "n",
+      steps: [
+        { kind: "command", commands: [], condition: "opened", target: "thanks" },
+        { kind: "say", speaker: "bron", text: "This gate's locked. Got a key?" },
+        {
+          kind: "choice",
+          speaker: "bron",
+          options: [
+            {
+              text: "Unlock it with the rusty key",
+              target: "open",
+              condition: call("has_item", lit("rusty-key")),
+            },
+            { text: "Not yet", target: "bye" },
+          ],
+        },
+      ],
+    },
+    open: {
+      id: "open",
+      steps: [
+        { kind: "say", speaker: "bron", text: "That's the one. Stand back…" },
+        {
+          kind: "command",
+          commands: [
+            { type: "take-item", id: "rusty-key" },
+            { type: "open-gate" },
+            { type: "set", var: "opened", value: true },
+          ],
+        },
+        { kind: "say", speaker: "bron", text: "Gate's open. The vault's all yours." },
+        { kind: "end" },
+      ],
+    },
+    thanks: {
+      id: "thanks",
+      steps: [{ kind: "say", speaker: "bron", text: "Gate's already open, friend. Mind the step." }, { kind: "end" }],
+    },
+    bye: {
+      id: "bye",
+      steps: [{ kind: "say", speaker: "bron", text: "No key, no passage." }, { kind: "end" }],
     },
   },
 };
@@ -205,13 +391,16 @@ const GOSSIP: DialogueScript = {
 
 // ── world entities (all Graphics, no assets) ─────────────────────────────────
 
-/** WASD/arrow movement, clamped to the room; idles while a conversation owns
- *  input (you can still walk while merely eavesdropping). */
+/** WASD/arrow movement, clamped to the (mutable) walkable bounds; idles while a
+ *  conversation owns input (you can still walk while merely eavesdropping). */
 class PlayerMover extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
 
-  constructor(private readonly isBusy: () => boolean) {
+  constructor(
+    private readonly bounds: Bounds,
+    private readonly isBusy: () => boolean,
+  ) {
     super();
   }
 
@@ -224,8 +413,8 @@ class PlayerMover extends Component {
     const step = (PLAYER_SPEED * dt) / 1000;
     const p = this.transform.position;
     this.transform.setPosition(
-      MathUtils.clamp(p.x + (dx / len) * step, BOUNDS.minX, BOUNDS.maxX),
-      MathUtils.clamp(p.y + (dy / len) * step, BOUNDS.minY, BOUNDS.maxY),
+      MathUtils.clamp(p.x + (dx / len) * step, this.bounds.minX, this.bounds.maxX),
+      MathUtils.clamp(p.y + (dy / len) * step, this.bounds.minY, this.bounds.maxY),
     );
   }
 }
@@ -251,7 +440,7 @@ class ProximityInteract extends Component {
   onAdd(): void {
     const here = this.entity.get(Transform).position;
     const tip = this.scene.spawn("npc-prompt");
-    tip.add(new Transform({ position: new Vec2(here.x, here.y - 34) }));
+    tip.add(new Transform({ position: new Vec2(here.x, here.y - 40) }));
     this.prompt = tip.add(
       new TextComponent({
         text: this.cfg.label,
@@ -305,13 +494,60 @@ class ProximityZone extends Component {
   }
 }
 
-/** Spawn a coloured dot NPC (+ optional speaker actor for bubbles). */
+/** The locked gate. `open()` redraws it ajar and runs the supplied effect
+ *  (extending the walkable bounds). The `open-gate` command calls it. */
+class Gate extends Component {
+  private gfx!: GraphicsComponent;
+  private opened = false;
+
+  constructor(private readonly onOpen: () => void) {
+    super();
+  }
+
+  onAdd(): void {
+    this.gfx = this.sibling(GraphicsComponent);
+    this.redraw();
+  }
+
+  open(): void {
+    if (this.opened) return;
+    this.opened = true;
+    this.redraw();
+    this.onOpen();
+  }
+
+  private redraw(): void {
+    this.gfx.graphics.clear();
+    this.gfx.draw((g) => {
+      if (this.opened) {
+        // Two side posts with a clear gap to walk through.
+        for (const x of [-26, 26]) {
+          g.rect(x - 4, -135, 8, 270).fill({ color: 0x3a6b3a });
+        }
+        g.rect(-26, -138, 52, 6).fill({ color: 0x5fae5f });
+      } else {
+        // A barred red gate filling the walkable band.
+        g.rect(-26, -135, 52, 270).fill({ color: 0x5a2424, alpha: 0.92 }).stroke({
+          color: 0xc05a5a,
+          width: 2,
+        });
+        for (let y = -126; y < 135; y += 26) {
+          g.rect(-26, y, 52, 4).fill({ color: 0x3a1414 });
+        }
+      }
+    });
+  }
+}
+
+/** Spawn a coloured dot NPC (+ optional speaker actor for bubbles) with a name
+ *  tag, so the wider town stays legible. */
 function spawnNpc(
   scene: Scene,
   opts: {
     readonly x: number;
     readonly y: number;
     readonly color: number;
+    readonly name?: string;
     readonly speaker?: string;
   },
 ): Entity {
@@ -323,18 +559,32 @@ function spawnNpc(
       g.circle(0, 0, 16).stroke({ color: 0xffffff, width: 2, alpha: 0.5 });
     }),
   );
+  if (opts.name) {
+    const tag = scene.spawn("npc-tag");
+    tag.add(new Transform({ position: new Vec2(opts.x, opts.y + 26) }));
+    tag.add(
+      new TextComponent({
+        text: opts.name,
+        style: { fontSize: 11, fill: opts.color, fontFamily: "sans-serif" },
+        layer: ROOM_LAYER,
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+  }
   if (opts.speaker) {
     npc.add(new DialogueActor({ speaker: opts.speaker, anchor: { x: 0, y: -22 } }));
   }
   return npc;
 }
 
-// ── HUD (screen space): hint, auto toggle, fast-forward + skip ring ──────────
+// ── HUD (screen space): hint, live gold + items, auto toggle, ff/skip ring ────
 
 class Hud extends Component {
   private readonly input = this.service(InputManagerKey);
   private auto = false;
   private autoLabel!: TextComponent;
+  private status!: TextComponent;
+  private lastStatus = "";
   private meter!: GraphicsComponent;
   /** Last-drawn meter state — redraw only on change (idle frames skip the
    *  Graphics clear+refill entirely). */
@@ -345,6 +595,13 @@ class Hud extends Component {
   /** Set by the scene once the controller exists (toggled by the V key). */
   onAutoToggle?: (on: boolean) => void;
 
+  constructor(
+    private readonly getGold: () => number,
+    private readonly getItems: () => readonly string[],
+  ) {
+    super();
+  }
+
   onAdd(): void {
     this.spawnText(
       12,
@@ -354,14 +611,8 @@ class Hud extends Component {
       0xb8b8c0,
       { x: 0, y: 0 },
     );
-    this.autoLabel = this.spawnText(
-      WIDTH - 12,
-      12,
-      this.autoText(),
-      13,
-      0x8888aa,
-      { x: 1, y: 0 },
-    );
+    this.status = this.spawnText(12, 34, this.statusText(), 14, 0xffe08a, { x: 0, y: 0 });
+    this.autoLabel = this.spawnText(WIDTH - 12, 12, this.autoText(), 13, 0x8888aa, { x: 1, y: 0 });
 
     const meterEntity = this.scene.spawn("hud-meter");
     meterEntity.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 28) }));
@@ -369,6 +620,13 @@ class Hud extends Component {
   }
 
   update(): void {
+    // Live gold + items — redraw only when the text actually changes.
+    const next = this.statusText();
+    if (next !== this.lastStatus) {
+      this.lastStatus = next;
+      this.status.setText(next);
+    }
+
     if (this.input.isJustPressed("auto")) {
       this.auto = !this.auto;
       this.onAutoToggle?.(this.auto);
@@ -401,6 +659,12 @@ class Hud extends Component {
     });
   }
 
+  private statusText(): string {
+    const items = this.getItems();
+    const bag = items.length > 0 ? items.join(", ") : "(empty)";
+    return `Gold: ${this.getGold()}    Items: ${bag}`;
+  }
+
   private autoText(): string {
     return this.auto ? "AUTO ▶ ON" : "AUTO ❙❙ OFF";
   }
@@ -426,7 +690,7 @@ class Hud extends Component {
   }
 }
 
-// ── Inspector probe (keeps the example harness-clean for the e2e smoke test) ──
+// ── Inspector probe (keeps the example harness-clean for smoke tests) ─────────
 
 class DialogueProbe extends Component {
   lastLine = "";
@@ -441,16 +705,8 @@ class DialogueProbe extends Component {
     this.lastChoice = text;
   }
 
-  serialize(): {
-    lastLine: string;
-    lineCount: number;
-    lastChoice: string;
-  } {
-    return {
-      lastLine: this.lastLine,
-      lineCount: this.lineCount,
-      lastChoice: this.lastChoice,
-    };
+  serialize(): { lastLine: string; lineCount: number; lastChoice: string } {
+    return { lastLine: this.lastLine, lineCount: this.lineCount, lastChoice: this.lastChoice };
   }
 }
 
@@ -466,15 +722,11 @@ class RoomScene extends Scene {
   }
 
   onEnter(): void {
-    const cam = this.spawn(CameraEntity, {
-      position: new Vec2(WIDTH / 2, HEIGHT / 2),
-    });
-    this.context.resolve(InputManagerKey).setCamera(cam);
-    this.drawRoom();
+    this.drawTown();
 
     // Player.
     const player = this.spawn("player");
-    player.add(new Transform({ position: new Vec2(WIDTH / 2, 300) }));
+    player.add(new Transform({ position: new Vec2(140, 300) }));
     player.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
         g.circle(0, 0, 13).fill({ color: 0x6be08a });
@@ -484,12 +736,54 @@ class RoomScene extends Scene {
     player.add(new DialogueActor({ speaker: "you", anchor: { x: 0, y: -20 } }));
     const playerPos = (): Vec2 => player.get(Transform).position;
 
-    // Interactive controller (box + bubble), shared by Mira and Sage. The
-    // bitmap variant proves bitmap bubbles content-size like canvas ones (the
-    // atlas bakes at 32px and renders at theme.textSize — measurement has to
-    // scale, wrap, and count lines correctly for the bubble to fit). The pixel
-    // font is wide, so it renders smaller and gets a wider bubble cap — keeps
-    // Sage's longest line from growing the bubble past the top of the canvas.
+    // Follow camera, clamped to the world so it never shows past the edges.
+    const cam = this.spawn(CameraEntity, {
+      position: new Vec2(WIDTH / 2, HEIGHT / 2),
+      follow: player.get(Transform),
+      smoothing: 0.14,
+      bounds: { minX: 0, minY: 0, maxX: WORLD_WIDTH, maxY: HEIGHT },
+    });
+    this.context.resolve(InputManagerKey).setCamera(cam);
+
+    // Walkable bounds: gated at the gate until it opens.
+    const bounds: Bounds = { minX: 40, maxX: GATE_X - 32, minY: 90, maxY: 360 };
+
+    // The game state the dialogue bridges into.
+    const state: GameState = { gold: 25, inventory: new Set<string>() };
+
+    // The locked gate (its `open-gate` handler extends the walkable bounds).
+    const gateEntity = this.spawn("gate");
+    gateEntity.add(new Transform({ position: new Vec2(GATE_X, 225) }));
+    gateEntity.add(new GraphicsComponent({ layer: ROOM_LAYER }));
+    const gate = gateEntity.add(
+      new Gate(() => {
+        bounds.maxX = WORLD_WIDTH - 40;
+      }),
+    );
+
+    // ── the game-state seam, installed ONCE on the interactive controller ──
+    const storage: VariableStorage = compose(
+      // Two-way: the script can read AND spend `gold`; writes go back to the game.
+      cells({ gold: { get: () => state.gold, set: (v) => (state.gold = Number(v)) } }),
+      // Declared flags/counters (paid, opened, timesTalked) live here and persist.
+      new MemoryVariableStorage(),
+    );
+    const functions: Record<string, DialogueFunction> = {
+      has_item: (id) => state.inventory.has(String(id)),
+    };
+    const commands: Record<string, CommandHandler> = {
+      "give-gold": (cmd) => {
+        state.gold += Number(cmd.amount);
+      },
+      "give-item": (cmd) => {
+        state.inventory.add(String(cmd.id));
+      },
+      "take-item": (cmd) => {
+        state.inventory.delete(String(cmd.id));
+      },
+      "open-gate": () => gate.open(),
+    };
+
     const bitmapFont = this.bitmapFont;
     const theme =
       bitmapFont !== undefined
@@ -500,22 +794,25 @@ class RoomScene extends Scene {
       ...(bitmapFont !== undefined ? { bubble: { maxWidth: 320 } } : {}),
     };
     const bundle = createMixedDialogue(theme, bubbleOpts);
+
     const host = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
-    const hud = host.add(new Hud());
+    const hud = host.add(new Hud(() => state.gold, () => [...state.inventory]));
     const interactive = host.add(
       new DialogueController({
         ...bundle,
+        storage,
+        functions,
+        commands,
         input: fullControls(bundle.choices, { skipHoldMs: SKIP_HOLD_MS }),
       }),
     );
-    hud.onAutoToggle = (on) =>
-      interactive.setAutoAdvance(on ? AUTO_ADVANCE_MS : null);
+    hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE_MS : null);
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoice(e.text));
 
     const busy = (): boolean => interactive.isActive();
-    player.add(new PlayerMover(busy));
+    player.add(new PlayerMover(bounds, busy));
 
     // Ambient controller (bubble, no input) for the eavesdropped gossip.
     const ambient = this.spawn("ambient-host").add(
@@ -525,37 +822,51 @@ class RoomScene extends Scene {
       }),
     );
 
-    // Interactable NPCs.
-    const mira = spawnNpc(this, { x: 230, y: 200, color: 0xffd866 });
-    mira.add(
-      new ProximityInteract({
-        label: "Talk to Mira (F)",
-        radius: 46,
-        isBusy: busy,
-        playerPos,
-        onInteract: () => interactive.play(MIRA),
-      }),
-    );
-    const sage = spawnNpc(this, { x: 570, y: 230, color: 0x7ec8ff, speaker: "sage" });
+    // ── townsfolk, left to right ──
+    const talker = (
+      x: number,
+      color: number,
+      name: string,
+      label: string,
+      script: DialogueScript,
+    ): void => {
+      const npc = spawnNpc(this, { x, y: 215, color, name });
+      npc.add(
+        new ProximityInteract({
+          label,
+          radius: 48,
+          isBusy: busy,
+          playerPos,
+          onInteract: () => interactive.play(script),
+        }),
+      );
+    };
+
+    talker(280, 0xffd866, "Mira", "Talk to Mira (F)", MIRA);
+    talker(520, 0x9ad17e, "Quinn", "Talk to the Quartermaster (F)", QUARTERMASTER);
+    talker(760, 0xe6a3ff, "Vex", "Trade with Vex (F)", MERCHANT);
+    talker(GATE_X - 70, 0xff9a6b, "Bron", "Talk to the Guard (F)", GUARD);
+
+    // Sage (bubble) on his own bench.
+    const sage = spawnNpc(this, { x: 980, y: 300, color: 0x7ec8ff, name: "Sage", speaker: "sage" });
     sage.add(
       new ProximityInteract({
         label: "Talk to Sage (F)",
-        radius: 46,
+        radius: 48,
         isBusy: busy,
         playerPos,
         onInteract: () => interactive.play(SAGE),
       }),
     );
 
-    // Eavesdrop pair: Ann & Bert chat on their own when you get close. Placed
-    // with headroom above so their bubbles stay inside the room.
-    spawnNpc(this, { x: 360, y: 205, color: 0xf5a168, speaker: "ann" });
-    spawnNpc(this, { x: 430, y: 205, color: 0xaaaaaa, speaker: "bert" });
+    // Eavesdrop pair: Ann & Bert chat on their own when you get close.
+    spawnNpc(this, { x: 1110, y: 300, color: 0xf5a168, name: "Ann", speaker: "ann" });
+    spawnNpc(this, { x: 1180, y: 300, color: 0xaaaaaa, name: "Bert", speaker: "bert" });
     const zone = this.spawn("gossip-zone");
-    zone.add(new Transform({ position: new Vec2(395, 215) }));
+    zone.add(new Transform({ position: new Vec2(1145, 310) }));
     zone.add(
       new ProximityZone({
-        radius: 110,
+        radius: 120,
         playerPos,
         onEnter: () => ambient.play(GOSSIP),
         onExit: () => ambient.stop(),
@@ -567,21 +878,45 @@ class RoomScene extends Scene {
     this.context.resolve(InputManagerKey).clearCamera();
   }
 
-  private drawRoom(): void {
+  /** A long floor that scrolls under the camera, plus a brighter "vault" patch
+   *  past the gate as the payoff for unlocking it. */
+  private drawTown(): void {
     const floor = this.spawn("room");
     floor.add(new Transform());
     floor.add(
       new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
-        g.roundRect(24, 70, WIDTH - 48, 320, 12)
+        g.roundRect(24, 70, WORLD_WIDTH - 48, 320, 12)
           .fill({ color: 0x16181f })
           .stroke({ color: 0x33384a, width: 2 });
-        for (let x = 24; x <= WIDTH - 24; x += 48) {
+        // The vault, east of the gate.
+        g.roundRect(GATE_X + 30, 80, WORLD_WIDTH - GATE_X - 70, 300, 10).fill({ color: 0x1d2233 });
+        for (let x = 24; x <= WORLD_WIDTH - 24; x += 48) {
           g.moveTo(x, 70).lineTo(x, 390);
         }
         for (let y = 70; y <= 390; y += 48) {
-          g.moveTo(24, y).lineTo(WIDTH - 24, y);
+          g.moveTo(24, y).lineTo(WORLD_WIDTH - 24, y);
         }
         g.stroke({ color: 0x222634, width: 1, alpha: 0.6 });
+      }),
+    );
+
+    // A little "VAULT" sparkle beyond the gate.
+    const vault = this.spawn("vault");
+    vault.add(new Transform({ position: new Vec2(WORLD_WIDTH - 110, 225) }));
+    vault.add(
+      new GraphicsComponent({ layer: ROOM_LAYER }).draw((g) => {
+        g.roundRect(-26, -18, 52, 36, 5).fill({ color: 0xcaa24a }).stroke({ color: 0xffe08a, width: 2 });
+        g.rect(-26, -4, 52, 4).fill({ color: 0x7a5e22 });
+      }),
+    );
+    const vaultTag = this.spawn("vault-tag");
+    vaultTag.add(new Transform({ position: new Vec2(WORLD_WIDTH - 110, 195) }));
+    vaultTag.add(
+      new TextComponent({
+        text: "The Vault",
+        style: { fontSize: 12, fill: 0xffe08a, fontFamily: "sans-serif" },
+        layer: ROOM_LAYER,
+        anchor: { x: 0.5, y: 0.5 },
       }),
     );
   }
@@ -610,13 +945,7 @@ async function main(): Promise<void> {
         skip: ["KeyX"], // hold to skip (FULL_ACTIONS.skip)
         auto: ["KeyV"], // toggle auto-advance
       },
-      preventDefaultKeys: [
-        "Space",
-        "ArrowUp",
-        "ArrowDown",
-        "ArrowLeft",
-        "ArrowRight",
-      ],
+      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
 
@@ -628,9 +957,9 @@ async function main(): Promise<void> {
 /**
  * The "Font: Canvas / Bitmap" button under the canvas. Bakes a bitmap atlas
  * from the example `.ttf` on first use (32px glyphs, rendered at the bitmap
- * theme's 14px — exercising the measurement scaling), then rebuilds the room
+ * theme's 14px — exercising the measurement scaling), then rebuilds the town
  * with the other theme. A scene swap (not a live restyle): presenters take
- * their font at construction.
+ * their font at construction, and the game state resets with the fresh scene.
  */
 function wireFontToggle(engine: Engine): void {
   const button = document.getElementById("font-toggle");

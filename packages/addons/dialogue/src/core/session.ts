@@ -18,25 +18,34 @@
  */
 
 import { loadScript } from "./formats/canonical.js";
+import { createScope, evalCondition, type EvalScope } from "./expr.js";
 import { IdentityI18n, type I18nAdapter } from "./i18n.js";
 import { parseMarkup, stripMarkup } from "./markup.js";
-import {
-  DialogueRunner,
-  evalCondition,
-  type ResolvedChoice,
-} from "./runner.js";
+import { DialogueRunner, type ResolvedChoice } from "./runner.js";
+import { MemoryVariableStorage, materialize } from "./vars.js";
+import { analyzeScript, validatePlay, DialoguePlayError } from "./validate.js";
+import type { VarsOf } from "./defineScript.js";
 import type {
   ChoiceStep,
   Command,
   CommandContext,
+  CommandHandler,
   CommandTiming,
+  Condition,
+  DialogueFunction,
+  DialogueHandle,
+  DialoguePlayOptions,
   DialogueScript,
   ParsedText,
   RunMode,
   SayStep,
   SpeakerDef,
+  VariableStorage,
   VarMap,
 } from "./types.js";
+
+/** Stale-handle snapshot — frozen so a no-op `getVars()` can't be mutated. */
+const EMPTY_VARS: Readonly<VarMap> = Object.freeze({});
 
 // The addon's own output types declare optional fields as `T | undefined`
 // (not bare `?: T`): producers can then assign possibly-undefined inputs
@@ -147,23 +156,39 @@ export interface DialogueChannels {
 
 export interface DialogueSessionOptions {
   readonly i18n?: I18nAdapter | undefined;
-  /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
-  readonly params?: Readonly<Record<string, unknown>> | undefined;
   /** Hold-to-fast-forward multiplier. Default 4. */
   readonly skipMultiplier?: number | undefined;
+  /**
+   * The variable storage installed for every `play()` (D1). Persists across
+   * plays. Omit for a zero-config {@link MemoryVariableStorage}; supply your own
+   * or {@link compose} several to bridge game state. A per-`play()`
+   * `overrides.storage` replaces it for that conversation.
+   */
+  readonly storage?: VariableStorage | undefined;
+  /** Argument-capable read functions (`has_item("key")`) for conditions/`set`
+   *  expressions. Per-`play()` `overrides.functions` merge on top. */
+  readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
+  /** Command handlers (`type` → handler). Per-`play()` `overrides.commands`
+   *  merge on top (call site wins). */
+  readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
+  /** Catch-all for command types with no explicit handler. */
+  readonly fallbackCommand?: CommandHandler | undefined;
+  /** Non-fatal runtime diagnostics (e.g. a `set` to a read-only `cells`
+   *  accessor that was ignored). The controller routes these to the engine
+   *  logger; a bare session may handle or drop them. */
+  readonly onError?: ((message: string, error: unknown) => void) | undefined;
   readonly onStarted?: (e: { scriptId: string }) => void;
   /** Plain (markup-stripped) line text — for logs / a11y / history. */
   readonly onLine?: (e: { speaker?: string | undefined; text: string }) => void;
   readonly onChoiceShown?: (e: { options: readonly string[] }) => void;
   readonly onChoiceMade?: (e: { index: number; text: string }) => void;
   /**
-   * A game command fired. Receives `ctx.mode` (play/skip). For a `blocking`
-   * command, return a promise and the conversation waits for it to resolve.
+   * Observation hook fired for every non-built-in command (after `expression`,
+   * never for `set`) — the host forwards it to {@link DialogueCommandEvent}. The
+   * actual *handling* (and any `blocking` await) is the binding's `commands`
+   * map / `fallbackCommand`, not this; this returns nothing.
    */
-  readonly onCommand?: (
-    command: Command,
-    ctx: CommandContext,
-  ) => void | Promise<void>;
+  readonly onCommand?: (command: Command, ctx: CommandContext) => void;
   readonly onEnded?: (e: { scriptId: string }) => void;
 }
 
@@ -172,7 +197,18 @@ type Mode = "idle" | "saying" | "choosing" | "ended";
 export class DialogueSession {
   private readonly i18n: I18nAdapter;
   private readonly skipMul: number;
-  private params: Readonly<Record<string, unknown>>;
+  /** Controller-installed environment (persists across plays); per-`play()`
+   *  overrides are layered on top into the resolved fields below. */
+  private readonly defaultStorage: VariableStorage;
+  private readonly defaultFunctions: Readonly<Record<string, DialogueFunction>>;
+  private readonly defaultCommands: Readonly<Record<string, CommandHandler>>;
+  private readonly defaultFallback: CommandHandler | undefined;
+
+  // Resolved per play() (controller install + call-site overrides).
+  private storage: VariableStorage | undefined;
+  private functions: Readonly<Record<string, DialogueFunction>> = {};
+  private commands: Readonly<Record<string, CommandHandler>> = {};
+  private fallbackCommand: CommandHandler | undefined;
 
   // Fields use explicit `| undefined` (not `?`) so reassigning `undefined`
   // (e.g. `stop()` nulling the cursor) is legal under the repo's
@@ -222,7 +258,10 @@ export class DialogueSession {
   ) {
     this.i18n = opts.i18n ?? new IdentityI18n();
     this.skipMul = opts.skipMultiplier ?? 4;
-    this.params = opts.params ?? {};
+    this.defaultStorage = opts.storage ?? new MemoryVariableStorage();
+    this.defaultFunctions = opts.functions ?? {};
+    this.defaultCommands = opts.commands ?? {};
+    this.defaultFallback = opts.fallbackCommand;
     this.channels.text.onRevealComplete = () => this.handleRevealComplete();
     this.channels.choices.onChoiceChosen = (position) => {
       this.selected = position;
@@ -230,22 +269,72 @@ export class DialogueSession {
     };
   }
 
-  /** Begin a conversation. `params` merges into the shared interpolation context. */
-  play(
-    rawScript: DialogueScript,
-    params?: Readonly<Record<string, unknown>>,
-  ): void {
-    if (params) this.params = { ...this.params, ...params };
-    // Abandon any in-flight conversation first. `stop()` bumps the generation,
-    // so a still-pending async continuation from the previous line (e.g. an
-    // awaited `afterReveal`/`advance` command) bails on resume instead of
-    // stepping this new runner — important when `play()` restarts an
-    // ambient/eavesdrop loop while a line is mid-flight.
+  /**
+   * Begin a conversation. `play(script)` is **content-only** — the storage,
+   * functions, and commands are installed on the session (D1); `overrides` layers
+   * per-conversation specifics on top (a scoped `storage`, extra `functions` /
+   * `commands`). Declared defaults seed into the storage **only if absent**
+   * (game-linked values win); variables persist across plays. Returns a
+   * generation-stamped {@link DialogueHandle} for live `setVar` / `getVars`.
+   */
+  play<S extends DialogueScript>(
+    rawScript: S,
+    overrides?: DialoguePlayOptions,
+  ): DialogueHandle<VarsOf<S>> {
+    // Validate up front — load + analyze + resolve env + validatePlay are all
+    // synchronous and read-only w.r.t. session state. Doing them BEFORE stop()
+    // makes play() atomic: an invalid script / environment throws and leaves any
+    // running conversation untouched, instead of abandoning it on a play() that
+    // never starts.
+    const script = loadScript(rawScript);
+    const analysis = analyzeScript(script);
+
+    // Resolve the environment: controller install + call-site overrides
+    // (storage replaces; functions/commands merge, call site winning).
+    const storage = overrides?.storage ?? this.defaultStorage;
+    const functions = { ...this.defaultFunctions, ...overrides?.functions };
+    const commands = { ...this.defaultCommands, ...overrides?.commands };
+    const fallbackCommand = overrides?.fallbackCommand ?? this.defaultFallback;
+
+    // Hard error on an environment that can't satisfy the script — runs before
+    // seeding so the declared-default/storage conflict check sees the host value.
+    validatePlay(analysis, { storage, functions, commands, fallbackCommand });
+
+    // Seed-if-absent (D3): a declared default applies only when the storage
+    // doesn't already hold the name — never clobber a game-linked value. Done
+    // BEFORE stop() and wrapped, so a storage that can't accept the write (a pure
+    // read-only `cells()` with no writable slot for the name) fails as a clean
+    // `DialoguePlayError` while any running conversation is left untouched —
+    // play() stays atomic. Seeds are idempotent, so a partial seed before the
+    // throw is harmless on retry.
+    for (const [name, value] of Object.entries(script.declare ?? {})) {
+      if (storage.has(name)) continue;
+      try {
+        storage.set(name, value);
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new DialoguePlayError(
+          `cannot seed declared default "${name}": ${detail} ` +
+            `(a read-only / pure cells() storage has no writable slot — ` +
+            `compose it with a MemoryVariableStorage)`,
+        );
+      }
+    }
+
+    // Past the point of failure — commit. Abandon any in-flight conversation:
+    // `stop()` bumps the generation, so a still-pending async continuation from
+    // the previous line (e.g. an awaited `afterReveal`/`advance` command) bails on
+    // resume instead of stepping this new runner — important when `play()` restarts
+    // an ambient/eavesdrop loop while a line is mid-flight.
     this.stop();
 
-    const script = loadScript(rawScript);
     this.script = script;
     this.scriptId = script.id;
+    this.storage = storage;
+    this.functions = functions;
+    this.commands = commands;
+    this.fallbackCommand = fallbackCommand;
+
     // Stamp this runner's callbacks with the current generation. A later
     // stop()/play() bumps it, so a *prior* runner resuming an async step (e.g.
     // a blocking command awaited inside skip() or a command step) finds itself
@@ -253,21 +342,50 @@ export class DialogueSession {
     // corrupting — the new conversation's session state.
     const gen = this.generation;
     const live = () => gen === this.generation;
-    this.runner = new DialogueRunner(script, {
-      onSay: (step, speaker) => {
-        if (live()) this.handleSay(step, speaker);
+
+    // The runner writes through a generation-guarded view of the storage: a
+    // stale `set` / `ctx.setVar` (from an abandoned conversation's awaited
+    // blocking command) no-ops instead of mutating the now-shared persistent
+    // store. Reads pass straight through.
+    const guarded: VariableStorage = {
+      get: (name) => storage.get(name),
+      set: (name, value) => {
+        if (live()) storage.set(name, value);
       },
-      onChoice: (step, choices, speaker) => {
-        if (live()) this.handleChoice(step, choices, speaker);
+      has: (name) => storage.has(name),
+      entries: () => storage.entries(),
+    };
+
+    const runner = new DialogueRunner(
+      script,
+      { storage: guarded, functions, onError: this.opts.onError },
+      {
+        onSay: (step, speaker) => {
+          if (live()) this.handleSay(step, speaker);
+        },
+        onChoice: (step, choices, speaker) => {
+          if (live()) this.handleChoice(step, choices, speaker);
+        },
+        onCommand: (command, ctx) =>
+          live() ? this.handleCommand(command, ctx) : undefined,
+        onEnd: () => {
+          if (live()) this.handleEnd();
+        },
       },
-      onCommand: (command, ctx) =>
-        live() ? this.handleCommand(command, ctx) : undefined,
-      onEnd: () => {
-        if (live()) this.handleEnd();
-      },
-    });
+    );
+    this.runner = runner;
     this.opts.onStarted?.({ scriptId: this.scriptId });
-    this.runner.start();
+    runner.start();
+
+    // Typed, generation-stamped handle (D4): after stop()/replay it no-ops
+    // (setVar via the guarded view) / returns an empty snapshot (getVars).
+    return {
+      setVar: (name, value) => guarded.set(name, value),
+      getVars: () =>
+        (gen === this.generation ? materialize(storage) : EMPTY_VARS) as Readonly<
+          VarsOf<S>
+        >,
+    };
   }
 
   isActive(): boolean {
@@ -324,6 +442,15 @@ export class DialogueSession {
   /** True while any blocking line-command batch is awaited (input is gated). */
   private get lineBlocked(): boolean {
     return this.blockedCount > 0;
+  }
+
+  /**
+   * The storage read view for `{token}` interpolation at *this* present-time.
+   * Materialized per evaluation so an earlier command's `set` shows up on a
+   * later line (scenario 3); already-shown lines never re-render.
+   */
+  private readView(): VarMap {
+    return this.storage ? materialize(this.storage) : {};
   }
 
   // ── input-agnostic API ────────────────────────────────────────────────────
@@ -408,8 +535,13 @@ export class DialogueSession {
    */
   preview(nodeId: string, limit = 64): PreviewedLine[] {
     const script = this.script;
-    if (!script) return [];
-    const vars: Readonly<VarMap> = this.runner?.getVars() ?? {};
+    const storage = this.storage;
+    if (!script || !storage) return [];
+    // Interpolation reads a materialized snapshot; conditions evaluate through a
+    // scope (per-name reads + functions). Both off the current storage, for this
+    // side-effect-free lookahead.
+    const view = materialize(storage);
+    const scope = createScope(storage, this.functions);
     const out: PreviewedLine[] = [];
     let node = nodeId;
     let i = 0;
@@ -421,15 +553,15 @@ export class DialogueSession {
           ? script.speakers?.[step.speaker]
           : undefined;
         const name = speaker
-          ? this.i18n.t(speaker.nameKey, speaker.name, this.params)
+          ? this.i18n.t(speaker.nameKey, speaker.name, view)
           : undefined;
         out.push({
           speaker: name,
-          text: stripMarkup(this.i18n.t(step.key, step.text, this.params)),
+          text: stripMarkup(this.i18n.t(step.key, step.text, view)),
         });
         i++;
       } else if (step.kind === "command") {
-        if (step.target !== undefined && testCondition(step.condition, vars)) {
+        if (step.target !== undefined && testCondition(step.condition, scope)) {
           node = step.target;
           i = 0;
         } else {
@@ -476,7 +608,7 @@ export class DialogueSession {
     const text = this.i18n.t(
       chosen.option.key,
       chosen.option.text,
-      this.params,
+      this.readView(),
     );
     this.opts.onChoiceMade?.({ index: chosen.index, text });
     this.runner?.choose(chosen.index);
@@ -522,9 +654,12 @@ export class DialogueSession {
     this.advanceFired = false;
     this.afterRevealFired = false;
     this.confirming = false;
-    const resolved = this.i18n.t(step.key, step.text, this.params);
+    // Materialize the read view once for this line (an external getter fires
+    // exactly once per present, shared by text + nameplate).
+    const view = this.readView();
+    const resolved = this.i18n.t(step.key, step.text, view);
     const line: PresentedLine = {
-      speaker: this.speakerView(speaker),
+      speaker: this.speakerView(speaker, view),
       text: parseMarkup(resolved),
       speed: step.speed ?? 1,
       view: step.view,
@@ -535,7 +670,7 @@ export class DialogueSession {
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
     this.channels.chrome?.setNameplate(
-      this.speakerName(speaker),
+      this.speakerName(speaker, view),
       speaker?.color,
     );
 
@@ -547,7 +682,7 @@ export class DialogueSession {
     this.channels.text.present(line);
 
     this.opts.onLine?.({
-      speaker: this.speakerName(speaker),
+      speaker: this.speakerName(speaker, view),
       text: stripMarkup(resolved),
     });
 
@@ -564,14 +699,15 @@ export class DialogueSession {
     this.resolved = choices;
     this.selected = 0;
     this.confirming = false;
+    const view = this.readView();
 
     // Treat the choice like a line so the chrome switches to the right variant
     // (a composite box/bubble chrome otherwise leaves the previous speaker's
     // bubble up behind a frameless choice list).
     const line: PresentedLine = {
-      speaker: this.speakerView(speaker),
+      speaker: this.speakerView(speaker, view),
       text: step.text
-        ? parseMarkup(this.i18n.t(step.key, step.text, this.params))
+        ? parseMarkup(this.i18n.t(step.key, step.text, view))
         : { runs: [], pauses: [], length: 0 },
       speed: 1,
       view: step.view,
@@ -603,7 +739,7 @@ export class DialogueSession {
     } else {
       // Always set (undefined when no speaker) so a stale nameplate doesn't linger.
       this.channels.chrome?.setNameplate(
-        this.speakerName(speaker),
+        this.speakerName(speaker, view),
         speaker?.color,
       );
       this.channels.chrome?.present?.(line);
@@ -613,7 +749,7 @@ export class DialogueSession {
     }
 
     const labels = choices.map((c) =>
-      stripMarkup(this.i18n.t(c.option.key, c.option.text, this.params)),
+      stripMarkup(this.i18n.t(c.option.key, c.option.text, view)),
     );
     const presented: PresentedChoice[] = choices.map((c, i) => ({
       label: labels[i]!,
@@ -634,9 +770,13 @@ export class DialogueSession {
       this.channels.avatar?.setExpression(command.value);
       return;
     }
-    // Returning the host's (possibly async) result lets blocking commands pause
-    // the runner until the game finishes handling them.
-    return this.opts.onCommand?.(command, ctx);
+    // Observation first (the host emits DialogueCommandEvent); then the binding's
+    // handler does the actual work. Returning its (possibly async) result lets a
+    // blocking command pause the runner until the game finishes handling it.
+    // validateBinding guarantees a handler/fallback exists for every command type.
+    this.opts.onCommand?.(command, ctx);
+    const handler = this.commands[command.type] ?? this.fallbackCommand;
+    return handler?.(command, ctx);
   }
 
   private handleEnd(): void {
@@ -698,27 +838,28 @@ export class DialogueSession {
     }
   }
 
-  private speakerName(speaker: SpeakerDef | undefined): string | undefined {
+  private speakerName(
+    speaker: SpeakerDef | undefined,
+    view: VarMap,
+  ): string | undefined {
     if (!speaker) return undefined;
-    return this.i18n.t(speaker.nameKey, speaker.name, this.params);
+    return this.i18n.t(speaker.nameKey, speaker.name, view);
   }
 
   private speakerView(
     speaker: SpeakerDef | undefined,
+    view: VarMap,
   ): SpeakerView | undefined {
     if (!speaker) return undefined;
     return {
       id: speaker.id,
-      name: this.speakerName(speaker),
+      name: this.speakerName(speaker, view),
       color: speaker.color,
     };
   }
 }
 
-/** True when no condition, else the parsed condition holds for `vars`. */
-function testCondition(
-  condition: Parameters<typeof evalCondition>[0] | undefined,
-  vars: Readonly<VarMap>,
-): boolean {
-  return condition === undefined ? true : evalCondition(condition, vars);
+/** True when no condition, else the condition holds against `scope`. */
+function testCondition(condition: Condition | undefined, scope: EvalScope): boolean {
+  return condition === undefined ? true : evalCondition(condition, scope);
 }

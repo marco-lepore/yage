@@ -11,18 +11,22 @@
  * session (engine-agnostic). The presenter bundle usually comes from a factory
  * (`createBoxDialogue(theme)`), spread-and-overridden as needed:
  *
- *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, params }));
+ *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, storage }));
  */
 
 import { Component, LoggerKey, type Logger } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
-  type Command,
-  type CommandContext,
+  type CommandHandler,
+  type DialogueFunction,
+  type DialogueHandle,
+  type DialoguePlayOptions,
   type DialogueScript,
   type I18nAdapter,
   type PreviewedLine,
+  type VariableStorage,
+  type VarsOf,
 } from "./core/index.js";
 import type {
   ChromePresenter,
@@ -52,26 +56,32 @@ export interface DialogueBundle {
   readonly skipMultiplier?: number | undefined;
 }
 
-export interface DialogueControllerOptions extends DialogueBundle {
+export interface DialogueControllerOptions<TStorage extends VariableStorage = VariableStorage>
+  extends DialogueBundle {
   readonly i18n?: I18nAdapter | undefined;
-  /** Interpolation context shared by every line/choice/name (`{playerName}` …). */
-  readonly params?: Readonly<Record<string, unknown>> | undefined;
+  /**
+   * The variable storage installed for every `play()` (D1). Persists across
+   * plays. Omit for a zero-config `MemoryVariableStorage`; supply your own (or
+   * `compose(cells(...), new MemoryVariableStorage())`) to bridge game state. A
+   * per-`play()` `overrides.storage` replaces it for that conversation.
+   */
+  readonly storage?: TStorage | undefined;
+  /** Argument-capable read functions (`has_item("key")`) shared across plays. */
+  readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
+  /** Command handlers (`type` → handler) shared across plays; per-`play()`
+   *  `overrides.commands` merge on top (call site wins). */
+  readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
+  /** Catch-all for command types with no explicit handler. */
+  readonly fallbackCommand?: CommandHandler | undefined;
   /** Device → session binding. Omit for the default keyboard binding. */
   readonly input?: InputBinding;
-  /**
-   * Game command handler. Fires in addition to {@link DialogueCommandEvent}.
-   * Return a promise from a `blocking` command to pause the conversation until
-   * it resolves (cinematic sequencing). `ctx.mode` is "play" or "skip".
-   */
-  readonly onCommand?: (
-    command: Command,
-    ctx: CommandContext,
-  ) => void | Promise<void>;
   /** Called once when a conversation ends (in addition to the scene event). */
   readonly onEnded?: () => void;
 }
 
-export class DialogueController extends Component {
+export class DialogueController<
+  TStorage extends VariableStorage = VariableStorage,
+> extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly binding: InputBinding;
   private session!: DialogueSession;
@@ -80,7 +90,7 @@ export class DialogueController extends Component {
   /** Set by onDestroy — the presenters are disposed, so play() must refuse. */
   private destroyed = false;
 
-  constructor(private readonly opts: DialogueControllerOptions) {
+  constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
     this.binding = opts.input ?? new KeyboardInputBinding();
   }
@@ -101,17 +111,24 @@ export class DialogueController extends Component {
       },
       {
         i18n: this.opts.i18n,
-        params: this.opts.params,
         skipMultiplier: this.opts.skipMultiplier,
+        // Controller-installed environment (D1) — persists across plays.
+        storage: this.opts.storage,
+        functions: this.opts.functions,
+        commands: this.opts.commands,
+        fallbackCommand: this.opts.fallbackCommand,
         onStarted: (e) => this.entity.emit(DialogueStartedEvent, e),
         onLine: (e) => this.entity.emit(DialogueLineEvent, e),
         onChoiceShown: (e) =>
           this.entity.emit(DialogueChoiceShownEvent, { options: e.options }),
         onChoiceMade: (e) => this.entity.emit(DialogueChoiceMadeEvent, e),
-        onCommand: (command, ctx) => {
-          this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode });
-          return this.opts.onCommand?.(command, ctx);
-        },
+        // Observation only — the `commands` map does the work; this mirrors
+        // every non-built-in command onto the scene event bus.
+        onCommand: (command, ctx) =>
+          this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode }),
+        // Route non-fatal runtime diagnostics (e.g. a `set` to a read-only cell)
+        // through the engine logger rather than crashing or silently dropping.
+        onError: (message) => this.logger?.warn("dialogue", message),
         onEnded: (e) => {
           this.entity.emit(DialogueEndedEvent, e);
           this.opts.onEnded?.();
@@ -134,11 +151,17 @@ export class DialogueController extends Component {
     this.opts.avatar?.dispose();
   }
 
-  /** Begin a conversation. `params` merges into the shared interpolation context. */
-  play(
-    script: DialogueScript,
-    params?: Readonly<Record<string, unknown>>,
-  ): void {
+  /**
+   * Begin a conversation. `play(script)` is **content-only** — storage,
+   * functions, and commands are installed on the controller. `overrides` layers
+   * per-conversation specifics on top (a scoped `storage`, extra
+   * `functions`/`commands`). Returns a {@link DialogueHandle} for live `setVar` /
+   * `getVars`, or `undefined` if the controller was removed.
+   */
+  play<S extends DialogueScript>(
+    script: S,
+    overrides?: DialoguePlayOptions,
+  ): DialogueHandle<VarsOf<S>> | undefined {
     // A stale reference calling play() after the component was removed (e.g. a
     // game keeping the controller in an interact closure past
     // `DialogueEndedEvent → host.destroy()`) would run a new conversation into
@@ -149,14 +172,14 @@ export class DialogueController extends Component {
         "DialogueController.play() ignored: the component has been removed/destroyed.",
         { scriptId: script.id },
       );
-      return;
+      return undefined;
     }
     if (!this.session) {
       throw new Error(
         "DialogueController.play() called before the component was added to an entity (onAdd has not run yet).",
       );
     }
-    this.session.play(script, params);
+    return this.session.play(script, overrides);
   }
 
   isActive(): boolean {

@@ -42,22 +42,147 @@ export type RunMode = "play" | "skip";
 /** Context handed to every command handler. */
 export interface CommandContext {
   readonly mode: RunMode;
+  /**
+   * Write a variable through the conversation's {@link VariableStorage} — the
+   * skill-check seam: a result a blocking command computes (`ctx.setVar("passed",
+   * true)`) is read by a later condition. Routes through the same guarded write
+   * as the `set` built-in, so a read-only `cells` accessor throws. A stale ctx
+   * (after stop/replay) no-ops.
+   */
+  setVar(name: string, value: VarValue): void;
 }
 
 /**
- * A boolean guard on a choice or step. Either a key into the runner's `vars`
- * (truthy check) or a tiny comparison `{ var, op, value }`. Predicate functions
- * are also allowed when authoring in TS (they just don't survive JSON).
+ * A command handler. Return a promise from a `blocking` command to pause the
+ * conversation until it resolves (cinematic sequencing). Handlers are installed
+ * on the controller (`commands` map + optional `fallbackCommand`), with optional
+ * per-`play()` overrides.
+ */
+export type CommandHandler = (
+  command: Command,
+  ctx: CommandContext,
+) => void | Promise<void>;
+
+/**
+ * A boolean guard on a choice or step. Resolved against the conversation's
+ * {@link VariableStorage} + installed functions:
+ *
+ * - a bare name (`"greeted"`) → truthy check on that variable;
+ * - an atomic comparison `{ var, op, value }` (the degenerate one-level tree);
+ * - a full {@link Expr} tree (`and`/`or`, arithmetic, `has_item("key")`, …);
+ * - a `(vars) => boolean` predicate — TS-only, receives a materialized snapshot
+ *   of the readable variables (doesn't survive JSON).
  */
 export type Condition =
   | string
   | { readonly var: string; readonly op: CompareOp; readonly value: unknown }
+  | Expr
   | ((vars: VarMap) => boolean);
 
+/** Operators for the atomic `{ var, op, value }` condition (the degenerate
+ *  comparison tree). Full expression trees use {@link BinaryOp}/{@link UnaryOp}. */
 export type CompareOp = "==" | "!=" | ">" | ">=" | "<" | "<=" | "truthy" | "falsy";
 
 export type VarValue = string | number | boolean | null;
 export type VarMap = Record<string, VarValue>;
+
+// ── Expression IR (D5) ──────────────────────────────────────────────────────
+// `Condition` and a `set`'s value are expression *trees*, not atomic
+// comparisons — so `gold - 50` (the landmine the old flat form couldn't express)
+// and `has_item("key") and not rude` are plain data. The operator set is modeled
+// on Yarn Spinner so a future Yarn front-end maps 1:1 onto this IR.
+
+/** Comparison operators (symbol + Yarn word forms). `is`/`eq` ≡ `==`. */
+export type ComparisonOp =
+  | "==" | "!=" | ">" | "<" | ">=" | "<="
+  | "eq" | "neq" | "gt" | "lt" | "gte" | "lte" | "is";
+/** Boolean operators (symbol + word forms). */
+export type LogicalOp = "and" | "&&" | "or" | "||" | "xor" | "^";
+/** Arithmetic operators. `+` concatenates when either operand is a string. */
+export type ArithmeticOp = "+" | "-" | "*" | "/" | "%";
+export type BinaryOp = ComparisonOp | LogicalOp | ArithmeticOp;
+/** Unary operators: logical negation (`not`/`!`) and numeric negation (`-`). */
+export type UnaryOp = "not" | "!" | "-";
+
+/** An expression node. Evaluates to a {@link VarValue} against an eval scope
+ *  (variable reads + installed functions). */
+export type Expr =
+  | { readonly kind: "literal"; readonly value: VarValue }
+  | { readonly kind: "varRef"; readonly name: string }
+  | { readonly kind: "call"; readonly fn: string; readonly args?: readonly Expr[] }
+  | { readonly kind: "unary"; readonly op: UnaryOp; readonly operand: Expr }
+  | {
+      readonly kind: "binary";
+      readonly op: BinaryOp;
+      readonly left: Expr;
+      readonly right: Expr;
+    }
+  | { readonly kind: "group"; readonly expr: Expr };
+
+/**
+ * The read/write bridge between a conversation and game state (Yarn's
+ * `VariableStorage` shape). Names are **opaque** — the runtime imposes no
+ * meaning on a name's characters; scoping/prefixing/nesting is the host's
+ * policy. The addon ships a zero-config {@link MemoryVariableStorage}; a host
+ * can supply its own or {@link compose} several (a {@link cells} accessor over
+ * game state, an in-memory default for dialogue-locals + seeds, …). Storage
+ * **persists** across `play()`s.
+ */
+export interface VariableStorage {
+  /** Read a variable, or `undefined` if absent. */
+  get(name: string): VarValue | undefined;
+  /** Write a variable. A read-only accessor (a `cells` getter without a setter)
+   *  throws. */
+  set(name: string, value: VarValue): void;
+  /** Whether the storage currently holds `name` (drives seed-if-absent). */
+  has(name: string): boolean;
+  /**
+   * Enumerate the readable `(name, value)` pairs — backs `{token}` interpolation
+   * params, `handle.getVars()`, and the `(vars) => boolean` predicate. A fully
+   * opaque game store may enumerate fewer names; those then won't interpolate or
+   * appear in `getVars()`, but direct `get`/`set`/`has` still work.
+   */
+  entries(): Iterable<readonly [string, VarValue]>;
+}
+
+/**
+ * A pure, argument-capable read installed on the controller (`functions`). The
+ * read-only counterpart to a `command`: `has_item("rusty-key")` in a condition.
+ * Zero-arg reads need no function — a bare name reads {@link VariableStorage}.
+ * MUST be cheap + side-effect-free (called on every condition test).
+ */
+export type DialogueFunction = (...args: VarValue[]) => VarValue;
+
+/**
+ * Per-`play()` overrides, layered over the controller-installed
+ * storage/functions/commands for entity-specifics. `storage` replaces the
+ * controller's (use {@link compose} to layer); `functions`/`commands` merge
+ * key-by-key with the call site winning; `fallbackCommand` wins when set.
+ */
+export interface DialoguePlayOptions {
+  readonly storage?: VariableStorage | undefined;
+  readonly functions?: Readonly<Record<string, DialogueFunction>> | undefined;
+  readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
+  readonly fallbackCommand?: CommandHandler | undefined;
+}
+
+/**
+ * The typed, per-conversation handle returned by `play()`. Lets the host poke
+ * variables live (`setVar`) and read them back (`getVars`) without growing
+ * string-keyed methods on the controller. Generation-stamped: after
+ * `stop()`/replay a stale handle no-ops (`setVar`) / returns an empty snapshot
+ * (`getVars`).
+ */
+export interface DialogueHandle<Vars extends VarMap = VarMap> {
+  /** Write a variable through the conversation's storage (guarded). On the
+   *  {@link defineScript} path both the name AND the value are typed to the
+   *  script's declared variables — a wrong-typed value is a compile error.
+   *  (`ctx.setVar` stays loosely typed: command handlers are installed on the
+   *  controller, not bound to any one script's variable types.) */
+  setVar<K extends keyof Vars & string>(name: K, value: Vars[K]): void;
+  /** Snapshot of the storage's enumerable variables. */
+  getVars(): Readonly<Vars>;
+}
 
 /** A single line of dialogue spoken by an optional speaker. */
 export interface SayStep {
@@ -87,7 +212,9 @@ export interface ChoiceOption {
   /** Node to jump to when picked. Omit to just continue the current node. */
   readonly target?: NodeId;
   readonly condition?: Condition;
-  /** Hide this option once it has been picked (tracked in `vars`). */
+  /** Hide this option once it has been picked. Tracked as per-conversation
+   *  cursor state (resets on a fresh `play()`; the future save cursor captures
+   *  it), NOT in the variable storage. */
   readonly once?: boolean;
   readonly commands?: readonly Command[];
   /** Opaque per-choice hint bag (tone/icon/position for fancy choice UIs). */
@@ -162,8 +289,17 @@ export interface DialogueScript {
   readonly start: NodeId;
   readonly nodes: Record<NodeId, DialogueNode>;
   readonly speakers?: Record<SpeakerId, SpeakerDef>;
-  /** Initial branching variables. */
-  readonly vars?: VarMap;
+  /**
+   * Declared variable **defaults** (Yarn `<<declare>>` / `InitialValues`). On
+   * `play()`, each applies **only if the installed storage doesn't already
+   * `has` the name** (seed-if-absent) — a game-linked value always wins, the
+   * addon never clobbers. The default's value also fixes the variable's inferred
+   * type on the {@link defineScript} path. Variables **persist** in storage
+   * across plays (cycling-NPC counters, quest progress); a script re-inits a
+   * value explicitly to reset it. (A choice's `once` flag is per-conversation
+   * cursor state, not a stored variable — see {@link ChoiceOption.once}.)
+   */
+  readonly declare?: VarMap;
 }
 
 // ── Parsed inline markup (produced by markup.ts) ───────────────────────────
