@@ -5,26 +5,47 @@
  * presentation is delegated via callbacks, so the same runner drives a
  * renderer-based box, a ui-react box, or a headless test.
  *
- * Branching uses a small `vars` map: `set` commands write it, conditions read
- * it. The runner resolves built-in commands (`set`) itself and surfaces every
- * other command to the host through `onCommand` — that's the seam where the
- * game turns `{ type: "give-item", id: "key" }` into an actual effect.
+ * Branching reads one {@link VariableStorage} namespace through an
+ * {@link EvalScope} (per-name reads + installed functions): `set` / `ctx.setVar`
+ * write storage, conditions and `set` values are evaluated as expression trees.
+ * The runner resolves built-in commands (`set`) itself and surfaces every other
+ * command to the host through `onCommand` — that's the seam where the game turns
+ * `{ type: "give-item", id: "key" }` into an actual effect.
  */
 
+import { createScope, evalCondition, evaluate, isExpr, type EvalScope } from "./expr.js";
+import { materialize } from "./vars.js";
 import type {
   ChoiceOption,
   ChoiceStep,
   Command,
   CommandContext,
   Condition,
+  DialogueFunction,
   DialogueScript,
   RunMode,
   SayStep,
   SpeakerDef,
   Step,
+  VariableStorage,
   VarMap,
   VarValue,
 } from "./types.js";
+
+/** The runtime environment the session installs behind a running conversation:
+ *  the variable storage (read + guarded write) + the callable functions. */
+export interface RunnerEnv {
+  readonly storage: VariableStorage;
+  readonly functions: Readonly<Record<string, DialogueFunction>>;
+  /**
+   * Surfaces a non-fatal runtime diagnostic — currently a `set` whose write the
+   * storage rejected (a getter-only `cells` accessor). The runner ignores the
+   * write and keeps the conversation running; the host (via the session →
+   * controller) routes the message to the engine logger. Engine-agnostic: the
+   * core never reaches for `console`/a logger directly.
+   */
+  readonly onError?: ((message: string, error: unknown) => void) | undefined;
+}
 
 export interface ResolvedChoice {
   readonly index: number; // index into the original options array
@@ -52,7 +73,10 @@ export interface RunnerHandlers {
 type RunnerState = "idle" | "saying" | "choosing" | "awaiting-command" | "ended";
 
 export class DialogueRunner {
-  private readonly vars: VarMap;
+  /** `option.once` keys already picked — per-conversation **cursor** state, NOT
+   *  the variable storage. Fresh per runner, so a new `play()` starts it empty
+   *  (a re-played conversation re-shows its `once` options until the v1.1 save
+   *  cursor captures/restores it via {@link getChosenOnce}). */
   private readonly chosenOnce = new Set<string>();
   private nodeId: string;
   private stepIndex = 0;
@@ -60,17 +84,28 @@ export class DialogueRunner {
   /** "play" normally; flipped to "skip" by a future fast-forward (see C2). */
   private runMode: RunMode = "play";
 
+  /** Storage (write through this so a read-only `cells` accessor throws) +
+   *  functions, wrapped once as the condition/`set`-value eval scope. */
+  private readonly storage: VariableStorage;
+  private readonly scope: EvalScope;
+  private readonly onError: ((message: string, error: unknown) => void) | undefined;
+
   constructor(
     private readonly script: DialogueScript,
+    /** The variable storage + functions (built by the session per play()). */
+    env: RunnerEnv,
     private readonly handlers: RunnerHandlers,
   ) {
-    this.vars = { ...(script.vars ?? {}) };
     this.nodeId = script.start;
+    this.storage = env.storage;
+    this.scope = createScope(env.storage, env.functions);
+    this.onError = env.onError;
   }
 
-  /** Snapshot of branching vars (for save/restore or debugging). */
+  /** Snapshot of the storage's variables — the `handle.getVars()` /
+   *  future save-cursor view. */
   getVars(): Readonly<VarMap> {
-    return this.vars;
+    return materialize(this.storage);
   }
 
   // ── v1.1 save seam (read-only cursor getters) ─────────────────────────────
@@ -282,12 +317,26 @@ export class DialogueRunner {
     if (!commands) return;
     for (const cmd of commands) {
       if (cmd.type === "set" && typeof cmd.var === "string") {
-        this.vars[cmd.var] = cmd.value as VarValue;
+        // Built-in write: the value is a literal or an expression tree
+        // (`gold - 50`). The storage rejects a write to a read-only `cells`
+        // accessor — report it and keep going rather than let the throw escape
+        // the async run()/choose() chain and wedge the conversation (same
+        // contract as a throwing command handler below).
+        const value = cmd.value;
+        const next = isExpr(value) ? evaluate(value, this.scope) : (value as VarValue);
+        try {
+          this.storage.set(cmd.var, next);
+        } catch (e) {
+          this.onError?.(
+            `ignored "set ${cmd.var}": ${e instanceof Error ? e.message : String(e)}`,
+            e,
+          );
+        }
         continue;
       }
       let result: void | Promise<void>;
       try {
-        result = this.handlers.onCommand(cmd, { mode });
+        result = this.handlers.onCommand(cmd, this.commandContext(mode));
       } catch {
         // A handler that throws *synchronously* must not wedge the conversation
         // either (same contract as the blocking-await catch below): swallow and
@@ -309,40 +358,17 @@ export class DialogueRunner {
     }
   }
 
+  /** The context handed to a command handler. `setVar` writes through the
+   *  conversation's storage (guarded by the session for staleness), the same
+   *  path as the `set` built-in — so the skill-check seam and `set` share one
+   *  guarded write. */
+  private commandContext(mode: RunMode): CommandContext {
+    return { mode, setVar: (name, value) => this.storage.set(name, value) };
+  }
+
   private test(condition: Condition | undefined): boolean {
-    if (condition === undefined) return true;
-    return evalCondition(condition, this.vars);
+    return condition === undefined ? true : evalCondition(condition, this.scope);
   }
-}
-
-export function evalCondition(condition: Condition, vars: Readonly<VarMap>): boolean {
-  if (typeof condition === "function") return condition(vars as VarMap);
-  if (typeof condition === "string") return Boolean(vars[condition]);
-
-  const left = vars[condition.var];
-  const right = condition.value;
-  switch (condition.op) {
-    case "==":
-      return left === right;
-    case "!=":
-      return left !== right;
-    case ">":
-      return num(left) > num(right);
-    case ">=":
-      return num(left) >= num(right);
-    case "<":
-      return num(left) < num(right);
-    case "<=":
-      return num(left) <= num(right);
-    case "truthy":
-      return Boolean(left);
-    case "falsy":
-      return !left;
-  }
-}
-
-function num(v: unknown): number {
-  return typeof v === "number" ? v : Number(v);
 }
 
 function isPromise(v: unknown): v is Promise<unknown> {
