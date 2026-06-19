@@ -38,6 +38,9 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
   private highlightBar?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private rows: ChoiceRow[] = [];
   private selected = -1;
+  /** Master visibility gate (D1) — hides the list WITHOUT clearing it, so a
+   *  hide/show round-trip keeps the rows + selection. */
+  private hidden = false;
 
   onChoiceChosen?: (position: number) => void;
 
@@ -72,10 +75,25 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
       this.rows.push({ entity, comp });
     });
     this.highlightAt(0);
+    this.applyHidden();
   }
 
   highlight(position: number): void {
     this.highlightAt(position);
+  }
+
+  /** Show or hide the list without clearing it (D1) — state-preserving. */
+  setVisible(visible: boolean): void {
+    this.hidden = !visible;
+    this.applyHidden();
+  }
+
+  /** Render = rows present AND not hidden. */
+  private applyHidden(): void {
+    for (const row of this.rows) row.comp.text.visible = !this.hidden;
+    if (this.highlightBar) {
+      this.highlightBar.gfx.graphics.visible = !this.hidden && this.selected >= 0;
+    }
   }
 
   /** {@link PointerChoiceTarget}: which row (if any) a screen point falls in. */

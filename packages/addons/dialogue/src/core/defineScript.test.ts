@@ -6,9 +6,9 @@ import type { ChoiceChannel, TextChannel } from "./session.js";
 
 // Minimal channels — enough to play a one-line script headlessly.
 class NoopText implements TextChannel {
-  onRevealComplete?: () => void;
+  private revealListener?: (() => void) | undefined;
   present(): void {
-    this.onRevealComplete?.();
+    this.revealListener?.(); // no-typewriter: reveal completes instantly
   }
   completeReveal(): void {}
   isRevealComplete(): boolean {
@@ -18,12 +18,17 @@ class NoopText implements TextChannel {
     return false;
   }
   setSpeedMultiplier(): void {}
+  setVisible(): void {}
   update(): void {}
   clear(): void {}
+  setRevealListener(l: (() => void) | undefined): void {
+    this.revealListener = l;
+  }
 }
 class NoopChoices implements ChoiceChannel {
   present(): void {}
   highlight(): void {}
+  setVisible(): void {}
   clear(): void {}
 }
 

@@ -219,15 +219,75 @@ new DialogueController({
 future storage-aware checking; `play()` is typed by the script's declared vars).
 Methods: `play(script, overrides?): DialogueHandle | undefined` (undefined if the
 component was removed), `isActive()`, `stop()`, `skip()`,
-`setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`. It is
-multi-instance friendly — several ambient conversations can run at once; "which
-is interactive" and "does the world pause" are the game's policy (no global
-singleton).
+`setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`, plus the three
+lifecycle levers below. It is multi-instance friendly — several ambient
+conversations can run at once; "which is interactive" and "does the world pause"
+are the game's policy (no global singleton).
+
+### Lifecycle levers (host owns focus/pause/visibility)
+
+Three **orthogonal** levers; compose them (cutscene = hidden + paused; pause menu
+= paused; ambient = inputDisabled). All host-level and **persistent** — they
+survive `stop()`/`play()`, so a forgotten unhide/unpause stays in effect.
+
+- `setHidden(bool)` — **visual only**. Hides/shows the whole UI without ending or
+  freezing the conversation; state-preserving (hide mid-typewriter, show to
+  resume the exact line + caret). A composite chrome restores its **active**
+  variant on show (bubble line → bubble, not an empty box).
+- `setPaused(bool)` — **freezes time + input**. `update()` no-ops (reveal,
+  auto-advance clock, caret blink, avatar anim all halt) and the input-agnostic
+  API no-ops; no state is lost (no generation bump; an in-flight blocking command
+  keeps running and lands normally). Does **not** block host-driven
+  `handle.setVar` / `ctx.setVar` / storage writes — only player-facing time/input
+  freeze.
+- `setInputEnabled(bool)` — **input focus**. `session.update` keeps pumping (an
+  ambient conversation stays alive and animating) but the binding isn't polled,
+  so this instance consumes no input. NOT `Component.enabled` (which would freeze
+  the whole component).
+
+```ts
+// Two conversations, one interactive — focus is the game's one-liner.
+// (YAGE input is non-consuming, so two ENABLED controllers both advance on one
+// key press; focus is the game's policy by design.)
+if (near(npcA)) { a.setInputEnabled(true);  b.setInputEnabled(false); }
+else            { a.setInputEnabled(false); b.setInputEnabled(true);  }
+
+// Cutscene takeover: hide + pause, pan the camera, then restore.
+dlg.setHidden(true); dlg.setPaused(true);
+await camera.panTo(spot);
+dlg.setPaused(false); dlg.setHidden(false); // the bubble line + caret reappear
+```
+
+Channels carry a `setVisible(bool)` verb (the headless half of `setHidden`):
+`TextChannel` / `ChoiceChannel` / `ChromeChannel` (required) + `AvatarChannel`
+(optional). It is purely visual and state-preserving; `present(undefined)` means
+"no line — clear content". The old `setNameplate(undefined)` covert hide-all is
+gone (it now means only "no name").
+
+### Missing actor vs narrator (bubble bundles)
+
+A **speakerless narrator** line routes to the **box** in a mixed bundle
+(`defaultCompositeRoute`, the genre convention) regardless of `view`; a
+*positioned* narrator is the documented **invisible-anchor** recipe — give the
+narrator a `speaker` whose `DialogueActor` rides an invisible entity, and it
+floats like any other speaker. A **missing actor** (speaker declared but the
+`DialogueActor` despawned/unregistered) no longer renders invisibly at world
+origin: the bubble anchors at the actor's **last-known** position (despawn), else
+the most recent any-speaker anchor, else `createBubbleDialogue`'s
+`fallbackAnchor` (world origin by default — point it at your camera centre for
+pure-bubble narrator bundles); the bubble, text, choices, and caret stay
+**visible**, and a once-per-speaker dev warning routes through the engine
+`Logger`. `BubbleAnchorResolver` is the single shared owner of this policy.
 
 Events (entity → scene bubbling): `DialogueStartedEvent`, `DialogueLineEvent`
 (`{ speaker?, text }` plain text), `DialogueChoiceShownEvent`,
 `DialogueChoiceMadeEvent`, `DialogueCommandEvent` (`{ command, mode }`),
-`DialogueEndedEvent`.
+`DialogueEndedEvent`, and four observation events — `DialogueRevealCompletedEvent`
+(`{ speaker?, text }`, "typing finished"), `DialogueSelectionChangedEvent`
+(`{ index, text }`, keyboard nav **and** pointer hover), `DialogueSkipUsedEvent`
+(`{ scriptId }`), `DialogueAutoAdvanceEvent` (`{ scriptId }`). Observation is
+events-only: the reveal-completed seam is session-owned (no public mutable field
+a game can clobber).
 
 ## Channels + presenters (L3 capability channels)
 

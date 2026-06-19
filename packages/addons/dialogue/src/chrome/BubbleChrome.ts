@@ -11,11 +11,11 @@
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
-import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type { PresentedLine } from "../core/session.js";
+import { BubbleAnchorResolver, type AnchorPoint } from "../render/bubbleAnchor.js";
 import { bubbleSize } from "../render/bubbleSizing.js";
 import { caretAlpha, drawCaret } from "./caret.js";
-import type { ChromePresenter } from "./DialogueUiAdapter.js";
+import type { ChromePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
 export interface BubbleChromeConfig extends FontConfig {
@@ -43,6 +43,10 @@ export interface BubbleChromeConfig extends FontConfig {
    *  matching the companion `BubbleTextView`. */
   readonly textSize: number;
   readonly lineHeight: number;
+  /** Anchor for a missing/absent speaker with no last-known position (D3).
+   *  Default world origin; point it at the camera centre for a pure-bubble
+   *  bundle that shows narrator lines. */
+  readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
 
 export class BubbleChrome implements ChromePresenter {
@@ -54,15 +58,29 @@ export class BubbleChrome implements ChromePresenter {
   private nameTransform?: Transform | undefined;
   private caret?: GraphicsComponent | undefined;
   private caretTransform?: Transform | undefined;
-  private actor?: DialogueActor | undefined;
   private caretTime = 0;
   /** Current (content-sized) bubble size; recomputed per line. */
   private currentWidth: number;
   private currentHeight: number;
+  // Model-C visibility + content sub-state.
+  private visible = false; // master (from setVisible)
+  private hasLine = false; // a line is up (from present)
+  private nameShown = false; // the speaker has a name to show
+  private caretShown = false; // continue caret requested
+  /** Speaker id of the line on screen — re-resolved each frame by `follow()` so
+   *  the bubble tracks a live actor and falls back when one is missing (D3). */
+  private speakerId: string | undefined;
+  private readonly anchors: BubbleAnchorResolver;
 
   constructor(private readonly cfg: BubbleChromeConfig) {
     this.currentWidth = cfg.minWidth;
     this.currentHeight = cfg.height;
+    this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
+  }
+
+  /** Route the missing-actor warning to the engine Logger (D3). */
+  setDiagnostics(warn: DiagnosticSink): void {
+    this.anchors.setDiagnostics(warn);
   }
 
   mount(scene: Scene): void {
@@ -92,13 +110,13 @@ export class BubbleChrome implements ChromePresenter {
     this.root = root;
   }
 
-  /** Re-anchor to the line's speaker, grow to fit the text, and reveal. */
+  /** Re-anchor to the line's speaker, grow to fit the text, and reveal. The
+   *  bubble stays visible even when the speaker has no live actor — it anchors
+   *  at the last-known / fallback position (D3) instead of vanishing at origin. */
   present(line: PresentedLine | undefined): void {
-    this.actor = this.scene
-      ? actorRegistryFor(this.scene).resolve(line?.speaker?.id)
-      : undefined;
-    const show = this.actor !== undefined;
-    if (show && line) {
+    this.hasLine = line !== undefined;
+    this.speakerId = line?.speaker?.id;
+    if (line) {
       const c = this.cfg;
       const plain = line.text.runs.map((r) => r.text).join("");
       const size = bubbleSize(plain, {
@@ -114,41 +132,53 @@ export class BubbleChrome implements ChromePresenter {
       this.currentWidth = size.width;
       this.currentHeight = size.height;
       this.drawBubble();
-    }
-    if (this.gfx) this.gfx.graphics.visible = show;
-    if (this.name) {
-      const label = line?.speaker?.name;
-      this.name.text.visible = show && !!label;
-      if (label) {
-        this.name.text.style.fill = line?.speaker?.color ?? this.cfg.nameColor;
+      const label = line.speaker?.name;
+      this.nameShown = label !== undefined && label.length > 0;
+      if (label && this.name) {
+        this.name.text.style.fill = line.speaker?.color ?? this.cfg.nameColor;
         this.name.setText(label);
       }
+    } else {
+      this.nameShown = false;
     }
+    this.apply();
     this.follow();
   }
 
   setNameplate(name: string | undefined): void {
-    // No speaker (e.g. conversation end) → hide the whole bubble.
+    // D1: the bubble owns its own nameplate (set from present's speaker); this
+    // only tracks "no name" (undefined). NOT a covert hide-all — that died.
     if (name === undefined) {
-      this.actor = undefined;
-      if (this.gfx) this.gfx.graphics.visible = false;
-      if (this.name) this.name.text.visible = false;
-      this.setContinueVisible(false);
+      this.nameShown = false;
+      this.apply();
     }
   }
 
   setContinueVisible(visible: boolean): void {
-    if (this.caret) this.caret.graphics.visible = visible && this.actor !== undefined;
+    // D3: no `actor !== undefined` gate — the caret shows for a missing-actor
+    // line too (the bubble is at the fallback anchor, not hidden).
+    this.caretShown = visible;
     this.caretTime = 0;
+    this.apply();
   }
 
-  /** Hide the whole bubble (used by a composite chrome when a box line plays). */
+  /** Show or hide the whole bubble (D1) — state-preserving: the line, name, and
+   *  caret content survive a hide, so showing again restores them in place
+   *  (used by a composite chrome to hide the bubble while a box line plays). */
   setVisible(visible: boolean): void {
-    if (visible) return; // shown on the next `present`
-    this.actor = undefined;
-    if (this.gfx) this.gfx.graphics.visible = false;
-    if (this.name) this.name.text.visible = false;
-    this.setContinueVisible(false);
+    this.visible = visible;
+    this.apply();
+  }
+
+  /** Render each piece = master-visible AND a line is up AND its content present. */
+  private apply(): void {
+    if (this.gfx) this.gfx.graphics.visible = this.visible && this.hasLine;
+    if (this.name) {
+      this.name.text.visible = this.visible && this.hasLine && this.nameShown;
+    }
+    if (this.caret) {
+      this.caret.graphics.visible = this.visible && this.hasLine && this.caretShown;
+    }
   }
 
   update(dt: number): void {
@@ -175,10 +205,11 @@ export class BubbleChrome implements ChromePresenter {
     this.caretTransform = undefined;
   }
 
-  /** Move the bubble + name + caret to sit above the active actor's head. */
+  /** Move the bubble + name + caret to sit above the speaker — its live actor,
+   *  or the last-known / fallback anchor when the actor is missing (D3). */
   private follow(): void {
-    if (!this.actor) return;
-    const a = this.actor.anchorWorld();
+    if (!this.scene || !this.hasLine) return;
+    const a = this.anchors.resolve(this.scene, this.speakerId);
     const c = this.cfg;
     const w = this.currentWidth;
     const h = this.currentHeight;

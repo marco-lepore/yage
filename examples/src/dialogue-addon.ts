@@ -29,11 +29,16 @@
  *                         the key (`take-item`), and runs `open-gate` (a world
  *                         consequence that extends the walkable area).
  *   • Sage (bubble)     — a long line the speech bubble grows to fit.
- *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop.
+ *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
+ *                         (a second controller kept alive but input-disabled via
+ *                         `setInputEnabled(false)` — the focus seam, D5).
  *
  * The HUD shows your live gold + items. Hold **J** to fast-forward, hold **X** to
- * skip, press **V** to toggle auto-advance; the pointer works too. The **Font**
- * button swaps every presenter to a baked bitmap font and back.
+ * skip, press **V** to toggle auto-advance; the pointer works too. The three
+ * Design B lifecycle levers ride two keys: **P** pauses (the conversation freezes
+ * intact behind a dim overlay — `setPaused`) and **H** hides the dialogue UI
+ * mid-line, restoring it at the same reveal point (`setHidden` / F28). The
+ * **Font** button swaps every presenter to a baked bitmap font and back.
  *
  * Export split: runner / controller / events / input / the storage kit come from
  * the pixi-free root entry; presenters + theme come from `/presenters`.
@@ -61,7 +66,6 @@ import {
   DialogueController,
   DialogueLineEvent,
   DialogueChoiceMadeEvent,
-  CompositeInputBinding,
   cells,
   compose,
   fullControls,
@@ -606,7 +610,7 @@ class Hud extends Component {
     this.spawnText(
       12,
       12,
-      "WASD/Arrows move · F talk · hold J fast · hold X skip · V auto · click too",
+      "WASD move · F talk · hold J fast · hold X skip · V auto · P pause · H hide",
       13,
       0xb8b8c0,
       { x: 0, y: 0 },
@@ -710,6 +714,71 @@ class DialogueProbe extends Component {
   }
 }
 
+// ── Design B lifecycle levers on two keys (both persist across plays) ─────────
+
+/**
+ * P / H drive two of the three orthogonal lifecycle levers (the third —
+ * `setInputEnabled` — focuses the ambient gossip below):
+ *   • **P → `setPaused`** — freezes every conversation (typewriter, auto-advance,
+ *     caret, input) behind a dim overlay with no state loss; press again to
+ *     resume exactly where it left off. `lifecycle.paused` freezes the player
+ *     too, so the whole world reads as paused.
+ *   • **H → `setHidden`** — hides the dialogue UI mid-line and brings it back
+ *     with its reveal progress intact (the bubble + caret, never an empty box —
+ *     F28). Gated to an active conversation so an idle press can't strand a
+ *     later line hidden.
+ */
+class LifecycleControls extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private overlay!: GraphicsComponent;
+  private banner!: TextComponent;
+
+  constructor(
+    private readonly controllers: readonly DialogueController[],
+    private readonly lifecycle: { paused: boolean; hidden: boolean },
+  ) {
+    super();
+  }
+
+  onAdd(): void {
+    // Screen-space dim + PAUSED banner on the top HUD layer (above the dialogue
+    // box), hidden until P. Toggled via `.visible` — DisplaySystem doesn't sync it.
+    const dim = this.scene.spawn("pause-overlay");
+    dim.add(new Transform());
+    this.overlay = dim.add(
+      new GraphicsComponent({ layer: HUD_LAYER }).draw((g) => {
+        g.rect(0, 0, WIDTH, HEIGHT).fill({ color: 0x05060a, alpha: 0.55 });
+      }),
+    );
+    this.overlay.graphics.visible = false;
+
+    const banner = this.scene.spawn("pause-banner");
+    banner.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2) }));
+    this.banner = banner.add(
+      new TextComponent({
+        text: "❙❙ PAUSED",
+        style: { fontSize: 34, fill: 0xffe08a, fontFamily: "sans-serif" },
+        layer: HUD_LAYER,
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+    this.banner.text.visible = false;
+  }
+
+  update(): void {
+    if (this.input.isJustPressed("pause")) {
+      this.lifecycle.paused = !this.lifecycle.paused;
+      for (const c of this.controllers) c.setPaused(this.lifecycle.paused);
+      this.overlay.graphics.visible = this.lifecycle.paused;
+      this.banner.text.visible = this.lifecycle.paused;
+    }
+    if (this.input.isJustPressed("hide") && this.controllers.some((c) => c.isActive())) {
+      this.lifecycle.hidden = !this.lifecycle.hidden;
+      for (const c of this.controllers) c.setHidden(this.lifecycle.hidden);
+    }
+  }
+}
+
 // ── scene ────────────────────────────────────────────────────────────────────
 
 class RoomScene extends Scene {
@@ -750,6 +819,10 @@ class RoomScene extends Scene {
 
     // The game state the dialogue bridges into.
     const state: GameState = { gold: 25, inventory: new Set<string>() };
+
+    // Design B lifecycle flags (P pause / H hide), shared so the player freezes
+    // with the conversation when paused.
+    const lifecycle = { paused: false, hidden: false };
 
     // The locked gate (its `open-gate` handler extends the walkable bounds).
     const gateEntity = this.spawn("gate");
@@ -811,16 +884,26 @@ class RoomScene extends Scene {
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoice(e.text));
 
-    const busy = (): boolean => interactive.isActive();
+    // The player idles while a conversation owns input, and while paused.
+    const busy = (): boolean => interactive.isActive() || lifecycle.paused;
     player.add(new PlayerMover(bounds, busy));
 
-    // Ambient controller (bubble, no input) for the eavesdropped gossip.
+    // Ambient controller (bubble) for the eavesdropped gossip. It has a REAL
+    // polling binding, but focus is OFF (`setInputEnabled(false)`): the gossip
+    // stays alive and auto-advances while consuming no device input — the
+    // multi-instance "two conversations, one interactive" story (D5). (Before
+    // Design B this used an empty `CompositeInputBinding([])` workaround.)
+    const ambientBundle = createBubbleDialogue(theme, bubbleOpts);
     const ambient = this.spawn("ambient-host").add(
       new DialogueController({
-        ...createBubbleDialogue(theme, bubbleOpts),
-        input: new CompositeInputBinding([]),
+        ...ambientBundle,
+        input: fullControls(ambientBundle.choices),
       }),
     );
+    ambient.setInputEnabled(false);
+
+    // P pause / H hide — apply the lifecycle levers to BOTH conversations.
+    host.add(new LifecycleControls([interactive, ambient], lifecycle));
 
     // ── townsfolk, left to right ──
     const talker = (
@@ -944,6 +1027,8 @@ async function main(): Promise<void> {
         attack: ["KeyJ"], // hold to fast-forward (FULL_ACTIONS.speed)
         skip: ["KeyX"], // hold to skip (FULL_ACTIONS.skip)
         auto: ["KeyV"], // toggle auto-advance
+        pause: ["KeyP"], // setPaused — freeze the conversation + world (D2)
+        hide: ["KeyH"], // setHidden — hide the dialogue UI mid-line (D1 / F28)
       },
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),

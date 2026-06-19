@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { PresentedLine } from "../core/session.js";
+import type { PresentedLine, SpeakerView } from "../core/session.js";
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
 import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 
-/** A stub text view recording presents/clears and the speed multiplier. */
+/** A stub text view recording presents/clears, speed, and visibility. */
 class StubView implements TextPresenter {
   presented = 0;
   cleared = 0;
   speedMultiplier = 1;
+  visibles: boolean[] = [];
+  revealListener?: (() => void) | undefined;
   present(): void {
     this.presented++;
   }
@@ -21,6 +23,12 @@ class StubView implements TextPresenter {
   setSpeedMultiplier(m: number): void {
     this.speedMultiplier = m;
   }
+  setVisible(v: boolean): void {
+    this.visibles.push(v);
+  }
+  setRevealListener(l: (() => void) | undefined): void {
+    this.revealListener = l;
+  }
   update(): void {}
   clear(): void {
     this.cleared++;
@@ -29,10 +37,13 @@ class StubView implements TextPresenter {
   dispose(): void {}
 }
 
-const line = (view?: string): PresentedLine => ({
+const speaker: SpeakerView = { id: "npc", name: "NPC" };
+
+const line = (view?: string, withSpeaker = false): PresentedLine => ({
   text: { runs: [], pauses: [], length: 0 },
   speed: 1,
   ...(view !== undefined ? { view } : {}),
+  ...(withSpeaker ? { speaker } : {}),
 });
 
 describe("CompositeTextPresenter — routing", () => {
@@ -45,9 +56,21 @@ describe("CompositeTextPresenter — routing", () => {
     expect(box.presented).toBe(1);
     expect(bubble.cleared).toBe(1);
 
-    c.present(line("bubble"));
+    // A bubble view WITH a speaker → bubble (a speakerless line would route to
+    // the box by the narrator convention — covered separately).
+    c.present(line("bubble", true));
     expect(bubble.presented).toBe(1);
     expect(box.cleared).toBe(1);
+  });
+
+  it("routes a speakerless bubble line to the box (narrator convention)", () => {
+    const box = new StubView();
+    const bubble = new StubView();
+    const c = new CompositeTextPresenter(box, bubble);
+
+    c.present(line("bubble")); // bubble view but NO speaker → box
+    expect(box.presented).toBe(1);
+    expect(bubble.presented).toBe(0);
   });
 });
 

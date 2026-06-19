@@ -13,6 +13,8 @@ interface ProbeData {
   choiceCount: number;
   choosing: boolean;
   ended: boolean;
+  boxVisible: boolean;
+  bubbleVisible: boolean;
 }
 
 /** The controller methods the fixture exposes on `window.__dialogue__`. */
@@ -20,6 +22,7 @@ interface HostHandle {
   advance(): void;
   choose(n: number): void;
   setAutoAdvance(ms: number | null): void;
+  setHidden(hidden: boolean): void;
 }
 
 /**
@@ -60,6 +63,29 @@ async function advanceUntilChoosing(page: Page, maxSteps = 200): Promise<void> {
     await stepFrames(page, 1);
   }
   throw new Error("dialogue never reached a choice within the step budget");
+}
+
+async function setHidden(page: Page, hidden: boolean): Promise<void> {
+  await page.evaluate(
+    (h) =>
+      (window as unknown as { __dialogue__: HostHandle }).__dialogue__.setHidden(h),
+    hidden,
+  );
+}
+
+/** Advance until the line on screen contains `substr`, then STOP on it (the
+ *  check happens before each advance, so we never step past the target line). */
+async function advanceUntilLine(
+  page: Page,
+  substr: string,
+  maxSteps = 200,
+): Promise<void> {
+  for (let i = 0; i < maxSteps; i++) {
+    if ((await probe(page))?.lastLine.includes(substr)) return;
+    await advance(page);
+    await stepFrames(page, 1);
+  }
+  throw new Error(`dialogue never reached a line containing "${substr}"`);
 }
 
 test.describe("@yagejs-addons/dialogue addon", () => {
@@ -122,5 +148,34 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     const p = await probe(page);
     expect(p?.choosing).toBe(true); // reached the choice on its own
     expect(p?.lineCount).toBeGreaterThanOrEqual(3); // walked all three lines
+  });
+
+  test("hide/restore on a bubble line brings back the bubble, not the box frame (F28)", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+
+    // Walk to the diegetic bubble line ("Down here, I speak from a bubble.").
+    await advanceUntilLine(page, "bubble");
+    const onBubble = await probe(page);
+    expect(onBubble?.bubbleVisible).toBe(true); // the bubble is up...
+    expect(onBubble?.boxVisible).toBe(false); // ...and the box frame is not
+
+    // Cutscene takeover: hide the whole UI mid-line.
+    await setHidden(page, true);
+    await stepFrames(page, 1);
+    const hidden = await probe(page);
+    expect(hidden?.bubbleVisible).toBe(false);
+    expect(hidden?.boxVisible).toBe(false);
+
+    // Restore: the ACTIVE variant (bubble) must come back — the F28 regression
+    // was an empty BOX frame appearing here while the bubble stayed hidden.
+    await setHidden(page, false);
+    await stepFrames(page, 1);
+    const restored = await probe(page);
+    expect(restored?.bubbleVisible).toBe(true);
+    expect(restored?.boxVisible).toBe(false);
+    expect(restored?.lastLine).toContain("bubble"); // still the same line
   });
 });

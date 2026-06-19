@@ -24,6 +24,10 @@ export {
 } from "./render/layers.js";
 export { evaluateEffect, effectDrivesTint } from "./render/textEffects.js";
 export type { EffectOutput } from "./render/textEffects.js";
+// Shared missing-actor anchor resolver (D3) — the single owner of bubble
+// last-known/fallback positioning, reused by all three bubble presenters.
+export { BubbleAnchorResolver } from "./render/bubbleAnchor.js";
+export type { AnchorPoint } from "./render/bubbleAnchor.js";
 
 // ── chrome: frames, nameplates, choice lists ───────────────────────────────
 // Presenter adapter contracts (pixi-free; also reachable from the root entry
@@ -34,6 +38,7 @@ export type {
   ChromePresenter,
   ChoicePresenter,
   TextPresenter,
+  DiagnosticSink,
 } from "./chrome/DialogueUiAdapter.js";
 // The font triplet shared by every presenter config ({bitmapFont, fontFamily,
 // resolution}); themes map onto it via the factories.
@@ -54,12 +59,14 @@ export type { BubbleChoiceConfig } from "./chrome/BubbleChoicePresenter.js";
 export { RadialChoicePresenter } from "./chrome/RadialChoicePresenter.js";
 export type { RadialChoiceConfig } from "./chrome/RadialChoicePresenter.js";
 
-// ── composites: route box vs bubble by per-line `view` ─────────────────────
+// ── composites: route box vs bubble by per-line `view` + speaker ───────────
 export {
   CompositeTextPresenter,
   CompositeChrome,
   CompositeChoicePresenter,
+  defaultCompositeRoute,
 } from "./composite/index.js";
+export type { CompositeRoute } from "./composite/index.js";
 
 // ── avatars: portrait / scene-figure presenters + actor registry ───────────
 export * from "./avatar/index.js";

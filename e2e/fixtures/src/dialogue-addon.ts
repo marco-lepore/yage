@@ -154,6 +154,8 @@ class DialogueProbe extends Component {
     choiceCount: number;
     choosing: boolean;
     ended: boolean;
+    boxVisible: boolean;
+    bubbleVisible: boolean;
   } {
     return {
       lastLine: this.lastLine,
@@ -162,7 +164,17 @@ class DialogueProbe extends Component {
       choiceCount: this.choiceCount,
       choosing: this.choosing,
       ended: this.ended,
+      // Live chrome visibility (read straight off the renderer) so the spec can
+      // lock F28: after a hide/restore on a bubble line, the bubble must come
+      // back and the box frame must stay hidden.
+      boxVisible: this.frameVisible("dlg-frame"),
+      bubbleVisible: this.frameVisible("dlg-bubble"),
     };
+  }
+
+  /** Whether the named chrome entity's Graphics is currently visible. */
+  private frameVisible(name: string): boolean {
+    return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.visible ?? false;
   }
 }
 
