@@ -298,3 +298,39 @@ describe("DialogueController — observation events forwarded entity→scene (D4
     expect(seen).toHaveBeenCalledWith({ scriptId: "auto" });
   });
 });
+
+describe("DialogueController — levers set before onAdd reach the session (Greptile P1)", () => {
+  // setPaused/setHidden forward to the session, which doesn't exist until onAdd.
+  // A host that configures the controller BEFORE adding it must not get a
+  // half-applied state (paused input but a still-ticking session); onAdd
+  // re-syncs the freshly-created session to the controller's mirrors.
+  function configureThenAdd(configure: (c: DialogueController) => void): DialogueSession {
+    const { scene } = createMockScene();
+    const binding = new CapturingBinding();
+    const controller = new DialogueController({
+      chrome: new StubChrome(),
+      text: new StubText(),
+      choices: new StubChoices(),
+      input: binding,
+    });
+    configure(controller); // lever set while the session does NOT yet exist
+    scene.spawn("dlg").add(controller); // onAdd creates the session + re-syncs
+    const session = binding.session;
+    if (!session) throw new Error("controller did not bind a session on add");
+    return session;
+  }
+
+  it("applies a pre-add setPaused(true) to the session", () => {
+    expect(configureThenAdd((c) => c.setPaused(true)).isPaused()).toBe(true);
+  });
+
+  it("applies a pre-add setHidden(true) to the session", () => {
+    expect(configureThenAdd((c) => c.setHidden(true)).isHidden()).toBe(true);
+  });
+
+  it("leaves an unconfigured controller's session at its defaults", () => {
+    const session = configureThenAdd(() => {});
+    expect(session.isPaused()).toBe(false);
+    expect(session.isHidden()).toBe(false);
+  });
+});

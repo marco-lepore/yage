@@ -99,8 +99,13 @@ export class DialogueController<
    *  also freeze the session). */
   private inputEnabled = true;
   /** Pause (D2). Mirrors the session's pause so the binding poll is also gated
-   *  while frozen — a paused conversation neither updates nor consumes input. */
+   *  while frozen — a paused conversation neither updates nor consumes input.
+   *  Also the source of truth re-applied to the session in `onAdd` when a host
+   *  set it before the component was added (the session didn't exist yet). */
   private paused = false;
+  /** Hidden (D1). Mirrors the session's hide so a `setHidden` issued before the
+   *  component was added isn't lost — it's re-applied once the session exists. */
+  private hidden = false;
 
   constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
@@ -165,6 +170,15 @@ export class DialogueController<
       },
     );
     this.binding.bind(this.input, this.session);
+
+    // Re-apply any lifecycle lever a host set BEFORE the component was added:
+    // setPaused/setHidden could only update the controller mirror back then (no
+    // session existed), so sync the freshly-created session to match. Without
+    // this, a "configure then add" host gets a half-applied state (e.g. paused
+    // input but a still-ticking reveal). setInputEnabled needs no sync — it's
+    // controller-only and read live in update().
+    if (this.paused) this.session.setPaused(true);
+    if (this.hidden) this.session.setHidden(true);
   }
 
   onDestroy(): void {
@@ -242,6 +256,7 @@ export class DialogueController<
    * so a host that hides and forgets to unhide stays hidden.
    */
   setHidden(hidden: boolean): void {
+    this.hidden = hidden;
     this.session?.setHidden(hidden);
   }
 
