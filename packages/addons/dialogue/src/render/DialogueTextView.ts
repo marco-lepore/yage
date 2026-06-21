@@ -121,8 +121,13 @@ export class DialogueTextView implements TextPresenter {
   /** Scratch for {@link evaluateEffect} — one object reused across all glyphs. */
   private readonly effectScratch: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined };
 
-  /** Fired once when the whole line finishes revealing. */
-  onRevealComplete?: () => void;
+  /** Reveal-completed listener, registered by the Session through
+   *  {@link setRevealListener} (a private seam, not a public field, so a
+   *  game can't clobber the session's wiring). */
+  private revealListener?: (() => void) | undefined;
+  /** Master visibility gate ({@link setVisible}); hides the line WITHOUT
+   *  clearing it, so a hide/show round-trip resumes mid-typewriter. */
+  private hidden = false;
 
   constructor(private readonly cfg: DialogueTextConfig) {
     if (cfg.box) this.setBox(cfg.box.x, cfg.box.y, cfg.box.width);
@@ -173,6 +178,24 @@ export class DialogueTextView implements TextPresenter {
     return !this.done;
   }
 
+  /**
+   * Show or hide the body text WITHOUT disturbing reveal progress. Toggles
+   * the laid-out split container's visibility; the per-glyph reveal cursor,
+   * timers, and styling are untouched, so a cutscene can hide mid-typewriter and
+   * show again to resume exactly where it left off.
+   */
+  setVisible(visible: boolean): void {
+    this.hidden = !visible;
+    this.applyHidden();
+  }
+
+  /** Register the reveal-completed listener. Session-owned; pass `undefined`
+   *  to clear. Replaces the old public `onRevealComplete` field a game could
+   *  clobber. */
+  setRevealListener(listener: (() => void) | undefined): void {
+    this.revealListener = listener;
+  }
+
   /** Build the split for a parsed line and start revealing. */
   show(parsed: ParsedText, lineSpeed = 1): void {
     this.clearLine();
@@ -191,7 +214,14 @@ export class DialogueTextView implements TextPresenter {
     if (!this.done) this.buildLine(parsed);
     this.applyReveal();
     this.reposition(); // place immediately (esp. bubble follow) before first update
+    this.applyHidden(); // a new line inherits the current hide state
     if (this.done) this.finish();
+  }
+
+  /** Apply the master visibility gate to the laid-out line — toggles the split
+   *  container, leaving the per-glyph reveal state intact. */
+  private applyHidden(): void {
+    if (this.line) this.line.comp.splitText.visible = !this.hidden;
   }
 
   /** Reveal everything immediately (jump-to-end on a click/tap). */
@@ -429,7 +459,7 @@ export class DialogueTextView implements TextPresenter {
     this.done = true;
     if (this.completed) return;
     this.completed = true;
-    this.onRevealComplete?.();
+    this.revealListener?.();
   }
 
   // ── node construction ─────────────────────────────────────────────────────────

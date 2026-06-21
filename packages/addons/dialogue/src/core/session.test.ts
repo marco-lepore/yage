@@ -26,8 +26,10 @@ class StubText implements TextChannel {
   cleared = 0;
   completeRevealCalls = 0;
   speedMultiplier = 1;
+  /** Last value passed to setVisible. */
+  visible = false;
   private revealing = false;
-  onRevealComplete?: () => void;
+  private revealListener?: (() => void) | undefined;
 
   present(line: PresentedLine): void {
     this.presented.push(line);
@@ -46,16 +48,22 @@ class StubText implements TextChannel {
   setSpeedMultiplier(m: number): void {
     this.speedMultiplier = m;
   }
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+  }
   update(): void {}
   clear(): void {
     this.cleared += 1;
     this.revealing = false;
   }
+  setRevealListener(listener: (() => void) | undefined): void {
+    this.revealListener = listener;
+  }
   /** Test hook: simulate the typewriter finishing the current line. */
   finishReveal(): void {
     if (!this.revealing) return;
     this.revealing = false;
-    this.onRevealComplete?.();
+    this.revealListener?.();
   }
   get lastText(): string {
     const last = this.presented[this.presented.length - 1];
@@ -67,6 +75,8 @@ class StubChoices implements ChoiceChannel {
   presented: { choices: readonly PresentedChoice[]; context: ChoiceContext | undefined }[] = [];
   highlights: number[] = [];
   cleared = 0;
+  /** Recorded setVisible(...) calls. */
+  visibles: boolean[] = [];
   onChoiceChosen?: (position: number) => void;
   private owns = false;
 
@@ -75,6 +85,9 @@ class StubChoices implements ChoiceChannel {
   }
   highlight(position: number): void {
     this.highlights.push(position);
+  }
+  setVisible(visible: boolean): void {
+    this.visibles.push(visible);
   }
   clear(): void {
     this.cleared += 1;
@@ -95,6 +108,7 @@ class StubAvatar implements AvatarChannel {
   speakers: (SpeakerDef | undefined)[] = [];
   expressions: (string | undefined)[] = [];
   speaking: boolean[] = [];
+  visibles: boolean[] = [];
   setSpeaker(speaker: SpeakerDef | undefined): void {
     this.speakers.push(speaker);
   }
@@ -104,6 +118,9 @@ class StubAvatar implements AvatarChannel {
   setSpeaking(speaking: boolean): void {
     this.speaking.push(speaking);
   }
+  setVisible(visible: boolean): void {
+    this.visibles.push(visible);
+  }
   update(): void {}
 }
 
@@ -111,11 +128,16 @@ class StubChrome implements ChromeChannel {
   nameplates: { name: string | undefined; color?: number }[] = [];
   continueVisible: boolean[] = [];
   presented: (PresentedLine | undefined)[] = [];
+  /** Recorded setVisible(...) calls. */
+  visibles: boolean[] = [];
   setNameplate(name: string | undefined, color?: number): void {
     this.nameplates.push({ name, ...(color !== undefined ? { color } : {}) });
   }
   setContinueVisible(visible: boolean): void {
     this.continueVisible.push(visible);
+  }
+  setVisible(visible: boolean): void {
+    this.visibles.push(visible);
   }
   present(line: PresentedLine | undefined): void {
     this.presented.push(line);
@@ -496,8 +518,12 @@ describe("DialogueSession — choices", () => {
     const h = makeHarness();
     h.choices.setOwnsPrompt(true);
     h.session.play(choiceScript);
-    // Nameplate cleared (undefined) and the body text cleared, not presented.
-    expect(h.chrome.nameplates.at(-1)).toEqual({ name: undefined });
+    // The covert setNameplate(undefined) hide-all is gone: the chrome's
+    // content is cleared via present(undefined) and it is hidden with an explicit
+    // setVisible(false); the body text is cleared, not presented.
+    expect(h.chrome.presented.at(-1)).toBeUndefined();
+    expect(h.chrome.visibles.at(-1)).toBe(false);
+    expect(h.choices.visibles.at(-1)).toBe(true);
     expect(h.text.presented).toHaveLength(0);
     expect(h.text.cleared).toBeGreaterThan(0);
   });

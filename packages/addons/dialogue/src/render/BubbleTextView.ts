@@ -7,8 +7,9 @@
  */
 
 import type { Scene } from "@yagejs/core";
-import { actorRegistryFor } from "../actor/index.js";
+import type { DiagnosticSink } from "../chrome/DialogueUiAdapter.js";
 import type { PresentedLine } from "../core/session.js";
+import { BubbleAnchorResolver, type AnchorPoint } from "./bubbleAnchor.js";
 import { bubbleSize } from "./bubbleSizing.js";
 import {
   DialogueTextView,
@@ -24,10 +25,14 @@ export interface BubbleTextLayout {
   readonly height: number;
   readonly padding: number;
   readonly offsetY: number;
+  /** Anchor for a missing/absent speaker with no last-known position.
+   *  Default world origin; share it with the bubble chrome. */
+  readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
 
 export class BubbleTextView extends DialogueTextView {
   private sceneRef?: Scene;
+  private readonly anchors: BubbleAnchorResolver;
   /** Body-text metrics, kept so the bubble can size to its wrapped text (the
    *  base `cfg` is private to `DialogueTextView`). Must match what the companion
    *  `BubbleChrome` measures with. */
@@ -53,6 +58,7 @@ export class BubbleTextView extends DialogueTextView {
       fontFamily: cfg.fontFamily,
       bitmapFont: cfg.bitmapFont,
     };
+    this.anchors = new BubbleAnchorResolver(bubble.fallbackAnchor);
   }
 
   override mount(scene: Scene): void {
@@ -60,10 +66,13 @@ export class BubbleTextView extends DialogueTextView {
     this.sceneRef = scene;
   }
 
+  /** Route the missing-actor warning to the engine Logger. The base view
+   *  has no diagnostics of its own, so this is an addition, not an override. */
+  setDiagnostics(warn: DiagnosticSink): void {
+    this.anchors.setDiagnostics(warn);
+  }
+
   override present(line: PresentedLine): void {
-    const actor = this.sceneRef
-      ? actorRegistryFor(this.sceneRef).resolve(line.speaker?.id)
-      : undefined;
     const b = this.bubble;
     // Size to the same width + height the chrome draws this line at, so the text
     // sits inside the (content-sized) bubble. Update the wrap width too — the
@@ -80,17 +89,18 @@ export class BubbleTextView extends DialogueTextView {
       bitmapFont: this.body.bitmapFont,
     });
     this.setBox(0, 0, size.width - 2 * b.padding);
-    this.setOrigin(
-      actor
-        ? () => {
-            const a = actor.anchorWorld();
-            return {
-              x: a.x - size.width / 2 + b.padding,
-              y: a.y - (b.offsetY + size.height) + b.padding,
-            };
-          }
-        : undefined,
-    );
+    const speakerId = line.speaker?.id;
+    // Always anchor: a missing actor resolves to the last-known / fallback
+    // position via the shared resolver, never pinned at world origin.
+    this.setOrigin(() => {
+      const a = this.sceneRef
+        ? this.anchors.resolve(this.sceneRef, speakerId)
+        : { x: 0, y: 0 };
+      return {
+        x: a.x - size.width / 2 + b.padding,
+        y: a.y - (b.offsetY + size.height) + b.padding,
+      };
+    });
     super.present(line);
   }
 }

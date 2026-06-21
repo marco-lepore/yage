@@ -34,6 +34,9 @@ export class PortraitPresenter implements AvatarPresenter {
   private bobMs = 0;
   private baseX = 0;
   private baseY = 0;
+  /** Host-hidden gate — a cutscene hides the portrait with the rest of the
+   *  UI. Composes with "is a portrait speaker active": shown = current && !hidden. */
+  private hidden = false;
   private readonly handles = new Map<string, TextureHandle>();
 
   constructor(private readonly cfg: PortraitPresenterConfig) {}
@@ -55,7 +58,21 @@ export class PortraitPresenter implements AvatarPresenter {
     this.baseY = this.cfg.y;
     this.transform?.setPosition(this.baseX, this.baseY);
     this.applyTexture(av.ref);
-    if (this.sprite) this.sprite.sprite.visible = true;
+    this.applyVisibility();
+  }
+
+  /** Host-hidden gate — hide the portrait during a cutscene, restore on
+   *  show. Composes with the active-speaker state, so showing again only
+   *  re-reveals the portrait if a portrait speaker is still current. */
+  setVisible(visible: boolean): void {
+    this.hidden = !visible;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    if (this.sprite) {
+      this.sprite.sprite.visible = this.current !== undefined && !this.hidden;
+    }
   }
 
   setExpression(expression: string | undefined): void {

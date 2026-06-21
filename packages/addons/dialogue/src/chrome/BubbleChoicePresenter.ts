@@ -16,9 +16,9 @@ import {
   TextComponent,
   type TextComponentOptions,
 } from "@yagejs/renderer";
-import { actorRegistryFor } from "../actor/index.js";
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
-import type { ChoicePresenter } from "./DialogueUiAdapter.js";
+import { BubbleAnchorResolver, type AnchorPoint } from "../render/bubbleAnchor.js";
+import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
 export interface BubbleChoiceConfig extends FontConfig {
@@ -39,6 +39,9 @@ export interface BubbleChoiceConfig extends FontConfig {
   readonly bgAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
+  /** Anchor for a missing/absent speaker with no last-known position.
+   *  Default world origin; share it with the bubble chrome. */
+  readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
 
 interface Row {
@@ -61,10 +64,20 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   private prompt?: { entity: Entity; comp: TextComponent } | undefined;
   private rows: Row[] = [];
   private selected = -1;
+  /** Master visibility gate — state-preserving hide/show. */
+  private hidden = false;
+  private readonly anchors: BubbleAnchorResolver;
 
   onChoiceChosen?: (position: number) => void;
 
-  constructor(private readonly cfg: BubbleChoiceConfig) {}
+  constructor(private readonly cfg: BubbleChoiceConfig) {
+    this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
+  }
+
+  /** Route the missing-actor warning to the engine Logger. */
+  setDiagnostics(warn: DiagnosticSink): void {
+    this.anchors.setDiagnostics(warn);
+  }
 
   /** This panel is self-contained (own bg + prompt header), so it owns the
    *  prompt — the Session hides the chrome/body prompt for these choices. */
@@ -86,8 +99,9 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.clear();
     if (!this.scene) return;
     const c = this.cfg;
-    const actor = actorRegistryFor(this.scene).resolve(context?.speaker?.id);
-    const a = actor?.anchorWorld() ?? { x: 0, y: 0 };
+    // a missing speaker resolves to the last-known / fallback anchor (with a
+    // once-per-speaker warning), never the world origin.
+    const a = this.anchors.resolve(this.scene, context?.speaker?.id);
     const innerW = c.width - 2 * c.padding;
 
     // Optional prompt header inside the same panel (one bubble, not two).
@@ -133,6 +147,24 @@ export class BubbleChoicePresenter implements ChoicePresenter {
       });
     });
     this.highlight(0);
+    this.applyHidden();
+  }
+
+  /** Show or hide the whole panel without clearing it — state-preserving. */
+  setVisible(visible: boolean): void {
+    this.hidden = !visible;
+    this.applyHidden();
+  }
+
+  /** Render every piece (bg, prompt, rows, highlight) gated by the master. */
+  private applyHidden(): void {
+    const shown = !this.hidden;
+    if (this.bg) this.bg.gfx.graphics.visible = shown && this.rows.length > 0;
+    if (this.highlightBar) {
+      this.highlightBar.gfx.graphics.visible = shown && this.selected >= 0;
+    }
+    if (this.prompt) this.prompt.comp.text.visible = shown;
+    for (const row of this.rows) row.comp.text.visible = shown;
   }
 
   highlight(position: number): void {

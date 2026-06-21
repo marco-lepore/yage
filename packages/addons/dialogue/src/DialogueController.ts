@@ -36,11 +36,15 @@ import type {
 import type { AvatarPresenter } from "./avatar/AvatarPresenter.js";
 import { KeyboardInputBinding, type InputBinding } from "./input/index.js";
 import {
+  DialogueAutoAdvanceEvent,
   DialogueChoiceMadeEvent,
   DialogueChoiceShownEvent,
   DialogueCommandEvent,
   DialogueEndedEvent,
   DialogueLineEvent,
+  DialogueRevealCompletedEvent,
+  DialogueSelectionChangedEvent,
+  DialogueSkipUsedEvent,
   DialogueStartedEvent,
 } from "./events.js";
 
@@ -60,7 +64,7 @@ export interface DialogueControllerOptions<TStorage extends VariableStorage = Va
   extends DialogueBundle {
   readonly i18n?: I18nAdapter | undefined;
   /**
-   * The variable storage installed for every `play()` (D1). Persists across
+   * The variable storage installed for every `play()`. Persists across
    * plays. Omit for a zero-config `MemoryVariableStorage`; supply your own (or
    * `compose(cells(...), new MemoryVariableStorage())`) to bridge game state. A
    * per-`play()` `overrides.storage` replaces it for that conversation.
@@ -89,6 +93,19 @@ export class DialogueController<
   private logger: Logger | undefined;
   /** Set by onDestroy — the presenters are disposed, so play() must refuse. */
   private destroyed = false;
+  /** Input focus. When false, `update()` keeps pumping the session (an
+   *  ambient conversation stays alive) but the binding is NOT polled, so this
+   *  instance doesn't consume device input. NOT `Component.enabled` (which would
+   *  also freeze the session). */
+  private inputEnabled = true;
+  /** Pause. Mirrors the session's pause so the binding poll is also gated
+   *  while frozen — a paused conversation neither updates nor consumes input.
+   *  Also the source of truth re-applied to the session in `onAdd` when a host
+   *  set it before the component was added (the session didn't exist yet). */
+  private paused = false;
+  /** Hidden. Mirrors the session's hide so a `setHidden` issued before the
+   *  component was added isn't lost — it's re-applied once the session exists. */
+  private hidden = false;
 
   constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
@@ -97,10 +114,20 @@ export class DialogueController<
 
   onAdd(): void {
     this.logger = this.context.tryResolve(LoggerKey);
+    // One diagnostics seam shared by the session's onError AND presenter-level
+    // warnings (e.g. a missing actor) — both land on the engine Logger, never
+    // console.warn.
+    const warn = (message: string): void => this.logger?.warn("dialogue", message);
+
     this.opts.chrome.mount(this.scene);
     this.opts.choices.mount(this.scene);
     this.opts.avatar?.mount(this.scene);
     this.opts.text.mount(this.scene);
+
+    // Inject the diagnostics sink into any presenter that reports through it.
+    this.opts.chrome.setDiagnostics?.(warn);
+    this.opts.text.setDiagnostics?.(warn);
+    this.opts.choices.setDiagnostics?.(warn);
 
     this.session = new DialogueSession(
       {
@@ -112,7 +139,7 @@ export class DialogueController<
       {
         i18n: this.opts.i18n,
         skipMultiplier: this.opts.skipMultiplier,
-        // Controller-installed environment (D1) — persists across plays.
+        // Controller-installed environment — persists across plays.
         storage: this.opts.storage,
         functions: this.opts.functions,
         commands: this.opts.commands,
@@ -128,14 +155,30 @@ export class DialogueController<
           this.entity.emit(DialogueCommandEvent, { command, mode: ctx.mode }),
         // Route non-fatal runtime diagnostics (e.g. a `set` to a read-only cell)
         // through the engine logger rather than crashing or silently dropping.
-        onError: (message) => this.logger?.warn("dialogue", message),
+        onError: (message) => warn(message),
         onEnded: (e) => {
           this.entity.emit(DialogueEndedEvent, e);
           this.opts.onEnded?.();
         },
+        // Observation events — the controller is the one canonical path that
+        // turns the session's callbacks into entity→scene events (no matching
+        // controller callback options).
+        onRevealCompleted: (e) => this.entity.emit(DialogueRevealCompletedEvent, e),
+        onSelectionChanged: (e) => this.entity.emit(DialogueSelectionChangedEvent, e),
+        onSkipUsed: (e) => this.entity.emit(DialogueSkipUsedEvent, e),
+        onAutoAdvance: (e) => this.entity.emit(DialogueAutoAdvanceEvent, e),
       },
     );
     this.binding.bind(this.input, this.session);
+
+    // Re-apply any lifecycle lever a host set BEFORE the component was added:
+    // setPaused/setHidden could only update the controller mirror back then (no
+    // session existed), so sync the freshly-created session to match. Without
+    // this, a "configure then add" host gets a half-applied state (e.g. paused
+    // input but a still-ticking reveal). setInputEnabled needs no sync — it's
+    // controller-only and read live in update().
+    if (this.paused) this.session.setPaused(true);
+    if (this.hidden) this.session.setHidden(true);
   }
 
   onDestroy(): void {
@@ -206,6 +249,43 @@ export class DialogueController<
   }
 
   /**
+   * Hide or show the whole dialogue UI without ending the conversation —
+   * for a cutscene takeover (`setHidden(true)` while the camera pans, then
+   * `setHidden(false)` to restore the exact line + caret). Purely visual; the
+   * conversation keeps its state. **Persistent**: it survives `stop()`/`play()`,
+   * so a host that hides and forgets to unhide stays hidden.
+   */
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden;
+    this.session?.setHidden(hidden);
+  }
+
+  /**
+   * Freeze or resume the conversation — a pause menu. While paused the
+   * reveal, auto-advance, caret blink, and avatar anim all halt, input is inert,
+   * and no state is lost (an in-flight blocking command keeps running). Also
+   * gates this controller's input binding so a frozen conversation consumes no
+   * device input. Does NOT block host-driven `handle.setVar` / storage writes.
+   */
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+    this.session?.setPaused(paused);
+  }
+
+  /**
+   * Set whether this controller consumes device input — the focus seam for
+   * the multi-instance story. `setInputEnabled(false)` keeps the conversation
+   * fully alive (it still updates, reveals, auto-advances) but stops polling its
+   * binding, so an ambient conversation doesn't steal the advance key. Switch
+   * focus between two conversations with `a.setInputEnabled(true);
+   * b.setInputEnabled(false)`. (YAGE input is non-consuming, so two *enabled*
+   * controllers both advance on one press — focus is the game's policy.)
+   */
+  setInputEnabled(enabled: boolean): void {
+    this.inputEnabled = enabled;
+  }
+
+  /**
    * Primary action, host-driven (the input-agnostic seam): while saying,
    * reveal-all if still typing else advance to the next line; while choosing,
    * confirm the highlighted option. Lets a host (cutscene script, custom input,
@@ -237,7 +317,11 @@ export class DialogueController<
   }
 
   update(dt: number): void {
+    // The session keeps pumping even when this instance lacks input focus (an
+    // ambient conversation stays alive and animating); it no-ops internally when
+    // paused. The binding is polled only when focused AND not paused, so a
+    // backgrounded or frozen conversation consumes no device input.
     this.session?.update(dt);
-    this.binding.poll();
+    if (this.inputEnabled && !this.paused) this.binding.poll();
   }
 }

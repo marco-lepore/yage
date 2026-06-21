@@ -31,6 +31,10 @@ export {
   DialogueChoiceMadeEvent,
   DialogueCommandEvent,
   DialogueEndedEvent,
+  DialogueRevealCompletedEvent,
+  DialogueSelectionChangedEvent,
+  DialogueSkipUsedEvent,
+  DialogueAutoAdvanceEvent,
 } from "./events.js";
 
 // @yagejs/input device bindings (pixi-free).

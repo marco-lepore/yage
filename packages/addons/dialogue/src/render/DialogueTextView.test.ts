@@ -28,7 +28,7 @@ describe("DialogueTextView — pause clamp (F13)", () => {
   it("clamps the reveal cursor back to a [pause] marker it overshot", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
-    view.onRevealComplete = () => completed++;
+    view.setRevealListener(() => completed++);
     // 20 chars at 1000 chars/s with a 400ms pause after char 10.
     view.show(parseMarkup("0123456789[pause=400]abcdefghij"));
 
@@ -47,7 +47,7 @@ describe("DialogueTextView — grapheme reveal units (F12)", () => {
   it("completes at the grapheme count, not the code-unit count", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
-    view.onRevealComplete = () => completed++;
+    view.setRevealListener(() => completed++);
     // 4 graphemes but 8 code units at 1000 graphemes/s → done in 4ms, not 8.
     view.show(parseMarkup("🔥🔥🔥🔥"));
 
@@ -60,7 +60,7 @@ describe("DialogueTextView — grapheme reveal units (F12)", () => {
   it("holds a [pause] at the grapheme position, unmoved by astral chars", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
-    view.onRevealComplete = () => completed++;
+    view.setRevealListener(() => completed++);
     // Pause sits after 2 graphemes (4 code units); 2 graphemes follow.
     view.show(parseMarkup("🔥🔥[pause=400]ab"));
 
@@ -76,7 +76,7 @@ describe("DialogueTextView — grapheme reveal units (F12)", () => {
   it("applies [speed] to the run the grapheme cursor is in", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
-    view.onRevealComplete = () => completed++;
+    view.setRevealListener(() => completed++);
     // Run 1: 2 graphemes (4 code units) at 1x → 2ms. Run 2: 2 graphemes at
     // 0.5x → 4ms. Code-unit bookkeeping would still be in run 1 (4 units) at
     // cursor 2-4 and finish on a different clock.
@@ -166,6 +166,22 @@ describe("DialogueTextView — delta reveal (F16)", () => {
     view.skipToEnd(); // writes only [4, 6)
     expect(chars.every((c) => c.visible)).toBe(true);
     expect(counter.writes).toBe(6);
+  });
+});
+
+describe("DialogueTextView — reveal seam", () => {
+  it("the reveal listener can't be clobbered by assigning a public field", () => {
+    const view = new DialogueTextView(CFG);
+    let real = 0;
+    let ghost = 0;
+    view.setRevealListener(() => real++);
+    // A game's mistaken "hook reveal" via the old public field, which no longer
+    // exists — it must NOT detach the session-owned listener.
+    (view as unknown as { onRevealComplete?: () => void }).onRevealComplete = () => ghost++;
+    view.show(parseMarkup("hi"));
+    view.update(100); // finish the reveal
+    expect(real).toBe(1); // session-owned listener fired
+    expect(ghost).toBe(0); // the assigned field is inert
   });
 });
 
