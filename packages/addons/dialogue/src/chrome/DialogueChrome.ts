@@ -35,6 +35,12 @@ export class DialogueChrome implements ChromePresenter {
   private name?: { entity: Entity; comp: TextComponent } | undefined;
   private indicator?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private indicatorTime = 0;
+  /** Master gate (from {@link setVisible}); the Session drives it. Hidden at
+   *  mount until a line shows. The name/caret also need their own content
+   *  sub-state — each renders only when shown AND its content is present. */
+  private visible = false;
+  private nameShown = false;
+  private caretShown = false;
 
   constructor(private readonly cfg: DialogueChromeConfig) {}
 
@@ -50,7 +56,7 @@ export class DialogueChrome implements ChromePresenter {
         .fill({ color: cfg.frameColor, alpha: cfg.frameAlpha })
         .stroke({ color: cfg.borderColor, alpha: 1, width: 2 });
     });
-    // Hidden until a line arrives (present()) — matching CompositeChrome —
+    // Hidden at mount (the Session shows it via setVisible when a line arrives),
     // so a box-only bundle doesn't show an empty frame from scene start.
     this.frameGfx.graphics.visible = false;
     this.frame = frame;
@@ -76,37 +82,38 @@ export class DialogueChrome implements ChromePresenter {
 
   setNameplate(name: string | undefined, color?: number): void {
     if (!this.name) return;
-    if (name) {
+    // `undefined` means "no name" — only the nameplate text, NOT a covert
+    // hide-all (that overload died; the Session hides via setVisible).
+    // The old tactical hide-on-nameplate-undefined behavior is gone with it.
+    this.nameShown = name !== undefined;
+    if (name !== undefined) {
       // Mutate fill in place — replacing the whole style would drop the bitmap
       // font (BitmapText resolves its font from style.fontFamily).
       this.name.comp.text.style.fill = color ?? this.cfg.nameColor;
       this.name.comp.setText(name);
-      this.name.comp.text.visible = true;
-    } else {
-      // The session signals "no line" (conversation end / suppressed prompt)
-      // via setNameplate(undefined) — hide everything, matching BubbleChrome /
-      // CompositeChrome. A speakerless line re-shows the frame via present().
-      this.name.comp.text.visible = false;
-      this.setVisible(false);
     }
-  }
-
-  /** A line arrived — show the frame (it starts hidden at mount). */
-  present(): void {
-    if (this.frameGfx) this.frameGfx.graphics.visible = true;
+    this.apply();
   }
 
   setContinueVisible(visible: boolean): void {
-    if (this.indicator) this.indicator.gfx.graphics.visible = visible;
+    this.caretShown = visible;
     this.indicatorTime = 0;
+    this.apply();
   }
 
-  /** Show/hide the whole box (frame always; name/caret follow their own state). */
+  /** Show or hide the whole box. State-preserving — the name/caret content
+   *  sub-state survives, so showing again restores exactly what was up. */
   setVisible(visible: boolean): void {
-    if (this.frameGfx) this.frameGfx.graphics.visible = visible;
-    if (!visible) {
-      if (this.name) this.name.comp.text.visible = false;
-      if (this.indicator) this.indicator.gfx.graphics.visible = false;
+    this.visible = visible;
+    this.apply();
+  }
+
+  /** Render each piece = master-visible AND its own content present. */
+  private apply(): void {
+    if (this.frameGfx) this.frameGfx.graphics.visible = this.visible;
+    if (this.name) this.name.comp.text.visible = this.visible && this.nameShown;
+    if (this.indicator) {
+      this.indicator.gfx.graphics.visible = this.visible && this.caretShown;
     }
   }
 

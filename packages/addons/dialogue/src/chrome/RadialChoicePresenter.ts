@@ -39,6 +39,8 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
   private hub?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private spokes: Spoke[] = [];
   private selected = -1;
+  /** Master visibility gate — state-preserving hide/show. */
+  private hidden = false;
 
   onChoiceChosen?: (position: number) => void;
 
@@ -79,6 +81,7 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
       this.spokes.push({ entity, comp, x, y });
     });
     this.highlight(0);
+    this.applyHidden();
   }
 
   highlight(position: number): void {
@@ -90,6 +93,17 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
       s.entity.get(Transform).setScale(on ? 1.15 : 1, on ? 1.15 : 1);
     });
     this.drawHub();
+  }
+
+  /** Show or hide the wheel without clearing it — state-preserving. */
+  setVisible(visible: boolean): void {
+    this.hidden = !visible;
+    this.applyHidden();
+  }
+
+  private applyHidden(): void {
+    for (const s of this.spokes) s.comp.text.visible = !this.hidden;
+    if (this.hub) this.hub.gfx.graphics.visible = !this.hidden && this.spokes.length > 0;
   }
 
   /** {@link ChoicePresenter}: nearest spoke within a small radius. */

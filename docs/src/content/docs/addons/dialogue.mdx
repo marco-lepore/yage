@@ -326,10 +326,70 @@ a scene can listen with `this.on(...)`):
 | `DialogueChoiceMadeEvent` | `{ index, text }` |
 | `DialogueCommandEvent` | `{ command, mode }` |
 | `DialogueEndedEvent` | `{ scriptId }` |
+| `DialogueRevealCompletedEvent` | `{ speaker?, text }` — a line finished its typewriter reveal (the "typing finished" hook) |
+| `DialogueSelectionChangedEvent` | `{ index, text }` — the choice cursor moved (keyboard nav **and** pointer hover) |
+| `DialogueSkipUsedEvent` | `{ scriptId }` — the player skipped a section |
+| `DialogueAutoAdvanceEvent` | `{ scriptId }` — a line advanced on its own via the auto-advance clock |
+
+These are the moments games actually hook — a typing-finished blip, a
+choice-hover tick, skip-used analytics, an auto-advance beat. Observation is
+events-only: the reveal-completed seam is owned by the session, so there is no
+public field a game can accidentally clobber.
+
+## Lifecycle: cutscenes, pause, and focus
+
+Beyond `play`/`stop`, the controller gives the host three **orthogonal** levers.
+Each is purely a host policy — the addon ships the mechanism, your game decides
+when to pull it. All three are **persistent**: they survive `stop()` and the next
+`play()`, so a host that hides for a cutscene and forgets to unhide gets exactly
+what it asked for.
+
+| Lever | What it does |
+| ----- | ------------ |
+| `setHidden(bool)` | **Visual only.** Hides/shows the whole UI without ending or freezing the conversation. State-preserving — hide mid-typewriter and show again to resume the exact line and cursor. A composite chrome restores its *active* variant on show (a bubble line comes back as a bubble, not an empty box frame). |
+| `setPaused(bool)` | **Freezes time and input.** The reveal, auto-advance clock, caret blink, and avatar animation all halt, and input is inert — with no state lost (an in-flight blocking command keeps running and lands normally). It does **not** block host-driven `handle.setVar` / storage writes: a paused conversation can still be poked programmatically. |
+| `setInputEnabled(bool)` | **Input focus.** The conversation keeps updating (an ambient one stays alive and animating) but stops consuming device input. This is the focus seam for the multi-instance story — not `Component.enabled`, which would freeze the whole component. |
+
+Compose them: a **cutscene takeover** is hidden + paused; a **pause menu** is
+paused; an **ambient** conversation is input-disabled.
+
+```ts
+// Cutscene takeover: hide + freeze, pan the camera, then restore the exact line.
+dlg.setHidden(true);
+dlg.setPaused(true);
+await camera.panTo(spot);
+dlg.setPaused(false);
+dlg.setHidden(false); // the bubble line and its continue caret reappear in place
+```
+
+### Two conversations, one interactive
 
 `DialogueController` is multi-instance friendly: several ambient conversations
-can run at once. *Which one is interactive* and *whether the world pauses* are
-your game's policy — there is no global singleton.
+can run at once. *Which one is interactive* is your game's one-liner via input
+focus. (YAGE input is non-consuming by design, so two **enabled** controllers
+would both advance on one key press — focus is the game's policy.)
+
+```ts
+// Talk to whichever NPC the player is near; the other keeps chatting ambiently.
+function focus(near: "a" | "b") {
+  npcA.setInputEnabled(near === "a");
+  npcB.setInputEnabled(near === "b");
+}
+```
+
+### Narrator and missing actors (speech bubbles)
+
+In a mixed box/bubble bundle, a **speakerless narrator** line types in the box by
+convention (a bubble has no head to float over). To *position* a narrator, use
+the **invisible-anchor** recipe: give it a `speaker` whose `DialogueActor` sits on
+an invisible entity, and it floats like any other speaker.
+
+If a speaker's actor goes missing at runtime (despawned, or never registered),
+the bubble no longer vanishes off-camera: it anchors at the actor's last-known
+position (or `createBubbleDialogue`'s `fallbackAnchor`, defaulting to the world
+origin — point it at your camera centre for a pure-bubble narrator bundle), stays
+visible with its continue caret, and logs a one-time developer warning through the
+engine logger.
 
 ## Presenters & channels
 
