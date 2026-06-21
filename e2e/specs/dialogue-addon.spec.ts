@@ -13,6 +13,8 @@ interface ProbeData {
   choiceCount: number;
   choosing: boolean;
   ended: boolean;
+  shownOptions: string[];
+  selectionIndex: number;
   boxVisible: boolean;
   bubbleVisible: boolean;
 }
@@ -21,6 +23,7 @@ interface ProbeData {
 interface HostHandle {
   advance(): void;
   choose(n: number): void;
+  moveSelection(delta: number): void;
   setAutoAdvance(ms: number | null): void;
   setHidden(hidden: boolean): void;
 }
@@ -43,6 +46,16 @@ async function choose(page: Page, index: number): Promise<void> {
         i,
       ),
     index,
+  );
+}
+
+async function moveSelection(page: Page, delta: number): Promise<void> {
+  await page.evaluate(
+    (d) =>
+      (
+        window as unknown as { __dialogue__: HostHandle }
+      ).__dialogue__.moveSelection(d),
+    delta,
   );
 }
 
@@ -122,6 +135,41 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(after?.lineCount).toBeGreaterThan(linesBeforeChoice);
     expect(after?.lastLine).toContain("Branching works");
     expect(after?.choosing).toBe(false);
+  });
+
+  test("a disabled choice is shown but cannot be selected or chosen", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+    await advanceUntilChoosing(page);
+
+    const atChoice = await probe(page);
+    // The disabled row is on screen alongside the enabled options.
+    expect(atChoice?.shownOptions).toContain("Locked path");
+    expect(atChoice?.shownOptions).toContain("Tell me more");
+    expect(atChoice?.choiceCount).toBe(0);
+
+    // Committing the disabled option (original index 1) is refused.
+    await choose(page, 1);
+    await stepFrames(page, 4);
+    const afterDisabled = await probe(page);
+    expect(afterDisabled?.choiceCount).toBe(0); // nothing committed
+    expect(afterDisabled?.choosing).toBe(true); // still on the menu
+
+    // Keyboard nav skips the disabled row: from the first enabled option,
+    // moving down lands on the next ENABLED option (original index 2), not 1.
+    await moveSelection(page, 1);
+    await stepFrames(page, 1);
+    expect((await probe(page))?.selectionIndex).toBe(2);
+
+    // The enabled option still commits and advances the conversation.
+    await choose(page, 0);
+    await stepFrames(page, 4);
+    const after = await probe(page);
+    expect(after?.choiceCount).toBe(1);
+    expect(after?.lastChoice).toContain("Tell me more");
+    expect(after?.lastLine).toContain("Branching works");
   });
 
   test("auto-advance walks the lines to the choice with no manual input", async ({

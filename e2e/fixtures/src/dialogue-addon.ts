@@ -31,6 +31,7 @@ import {
   DialogueLineEvent,
   DialogueChoiceShownEvent,
   DialogueChoiceMadeEvent,
+  DialogueSelectionChangedEvent,
   DialogueEndedEvent,
   type DialogueScript,
 } from "@yagejs-addons/dialogue";
@@ -81,6 +82,16 @@ const SCRIPT: DialogueScript = {
           text: "What would you like to do?",
           options: [
             { text: "Tell me more", target: "more" },
+            // A visible-but-disabled row: its condition is always false and its
+            // presentation is "disabled", so it shows greyed-out and the Session
+            // refuses to select or commit it.
+            {
+              text: "Locked path",
+              target: "more",
+              condition: { kind: "literal", value: false },
+              presentation: "disabled",
+              disabledReason: "Needs a key",
+            },
             { text: "That's all", target: "done" },
           ],
         },
@@ -129,13 +140,22 @@ class DialogueProbe extends Component {
   choiceCount = 0;
   choosing = false;
   ended = false;
+  /** Labels of the options on the current/last choice (includes disabled). */
+  shownOptions: readonly string[] = [];
+  /** Original option index of the last selection-changed event (nav/hover). */
+  selectionIndex = -1;
 
   onLine(text: string): void {
     this.lastLine = text;
     this.lineCount++;
   }
-  onChoiceShown(): void {
+  onChoiceShown(options: readonly string[]): void {
     this.choosing = true;
+    this.shownOptions = options;
+    this.selectionIndex = -1; // reset per menu
+  }
+  onSelectionChanged(index: number): void {
+    this.selectionIndex = index;
   }
   onChoiceMade(text: string): void {
     this.lastChoice = text;
@@ -154,6 +174,8 @@ class DialogueProbe extends Component {
     choiceCount: number;
     choosing: boolean;
     ended: boolean;
+    shownOptions: readonly string[];
+    selectionIndex: number;
     boxVisible: boolean;
     bubbleVisible: boolean;
   } {
@@ -164,6 +186,8 @@ class DialogueProbe extends Component {
       choiceCount: this.choiceCount,
       choosing: this.choosing,
       ended: this.ended,
+      shownOptions: this.shownOptions,
+      selectionIndex: this.selectionIndex,
       // Live chrome visibility (read straight off the renderer) so the spec can
       // lock the regression: after a hide/restore on a bubble line, the bubble must come
       // back and the box frame must stay hidden.
@@ -209,7 +233,8 @@ class DialogueScene extends Scene {
     const controller = host.add(new DialogueController(bundle));
 
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
-    host.on(DialogueChoiceShownEvent, () => probe.onChoiceShown());
+    host.on(DialogueChoiceShownEvent, (e) => probe.onChoiceShown(e.options));
+    host.on(DialogueSelectionChangedEvent, (e) => probe.onSelectionChanged(e.index));
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoiceMade(e.text));
     host.on(DialogueEndedEvent, () => probe.onEnded());
 

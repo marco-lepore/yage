@@ -79,10 +79,17 @@ export interface PresentedLine {
   readonly voice?: string | undefined;
 }
 
-/** One selectable choice, resolved to a display label. Position = array index. */
+/** One choice row, resolved to a display label. Position = array index. */
 export interface PresentedChoice {
   readonly label: string;
   readonly meta?: Readonly<Record<string, unknown>> | undefined;
+  /** True for a visible-but-disabled row (its condition failed and its
+   *  `presentation` is `"disabled"`). Presenters render it greyed and
+   *  non-selectable; the Session's nav/confirm skip it. */
+  readonly disabled?: boolean | undefined;
+  /** i18n-resolved reason for a {@link disabled} row, shown beside it where the
+   *  layout allows (e.g. "Requires the rusty key"). */
+  readonly disabledReason?: string | undefined;
 }
 
 /**
@@ -125,6 +132,10 @@ export interface ChoiceContext {
   /** The (resolved + parsed) prompt, made available so a presenter can render
    *  it itself (see {@link ChoiceChannel.ownsPrompt}). Empty when no prompt. */
   readonly prompt?: ParsedText | undefined;
+  /** The choice step's opaque `meta` bag, passed straight through. A custom
+   *  presenter reads it to render extras the model doesn't own — e.g. the
+   *  timed-choice recipe's `{ timeoutMs }` for a countdown. */
+  readonly meta?: Readonly<Record<string, unknown>> | undefined;
 }
 
 /** Choice channel. Selection nav lives in the Session; pointer/touch commits
@@ -320,10 +331,10 @@ export class DialogueSession {
     // register the reveal seam through a method the Session owns, so a game
     // can't silently clobber it by reassigning a public field.
     this.channels.text.setRevealListener(() => this.handleRevealComplete());
-    this.channels.choices.onChoiceChosen = (position) => {
-      this.selected = position;
-      this.confirm();
-    };
+    // Pointer/touch commit from a presenter that owns its own hit-testing.
+    // Routes through confirmAt so a tap on a disabled row is refused (it would
+    // otherwise commit the previously-highlighted enabled row).
+    this.channels.choices.onChoiceChosen = (position) => this.confirmAt(position);
   }
 
   /**
@@ -705,29 +716,51 @@ export class DialogueSession {
     return out;
   }
 
-  /** Move the choice cursor by `delta` (wraps). No-op outside a choice. */
+  /** Move the choice cursor by `delta`, skipping disabled rows and wrapping.
+   *  No-op outside a choice, and a zero `delta` is a no-op (no cursor move, no
+   *  event). A move that steps over disabled rows fires exactly one
+   *  selection-changed event, for the row it lands on. */
   moveSelection(delta: number): void {
     if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
-    const n = this.resolved.length;
-    if (n === 0) return;
-    const next = (this.selected + delta + n) % n;
-    if (next === this.selected) return; // cursor didn't move — no spurious event
-    this.selected = next;
+    if (this.resolved.length === 0 || delta === 0) return;
+    const dir: 1 | -1 = delta < 0 ? -1 : 1;
+    let pos = this.selected;
+    for (let i = 0; i < Math.abs(delta); i++) {
+      pos = this.nextEnabled(pos, dir);
+    }
+    if (pos === this.selected) return; // no enabled row to move to — no event
+    this.selected = pos;
     this.channels.choices.highlight(this.selected);
     this.emitSelectionChanged();
   }
 
-  /** Highlight a choice by absolute position (e.g. pointer hover). No wrap. */
+  /** Highlight a choice by absolute position (e.g. pointer hover). No wrap;
+   *  a disabled row is skipped (the cursor stays put). */
   selectAt(position: number): void {
     if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
     const n = this.resolved.length;
     if (n === 0 || position < 0 || position >= n || position === this.selected)
       return;
+    if (this.resolved[position]?.disabled) return; // can't highlight a disabled row
     this.selected = position;
     this.channels.choices.highlight(this.selected);
     this.emitSelectionChanged();
+  }
+
+  /** The next enabled choice position from `from` in direction `dir` (±1),
+   *  wrapping. Returns `from` when no other enabled row exists (so a single
+   *  enabled option among disabled ones never moves). */
+  private nextEnabled(from: number, dir: 1 | -1): number {
+    const n = this.resolved.length;
+    let pos = from;
+    for (let i = 0; i < n; i++) {
+      pos = (pos + dir + n) % n;
+      if (pos === from) break; // wrapped all the way around
+      if (!this.resolved[pos]?.disabled) return pos;
+    }
+    return from;
   }
 
   /** Fire onSelectionChanged for the currently-highlighted choice (keyboard nav
@@ -751,7 +784,7 @@ export class DialogueSession {
     // so without it a second confirm would emit a duplicate onChoiceMade.
     if (this.mode !== "choosing" || this.confirming) return;
     const chosen = this.resolved[this.selected];
-    if (!chosen) return;
+    if (!chosen || chosen.disabled) return; // never commit a disabled row
     this.confirming = true;
     const text = this.i18n.t(
       chosen.option.key,
@@ -762,13 +795,27 @@ export class DialogueSession {
     this.runner?.choose(chosen.index);
   }
 
-  /** Commit by original option index (e.g. a direct pointer hit). */
+  /** Commit by original option index (e.g. a direct pointer hit, or the
+   *  timed-choice recipe firing its default). Refuses an unknown or disabled
+   *  option. */
   choose(optionIndex: number): void {
     if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
     const pos = this.resolved.findIndex((c) => c.index === optionIndex);
-    if (pos < 0) return;
+    if (pos < 0 || this.resolved[pos]?.disabled) return;
     this.selected = pos;
+    this.confirm();
+  }
+
+  /** Commit by display position (a pointer hit on a row). The position-keyed
+   *  counterpart to {@link choose}; refuses an out-of-range or disabled row.
+   *  Used by the pointer binding and the presenter pointer-commit seam. */
+  confirmAt(position: number): void {
+    if (this.paused) return; // frozen: input is inert
+    if (this.mode !== "choosing" || this.confirming) return;
+    const chosen = this.resolved[position];
+    if (!chosen || chosen.disabled) return;
+    this.selected = position;
     this.confirm();
   }
 
@@ -848,7 +895,9 @@ export class DialogueSession {
   ): void {
     this.mode = "choosing";
     this.resolved = choices;
-    this.selected = 0;
+    // Start on the first ENABLED row (the runner guarantees ≥1 exists; the
+    // findIndex never returns -1, the Math.max only guards the impossible).
+    this.selected = Math.max(0, choices.findIndex((c) => !c.disabled));
     this.confirming = false;
     const view = this.readView();
 
@@ -877,6 +926,7 @@ export class DialogueSession {
       view: step.view,
       speaker: line.speaker,
       prompt: line.text,
+      meta: step.meta,
     };
     // A self-contained presenter (e.g. a bubble panel) draws its own frame +
     // prompt; then we hide the chrome and don't type the prompt into the body.
@@ -912,9 +962,16 @@ export class DialogueSession {
     const presented: PresentedChoice[] = choices.map((c, i) => ({
       label: labels[i]!,
       meta: c.option.meta,
+      disabled: c.disabled,
+      // i18n-resolve the reason (interpolating {tokens}) only for disabled rows
+      // that carry one; there's no separate i18n key for it.
+      disabledReason:
+        c.disabled && c.option.disabledReason !== undefined
+          ? stripMarkup(this.i18n.t(undefined, c.option.disabledReason, view))
+          : undefined,
     }));
     this.channels.choices.present(presented, ctx);
-    this.channels.choices.highlight(0);
+    this.channels.choices.highlight(this.selected);
     this.applyVisibility();
     this.opts.onChoiceShown?.({ options: labels });
   }

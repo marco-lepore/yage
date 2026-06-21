@@ -50,6 +50,8 @@ export class CompositeChoicePresenter implements ChoicePresenter {
   }
 
   present(choices: readonly PresentedChoice[], context?: ChoiceContext): void {
+    // Disabled rows (and the choice `meta`) ride through untouched — the active
+    // leaf presenter is the one that greys/skips them.
     const target = choiceRoutesToBubble(this.route, context) ? this.bubble : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.clear();

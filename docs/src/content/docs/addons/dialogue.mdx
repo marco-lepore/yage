@@ -212,7 +212,7 @@ rather than silently mis-branching:
 | Kind      | Purpose |
 | --------- | ------- |
 | `say`     | A line spoken by an optional `speaker`. Supports markup, `speed`, `autoAdvanceMs`, `expression`, `commands`, `view`, `meta`, `voice`. |
-| `choice`  | A branch with `options` (each: `text`, `target?`, `condition?`, `once?`, `commands?`, `meta?`) and an optional prompt `text`. |
+| `choice`  | A branch with `options` (each: `text`, `target?`, `condition?`, `once?`, `presentation?`, `disabledReason?`, `commands?`, `meta?`) and an optional prompt `text`. |
 | `command` | Fire commands without showing anything; optionally a conditional `goto` via `condition` + `target`. |
 | `goto`    | Unconditional jump to another node. |
 | `end`     | Ends the conversation. |
@@ -221,6 +221,43 @@ A **condition** is a variable name (truthy check), an atomic comparison
 `{ var, op, value }` (`op` is one of `== != > >= < <= truthy falsy`), a full
 expression tree (see above), or — in TypeScript only — a `(vars) => boolean`
 predicate (it receives a materialized snapshot of the readable variables).
+
+### Disabled choices
+
+By default an option whose `condition` is false is **filtered out** of the menu.
+Set `presentation: "disabled"` to keep it on screen instead — greyed-out and
+non-selectable, the Disco-Elysium "[Strength 8] Force the door" pattern that lets
+the player see a gate before they can pass it. `disabledReason` adds a short
+explanation shown beside the row (it runs through the i18n adapter, so `{token}`s
+interpolate; there is no separate translation key for it).
+
+```ts
+{
+  kind: "choice",
+  options: [
+    {
+      text: "Unlock the gate",
+      target: "open",
+      condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "rusty-key" }] },
+      presentation: "disabled",          // shown greyed-out when you lack the key
+      disabledReason: "needs the rusty key",
+    },
+    { text: "Walk away", target: "leave" }, // always enabled — keeps the step pickable
+  ],
+}
+```
+
+Rules to keep in mind:
+
+- A spent `once` option is **always** hidden — `presentation` only governs
+  condition failures, never a consumed one-shot.
+- A step is **skipped** if it has zero *enabled* options (the same fall-through as
+  when every option is hidden), so a disabled row never soft-locks a conversation
+  — always leave at least one enabled option.
+- Selection starts on the first enabled row; arrow-key navigation and pointer
+  hover skip disabled rows, and confirming or clicking one is refused. The
+  default list and bubble presenters grey the row and append the reason in
+  parentheses; the experimental radial wheel greys it without a reason.
 
 ## Inline markup
 
@@ -335,6 +372,80 @@ These are the moments games actually hook — a typing-finished blip, a
 choice-hover tick, skip-used analytics, an auto-advance beat. Observation is
 events-only: the reveal-completed seam is owned by the session, so there is no
 public field a game can accidentally clobber.
+
+## Timed choices (a recipe)
+
+A Telltale-style "pick within 5 seconds or a default fires" is **not** a built-in
+— there is no `timeoutMs` field. It's a short recipe you own, which keeps the
+clock policy (does it pause? does it slow down?) entirely in your game.
+
+The shape: a non-blocking `choice-timer` command just before the choice step
+carries the budget and the default; your host runs a timer **on its own clock**
+and commits the default with `controller.choose(default)` when it runs out. The
+only addon support is that the choice step's `meta` is handed to the choice
+presenter (via `ChoiceContext.meta`), so a custom presenter can draw a countdown
+from `meta.timeoutMs`.
+
+```ts
+// In the script: arm the timer, then show the choice.
+{ kind: "command", commands: [{ type: "choice-timer", ms: 5000, default: 1 }] },
+{
+  kind: "choice",
+  text: "Quick — what do you do?",
+  meta: { timeoutMs: 5000 },            // a custom presenter can render this
+  options: [
+    { text: "Fight", target: "fight" },
+    { text: "Hesitate", target: "hesitate" }, // index 1 — the default on timeout
+  ],
+}
+```
+
+```ts
+// In the host: arm/cancel off the dialogue events; tick on your own clock.
+let pending: { ms: number; def: number } | undefined;
+let remaining = -1;
+let def = 0;
+
+new DialogueController({
+  ...createBoxDialogue(),
+  commands: {
+    // The command just stashes the budget — the timer arms when the menu shows.
+    "choice-timer": (cmd) => {
+      pending = { ms: Number(cmd.ms), def: Number(cmd.default) };
+    },
+  },
+});
+
+// Re-arm or cancel on EVERY choice-shown — this is the load-bearing guard. Without
+// it, a timer armed for one menu could fire into a later, unrelated menu.
+host.on(DialogueChoiceShownEvent, () => {
+  remaining = -1; // drop any prior timer first…
+  if (pending) {
+    // …then re-arm only if THIS menu was the timed one.
+    remaining = pending.ms;
+    def = pending.def;
+    pending = undefined;
+  }
+});
+host.on(DialogueChoiceMadeEvent, () => { remaining = -1; pending = undefined; });
+host.on(DialogueEndedEvent, () => { remaining = -1; pending = undefined; });
+
+// In your own update(dt): the conversation's setPaused does NOT freeze this —
+// pause your timer with whatever pauses the game.
+function update(dt: number) {
+  if (remaining < 0 || paused) return;
+  remaining -= dt;
+  if (remaining <= 0) {
+    remaining = -1;
+    controller.choose(def); // commit the default; must be an ENABLED option
+  }
+}
+```
+
+Two things bite naive versions: skipping the choice-shown re-arm/cancel (so a
+stale timer fires into the wrong menu later), and forgetting that the timer is on
+*your* clock — `setPaused` freezes the conversation but not your timer, so pause
+it yourself.
 
 ## Lifecycle: cutscenes, pause, and focus
 

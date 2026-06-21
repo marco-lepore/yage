@@ -13,7 +13,12 @@ import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
-import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import {
+  makeTextOptions,
+  DISABLED_CHOICE_ALPHA,
+  firstEnabledIndex,
+  type FontConfig,
+} from "./textOptions.js";
 
 export interface RadialChoiceConfig extends FontConfig {
   readonly center: { readonly x: number; readonly y: number };
@@ -31,6 +36,7 @@ interface Spoke {
   readonly comp: TextComponent;
   readonly x: number;
   readonly y: number;
+  readonly disabled: boolean;
 }
 
 /** @experimental Unpolished radial choice wheel; see file header. */
@@ -78,9 +84,9 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
         ),
       );
       comp.text.visible = true;
-      this.spokes.push({ entity, comp, x, y });
+      this.spokes.push({ entity, comp, x, y, disabled: choice.disabled ?? false });
     });
-    this.highlight(0);
+    this.highlight(firstEnabledIndex(this.spokes));
     this.applyHidden();
   }
 
@@ -88,9 +94,11 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
     if (this.spokes.length === 0) return;
     this.selected = MathUtils.clamp(position, 0, this.spokes.length - 1);
     this.spokes.forEach((s, i) => {
-      const on = i === this.selected;
-      s.comp.text.style.fill = on ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
-      s.entity.get(Transform).setScale(on ? 1.15 : 1, on ? 1.15 : 1);
+      const active = i === this.selected && !s.disabled;
+      s.comp.text.style.fill = active ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
+      s.comp.text.alpha = s.disabled ? DISABLED_CHOICE_ALPHA : 1;
+      const scale = active ? 1.15 : 1;
+      s.entity.get(Transform).setScale(scale, scale);
     });
     this.drawHub();
   }
@@ -137,10 +145,12 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
     if (!this.hub) return;
     const { center: c } = this.cfg;
     const sel = this.spokes[this.selected];
+    // No spoke line to a disabled row (selection never lands there anyway).
+    const active = sel && !sel.disabled ? sel : undefined;
     this.hub.gfx.draw((g) => {
       g.clear();
-      if (sel) {
-        g.moveTo(c.x, c.y).lineTo(sel.x, sel.y).stroke({ color: this.cfg.choiceSelectedColor, width: 2, alpha: 0.7 });
+      if (active) {
+        g.moveTo(c.x, c.y).lineTo(active.x, active.y).stroke({ color: this.cfg.choiceSelectedColor, width: 2, alpha: 0.7 });
       }
       g.circle(c.x, c.y, 4).fill({ color: this.cfg.hubColor, alpha: 1 });
     });

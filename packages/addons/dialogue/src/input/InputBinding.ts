@@ -206,10 +206,10 @@ export class PointerInputBinding implements InputBinding {
     if (choosing) {
       const p = this.pointer(input);
       const hit = this.choices?.choiceAtPoint?.(p.x, p.y);
-      if (hit !== undefined) {
-        session.selectAt(hit);
-        session.confirm();
-      }
+      // confirmAt commits the tapped row and refuses a disabled one — using
+      // selectAt + confirm would refuse to move onto a disabled row, then
+      // wrongly commit whatever was highlighted before.
+      if (hit !== undefined) session.confirmAt(hit);
       // Tap off the list does nothing (keyboard nav still available).
     } else {
       session.advance();
