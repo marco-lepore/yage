@@ -241,6 +241,7 @@ class DialogueProbe extends Component {
     boxVisible: boolean;
     bubbleVisible: boolean;
     texturedVisible: boolean;
+    bubbleTextured: boolean;
   } {
     return {
       lastLine: this.lastLine,
@@ -259,12 +260,21 @@ class DialogueProbe extends Component {
       // The nine-slice host shows only while a textured `meta.chrome` style is
       // the active box frame — so the spec can watch the style swap.
       texturedVisible: this.frameVisible("dlg-frame-tex"),
+      // A textured bubble parents its nine-slice into the bubble's own Graphics
+      // (the tail stays drawn) — so a child means the bubble body is textured.
+      bubbleTextured: (this.frameChildren("dlg-bubble")) > 0,
     };
   }
 
   /** Whether the named chrome entity's Graphics is currently visible. */
   private frameVisible(name: string): boolean {
     return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.visible ?? false;
+  }
+
+  /** Child count of the named chrome entity's Graphics (a nine-slice sprite is
+   *  parented here when the bubble body is textured). */
+  private frameChildren(name: string): number {
+    return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.children.length ?? 0;
   }
 }
 
@@ -290,20 +300,28 @@ class DialogueScene extends Scene {
     );
     guide.add(new Guide());
 
-    // A named textured style ("parchment") — but NO "default" style, so the
-    // main script's box lines keep the drawn Graphics frame (and the existing
-    // specs that read `boxVisible`). The `meta.chrome` script opts in per line.
-    const theme = {
-      ...defaultTheme(),
-      textured: {
-        parchment: {
-          frame: {
-            texture: makeFrameTexture(),
-            insets: { left: 8, top: 8, right: 8, bottom: 8 },
+    // Default: a NAMED "parchment" style only (no "default"), so the main
+    // script's box lines keep the drawn Graphics frame and the existing specs
+    // that read `boxVisible` still hold; the `meta.chrome` script opts in per
+    // line. `?theme=textured` instead installs a fully-textured "default" style
+    // (box + bubble nine-slice) for the bubble-textured spec.
+    const insets = { left: 8, top: 8, right: 8, bottom: 8 };
+    const fullyTextured =
+      new URLSearchParams(location.search).get("theme") === "textured";
+    const theme = fullyTextured
+      ? {
+          ...defaultTheme(),
+          textured: {
+            default: {
+              frame: { texture: makeFrameTexture(), insets },
+              bubble: { texture: makeFrameTexture(), insets },
+            },
           },
-        },
-      },
-    };
+        }
+      : {
+          ...defaultTheme(),
+          textured: { parchment: { frame: { texture: makeFrameTexture(), insets } } },
+        };
     const bundle = createMixedDialogue(theme, {
       worldLayer: "bubble-world",
     });

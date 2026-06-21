@@ -431,11 +431,11 @@ The cave swallows your words. #chrome:none
 ```
 
 **Choice overflow**: the box choice list grows **upward** to fit its rows
-(labels word-wrap; multi-line rows allowed), capped at the screen top — row
-placement, the highlight, and pointer hit-testing all derive from one geometry
-pass, so a long list can't escape its hit-targets. A list longer than the
-presenter's `softMaxChoices` (default 8) logs a soft-cap advisory but still
-renders.
+(labels word-wrap; multi-line rows allowed) — row placement, the highlight, and
+pointer hit-testing all derive from one geometry pass, so a long list can't
+escape its hit-targets, and a list too tall for the screen spills off the top
+non-overlapping rather than piling rows. A list longer than the presenter's
+`softMaxChoices` (default 8) logs a soft-cap advisory but still renders.
 
 ## Experimental radial choice presenter
 

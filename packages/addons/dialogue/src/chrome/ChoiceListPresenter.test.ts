@@ -54,10 +54,16 @@ describe("stackChoiceRows", () => {
     }
   });
 
-  it("caps at the screen top: a list taller than the screen clamps to y ≥ 0", () => {
+  it("a list taller than the screen stays bottom-anchored and non-overlapping (spills off the top)", () => {
     const tightBox = { x: 0, y: 0, width: 400, height: 100 };
     const rects = stackChoiceRows(new Array(10).fill(22), tightBox, 10);
-    expect(rects.every((r) => r.y >= 0)).toBe(true);
-    expect(rects[0]!.y).toBe(0); // the topmost row clamps to the screen top
+    // The bottom row stays pinned to the box bottom.
+    expect(rects[9]!.y + rects[9]!.height).toBe(tightBox.height - 10);
+    // Rows stay contiguous (never pile up) even when they overflow.
+    for (let i = 0; i < rects.length - 1; i++) {
+      expect(rects[i]!.y + rects[i]!.height).toBe(rects[i + 1]!.y);
+    }
+    // The excess spills off the top rather than overlapping at y = 0.
+    expect(rects[0]!.y).toBeLessThan(0);
   });
 });

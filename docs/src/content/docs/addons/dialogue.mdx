@@ -629,12 +629,13 @@ box-only; the diegetic bubble keeps its single textured (or drawn) look.
 
 The box choice list is content-driven: labels word-wrap, and the rows grow
 **upward** from the box's bottom edge to fit however many options a step
-declares, capped at the top of the screen. Row placement, the selection
-highlight, and pointer hit-testing all come from one geometry pass, so even a
-long, wrapped, partly-disabled list stays selectable exactly where it's drawn. A
-menu longer than the presenter's soft cap (`softMaxChoices`, default 8) logs an
-advisory through the engine logger — it still renders, but a shorter menu (or a
-sub-menu) usually reads better.
+declares. Row placement, the selection highlight, and pointer hit-testing all
+come from one geometry pass, so even a long, wrapped, partly-disabled list stays
+selectable exactly where it's drawn; a list too tall for the screen spills off
+the top non-overlapping rather than piling rows. A menu longer than the
+presenter's soft cap (`softMaxChoices`, default 8) logs an advisory through the
+engine logger — it still renders, but a shorter menu (or a sub-menu) usually
+reads better.
 
 ## Experimental: radial choices
 

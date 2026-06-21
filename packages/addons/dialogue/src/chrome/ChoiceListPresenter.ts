@@ -7,13 +7,14 @@
  * and reports pointer commits back through {@link ChoiceChannel.onChoiceChosen}.
  *
  * Overflow: the row stack is **content-driven** — labels word-wrap (a row may
- * be several lines), and the rows grow **upward** from the box's bottom
- * edge, capped at the screen top. Row placement, the selection highlight, and
- * pointer hit-testing all derive from ONE computed set of row rects (see
- * {@link stackChoiceRows}), so a wrapped/overflowing row can't desync them
- * (the old fixed-height layout let long lists escape the frame while the
- * hit-test still targeted the original slots). A list longer than
- * `softMaxChoices` logs a soft-cap advisory (it still renders).
+ * be several lines), and the rows grow **upward** from the box's bottom edge
+ * (a list too tall for the screen spills off the top, non-overlapping). Row
+ * placement, the selection highlight, and pointer hit-testing all derive from
+ * ONE computed set of row rects (see {@link stackChoiceRows}), so a
+ * wrapped/overflowing row can't desync them (the old fixed-height layout let
+ * long lists escape the frame while the hit-test still targeted the original
+ * slots). A list longer than `softMaxChoices` logs a soft-cap advisory (it
+ * still renders).
  */
 
 import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
@@ -73,11 +74,13 @@ const ROW_TEXT_INDENT = 6;
 
 /**
  * Stack row slots bottom-up inside the box, growing **upward** from the bottom
- * edge (the box is bottom-anchored), and clamp each row's top to the screen top
- * (y ≥ 0) so a very long list never renders off the top. `rowHeights` are full
- * slot heights (wrapped text height + gap). The single source of row geometry —
- * placement, highlight, and hit-test all consume the result, so they can't
- * drift.
+ * edge (the box is bottom-anchored). `rowHeights` are full slot heights (wrapped
+ * text height + gap). Rows are always **contiguous and non-overlapping** — each
+ * row's top is the row below it minus its height — so a list too tall for the
+ * screen spills off the top rather than piling rows on top of each other (the
+ * soft-cap advisory flags an over-long menu long before that). The single source
+ * of row geometry: placement, highlight, and hit-test all consume the result, so
+ * they can't drift.
  */
 export function stackChoiceRows(
   rowHeights: readonly number[],
@@ -90,8 +93,8 @@ export function stackChoiceRows(
   let bottom = box.y + box.height - padding;
   for (let i = rowHeights.length - 1; i >= 0; i--) {
     const h = rowHeights[i] ?? 0;
-    rects[i] = { x, y: Math.max(0, bottom - h), width, height: h };
     bottom -= h;
+    rects[i] = { x, y: bottom, width, height: h };
   }
   return rects;
 }

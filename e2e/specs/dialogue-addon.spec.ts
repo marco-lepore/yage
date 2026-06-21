@@ -18,6 +18,7 @@ interface ProbeData {
   boxVisible: boolean;
   bubbleVisible: boolean;
   texturedVisible: boolean;
+  bubbleTextured: boolean;
 }
 
 /** The controller methods the fixture exposes on `window.__dialogue__`. */
@@ -267,6 +268,29 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     const drawn = await probe(page);
     expect(drawn?.texturedVisible).toBe(false);
     expect(drawn?.boxVisible).toBe(true);
+  });
+
+  test("a textured theme renders the speech bubble as a nine-slice", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html?theme=textured");
+    await waitForClock(page);
+
+    // The first box line uses the textured "default" style: the nine-slice host
+    // shows, the drawn Graphics frame does not.
+    await stepFrames(page, 4);
+    const boxLine = await probe(page);
+    expect(boxLine?.texturedVisible).toBe(true);
+    expect(boxLine?.boxVisible).toBe(false);
+
+    // Walk to the diegetic bubble line: its body is a nine-slice parented into
+    // the bubble's Graphics (content-sized per line), so the bubble carries a
+    // child sprite the plain Graphics bubble would not.
+    await advanceUntilLine(page, "bubble");
+    await stepFrames(page, 1);
+    const bubble = await probe(page);
+    expect(bubble?.bubbleVisible).toBe(true);
+    expect(bubble?.bubbleTextured).toBe(true);
   });
 
   test("hide/restore on a bubble line brings back the bubble, not the box frame", async ({
