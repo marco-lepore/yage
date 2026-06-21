@@ -1,9 +1,15 @@
 /**
- * Shared font plumbing for the renderer-backed presenters. Every chrome /
- * choice presenter renders incidental text (nameplates, choice labels) the same
- * way: an optional baked bitmap font wins, else the canvas family + resolution.
- * One {@link FontConfig} triplet + one {@link makeTextOptions} builder keeps the
- * seven presenter configs and their `TextComponent` construction in lockstep.
+ * Shared helpers for the renderer-backed presenters. Two groups live here:
+ *
+ * 1. Font plumbing — every chrome / choice presenter renders incidental text
+ *    (nameplates, choice labels) the same way: an optional baked bitmap font
+ *    wins, else the canvas family + resolution. One {@link FontConfig} triplet
+ *    + one {@link makeTextOptions} builder keeps the presenter configs and their
+ *    `TextComponent` construction in lockstep.
+ * 2. Choice-row helpers — {@link DISABLED_CHOICE_ALPHA}, {@link choiceRowLabel},
+ *    and {@link firstEnabledIndex}, shared by the list/bubble/radial choice
+ *    presenters so disabled-row dimming, labelling, and initial-highlight
+ *    selection stay consistent across all three.
  */
 
 import type { TextComponentOptions, TextStyle } from "@yagejs/renderer";

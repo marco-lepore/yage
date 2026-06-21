@@ -726,7 +726,7 @@ export class DialogueSession {
     if (this.resolved.length === 0 || delta === 0) return;
     const dir: 1 | -1 = delta < 0 ? -1 : 1;
     let pos = this.selected;
-    for (let step = 0; step < Math.abs(delta); step++) {
+    for (let i = 0; i < Math.abs(delta); i++) {
       pos = this.nextEnabled(pos, dir);
     }
     if (pos === this.selected) return; // no enabled row to move to — no event

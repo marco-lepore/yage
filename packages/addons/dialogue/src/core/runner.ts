@@ -295,6 +295,10 @@ export class DialogueRunner {
     const out: ResolvedChoice[] = [];
     step.options.forEach((option, index) => {
       if (this.isSpent(step, index, option)) return;
+      // The enabled test here is the visible-row companion to `choiceEnabled`
+      // (the commit gate): both gate on `isSpent` + `test(condition)`. A new
+      // "disabled" reason must be added to both, or a row could show as enabled
+      // yet refuse to commit.
       if (this.test(option.condition)) out.push({ index, option });
       else if (option.presentation === "disabled") out.push({ index, option, disabled: true });
     });
