@@ -60,3 +60,14 @@ export function choiceRowLabel(choice: {
     ? `${choice.label} (${choice.disabledReason})`
     : choice.label;
 }
+
+/** Display position of the first selectable (non-disabled) row, or 0 when every
+ *  row is disabled — a case the runner prevents by skipping a zero-enabled step,
+ *  so the 0 is only a defensive fallback. Shared by all three choice presenters
+ *  to seed the initial highlight. */
+export function firstEnabledIndex(
+  rows: readonly { readonly disabled?: boolean | undefined }[],
+): number {
+  const i = rows.findIndex((r) => !r.disabled);
+  return i < 0 ? 0 : i;
+}

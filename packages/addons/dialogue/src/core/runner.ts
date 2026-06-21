@@ -294,7 +294,7 @@ export class DialogueRunner {
   private resolveChoices(step: ChoiceStep): ResolvedChoice[] {
     const out: ResolvedChoice[] = [];
     step.options.forEach((option, index) => {
-      if (option.once && this.chosenOnce.has(this.onceKey(step, index))) return;
+      if (this.isSpent(step, index, option)) return;
       if (this.test(option.condition)) out.push({ index, option });
       else if (option.presentation === "disabled") out.push({ index, option, disabled: true });
     });
@@ -305,8 +305,14 @@ export class DialogueRunner {
    *  A spent `once` option or a failing condition refuses (a `"disabled"` row is
    *  shown but still unpickable, so this stays the single selection authority). */
   private choiceEnabled(step: ChoiceStep, index: number, option: ChoiceOption): boolean {
-    if (option.once && this.chosenOnce.has(this.onceKey(step, index))) return false;
-    return this.test(option.condition);
+    return !this.isSpent(step, index, option) && this.test(option.condition);
+  }
+
+  /** A `once` option already chosen this run — always dropped from the menu
+   *  regardless of `presentation`. Single source of truth for the once-gate,
+   *  shared by `resolveChoices` and `choiceEnabled`. */
+  private isSpent(step: ChoiceStep, index: number, option: ChoiceOption): boolean {
+    return option.once === true && this.chosenOnce.has(this.onceKey(step, index));
   }
 
   private onceKey(step: ChoiceStep, index: number): string {

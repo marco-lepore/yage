@@ -14,6 +14,7 @@ import type { ChoicePresenter } from "./DialogueUiAdapter.js";
 import {
   makeTextOptions,
   choiceRowLabel,
+  firstEnabledIndex,
   DISABLED_CHOICE_ALPHA,
   type FontConfig,
 } from "./textOptions.js";
@@ -82,7 +83,7 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
     });
     // Land the initial highlight on the first ENABLED row (the Session re-asserts
     // this right after; doing it here keeps a stand-alone present() consistent).
-    this.highlightAt(this.firstEnabled());
+    this.highlightAt(firstEnabledIndex(this.rows));
     this.applyHidden();
   }
 
@@ -103,13 +104,6 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
       const onEnabled = this.selected >= 0 && !this.rows[this.selected]?.disabled;
       this.highlightBar.gfx.graphics.visible = !this.hidden && onEnabled;
     }
-  }
-
-  /** Display position of the first selectable row (0 if somehow all disabled —
-   *  the runner skips a zero-enabled step, so that case shouldn't arise). */
-  private firstEnabled(): number {
-    const i = this.rows.findIndex((r) => !r.disabled);
-    return i < 0 ? 0 : i;
   }
 
   /** {@link PointerChoiceTarget}: which row (if any) a screen point falls in. */

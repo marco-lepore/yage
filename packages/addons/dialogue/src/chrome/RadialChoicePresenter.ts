@@ -13,7 +13,12 @@ import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
-import { makeTextOptions, DISABLED_CHOICE_ALPHA, type FontConfig } from "./textOptions.js";
+import {
+  makeTextOptions,
+  DISABLED_CHOICE_ALPHA,
+  firstEnabledIndex,
+  type FontConfig,
+} from "./textOptions.js";
 
 export interface RadialChoiceConfig extends FontConfig {
   readonly center: { readonly x: number; readonly y: number };
@@ -81,14 +86,8 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
       comp.text.visible = true;
       this.spokes.push({ entity, comp, x, y, disabled: choice.disabled ?? false });
     });
-    this.highlight(this.firstEnabled());
+    this.highlight(firstEnabledIndex(this.spokes));
     this.applyHidden();
-  }
-
-  /** First selectable spoke (0 if all disabled — the runner skips such a step). */
-  private firstEnabled(): number {
-    const i = this.spokes.findIndex((s) => !s.disabled);
-    return i < 0 ? 0 : i;
   }
 
   highlight(position: number): void {

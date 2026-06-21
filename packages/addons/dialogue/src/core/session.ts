@@ -717,15 +717,16 @@ export class DialogueSession {
   }
 
   /** Move the choice cursor by `delta`, skipping disabled rows and wrapping.
-   *  No-op outside a choice. A move that steps over disabled rows fires exactly
-   *  one selection-changed event, for the row it lands on. */
+   *  No-op outside a choice, and a zero `delta` is a no-op (no cursor move, no
+   *  event). A move that steps over disabled rows fires exactly one
+   *  selection-changed event, for the row it lands on. */
   moveSelection(delta: number): void {
     if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
-    if (this.resolved.length === 0) return;
+    if (this.resolved.length === 0 || delta === 0) return;
     const dir: 1 | -1 = delta < 0 ? -1 : 1;
     let pos = this.selected;
-    for (let step = 0; step < Math.max(1, Math.abs(delta)); step++) {
+    for (let step = 0; step < Math.abs(delta); step++) {
       pos = this.nextEnabled(pos, dir);
     }
     if (pos === this.selected) return; // no enabled row to move to — no event

@@ -642,6 +642,35 @@ describe("DialogueSession — disabled choices", () => {
     expect(onSelectionChanged).toHaveBeenCalledWith({ index: 0, text: "a" });
   });
 
+  it("moveSelection(0) is a no-op — no cursor move, no event", () => {
+    const onSelectionChanged = vi.fn();
+    const script: DialogueScript = {
+      id: "noop",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "a", target: "z" },
+                { text: "b", target: "z" },
+              ],
+            },
+          ],
+        },
+        z: { id: "z", steps: [{ kind: "say", text: "z" }] },
+      },
+    };
+    const h = makeHarness({ onSelectionChanged });
+    h.session.play(script); // selected = 0
+    const highlightsBefore = h.choices.highlights.length;
+    h.session.moveSelection(0); // explicit no-op: must not advance off row 0
+    expect(h.choices.highlights.length).toBe(highlightsBefore);
+    expect(onSelectionChanged).not.toHaveBeenCalled();
+  });
+
   it("skips a choice step whose every option is disabled (no soft-lock)", async () => {
     const script: DialogueScript = {
       id: "soft-lock",

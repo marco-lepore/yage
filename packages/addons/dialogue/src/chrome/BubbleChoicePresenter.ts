@@ -22,6 +22,7 @@ import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import {
   makeTextOptions,
   choiceRowLabel,
+  firstEnabledIndex,
   DISABLED_CHOICE_ALPHA,
   type FontConfig,
 } from "./textOptions.js";
@@ -153,15 +154,8 @@ export class BubbleChoicePresenter implements ChoicePresenter {
         disabled: choice.disabled ?? false,
       });
     });
-    this.highlight(this.firstEnabled());
+    this.highlight(firstEnabledIndex(this.rows));
     this.applyHidden();
-  }
-
-  /** Display position of the first selectable row (0 if all disabled, which the
-   *  runner prevents by skipping a zero-enabled step). */
-  private firstEnabled(): number {
-    const i = this.rows.findIndex((r) => !r.disabled);
-    return i < 0 ? 0 : i;
   }
 
   /** Show or hide the whole panel without clearing it — state-preserving. */
