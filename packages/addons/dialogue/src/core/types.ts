@@ -216,6 +216,20 @@ export interface ChoiceOption {
    *  cursor state (resets on a fresh `play()`; the future save cursor captures
    *  it), NOT in the variable storage. */
   readonly once?: boolean;
+  /**
+   * What to do when this option's {@link condition} is **false**. Default
+   * `"hidden"` (the option is filtered out). `"disabled"` keeps it on screen as
+   * a non-selectable, greyed-out row (the Disco-Elysium "[Strength 8] Force the
+   * door" pattern — the player learns the gate exists). Governs condition
+   * failures only: a spent `once` option is **always** hidden regardless. A step
+   * whose only-enabled count drops to zero is skipped, so a disabled row never
+   * causes a soft-lock.
+   */
+  readonly presentation?: "hidden" | "disabled";
+  /** Short reason shown beside a `"disabled"` row where the layout allows (e.g.
+   *  "Requires the rusty key"). Resolved through the i18n adapter, so `{token}`s
+   *  interpolate; there is no separate i18n `key` for it. */
+  readonly disabledReason?: string;
   readonly commands?: readonly Command[];
   /** Opaque per-choice hint bag (tone/icon/position for fancy choice UIs). */
   readonly meta?: Readonly<Record<string, unknown>>;

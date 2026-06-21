@@ -19,7 +19,13 @@ import {
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
 import { BubbleAnchorResolver, type AnchorPoint } from "../render/bubbleAnchor.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
-import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import {
+  makeTextOptions,
+  choiceRowLabel,
+  firstEnabledIndex,
+  DISABLED_CHOICE_ALPHA,
+  type FontConfig,
+} from "./textOptions.js";
 
 export interface BubbleChoiceConfig extends FontConfig {
   /** World-space render layer (same as the bubble). */
@@ -51,6 +57,7 @@ interface Row {
   readonly x1: number;
   readonly y0: number;
   readonly y1: number;
+  readonly disabled: boolean;
 }
 
 const GAP = 4;
@@ -135,7 +142,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
       const rowY = optionsTop + i * lineH;
       const entity = this.scene!.spawn("dlg-bchoice");
       entity.add(new Transform()).setPosition(left + c.padding + 4, rowY);
-      const comp = entity.add(new TextComponent(this.textOptions(choice.label, c.choiceColor)));
+      const comp = entity.add(new TextComponent(this.textOptions(choiceRowLabel(choice), c.choiceColor)));
       comp.text.visible = true;
       this.rows.push({
         entity,
@@ -144,9 +151,10 @@ export class BubbleChoicePresenter implements ChoicePresenter {
         x1: left + c.width - c.padding,
         y0: rowY,
         y1: rowY + lineH,
+        disabled: choice.disabled ?? false,
       });
     });
-    this.highlight(0);
+    this.highlight(firstEnabledIndex(this.rows));
     this.applyHidden();
   }
 
@@ -156,12 +164,14 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.applyHidden();
   }
 
-  /** Render every piece (bg, prompt, rows, highlight) gated by the master. */
+  /** Render every piece (bg, prompt, rows, highlight) gated by the master.
+   *  Disabled rows still show (greyed); only the highlight bar is suppressed. */
   private applyHidden(): void {
     const shown = !this.hidden;
     if (this.bg) this.bg.gfx.graphics.visible = shown && this.rows.length > 0;
     if (this.highlightBar) {
-      this.highlightBar.gfx.graphics.visible = shown && this.selected >= 0;
+      const onEnabled = this.selected >= 0 && !this.rows[this.selected]?.disabled;
+      this.highlightBar.gfx.graphics.visible = shown && onEnabled;
     }
     if (this.prompt) this.prompt.comp.text.visible = shown;
     for (const row of this.rows) row.comp.text.visible = shown;
@@ -171,7 +181,9 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     if (this.rows.length === 0) return;
     this.selected = MathUtils.clamp(position, 0, this.rows.length - 1);
     this.rows.forEach((row, i) => {
-      row.comp.text.style.fill = i === this.selected ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
+      const active = i === this.selected && !row.disabled;
+      row.comp.text.style.fill = active ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
+      row.comp.text.alpha = row.disabled ? DISABLED_CHOICE_ALPHA : 1;
     });
     this.drawHighlight();
   }
@@ -220,6 +232,11 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   private drawHighlight(): void {
     const row = this.rows[this.selected];
     if (!this.highlightBar || !row) return;
+    // A disabled row is never highlighted (nav skips it); clear any stale bar.
+    if (row.disabled) {
+      this.highlightBar.gfx.draw((g) => g.clear());
+      return;
+    }
     this.highlightBar.gfx.draw((g) => {
       g.clear();
       g.roundRect(row.x0, row.y0, row.x1 - row.x0, row.y1 - row.y0 - 1, 3).fill({

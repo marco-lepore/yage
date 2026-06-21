@@ -607,6 +607,149 @@ describe("DialogueRunner — `once` choices", () => {
   });
 });
 
+describe("DialogueRunner — disabled choices (presentation)", () => {
+  const disabledScript = (): DialogueScript => ({
+    id: "disabled",
+    start: "a",
+    declare: { hasKey: false },
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          {
+            kind: "choice",
+            options: [
+              {
+                text: "locked",
+                target: "L",
+                condition: "hasKey",
+                presentation: "disabled",
+                disabledReason: "Need a key",
+              },
+              { text: "open", target: "O" },
+            ],
+          },
+        ],
+      },
+      L: { id: "L", steps: [{ kind: "say", text: "locked-line" }] },
+      O: { id: "O", steps: [{ kind: "say", text: "open-line" }] },
+    },
+  });
+
+  it("returns a condition-failed `disabled` option as a visible-but-disabled row", () => {
+    const rec = makeRecorder();
+    const runner = makeRunner(disabledScript(), rec.handlers);
+    runner.start();
+    const presented = rec.choiceSets[0]!.choices;
+    // Both rows are returned (disabled one kept), preserving original indices.
+    expect(presented.map((c) => c.option.text)).toEqual(["locked", "open"]);
+    expect(presented[0]).toMatchObject({ index: 0, disabled: true });
+    expect(presented[1]!.index).toBe(1);
+    expect(presented[1]!.disabled).toBeUndefined();
+  });
+
+  it("still hides a default (presentation omitted) condition-failed option", () => {
+    const script: DialogueScript = {
+      id: "mixed",
+      start: "a",
+      declare: { hasKey: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "hidden-locked", target: "L", condition: "hasKey" },
+                { text: "shown-locked", target: "L", condition: "hasKey", presentation: "disabled" },
+                { text: "open", target: "O" },
+              ],
+            },
+          ],
+        },
+        L: { id: "L", steps: [{ kind: "say", text: "l" }] },
+        O: { id: "O", steps: [{ kind: "say", text: "o" }] },
+      },
+    };
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers).start();
+    const presented = rec.choiceSets[0]!.choices;
+    // The default-hidden one is filtered; the disabled one is kept; open enabled.
+    expect(presented.map((c) => c.option.text)).toEqual(["shown-locked", "open"]);
+    expect(presented[0]).toMatchObject({ index: 1, disabled: true });
+  });
+
+  it("choose() refuses a disabled row but accepts an enabled one", async () => {
+    const rec = makeRecorder();
+    const runner = makeRunner(disabledScript(), rec.handlers);
+    runner.start();
+    await runner.choose(0); // "locked" is disabled — refused
+    expect(lineTexts(rec)).toEqual([]); // still choosing, nothing branched
+    await runner.choose(1);
+    expect(lineTexts(rec)).toEqual(["open-line"]);
+  });
+
+  it("skips a step whose only options are disabled (no soft-lock)", async () => {
+    const script: DialogueScript = {
+      id: "all-disabled",
+      start: "a",
+      declare: { ok: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "x", condition: "ok", presentation: "disabled", disabledReason: "nope" },
+              ],
+            },
+            { kind: "say", text: "fallthrough" },
+          ],
+        },
+      },
+    };
+    const rec = makeRecorder();
+    makeRunner(script, rec.handlers).start();
+    await flush();
+    expect(rec.choiceSets).toHaveLength(0); // never presented — zero enabled
+    expect(lineTexts(rec)).toEqual(["fallthrough"]);
+  });
+
+  it("keeps a spent `once` option hidden even when its presentation is disabled", async () => {
+    const script: DialogueScript = {
+      id: "once-disabled",
+      start: "hub",
+      nodes: {
+        hub: {
+          id: "hub",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "ask-once", target: "answer", once: true, presentation: "disabled" },
+                { text: "leave", target: "end" },
+              ],
+            },
+          ],
+        },
+        answer: { id: "answer", steps: [{ kind: "goto", target: "hub" }] },
+        end: { id: "end", steps: [{ kind: "end" }] },
+      },
+    };
+    const rec = makeRecorder();
+    const runner = makeRunner(script, rec.handlers);
+    runner.start();
+    expect(rec.choiceSets[0]!.choices.map((c) => c.option.text)).toEqual(["ask-once", "leave"]);
+
+    await runner.choose(0); // spend the once option → loop back to hub
+    // Re-presented: the once option is HIDDEN (not a disabled row) — `once`
+    // governs over `presentation`.
+    expect(rec.choiceSets[1]!.choices.map((c) => c.option.text)).toEqual(["leave"]);
+    expect(rec.choiceSets[1]!.choices[0]!.disabled).toBeUndefined();
+  });
+});
+
 describe("DialogueRunner — command surfacing", () => {
   it("surfaces non-builtin commands to onCommand with the run mode", async () => {
     const script: DialogueScript = {
