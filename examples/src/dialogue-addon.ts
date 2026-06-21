@@ -928,11 +928,11 @@ class ChoiceTimer extends Component {
 
 // ── theme presets (cycled by the "Theme" button) ─────────────────────────────
 
-/** A canvas-drawn nine-slice frame (a coloured border around a fill) for the
- *  textured preset — keeps the demo asset-free. 48×48 with a 12px border. */
-function makeFrameTexture(edge: number, fill: number): Texture {
+/** A canvas-drawn nine-slice frame (a coloured `border`-px ring around a fill)
+ *  for the textured preset — keeps the demo asset-free. The `border` must equal
+ *  the nine-slice insets so the corners map 1:1. */
+function makeFrameTexture(edge: number, fill: number, border: number): Texture {
   const size = 48;
-  const b = 12;
   const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
   const canvas = document.createElement("canvas");
   canvas.width = size;
@@ -942,12 +942,20 @@ function makeFrameTexture(edge: number, fill: number): Texture {
     ctx.fillStyle = hex(edge);
     ctx.fillRect(0, 0, size, size);
     ctx.fillStyle = hex(fill);
-    ctx.fillRect(b, b, size - 2 * b, size - 2 * b);
+    ctx.fillRect(border, border, size - 2 * border, size - 2 * border);
   }
   return Texture.from(canvas);
 }
 
-const NINE_SLICE_INSETS = { left: 12, top: 12, right: 12, bottom: 12 } as const;
+const insets = (n: number): { left: number; top: number; right: number; bottom: number } => ({
+  left: n,
+  top: n,
+  right: n,
+  bottom: n,
+});
+// The bubble is small, so it wears a thinner border than the wide box frame.
+const FRAME_BORDER = 12;
+const BUBBLE_BORDER = 6;
 // Built once on first use of the textured preset, then reused across rebuilds.
 let frameTex: Texture | undefined;
 let bubbleTex: Texture | undefined;
@@ -980,16 +988,16 @@ const THEME_PRESETS: readonly ThemePreset[] = [
   {
     label: "Textured",
     build: () => {
-      frameTex ??= makeFrameTexture(0x8a6d3b, 0x2b2417);
-      bubbleTex ??= makeFrameTexture(0x8a6d3b, 0x241d12);
+      frameTex ??= makeFrameTexture(0x8a6d3b, 0x2b2417, FRAME_BORDER);
+      bubbleTex ??= makeFrameTexture(0x8a6d3b, 0x241d12, BUBBLE_BORDER);
       return {
         ...defaultTheme(),
         nameColor: 0xffcf8a,
         textColor: 0xf3e6cf,
         textured: {
           default: {
-            frame: { texture: frameTex, insets: NINE_SLICE_INSETS },
-            bubble: { texture: bubbleTex, insets: NINE_SLICE_INSETS },
+            frame: { texture: frameTex, insets: insets(FRAME_BORDER) },
+            bubble: { texture: bubbleTex, insets: insets(BUBBLE_BORDER) },
           },
         },
       };
@@ -1086,13 +1094,19 @@ class RoomScene extends Scene {
 
     const bitmapFont = this.bitmapFont;
     const base = this.themeBuild();
-    const theme =
+    const theme: DialogueTheme =
       bitmapFont !== undefined
         ? { ...base, bitmapFont, textSize: 14, lineHeight: 19 }
         : base;
+    // A textured bubble gets extra inner padding so its text clears the
+    // nine-slice border the small bubble would otherwise crowd.
+    const texturedBubble = theme.textured?.["default"]?.bubble !== undefined;
     const bubbleOpts = {
       worldLayer: BUBBLE_LAYER,
-      ...(bitmapFont !== undefined ? { bubble: { maxWidth: 320 } } : {}),
+      bubble: {
+        ...(bitmapFont !== undefined ? { maxWidth: 320 } : {}),
+        ...(texturedBubble ? { padding: 12 } : {}),
+      },
     };
     const bundle = createMixedDialogue(theme, bubbleOpts);
 
