@@ -50,6 +50,14 @@ export interface RunnerEnv {
 export interface ResolvedChoice {
   readonly index: number; // index into the original options array
   readonly option: ChoiceOption;
+  /**
+   * A visible-but-disabled row: the option's condition currently fails AND its
+   * `presentation` is `"disabled"`, so it's shown greyed-out and non-selectable
+   * instead of filtered. Omitted (falsy) for a normal, selectable option.
+   * Default-`"hidden"` condition failures and spent `once` options aren't
+   * returned at all.
+   */
+  readonly disabled?: boolean;
 }
 
 export interface RunnerHandlers {
@@ -225,8 +233,11 @@ export class DialogueRunner {
       }
       case "choice": {
         const choices = this.resolveChoices(step);
-        if (choices.length === 0) {
-          // No reachable options — skip rather than dead-end.
+        // Skip the step when nothing is *selectable* — a list of only-disabled
+        // rows (or no rows at all) would soft-lock, so it falls through like the
+        // all-hidden / all-condition-fail path. Visible-but-disabled requires at
+        // least one enabled option.
+        if (!choices.some((c) => !c.disabled)) {
           this.stepIndex++;
           return false;
         }
@@ -274,14 +285,25 @@ export class DialogueRunner {
     return id ? this.script.speakers?.[id] : undefined;
   }
 
+  /**
+   * Resolve a choice step to its visible rows. A spent `once` option is always
+   * dropped (presentation governs condition failures only). A passing option is
+   * enabled; a failing one is returned as a `disabled` row when its
+   * `presentation` is `"disabled"`, else dropped (the default `"hidden"`).
+   */
   private resolveChoices(step: ChoiceStep): ResolvedChoice[] {
     const out: ResolvedChoice[] = [];
     step.options.forEach((option, index) => {
-      if (this.choiceEnabled(step, index, option)) out.push({ index, option });
+      if (option.once && this.chosenOnce.has(this.onceKey(step, index))) return;
+      if (this.test(option.condition)) out.push({ index, option });
+      else if (option.presentation === "disabled") out.push({ index, option, disabled: true });
     });
     return out;
   }
 
+  /** Whether option `index` can actually be picked — the gate `choose()` uses.
+   *  A spent `once` option or a failing condition refuses (a `"disabled"` row is
+   *  shown but still unpickable, so this stays the single selection authority). */
   private choiceEnabled(step: ChoiceStep, index: number, option: ChoiceOption): boolean {
     if (option.once && this.chosenOnce.has(this.onceKey(step, index))) return false;
     return this.test(option.condition);

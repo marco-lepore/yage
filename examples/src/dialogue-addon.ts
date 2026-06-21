@@ -25,9 +25,15 @@
  *                         when an **expression condition** (`gold >= 50 and not
  *                         has_item("rusty-key")`) holds, then `set gold = gold - 50`
  *                         writes through the cell and `give-item` hands you the key.
- *   • Gate Guard        — opens the gate only if `has_item("rusty-key")`, spends
- *                         the key (`take-item`), and runs `open-gate` (a world
- *                         consequence that extends the walkable area).
+ *   • Rook              — a **timed choice** (a recipe, not an engine feature):
+ *                         decide within 5s or the host commits a default ("Freeze
+ *                         up"). A `choice-timer` command arms a host-owned countdown
+ *                         (ChoiceTimer) on the GAME clock — so P pauses it too.
+ *   • Gate Guard        — opens the gate only with the key; the unlock option is
+ *                         shown **disabled** ("needs the rusty key") until you hold
+ *                         one. On unlock it spends the key (`take-item`) and runs
+ *                         `open-gate` (a world consequence that extends the
+ *                         walkable area).
  *   • Sage (bubble)     — a long line the speech bubble grows to fit.
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
  *                         (a second controller kept alive but input-disabled via
@@ -65,7 +71,9 @@ import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import {
   DialogueController,
   DialogueLineEvent,
+  DialogueChoiceShownEvent,
   DialogueChoiceMadeEvent,
+  DialogueEndedEvent,
   cells,
   compose,
   fullControls,
@@ -96,6 +104,7 @@ const PLAYER_SPEED = 165; // px/sec
 
 const KEY_PRICE = 50;
 const GATE_X = 1410; // the locked gate; blocks progress until unlocked
+const ROOK_TIMEOUT_MS = 5000; // Rook's timed choice: decide within 5s or freeze
 
 /** World-space render layers (under the camera) + the screen-space HUD. The
  *  dialogue box rides DIALOGUE_LAYERS (screen); bubbles ride BUBBLE_LAYER. */
@@ -295,6 +304,11 @@ const GUARD: DialogueScript = {
               text: "Unlock it with the rusty key",
               target: "open",
               condition: call("has_item", lit("rusty-key")),
+              // Show the gate greyed-out before you own the key (Disco-Elysium
+              // style), so the player learns what's needed instead of seeing it
+              // vanish. "Not yet" stays enabled, so the step never soft-locks.
+              presentation: "disabled",
+              disabledReason: "needs the rusty key",
             },
             { text: "Not yet", target: "bye" },
           ],
@@ -324,6 +338,46 @@ const GUARD: DialogueScript = {
     bye: {
       id: "bye",
       steps: [{ kind: "say", speaker: "bron", text: "No key, no passage." }, { kind: "end" }],
+    },
+  },
+};
+
+/** Rook — a TIMED choice (a recipe, not an engine feature). A non-blocking
+ *  `choice-timer` command before it arms a host-owned countdown; stall too long
+ *  and the host commits the default ("Freeze up", index 1) via `controller.choose`. The
+ *  countdown rides the game clock (see {@link ChoiceTimer}), so pausing the
+ *  conversation must also pause the timer — the example gates it on the pause
+ *  flag. `meta.timeoutMs` rides through to the presenter for a custom countdown. */
+const ROOK: DialogueScript = {
+  id: "rook",
+  start: "n",
+  speakers: { rook: { id: "rook", name: "Rook", color: 0xff6b6b } },
+  nodes: {
+    n: {
+      id: "n",
+      steps: [
+        { kind: "say", speaker: "rook", text: "The guard's rounding the corner. Run or bluff — [b]fast[/b]!" },
+        // Non-blocking command BEFORE the choice: it just arms the host timer.
+        { kind: "command", commands: [{ type: "choice-timer", ms: ROOK_TIMEOUT_MS, default: 1 }] },
+        {
+          kind: "choice",
+          speaker: "rook",
+          text: "Well?",
+          meta: { timeoutMs: ROOK_TIMEOUT_MS },
+          options: [
+            { text: "Bluff it out", target: "bluff" },
+            { text: "Freeze up", target: "freeze" }, // index 1 — the timeout default
+          ],
+        },
+      ],
+    },
+    bluff: {
+      id: "bluff",
+      steps: [{ kind: "say", speaker: "rook", text: "Ha — smooth. The guard waved us right through." }, { kind: "end" }],
+    },
+    freeze: {
+      id: "freeze",
+      steps: [{ kind: "say", speaker: "rook", text: "…You froze. We got lucky the guard was bored." }, { kind: "end" }],
     },
   },
 };
@@ -779,6 +833,97 @@ class LifecycleControls extends Component {
   }
 }
 
+// ── timed-choice recipe: host-owned countdown on the game clock ───────────────
+
+/**
+ * Timed choices aren't an engine feature — they're this recipe. A non-blocking
+ * `choice-timer` command stashes `{ ms, default }`; the timer arms when the menu
+ * is shown and commits the default option via `controller.choose` on expiry.
+ * Two rules keep it honest:
+ *
+ *   • **Re-arm/cancel on every `DialogueChoiceShownEvent`** (and cancel on
+ *     choice-made / ended). Without it, a timer armed for one menu could fire
+ *     into a LATER, unrelated menu — the dangling-timer footgun.
+ *   • **The countdown runs on `update(dt)` — the game clock** — so it must pause
+ *     with the game. `setPaused` freezes the conversation but NOT this component,
+ *     so the timer gates itself on the shared pause flag (pause your own timer).
+ */
+class ChoiceTimer extends Component {
+  private remaining = -1; // ms left; < 0 = disarmed
+  private pending: { ms: number; def: number } | undefined;
+  private def = 0;
+  private label!: TextComponent;
+
+  constructor(
+    private readonly controller: DialogueController,
+    private readonly isPaused: () => boolean,
+  ) {
+    super();
+  }
+
+  onAdd(): void {
+    const e = this.scene.spawn("dlg-timer");
+    e.add(new Transform({ position: new Vec2(WIDTH / 2, 70) }));
+    this.label = e.add(
+      new TextComponent({
+        text: "",
+        style: { fontSize: 20, fill: 0xff6b6b, fontFamily: "sans-serif" },
+        layer: HUD_LAYER,
+        anchor: { x: 0.5, y: 0.5 },
+      }),
+    );
+    this.label.text.visible = false;
+
+    this.entity.on(DialogueChoiceShownEvent, () => this.onShown());
+    this.entity.on(DialogueChoiceMadeEvent, () => this.cancel());
+    this.entity.on(DialogueEndedEvent, () => this.cancel());
+  }
+
+  /** The `choice-timer` command handler stashes its params here. */
+  arm(ms: number, def: number): void {
+    this.pending = { ms, def };
+  }
+
+  private onShown(): void {
+    this.remaining = -1; // guard: drop any prior timer first…
+    if (this.pending) {
+      // …then re-arm only if THIS menu is timed.
+      this.remaining = this.pending.ms;
+      this.def = this.pending.def;
+      this.pending = undefined;
+    }
+    this.refresh();
+  }
+
+  private cancel(): void {
+    this.remaining = -1;
+    this.pending = undefined;
+    this.label.text.visible = false;
+  }
+
+  update(dt: number): void {
+    if (this.remaining < 0 || this.isPaused()) return; // pause your own timer
+    this.remaining -= dt;
+    if (this.remaining <= 0) {
+      const def = this.def;
+      this.remaining = -1;
+      this.label.text.visible = false;
+      this.controller.choose(def); // commit the default on expiry
+      return;
+    }
+    this.refresh();
+  }
+
+  private refresh(): void {
+    if (this.remaining < 0) {
+      this.label.text.visible = false;
+      return;
+    }
+    this.label.setText(`⏳ ${Math.ceil(this.remaining / 1000)}s`);
+    this.label.text.visible = true;
+  }
+}
+
 // ── scene ────────────────────────────────────────────────────────────────────
 
 class RoomScene extends Scene {
@@ -844,6 +989,9 @@ class RoomScene extends Scene {
     const functions: Record<string, DialogueFunction> = {
       has_item: (id) => state.inventory.has(String(id)),
     };
+    // Forward-declared so the `choice-timer` handler (installed on the controller
+    // below) can reach the ChoiceTimer component created after it.
+    let choiceTimer: ChoiceTimer | undefined;
     const commands: Record<string, CommandHandler> = {
       "give-gold": (cmd) => {
         state.gold += Number(cmd.amount);
@@ -855,6 +1003,8 @@ class RoomScene extends Scene {
         state.inventory.delete(String(cmd.id));
       },
       "open-gate": () => gate.open(),
+      // Timed-choice recipe: just stash the params; ChoiceTimer arms on show.
+      "choice-timer": (cmd) => choiceTimer?.arm(Number(cmd.ms), Number(cmd.default)),
     };
 
     const bitmapFont = this.bitmapFont;
@@ -883,6 +1033,10 @@ class RoomScene extends Scene {
     hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE_MS : null);
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoice(e.text));
+
+    // Host-owned timer for Rook's timed choice. Gated on `lifecycle.paused`
+    // so P freezes the countdown along with the conversation.
+    choiceTimer = host.add(new ChoiceTimer(interactive, () => lifecycle.paused));
 
     // The player idles while a conversation owns input, and while paused.
     const busy = (): boolean => interactive.isActive() || lifecycle.paused;
@@ -928,6 +1082,7 @@ class RoomScene extends Scene {
     talker(280, 0xffd866, "Mira", "Talk to Mira (F)", MIRA);
     talker(520, 0x9ad17e, "Quinn", "Talk to the Quartermaster (F)", QUARTERMASTER);
     talker(760, 0xe6a3ff, "Vex", "Trade with Vex (F)", MERCHANT);
+    talker(1040, 0xff6b6b, "Rook", "Talk to Rook (F)", ROOK);
     talker(GATE_X - 70, 0xff9a6b, "Bron", "Talk to the Guard (F)", GUARD);
 
     // Sage (bubble) on his own bench.

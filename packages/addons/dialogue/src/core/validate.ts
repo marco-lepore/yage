@@ -198,6 +198,7 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
           checkTokens(c.text);
           for (const opt of c.options) {
             checkTokens(opt.text);
+            checkTokens(opt.disabledReason);
             checkCondition(opt.condition, `${where} choice option "${opt.text}"`);
             checkCommands(opt.commands, `${where} choice option "${opt.text}"`);
           }

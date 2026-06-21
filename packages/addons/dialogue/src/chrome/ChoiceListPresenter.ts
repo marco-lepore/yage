@@ -11,7 +11,12 @@ import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
-import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import {
+  makeTextOptions,
+  choiceRowLabel,
+  DISABLED_CHOICE_ALPHA,
+  type FontConfig,
+} from "./textOptions.js";
 
 export interface ChoiceListConfig extends FontConfig {
   readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
@@ -29,6 +34,7 @@ export interface ChoiceListConfig extends FontConfig {
 interface ChoiceRow {
   readonly entity: Entity;
   readonly comp: TextComponent;
+  readonly disabled: boolean;
 }
 
 const CHOICE_GAP = 6;
@@ -68,13 +74,15 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
       entity.add(new Transform()).setPosition(box.x + cfg.padding + 6, y);
       const comp = entity.add(
         new TextComponent(
-          makeTextOptions(cfg, choice.label, cfg.choiceSize, cfg.choiceColor, cfg.layerText),
+          makeTextOptions(cfg, choiceRowLabel(choice), cfg.choiceSize, cfg.choiceColor, cfg.layerText),
         ),
       );
       comp.text.visible = true;
-      this.rows.push({ entity, comp });
+      this.rows.push({ entity, comp, disabled: choice.disabled ?? false });
     });
-    this.highlightAt(0);
+    // Land the initial highlight on the first ENABLED row (the Session re-asserts
+    // this right after; doing it here keeps a stand-alone present() consistent).
+    this.highlightAt(this.firstEnabled());
     this.applyHidden();
   }
 
@@ -88,12 +96,20 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
     this.applyHidden();
   }
 
-  /** Render = rows present AND not hidden. */
+  /** Render = rows present AND not hidden. Disabled rows still show (greyed). */
   private applyHidden(): void {
     for (const row of this.rows) row.comp.text.visible = !this.hidden;
     if (this.highlightBar) {
-      this.highlightBar.gfx.graphics.visible = !this.hidden && this.selected >= 0;
+      const onEnabled = this.selected >= 0 && !this.rows[this.selected]?.disabled;
+      this.highlightBar.gfx.graphics.visible = !this.hidden && onEnabled;
     }
+  }
+
+  /** Display position of the first selectable row (0 if somehow all disabled —
+   *  the runner skips a zero-enabled step, so that case shouldn't arise). */
+  private firstEnabled(): number {
+    const i = this.rows.findIndex((r) => !r.disabled);
+    return i < 0 ? 0 : i;
   }
 
   /** {@link PointerChoiceTarget}: which row (if any) a screen point falls in. */
@@ -127,14 +143,20 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
     if (this.rows.length === 0) return;
     this.selected = MathUtils.clamp(position, 0, this.rows.length - 1);
     this.rows.forEach((row, i) => {
-      row.comp.text.style.fill =
-        i === this.selected ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
+      const active = i === this.selected && !row.disabled;
+      row.comp.text.style.fill = active ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
+      row.comp.text.alpha = row.disabled ? DISABLED_CHOICE_ALPHA : 1;
     });
     this.drawHighlight();
   }
 
   private drawHighlight(): void {
     if (!this.highlightBar || this.selected < 0) return;
+    // A disabled row is never highlighted (nav skips it); clear any stale bar.
+    if (this.rows[this.selected]?.disabled) {
+      this.highlightBar.gfx.draw((g) => g.clear());
+      return;
+    }
     const { box, cfg } = { box: this.cfg.box, cfg: this.cfg };
     const lineH = cfg.choiceSize + CHOICE_GAP;
     const n = this.rows.length;

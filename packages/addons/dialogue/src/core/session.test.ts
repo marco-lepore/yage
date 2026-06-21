@@ -529,6 +529,337 @@ describe("DialogueSession — choices", () => {
   });
 });
 
+describe("DialogueSession — disabled choices", () => {
+  // "Force the door" is gated on `hasKey` (false) but shown disabled with a
+  // reason; "Walk away" is always enabled. The runner keeps ≥1 enabled, so the
+  // step never soft-locks.
+  const disabledScript: DialogueScript = {
+    id: "dis",
+    start: "a",
+    declare: { hasKey: false, str: 8 },
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          {
+            kind: "choice",
+            text: "The door is barred.",
+            options: [
+              {
+                text: "Force the door",
+                target: "L",
+                condition: "hasKey",
+                presentation: "disabled",
+                disabledReason: "Requires {str} strength",
+              },
+              { text: "Walk away", target: "R" },
+            ],
+          },
+        ],
+      },
+      L: { id: "L", steps: [{ kind: "say", text: "forced" }] },
+      R: { id: "R", steps: [{ kind: "say", text: "left" }] },
+    },
+  };
+
+  it("presents a disabled row with its i18n-resolved reason and highlights the first enabled", () => {
+    const onChoiceShown = vi.fn();
+    const h = makeHarness({ onChoiceShown });
+    h.session.play(disabledScript);
+    const row = h.choices.presented.at(-1)!.choices;
+    expect(row.map((c) => c.label)).toEqual(["Force the door", "Walk away"]);
+    expect(row[0]!.disabled).toBe(true);
+    expect(row[0]!.disabledReason).toBe("Requires 8 strength"); // {str} interpolated
+    expect(row[1]!.disabled).toBeUndefined();
+    // Initial highlight lands on the first ENABLED row (index 1), not row 0.
+    expect(h.choices.highlights.at(-1)).toBe(1);
+    // The shown-options event still lists every visible label.
+    expect(onChoiceShown).toHaveBeenCalledWith({ options: ["Force the door", "Walk away"] });
+  });
+
+  it("confirm / choose / pointer-commit all refuse a disabled row", async () => {
+    const onChoiceMade = vi.fn();
+    const h = makeHarness({ onChoiceMade });
+    h.session.play(disabledScript);
+
+    h.session.choose(0); // by original index — disabled, refused
+    h.session.confirmAt(0); // by display position — disabled, refused
+    h.choices.onChoiceChosen?.(0); // presenter pointer-commit — refused
+    expect(onChoiceMade).not.toHaveBeenCalled();
+
+    // The enabled row still commits.
+    h.session.confirm(); // selected is the first enabled (Walk away)
+    expect(onChoiceMade).toHaveBeenCalledWith({ index: 1, text: "Walk away" });
+    await flush();
+    expect(h.text.lastText).toBe("left");
+  });
+
+  it("selectAt skips a disabled row (cursor stays, no selection event)", () => {
+    const onSelectionChanged = vi.fn();
+    const h = makeHarness({ onSelectionChanged });
+    h.session.play(disabledScript); // selected = 1 (Walk away)
+    const before = h.choices.highlights.length;
+    h.session.selectAt(0); // disabled row — ignored
+    expect(h.choices.highlights.length).toBe(before);
+    expect(onSelectionChanged).not.toHaveBeenCalled();
+  });
+
+  it("moveSelection skips disabled rows, firing ONE selection-changed for the landed row", () => {
+    const onSelectionChanged = vi.fn();
+    const script: DialogueScript = {
+      id: "nav",
+      start: "a",
+      declare: { gate: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "a", target: "z" },
+                { text: "b", target: "z", condition: "gate", presentation: "disabled" },
+                { text: "c", target: "z" },
+              ],
+            },
+          ],
+        },
+        z: { id: "z", steps: [{ kind: "say", text: "z" }] },
+      },
+    };
+    const h = makeHarness({ onSelectionChanged });
+    h.session.play(script); // selected = 0 (a); row 1 (b) disabled
+    h.session.moveSelection(1); // skips disabled b → lands on c (display index 2)
+    expect(h.choices.highlights.at(-1)).toBe(2);
+    expect(onSelectionChanged).toHaveBeenCalledTimes(1);
+    expect(onSelectionChanged).toHaveBeenCalledWith({ index: 2, text: "c" });
+
+    // Wrapping the other way also skips the disabled row in one event.
+    onSelectionChanged.mockClear();
+    h.session.moveSelection(-1); // c → (skip b) → a
+    expect(h.choices.highlights.at(-1)).toBe(0);
+    expect(onSelectionChanged).toHaveBeenCalledTimes(1);
+    expect(onSelectionChanged).toHaveBeenCalledWith({ index: 0, text: "a" });
+  });
+
+  it("skips a choice step whose every option is disabled (no soft-lock)", async () => {
+    const script: DialogueScript = {
+      id: "soft-lock",
+      start: "a",
+      declare: { ok: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { text: "x", target: "z", condition: "ok", presentation: "disabled", disabledReason: "no" },
+              ],
+            },
+            { kind: "say", text: "fallthrough" },
+          ],
+        },
+        z: { id: "z", steps: [{ kind: "say", text: "z" }] },
+      },
+    };
+    const h = makeHarness();
+    h.session.play(script);
+    await flush();
+    expect(h.session.isChoosing()).toBe(false);
+    expect(h.text.lastText).toBe("fallthrough");
+  });
+});
+
+describe("DialogueSession — timed-choice recipe", () => {
+  /**
+   * A faithful host-side implementation of the timed-choice recipe, running on a
+   * manual clock (the host's own clock — pause is the game's policy). A
+   * `choice-timer` command before the choice step stashes `{ ms, default }`; the
+   * timer arms when the menu is shown and commits the default via `choose` on
+   * expiry. Re-arm/cancel on EVERY choice-shown is the dangling-timer guard.
+   */
+  class ChoiceTimer {
+    private remaining = -1;
+    private pending: { ms: number; def: number } | undefined;
+    private def = 0;
+    private session: DialogueSession | undefined;
+    /** When false, choice-made does NOT cancel — used to isolate the
+     *  choice-shown guard in the dangling-timer test. */
+    constructor(private readonly cancelOnChoiceMade = true) {}
+    /** Wire the session after the harness exists (avoids a forward `let`). */
+    bind(session: DialogueSession): void {
+      this.session = session;
+    }
+    /** The `choice-timer` command handler stashes its params here. */
+    arm(ms: number, def: number): void {
+      this.pending = { ms, def };
+    }
+    onChoiceShown(): void {
+      this.remaining = -1; // guard: drop any prior running timer first…
+      if (this.pending) {
+        this.remaining = this.pending.ms; // …then re-arm only if THIS menu is timed
+        this.def = this.pending.def;
+        this.pending = undefined; // consume — a later untimed menu won't re-arm
+      }
+    }
+    onChoiceMade(): void {
+      if (this.cancelOnChoiceMade) this.cancel();
+    }
+    onEnded(): void {
+      this.cancel();
+    }
+    cancel(): void {
+      this.remaining = -1;
+      this.pending = undefined;
+    }
+    get armed(): boolean {
+      return this.remaining >= 0;
+    }
+    /** Host clock tick. */
+    tick(dt: number): void {
+      if (this.remaining < 0) return;
+      this.remaining -= dt;
+      if (this.remaining <= 0) {
+        const d = this.def;
+        this.remaining = -1;
+        this.session?.choose(d);
+      }
+    }
+  }
+
+  const TIMEOUT = 5000;
+  const timedScript: DialogueScript = {
+    id: "timed",
+    start: "a",
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          { kind: "command", commands: [{ type: "choice-timer", ms: TIMEOUT, default: 1 }] },
+          {
+            kind: "choice",
+            text: "Quick — what do you do?",
+            meta: { timeoutMs: TIMEOUT },
+            options: [
+              { text: "Fight", target: "fight" },
+              { text: "Hesitate", target: "hesitate" }, // index 1 = the default
+            ],
+          },
+        ],
+      },
+      fight: { id: "fight", steps: [{ kind: "say", text: "fought" }] },
+      hesitate: { id: "hesitate", steps: [{ kind: "say", text: "hesitated" }] },
+    },
+  };
+
+  it("commits the default option on expiry and passes meta.timeoutMs to the presenter", async () => {
+    const timer = new ChoiceTimer();
+    const h = makeHarness({
+      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.ms), Number(cmd.default)) },
+      onChoiceShown: () => timer.onChoiceShown(),
+      onChoiceMade: () => timer.onChoiceMade(),
+      onEnded: () => timer.onEnded(),
+    });
+    timer.bind(h.session);
+    h.session.play(timedScript);
+    await flush();
+
+    expect(h.session.isChoosing()).toBe(true);
+    // The step's meta rides through to the presenter for a countdown.
+    expect(h.choices.presented.at(-1)?.context?.meta).toEqual({ timeoutMs: TIMEOUT });
+    expect(timer.armed).toBe(true);
+
+    // No player input: the timer expires and fires the default (index 1).
+    timer.tick(TIMEOUT);
+    await flush();
+    expect(h.text.lastText).toBe("hesitated");
+  });
+
+  it("a manual pick before expiry cancels the timer (default never fires)", async () => {
+    const timer = new ChoiceTimer();
+    const h = makeHarness({
+      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.ms), Number(cmd.default)) },
+      onChoiceShown: () => timer.onChoiceShown(),
+      onChoiceMade: () => timer.onChoiceMade(),
+      onEnded: () => timer.onEnded(),
+    });
+    timer.bind(h.session);
+    h.session.play(timedScript);
+    await flush();
+
+    h.session.choose(0); // pick Fight before the timer expires
+    await flush();
+    expect(timer.armed).toBe(false); // choice-made cancelled it
+    timer.tick(TIMEOUT * 2); // late tick — nothing left to fire
+    await flush();
+    expect(h.text.lastText).toBe("fought");
+  });
+
+  it("the choice-shown guard alone defuses a dangling timer reaching a later menu", async () => {
+    // Recipe variant that does NOT cancel on choice-made, so the ONLY thing that
+    // can stop a stale timer is the re-arm/cancel on the next choice-shown — the
+    // guard the docs require verbatim.
+    const script: DialogueScript = {
+      id: "dangling",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            { kind: "command", commands: [{ type: "choice-timer", ms: 100, default: 1 }] },
+            {
+              kind: "choice",
+              text: "A (timed)",
+              options: [
+                { text: "to B", target: "b" }, // index 0
+                { text: "default A", target: "zA" }, // index 1 (timed default)
+              ],
+            },
+          ],
+        },
+        b: {
+          id: "b",
+          steps: [
+            {
+              kind: "choice",
+              text: "B (untimed)",
+              options: [
+                { text: "stay", target: "b" },
+                { text: "go", target: "zB" },
+              ],
+            },
+          ],
+        },
+        zA: { id: "zA", steps: [{ kind: "say", text: "default-A-fired" }] },
+        zB: { id: "zB", steps: [{ kind: "say", text: "left-B" }] },
+      },
+    };
+    const timer = new ChoiceTimer(false); // deliberately NO onChoiceMade cancel
+    const h = makeHarness({
+      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.ms), Number(cmd.default)) },
+      onChoiceShown: () => timer.onChoiceShown(),
+      onEnded: () => timer.onEnded(),
+    });
+    timer.bind(h.session);
+    h.session.play(script);
+    await flush();
+    expect(timer.armed).toBe(true); // menu A armed it
+
+    h.session.choose(0); // reach untimed menu B before expiry
+    await flush();
+    expect(h.session.isChoosing()).toBe(true);
+    // B's choice-shown cancelled the leftover timer (and didn't re-arm — B is
+    // untimed). Without the guard it would still be armed for A's default.
+    expect(timer.armed).toBe(false);
+
+    timer.tick(1000); // long past A's 100ms timeout
+    await flush();
+    // No stray default fired into B; we're still choosing on B.
+    expect(h.session.isChoosing()).toBe(true);
+  });
+});
+
 describe("DialogueSession — commands by timing", () => {
   it("fires `show`-timed commands when the line appears", async () => {
     const onCommand = vi.fn();

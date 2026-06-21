@@ -84,7 +84,8 @@ const script = defineScript({
 Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 - `SayStep`: `text` (+ optional i18n `key`), `speaker?`, `expression?`, `speed?`,
   `autoAdvanceMs?`, `commands?`, `view?`, `meta?`, `voice?`.
-- `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `commands?`, `meta?`.
+- `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `presentation?`
+  (`"hidden"` default | `"disabled"`), `disabledReason?`, `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
 - `Condition`: a variable name (truthy), the atomic `{ var, op, value }` (op =
   `== != > >= < <= truthy falsy`), an `Expr` tree (see below), or `(vars) =>
@@ -142,6 +143,27 @@ live-refresh while open.
   (declared default or `storage.has`), every called function installed, every
   command type handled (`commands`/`fallbackCommand`), no `set` target that's a
   function, no declared-default/storage type conflict. Throws `DialoguePlayError`.
+
+### Disabled choices (greyed, non-selectable)
+
+`ChoiceOption.presentation` decides what a **false condition** does. Default
+`"hidden"` filters the option out (the original behavior); `"disabled"` keeps it
+on screen greyed-out and non-selectable — the Disco-Elysium "[Strength 8] Force
+the door" pattern, so the player learns the gate exists. `disabledReason?: string`
+shows beside the row where the layout allows (i18n-resolved: `{token}`s
+interpolate; there is no separate i18n `key`). `PresentedChoice` carries
+`disabled?` / `disabledReason?` for presenters.
+
+- A spent `once` option is **always** hidden — `presentation` governs condition
+  failures only, never a consumed one-shot.
+- A step whose ENABLED count is zero is **skipped** (same fall-through as the
+  all-hidden path) — a disabled row never soft-locks; it needs ≥1 enabled sibling.
+- The Session starts the highlight on the **first enabled** row;
+  `moveSelection`/`selectAt` skip disabled rows (a multi-row skip fires ONE
+  `DialogueSelectionChangedEvent`, for the landed row); `confirm` / `choose` /
+  the pointer commit refuse a disabled row.
+- Default presenters grey disabled rows and append the reason in parentheses
+  (list + bubble); the experimental radial wheel greys without a reason.
 
 ## Inline markup (`parseMarkup` / `stripMarkup`)
 
@@ -288,6 +310,42 @@ Events (entity → scene bubbling): `DialogueStartedEvent`, `DialogueLineEvent`
 (`{ scriptId }`), `DialogueAutoAdvanceEvent` (`{ scriptId }`). Observation is
 events-only: the reveal-completed seam is session-owned (no public mutable field
 a game can clobber).
+
+## Timed choices — a recipe, not a feature
+
+There is no `timeoutMs` in the model. Express a timed choice with a non-blocking
+`choice-timer` command before the choice step: the host arms a timer **on its own
+clock** and commits a default with `controller.choose(default)` on expiry. The
+one addon hook is `ChoiceContext.meta` — the choice step's `meta` passes through,
+so a custom choice presenter can render a countdown from `meta.timeoutMs`.
+
+```ts
+// script: a non-blocking timer command, then the choice (meta carries the budget)
+{ kind: "command", commands: [{ type: "choice-timer", ms: 5000, default: 1 }] },
+{ kind: "choice", text: "Quick!", meta: { timeoutMs: 5000 }, options: [
+  { text: "Fight", target: "fight" },
+  { text: "Hesitate", target: "hesitate" }, // index 1 = the default on timeout
+] },
+
+// host: the timer rides YOUR clock; arm/cancel off the dialogue events.
+let pending: { ms: number; def: number } | undefined;
+let remaining = -1, def = 0;
+const commands = { "choice-timer": (c) => { pending = { ms: Number(c.ms), def: Number(c.default) }; } };
+host.on(DialogueChoiceShownEvent, () => {   // dangling-timer guard — re-arm/cancel here
+  remaining = -1;                            // drop any prior timer FIRST…
+  if (pending) { remaining = pending.ms; def = pending.def; pending = undefined; } // …then re-arm if timed
+});
+host.on(DialogueChoiceMadeEvent, () => { remaining = -1; pending = undefined; });
+host.on(DialogueEndedEvent,      () => { remaining = -1; pending = undefined; });
+// in your own update(dt): pause it yourself when you pause the conversation
+if (remaining >= 0 && !paused) { remaining -= dt; if (remaining <= 0) { remaining = -1; controller.choose(def); } }
+```
+
+- **Re-arm/cancel on every `DialogueChoiceShownEvent`** is load-bearing: without
+  it a timer armed for one menu fires into a LATER, unrelated menu.
+- The timer is on the **host** clock, so `setPaused` does NOT freeze it — pause
+  your own timer with whatever pauses the conversation.
+- `default` must be an **enabled** option index (a disabled/filtered one is refused).
 
 ## Channels + presenters (L3 capability channels)
 

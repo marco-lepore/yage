@@ -39,3 +39,24 @@ export function makeTextOptions(
   else if (fonts.resolution !== undefined) base.resolution = fonts.resolution;
   return base;
 }
+
+/** Opacity applied to a disabled (non-selectable) choice row, so the default
+ *  presenters grey it out without needing a dedicated theme colour. */
+export const DISABLED_CHOICE_ALPHA = 0.4;
+
+/**
+ * A choice row's display text: the label, plus its `disabledReason` in
+ * parentheses when the row is disabled and carries one. Parens (not an em-dash)
+ * keep it renderable on baked bitmap-font atlases that may omit punctuation
+ * glyphs. Used by the single-line list/bubble presenters; the radial wheel has
+ * no room for a reason and shows the bare label.
+ */
+export function choiceRowLabel(choice: {
+  readonly label: string;
+  readonly disabled?: boolean | undefined;
+  readonly disabledReason?: string | undefined;
+}): string {
+  return choice.disabled && choice.disabledReason
+    ? `${choice.label} (${choice.disabledReason})`
+    : choice.label;
+}
