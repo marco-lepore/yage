@@ -17,7 +17,7 @@ import { DialogueChrome } from "../chrome/DialogueChrome.js";
 import { ChoiceListPresenter } from "../chrome/ChoiceListPresenter.js";
 import { DialogueTextView } from "../render/DialogueTextView.js";
 import type { DialogueBundle } from "../DialogueController.js";
-import type { DialogueTheme } from "./theme.js";
+import { boxFrameStyles, type DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
 import { themeFonts } from "./themeFonts.js";
 
@@ -34,6 +34,8 @@ export function createBoxDialogue(theme: DialogueTheme = defaultTheme()): Dialog
     nameColor: theme.nameColor,
     nameSize: theme.nameSize,
     indicatorColor: theme.indicatorColor,
+    caret: theme.caret,
+    frameStyles: boxFrameStyles(theme.textured),
     layerFrame: theme.layerFrame,
     layerText: theme.layerText,
     ...fonts,
@@ -46,6 +48,7 @@ export function createBoxDialogue(theme: DialogueTheme = defaultTheme()): Dialog
     choiceColor: theme.choiceColor,
     choiceSelectedColor: theme.choiceSelectedColor,
     highlightColor: theme.highlightColor,
+    choiceGap: theme.choiceGap,
     layerFrame: theme.layerFrame,
     layerText: theme.layerText,
     ...fonts,
@@ -53,9 +56,9 @@ export function createBoxDialogue(theme: DialogueTheme = defaultTheme()): Dialog
 
   // Body text region: inset by padding, below the name plate.
   const text = new DialogueTextView({
-    size: theme.textSize,
+    textSize: theme.textSize,
     lineHeight: theme.lineHeight,
-    defaultColor: theme.textColor,
+    textColor: theme.textColor,
     charsPerSec: theme.charsPerSec,
     layer: theme.layerText,
     box: {

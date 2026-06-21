@@ -53,7 +53,7 @@ export class BubbleTextView extends DialogueTextView {
       box: { x: 0, y: 0, width: bubble.maxWidth - 2 * bubble.padding },
     });
     this.body = {
-      textSize: cfg.size,
+      textSize: cfg.textSize,
       lineHeight: cfg.lineHeight,
       fontFamily: cfg.fontFamily,
       bitmapFont: cfg.bitmapFont,

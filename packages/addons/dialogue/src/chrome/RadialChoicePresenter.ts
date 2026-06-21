@@ -26,7 +26,8 @@ export interface RadialChoiceConfig extends FontConfig {
   readonly choiceColor: number;
   readonly choiceSelectedColor: number;
   readonly hubColor: number;
-  readonly size: number;
+  /** Choice label size (px) — matches the theme's `choiceSize`. */
+  readonly choiceSize: number;
   readonly layerFrame: string;
   readonly layerText: string;
 }
@@ -76,7 +77,7 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
           makeTextOptions(
             this.cfg,
             choice.label,
-            this.cfg.size,
+            this.cfg.choiceSize,
             this.cfg.choiceColor,
             this.cfg.layerText,
             { x: 0.5, y: 0.5 },

@@ -378,19 +378,64 @@ binding.
 
 ## Theming
 
-`DialogueTheme` is one flat data object: `box`, `padding`, frame colours,
-`nameColor/Size`, `textSize/lineHeight/textColor/charsPerSec`, choice colours,
-fonts (`bitmapFont/fontFamily/resolution` — the shared `FontConfig` triplet every
-presenter config extends), `layerFrame/layerText`, `skipMultiplier?`.
-`defaultTheme()` returns a fresh zero-asset instance — spread to tweak:
-`{ ...defaultTheme(), textColor: 0xff0000 }`. Known limitation: the `textured?`
-theme field exists but is NOT consumed by anything yet (a nine-slice chrome
-branch is planned; until it lands the Graphics chrome is the only frame).
+`DialogueTheme` is one flat data object: `box`, `padding`, frame colours
+(`frameColor/frameAlpha/borderColor/cornerRadius`), `nameColor/Size`,
+`indicatorColor`, `caret?` (`{ blinkMs?, size? }`),
+`textSize/lineHeight/textColor/charsPerSec`, choice colours, `choiceGap?`,
+`tailLean?` (bubble tail tip), fonts (`bitmapFont/fontFamily/resolution` — the
+shared `FontConfig` triplet every presenter config extends), `layerFrame/layerText`,
+`skipMultiplier?`, `textured?`. `defaultTheme()` returns a fresh zero-asset
+instance — spread to tweak: `{ ...defaultTheme(), textColor: 0xff0000 }`.
+Presenter-config field names match theme field names exactly (theme `frameColor`
+→ config `frameColor`), so the mapping is mechanical; a test asserts every theme
+field reaches a presenter.
 
 - **Default**: Graphics chrome + canvas text (`fontFamily`). Zero assets.
 - **Bitmap fonts** (opt-in): set `bitmapFont` (baked via `installBitmapFont`)
   for a crisp pixel atlas. Bold/italic are synthesised on the regular atlas
   (skew + double-draw); there are no variant-atlas fields.
+- **Textured nine-slice** (opt-in): `theme.textured` is a MAP of named
+  `ChromeStyle`s — `{ frame: { texture, insets }, bubble?: { texture, insets } }`
+  — drawn through renderer's `createNineSlice` (no pixi peer; `texture` is an
+  asset key or `Texture`, `insets` the four nine-slice border widths). The box
+  frame is chosen **per line** by its `meta.chrome` key: a named style → that
+  nine-slice; the built-in `"none"` → no frame (full-bleed line); missing/unknown
+  → the `"default"` style's frame if present, else the drawn Graphics rect. The
+  speech bubble renders the `"default"` style's `bubble` (content-sized per line);
+  `meta.chrome` is box-only.
+
+```ts
+const theme = {
+  ...defaultTheme(),
+  textured: {
+    default: {
+      frame: { texture: "ui/box", insets: { left: 16, top: 16, right: 16, bottom: 16 } },
+      bubble: { texture: "ui/bubble", insets: { left: 12, top: 12, right: 12, bottom: 12 } },
+    },
+    parchment: { frame: { texture: "ui/parchment", insets: { left: 16, top: 16, right: 16, bottom: 16 } } },
+  },
+};
+```
+
+The `meta.chrome` key — YAML writes `meta` directly; Yarn uses a `#chrome:`
+hashtag (unrecognised hashtags already fold into `meta`):
+
+```yaml
+- { speaker: hero, text: "An ornate proclamation.", meta: { chrome: parchment } }
+- { text: "The cave swallows your words.", meta: { chrome: none } }
+```
+
+```
+Hero: An ornate proclamation. #chrome:parchment
+The cave swallows your words. #chrome:none
+```
+
+**Choice overflow**: the box choice list grows **upward** to fit its rows
+(labels word-wrap; multi-line rows allowed), capped at the screen top — row
+placement, the highlight, and pointer hit-testing all derive from one geometry
+pass, so a long list can't escape its hit-targets. A list longer than the
+presenter's `softMaxChoices` (default 8) logs a soft-cap advisory but still
+renders.
 
 ## Experimental radial choice presenter
 

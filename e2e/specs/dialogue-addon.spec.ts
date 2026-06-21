@@ -17,6 +17,7 @@ interface ProbeData {
   selectionIndex: number;
   boxVisible: boolean;
   bubbleVisible: boolean;
+  texturedVisible: boolean;
 }
 
 /** The controller methods the fixture exposes on `window.__dialogue__`. */
@@ -26,6 +27,19 @@ interface HostHandle {
   moveSelection(delta: number): void;
   setAutoAdvance(ms: number | null): void;
   setHidden(hidden: boolean): void;
+  play(script: unknown): void;
+}
+
+/** Switch the conversation to one of the extra scripts the fixture exposes
+ *  (`hub` for overflow, `textured` for per-line `meta.chrome`). */
+async function playScript(page: Page, name: "hub" | "textured"): Promise<void> {
+  await page.evaluate((key) => {
+    const w = window as unknown as {
+      __dialogue__: HostHandle;
+      __scripts__: Record<string, unknown>;
+    };
+    w.__dialogue__.play(w.__scripts__[key]);
+  }, name);
 }
 
 /**
@@ -196,6 +210,63 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     const p = await probe(page);
     expect(p?.choosing).toBe(true); // reached the choice on its own
     expect(p?.lineCount).toBeGreaterThanOrEqual(3); // walked all three lines
+  });
+
+  test("a nine-option hub stays navigable and commits the last option (overflow)", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+
+    await playScript(page, "hub");
+    await advanceUntilChoosing(page);
+
+    const atHub = await probe(page);
+    expect(atHub?.shownOptions).toHaveLength(9); // all nine rows are presented
+
+    // Keyboard-nav down to the last (grown) row: every row is reachable.
+    await moveSelection(page, 8);
+    await stepFrames(page, 1);
+    expect((await probe(page))?.selectionIndex).toBe(8);
+
+    // The last option still commits — the grown list hit-tests/selects correctly.
+    await choose(page, 8);
+    await stepFrames(page, 4);
+    const after = await probe(page);
+    expect(after?.choiceCount).toBe(1);
+    expect(after?.lastChoice).toContain("Door number 9");
+  });
+
+  test("meta.chrome swaps the box frame style, including the invisible none", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+
+    await playScript(page, "textured");
+    await stepFrames(page, 2);
+
+    // Line 1 → a named textured nine-slice: the nine-slice host shows, the drawn
+    // Graphics frame does not.
+    await advanceUntilLine(page, "Parchment");
+    await stepFrames(page, 1);
+    const parchment = await probe(page);
+    expect(parchment?.texturedVisible).toBe(true);
+    expect(parchment?.boxVisible).toBe(false);
+
+    // Line 2 → the built-in "none" style: no frame at all.
+    await advanceUntilLine(page, "No frame");
+    await stepFrames(page, 1);
+    const none = await probe(page);
+    expect(none?.texturedVisible).toBe(false);
+    expect(none?.boxVisible).toBe(false);
+
+    // Line 3 → no meta.chrome, no textured "default": the drawn Graphics frame.
+    await advanceUntilLine(page, "default frame");
+    await stepFrames(page, 1);
+    const drawn = await probe(page);
+    expect(drawn?.texturedVisible).toBe(false);
+    expect(drawn?.boxVisible).toBe(true);
   });
 
   test("hide/restore on a bubble line brings back the bubble, not the box frame", async ({
