@@ -1,10 +1,10 @@
 /**
- * MANDATORY composite-forwarding matrix (Design B constraint): every new
+ * MANDATORY composite-forwarding matrix: every new
  * lifecycle verb must reach the sub-presenters through all three composites —
  * the review's recurring bug class was a composite silently NOT forwarding.
  *
  * Matrix: { setVisible, setDiagnostics } × { Chrome, Text, Choice }, plus the
- * verbs unique to one composite (the chrome's F28 restore-active + buffered
+ * verbs unique to one composite (the chrome's restore-active + buffered
  * caret + no-hide-all nameplate; the text's active-gated reveal seam).
  */
 
@@ -132,7 +132,7 @@ class RecChoice implements ChoicePresenter {
 }
 
 describe("composite matrix — setVisible reaches the sub-presenters", () => {
-  it("Chrome: show restores ONLY the active variant, hide retains it (F28)", () => {
+  it("Chrome: show restores ONLY the active variant, hide retains it", () => {
     const box = new RecChrome();
     const bubble = new RecChrome();
     const c = new CompositeChrome(box, bubble);
@@ -204,7 +204,7 @@ describe("composite matrix — setDiagnostics reaches both sub-presenters", () =
 });
 
 describe("composite matrix — chrome-specific verbs", () => {
-  it("setNameplate(undefined) forwards a name-clear to the active variant, NOT a hide-all (F41)", () => {
+  it("setNameplate(undefined) forwards a name-clear to the active variant, NOT a hide-all", () => {
     const box = new RecChrome();
     const bubble = new RecChrome();
     const c = new CompositeChrome(box, bubble);
@@ -218,7 +218,7 @@ describe("composite matrix — chrome-specific verbs", () => {
     expect(box.visibles.length).toBe(hidesBefore); // and did NOT hide the chrome
   });
 
-  it("re-applies the buffered caret to the restored variant on show (F28)", () => {
+  it("re-applies the buffered caret to the restored variant on show", () => {
     const box = new RecChrome();
     const bubble = new RecChrome();
     const c = new CompositeChrome(box, bubble);
@@ -245,7 +245,7 @@ describe("composite matrix — chrome-specific verbs", () => {
   });
 });
 
-describe("composite matrix — text reveal seam (D4 / F34)", () => {
+describe("composite matrix — text reveal seam", () => {
   it("forwards the ACTIVE sub-view's reveal and ignores the inactive one's", () => {
     const box = new RecText();
     const bubble = new RecText();

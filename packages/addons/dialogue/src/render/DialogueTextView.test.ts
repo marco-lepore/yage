@@ -169,7 +169,7 @@ describe("DialogueTextView — delta reveal (F16)", () => {
   });
 });
 
-describe("DialogueTextView — reveal seam (D4)", () => {
+describe("DialogueTextView — reveal seam", () => {
   it("the reveal listener can't be clobbered by assigning a public field", () => {
     const view = new DialogueTextView(CFG);
     let real = 0;

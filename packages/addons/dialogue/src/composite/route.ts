@@ -1,7 +1,7 @@
 /**
  * The default box-vs-bubble routing shared by the three composite presenters
- * (Design B / D3). Factored out here — not inlined in each composite — because
- * Design C makes routing injectable and reuses this exact function as its
+ * Factored out here — not inlined in each composite — because
+ * a future refactor could make routing injectable and reuse this exact function as its
  * default's core, and because all three composites MUST route identically (a
  * line that goes to the box chrome must also go to the box text + box choices).
  */
@@ -16,7 +16,7 @@ export type CompositeRoute = (
 ) => "box" | "bubble";
 
 /**
- * Default route (D3): a **speakerless** line goes to the **box** — the narrator
+ * Default route: a **speakerless** line goes to the **box** — the narrator
  * convention — regardless of its `view`, since a bubble has no head to float
  * over. A line WITH a speaker honours `view: "bubble"` (else the box). A
  * *positioned* narrator is the documented invisible-anchor recipe: give the

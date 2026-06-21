@@ -25,7 +25,7 @@ export interface BubbleTextLayout {
   readonly height: number;
   readonly padding: number;
   readonly offsetY: number;
-  /** Anchor for a missing/absent speaker with no last-known position (D3).
+  /** Anchor for a missing/absent speaker with no last-known position.
    *  Default world origin; share it with the bubble chrome. */
   readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
@@ -66,7 +66,7 @@ export class BubbleTextView extends DialogueTextView {
     this.sceneRef = scene;
   }
 
-  /** Route the missing-actor warning to the engine Logger (D3). The base view
+  /** Route the missing-actor warning to the engine Logger. The base view
    *  has no diagnostics of its own, so this is an addition, not an override. */
   setDiagnostics(warn: DiagnosticSink): void {
     this.anchors.setDiagnostics(warn);
@@ -90,7 +90,7 @@ export class BubbleTextView extends DialogueTextView {
     });
     this.setBox(0, 0, size.width - 2 * b.padding);
     const speakerId = line.speaker?.id;
-    // Always anchor (D3): a missing actor resolves to the last-known / fallback
+    // Always anchor: a missing actor resolves to the last-known / fallback
     // position via the shared resolver, never pinned at world origin.
     this.setOrigin(() => {
       const a = this.sceneRef

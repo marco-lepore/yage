@@ -24,13 +24,13 @@ export class CompositeTextPresenter implements TextPresenter {
     private readonly route: CompositeRoute = defaultCompositeRoute,
   ) {
     // Each sub-view's reveal forwards to the Session's listener ONLY when that
-    // sub-view is the active one (the F34 composite wrinkle): the inactive view
+    // sub-view is the active one (the composite wrinkle): the inactive view
     // can't fire a stale reveal-completed for a line it isn't showing.
     this.box.setRevealListener(() => this.fireReveal(this.box));
     this.bubble.setRevealListener(() => this.fireReveal(this.bubble));
   }
 
-  /** Register the Session's reveal-completed listener (D4). */
+  /** Register the Session's reveal-completed listener. */
   setRevealListener(listener: (() => void) | undefined): void {
     this.revealListener = listener;
   }
@@ -58,7 +58,7 @@ export class CompositeTextPresenter implements TextPresenter {
     target.setVisible(this.visible); // reflect the master gate immediately
   }
 
-  /** Show/hide the body text (D1) — forwarded to both views (the inactive one is
+  /** Show/hide the body text — forwarded to both views (the inactive one is
    *  cleared, so its setVisible is a no-op); state-preserving on the active. */
   setVisible(visible: boolean): void {
     this.visible = visible;

@@ -122,10 +122,10 @@ export class DialogueTextView implements TextPresenter {
   private readonly effectScratch: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined };
 
   /** Reveal-completed listener, registered by the Session through
-   *  {@link setRevealListener} (D4 — a private seam, not a public field, so a
+   *  {@link setRevealListener} (a private seam, not a public field, so a
    *  game can't clobber the session's wiring). */
   private revealListener?: (() => void) | undefined;
-  /** Master visibility gate (D1 — {@link setVisible}); hides the line WITHOUT
+  /** Master visibility gate ({@link setVisible}); hides the line WITHOUT
    *  clearing it, so a hide/show round-trip resumes mid-typewriter. */
   private hidden = false;
 
@@ -179,7 +179,7 @@ export class DialogueTextView implements TextPresenter {
   }
 
   /**
-   * Show or hide the body text WITHOUT disturbing reveal progress (D1). Toggles
+   * Show or hide the body text WITHOUT disturbing reveal progress. Toggles
    * the laid-out split container's visibility; the per-glyph reveal cursor,
    * timers, and styling are untouched, so a cutscene can hide mid-typewriter and
    * show again to resume exactly where it left off.
@@ -189,7 +189,7 @@ export class DialogueTextView implements TextPresenter {
     this.applyHidden();
   }
 
-  /** Register the reveal-completed listener (D4). Session-owned; pass `undefined`
+  /** Register the reveal-completed listener. Session-owned; pass `undefined`
    *  to clear. Replaces the old public `onRevealComplete` field a game could
    *  clobber. */
   setRevealListener(listener: (() => void) | undefined): void {

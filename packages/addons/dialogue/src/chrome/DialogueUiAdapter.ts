@@ -18,7 +18,7 @@ export type DiagnosticSink = (message: string) => void;
 export interface Mountable {
   mount(scene: Scene): void;
   dispose(): void;
-  /** Optional: receive a diagnostics sink (D3). The controller injects one at
+  /** Optional: receive a diagnostics sink. The controller injects one at
    *  mount so a presenter can report dev-facing issues (a missing actor) through
    *  the engine Logger. Presenters with nothing to report omit it. */
   setDiagnostics?(warn: DiagnosticSink): void;

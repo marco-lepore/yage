@@ -4,9 +4,9 @@
  * calls `setNameplate`/`setContinueVisible` *before* `present`, so those are
  * buffered and applied to whichever variant `present` then selects.
  *
- * Visibility is owned by the Session (Model C / D1): it calls `setVisible(bool)`
+ * Visibility is owned by the Session: it calls `setVisible(bool)`
  * after each transition, and this composite restores **only the active variant**
- * on show — the F28 fix. `active` is therefore RETAINED across a hide (a cutscene
+ * on show. `active` is therefore RETAINED across a hide (a cutscene
  * mid-bubble-line shows the bubble again, not an empty box).
  */
 
@@ -43,14 +43,14 @@ export class CompositeChrome implements ChromePresenter {
 
   setNameplate(name: string | undefined, color?: number): void {
     // Buffer for whichever variant `present` selects, and forward to the active
-    // one. `undefined` means "no name" — NOT a hide-all (that overload died, D1).
+    // one. `undefined` means "no name" — NOT a hide-all (that overload died).
     this.pendingName = { name, color };
     this.active?.setNameplate(name, color);
   }
 
   setContinueVisible(visible: boolean): void {
     // Remember the latest caret intent so a hide/show round-trip can re-apply it
-    // to the restored variant (the F28 buffered-caret path), and forward it now.
+    // to the restored variant (the buffered-caret path), and forward it now.
     this.pendingContinue = visible;
     this.active?.setContinueVisible(visible);
   }
@@ -75,7 +75,7 @@ export class CompositeChrome implements ChromePresenter {
     target.setVisible(this.visible);
   }
 
-  /** Show/hide the chrome (D1). On show, restore ONLY the active variant (F28)
+  /** Show/hide the chrome. On show, restore ONLY the active variant
    *  and re-apply the buffered caret; the other stays hidden. On hide, hide both
    *  but RETAIN `active` so the next show brings back the right one. */
   setVisible(visible: boolean): void {

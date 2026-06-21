@@ -150,7 +150,7 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(p?.lineCount).toBeGreaterThanOrEqual(3); // walked all three lines
   });
 
-  test("hide/restore on a bubble line brings back the bubble, not the box frame (F28)", async ({
+  test("hide/restore on a bubble line brings back the bubble, not the box frame", async ({
     page,
   }) => {
     await gotoFixture(page, "/dialogue-addon.html");
@@ -169,7 +169,7 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(hidden?.bubbleVisible).toBe(false);
     expect(hidden?.boxVisible).toBe(false);
 
-    // Restore: the ACTIVE variant (bubble) must come back — the F28 regression
+    // Restore: the ACTIVE variant (bubble) must come back — the regression
     // was an empty BOX frame appearing here while the bubble stayed hidden.
     await setHidden(page, false);
     await stepFrames(page, 1);

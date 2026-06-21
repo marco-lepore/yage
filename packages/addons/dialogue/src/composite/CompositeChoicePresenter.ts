@@ -58,7 +58,7 @@ export class CompositeChoicePresenter implements ChoicePresenter {
     target.setVisible(this.visible); // reflect the master gate immediately
   }
 
-  /** Show/hide the choices (D1) — forwarded to both (the inactive one is
+  /** Show/hide the choices — forwarded to both (the inactive one is
    *  cleared, so its setVisible is a no-op); state-preserving on the active. */
   setVisible(visible: boolean): void {
     this.visible = visible;

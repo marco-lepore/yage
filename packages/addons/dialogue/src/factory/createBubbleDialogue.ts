@@ -54,7 +54,7 @@ export interface BubbleDialogueOptions {
   readonly bubble?: Partial<BubbleGeometry>;
   /**
    * Where a bubble anchors when its speaker has no live actor and no last-known
-   * position (a never-seen speaker / a narrator in a pure-bubble bundle) — D3.
+   * position (a never-seen speaker / a narrator in a pure-bubble bundle).
    * Defaults to the world origin; point it at your camera centre so a
    * speakerless line lands on screen. A despawned actor uses its last-known
    * position regardless. Shared by the chrome, text, and choice presenters.

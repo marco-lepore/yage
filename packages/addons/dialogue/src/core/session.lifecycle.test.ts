@@ -1,10 +1,10 @@
 /**
- * Design B lifecycle tests (D1–D5): the cutscene/pause/focus levers, the
- * visibility contract, and the new observation events — driving scenarios 1, 2,
- * and 4 at the headless session level. (Scenario 3's missing-actor anchoring is
- * in render/bubbleAnchor.test.ts; scenario 5's input focus is in
- * DialogueController.test.ts; the composite-forwarding matrix is in
- * composite/forwarding.test.ts; F28's variant restore is locked by the e2e.)
+ * Lifecycle tests: the cutscene/pause/focus levers, the
+ * visibility contract, and the new observation events — driving the cutscene,
+ * world-pause, and audio/FX-hook cases at the headless session level. (The
+ * missing-actor anchoring is in render/bubbleAnchor.test.ts; the input focus is
+ * in DialogueController.test.ts; the composite-forwarding matrix is in
+ * composite/forwarding.test.ts; the variant restore is locked by the e2e.)
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -161,7 +161,7 @@ const autoScript: DialogueScript = {
   },
 };
 
-describe("DialogueSession — setHidden (scenario 1: cutscene takeover)", () => {
+describe("DialogueSession — setHidden (cutscene takeover)", () => {
   it("hides every channel on setHidden(true) and restores them on setHidden(false)", () => {
     const h = makeHarness();
     h.session.play(twoLines);
@@ -213,7 +213,7 @@ describe("DialogueSession — setHidden (scenario 1: cutscene takeover)", () => 
   });
 });
 
-describe("DialogueSession — setPaused (scenario 2: world pause)", () => {
+describe("DialogueSession — setPaused (world pause)", () => {
   it("freezes the update loop (reveal + auto-advance) and resumes intact", async () => {
     const h = makeHarness();
     h.session.play(autoScript);
@@ -271,8 +271,7 @@ describe("DialogueSession — setPaused (scenario 2: world pause)", () => {
   });
 
   it("a blocking afterReveal command resolving mid-pause arms the caret + timer and resumes intact", async () => {
-    // The one edge the design notes call out (design-b-lifecycle-events.md
-    // §"Pause + in-flight async"): a blocking command's promise keeps running
+    // The one tricky edge: a blocking command's promise keeps running
     // while paused, so its continuation (handleRevealComplete past its
     // afterReveal await) lands DURING the pause. It must arm the caret +
     // auto-timer and resume cleanly on unpause — and must NOT be "fixed" by
@@ -329,7 +328,7 @@ describe("DialogueSession — setPaused (scenario 2: world pause)", () => {
   });
 });
 
-describe("DialogueSession — observation events (scenario 4: audio/FX hooks)", () => {
+describe("DialogueSession — observation events (audio/FX hooks)", () => {
   it("fires onRevealCompleted with the line's plain text when typing finishes", async () => {
     const onRevealCompleted = vi.fn();
     const h = makeHarness({ onRevealCompleted });
@@ -418,7 +417,7 @@ describe("DialogueSession — observation events (scenario 4: audio/FX hooks)", 
   });
 });
 
-describe("DialogueSession — reveal seam clobber-impossibility (D4)", () => {
+describe("DialogueSession — reveal seam clobber-impossibility", () => {
   it("the Session's reveal handler can't be detached by a game (no public field)", async () => {
     // The TextChannel exposes only setRevealListener — there is no public
     // onRevealComplete field a game could assign to. The session-owned wiring

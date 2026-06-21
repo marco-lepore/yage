@@ -43,7 +43,7 @@ export interface BubbleChromeConfig extends FontConfig {
    *  matching the companion `BubbleTextView`. */
   readonly textSize: number;
   readonly lineHeight: number;
-  /** Anchor for a missing/absent speaker with no last-known position (D3).
+  /** Anchor for a missing/absent speaker with no last-known position.
    *  Default world origin; point it at the camera centre for a pure-bubble
    *  bundle that shows narrator lines. */
   readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
@@ -62,13 +62,13 @@ export class BubbleChrome implements ChromePresenter {
   /** Current (content-sized) bubble size; recomputed per line. */
   private currentWidth: number;
   private currentHeight: number;
-  // Model-C visibility + content sub-state.
+  // Master visibility + content sub-state; rendered = visible && hasLine.
   private visible = false; // master (from setVisible)
   private hasLine = false; // a line is up (from present)
   private nameShown = false; // the speaker has a name to show
   private caretShown = false; // continue caret requested
   /** Speaker id of the line on screen — re-resolved each frame by `follow()` so
-   *  the bubble tracks a live actor and falls back when one is missing (D3). */
+   *  the bubble tracks a live actor and falls back when one is missing. */
   private speakerId: string | undefined;
   private readonly anchors: BubbleAnchorResolver;
 
@@ -78,7 +78,7 @@ export class BubbleChrome implements ChromePresenter {
     this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
   }
 
-  /** Route the missing-actor warning to the engine Logger (D3). */
+  /** Route the missing-actor warning to the engine Logger. */
   setDiagnostics(warn: DiagnosticSink): void {
     this.anchors.setDiagnostics(warn);
   }
@@ -112,7 +112,7 @@ export class BubbleChrome implements ChromePresenter {
 
   /** Re-anchor to the line's speaker, grow to fit the text, and reveal. The
    *  bubble stays visible even when the speaker has no live actor — it anchors
-   *  at the last-known / fallback position (D3) instead of vanishing at origin. */
+   *  at the last-known / fallback position instead of vanishing at origin. */
   present(line: PresentedLine | undefined): void {
     this.hasLine = line !== undefined;
     this.speakerId = line?.speaker?.id;
@@ -146,7 +146,7 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   setNameplate(name: string | undefined): void {
-    // D1: the bubble owns its own nameplate (set from present's speaker); this
+    // the bubble owns its own nameplate (set from present's speaker); this
     // only tracks "no name" (undefined). NOT a covert hide-all — that died.
     if (name === undefined) {
       this.nameShown = false;
@@ -155,14 +155,14 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   setContinueVisible(visible: boolean): void {
-    // D3: no `actor !== undefined` gate — the caret shows for a missing-actor
+    // no `actor !== undefined` gate — the caret shows for a missing-actor
     // line too (the bubble is at the fallback anchor, not hidden).
     this.caretShown = visible;
     this.caretTime = 0;
     this.apply();
   }
 
-  /** Show or hide the whole bubble (D1) — state-preserving: the line, name, and
+  /** Show or hide the whole bubble — state-preserving: the line, name, and
    *  caret content survive a hide, so showing again restores them in place
    *  (used by a composite chrome to hide the bubble while a box line plays). */
   setVisible(visible: boolean): void {
@@ -206,7 +206,7 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   /** Move the bubble + name + caret to sit above the speaker — its live actor,
-   *  or the last-known / fallback anchor when the actor is missing (D3). */
+   *  or the last-known / fallback anchor when the actor is missing. */
   private follow(): void {
     if (!this.scene || !this.hasLine) return;
     const a = this.anchors.resolve(this.scene, this.speakerId);

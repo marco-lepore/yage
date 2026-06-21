@@ -30,7 +30,7 @@ export const DialogueCommandEvent = defineEvent<{ command: Command; mode: RunMod
 export const DialogueEndedEvent = defineEvent<{ scriptId: string }>("dialogue:ended");
 
 /**
- * Lifecycle observation events (Design B / D4). These are the moments games
+ * Lifecycle observation events. These are the moments games
  * actually hook — a "typing finished" blip, a choice-hover tick, skip-used
  * analytics, an auto-advance beat — emitted by the controller from the session's
  * observation callbacks (the one canonical observation path; there are no

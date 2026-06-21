@@ -1,12 +1,12 @@
 /**
- * The ONE shared "where does this speaker's bubble go" resolver (Design B / D3).
+ * The ONE shared "where does this speaker's bubble go" resolver.
  *
  * The three bubble presenters (`BubbleChrome`, `BubbleTextView`,
  * `BubbleChoicePresenter`) all need the same answer for "anchor the bubble for
- * speaker X", including the failure cases the review flagged (F29/F31): a
+ * speaker X", including the failure cases: a
  * despawned NPC, a typo'd speaker, or a speakerless narrator line routed to a
  * pure-bubble bundle. Three independent copies of that logic is exactly the bug
- * class — so it lives here once. (Design C's layout owner absorbs this.)
+ * class — so it lives here once. (A future layout owner can absorb this.)
  *
  * Policy:
  *  - A **live actor** wins: use its head anchor, and refresh the caches.
@@ -36,8 +36,8 @@ export interface AnchorPoint {
  *  instance; the position caches converge frame-to-frame (every resolver sees
  *  the same live actors), but the missing-actor warning dedups *per instance* —
  *  a missing speaker warns at most once per presenter that anchors it (so up to
- *  ~2–3× across a bubble bundle), not once globally. Design C's single layout
- *  owner collapses these into one shared instance. */
+ *  ~2–3× across a bubble bundle), not once globally. A future single layout
+ *  owner could collapse these into one shared instance. */
 export class BubbleAnchorResolver {
   private readonly lastKnown = new Map<string, AnchorPoint>();
   private lastAnchor: AnchorPoint | undefined;

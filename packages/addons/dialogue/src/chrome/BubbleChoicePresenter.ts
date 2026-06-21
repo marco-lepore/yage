@@ -39,7 +39,7 @@ export interface BubbleChoiceConfig extends FontConfig {
   readonly bgAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
-  /** Anchor for a missing/absent speaker with no last-known position (D3).
+  /** Anchor for a missing/absent speaker with no last-known position.
    *  Default world origin; share it with the bubble chrome. */
   readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
@@ -64,7 +64,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   private prompt?: { entity: Entity; comp: TextComponent } | undefined;
   private rows: Row[] = [];
   private selected = -1;
-  /** Master visibility gate (D1) — state-preserving hide/show. */
+  /** Master visibility gate — state-preserving hide/show. */
   private hidden = false;
   private readonly anchors: BubbleAnchorResolver;
 
@@ -74,7 +74,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
   }
 
-  /** Route the missing-actor warning to the engine Logger (D3). */
+  /** Route the missing-actor warning to the engine Logger. */
   setDiagnostics(warn: DiagnosticSink): void {
     this.anchors.setDiagnostics(warn);
   }
@@ -99,7 +99,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.clear();
     if (!this.scene) return;
     const c = this.cfg;
-    // D3: a missing speaker resolves to the last-known / fallback anchor (with a
+    // a missing speaker resolves to the last-known / fallback anchor (with a
     // once-per-speaker warning), never the world origin.
     const a = this.anchors.resolve(this.scene, context?.speaker?.id);
     const innerW = c.width - 2 * c.padding;
@@ -150,7 +150,7 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.applyHidden();
   }
 
-  /** Show or hide the whole panel without clearing it (D1) — state-preserving. */
+  /** Show or hide the whole panel without clearing it — state-preserving. */
   setVisible(visible: boolean): void {
     this.hidden = !visible;
     this.applyHidden();

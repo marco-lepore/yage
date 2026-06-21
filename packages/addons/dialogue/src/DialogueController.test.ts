@@ -152,8 +152,8 @@ describe("DialogueController — play() lifecycle guards (F49)", () => {
   });
 });
 
-describe("DialogueController — input focus + pause gating (D2/D5)", () => {
-  it("setInputEnabled gates the binding poll but keeps the session alive (scenario 5)", () => {
+describe("DialogueController — input focus + pause gating", () => {
+  it("setInputEnabled gates the binding poll but keeps the session alive", () => {
     const { scene } = createMockScene();
     const binding = new RecordingBinding();
     const controller = scene.spawn("dlg").add(makeController(binding));
@@ -172,7 +172,7 @@ describe("DialogueController — input focus + pause gating (D2/D5)", () => {
     expect(binding.polls).toBe(2); // refocused → polled again
   });
 
-  it("two conversations, one interactive: only the focused binding polls (scenario 5)", () => {
+  it("two conversations, one interactive: only the focused binding polls", () => {
     const { scene } = createMockScene();
     const aBinding = new RecordingBinding();
     const bBinding = new RecordingBinding();
@@ -208,7 +208,7 @@ describe("DialogueController — input focus + pause gating (D2/D5)", () => {
   });
 });
 
-describe("DialogueController — observation events forwarded entity→scene (D4)", () => {
+describe("DialogueController — observation events forwarded entity→scene", () => {
   // The session's four new observation callbacks have only ONE consumer: the
   // controller, which turns each into an entity→scene event (no controller-level
   // callback opts). These lock that forwarding seam — the path games subscribe to.
@@ -299,7 +299,7 @@ describe("DialogueController — observation events forwarded entity→scene (D4
   });
 });
 
-describe("DialogueController — levers set before onAdd reach the session (Greptile P1)", () => {
+describe("DialogueController — levers set before onAdd reach the session", () => {
   // setPaused/setHidden forward to the session, which doesn't exist until onAdd.
   // A host that configures the controller BEFORE adding it must not get a
   // half-applied state (paused input but a still-ticking session); onAdd

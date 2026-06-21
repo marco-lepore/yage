@@ -1,6 +1,6 @@
 /**
- * D3 — the ONE shared missing-actor / narrator anchor resolver. Locks the
- * "scenario 3" policy: a bubble line stays readable somewhere sane (last-known,
+ * The ONE shared missing-actor / narrator anchor resolver. Locks the
+ * missing-actor policy: a bubble line stays readable somewhere sane (last-known,
  * near-the-action, or a configurable fallback) instead of vanishing at world
  * origin, and a dev warning fires once per missing speaker through the
  * diagnostics sink — never for an authored narrator line.
@@ -25,7 +25,7 @@ describe("BubbleAnchorResolver — live actor", () => {
   });
 });
 
-describe("BubbleAnchorResolver — missing actor (F29/F31)", () => {
+describe("BubbleAnchorResolver — missing actor", () => {
   it("falls back to the speaker's last-known position when it despawns", () => {
     const { scene } = createMockScene();
     const actor = fakeActor(30, 40);
@@ -56,7 +56,7 @@ describe("BubbleAnchorResolver — missing actor (F29/F31)", () => {
   });
 });
 
-describe("BubbleAnchorResolver — diagnostics (D3 routes to the Logger, not console)", () => {
+describe("BubbleAnchorResolver — diagnostics (routes to the Logger, not console)", () => {
   it("warns once per missing declared speaker through the sink", () => {
     const { scene } = createMockScene();
     const warn = vi.fn();

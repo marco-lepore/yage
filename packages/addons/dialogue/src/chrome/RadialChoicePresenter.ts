@@ -39,7 +39,7 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
   private hub?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private spokes: Spoke[] = [];
   private selected = -1;
-  /** Master visibility gate (D1) — state-preserving hide/show. */
+  /** Master visibility gate — state-preserving hide/show. */
   private hidden = false;
 
   onChoiceChosen?: (position: number) => void;
@@ -95,7 +95,7 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
     this.drawHub();
   }
 
-  /** Show or hide the wheel without clearing it (D1) — state-preserving. */
+  /** Show or hide the wheel without clearing it — state-preserving. */
   setVisible(visible: boolean): void {
     this.hidden = !visible;
     this.applyHidden();

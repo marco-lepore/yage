@@ -24,7 +24,7 @@ export {
 } from "./render/layers.js";
 export { evaluateEffect, effectDrivesTint } from "./render/textEffects.js";
 export type { EffectOutput } from "./render/textEffects.js";
-// Shared missing-actor anchor resolver (D3) — the single owner of bubble
+// Shared missing-actor anchor resolver — the single owner of bubble
 // last-known/fallback positioning, reused by all three bubble presenters.
 export { BubbleAnchorResolver } from "./render/bubbleAnchor.js";
 export type { AnchorPoint } from "./render/bubbleAnchor.js";

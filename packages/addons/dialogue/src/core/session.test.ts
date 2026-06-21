@@ -26,7 +26,7 @@ class StubText implements TextChannel {
   cleared = 0;
   completeRevealCalls = 0;
   speedMultiplier = 1;
-  /** Last value passed to setVisible (D1). */
+  /** Last value passed to setVisible. */
   visible = false;
   private revealing = false;
   private revealListener?: (() => void) | undefined;
@@ -75,7 +75,7 @@ class StubChoices implements ChoiceChannel {
   presented: { choices: readonly PresentedChoice[]; context: ChoiceContext | undefined }[] = [];
   highlights: number[] = [];
   cleared = 0;
-  /** Recorded setVisible(...) calls (D1). */
+  /** Recorded setVisible(...) calls. */
   visibles: boolean[] = [];
   onChoiceChosen?: (position: number) => void;
   private owns = false;
@@ -128,7 +128,7 @@ class StubChrome implements ChromeChannel {
   nameplates: { name: string | undefined; color?: number }[] = [];
   continueVisible: boolean[] = [];
   presented: (PresentedLine | undefined)[] = [];
-  /** Recorded setVisible(...) calls (D1). */
+  /** Recorded setVisible(...) calls. */
   visibles: boolean[] = [];
   setNameplate(name: string | undefined, color?: number): void {
     this.nameplates.push({ name, ...(color !== undefined ? { color } : {}) });
@@ -518,7 +518,7 @@ describe("DialogueSession — choices", () => {
     const h = makeHarness();
     h.choices.setOwnsPrompt(true);
     h.session.play(choiceScript);
-    // The covert setNameplate(undefined) hide-all is gone (D1): the chrome's
+    // The covert setNameplate(undefined) hide-all is gone: the chrome's
     // content is cleared via present(undefined) and it is hidden with an explicit
     // setVisible(false); the body text is cleared, not presented.
     expect(h.chrome.presented.at(-1)).toBeUndefined();

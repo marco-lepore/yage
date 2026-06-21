@@ -82,9 +82,9 @@ export class DialogueChrome implements ChromePresenter {
 
   setNameplate(name: string | undefined, color?: number): void {
     if (!this.name) return;
-    // D1: `undefined` means "no name" — only the nameplate text, NOT a covert
-    // hide-all (that overload died; the Session hides via setVisible). The
-    // PR-1 tactical F33 hide-on-nameplate-undefined is gone with it.
+    // `undefined` means "no name" — only the nameplate text, NOT a covert
+    // hide-all (that overload died; the Session hides via setVisible).
+    // The old tactical hide-on-nameplate-undefined behavior is gone with it.
     this.nameShown = name !== undefined;
     if (name !== undefined) {
       // Mutate fill in place — replacing the whole style would drop the bitmap
@@ -101,7 +101,7 @@ export class DialogueChrome implements ChromePresenter {
     this.apply();
   }
 
-  /** Show or hide the whole box (D1). State-preserving — the name/caret content
+  /** Show or hide the whole box. State-preserving — the name/caret content
    *  sub-state survives, so showing again restores exactly what was up. */
   setVisible(visible: boolean): void {
     this.visible = visible;

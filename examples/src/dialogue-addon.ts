@@ -31,13 +31,13 @@
  *   • Sage (bubble)     — a long line the speech bubble grows to fit.
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
  *                         (a second controller kept alive but input-disabled via
- *                         `setInputEnabled(false)` — the focus seam, D5).
+ *                         `setInputEnabled(false)` — the focus seam).
  *
  * The HUD shows your live gold + items. Hold **J** to fast-forward, hold **X** to
  * skip, press **V** to toggle auto-advance; the pointer works too. The three
- * Design B lifecycle levers ride two keys: **P** pauses (the conversation freezes
+ * lifecycle levers ride two keys: **P** pauses (the conversation freezes
  * intact behind a dim overlay — `setPaused`) and **H** hides the dialogue UI
- * mid-line, restoring it at the same reveal point (`setHidden` / F28). The
+ * mid-line, restoring it at the same reveal point (`setHidden`). The
  * **Font** button swaps every presenter to a baked bitmap font and back.
  *
  * Export split: runner / controller / events / input / the storage kit come from
@@ -714,7 +714,7 @@ class DialogueProbe extends Component {
   }
 }
 
-// ── Design B lifecycle levers on two keys (both persist across plays) ─────────
+// ── Lifecycle levers on two keys (both persist across plays) ───────────────────
 
 /**
  * P / H drive two of the three orthogonal lifecycle levers (the third —
@@ -724,8 +724,8 @@ class DialogueProbe extends Component {
  *     resume exactly where it left off. `lifecycle.paused` freezes the player
  *     too, so the whole world reads as paused.
  *   • **H → `setHidden`** — hides the dialogue UI mid-line and brings it back
- *     with its reveal progress intact (the bubble + caret, never an empty box —
- *     F28). Gated to an active conversation so an idle press can't strand a
+ *     with its reveal progress intact (the bubble + caret, never an empty box).
+ *     Gated to an active conversation so an idle press can't strand a
  *     later line hidden.
  */
 class LifecycleControls extends Component {
@@ -820,7 +820,7 @@ class RoomScene extends Scene {
     // The game state the dialogue bridges into.
     const state: GameState = { gold: 25, inventory: new Set<string>() };
 
-    // Design B lifecycle flags (P pause / H hide), shared so the player freezes
+    // Lifecycle flags (P pause / H hide), shared so the player freezes
     // with the conversation when paused.
     const lifecycle = { paused: false, hidden: false };
 
@@ -891,8 +891,8 @@ class RoomScene extends Scene {
     // Ambient controller (bubble) for the eavesdropped gossip. It has a REAL
     // polling binding, but focus is OFF (`setInputEnabled(false)`): the gossip
     // stays alive and auto-advances while consuming no device input — the
-    // multi-instance "two conversations, one interactive" story (D5). (Before
-    // Design B this used an empty `CompositeInputBinding([])` workaround.)
+    // multi-instance "two conversations, one interactive" story. (This
+    // previously used an empty `CompositeInputBinding([])` workaround.)
     const ambientBundle = createBubbleDialogue(theme, bubbleOpts);
     const ambient = this.spawn("ambient-host").add(
       new DialogueController({
@@ -1027,8 +1027,8 @@ async function main(): Promise<void> {
         attack: ["KeyJ"], // hold to fast-forward (FULL_ACTIONS.speed)
         skip: ["KeyX"], // hold to skip (FULL_ACTIONS.skip)
         auto: ["KeyV"], // toggle auto-advance
-        pause: ["KeyP"], // setPaused — freeze the conversation + world (D2)
-        hide: ["KeyH"], // setHidden — hide the dialogue UI mid-line (D1 / F28)
+        pause: ["KeyP"], // setPaused — freeze the conversation + world
+        hide: ["KeyH"], // setHidden — hide the dialogue UI mid-line
       },
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),

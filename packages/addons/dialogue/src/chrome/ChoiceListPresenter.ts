@@ -38,7 +38,7 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
   private highlightBar?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private rows: ChoiceRow[] = [];
   private selected = -1;
-  /** Master visibility gate (D1) — hides the list WITHOUT clearing it, so a
+  /** Master visibility gate — hides the list WITHOUT clearing it, so a
    *  hide/show round-trip keeps the rows + selection. */
   private hidden = false;
 
@@ -82,7 +82,7 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
     this.highlightAt(position);
   }
 
-  /** Show or hide the list without clearing it (D1) — state-preserving. */
+  /** Show or hide the list without clearing it — state-preserving. */
   setVisible(visible: boolean): void {
     this.hidden = !visible;
     this.applyHidden();

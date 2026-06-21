@@ -165,7 +165,7 @@ class DialogueProbe extends Component {
       choosing: this.choosing,
       ended: this.ended,
       // Live chrome visibility (read straight off the renderer) so the spec can
-      // lock F28: after a hide/restore on a bubble line, the bubble must come
+      // lock the regression: after a hide/restore on a bubble line, the bubble must come
       // back and the box frame must stay hidden.
       boxVisible: this.frameVisible("dlg-frame"),
       bubbleVisible: this.frameVisible("dlg-bubble"),

@@ -100,7 +100,7 @@ export interface TextChannel {
   /** Hold-to-fast-forward rate flag (1 = normal). */
   setSpeedMultiplier(multiplier: number): void;
   /**
-   * Show or hide the body text **without** disturbing reveal progress (D1) — a
+   * Show or hide the body text **without** disturbing reveal progress — a
    * cutscene can hide mid-typewriter and show again to resume mid-line. Purely
    * visual: the reveal cursor, timers, and the laid-out line are untouched.
    */
@@ -108,7 +108,7 @@ export interface TextChannel {
   update(dt: number): void;
   clear(): void;
   /**
-   * Register the reveal-completed listener (D4). The Session owns this seam — it
+   * Register the reveal-completed listener. The Session owns this seam — it
    * registers its handler once in the ctor — so a game can no longer clobber the
    * wiring by assigning a public field (the old single-slot `onRevealComplete`
    * footgun). Pass `undefined` to clear.
@@ -133,7 +133,7 @@ export interface ChoiceContext {
 export interface ChoiceChannel {
   present(choices: readonly PresentedChoice[], context?: ChoiceContext): void;
   highlight(position: number): void;
-  /** Show or hide the choice list without clearing it (D1) — state-preserving,
+  /** Show or hide the choice list without clearing it — state-preserving,
    *  so the selection and laid-out rows survive a hide/show round-trip. */
   setVisible(visible: boolean): void;
   clear(): void;
@@ -151,7 +151,7 @@ export interface AvatarChannel {
   setSpeaker(speaker: SpeakerDef | undefined): void;
   setExpression(expression: string | undefined): void;
   setSpeaking(speaking: boolean): void;
-  /** Optional visibility gate (D1) — a portrait hides during a cutscene; a
+  /** Optional visibility gate — a portrait hides during a cutscene; a
    *  scene-figure avatar (a world NPC the game owns) omits it and stays put. */
   setVisible?(visible: boolean): void;
   update(dt: number): void;
@@ -161,12 +161,12 @@ export interface AvatarChannel {
  *  text and choices). `present?` lets a chrome react to per-line variants;
  *  `present(undefined)` means "no line — clear the chrome's content". */
 export interface ChromeChannel {
-  /** Set the speaker name, or `undefined` for **no name** (D1) — NOT a covert
+  /** Set the speaker name, or `undefined` for **no name** — NOT a covert
    *  hide-all; visibility is governed solely by {@link setVisible}. */
   setNameplate(name: string | undefined, color?: number): void;
   setContinueVisible(visible: boolean): void;
   /**
-   * Show or hide the whole chrome (D1) — the honest visibility verb the Session
+   * Show or hide the whole chrome — the honest visibility verb the Session
    * drives (a composite restores its active variant on show). State-preserving.
    */
   setVisible(visible: boolean): void;
@@ -186,7 +186,7 @@ export interface DialogueSessionOptions {
   /** Hold-to-fast-forward multiplier. Default 4. */
   readonly skipMultiplier?: number | undefined;
   /**
-   * The variable storage installed for every `play()` (D1). Persists across
+   * The variable storage installed for every `play()`. Persists across
    * plays. Omit for a zero-config {@link MemoryVariableStorage}; supply your own
    * or {@link compose} several to bridge game state. A per-`play()`
    * `overrides.storage` replaces it for that conversation.
@@ -217,15 +217,15 @@ export interface DialogueSessionOptions {
    */
   readonly onCommand?: (command: Command, ctx: CommandContext) => void;
   readonly onEnded?: (e: { scriptId: string }) => void;
-  /** A line finished its typewriter reveal (D4) — the "typing finished" hook
+  /** A line finished its typewriter reveal — the "typing finished" hook
    *  (audio blip, etc.). Plain (markup-stripped) text, like {@link onLine}. */
   readonly onRevealCompleted?: (e: { speaker?: string | undefined; text: string }) => void;
   /** The choice cursor moved — keyboard nav AND pointer hover both funnel here
-   *  (D4). `index` is the resolved option index, `text` its plain label. */
+   *  `index` is the resolved option index, `text` its plain label. */
   readonly onSelectionChanged?: (e: { index: number; text: string }) => void;
-  /** The player skipped the current section (D4) — for skip-used analytics. */
+  /** The player skipped the current section — for skip-used analytics. */
   readonly onSkipUsed?: (e: { scriptId: string }) => void;
-  /** A line auto-advanced via the auto-advance clock (D4) — distinct from a
+  /** A line auto-advanced via the auto-advance clock — distinct from a
    *  manual advance so a game can tell them apart. */
   readonly onAutoAdvance?: (e: { scriptId: string }) => void;
 }
@@ -290,7 +290,7 @@ export class DialogueSession {
    *  drive (advance / show the caret on) the runner of a *new* conversation. */
   private generation = 0;
 
-  // ── lifecycle levers (D2) — host-level, NOT conversation state ──────────────
+  // ── lifecycle levers — host-level, NOT conversation state ──────────────
   /** `setHidden` — visual only; gates every channel's `setVisible`. Survives
    *  `stop()`/`play()` (a host that hides for a cutscene and forgets to unhide
    *  gets what it asked for) — so it is deliberately NOT reset by `stop()`. */
@@ -317,7 +317,7 @@ export class DialogueSession {
     this.defaultFunctions = opts.functions ?? {};
     this.defaultCommands = opts.commands ?? {};
     this.defaultFallback = opts.fallbackCommand;
-    // D4: register the reveal seam through a method the Session owns, so a game
+    // register the reveal seam through a method the Session owns, so a game
     // can't silently clobber it by reassigning a public field.
     this.channels.text.setRevealListener(() => this.handleRevealComplete());
     this.channels.choices.onChoiceChosen = (position) => {
@@ -328,7 +328,7 @@ export class DialogueSession {
 
   /**
    * Begin a conversation. `play(script)` is **content-only** — the storage,
-   * functions, and commands are installed on the session (D1); `overrides` layers
+   * functions, and commands are installed on the session; `overrides` layers
    * per-conversation specifics on top (a scoped `storage`, extra `functions` /
    * `commands`). Declared defaults seed into the storage **only if absent**
    * (game-linked values win); variables persist across plays. Returns a
@@ -357,7 +357,7 @@ export class DialogueSession {
     // seeding so the declared-default/storage conflict check sees the host value.
     validatePlay(analysis, { storage, functions, commands, fallbackCommand });
 
-    // Seed-if-absent (D3): a declared default applies only when the storage
+    // Seed-if-absent: a declared default applies only when the storage
     // doesn't already hold the name — never clobber a game-linked value. Done
     // BEFORE stop() and wrapped, so a storage that can't accept the write (a pure
     // read-only `cells()` with no writable slot for the name) fails as a clean
@@ -434,7 +434,7 @@ export class DialogueSession {
     this.opts.onStarted?.({ scriptId: this.scriptId });
     runner.start();
 
-    // Typed, generation-stamped handle (D4): after stop()/replay it no-ops
+    // Typed, generation-stamped handle: after stop()/replay it no-ops
     // (setVar via the guarded view) / returns an empty snapshot (getVars).
     return {
       setVar: (name, value) => guarded.set(name, value),
@@ -453,10 +453,10 @@ export class DialogueSession {
     return this.mode === "choosing";
   }
 
-  // ── lifecycle levers (D2) ──────────────────────────────────────────────────
+  // ── lifecycle levers ──────────────────────────────────────────────────
 
   /**
-   * Hide or show the whole dialogue UI (D2) — purely visual, state-preserving.
+   * Hide or show the whole dialogue UI — purely visual, state-preserving.
    * Drives every channel's `setVisible`; the conversation keeps running
    * underneath (reveal, timers, cursor intact). Host-level and **persistent**:
    * it survives `stop()` and the next `play()`, so a cutscene that hides and
@@ -473,7 +473,7 @@ export class DialogueSession {
   }
 
   /**
-   * Freeze or resume the conversation (D2) — `update()` no-ops (reveal,
+   * Freeze or resume the conversation — `update()` no-ops (reveal,
    * auto-advance clock, caret blink, avatar anim all freeze since they are
    * dt-driven) and the input-agnostic API (`advance`/`confirm`/`choose`/
    * `moveSelection`/`selectAt`/`skip`) no-ops. State is left fully intact: no
@@ -541,7 +541,7 @@ export class DialogueSession {
     // Pause freezes everything dt-driven for free: bail before any channel
     // update so the typewriter, caret blink, avatar anim, and the auto-advance
     // clock all halt — and crucially WITHOUT touching lineBlocked/advancing/
-    // autoTimer, so state resumes intact (D2).
+    // autoTimer, so state resumes intact.
     if (this.paused) return;
     this.channels.text.update(dt);
     this.channels.chrome?.update(dt);
@@ -572,7 +572,7 @@ export class DialogueSession {
   /**
    * The storage read view for `{token}` interpolation at *this* present-time.
    * Materialized per evaluation so an earlier command's `set` shows up on a
-   * later line (scenario 3); already-shown lines never re-render.
+   * later line; already-shown lines never re-render.
    */
   private readView(): VarMap {
     return this.storage ? materialize(this.storage) : {};
@@ -582,7 +582,7 @@ export class DialogueSession {
 
   /** Primary action. Saying → reveal-all if typing, else next line. Choosing → confirm. */
   advance(): void {
-    if (this.paused) return; // frozen: input is inert (D2)
+    if (this.paused) return; // frozen: input is inert
     if (this.lineBlocked || this.advancing) return; // a line-command is in flight
     if (this.mode === "saying") {
       if (this.channels.text.isRevealing()) this.channels.text.completeReveal();
@@ -623,7 +623,7 @@ export class DialogueSession {
    * line is showing.
    */
   skip(): void {
-    if (this.paused) return; // frozen: input is inert (D2)
+    if (this.paused) return; // frozen: input is inert
     if (this.mode !== "saying" || this.lineBlocked || this.advancing) return;
     this.opts.onSkipUsed?.({ scriptId: this.scriptId });
     void this.skipLine();
@@ -707,7 +707,7 @@ export class DialogueSession {
 
   /** Move the choice cursor by `delta` (wraps). No-op outside a choice. */
   moveSelection(delta: number): void {
-    if (this.paused) return; // frozen: input is inert (D2)
+    if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
     const n = this.resolved.length;
     if (n === 0) return;
@@ -720,7 +720,7 @@ export class DialogueSession {
 
   /** Highlight a choice by absolute position (e.g. pointer hover). No wrap. */
   selectAt(position: number): void {
-    if (this.paused) return; // frozen: input is inert (D2)
+    if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
     const n = this.resolved.length;
     if (n === 0 || position < 0 || position >= n || position === this.selected)
@@ -731,7 +731,7 @@ export class DialogueSession {
   }
 
   /** Fire onSelectionChanged for the currently-highlighted choice (keyboard nav
-   *  and pointer hover both land here — one canonical selection event, D4). */
+   *  and pointer hover both land here — one canonical selection event). */
   private emitSelectionChanged(): void {
     const chosen = this.resolved[this.selected];
     if (!chosen) return;
@@ -745,7 +745,7 @@ export class DialogueSession {
 
   /** Commit the highlighted choice. */
   confirm(): void {
-    if (this.paused) return; // frozen: input is inert (D2)
+    if (this.paused) return; // frozen: input is inert
     // The latch (not the runner) is what guarantees a single commit: `mode`
     // stays "choosing" while the runner awaits the option's blocking commands,
     // so without it a second confirm would emit a duplicate onChoiceMade.
@@ -764,7 +764,7 @@ export class DialogueSession {
 
   /** Commit by original option index (e.g. a direct pointer hit). */
   choose(optionIndex: number): void {
-    if (this.paused) return; // frozen: input is inert (D2)
+    if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
     const pos = this.resolved.findIndex((c) => c.index === optionIndex);
     if (pos < 0) return;
@@ -974,7 +974,7 @@ export class DialogueSession {
     // show the continue caret on the new conversation's still-revealing line.
     if (gen !== this.generation || this.mode !== "saying") return;
     this.channels.chrome?.setContinueVisible(true);
-    // The "typing finished" hook (D4) — after afterReveal commands settle, as the
+    // The "typing finished" hook — after afterReveal commands settle, as the
     // continue caret appears. Carries the line so a game needn't track it.
     if (this.currentLine) this.opts.onRevealCompleted?.(this.currentLine);
     // Per-line `autoAdvanceMs` wins; otherwise fall back to the session default.
