@@ -1,7 +1,7 @@
 // Theme (flat visual config) + the opt-in textured nine-slice styles.
 export type {
   DialogueTheme,
-  BoxRect,
+  BoxBounds,
   CaretTheme,
   ChromeStyle,
   NineSliceFrame,

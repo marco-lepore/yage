@@ -22,6 +22,7 @@ import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
   createNineSlice,
   GraphicsComponent,
+  RendererKey,
   TextComponent,
   type NineSliceSprite,
 } from "@yagejs/renderer";
@@ -122,6 +123,13 @@ export class DialogueChrome implements ChromePresenter {
 
   mount(scene: Scene): void {
     const cfg = this.cfg;
+
+    // Bind the design viewport so the box is a full-width bottom bar at any
+    // resolution and meta.position places against the true screen. Resolved here
+    // (the chrome owns the frame); a custom box chrome should do the same. Falls
+    // back to the layout's default size if no renderer is present (headless).
+    const renderer = scene.context.tryResolve(RendererKey);
+    if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
 
     // Frame: the drawn Graphics rounded rect (the default look). Drawn per line
     // in applyGeometry — the rect moves with `meta.position` and grows for a

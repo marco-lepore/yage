@@ -463,7 +463,10 @@ binding.
 
 ## Theming
 
-`DialogueTheme` is one flat data object: `box`, `padding`, frame colours
+`DialogueTheme` is one flat data object: `box` (**viewport-relative**
+`{ marginX, marginY, height }` — a full-width bottom bar resolved against the
+renderer's design size at mount, so the default works at ANY resolution with no
+override; `meta.position` reuses the margins), `padding`, frame colours
 (`frameColor/frameAlpha/borderColor/cornerRadius`), `nameColor/Size`,
 `indicatorColor`, `caret?` (`{ blinkMs?, size? }`),
 `textSize/lineHeight/textColor/charsPerSec`, choice colours, `choiceGap?`,

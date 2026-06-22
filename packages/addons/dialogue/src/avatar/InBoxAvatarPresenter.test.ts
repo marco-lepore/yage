@@ -11,7 +11,7 @@ import type { PresentedLine } from "../core/session.js";
  * the reflow seam works without addon internals.
  */
 const CFG: BoxLayoutConfig = {
-  box: { x: 32, y: 360, width: 736, height: 160 },
+  box: { marginX: 32, marginY: 24, height: 160 },
   padding: 16,
   nameSize: 16,
   textSize: 18,
@@ -27,6 +27,7 @@ const line = (meta?: Record<string, unknown>): PresentedLine => ({
 
 function setup(): { layout: BoxLayout; avatar: InBoxAvatarPresenter; fullWidth: number } {
   const layout = new BoxLayout(CFG);
+  layout.setViewport(800, 600); // the mount step
   layout.layoutLine(line());
   const avatar = new InBoxAvatarPresenter(layout, { layer: "dialogue-avatar", width: 96, gap: 8 });
   return { layout, avatar, fullWidth: layout.textRegion().width };
@@ -39,7 +40,7 @@ describe("InBoxAvatarPresenter — line-driven reflow", () => {
     const region = layout.textRegion();
     expect(layout.insetWidth("left")).toBe(96 + 8); // width + gap
     expect(region.width).toBe(fullWidth - (96 + 8));
-    expect(region.x).toBeGreaterThan(CFG.box.x + CFG.padding); // text shifted right
+    expect(region.x).toBeGreaterThan(CFG.box.marginX + CFG.padding); // text shifted right
   });
 
   it("reserves the right column when meta.side is right", () => {

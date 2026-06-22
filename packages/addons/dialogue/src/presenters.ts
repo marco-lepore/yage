@@ -90,7 +90,7 @@ export * from "./actor/index.js";
 
 // ── factories + themes ──────────────────────────────────────────────────────
 // The factory barrel owns: the bundle factories (createBox/Bubble/Mixed), the
-// zero-asset `defaultTheme()`, the flat `DialogueTheme` (+ `BoxRect`,
+// zero-asset `defaultTheme()`, the flat `DialogueTheme` (+ `BoxBounds`,
 // `CaretTheme`, the textured `ChromeStyle`/`NineSliceFrame`/`NineSliceInsets`
 // tokens, reserved chrome-style keys + theme-default consts), and bubble
 // geometry (`DEFAULT_BUBBLE`, `BubbleGeometry`, `BubbleDialogueOptions`).

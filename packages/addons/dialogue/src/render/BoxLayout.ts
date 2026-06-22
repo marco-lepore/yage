@@ -8,8 +8,10 @@
  * It owns three things the presenters would otherwise compute independently:
  *
  *  - **Per-line position** — `meta.position` (`top|center|bottom`) places the
- *    frame within the field derived from the resting box; the frame AND the text
- *    region move together.
+ *    frame within the design viewport (the renderer's `virtualSize`, bound at
+ *    mount via {@link setViewport}); the frame AND the text region move together.
+ *    The box is a full-width bottom bar resolved from viewport-relative margins,
+ *    so the default presenter works at any resolution with no override.
  *  - **Unified panel grow** — for a choice, the frame grows to fit the nameplate
  *    + prompt + rows; the row rects are stacked inside it (see
  *    `stackChoiceRows`). Growing is bottom-anchored at "bottom", so the frame top
@@ -23,7 +25,7 @@
  */
 
 import { measureWrappedText } from "@yagejs/renderer";
-import type { BoxRect } from "../factory/theme.js";
+import type { BoxBounds } from "../factory/theme.js";
 import type { PresentedLine } from "../core/session.js";
 
 /** RPG-Maker-style vertical placement of the box within the field. */
@@ -52,9 +54,9 @@ export interface ChoiceRowRect {
 }
 
 export interface BoxLayoutConfig {
-  /** The resting (bottom-anchored) box; `meta.position` moves the frame within
-   *  the field this implies, and a choice grows it from here. */
-  readonly box: BoxRect;
+  /** Viewport-relative box bounds (margins + height); the frame is resolved
+   *  against the design viewport set by {@link BoxLayout.setViewport} at mount. */
+  readonly box: BoxBounds;
   readonly padding: number;
   /** Nameplate band height (theme.nameSize) — body text starts below it. */
   readonly nameSize: number;
@@ -97,7 +99,11 @@ export function stackChoiceRows(
 }
 
 export class BoxLayout {
-  private readonly field: number;
+  /** Design viewport (the renderer's `virtualSize`) the box is placed within —
+   *  bound at mount via {@link setViewport}. Defaults to a sane size so headless
+   *  use (no renderer) and pre-mount calls still produce a valid frame. */
+  private viewW = 800;
+  private viewH = 600;
   private readonly insets = new Map<string, TextInset>();
   private readonly listeners: Array<() => void> = [];
   /** The committed frame — moved by `meta.position`, grown for a choice. */
@@ -106,11 +112,18 @@ export class BoxLayout {
   private line: PresentedLine | undefined;
 
   constructor(private readonly cfg: BoxLayoutConfig) {
-    // Assume uniform margins (= box.x): a bottom box at y with the box's left
-    // inset as its bottom margin implies this field height. Lets `top`/`center`
-    // place the frame without a separate screen-size config.
-    this.field = cfg.box.y + cfg.box.height + cfg.box.x;
     this.frame = this.frameAt("bottom", cfg.box.height);
+  }
+
+  /**
+   * Bind the design viewport (the renderer's `virtualSize`), read at mount, so
+   * the box is a full-width bottom bar at any resolution and `meta.position`
+   * places the frame against the true screen. Recomputes the resting frame.
+   */
+  setViewport(width: number, height: number): void {
+    this.viewW = width;
+    this.viewH = height;
+    this.commit(this.frameAt(positionOf(this.line), this.cfg.box.height));
   }
 
   /** Register a callback fired when the committed frame changes (a choice grows
@@ -127,7 +140,7 @@ export class BoxLayout {
   /** Inner content width (frame minus padding) — choice rows wrap to this;
    *  constant across the grow (which is vertical). */
   contentWidth(): number {
-    return this.cfg.box.width - 2 * this.cfg.padding;
+    return this.viewW - 2 * this.cfg.box.marginX - 2 * this.cfg.padding;
   }
 
   /** Lay out a say/prompt line: place the base-height frame at its
@@ -150,7 +163,7 @@ export class BoxLayout {
     const rows = rowHeights.reduce((a, h) => a + h, 0);
     const content =
       this.cfg.padding + this.bodyOffset() + headH + rows + this.cfg.padding;
-    const maxH = this.field - 2 * this.cfg.box.x; // cap at the field (minus margins)
+    const maxH = this.viewH - 2 * this.cfg.box.marginY; // cap at the screen (minus margins)
     const height = Math.min(Math.max(this.cfg.box.height, content), maxH);
     this.commit(this.frameAt(positionOf(this.line), height));
     return stackChoiceRows(rowHeights, this.frame, this.cfg.padding);
@@ -224,15 +237,16 @@ export class BoxLayout {
     return measured.height;
   }
 
-  /** Place a frame of `height` at `position` within the field. */
+  /** Place a full-width frame of `height` at `position` within the design
+   *  viewport: `bottom` anchors `marginY` from the bottom edge, `top` mirrors it
+   *  to the top, `center` centres. The width is the viewport minus side margins. */
   private frameAt(position: BoxPosition, height: number): Rect {
-    const { box } = this.cfg;
-    const margin = box.x;
+    const { marginX, marginY } = this.cfg.box;
     let y: number;
-    if (position === "top") y = margin;
-    else if (position === "center") y = (this.field - height) / 2;
-    else y = this.field - margin - height; // bottom (resting)
-    return { x: box.x, y, width: box.width, height };
+    if (position === "top") y = marginY;
+    else if (position === "center") y = (this.viewH - height) / 2;
+    else y = this.viewH - marginY - height; // bottom (resting)
+    return { x: marginX, y, width: this.viewW - 2 * marginX, height };
   }
 
   private commit(frame: Rect): void {

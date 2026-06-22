@@ -639,6 +639,14 @@ const theme = { ...defaultTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
 createBoxDialogue(theme);
 ```
 
+The `box` is **viewport-relative** — `{ marginX, marginY, height }` (virtual px),
+not absolute coordinates. The box presenters read the renderer's design size at
+mount and resolve a full-width bottom bar (`width = viewport.width − 2·marginX`,
+anchored `marginY` from the bottom edge), so the **default works at any
+resolution with no override**. `meta.position` reuses the same margins to anchor
+to the top or centre instead. (For a pixel-exact box at a known resolution,
+choose margins that resolve to it.)
+
 Presenter-config field names match the theme field names exactly (theme
 `frameColor` becomes config `frameColor`, theme `textSize` becomes config
 `textSize`, and so on), so re-skinning is just data — a test asserts every theme
