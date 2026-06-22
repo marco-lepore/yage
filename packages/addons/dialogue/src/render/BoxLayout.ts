@@ -137,10 +137,23 @@ export class BoxLayout {
     return this.frame;
   }
 
-  /** Inner content width (frame minus padding) — choice rows wrap to this;
-   *  constant across the grow (which is vertical). */
+  /** Inner content width — choice rows wrap to this. Frame minus padding minus
+   *  any registered insets, so choices reflow around an in-box avatar the same
+   *  way the body text does. */
   contentWidth(): number {
-    return this.viewW - 2 * this.cfg.box.marginX - 2 * this.cfg.padding;
+    return (
+      this.viewW -
+      2 * this.cfg.box.marginX -
+      2 * this.cfg.padding -
+      this.insetWidth("left") -
+      this.insetWidth("right")
+    );
+  }
+
+  /** Inner padding between the frame and its contents — an in-box presenter
+   *  aligns its column to this so it sits inside the border, like the text. */
+  padding(): number {
+    return this.cfg.padding;
   }
 
   /** Lay out a say/prompt line: place the base-height frame at its
@@ -166,7 +179,17 @@ export class BoxLayout {
     const maxH = this.viewH - 2 * this.cfg.box.marginY; // cap at the screen (minus margins)
     const height = Math.min(Math.max(this.cfg.box.height, content), maxH);
     this.commit(this.frameAt(positionOf(this.line), height));
-    return stackChoiceRows(rowHeights, this.frame, this.cfg.padding);
+    // Stack the rows inside the inset-narrowed region, so they reflow around an
+    // in-box avatar exactly like the prompt + body text above them.
+    const insetL = this.insetWidth("left");
+    const insetR = this.insetWidth("right");
+    const inner: Rect = {
+      x: this.frame.x + insetL,
+      y: this.frame.y,
+      width: this.frame.width - insetL - insetR,
+      height: this.frame.height,
+    };
+    return stackChoiceRows(rowHeights, inner, this.cfg.padding);
   }
 
   /** Body-text region inside the current frame: below the nameplate band, inset

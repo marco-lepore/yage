@@ -20,7 +20,12 @@
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import { SpriteComponent, texture, type TextureHandle } from "@yagejs/renderer";
+import {
+  GraphicsComponent,
+  SpriteComponent,
+  texture,
+  type TextureHandle,
+} from "@yagejs/renderer";
 import type { AvatarPresenter } from "./AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
 import type { BoxLayout } from "../render/BoxLayout.js";
@@ -35,6 +40,14 @@ export interface InBoxAvatarConfig {
   readonly gap?: number;
   /** Uniform sprite scale (textures must be preloaded by the host). Default 1. */
   readonly scale?: number;
+  /** Optional rounded-rect panel drawn behind the portrait (a framed look),
+   *  sized to the {@link width} column. Omit for a bare sprite. */
+  readonly background?: {
+    readonly color: number;
+    readonly alpha?: number;
+    /** Corner radius (px). Default 8. */
+    readonly radius?: number;
+  };
 }
 
 /** Distinct inset key per instance so two in-box avatars can coexist. */
@@ -48,6 +61,11 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   private entity: Entity | undefined;
   private sprite: SpriteComponent | undefined;
   private transform: Transform | undefined;
+  /** Optional background panel (behind the portrait), its own entity so it draws
+   *  under the sprite on the same layer. */
+  private bgEntity: Entity | undefined;
+  private bg: GraphicsComponent | undefined;
+  private bgTransform: Transform | undefined;
   private side: "left" | "right" = "left";
   /** A portrait is up for the current line (from `meta.portrait` + presence). */
   private shown = false;
@@ -110,27 +128,57 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   dispose(): void {
     this.layout.setInset(this.insetKey, undefined);
     this.entity?.destroy();
+    this.bgEntity?.destroy();
     this.entity = undefined;
+    this.bgEntity = undefined;
     this.sprite = undefined;
+    this.bg = undefined;
     this.transform = undefined;
+    this.bgTransform = undefined;
   }
 
-  /** Centre the sprite in its reserved column at the frame's current rect (so it
-   *  follows `meta.position` and a grown choice panel). */
+  /** Centre the portrait (+ its panel) in its reserved column, inset by the box
+   *  padding so it sits inside the border like the text — at the frame's current
+   *  rect, so it follows `meta.position` and a grown choice panel. */
   private place(): void {
     if (!this.transform) return;
     const frame = this.layout.frameRect();
+    const pad = this.layout.padding();
     const half = this.cfg.width / 2;
-    const x = this.side === "left" ? frame.x + half : frame.x + frame.width - half;
-    this.transform.setPosition(x, frame.y + frame.height / 2);
+    const x =
+      this.side === "left"
+        ? frame.x + pad + half
+        : frame.x + frame.width - pad - half;
+    const y = frame.y + frame.height / 2;
+    this.transform.setPosition(x, y);
+    this.bgTransform?.setPosition(x, y);
   }
 
   private applyVisibility(): void {
-    if (this.sprite) this.sprite.sprite.visible = this.shown && !this.hidden;
+    const shown = this.shown && !this.hidden;
+    if (this.sprite) this.sprite.sprite.visible = shown;
+    if (this.bg) this.bg.graphics.visible = shown;
   }
 
   private ensureSprite(initialKey: string): void {
     if (this.sprite || !this.scene) return;
+    // Background panel first (same layer), so the portrait spawned next draws
+    // on top of it.
+    const bgCfg = this.cfg.background;
+    if (bgCfg) {
+      const bgEntity = this.scene.spawn("dlg-inbox-avatar-bg");
+      this.bgTransform = bgEntity.add(new Transform());
+      const w = this.cfg.width;
+      const bg = bgEntity.add(new GraphicsComponent({ layer: this.cfg.layer }));
+      bg.draw((g) =>
+        g
+          .roundRect(-w / 2, -w / 2, w, w, bgCfg.radius ?? 8)
+          .fill({ color: bgCfg.color, alpha: bgCfg.alpha ?? 1 }),
+      );
+      bg.graphics.visible = false;
+      this.bg = bg;
+      this.bgEntity = bgEntity;
+    }
     const entity = this.scene.spawn("dlg-inbox-avatar");
     this.transform = entity.add(new Transform());
     const scale = this.cfg.scale ?? 1;

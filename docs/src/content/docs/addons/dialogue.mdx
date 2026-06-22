@@ -521,14 +521,14 @@ anchor (including the missing-actor fallback) **once** per line for the bubble
 chrome, text, and choices. `BoxLayout` owns the box frame rect and text region:
 per-line position (`meta.position`), the unified panel grow (a choice grows the
 frame, nameplate, prompt, and rows as one), and an inset registry an in-box
-avatar reflows the text around.
+avatar reflows the text — and the choice rows — around.
 
 `createMixedDialogue` composes box + bubble behind `CompositeChrome` /
-`CompositeTextPresenter` / `CompositeChoicePresenter`. All three share one
-**route** so a line's chrome, text, and choices always agree. The default is
-speaker-aware (a narrator goes to the box; an explicit `view` wins; otherwise a
-speaker with a registered `DialogueActor` floats in a bubble). Override the
-policy in one place:
+`CompositeTextPresenter` / `CompositeChoicePresenter` / `CompositeAvatarPresenter`.
+All four share one **route** so a line's chrome, text, choices, and avatar always
+agree. The default is speaker-aware (a narrator goes to the box; an explicit
+`view` wins; otherwise a speaker with a registered `DialogueActor` floats in a
+bubble). Override the policy in one place:
 
 ```ts
 createMixedDialogue(theme, {
@@ -539,11 +539,12 @@ createMixedDialogue(theme, {
 ```
 
 Avatars are decoupled too: `PortraitPresenter` (a sprite beside the box),
-`SceneFigurePresenter` (an NPC already in the world), `InBoxAvatarPresenter` (the
-reflowing in-box portrait below), or `NullAvatarPresenter`. A `DialogueActor`
-component on a world entity self-registers under a speaker id (via
-`actorRegistryFor(scene)`) so a speech bubble can find and follow the speaker's
-head anchor.
+`SceneFigurePresenter` (an NPC already in the world), the line-driven
+`InBoxAvatarPresenter` (the reflowing in-box portrait below) and
+`BubbleAvatarPresenter` (a portrait beside the bubble), or `NullAvatarPresenter`.
+A `DialogueActor` component on a world entity self-registers under a speaker id
+(via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
+speaker's head anchor.
 
 ### Writing a custom presenter
 
@@ -588,18 +589,32 @@ class DomTextPresenter implements TextChannel {
 ```
 
 A line-driven avatar or chrome implements the optional `present(line)` and reads
-`line.meta`. The shipped **`InBoxAvatarPresenter`** is the worked reference: it
-reads `meta.portrait` / `meta.side` / `meta.presence`, and reserves a column via
-`BoxLayout.setInset(...)` so the box body text **reflows** around the portrait —
-built entirely from the public contract, no addon internals. Wire it through the
-factory, which hands it the box's shared layout owner:
+`line.meta`. Two shipped avatar references, both built only from the public
+contract: **`InBoxAvatarPresenter`** reads `meta.portrait` / `meta.side` /
+`meta.presence` and reserves a column via `BoxLayout.setInset(...)` so the box
+body text **and choice rows reflow** around the portrait (with an optional
+`background` panel); **`BubbleAvatarPresenter`** floats a portrait beside the
+speech bubble (off the `BubbleLayout`). Wire them per side — a
+`CompositeAvatarPresenter` routes each line to the matching one, like the other
+composites:
 
 ```ts
-import { InBoxAvatarPresenter, DIALOGUE_LAYER_AVATAR } from "@yagejs-addons/dialogue/presenters";
+import {
+  InBoxAvatarPresenter,
+  BubbleAvatarPresenter,
+  DIALOGUE_LAYER_AVATAR,
+} from "@yagejs-addons/dialogue/presenters";
 
-createBoxDialogue(theme, {
-  avatar: (layout) => new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 96 }),
+createMixedDialogue(theme, {
+  worldLayer: "world",
+  avatar: {
+    box: (layout) => new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 84 }),
+    bubble: (layout) => new BubbleAvatarPresenter(layout, { layer: "world", size: 56 }),
+  },
 });
+
+// Box-only bundles take the in-box avatar directly:
+// createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(layout, { layer, width }) });
 ```
 
 ## Input
@@ -719,11 +734,12 @@ hints within the box variant. Unknown keys are ignored.
 
 - **`meta.position`** — `top`, `center`, or `bottom` (default). Moves the box
   frame **and** the body text together (RPG-Maker top/middle/bottom).
-- **`meta.portrait` / `meta.side` / `meta.presence`** — read by
-  `InBoxAvatarPresenter`: the portrait texture key, which side it sits on
-  (`left` default / `right`), and `presence: false` to speak from off-screen
-  (portrait hidden, text reclaims the full width). With an in-box avatar wired,
-  the body text reflows around the reserved column.
+- **`meta.portrait` / `meta.side` / `meta.presence`** — read by the avatar
+  presenters (`InBoxAvatarPresenter` for box lines, `BubbleAvatarPresenter` for
+  bubble lines): the portrait texture key, which side it sits on (`left` default /
+  `right`), and `presence: false` to speak from off-screen (portrait hidden, text
+  reclaims the full width). With an in-box avatar wired, the body text + choice
+  rows reflow around the reserved column.
 
 ```yaml
 - { speaker: hero, text: "A message from on high.", meta: { position: top } }

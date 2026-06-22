@@ -354,7 +354,8 @@ Headless channels (core): `TextChannel`, `ChoiceChannel`, `AvatarChannel`,
 and pointer seams: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
 Defaults: `DialogueChrome`, `ChoiceListPresenter`, `BoxTextView` (box);
 `BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world). Avatars:
-`PortraitPresenter`, `SceneFigurePresenter`, `InBoxAvatarPresenter`,
+`PortraitPresenter`, `SceneFigurePresenter`, line-driven `InBoxAvatarPresenter`
+(box, reflows the text) + `BubbleAvatarPresenter` (a portrait beside the bubble),
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers
 by speaker id) + `actorRegistryFor(scene)`.
 
@@ -364,9 +365,9 @@ by speaker id) + `actorRegistryFor(scene)`.
   bubble chrome/text/choices (no drift). `BoxLayout` owns the box frame rect +
   text region: per-line `meta.position`, the unified panel grow (a choice grows
   the frame/nameplate/prompt/rows as one), and an **inset registry** the in-box
-  avatar reflows the text around.
-- **Routing** (mixed bundles): the three composites share one
-  `route: (line) => "box" | "bubble"`. Default = narrator → box; explicit `view`
+  avatar reflows the text — and the choice rows — around.
+- **Routing** (mixed bundles): the four composites (chrome/text/choices/avatar)
+  share one `route: (line) => "box" | "bubble"`. Default = narrator → box; explicit `view`
   wins for a real speaker; else a registered `DialogueActor` → bubble, otherwise
   box. Override in one place via `createMixedDialogue(theme, { route })`.
 - **`LineReveal`** (core, pixi-free): the typewriter clock — grapheme cursor,
@@ -418,11 +419,22 @@ class DomTextPresenter implements TextChannel {
 ```
 
 A line-driven presenter (avatar/chrome) implements the optional `present(line)`
-and reads `line.meta`. An in-box presenter reserves a text column via
-`BoxLayout.setInset(key, { side, width })` so the body text reflows around it (the
-shipped `InBoxAvatarPresenter` is the worked reference). `createBoxDialogue(theme,
-{ avatar: (layout) => new InBoxAvatarPresenter(layout, { layer, width }) })` hands
-it the box's shared layout owner.
+and reads `line.meta`. The shipped avatar references: `InBoxAvatarPresenter`
+reserves a text column via `BoxLayout.setInset(key, { side, width })` so the body
+text + choice rows reflow around it (`background?` for a panel); `BubbleAvatarPresenter`
+floats a portrait beside the bubble (off `BubbleLayout`). Wire per side; a
+`CompositeAvatarPresenter` routes box-vs-bubble like the other composites:
+
+```ts
+createMixedDialogue(theme, {
+  worldLayer: "world",
+  avatar: {
+    box: (layout) => new InBoxAvatarPresenter(layout, { layer, width: 84, background: { color } }),
+    bubble: (layout) => new BubbleAvatarPresenter(layout, { layer: "world", size: 56 }),
+  },
+});
+// box-only: createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(...) })
+```
 
 ## Line `meta` keys the default presenters read
 
@@ -433,9 +445,10 @@ uses `#key:value` hashtags (unrecognised hashtags already fold into `meta`).
 - `meta.chrome` — box frame style (named / `none` / default; see Theming).
 - `meta.position` — box vertical position: `top | center | bottom` (default
   `bottom`). Moves the frame **and** the body text together.
-- `meta.portrait` / `meta.side` / `meta.presence` — read by `InBoxAvatarPresenter`:
-  texture key, `left|right` (default left), and `presence:false` to speak from
-  off-screen (portrait hidden, no inset).
+- `meta.portrait` / `meta.side` / `meta.presence` — read by the avatar presenters
+  (`InBoxAvatarPresenter` box / `BubbleAvatarPresenter` bubble): texture key,
+  `left|right` (default left), and `presence:false` to speak from off-screen
+  (portrait hidden, no inset).
 
 ```yaml
 - { speaker: hero, text: "From up top.", meta: { position: top } }

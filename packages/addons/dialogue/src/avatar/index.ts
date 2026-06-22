@@ -6,3 +6,5 @@ export { SceneFigurePresenter } from "./SceneFigurePresenter.js";
 export type { SceneFigurePresenterConfig } from "./SceneFigurePresenter.js";
 export { InBoxAvatarPresenter } from "./InBoxAvatarPresenter.js";
 export type { InBoxAvatarConfig } from "./InBoxAvatarPresenter.js";
+export { BubbleAvatarPresenter } from "./BubbleAvatarPresenter.js";
+export type { BubbleAvatarConfig } from "./BubbleAvatarPresenter.js";

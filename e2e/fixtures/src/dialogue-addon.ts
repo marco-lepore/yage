@@ -400,8 +400,10 @@ class DialogueScene extends Scene {
       worldLayer: "bubble-world",
       // A line-driven, reflowing in-box avatar wired to the box's layout owner —
       // inert unless a line carries meta.portrait.
-      avatar: (layout) =>
-        new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 80 }),
+      avatar: {
+        box: (layout) =>
+          new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 80 }),
+      },
     });
 
     const host: Entity = this.spawn("dialogue-host");

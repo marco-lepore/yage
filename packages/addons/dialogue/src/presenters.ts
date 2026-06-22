@@ -78,6 +78,7 @@ export {
   CompositeTextPresenter,
   CompositeChrome,
   CompositeChoicePresenter,
+  CompositeAvatarPresenter,
   makeDefaultRoute,
   fixedRoute,
   routeWithActor,

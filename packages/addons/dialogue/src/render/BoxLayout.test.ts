@@ -97,6 +97,19 @@ describe("BoxLayout — inset registry (text reflow)", () => {
     expect(owner.textRegion().width).toBe(full.width - 80);
   });
 
+  it("the choice rows + contentWidth reflow around the inset too (not just body text)", () => {
+    const owner = atViewport();
+    owner.layoutLine(line());
+    const fullWidth = owner.contentWidth();
+    const fullRows = owner.layoutChoicePanel([30, 30]);
+
+    owner.setInset("avatar", { side: "left", width: 100 });
+    expect(owner.contentWidth()).toBe(fullWidth - 100); // labels measure narrower
+    const insetRows = owner.layoutChoicePanel([30, 30]);
+    expect(insetRows[0]!.x).toBe(fullRows[0]!.x + 100); // rows shift past the avatar
+    expect(insetRows[0]!.width).toBe(fullRows[0]!.width - 100); // and narrow to match
+  });
+
   it("fires onChange when the frame moves or an inset changes", () => {
     const owner = atViewport();
     let changes = 0;

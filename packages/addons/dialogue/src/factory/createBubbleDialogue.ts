@@ -21,6 +21,7 @@ import { BubbleChrome } from "../chrome/BubbleChrome.js";
 import { BubbleChoicePresenter } from "../chrome/BubbleChoicePresenter.js";
 import { BubbleTextView } from "../render/BubbleTextView.js";
 import { BubbleLayout } from "../render/BubbleLayout.js";
+import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
 import { defaultBubbleFrame, type DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
@@ -61,6 +62,10 @@ export interface BubbleDialogueOptions {
    * position regardless. Shared by the chrome, text, and choice presenters.
    */
   readonly fallbackAnchor?: () => { x: number; y: number };
+  /** Build an avatar presenter wired to the bubble's shared {@link BubbleLayout}
+   *  — e.g. the reference `BubbleAvatarPresenter`, a line-driven portrait beside
+   *  the bubble. Receives the layout the bubble chrome/text/choices share. */
+  readonly avatar?: (layout: BubbleLayout) => AvatarPresenter;
 }
 
 export function createBubbleDialogue(
@@ -141,5 +146,15 @@ export function createBubbleDialogue(
     layout,
   );
 
-  return { chrome, text, choices, skipMultiplier: theme.skipMultiplier };
+  // Opt-in bubble avatar, wired to the same layout owner (for the bubble size +
+  // speaker anchor it follows).
+  const avatar = opts.avatar?.(layout);
+
+  return {
+    chrome,
+    text,
+    choices,
+    ...(avatar ? { avatar } : {}),
+    skipMultiplier: theme.skipMultiplier,
+  };
 }

@@ -14,6 +14,7 @@ import type { Scene } from "@yagejs/core";
 import { CompositeChrome } from "./CompositeChrome.js";
 import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 import { CompositeChoicePresenter } from "./CompositeChoicePresenter.js";
+import { CompositeAvatarPresenter } from "./CompositeAvatarPresenter.js";
 import { makeDefaultRoute, fixedRoute } from "./route.js";
 import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type {
@@ -21,6 +22,7 @@ import type {
   ChromePresenter,
   TextPresenter,
 } from "../chrome/DialogueUiAdapter.js";
+import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { ChoiceContext, PresentedChoice, PresentedLine, SpeakerView } from "../core/session.js";
 
 const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
@@ -244,6 +246,84 @@ describe("composite matrix — chrome-specific verbs", () => {
     c.setVisible(true);
     expect(box.visible).toBe(true);
     expect(bubble.visible).toBe(false);
+  });
+});
+
+class RecAvatar implements AvatarPresenter {
+  presents: (PresentedLine | undefined)[] = [];
+  speakers = 0;
+  expressions = 0;
+  speakings = 0;
+  visibles: boolean[] = [];
+  mount(): void {}
+  dispose(): void {}
+  setSpeaker(): void {
+    this.speakers++;
+  }
+  setExpression(): void {
+    this.expressions++;
+  }
+  setSpeaking(): void {
+    this.speakings++;
+  }
+  present(line: PresentedLine | undefined): void {
+    this.presents.push(line);
+  }
+  setVisible(v: boolean): void {
+    this.visibles.push(v);
+  }
+  update(): void {}
+  get lastPresent(): PresentedLine | undefined {
+    return this.presents.at(-1);
+  }
+}
+
+describe("composite matrix — avatar routes + forwards", () => {
+  it("routes present() to the matching side; clears the other", () => {
+    const box = new RecAvatar();
+    const bubble = new RecAvatar();
+    const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
+    c.mount(SCENE);
+
+    c.present(bubbleLine()); // speaker + view:bubble → bubble
+    expect(bubble.lastPresent?.view).toBe("bubble");
+    expect(box.lastPresent).toBeUndefined(); // box cleared
+
+    c.present(boxLine()); // narrator → box
+    expect(box.lastPresent?.view ?? "box").toBe("box");
+    expect(bubble.lastPresent).toBeUndefined(); // bubble cleared
+
+    c.present(undefined); // stop/end clears BOTH
+    expect(box.lastPresent).toBeUndefined();
+    expect(bubble.lastPresent).toBeUndefined();
+  });
+
+  it("forwards setSpeaker / setExpression / setSpeaking / setVisible to both", () => {
+    const box = new RecAvatar();
+    const bubble = new RecAvatar();
+    const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
+    c.setSpeaker(undefined);
+    c.setExpression(undefined);
+    c.setSpeaking(true);
+    c.setVisible(false);
+    for (const a of [box, bubble]) {
+      expect(a.speakers).toBe(1);
+      expect(a.expressions).toBe(1);
+      expect(a.speakings).toBe(1);
+      expect(a.visibles).toEqual([false]);
+    }
+  });
+
+  it("routes a registered-actor line (no view) to the bubble side", () => {
+    const scene = {} as unknown as Scene;
+    actorRegistryFor(scene).register("npc", {} as DialogueActor);
+    const box = new RecAvatar();
+    const bubble = new RecAvatar();
+    const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
+    c.mount(scene);
+    c.present({ text: { runs: [], pauses: [], length: 0 }, speed: 1, speaker });
+    expect(bubble.lastPresent).toBeDefined();
+    expect(box.lastPresent).toBeUndefined();
   });
 });
 
