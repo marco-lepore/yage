@@ -41,9 +41,10 @@ export class BubbleTextView extends DialogueTextView {
 
   override present(line: PresentedLine): void {
     // Size to the same width + height the chrome draws this line at (one shared
-    // measurement), so the text sits inside the content-sized bubble.
+    // measurement), so the text sits inside the content-sized bubble — wrapping
+    // to the column left of any in-bubble portrait inset.
     const size = this.layout.sizeFor(line);
-    this.setBox(0, 0, size.width - 2 * this.layout.padding);
+    this.setBox(0, 0, this.layout.textWrapWidth(size));
     const speakerId = line.speaker?.id;
     // Always anchor: a missing actor resolves to the last-known / fallback
     // position via the shared owner, never pinned at world origin.

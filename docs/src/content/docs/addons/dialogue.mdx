@@ -541,7 +541,7 @@ createMixedDialogue(theme, {
 Avatars are decoupled too: `PortraitPresenter` (a sprite beside the box),
 `SceneFigurePresenter` (an NPC already in the world), the line-driven
 `InBoxAvatarPresenter` (the reflowing in-box portrait below) and
-`BubbleAvatarPresenter` (a portrait beside the bubble), or `NullAvatarPresenter`.
+`BubbleAvatarPresenter` (a portrait inside the bubble), or `NullAvatarPresenter`.
 A `DialogueActor` component on a world entity self-registers under a speaker id
 (via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
 speaker's head anchor.
@@ -593,8 +593,9 @@ A line-driven avatar or chrome implements the optional `present(line)` and reads
 contract: **`InBoxAvatarPresenter`** reads `meta.portrait` / `meta.side` /
 `meta.presence` and reserves a column via `BoxLayout.setInset(...)` so the box
 body text **and choice rows reflow** around the portrait (with an optional
-`background` panel); **`BubbleAvatarPresenter`** floats a portrait beside the
-speech bubble (off the `BubbleLayout`). Wire them per side — a
+`background` panel); **`BubbleAvatarPresenter`** reserves a portrait column
+**inside** the speech bubble (`BubbleLayout.setPortraitInset(...)`) so the bubble
+grows and its text reflows past it. Wire them per side — a
 `CompositeAvatarPresenter` routes each line to the matching one, like the other
 composites:
 

@@ -73,3 +73,37 @@ describe("BubbleLayout — single owner", () => {
     expect(owner.offsetY).toBe(24);
   });
 });
+
+describe("BubbleLayout — in-bubble portrait inset", () => {
+  it("grows the bubble, narrows the text column, and shifts the origin", () => {
+    const owner = new BubbleLayout(CFG);
+    const l = line("a".repeat(30)); // wraps at this width
+    const base = owner.sizeFor(l);
+    const baseWrap = owner.textWrapWidth(base);
+
+    owner.setPortraitInset({ side: "left", width: 64, height: 56 });
+    const withInset = owner.sizeFor(l); // memo invalidated → re-measured
+
+    expect(owner.textWrapWidth(withInset)).toBe(baseWrap - 64); // text column narrows
+    expect(withInset.height).toBeGreaterThan(base.height); // taller: more wrap + portrait
+    // origin shifts right past the left column (anchor.x - w/2 + padding + inset.width)
+    expect(owner.originFor({ x: 500, y: 300 }, withInset).x).toBe(
+      500 - withInset.width / 2 + 10 + 64,
+    );
+
+    owner.setPortraitInset(undefined);
+    expect(owner.textWrapWidth(owner.sizeFor(l))).toBe(baseWrap); // bubble reclaims full width
+  });
+
+  it("a right inset narrows the text but does not shift the origin", () => {
+    const owner = new BubbleLayout(CFG);
+    const l = line("a".repeat(30));
+    const baseOrigin = owner.originFor({ x: 500, y: 300 }, owner.sizeFor(l));
+    owner.setPortraitInset({ side: "right", width: 64, height: 56 });
+    const withInset = owner.sizeFor(l);
+    // x is still anchor.x - w/2 + padding (no shift), just a wider bubble.
+    expect(owner.originFor({ x: 500, y: 300 }, withInset).x).toBe(500 - withInset.width / 2 + 10);
+    expect(owner.textWrapWidth(withInset)).toBeLessThan(withInset.width - 2 * 10);
+    expect(baseOrigin.y).toBeLessThan(300); // (sanity: bubble sits above the anchor)
+  });
+});

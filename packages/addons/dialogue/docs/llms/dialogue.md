@@ -355,7 +355,7 @@ and pointer seams: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
 Defaults: `DialogueChrome`, `ChoiceListPresenter`, `BoxTextView` (box);
 `BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world). Avatars:
 `PortraitPresenter`, `SceneFigurePresenter`, line-driven `InBoxAvatarPresenter`
-(box, reflows the text) + `BubbleAvatarPresenter` (a portrait beside the bubble),
+(box, reflows the text) + `BubbleAvatarPresenter` (a portrait inside the bubble, text reflows),
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers
 by speaker id) + `actorRegistryFor(scene)`.
 
@@ -422,8 +422,9 @@ A line-driven presenter (avatar/chrome) implements the optional `present(line)`
 and reads `line.meta`. The shipped avatar references: `InBoxAvatarPresenter`
 reserves a text column via `BoxLayout.setInset(key, { side, width })` so the body
 text + choice rows reflow around it (`background?` for a panel); `BubbleAvatarPresenter`
-floats a portrait beside the bubble (off `BubbleLayout`). Wire per side; a
-`CompositeAvatarPresenter` routes box-vs-bubble like the other composites:
+reserves a portrait column inside the bubble (`BubbleLayout.setPortraitInset`) so
+the bubble grows + its text reflows. Wire per side; a `CompositeAvatarPresenter`
+routes box-vs-bubble like the other composites:
 
 ```ts
 createMixedDialogue(theme, {

@@ -1,14 +1,14 @@
 /**
- * BubbleAvatarPresenter — the reference **line-driven portrait for speech
- * bubbles**, the bubble counterpart to {@link InBoxAvatarPresenter}. Like that
- * one it is built only from the documented contract: {@link AvatarChannel.present}
- * gives it the line (so it reads `meta.portrait` / `meta.side` / `meta.presence`),
- * and the shared {@link BubbleLayout} gives it the bubble size + the speaker
- * anchor, so the portrait floats beside the bubble and follows the actor.
+ * BubbleAvatarPresenter — the reference **line-driven portrait INSIDE the speech
+ * bubble**, the bubble counterpart to {@link InBoxAvatarPresenter}. Built only
+ * from the documented contract: {@link AvatarChannel.present} gives it the line
+ * (so it reads `meta.portrait` / `meta.side` / `meta.presence`), and it reserves
+ * a portrait column on the shared {@link BubbleLayout} (`setPortraitInset`) — so
+ * the bubble **grows** to contain the portrait and its body text **reflows** past
+ * it, and the whole thing follows the speaker's actor.
  *
- * It reserves no text inset (a bubble grows to its own text); the portrait sits
- * to the side of the bubble. Portrait textures must be **preloaded** by the host.
- * Wire it through `createMixedDialogue(theme, { avatar: { bubble } })`.
+ * Portrait textures must be **preloaded** by the host. Wire it through
+ * `createMixedDialogue(theme, { avatar: { bubble } })`.
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
@@ -78,11 +78,16 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
     this.side = meta?.["side"] === "right" ? "right" : "left";
     this.speakerId = line?.speaker?.id;
     if (visible && portrait !== undefined && line) {
+      // Reserve the column BEFORE the chrome/text size the bubble, so it grows
+      // to contain the portrait and the text wraps to the narrowed column.
+      const gap = this.cfg.gap ?? 8;
+      this.layout.setPortraitInset({ side: this.side, width: this.cfg.size + gap, height: this.cfg.size });
       this.ensureSprite(portrait);
       this.applyTexture(portrait);
-      this.size = this.layout.sizeFor(line);
+      this.size = this.layout.sizeFor(line); // inset-aware size
       this.shown = true;
     } else {
+      this.layout.setPortraitInset(undefined); // bubble reclaims its full width
       this.shown = false;
     }
     this.follow();
@@ -109,18 +114,17 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
     this.bgTransform = undefined;
   }
 
-  /** Place the portrait beside the bubble, vertically centred on the bubble
-   *  body, tracking the speaker's (moving) anchor. */
+  /** Place the portrait in its reserved column INSIDE the bubble, vertically
+   *  centred on the bubble body, tracking the speaker's (moving) anchor. */
   private follow(): void {
     if (!this.transform || !this.scene || !this.size || !this.shown) return;
     const a = this.layout.anchorFor(this.scene, this.speakerId);
+    const pad = this.layout.padding;
     const half = this.cfg.size / 2;
-    const gap = this.cfg.gap ?? 8;
-    const bubbleHalf = this.size.width / 2;
     const x =
       this.side === "left"
-        ? a.x - bubbleHalf - gap - half
-        : a.x + bubbleHalf + gap + half;
+        ? a.x - this.size.width / 2 + pad + half
+        : a.x + this.size.width / 2 - pad - half;
     // Bubble body spans [anchor.y - offsetY - height, anchor.y - offsetY].
     const y = a.y - this.layout.offsetY - this.size.height / 2;
     this.transform.setPosition(x, y);
