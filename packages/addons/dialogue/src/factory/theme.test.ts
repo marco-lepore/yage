@@ -46,7 +46,7 @@ function makeMinter(): () => number {
 function sentinelTheme(): DialogueTheme {
   const n = makeMinter();
   return {
-    box: { x: n(), y: n(), width: n(), height: n() },
+    box: { marginX: n(), marginY: n(), height: n() },
     padding: n(),
     frameColor: n(),
     frameAlpha: n(),

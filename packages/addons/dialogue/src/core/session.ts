@@ -162,6 +162,16 @@ export interface AvatarChannel {
   setSpeaker(speaker: SpeakerDef | undefined): void;
   setExpression(expression: string | undefined): void;
   setSpeaking(speaking: boolean): void;
+  /**
+   * Optional per-line hook (mirrors {@link ChromeChannel.present}) so an avatar
+   * can be **line-driven**: read the line's `meta` (e.g. `portrait` / `side` /
+   * `presence`) to pick an image/side/presence, beyond what `setSpeaker` carries.
+   * The Session calls it on each say/choice line alongside `setSpeaker`, and
+   * with `undefined` when the conversation clears (stop/end). A reflowing in-box
+   * avatar registers a text inset here so the body text reflows around it. Most
+   * avatars (portrait, scene-figure) omit it.
+   */
+  present?(line: PresentedLine | undefined): void;
   /** Optional visibility gate — a portrait hides during a cutscene; a
    *  scene-figure avatar (a world NPC the game owns) omits it and stays put. */
   setVisible?(visible: boolean): void;
@@ -181,10 +191,43 @@ export interface ChromeChannel {
    * drives (a composite restores its active variant on show). State-preserving.
    */
   setVisible(visible: boolean): void;
+  /**
+   * React to a per-line variant (`meta.chrome`, `meta.position`). Called
+   * **before** {@link TextChannel.present} for the same line, so a composite
+   * selects its active variant and a layout owner commits the frame the text
+   * then reads. `present(undefined)` means "no line — clear the chrome's content".
+   */
   present?(line: PresentedLine | undefined): void;
   update(dt: number): void;
 }
 
+/**
+ * The presentation channels a {@link DialogueSession} drives. Writing a custom
+ * presenter (a DOM overlay, a ui-react chrome) means implementing these — so the
+ * **call-order contract** the Session guarantees is documented here, on the
+ * interfaces themselves:
+ *
+ * Per say line, the Session calls (in this order):
+ *  1. `chrome.setNameplate(name)` / `chrome.setContinueVisible(false)`
+ *  2. `avatar.setSpeaker` / `setExpression` / `setSpeaking`, then `avatar.present?(line)`
+ *  3. `chrome.present?(line)` — **before** the text, so a composite picks the
+ *     active variant first and a layout owner commits the frame the text reads
+ *  4. `text.present(line)` — render + start revealing
+ *  5. (each channel's `setVisible(shown)` reflects the host-hidden lever)
+ *
+ * Then, exactly once, when the line finishes revealing, the text channel fires
+ * the listener registered via {@link TextChannel.setRevealListener} (the
+ * Session owns that seam — never a public field). For an **empty** line the
+ * completion fires synchronously inside `text.present`.
+ *
+ * Per choice the order mirrors a line (chrome/avatar/text for the optional
+ * prompt) and then `choices.present(options, context)`. If a presenter
+ * {@link ChoiceChannel.ownsPrompt | owns the prompt}, the Session clears the
+ * chrome + body instead of step 3/4.
+ *
+ * `setBox`/geometry is always applied **before** `present` for that line (a
+ * presenter that lays out off a region reads the committed region in `present`).
+ */
 export interface DialogueChannels {
   readonly text: TextChannel;
   readonly choices: ChoiceChannel;
@@ -543,6 +586,7 @@ export class DialogueSession {
     this.channels.chrome?.present?.(undefined); // clear the chrome's line content
     this.channels.avatar?.setSpeaker(undefined);
     this.channels.avatar?.setSpeaking(false);
+    this.channels.avatar?.present?.(undefined); // clear any line-driven avatar + its inset
     // Honest hide of every channel (idle mode → nothing shown), preserving the
     // host-hidden lever. Replaces the old setNameplate(undefined) covert hide-all.
     this.applyVisibility();
@@ -873,6 +917,10 @@ export class DialogueSession {
     this.channels.avatar?.setSpeaker(speaker);
     this.channels.avatar?.setExpression(step.expression);
     this.channels.avatar?.setSpeaking(true);
+    // Line-driven avatars read meta here. Before chrome/text present so a
+    // reflowing in-box avatar can register its text inset first (the text view
+    // then wraps to the narrowed region).
+    this.channels.avatar?.present?.(line);
 
     this.channels.chrome?.present?.(line);
     this.channels.text.present(line);
@@ -921,6 +969,9 @@ export class DialogueSession {
     this.channels.avatar?.setSpeaker(speaker);
     this.channels.avatar?.setExpression(undefined);
     this.channels.avatar?.setSpeaking(false);
+    // Line-driven avatars read the choice line's meta too (before the body
+    // prompt presents, so an in-box avatar's inset reflows the prompt).
+    this.channels.avatar?.present?.(line);
 
     const ctx: ChoiceContext = {
       view: step.view,
@@ -1010,6 +1061,7 @@ export class DialogueSession {
     this.channels.chrome?.present?.(undefined); // clear the chrome's line content
     this.channels.avatar?.setSpeaker(undefined);
     this.channels.avatar?.setSpeaking(false);
+    this.channels.avatar?.present?.(undefined); // clear any line-driven avatar + its inset
     // Honest hide of every channel (ended mode → nothing shown), preserving the
     // host-hidden lever. Replaces the old setNameplate(undefined) covert hide-all.
     this.applyVisibility();

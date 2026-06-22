@@ -1,5 +1,8 @@
 export * from "./types.js";
 export { parseMarkup, stripMarkup, splitGraphemes } from "./markup.js";
+// Headless typewriter clock — a custom text presenter reuses it to honour
+// reveal timing / pauses / per-run speed / completion without re-implementing.
+export { LineReveal } from "./LineReveal.js";
 export { loadScript, DialogueScriptError } from "./formats/canonical.js";
 export { DialoguePlayError } from "./validate.js";
 export { defineScript } from "./defineScript.js";

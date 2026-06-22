@@ -109,6 +109,8 @@ class StubAvatar implements AvatarChannel {
   expressions: (string | undefined)[] = [];
   speaking: boolean[] = [];
   visibles: boolean[] = [];
+  /** Line-driven hook: records each present, including the undefined clear. */
+  presents: (PresentedLine | undefined)[] = [];
   setSpeaker(speaker: SpeakerDef | undefined): void {
     this.speakers.push(speaker);
   }
@@ -117,6 +119,9 @@ class StubAvatar implements AvatarChannel {
   }
   setSpeaking(speaking: boolean): void {
     this.speaking.push(speaking);
+  }
+  present(line: PresentedLine | undefined): void {
+    this.presents.push(line);
   }
   setVisible(visible: boolean): void {
     this.visibles.push(visible);
@@ -1905,5 +1910,55 @@ describe("DialogueSession — storage model", () => {
     h.session.play(script); // re-evaluate with rude flipped
     await flush();
     expect(h.text.lastText).toBe("no");
+  });
+});
+
+describe("DialogueSession — line-driven avatar", () => {
+  const meta = { portrait: "hero", side: "left" };
+  const script: DialogueScript = {
+    id: "av",
+    start: "a",
+    nodes: {
+      a: {
+        id: "a",
+        steps: [
+          { kind: "say", speaker: "hero", text: "hi", meta },
+          {
+            kind: "choice",
+            speaker: "hero",
+            text: "well?",
+            meta,
+            options: [{ text: "ok" }],
+          },
+        ],
+      },
+    },
+    speakers: { hero: { id: "hero", name: "Hero" } },
+  };
+
+  it("calls avatar.present(line) with the line's meta on a say line", () => {
+    const h = makeHarness();
+    h.session.play(script);
+    const last = h.avatar.presents.at(-1);
+    expect(last?.meta).toEqual(meta); // line-driven: the avatar sees the meta
+    // present runs alongside setSpeaker (both fire for the line).
+    expect(h.avatar.speakers.at(-1)?.id).toBe("hero");
+  });
+
+  it("calls avatar.present(line) for a choice line too", async () => {
+    const h = makeHarness();
+    h.session.play(script);
+    h.avatar.presents.length = 0;
+    h.text.finishReveal(); // finish "hi"
+    h.session.advance(); // step off "hi" → into the choice (async)
+    await flush();
+    expect(h.avatar.presents.some((l) => l?.meta === meta)).toBe(true);
+  });
+
+  it("clears the avatar (present(undefined)) on stop and on end", () => {
+    const h = makeHarness();
+    h.session.play(script);
+    h.session.stop();
+    expect(h.avatar.presents.at(-1)).toBeUndefined(); // cleared its inset
   });
 });

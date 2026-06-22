@@ -13,7 +13,7 @@
 import type { Scene } from "@yagejs/core";
 import type { PresentedLine } from "../core/session.js";
 import type { ChromePresenter } from "../chrome/DialogueUiAdapter.js";
-import { defaultCompositeRoute, lineRoutesToBubble, type CompositeRoute } from "./route.js";
+import { makeDefaultRoute, lineRoutesToBubble, type MountRoute } from "./route.js";
 
 export class CompositeChrome implements ChromePresenter {
   private active?: ChromePresenter | undefined;
@@ -26,10 +26,11 @@ export class CompositeChrome implements ChromePresenter {
   constructor(
     private readonly box: ChromePresenter,
     private readonly bubble: ChromePresenter,
-    private readonly route: CompositeRoute = defaultCompositeRoute,
+    private readonly routing: MountRoute = makeDefaultRoute(),
   ) {}
 
   mount(scene: Scene): void {
+    this.routing.bind(scene); // resolve the default route's actor lookup
     this.box.mount(scene);
     this.bubble.mount(scene);
     this.box.setVisible(false);
@@ -62,7 +63,7 @@ export class CompositeChrome implements ChromePresenter {
       this.active?.present?.(undefined);
       return;
     }
-    const target = lineRoutesToBubble(this.route, line) ? this.bubble : this.box;
+    const target = lineRoutesToBubble(this.routing.route, line) ? this.bubble : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.setVisible(false);
 

@@ -352,18 +352,117 @@ if (remaining >= 0 && !paused) { remaining -= dt; if (remaining <= 0) { remainin
 Headless channels (core): `TextChannel`, `ChoiceChannel`, `AvatarChannel`,
 `ChromeChannel`. Presenter adapters add the YAGE lifecycle (`mount`/`dispose`)
 and pointer seams: `TextPresenter`, `ChromePresenter`, `ChoicePresenter`.
-Defaults: `DialogueChrome`, `ChoiceListPresenter`, `DialogueTextView` (box);
-`BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world; the bubble sizes
-to its text — grows width to `maxWidth`, then wraps + grows height — via the
-renderer's `measureWrappedText`). Composites
-(`CompositeChrome`/`CompositeTextPresenter`/`CompositeChoicePresenter`) route by
-`view`. Avatars: `PortraitPresenter`, `SceneFigurePresenter`,
+Defaults: `DialogueChrome`, `ChoiceListPresenter`, `BoxTextView` (box);
+`BubbleChrome`, `BubbleChoicePresenter`, `BubbleTextView` (world). Avatars:
+`PortraitPresenter`, `SceneFigurePresenter`, line-driven `InBoxAvatarPresenter`
+(box, reflows the text) + `BubbleAvatarPresenter` (a portrait inside the bubble, text reflows),
 `NullAvatarPresenter`; `DialogueActor` (component on a world entity, self-registers
 by speaker id) + `actorRegistryFor(scene)`.
 
-`DialogueTextView` renders one `SplitTextComponent` per line, reveals glyphs by
-toggling `chars[i].visible`, and applies per-run colour/bold/italic and per-glyph
-effects.
+- **Layout owners** (one per coordinate model, behind `./presenters`):
+  `BubbleLayout` is the single source of bubble sizing + speaker anchor (incl. the
+  missing-actor fallback) + origin — measured **once** per line and shared by the
+  bubble chrome/text/choices (no drift). `BoxLayout` owns the box frame rect +
+  text region: per-line `meta.position`, the unified panel grow (a choice grows
+  the frame/nameplate/prompt/rows as one), and an **inset registry** the in-box
+  avatar reflows the text — and the choice rows — around.
+- **Routing** (mixed bundles): the four composites (chrome/text/choices/avatar)
+  share one `route: (line) => "box" | "bubble"`. Default = narrator → box; explicit `view`
+  wins for a real speaker; else a registered `DialogueActor` → bubble, otherwise
+  box. Override in one place via `createMixedDialogue(theme, { route })`.
+- **`LineReveal`** (core, pixi-free): the typewriter clock — grapheme cursor,
+  `[pause]` arming, per-run/line `[speed]`, hold multiplier, fired-once
+  completion. `DialogueTextView` consumes it; a custom presenter reuses it.
+
+`DialogueTextView` renders one `SplitTextComponent` per line, maps `LineReveal`'s
+grapheme cursor onto glyph visibility (`chars[i].visible`), and applies per-run
+colour/bold/italic and per-glyph effects.
+
+## Writing a custom presenter
+
+A presenter implements the channel contract; the Session drives it. The
+**call order** per line is guaranteed: `chrome.present(line)` **before**
+`text.present(line)` (so a composite/layout owner commits first); geometry
+(`setBox`) is applied before `present`; the text channel fires its
+`setRevealListener` callback **exactly once** per line (synchronously for an empty
+line) — the Session owns that seam, so never expose a public reveal field.
+
+Reuse `LineReveal` for reveal timing rather than re-implementing it — a DOM /
+per-word / accessibility presenter then only maps its grapheme cursor onto its own
+rendering:
+
+```ts
+import { LineReveal, splitGraphemes, type TextChannel, type PresentedLine } from "@yagejs-addons/dialogue";
+
+class DomTextPresenter implements TextChannel {
+  private reveal = new LineReveal(/* charsPerSec */ 45);
+  private graphemes: string[] = [];
+  private el = document.querySelector("#line")!;
+  constructor() { this.reveal.setCompletionListener(() => this.onDone?.()); }
+  private onDone?: () => void;
+  setRevealListener(fn: (() => void) | undefined) { this.onDone = fn; }
+  present(line: PresentedLine) {
+    this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
+    this.reveal.begin(line.text, line.speed);
+  }
+  update(dt: number) {
+    this.reveal.update(dt);
+    this.el.textContent = this.graphemes.slice(0, Math.floor(this.reveal.revealed)).join("");
+  }
+  completeReveal() { this.reveal.complete(); }
+  isRevealComplete() { return this.reveal.isComplete(); }
+  isRevealing() { return this.reveal.isRevealing(); }
+  setSpeedMultiplier(m: number) { this.reveal.setSpeedMultiplier(m); }
+  setVisible(v: boolean) { (this.el as HTMLElement).style.visibility = v ? "visible" : "hidden"; }
+  clear() { this.el.textContent = ""; }
+}
+```
+
+A line-driven presenter (avatar/chrome) implements the optional `present(line)`
+and reads `line.meta`. The shipped avatar references: `InBoxAvatarPresenter`
+reserves a text column via `BoxLayout.setInset(key, { side, width })` so the body
+text + choice rows reflow around it (`background?` for a panel); `BubbleAvatarPresenter`
+reserves a portrait column inside the bubble (`BubbleLayout.setPortraitInset`) so
+the bubble (and a bubble choice panel) grows + its text/rows reflow. Wire per side; a `CompositeAvatarPresenter`
+routes box-vs-bubble like the other composites:
+
+```ts
+createMixedDialogue(theme, {
+  worldLayer: "world",
+  avatar: {
+    box: (layout) => new InBoxAvatarPresenter(layout, { layer, width: 84, background: { color } }),
+    bubble: (layout) => new BubbleAvatarPresenter(layout, { layer: "world", size: 56 }),
+  },
+});
+// box-only: createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(...) })
+```
+
+## Line `meta` keys the default presenters read
+
+`meta` is the opaque per-line bag (`SayStep.meta`); the default presenters read a
+small documented set. Unknown keys are ignored. YAML writes `meta` directly; Yarn
+uses `#key:value` hashtags (unrecognised hashtags already fold into `meta`).
+
+- `meta.chrome` — box frame style (named / `none` / default; see Theming).
+- `meta.position` — box vertical position: `top | center | bottom` (default
+  `bottom`). Moves the frame **and** the body text together.
+- `meta.portrait` / `meta.side` / `meta.presence` — read by the avatar presenters
+  (`InBoxAvatarPresenter` box / `BubbleAvatarPresenter` bubble): texture key,
+  `left|right` (default left), and `presence:false` to speak from off-screen
+  (portrait hidden, no inset).
+
+```yaml
+- { speaker: hero, text: "From up top.", meta: { position: top } }
+- { speaker: hero, text: "You made it.", meta: { portrait: hero_smug, side: right } }
+```
+
+```
+Hero: From up top. #position:top
+Hero: You made it. #portrait:hero_smug #side:right
+```
+
+`view` stays the coarse box/bubble selector; these `meta` keys are fine-grained
+hints within a variant.
 
 ## Input (root entry, `@yagejs/input` — not pixi)
 
@@ -378,7 +477,10 @@ binding.
 
 ## Theming
 
-`DialogueTheme` is one flat data object: `box`, `padding`, frame colours
+`DialogueTheme` is one flat data object: `box` (**viewport-relative**
+`{ marginX, marginY, height }` — a full-width bottom bar resolved against the
+renderer's design size at mount, so the default works at ANY resolution with no
+override; `meta.position` reuses the margins), `padding`, frame colours
 (`frameColor/frameAlpha/borderColor/cornerRadius`), `nameColor/Size`,
 `indicatorColor`, `caret?` (`{ blinkMs?, size? }`),
 `textSize/lineHeight/textColor/charsPerSec`, choice colours, `choiceGap?`,
@@ -430,12 +532,14 @@ Hero: An ornate proclamation. #chrome:parchment
 The cave swallows your words. #chrome:none
 ```
 
-**Choice overflow**: the box choice list grows **upward** to fit its rows
-(labels word-wrap; multi-line rows allowed) — row placement, the highlight, and
-pointer hit-testing all derive from one geometry pass, so a long list can't
-escape its hit-targets, and a list too tall for the screen spills off the top
-non-overlapping rather than piling rows. A list longer than the presenter's
-`softMaxChoices` (default 8) logs a soft-cap advisory but still renders.
+**Choice overflow + unified panel**: the box **frame grows** to fit the choice
+rows (+ prompt + nameplate) as one panel (labels word-wrap; multi-line rows
+allowed). For `position:bottom` the bottom edge is pinned and the top rises; the
+grow is capped at the screen, and a menu taller than that spills off the top
+non-overlapping. Row placement, the highlight, and pointer hit-testing all derive
+from the layout owner's one geometry pass, so a long list can't escape its
+hit-targets. A list longer than `softMaxChoices` (default 8) logs a soft-cap
+advisory but still renders.
 
 ## Experimental radial choice presenter
 

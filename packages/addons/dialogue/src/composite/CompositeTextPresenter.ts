@@ -10,7 +10,7 @@
 import type { Scene } from "@yagejs/core";
 import type { PresentedLine } from "../core/session.js";
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
-import { defaultCompositeRoute, lineRoutesToBubble, type CompositeRoute } from "./route.js";
+import { makeDefaultRoute, lineRoutesToBubble, type MountRoute } from "./route.js";
 
 export class CompositeTextPresenter implements TextPresenter {
   private active?: TextPresenter | undefined;
@@ -21,7 +21,7 @@ export class CompositeTextPresenter implements TextPresenter {
   constructor(
     private readonly box: TextPresenter,
     private readonly bubble: TextPresenter,
-    private readonly route: CompositeRoute = defaultCompositeRoute,
+    private readonly routing: MountRoute = makeDefaultRoute(),
   ) {
     // Each sub-view's reveal forwards to the Session's listener ONLY when that
     // sub-view is the active one (the composite wrinkle): the inactive view
@@ -45,12 +45,13 @@ export class CompositeTextPresenter implements TextPresenter {
   }
 
   mount(scene: Scene): void {
+    this.routing.bind(scene); // resolve the default route's actor lookup
     this.box.mount(scene);
     this.bubble.mount(scene);
   }
 
   present(line: PresentedLine): void {
-    const target = lineRoutesToBubble(this.route, line) ? this.bubble : this.box;
+    const target = lineRoutesToBubble(this.routing.route, line) ? this.bubble : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.clear();
     this.active = target;
