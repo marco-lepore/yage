@@ -48,6 +48,9 @@ export interface InBoxAvatarConfig {
     /** Corner radius (px). Default 8. */
     readonly radius?: number;
   };
+  /** Vertical alignment in the box: `top` (level with the body text) or
+   *  `center` (default — centred in the frame, so it sinks in a grown choice box). */
+  readonly align?: "top" | "center";
 }
 
 /** Distinct inset key per instance so two in-box avatars can coexist. */
@@ -149,7 +152,12 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
       this.side === "left"
         ? frame.x + pad + half
         : frame.x + frame.width - pad - half;
-    const y = frame.y + frame.height / 2;
+    // top: align the portrait's top with the body text top (below the nameplate);
+    // center: centre it in the frame (default).
+    const y =
+      this.cfg.align === "top"
+        ? this.layout.textRegion().y + half
+        : frame.y + frame.height / 2;
     this.transform.setPosition(x, y);
     this.bgTransform?.setPosition(x, y);
   }

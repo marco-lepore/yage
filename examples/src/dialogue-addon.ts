@@ -1288,6 +1288,7 @@ class RoomScene extends Scene {
             layer: DIALOGUE_LAYER_AVATAR,
             width: 84,
             scale: 0.8,
+            align: "top",
             background: { color: 0x2a2438, alpha: 0.9, radius: 10 },
           }),
         bubble: (layout) =>
@@ -1295,6 +1296,7 @@ class RoomScene extends Scene {
             layer: BUBBLE_LAYER,
             size: 56,
             scale: 0.68,
+            align: "top",
             background: { color: 0x14233a, alpha: 0.92, radius: 8 },
           }),
       },

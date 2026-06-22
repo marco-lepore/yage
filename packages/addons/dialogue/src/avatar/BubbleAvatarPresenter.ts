@@ -37,6 +37,9 @@ export interface BubbleAvatarConfig {
     readonly alpha?: number;
     readonly radius?: number;
   };
+  /** Vertical alignment in the bubble: `top` (level with the body text) or
+   *  `center` (default). */
+  readonly align?: "top" | "center";
 }
 
 export class BubbleAvatarPresenter implements AvatarPresenter {
@@ -128,7 +131,11 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
         ? a.x - size.width / 2 + pad + half
         : a.x + size.width / 2 - pad - half;
     // Bubble body spans [anchor.y - offsetY - height, anchor.y - offsetY].
-    const y = a.y - this.layout.offsetY - size.height / 2;
+    const bodyTop = a.y - this.layout.offsetY - size.height;
+    const y =
+      this.cfg.align === "top"
+        ? bodyTop + pad + half // level with the body text top
+        : a.y - this.layout.offsetY - size.height / 2; // centre (default)
     this.transform.setPosition(x, y);
     this.bgTransform?.setPosition(x, y);
   }
