@@ -21,7 +21,7 @@ import { BubbleChrome } from "../chrome/BubbleChrome.js";
 import { BubbleChoicePresenter } from "../chrome/BubbleChoicePresenter.js";
 import { BubbleTextView } from "../render/BubbleTextView.js";
 import type { DialogueBundle } from "../DialogueController.js";
-import type { DialogueTheme } from "./theme.js";
+import { defaultBubbleFrame, type DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
 import { themeFonts } from "./themeFonts.js";
 
@@ -77,13 +77,16 @@ export function createBubbleDialogue(
     padding: geo.padding,
     offsetY: geo.offsetY,
     tail: geo.tail,
-    bgColor: theme.frameColor,
-    bgAlpha: theme.frameAlpha,
+    tailLean: theme.tailLean,
+    frameColor: theme.frameColor,
+    frameAlpha: theme.frameAlpha,
     borderColor: theme.borderColor,
     cornerRadius: theme.cornerRadius,
     nameColor: theme.nameColor,
     nameSize: theme.nameSize,
     indicatorColor: theme.indicatorColor,
+    caret: theme.caret,
+    frame: defaultBubbleFrame(theme.textured),
     // Body-text metrics so the bubble grows to fit its wrapped text, in lockstep
     // with the BubbleTextView below.
     textSize: theme.textSize,
@@ -94,9 +97,9 @@ export function createBubbleDialogue(
 
   const text = new BubbleTextView(
     {
-      size: theme.textSize,
+      textSize: theme.textSize,
       lineHeight: theme.lineHeight,
-      defaultColor: theme.textColor,
+      textColor: theme.textColor,
       charsPerSec: theme.charsPerSec,
       layer: opts.worldLayer,
       ...fonts,
@@ -124,9 +127,10 @@ export function createBubbleDialogue(
     choiceColor: theme.choiceColor,
     choiceSelectedColor: theme.choiceSelectedColor,
     highlightColor: theme.highlightColor,
-    promptColor: theme.textColor,
-    bgColor: theme.frameColor,
-    bgAlpha: theme.frameAlpha,
+    choiceGap: theme.choiceGap,
+    textColor: theme.textColor,
+    frameColor: theme.frameColor,
+    frameAlpha: theme.frameAlpha,
     borderColor: theme.borderColor,
     cornerRadius: theme.cornerRadius,
     fallbackAnchor: opts.fallbackAnchor,

@@ -17,9 +17,9 @@ import {
  */
 
 const CFG: DialogueTextConfig = {
-  size: 16,
+  textSize: 16,
   lineHeight: 20,
-  defaultColor: 0xffffff,
+  textColor: 0xffffff,
   charsPerSec: 1000,
   layer: "dialogue-text",
 };

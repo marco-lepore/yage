@@ -1,9 +1,20 @@
-// Theme (flat visual config) + the opt-in texture sub-theme.
+// Theme (flat visual config) + the opt-in textured nine-slice styles.
 export type {
   DialogueTheme,
   BoxRect,
-  TexturedTheme,
+  CaretTheme,
+  ChromeStyle,
+  NineSliceFrame,
   NineSliceInsets,
+} from "./theme.js";
+// Theme defaults + reserved chrome-style keys (for `meta.chrome` authoring).
+export {
+  CHROME_STYLE_DEFAULT,
+  CHROME_STYLE_NONE,
+  DEFAULT_CARET_BLINK_MS,
+  DEFAULT_CARET_SIZE,
+  DEFAULT_CHOICE_GAP,
+  DEFAULT_TAIL_LEAN,
 } from "./theme.js";
 
 // Zero-config, zero-asset default theme.

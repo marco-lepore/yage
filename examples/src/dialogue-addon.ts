@@ -91,7 +91,9 @@ import {
   createBubbleDialogue,
   DialogueActor,
   DIALOGUE_LAYERS,
+  type DialogueTheme,
 } from "@yagejs-addons/dialogue/presenters";
+import { Texture } from "pixi.js";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
@@ -924,14 +926,97 @@ class ChoiceTimer extends Component {
   }
 }
 
+// ── theme presets (cycled by the "Theme" button) ─────────────────────────────
+
+/** A canvas-drawn nine-slice frame (a coloured `border`-px ring around a fill)
+ *  for the textured preset — keeps the demo asset-free. The `border` must equal
+ *  the nine-slice insets so the corners map 1:1. */
+function makeFrameTexture(edge: number, fill: number, border: number): Texture {
+  const size = 48;
+  const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = hex(edge);
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = hex(fill);
+    ctx.fillRect(border, border, size - 2 * border, size - 2 * border);
+  }
+  return Texture.from(canvas);
+}
+
+const insets = (n: number): { left: number; top: number; right: number; bottom: number } => ({
+  left: n,
+  top: n,
+  right: n,
+  bottom: n,
+});
+// The bubble is small, so it wears a thinner border than the wide box frame.
+const FRAME_BORDER = 12;
+const BUBBLE_BORDER = 6;
+// Built once on first use of the textured preset, then reused across rebuilds.
+let frameTex: Texture | undefined;
+let bubbleTex: Texture | undefined;
+
+interface ThemePreset {
+  readonly label: string;
+  readonly build: () => DialogueTheme;
+}
+
+/** The presets the "Theme" button cycles. "Warm" recolours every knob through
+ *  the theme (no presenter subclassed); "Textured" swaps the box + bubble chrome
+ *  to a nine-slice via `theme.textured`. */
+const THEME_PRESETS: readonly ThemePreset[] = [
+  { label: "Default", build: () => defaultTheme() },
+  {
+    label: "Warm",
+    build: () => ({
+      ...defaultTheme(),
+      frameColor: 0x2b1d12,
+      borderColor: 0xb8894e,
+      nameColor: 0xffcf8a,
+      textColor: 0xf3e6cf,
+      choiceColor: 0xcdba97,
+      choiceSelectedColor: 0xffd98a,
+      highlightColor: 0x7a5a2a,
+      caret: { blinkMs: 200, size: { width: 9, height: 6 } },
+      choiceGap: 8,
+    }),
+  },
+  {
+    label: "Textured",
+    build: () => {
+      frameTex ??= makeFrameTexture(0x8a6d3b, 0x2b2417, FRAME_BORDER);
+      bubbleTex ??= makeFrameTexture(0x8a6d3b, 0x241d12, BUBBLE_BORDER);
+      return {
+        ...defaultTheme(),
+        nameColor: 0xffcf8a,
+        textColor: 0xf3e6cf,
+        textured: {
+          default: {
+            frame: { texture: frameTex, insets: insets(FRAME_BORDER) },
+            bubble: { texture: bubbleTex, insets: insets(BUBBLE_BORDER) },
+          },
+        },
+      };
+    },
+  },
+];
+
 // ── scene ────────────────────────────────────────────────────────────────────
 
 class RoomScene extends Scene {
   readonly name = "dialogue-addon";
   readonly layers = LAYERS;
 
-  /** Baked bitmap-font name; omit for the default canvas text. */
-  constructor(private readonly bitmapFont?: string) {
+  /** `themeBuild` picks the look (cycled by the Theme button); `bitmapFont` (the
+   *  Font button) layers a baked atlas on top. Both rebuild the scene. */
+  constructor(
+    private readonly themeBuild: () => DialogueTheme = defaultTheme,
+    private readonly bitmapFont?: string,
+  ) {
     super();
   }
 
@@ -1008,13 +1093,20 @@ class RoomScene extends Scene {
     };
 
     const bitmapFont = this.bitmapFont;
-    const theme =
+    const base = this.themeBuild();
+    const theme: DialogueTheme =
       bitmapFont !== undefined
-        ? { ...defaultTheme(), bitmapFont, textSize: 14, lineHeight: 19 }
-        : defaultTheme();
+        ? { ...base, bitmapFont, textSize: 14, lineHeight: 19 }
+        : base;
+    // A textured bubble gets extra inner padding so its text clears the
+    // nine-slice border the small bubble would otherwise crowd.
+    const texturedBubble = theme.textured?.["default"]?.bubble !== undefined;
     const bubbleOpts = {
       worldLayer: BUBBLE_LAYER,
-      ...(bitmapFont !== undefined ? { bubble: { maxWidth: 320 } } : {}),
+      bubble: {
+        ...(bitmapFont !== undefined ? { maxWidth: 320 } : {}),
+        ...(texturedBubble ? { padding: 12 } : {}),
+      },
     };
     const bundle = createMixedDialogue(theme, bubbleOpts);
 
@@ -1191,19 +1283,18 @@ async function main(): Promise<void> {
 
   await engine.start();
   await engine.scenes.push(new RoomScene());
-  wireFontToggle(engine);
+  wireControls(engine);
 }
 
 /**
- * The "Font: Canvas / Bitmap" button under the canvas. Bakes a bitmap atlas
- * from the example `.ttf` on first use (32px glyphs, rendered at the bitmap
- * theme's 14px — exercising the measurement scaling), then rebuilds the town
- * with the other theme. A scene swap (not a live restyle): presenters take
- * their font at construction, and the game state resets with the fresh scene.
+ * The "Font" + "Theme" buttons under the canvas. Each rebuilds the town with a
+ * scene swap (not a live restyle: presenters take their font/theme at
+ * construction, and the game state resets with the fresh scene). Font bakes the
+ * bitmap atlas on first use (32px glyphs rendered at the bitmap theme's 14px —
+ * exercising the measurement scaling) and layers it on the current theme; Theme
+ * cycles {@link THEME_PRESETS} — default → warm recolour → textured nine-slice.
  */
-function wireFontToggle(engine: Engine): void {
-  const button = document.getElementById("font-toggle");
-  if (!(button instanceof HTMLButtonElement)) return;
+function wireControls(engine: Engine): void {
   injectStyles(`
     .controls button {
       background: #222; border: 1px solid #444; border-radius: 4px;
@@ -1214,18 +1305,43 @@ function wireFontToggle(engine: Engine): void {
 
   let bitmap = false;
   let fontName: string | undefined;
-  button.addEventListener("click", () => {
-    void (async () => {
-      button.disabled = true;
-      bitmap = !bitmap;
-      fontName ??= await installBitmapFont("/assets/Kenney Future.ttf", {
-        name: "Kenney Bitmap",
-      });
-      await engine.scenes.replace(new RoomScene(bitmap ? fontName : undefined));
-      button.textContent = bitmap ? "Font: Bitmap" : "Font: Canvas";
-      button.disabled = false;
-    })();
-  });
+  let themeIndex = 0;
+  let themeBuild: () => DialogueTheme = THEME_PRESETS[0]?.build ?? defaultTheme;
+  const rebuild = (): Promise<void> =>
+    engine.scenes.replace(new RoomScene(themeBuild, bitmap ? fontName : undefined));
+
+  const fontBtn = document.getElementById("font-toggle");
+  if (fontBtn instanceof HTMLButtonElement) {
+    fontBtn.addEventListener("click", () => {
+      void (async () => {
+        fontBtn.disabled = true;
+        bitmap = !bitmap;
+        fontName ??= await installBitmapFont("/assets/Kenney Future.ttf", {
+          name: "Kenney Bitmap",
+        });
+        await rebuild();
+        fontBtn.textContent = bitmap ? "Font: Bitmap" : "Font: Canvas";
+        fontBtn.disabled = false;
+      })();
+    });
+  }
+
+  const themeBtn = document.getElementById("theme-toggle");
+  if (themeBtn instanceof HTMLButtonElement) {
+    themeBtn.addEventListener("click", () => {
+      void (async () => {
+        themeBtn.disabled = true;
+        themeIndex = (themeIndex + 1) % THEME_PRESETS.length;
+        const preset = THEME_PRESETS[themeIndex];
+        if (preset) {
+          themeBuild = preset.build;
+          await rebuild();
+          themeBtn.textContent = `Theme: ${preset.label}`;
+        }
+        themeBtn.disabled = false;
+      })();
+    });
+  }
 }
 
 main().catch(console.error);

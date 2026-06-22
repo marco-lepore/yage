@@ -1,18 +1,31 @@
 /**
  * The blinking "continue" caret every chrome draws — one triangle + one blink
- * formula, shared so the four chromes can't drift apart (the box and bubble
- * polygons had already diverged before this was extracted).
+ * formula, shared so the box and bubble chromes can't drift apart (their
+ * polygons had already diverged before this was extracted), and both
+ * parameterized by the theme's {@link CaretTheme} so a game can restyle the
+ * caret without forking a presenter.
  */
 
 import type { GraphicsContext } from "@yagejs/renderer";
+import { DEFAULT_CARET_BLINK_MS, DEFAULT_CARET_SIZE, type CaretTheme } from "../factory/theme.js";
 
-/** Blink alpha for the continue caret, `timeMs` since it was (re)shown. */
-export function caretAlpha(timeMs: number): number {
-  return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(timeMs / 260));
+/**
+ * Blink alpha for the continue caret, `timeMs` since it was (re)shown.
+ * `blinkMs` is the time constant in `0.35 + 0.65·(0.5 + 0.5·sin(t/blinkMs))`.
+ */
+export function caretAlpha(timeMs: number, blinkMs: number = DEFAULT_CARET_BLINK_MS): number {
+  return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(timeMs / blinkMs));
 }
 
-/** The continue-caret triangle (7×5 px, pointing down), at the local origin.
- *  Position the owning entity's `Transform` to place it. */
-export function drawCaret(g: GraphicsContext, color: number): void {
-  g.poly([0, 0, 7, 0, 3.5, 5]).fill({ color, alpha: 1 });
+/** The continue-caret triangle (pointing down) at the local origin, sized by
+ *  `size` (default {@link DEFAULT_CARET_SIZE}). Position the owning entity's
+ *  `Transform` to place it. */
+export function drawCaret(
+  g: GraphicsContext,
+  color: number,
+  size: CaretTheme["size"] = DEFAULT_CARET_SIZE,
+): void {
+  const w = size.width;
+  const h = size.height;
+  g.poly([0, 0, w, 0, w / 2, h]).fill({ color, alpha: 1 });
 }

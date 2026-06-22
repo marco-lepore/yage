@@ -554,13 +554,21 @@ it. An ambient (always auto-advancing) conversation simply attaches no binding.
 ## Theming
 
 A `DialogueTheme` is one flat data object (geometry, colours, fonts, layers,
-reveal rate). `defaultTheme()` returns a fresh zero-asset instance each call, so
-spread-and-tweak is safe:
+reveal rate, and the opt-in textured styles). `defaultTheme()` returns a fresh
+zero-asset instance each call, so spread-and-tweak is safe:
 
 ```ts
 const theme = { ...defaultTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
 createBoxDialogue(theme);
 ```
+
+Presenter-config field names match the theme field names exactly (theme
+`frameColor` becomes config `frameColor`, theme `textSize` becomes config
+`textSize`, and so on), so re-skinning is just data — a test asserts every theme
+field reaches a presenter. Alongside the colours and sizes, the theme carries
+`caret` (`{ blinkMs, size }` for the blinking continue indicator), `choiceGap`
+(the gap between choice rows), and `tailLean` (the speech-bubble tail-tip
+offset).
 
 <Tabs>
   <TabItem label="Default (zero assets)">
@@ -572,13 +580,62 @@ createBoxDialogue(theme);
     look. Bold/italic are synthesised on the regular atlas (skew +
     double-draw), so no variant atlases are needed. Not the default.
   </TabItem>
-  <TabItem label="Textured nine-slice (planned)">
-    The `theme.textured` field (a nine-slice texture + insets) is declared but
-    **not consumed by anything yet** — a nine-slice branch in the Graphics
-    chromes is planned. Until it lands, the drawn Graphics frame is the only
-    chrome.
+  <TabItem label="Textured nine-slice (opt-in)">
+    `theme.textured` is a **map of named chrome styles**, each a nine-slice
+    frame (`{ frame: { texture, insets }, bubble? }`) drawn through the
+    renderer's `createNineSlice` — so the addon needs no `pixi.js` peer. A box
+    line picks its style by name through its `meta.chrome` key; the speech
+    bubble uses the `"default"` style's `bubble`, content-sized per line.
   </TabItem>
 </Tabs>
+
+### Textured chrome and `meta.chrome`
+
+Set `theme.textured` to a map of styles. Two names are reserved: `"default"` is
+the look for lines that name no style, and `"none"` (built-in, no entry needed)
+hides the box frame for a single line.
+
+```ts
+const theme = {
+  ...defaultTheme(),
+  textured: {
+    default: {
+      frame: { texture: "ui/box", insets: { left: 16, top: 16, right: 16, bottom: 16 } },
+      bubble: { texture: "ui/bubble", insets: { left: 12, top: 12, right: 12, bottom: 12 } },
+    },
+    parchment: { frame: { texture: "ui/parchment", insets: { left: 16, top: 16, right: 16, bottom: 16 } } },
+  },
+};
+```
+
+`meta.chrome` is line-level metadata. In YAML you write `meta` directly; in Yarn
+it is a `#chrome:` hashtag (Yarn line hashtags fold straight into `meta`):
+
+```yaml
+- { speaker: hero, text: "An ornate proclamation.", meta: { chrome: parchment } }
+- { text: "The cave swallows your words.", meta: { chrome: none } }
+```
+
+```text
+Hero: An ornate proclamation. #chrome:parchment
+The cave swallows your words. #chrome:none
+```
+
+A line that names no style — or an unknown one — falls back to the `"default"`
+textured style if present, otherwise the drawn Graphics frame. `meta.chrome` is
+box-only; the diegetic bubble keeps its single textured (or drawn) look.
+
+### Choice overflow
+
+The box choice list is content-driven: labels word-wrap, and the rows grow
+**upward** from the box's bottom edge to fit however many options a step
+declares. Row placement, the selection highlight, and pointer hit-testing all
+come from one geometry pass, so even a long, wrapped, partly-disabled list stays
+selectable exactly where it's drawn; a list too tall for the screen spills off
+the top non-overlapping rather than piling rows. A menu longer than the
+presenter's soft cap (`softMaxChoices`, default 8) logs an advisory through the
+engine logger — it still renders, but a shorter menu (or a sub-menu) usually
+reads better.
 
 ## Experimental: radial choices
 
