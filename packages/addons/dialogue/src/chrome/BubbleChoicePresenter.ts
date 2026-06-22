@@ -17,7 +17,7 @@ import {
   type TextComponentOptions,
 } from "@yagejs/renderer";
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
-import { BubbleAnchorResolver, type AnchorPoint } from "../render/bubbleAnchor.js";
+import type { BubbleLayout } from "../render/BubbleLayout.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import {
   makeTextOptions,
@@ -49,9 +49,6 @@ export interface BubbleChoiceConfig extends FontConfig {
   readonly frameAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
-  /** Anchor for a missing/absent speaker with no last-known position.
-   *  Default world origin; share it with the bubble chrome. */
-  readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
 
 interface Row {
@@ -75,17 +72,18 @@ export class BubbleChoicePresenter implements ChoicePresenter {
   private selected = -1;
   /** Master visibility gate — state-preserving hide/show. */
   private hidden = false;
-  private readonly anchors: BubbleAnchorResolver;
 
   onChoiceChosen?: (position: number) => void;
 
-  constructor(private readonly cfg: BubbleChoiceConfig) {
-    this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
-  }
+  constructor(
+    private readonly cfg: BubbleChoiceConfig,
+    private readonly layout: BubbleLayout,
+  ) {}
 
-  /** Route the missing-actor warning to the engine Logger. */
+  /** Route the missing-actor warning to the engine Logger (the layout owns the
+   *  shared anchor resolver). */
   setDiagnostics(warn: DiagnosticSink): void {
-    this.anchors.setDiagnostics(warn);
+    this.layout.setDiagnostics(warn);
   }
 
   /** This panel is self-contained (own bg + prompt header), so it owns the
@@ -109,8 +107,8 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     if (!this.scene) return;
     const c = this.cfg;
     // a missing speaker resolves to the last-known / fallback anchor (with a
-    // once-per-speaker warning), never the world origin.
-    const a = this.anchors.resolve(this.scene, context?.speaker?.id);
+    // once-per-speaker warning), never the world origin — via the shared owner.
+    const a = this.layout.anchorFor(this.scene, context?.speaker?.id);
     const innerW = c.width - 2 * c.padding;
 
     // Optional prompt header inside the same panel (one bubble, not two).

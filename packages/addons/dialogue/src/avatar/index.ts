@@ -4,3 +4,5 @@ export { PortraitPresenter } from "./PortraitPresenter.js";
 export type { PortraitPresenterConfig } from "./PortraitPresenter.js";
 export { SceneFigurePresenter } from "./SceneFigurePresenter.js";
 export type { SceneFigurePresenterConfig } from "./SceneFigurePresenter.js";
+export { InBoxAvatarPresenter } from "./InBoxAvatarPresenter.js";
+export type { InBoxAvatarConfig } from "./InBoxAvatarPresenter.js";

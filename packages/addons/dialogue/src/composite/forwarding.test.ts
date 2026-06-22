@@ -14,12 +14,14 @@ import type { Scene } from "@yagejs/core";
 import { CompositeChrome } from "./CompositeChrome.js";
 import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 import { CompositeChoicePresenter } from "./CompositeChoicePresenter.js";
+import { makeDefaultRoute, fixedRoute } from "./route.js";
+import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type {
   ChoicePresenter,
   ChromePresenter,
   TextPresenter,
 } from "../chrome/DialogueUiAdapter.js";
-import type { PresentedLine, SpeakerView } from "../core/session.js";
+import type { ChoiceContext, PresentedChoice, PresentedLine, SpeakerView } from "../core/session.js";
 
 const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
@@ -242,6 +244,70 @@ describe("composite matrix — chrome-specific verbs", () => {
     c.setVisible(true);
     expect(box.visible).toBe(true);
     expect(bubble.visible).toBe(false);
+  });
+});
+
+describe("composite matrix — routing: all three agree", () => {
+  const registeredLine = (): PresentedLine => ({
+    text: { runs: [], pauses: [], length: 0 },
+    speed: 1,
+    speaker, // no view → the registered actor decides
+  });
+
+  function freshScene(register: boolean): Scene {
+    const s = {} as unknown as Scene;
+    if (register) actorRegistryFor(s).register("npc", {} as DialogueActor);
+    return s;
+  }
+
+  it("the default route sends a registered-actor line to the bubble across all three", () => {
+    const scene = freshScene(true);
+    const routing = makeDefaultRoute();
+
+    const boxC = new RecChrome();
+    const bubC = new RecChrome();
+    const chrome = new CompositeChrome(boxC, bubC, routing);
+    chrome.mount(scene);
+    const boxT = new RecText();
+    const bubT = new RecText();
+    const text = new CompositeTextPresenter(boxT, bubT, routing);
+    text.mount(scene);
+    const boxCh = new RecChoice();
+    const bubCh = new RecChoice();
+    const choices = new CompositeChoicePresenter(boxCh, bubCh, routing);
+    choices.mount(scene);
+
+    chrome.present(registeredLine());
+    text.present(registeredLine());
+    choices.present([] as readonly PresentedChoice[], { speaker } as ChoiceContext);
+
+    expect(bubC.presents.length).toBeGreaterThan(0); // chrome → bubble
+    expect(bubT.presents).toBeGreaterThan(0); // text → bubble
+    expect(bubCh.presents).toBeGreaterThan(0); // choices → bubble
+    expect(boxC.presents.length).toBe(0);
+  });
+
+  it("an unregistered speaker (no view) goes to the box across all three", () => {
+    const scene = freshScene(false);
+    const routing = makeDefaultRoute();
+    const boxC = new RecChrome();
+    const bubC = new RecChrome();
+    const chrome = new CompositeChrome(boxC, bubC, routing);
+    chrome.mount(scene);
+    chrome.present(registeredLine());
+    expect(boxC.presents.length).toBeGreaterThan(0);
+    expect(bubC.presents.length).toBe(0);
+  });
+
+  it("a shared custom route overrides view + actor; all three follow it", () => {
+    const routing = fixedRoute(() => "bubble"); // route EVERYTHING to the bubble
+    const boxC = new RecChrome();
+    const bubC = new RecChrome();
+    const chrome = new CompositeChrome(boxC, bubC, routing);
+    chrome.mount(SCENE);
+    chrome.present(boxLine()); // a speakerless line that would default to the box
+    expect(bubC.presents.length).toBeGreaterThan(0); // override wins
+    expect(boxC.presents.length).toBe(0);
   });
 });
 

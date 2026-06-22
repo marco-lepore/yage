@@ -24,7 +24,7 @@ import {
   CameraEntity,
   GraphicsComponent,
 } from "@yagejs/renderer";
-import { Texture } from "pixi.js";
+import { Assets, Texture } from "pixi.js";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import {
@@ -40,7 +40,9 @@ import {
   defaultTheme,
   createMixedDialogue,
   DialogueActor,
+  InBoxAvatarPresenter,
   DIALOGUE_LAYERS,
+  DIALOGUE_LAYER_AVATAR,
 } from "@yagejs-addons/dialogue/presenters";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -68,6 +70,11 @@ function makeFrameTexture(): Texture {
   }
   return Texture.from(canvas);
 }
+
+/** The in-box avatar's `meta.portrait` texture key. Preloaded into the Pixi
+ *  cache in `onEnter` (after `RendererPlugin` initialises `Assets`) so the
+ *  avatar resolves it synchronously, the way a host preloads portrait art. */
+const PORTRAIT_KEY = "e2e/portrait";
 
 const SCRIPT: DialogueScript = {
   id: "demo",
@@ -157,6 +164,49 @@ const HUB_SCRIPT: DialogueScript = {
   },
 };
 
+/** Per-line `meta.position` moves the box frame. The probe reads the nameplate
+ *  Y, which tracks the frame top, to prove top < center < bottom. */
+const POSITION_SCRIPT: DialogueScript = {
+  id: "position",
+  start: "p",
+  speakers: { narrator: { id: "narrator", name: "Narrator", color: 0xffd866 } },
+  nodes: {
+    p: {
+      id: "p",
+      steps: [
+        { kind: "say", speaker: "narrator", text: "At the bottom.", meta: { position: "bottom" } },
+        { kind: "say", speaker: "narrator", text: "At the top now.", meta: { position: "top" } },
+        { kind: "say", speaker: "narrator", text: "In the centre.", meta: { position: "center" } },
+        { kind: "end" },
+      ],
+    },
+  },
+};
+
+/** A line-driven in-box avatar: `meta.portrait` shows the portrait and the body
+ *  text reflows around its reserved column; a line without it reclaims the full
+ *  width. The probe reads the body-text X to prove the reflow. */
+const AVATAR_SCRIPT: DialogueScript = {
+  id: "avatar",
+  start: "av",
+  speakers: { narrator: { id: "narrator", name: "Narrator", color: 0xffd866 } },
+  nodes: {
+    av: {
+      id: "av",
+      steps: [
+        { kind: "say", speaker: "narrator", text: "No portrait yet, full width." },
+        {
+          kind: "say",
+          speaker: "narrator",
+          text: "Now a portrait reflows the text.",
+          meta: { portrait: PORTRAIT_KEY, side: "left" },
+        },
+        { kind: "end" },
+      ],
+    },
+  },
+};
+
 /** Per-line `meta.chrome` swaps the box frame style — a named textured
  *  nine-slice, the built-in invisible "none", then back to the drawn default. */
 const TEXTURED_SCRIPT: DialogueScript = {
@@ -242,6 +292,9 @@ class DialogueProbe extends Component {
     bubbleVisible: boolean;
     texturedVisible: boolean;
     bubbleTextured: boolean;
+    nameY: number;
+    textX: number;
+    avatarPresent: boolean;
   } {
     return {
       lastLine: this.lastLine,
@@ -252,6 +305,12 @@ class DialogueProbe extends Component {
       ended: this.ended,
       shownOptions: this.shownOptions,
       selectionIndex: this.selectionIndex,
+      // Nameplate Y tracks the box frame top — moves with meta.position.
+      nameY: this.entityY("dlg-name"),
+      // Body-text X tracks the (possibly avatar-inset) text region (reflow).
+      textX: this.entityX("dlg-line"),
+      // The in-box avatar spawns its sprite only when a meta.portrait line shows.
+      avatarPresent: this.scene.findEntity("dlg-inbox-avatar") !== undefined,
       // Live chrome visibility (read straight off the renderer) so the spec can
       // lock the regression: after a hide/restore on a bubble line, the bubble must come
       // back and the box frame must stay hidden.
@@ -269,6 +328,16 @@ class DialogueProbe extends Component {
   /** Whether the named chrome entity's Graphics is currently visible. */
   private frameVisible(name: string): boolean {
     return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.visible ?? false;
+  }
+
+  /** The named entity's Transform Y (−1 when absent). */
+  private entityY(name: string): number {
+    return this.scene.findEntity(name)?.tryGet(Transform)?.position.y ?? -1;
+  }
+
+  /** The named entity's Transform X (−1 when absent). */
+  private entityX(name: string): number {
+    return this.scene.findEntity(name)?.tryGet(Transform)?.position.x ?? -1;
   }
 
   /** Child count of the named chrome entity's Graphics (a nine-slice sprite is
@@ -289,6 +358,11 @@ class DialogueScene extends Scene {
   ];
 
   onEnter(): void {
+    // Preload the in-box avatar portrait into the Pixi cache now that the
+    // renderer has initialised Assets, so `texture(PORTRAIT_KEY)` resolves
+    // synchronously when a meta.portrait line spawns the avatar sprite.
+    Assets.cache.set(PORTRAIT_KEY, makeFrameTexture());
+
     const cam = this.spawn(CameraEntity, {
       position: new Vec2(WIDTH / 2, HEIGHT / 2),
     });
@@ -324,6 +398,10 @@ class DialogueScene extends Scene {
         };
     const bundle = createMixedDialogue(theme, {
       worldLayer: "bubble-world",
+      // A line-driven, reflowing in-box avatar wired to the box's layout owner —
+      // inert unless a line carries meta.portrait.
+      avatar: (layout) =>
+        new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 80 }),
     });
 
     const host: Entity = this.spawn("dialogue-host");
@@ -348,6 +426,8 @@ class DialogueScene extends Scene {
     (window as unknown as { __scripts__: Record<string, DialogueScript> }).__scripts__ = {
       hub: HUB_SCRIPT,
       textured: TEXTURED_SCRIPT,
+      position: POSITION_SCRIPT,
+      avatar: AVATAR_SCRIPT,
     };
   }
 

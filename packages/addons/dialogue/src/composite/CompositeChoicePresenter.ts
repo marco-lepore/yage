@@ -9,7 +9,7 @@
 import type { Scene } from "@yagejs/core";
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "../chrome/DialogueUiAdapter.js";
-import { choiceRoutesToBubble, defaultCompositeRoute, type CompositeRoute } from "./route.js";
+import { choiceRoutesToBubble, makeDefaultRoute, type MountRoute } from "./route.js";
 
 export class CompositeChoicePresenter implements ChoicePresenter {
   private active?: ChoicePresenter | undefined;
@@ -21,7 +21,7 @@ export class CompositeChoicePresenter implements ChoicePresenter {
   constructor(
     private readonly box: ChoicePresenter,
     private readonly bubble: ChoicePresenter,
-    private readonly route: CompositeRoute = defaultCompositeRoute,
+    private readonly routing: MountRoute = makeDefaultRoute(),
   ) {
     this.box.onChoiceChosen = (p) => this.onChoiceChosen?.(p);
     this.bubble.onChoiceChosen = (p) => this.onChoiceChosen?.(p);
@@ -40,11 +40,12 @@ export class CompositeChoicePresenter implements ChoicePresenter {
   /** Routes to the variant this choice will use, so the Session knows whether
    *  to suppress its chrome/body prompt before `present` picks the active one. */
   ownsPrompt(context?: ChoiceContext): boolean {
-    const target = choiceRoutesToBubble(this.route, context) ? this.bubble : this.box;
+    const target = choiceRoutesToBubble(this.routing.route, context) ? this.bubble : this.box;
     return target.ownsPrompt?.(context) ?? false;
   }
 
   mount(scene: Scene): void {
+    this.routing.bind(scene); // resolve the default route's actor lookup
     this.box.mount(scene);
     this.bubble.mount(scene);
   }
@@ -52,7 +53,7 @@ export class CompositeChoicePresenter implements ChoicePresenter {
   present(choices: readonly PresentedChoice[], context?: ChoiceContext): void {
     // Disabled rows (and the choice `meta`) ride through untouched — the active
     // leaf presenter is the one that greys/skips them.
-    const target = choiceRoutesToBubble(this.route, context) ? this.bubble : this.box;
+    const target = choiceRoutesToBubble(this.routing.route, context) ? this.bubble : this.box;
     const other = target === this.box ? this.bubble : this.box;
     other.clear();
     this.active = target;

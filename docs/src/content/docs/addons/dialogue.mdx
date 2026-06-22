@@ -512,18 +512,95 @@ YAGE lifecycle (`mount`/`dispose`) and pointer hit-test seams.
 | Concern | Default (box) | Default (bubble) |
 | ------- | ------------- | ---------------- |
 | Chrome  | `DialogueChrome` | `BubbleChrome` |
-| Text    | `DialogueTextView` | `BubbleTextView` |
+| Text    | `BoxTextView` | `BubbleTextView` |
 | Choices | `ChoiceListPresenter` | `BubbleChoicePresenter` |
 
-`createMixedDialogue` composes both behind `CompositeChrome` /
-`CompositeTextPresenter` / `CompositeChoicePresenter`, routing each line and
-choice to box or bubble by its `view` hint.
+Each coordinate model has a **layout owner** the presenters share, so they can
+never drift. `BubbleLayout` measures the bubble size + resolves the speaker
+anchor (including the missing-actor fallback) **once** per line for the bubble
+chrome, text, and choices. `BoxLayout` owns the box frame rect and text region:
+per-line position (`meta.position`), the unified panel grow (a choice grows the
+frame, nameplate, prompt, and rows as one), and an inset registry an in-box
+avatar reflows the text around.
+
+`createMixedDialogue` composes box + bubble behind `CompositeChrome` /
+`CompositeTextPresenter` / `CompositeChoicePresenter`. All three share one
+**route** so a line's chrome, text, and choices always agree. The default is
+speaker-aware (a narrator goes to the box; an explicit `view` wins; otherwise a
+speaker with a registered `DialogueActor` floats in a bubble). Override the
+policy in one place:
+
+```ts
+createMixedDialogue(theme, {
+  worldLayer: "world",
+  // e.g. all of the boss's lines in bubbles, everything else boxed
+  route: (line) => (line?.speaker?.id === "boss" ? "bubble" : "box"),
+});
+```
 
 Avatars are decoupled too: `PortraitPresenter` (a sprite beside the box),
-`SceneFigurePresenter` (an NPC already in the world), or `NullAvatarPresenter`.
-A `DialogueActor` component on a world entity self-registers under a speaker id
-(via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
-speaker's head anchor.
+`SceneFigurePresenter` (an NPC already in the world), `InBoxAvatarPresenter` (the
+reflowing in-box portrait below), or `NullAvatarPresenter`. A `DialogueActor`
+component on a world entity self-registers under a speaker id (via
+`actorRegistryFor(scene)`) so a speech bubble can find and follow the speaker's
+head anchor.
+
+### Writing a custom presenter
+
+A custom presenter implements the channel contract; the Session drives it in a
+guaranteed order — `chrome.present(line)` runs **before** `text.present(line)`
+(so a composite or layout owner commits first), geometry is set before `present`,
+and the text channel fires its reveal-completed listener **exactly once** per
+line (the Session owns that seam, so there's no public field to clobber).
+
+Reuse `LineReveal` — the headless, pixi-free typewriter clock (grapheme cursor,
+`[pause]` timing, per-run/line `[speed]`, completion) — instead of
+re-implementing reveal timing. A DOM, per-word, or accessibility presenter then
+only maps the grapheme cursor onto its own rendering:
+
+```ts
+import { LineReveal, splitGraphemes } from "@yagejs-addons/dialogue";
+import type { TextChannel, PresentedLine } from "@yagejs-addons/dialogue";
+
+class DomTextPresenter implements TextChannel {
+  private reveal = new LineReveal(45 /* graphemes/sec */);
+  private graphemes: string[] = [];
+  private onDone?: () => void;
+  constructor(private el: HTMLElement) {
+    this.reveal.setCompletionListener(() => this.onDone?.());
+  }
+  setRevealListener(fn: (() => void) | undefined) { this.onDone = fn; }
+  present(line: PresentedLine) {
+    this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
+    this.reveal.begin(line.text, line.speed);
+  }
+  update(dt: number) {
+    this.reveal.update(dt);
+    this.el.textContent = this.graphemes.slice(0, Math.floor(this.reveal.revealed)).join("");
+  }
+  completeReveal() { this.reveal.complete(); }
+  isRevealComplete() { return this.reveal.isComplete(); }
+  isRevealing() { return this.reveal.isRevealing(); }
+  setSpeedMultiplier(m: number) { this.reveal.setSpeedMultiplier(m); }
+  setVisible(v: boolean) { this.el.style.visibility = v ? "visible" : "hidden"; }
+  clear() { this.el.textContent = ""; }
+}
+```
+
+A line-driven avatar or chrome implements the optional `present(line)` and reads
+`line.meta`. The shipped **`InBoxAvatarPresenter`** is the worked reference: it
+reads `meta.portrait` / `meta.side` / `meta.presence`, and reserves a column via
+`BoxLayout.setInset(...)` so the box body text **reflows** around the portrait —
+built entirely from the public contract, no addon internals. Wire it through the
+factory, which hands it the box's shared layout owner:
+
+```ts
+import { InBoxAvatarPresenter, DIALOGUE_LAYER_AVATAR } from "@yagejs-addons/dialogue/presenters";
+
+createBoxDialogue(theme, {
+  avatar: (layout) => new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 96 }),
+});
+```
 
 ## Input
 
@@ -625,17 +702,43 @@ A line that names no style — or an unknown one — falls back to the `"default
 textured style if present, otherwise the drawn Graphics frame. `meta.chrome` is
 box-only; the diegetic bubble keeps its single textured (or drawn) look.
 
+### Per-line position and in-box avatars (`meta`)
+
+The default box presenters read a few more line-level `meta` keys (the same
+`meta` bag as `meta.chrome`, written directly in YAML or as Yarn `#key:value`
+hashtags). `view` stays the coarse box/bubble selector; these are fine-grained
+hints within the box variant. Unknown keys are ignored.
+
+- **`meta.position`** — `top`, `center`, or `bottom` (default). Moves the box
+  frame **and** the body text together (RPG-Maker top/middle/bottom).
+- **`meta.portrait` / `meta.side` / `meta.presence`** — read by
+  `InBoxAvatarPresenter`: the portrait texture key, which side it sits on
+  (`left` default / `right`), and `presence: false` to speak from off-screen
+  (portrait hidden, text reclaims the full width). With an in-box avatar wired,
+  the body text reflows around the reserved column.
+
+```yaml
+- { speaker: hero, text: "A message from on high.", meta: { position: top } }
+- { speaker: hero, text: "Good to see you.", meta: { portrait: hero_smug, side: right } }
+```
+
+```text
+Hero: A message from on high. #position:top
+Hero: Good to see you. #portrait:hero_smug #side:right
+```
+
 ### Choice overflow
 
-The box choice list is content-driven: labels word-wrap, and the rows grow
-**upward** from the box's bottom edge to fit however many options a step
-declares. Row placement, the selection highlight, and pointer hit-testing all
-come from one geometry pass, so even a long, wrapped, partly-disabled list stays
-selectable exactly where it's drawn; a list too tall for the screen spills off
-the top non-overlapping rather than piling rows. A menu longer than the
-presenter's soft cap (`softMaxChoices`, default 8) logs an advisory through the
-engine logger — it still renders, but a shorter menu (or a sub-menu) usually
-reads better.
+The box presenters grow as **one panel**: the frame expands to fit the choice
+rows (plus the prompt and nameplate), labels word-wrap, and the chrome,
+nameplate, and rows move together (for the default bottom position the bottom
+edge stays pinned and the top rises). Row placement, the selection highlight, and
+pointer hit-testing all come from the layout owner's one geometry pass, so even a
+long, wrapped, partly-disabled list stays selectable exactly where it's drawn.
+The grow is capped at the screen; a menu taller than that spills off the top
+non-overlapping rather than piling rows. A menu longer than the presenter's soft
+cap (`softMaxChoices`, default 8) logs an advisory through the engine logger — it
+still renders, but a shorter menu (or a sub-menu) usually reads better.
 
 ## Experimental: radial choices
 

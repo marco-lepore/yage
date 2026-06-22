@@ -1,25 +1,24 @@
 /**
- * Default choice presenter — a bottom-anchored vertical list inside the box,
- * with a highlight bar behind the selected row. Split out of `DialogueChrome`
- * so the choice UI is swappable (a radial / Mass-Effect wheel, a separate
- * panel, a touch list) without touching the frame or body text. Selection
- * *navigation* lives in the Session; this presenter only paints what it's told
- * and reports pointer commits back through {@link ChoiceChannel.onChoiceChosen}.
+ * Default choice presenter — a vertical list inside the box, with a highlight
+ * bar behind the selected row. Split out of `DialogueChrome` so the choice UI is
+ * swappable (a radial / Mass-Effect wheel, a separate panel, a touch list)
+ * without touching the frame or body text. Selection *navigation* lives in the
+ * Session; this presenter only paints what it's told and reports pointer commits
+ * back through {@link ChoiceChannel.onChoiceChosen}.
  *
- * Overflow: the row stack is **content-driven** — labels word-wrap (a row may
- * be several lines), and the rows grow **upward** from the box's bottom edge
- * (a list too tall for the screen spills off the top, non-overlapping). Row
+ * Overflow + unified panel: labels word-wrap (a row may be several lines), and
+ * the row stack is laid out by the shared {@link BoxLayout}, which **grows the
+ * surrounding frame** to fit the rows + prompt + nameplate as one panel (a list
+ * too tall for the screen spills off the bottom, non-overlapping). Row
  * placement, the selection highlight, and pointer hit-testing all derive from
- * ONE computed set of row rects (see {@link stackChoiceRows}), so a
- * wrapped/overflowing row can't desync them (the old fixed-height layout let
- * long lists escape the frame while the hit-test still targeted the original
- * slots). A list longer than `softMaxChoices` logs a soft-cap advisory (it
- * still renders).
+ * the ONE set of row rects the owner returns, so a wrapped/overflowing row can't
+ * desync them. A list longer than `softMaxChoices` logs a soft-cap advisory.
  */
 
 import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent, type TextComponentOptions } from "@yagejs/renderer";
 import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
+import { type BoxLayout, type ChoiceRowRect } from "../render/BoxLayout.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import {
   makeTextOptions,
@@ -31,8 +30,6 @@ import {
 import { DEFAULT_CHOICE_GAP } from "../factory/theme.js";
 
 export interface ChoiceListConfig extends FontConfig {
-  readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-  readonly padding: number;
   readonly choiceSize: number;
   readonly choiceColor: number;
   readonly choiceSelectedColor: number;
@@ -46,14 +43,6 @@ export interface ChoiceListConfig extends FontConfig {
   readonly layerFrame: string;
   /** Choice labels (drawn above the frame layer). */
   readonly layerText: string;
-}
-
-/** A laid-out row's screen rect — shared by placement, highlight, and hit-test. */
-export interface ChoiceRowRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
 }
 
 interface ChoiceRow {
@@ -72,33 +61,6 @@ export const DEFAULT_SOFT_MAX_CHOICES = 8;
  *  highlight bar's rounded edge. */
 const ROW_TEXT_INDENT = 6;
 
-/**
- * Stack row slots bottom-up inside the box, growing **upward** from the bottom
- * edge (the box is bottom-anchored). `rowHeights` are full slot heights (wrapped
- * text height + gap). Rows are always **contiguous and non-overlapping** — each
- * row's top is the row below it minus its height — so a list too tall for the
- * screen spills off the top rather than piling rows on top of each other (the
- * soft-cap advisory flags an over-long menu long before that). The single source
- * of row geometry: placement, highlight, and hit-test all consume the result, so
- * they can't drift.
- */
-export function stackChoiceRows(
-  rowHeights: readonly number[],
-  box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
-  padding: number,
-): ChoiceRowRect[] {
-  const x = box.x + padding;
-  const width = box.width - 2 * padding;
-  const rects: ChoiceRowRect[] = [];
-  let bottom = box.y + box.height - padding;
-  for (let i = rowHeights.length - 1; i >= 0; i--) {
-    const h = rowHeights[i] ?? 0;
-    bottom -= h;
-    rects[i] = { x, y: bottom, width, height: h };
-  }
-  return rects;
-}
-
 export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
   private scene?: Scene | undefined;
   private highlightBar?: { entity: Entity; gfx: GraphicsComponent } | undefined;
@@ -111,7 +73,10 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
 
   onChoiceChosen?: (position: number) => void;
 
-  constructor(private readonly cfg: ChoiceListConfig) {}
+  constructor(
+    private readonly cfg: ChoiceListConfig,
+    private readonly layout: BoxLayout,
+  ) {}
 
   /** Route the soft-cap advisory to the engine Logger. */
   setDiagnostics(warn: DiagnosticSink): void {
@@ -131,7 +96,7 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
   present(choices: readonly PresentedChoice[]): void {
     this.clear();
     if (!this.scene) return;
-    const { box, cfg } = { box: this.cfg.box, cfg: this.cfg };
+    const cfg = this.cfg;
     const gap = cfg.choiceGap ?? DEFAULT_CHOICE_GAP;
     const softMax = cfg.softMaxChoices ?? DEFAULT_SOFT_MAX_CHOICES;
     if (choices.length > softMax) {
@@ -141,7 +106,7 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
       );
     }
 
-    const innerWidth = box.width - 2 * cfg.padding;
+    const innerWidth = this.layout.contentWidth();
     const wrapWidth = innerWidth - ROW_TEXT_INDENT - 2;
 
     // Pass 1: build each row's wrapped label and measure its slot height
@@ -155,15 +120,13 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
       return { entity, comp, disabled: choice.disabled ?? false, slotHeight };
     });
 
-    // Pass 2: lay the slots out from the single geometry source, then place each
-    // label at its rect (indented for the highlight bar's rounded edge).
-    const rects = stackChoiceRows(
-      built.map((b) => b.slotHeight),
-      box,
-      cfg.padding,
-    );
+    // Pass 2: hand the row heights to the owner, which grows the surrounding
+    // frame to fit them (+ prompt + nameplate) and returns the stacked rects —
+    // the ONE geometry source for placement, highlight, and hit-test. Then place
+    // each label at its rect (indented for the highlight bar's rounded edge).
+    const rects = this.layout.layoutChoicePanel(built.map((b) => b.slotHeight));
     this.rows = built.map((b, i) => {
-      const rect = rects[i] ?? { x: box.x + cfg.padding, y: box.y, width: innerWidth, height: b.slotHeight };
+      const rect = rects[i] ?? { x: 0, y: 0, width: innerWidth, height: b.slotHeight };
       b.entity.get(Transform).setPosition(rect.x + ROW_TEXT_INDENT, rect.y);
       return { entity: b.entity, comp: b.comp, disabled: b.disabled, rect };
     });

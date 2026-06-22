@@ -1,14 +1,16 @@
 /**
  * Diegetic speech-bubble chrome: a rounded bubble + downward tail drawn on a
  * *world* layer, repositioned every frame to sit above the speaking actor's
- * head (resolved through the {@link ActorRegistry} from the presented line's
- * speaker id). The matching body text is a {@link DialogueTextView} with an
- * origin provider tracking the same anchor — see `createBubbleDialogue`.
+ * head. The per-line size, the speaker→world anchor (incl. the missing-actor
+ * fallback), and the inner-top-left origin all come from the shared
+ * {@link BubbleLayout} — the single owner the companion {@link BubbleTextView}
+ * and {@link BubbleChoicePresenter} read too, so they can never drift. This
+ * class keeps only the bubble's *drawing* config (colours, tail, caret, name).
  *
- * The bubble is content-sized per line (see {@link bubbleSize}); the companion
- * text view wraps to the same inner width so they stay aligned. With a textured
- * {@link BubbleChromeConfig.frame}, the body renders as a nine-slice stretched
- * to that same per-line size (the tail stays a drawn triangle).
+ * The bubble is content-sized per line (see {@link BubbleLayout.sizeFor}); the
+ * companion text view wraps to the same inner width so they stay aligned. With a
+ * textured {@link BubbleChromeConfig.frame}, the body renders as a nine-slice
+ * stretched to that same per-line size (the tail stays a drawn triangle).
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
@@ -19,8 +21,7 @@ import {
   type NineSliceSprite,
 } from "@yagejs/renderer";
 import type { PresentedLine } from "../core/session.js";
-import { BubbleAnchorResolver, type AnchorPoint } from "../render/bubbleAnchor.js";
-import { bubbleSize } from "../render/bubbleSizing.js";
+import type { BubbleLayout } from "../render/BubbleLayout.js";
 import { caretAlpha, drawCaret } from "./caret.js";
 import type { ChromePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
@@ -34,15 +35,6 @@ import {
 export interface BubbleChromeConfig extends FontConfig {
   /** World-space render layer. */
   readonly layer: string;
-  /** Snuggest width; the bubble widens to its text up to {@link maxWidth}. */
-  readonly minWidth: number;
-  /** Widest the bubble grows before its text wraps to more lines. */
-  readonly maxWidth: number;
-  /** Minimum bubble height (px). The bubble grows past this to fit its text. */
-  readonly height: number;
-  readonly padding: number;
-  /** Gap between the actor's head anchor and the bubble's bottom edge. */
-  readonly offsetY: number;
   /** Tail height (the little pointer toward the speaker). */
   readonly tail: number;
   /** Tail tip offset from the speaker anchor (the asymmetric "lean"). */
@@ -59,14 +51,6 @@ export interface BubbleChromeConfig extends FontConfig {
   /** Optional textured nine-slice for the bubble body (the `"default"` style's
    *  `bubble`). Resized per line; omit for the drawn Graphics bubble. */
   readonly frame?: NineSliceFrame | undefined;
-  /** Body-text size + line advance — to size the bubble to its wrapped text,
-   *  matching the companion `BubbleTextView`. */
-  readonly textSize: number;
-  readonly lineHeight: number;
-  /** Anchor for a missing/absent speaker with no last-known position.
-   *  Default world origin; point it at the camera centre for a pure-bubble
-   *  bundle that shows narrator lines. */
-  readonly fallbackAnchor?: (() => AnchorPoint) | undefined;
 }
 
 export class BubbleChrome implements ChromePresenter {
@@ -82,7 +66,7 @@ export class BubbleChrome implements ChromePresenter {
   private caret?: GraphicsComponent | undefined;
   private caretTransform?: Transform | undefined;
   private caretTime = 0;
-  /** Current (content-sized) bubble size; recomputed per line. */
+  /** Current (content-sized) bubble size; recomputed per line from the layout. */
   private currentWidth: number;
   private currentHeight: number;
   // Master visibility + content sub-state; rendered = visible && hasLine.
@@ -93,17 +77,19 @@ export class BubbleChrome implements ChromePresenter {
   /** Speaker id of the line on screen — re-resolved each frame by `follow()` so
    *  the bubble tracks a live actor and falls back when one is missing. */
   private speakerId: string | undefined;
-  private readonly anchors: BubbleAnchorResolver;
 
-  constructor(private readonly cfg: BubbleChromeConfig) {
-    this.currentWidth = cfg.minWidth;
-    this.currentHeight = cfg.height;
-    this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
+  constructor(
+    private readonly cfg: BubbleChromeConfig,
+    private readonly layout: BubbleLayout,
+  ) {
+    this.currentWidth = 0;
+    this.currentHeight = 0;
   }
 
-  /** Route the missing-actor warning to the engine Logger. */
+  /** Route the missing-actor warning to the engine Logger (the layout owns the
+   *  shared anchor resolver). */
   setDiagnostics(warn: DiagnosticSink): void {
-    this.anchors.setDiagnostics(warn);
+    this.layout.setDiagnostics(warn);
   }
 
   mount(scene: Scene): void {
@@ -150,24 +136,13 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   /** Re-anchor to the line's speaker, grow to fit the text, and reveal. The
-   *  bubble stays visible even when the speaker has no live actor — it anchors
-   *  at the last-known / fallback position instead of vanishing at origin. */
+   *  bubble stays visible even when the speaker has no live actor — the layout
+   *  anchors it at the last-known / fallback position instead of vanishing. */
   present(line: PresentedLine | undefined): void {
     this.hasLine = line !== undefined;
     this.speakerId = line?.speaker?.id;
     if (line) {
-      const c = this.cfg;
-      const plain = line.text.runs.map((r) => r.text).join("");
-      const size = bubbleSize(plain, {
-        minWidth: c.minWidth,
-        maxWidth: c.maxWidth,
-        padding: c.padding,
-        minHeight: c.height,
-        textSize: c.textSize,
-        lineHeight: c.lineHeight,
-        fontFamily: c.fontFamily,
-        bitmapFont: c.bitmapFont,
-      });
+      const size = this.layout.sizeFor(line);
       this.currentWidth = size.width;
       this.currentHeight = size.height;
       this.drawBubble();
@@ -249,29 +224,32 @@ export class BubbleChrome implements ChromePresenter {
    *  or the last-known / fallback anchor when the actor is missing. */
   private follow(): void {
     if (!this.scene || !this.hasLine) return;
-    const a = this.anchors.resolve(this.scene, this.speakerId);
+    const a = this.layout.anchorFor(this.scene, this.speakerId);
     const c = this.cfg;
+    const padding = this.layout.padding;
+    const offsetY = this.layout.offsetY;
     const w = this.currentWidth;
     const h = this.currentHeight;
     const caretSize = c.caret?.size ?? DEFAULT_CARET_SIZE;
     this.transform?.setPosition(a.x, a.y);
     // Name: top-left corner of the bubble, lifted by the (grown) bubble height.
-    this.nameTransform?.setPosition(a.x - w / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
+    this.nameTransform?.setPosition(a.x - w / 2 + padding, a.y - (offsetY + h) - c.nameSize - 1);
     // Caret: bottom-right interior of the bubble (anchored near the bottom edge).
     this.caretTransform?.setPosition(
-      a.x + w / 2 - c.padding - caretSize.width,
-      a.y - c.offsetY - c.padding - caretSize.height + 3,
+      a.x + w / 2 - padding - caretSize.width,
+      a.y - offsetY - padding - caretSize.height + 3,
     );
   }
 
   private drawBubble(): void {
     const c = this.cfg;
+    const offsetY = this.layout.offsetY;
     const w = this.currentWidth;
     const h = this.currentHeight;
     const L = -w / 2;
     const R = w / 2;
-    const T = -(c.offsetY + h); // top edge
-    const B = -c.offsetY; // bottom edge (the tail hangs below it to the speaker)
+    const T = -(offsetY + h); // top edge
+    const B = -offsetY; // bottom edge (the tail hangs below it to the speaker)
     const half = c.tail; // tail base half-width
     const lean = c.tailLean ?? DEFAULT_TAIL_LEAN;
     const tipX = lean.x; // slight lean

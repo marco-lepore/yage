@@ -15,7 +15,7 @@
 export { DialogueTextView } from "./render/DialogueTextView.js";
 export type { DialogueTextConfig } from "./render/DialogueTextView.js";
 export { BubbleTextView } from "./render/BubbleTextView.js";
-export type { BubbleTextLayout } from "./render/BubbleTextView.js";
+export { BoxTextView } from "./render/BoxTextView.js";
 export {
   DIALOGUE_LAYERS,
   DIALOGUE_LAYER_FRAME,
@@ -24,8 +24,22 @@ export {
 } from "./render/layers.js";
 export { evaluateEffect, effectDrivesTint } from "./render/textEffects.js";
 export type { EffectOutput } from "./render/textEffects.js";
-// Shared missing-actor anchor resolver — the single owner of bubble
-// last-known/fallback positioning, reused by all three bubble presenters.
+// The per-line geometry owners (the "layout owner"), one per coordinate model —
+// the single source of bubble sizing/anchor/origin and box frame + text region
+// + the avatar-reflow inset registry, shared across each model's presenters so
+// they can't drift.
+export { BubbleLayout } from "./render/BubbleLayout.js";
+export type { BubbleLayoutConfig } from "./render/BubbleLayout.js";
+export { BoxLayout, stackChoiceRows } from "./render/BoxLayout.js";
+export type {
+  BoxLayoutConfig,
+  BoxPosition,
+  TextInset,
+  ChoiceRowRect,
+  Rect,
+} from "./render/BoxLayout.js";
+// Shared missing-actor anchor resolver (the BubbleLayout owns one internally;
+// exported for a custom bubble presenter that wants the same policy).
 export { BubbleAnchorResolver } from "./render/bubbleAnchor.js";
 export type { AnchorPoint } from "./render/bubbleAnchor.js";
 
@@ -64,9 +78,11 @@ export {
   CompositeTextPresenter,
   CompositeChrome,
   CompositeChoicePresenter,
-  defaultCompositeRoute,
+  makeDefaultRoute,
+  fixedRoute,
+  routeWithActor,
 } from "./composite/index.js";
-export type { CompositeRoute } from "./composite/index.js";
+export type { CompositeRoute, MountRoute } from "./composite/index.js";
 
 // ── avatars: portrait / scene-figure presenters + actor registry ───────────
 export * from "./avatar/index.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { stackChoiceRows } from "./ChoiceListPresenter.js";
+import { stackChoiceRows } from "../render/BoxLayout.js";
 
 /**
  * The choice list grows to fit. `stackChoiceRows` is the single geometry source

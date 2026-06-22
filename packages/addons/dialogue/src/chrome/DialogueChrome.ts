@@ -6,14 +6,16 @@
  * {@link DialogueTextView}. This class owns only the frame + nameplate + caret,
  * which makes z-order deterministic and the seams swappable independently.
  *
+ * Geometry comes from the shared {@link BoxLayout}: the frame rect (moved per
+ * line by `meta.position`, grown to fit a choice's rows), the nameplate spot,
+ * and the caret spot. The chrome subscribes to the owner so when a choice grows
+ * the frame after the chrome already presented, it redraws + repositions — the
+ * frame, nameplate, prompt, and rows stay ONE coherent panel.
+ *
  * The frame renders one of three ways per line, chosen by the line's
- * `meta.chrome` key (box only):
- *   - a named {@link NineSliceFrame} from {@link DialogueChromeConfig.frameStyles}
- *     (a stretchable textured frame), or
- *   - the built-in `"none"` style — no frame at all (full-bleed line), or
- *   - the drawn Graphics rounded rect (the default when there is no textured
- *     `"default"` style and the line names none / an unknown one).
- * With no `frameStyles` configured, it's always the Graphics frame.
+ * `meta.chrome` key (box only): a named {@link NineSliceFrame} from
+ * {@link DialogueChromeConfig.frameStyles}, the built-in `"none"` (no frame), or
+ * the drawn Graphics rounded rect (the default).
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
@@ -33,11 +35,10 @@ import {
   type CaretTheme,
   type NineSliceFrame,
 } from "../factory/theme.js";
+import type { BoxLayout } from "../render/BoxLayout.js";
 import type { PresentedLine } from "../core/session.js";
 
 export interface DialogueChromeConfig extends FontConfig {
-  readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-  readonly padding: number;
   readonly frameColor: number;
   readonly frameAlpha: number;
   readonly borderColor: number;
@@ -85,12 +86,13 @@ export class DialogueChrome implements ChromePresenter {
   private frameGfx?: GraphicsComponent | undefined;
   /** Separate entity hosting the nine-slice sprites (one per textured style);
    *  only spawned when {@link DialogueChromeConfig.frameStyles} has entries. Its
-   *  Transform sits at the box origin so the sprites draw at local (0,0). */
+   *  Transform tracks the per-line frame origin so the sprites draw at local 0. */
   private frameTex?: Entity | undefined;
+  private frameTexTransform?: Transform | undefined;
   private nineSliceHost?: GraphicsComponent | undefined;
   private readonly nineSlices = new Map<string, NineSliceSprite>();
-  private name?: { entity: Entity; comp: TextComponent } | undefined;
-  private indicator?: { entity: Entity; gfx: GraphicsComponent } | undefined;
+  private name?: { entity: Entity; transform: Transform; comp: TextComponent } | undefined;
+  private indicator?: { entity: Entity; transform: Transform; gfx: GraphicsComponent } | undefined;
   private indicatorTime = 0;
   /** Selected textured-style name from the line's `meta.chrome`, or undefined
    *  when the line names none. */
@@ -104,7 +106,14 @@ export class DialogueChrome implements ChromePresenter {
   private nameShown = false;
   private caretShown = false;
 
-  constructor(private readonly cfg: DialogueChromeConfig) {}
+  constructor(
+    private readonly cfg: DialogueChromeConfig,
+    private readonly layout: BoxLayout,
+  ) {
+    // A choice grows the frame AFTER this chrome presented its prompt line — so
+    // re-place the frame + nameplate + caret when the owner's geometry changes.
+    this.layout.onChange(() => this.applyGeometry());
+  }
 
   /** Route the unknown-`meta.chrome` warning to the engine Logger. */
   setDiagnostics(warn: DiagnosticSink): void {
@@ -112,31 +121,26 @@ export class DialogueChrome implements ChromePresenter {
   }
 
   mount(scene: Scene): void {
-    const { box, cfg } = { box: this.cfg.box, cfg: this.cfg };
+    const cfg = this.cfg;
 
-    // Frame: the drawn Graphics rounded rect (the default look).
+    // Frame: the drawn Graphics rounded rect (the default look). Drawn per line
+    // in applyGeometry — the rect moves with `meta.position` and grows for a
+    // choice, so it can't be a one-shot mount draw.
     const frame = scene.spawn("dlg-frame");
     frame.add(new Transform()).setPosition(0, 0);
     this.frameGfx = frame.add(new GraphicsComponent({ layer: cfg.layerFrame }));
-    this.frameGfx.draw((g) => {
-      g.roundRect(box.x, box.y, box.width, box.height, cfg.cornerRadius)
-        .fill({ color: cfg.frameColor, alpha: cfg.frameAlpha })
-        .stroke({ color: cfg.borderColor, alpha: 1, width: 2 });
-    });
-    // Hidden at mount (the Session shows it via setVisible when a line arrives),
-    // so a box-only bundle doesn't show an empty frame from scene start.
     this.frameGfx.graphics.visible = false;
     this.frame = frame;
 
     // Textured frame styles: a nine-slice sprite per named style, parented into
     // a host GraphicsComponent (Pixi Graphics is a Container) on its OWN entity
     // — the DisplaySystem drives a GraphicsComponent's position from its entity
-    // Transform, so the host needs a Transform at the box origin and its sprites
-    // draw at local (0,0). Reuses renderer's layer path; no pixi.js import.
+    // Transform, so the host Transform tracks the per-line frame origin and the
+    // sprites draw at local (0,0). Reuses renderer's layer path; no pixi.js import.
     const styles = cfg.frameStyles;
     if (styles && Object.keys(styles).length > 0) {
       const texEntity = scene.spawn("dlg-frame-tex");
-      texEntity.add(new Transform()).setPosition(box.x, box.y);
+      this.frameTexTransform = texEntity.add(new Transform());
       const host = texEntity.add(new GraphicsComponent({ layer: cfg.layerFrame }));
       for (const [key, spec] of Object.entries(styles)) {
         const sprite = createNineSlice({
@@ -145,8 +149,8 @@ export class DialogueChrome implements ChromePresenter {
           topHeight: spec.insets.top,
           rightWidth: spec.insets.right,
           bottomHeight: spec.insets.bottom,
-          width: box.width,
-          height: box.height,
+          width: this.layout.frameRect().width,
+          height: this.layout.frameRect().height,
         });
         sprite.visible = false;
         host.graphics.addChild(sprite);
@@ -158,25 +162,23 @@ export class DialogueChrome implements ChromePresenter {
 
     // Name plate.
     const nameEntity = scene.spawn("dlg-name");
-    nameEntity.add(new Transform()).setPosition(box.x + cfg.padding, box.y + cfg.padding - 1);
+    const nameTransform = nameEntity.add(new Transform());
     const nameComp = nameEntity.add(
       new TextComponent(makeTextOptions(cfg, "", cfg.nameSize, cfg.nameColor, cfg.layerText)),
     );
-    this.name = { entity: nameEntity, comp: nameComp };
+    this.name = { entity: nameEntity, transform: nameTransform, comp: nameComp };
 
-    // Continue indicator (blinking caret at bottom-right), sized by the theme.
+    // Continue indicator (blinking caret), sized by the theme. Drawn once in
+    // local coords; positioned per line via its transform.
     const caretSize = cfg.caret?.size ?? DEFAULT_CARET_SIZE;
     const ind = scene.spawn("dlg-indicator");
-    ind
-      .add(new Transform())
-      .setPosition(
-        box.x + box.width - cfg.padding - caretSize.width,
-        box.y + box.height - cfg.padding - caretSize.height - 1,
-      );
+    const indTransform = ind.add(new Transform());
     const indGfx = ind.add(new GraphicsComponent({ layer: cfg.layerFrame }));
     indGfx.draw((g) => drawCaret(g, cfg.indicatorColor, caretSize));
     indGfx.graphics.visible = false;
-    this.indicator = { entity: ind, gfx: indGfx };
+    this.indicator = { entity: ind, transform: indTransform, gfx: indGfx };
+
+    this.applyGeometry();
   }
 
   setNameplate(name: string | undefined, color?: number): void {
@@ -199,8 +201,9 @@ export class DialogueChrome implements ChromePresenter {
     this.apply();
   }
 
-  /** Pick this line's frame style from its `meta.chrome` key. Box only; the
-   *  bubble ignores it. `undefined` (no line) resets to the default look. */
+  /** Place this line's frame at its `meta.position` and pick its `meta.chrome`
+   *  style. Box only; the bubble ignores both. `undefined` (no line) resets to
+   *  the default look at the resting position. */
   present(line: PresentedLine | undefined): void {
     const metaChrome = line?.meta?.["chrome"];
     this.styleKey = typeof metaChrome === "string" ? metaChrome : undefined;
@@ -215,6 +218,8 @@ export class DialogueChrome implements ChromePresenter {
       this.warnedKeys.add(this.styleKey);
       this.warn?.(`unknown meta.chrome style "${this.styleKey}" — using the default frame`);
     }
+    this.layout.layoutLine(line); // place the frame at meta.position
+    this.applyGeometry();
     this.apply();
   }
 
@@ -223,6 +228,31 @@ export class DialogueChrome implements ChromePresenter {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.apply();
+  }
+
+  /** Redraw the frame + reposition the nameplate and caret from the owner's
+   *  current geometry (per line, and when a choice grows the frame). */
+  private applyGeometry(): void {
+    const r = this.layout.frameRect();
+    this.frameGfx?.draw((g) => {
+      g.clear();
+      g.roundRect(r.x, r.y, r.width, r.height, this.cfg.cornerRadius)
+        .fill({ color: this.cfg.frameColor, alpha: this.cfg.frameAlpha })
+        .stroke({ color: this.cfg.borderColor, alpha: 1, width: 2 });
+    });
+    if (this.frameTexTransform) this.frameTexTransform.setPosition(r.x, r.y);
+    for (const sprite of this.nineSlices.values()) {
+      sprite.width = r.width;
+      sprite.height = r.height;
+    }
+    if (this.name) {
+      const p = this.layout.nameplatePos();
+      this.name.transform.setPosition(p.x, p.y);
+    }
+    if (this.indicator) {
+      const p = this.layout.caretPos(this.cfg.caret?.size ?? DEFAULT_CARET_SIZE);
+      this.indicator.transform.setPosition(p.x, p.y);
+    }
   }
 
   /** Render each piece = master-visible AND its own content present. */
@@ -263,6 +293,7 @@ export class DialogueChrome implements ChromePresenter {
     this.nineSlices.clear();
     this.frame = undefined;
     this.frameTex = undefined;
+    this.frameTexTransform = undefined;
     this.frameGfx = undefined;
     this.nineSliceHost = undefined;
     this.name = undefined;
