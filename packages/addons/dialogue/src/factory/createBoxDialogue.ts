@@ -7,7 +7,9 @@
  *   new DialogueController({ ...createBoxDialogue(theme), avatar, storage });
  *
  * It only assembles configs + presenters from the theme — no scene, no input —
- * so the host stays in charge of lifecycle.
+ * so the host stays in charge of lifecycle. All four box presenters share ONE
+ * {@link BoxLayout} so the frame, nameplate, body text, and choice rows move and
+ * grow as one panel (per-line `meta.position`, choice-grow, avatar reflow).
  *
  * `theme` defaults to {@link defaultTheme} so a zero-config call works out of
  * the box (Graphics chrome + canvas text, no bundled assets).
@@ -15,59 +17,102 @@
 
 import { DialogueChrome } from "../chrome/DialogueChrome.js";
 import { ChoiceListPresenter } from "../chrome/ChoiceListPresenter.js";
-import { DialogueTextView } from "../render/DialogueTextView.js";
+import { BoxTextView } from "../render/BoxTextView.js";
+import { BoxLayout } from "../render/BoxLayout.js";
+import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
-import { boxFrameStyles, type DialogueTheme } from "./theme.js";
+import { boxFrameStyles, DEFAULT_CHOICE_GAP, type DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
 import { themeFonts } from "./themeFonts.js";
 
-export function createBoxDialogue(theme: DialogueTheme = defaultTheme()): DialogueBundle {
+export interface BoxDialogueOptions {
+  /**
+   * Build an avatar presenter wired to the box's shared {@link BoxLayout} — so
+   * a line-driven, reflowing in-box avatar (the reference `InBoxAvatarPresenter`)
+   * can reserve a text-reflow inset on it. Receives the layout the box
+   * chrome/text/choices share. Omit for no avatar (the default).
+   *
+   *   createBoxDialogue(theme, {
+   *     avatar: (layout) =>
+   *       new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 96 }),
+   *   })
+   */
+  readonly avatar?: (layout: BoxLayout) => AvatarPresenter;
+}
+
+export function createBoxDialogue(
+  theme: DialogueTheme = defaultTheme(),
+  opts: BoxDialogueOptions = {},
+): DialogueBundle {
   const fonts = themeFonts(theme);
 
-  const chrome = new DialogueChrome({
+  // The single per-line geometry owner for the box: frame position (meta.position),
+  // the unified panel grow (choices grow the frame), and the avatar-reflow inset
+  // registry — shared by the chrome, body text, and choice list below.
+  const layout = new BoxLayout({
     box: theme.box,
     padding: theme.padding,
-    frameColor: theme.frameColor,
-    frameAlpha: theme.frameAlpha,
-    borderColor: theme.borderColor,
-    cornerRadius: theme.cornerRadius,
-    nameColor: theme.nameColor,
     nameSize: theme.nameSize,
-    indicatorColor: theme.indicatorColor,
-    caret: theme.caret,
-    frameStyles: boxFrameStyles(theme.textured),
-    layerFrame: theme.layerFrame,
-    layerText: theme.layerText,
-    ...fonts,
-  });
-
-  const choices = new ChoiceListPresenter({
-    box: theme.box,
-    padding: theme.padding,
-    choiceSize: theme.choiceSize,
-    choiceColor: theme.choiceColor,
-    choiceSelectedColor: theme.choiceSelectedColor,
-    highlightColor: theme.highlightColor,
-    choiceGap: theme.choiceGap,
-    layerFrame: theme.layerFrame,
-    layerText: theme.layerText,
-    ...fonts,
-  });
-
-  // Body text region: inset by padding, below the name plate.
-  const text = new DialogueTextView({
     textSize: theme.textSize,
     lineHeight: theme.lineHeight,
-    textColor: theme.textColor,
-    charsPerSec: theme.charsPerSec,
-    layer: theme.layerText,
-    box: {
-      x: theme.box.x + theme.padding,
-      y: theme.box.y + theme.padding + theme.nameSize + 4,
-      width: theme.box.width - 2 * theme.padding,
-    },
+    choiceGap: theme.choiceGap ?? DEFAULT_CHOICE_GAP,
     ...fonts,
   });
 
-  return { chrome, text, choices, skipMultiplier: theme.skipMultiplier };
+  const chrome = new DialogueChrome(
+    {
+      frameColor: theme.frameColor,
+      frameAlpha: theme.frameAlpha,
+      borderColor: theme.borderColor,
+      cornerRadius: theme.cornerRadius,
+      nameColor: theme.nameColor,
+      nameSize: theme.nameSize,
+      indicatorColor: theme.indicatorColor,
+      caret: theme.caret,
+      frameStyles: boxFrameStyles(theme.textured),
+      layerFrame: theme.layerFrame,
+      layerText: theme.layerText,
+      ...fonts,
+    },
+    layout,
+  );
+
+  const choices = new ChoiceListPresenter(
+    {
+      choiceSize: theme.choiceSize,
+      choiceColor: theme.choiceColor,
+      choiceSelectedColor: theme.choiceSelectedColor,
+      highlightColor: theme.highlightColor,
+      choiceGap: theme.choiceGap,
+      layerFrame: theme.layerFrame,
+      layerText: theme.layerText,
+      ...fonts,
+    },
+    layout,
+  );
+
+  // Body text region comes from the owner (below the nameplate band, reflowing
+  // around any registered avatar inset, moving with meta.position).
+  const text = new BoxTextView(
+    {
+      textSize: theme.textSize,
+      lineHeight: theme.lineHeight,
+      textColor: theme.textColor,
+      charsPerSec: theme.charsPerSec,
+      layer: theme.layerText,
+      ...fonts,
+    },
+    layout,
+  );
+
+  // Opt-in avatar, wired to the same layout owner so it can reserve a text inset.
+  const avatar = opts.avatar?.(layout);
+
+  return {
+    chrome,
+    text,
+    choices,
+    ...(avatar ? { avatar } : {}),
+    skipMultiplier: theme.skipMultiplier,
+  };
 }

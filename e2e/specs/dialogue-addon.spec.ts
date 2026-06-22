@@ -19,6 +19,9 @@ interface ProbeData {
   bubbleVisible: boolean;
   texturedVisible: boolean;
   bubbleTextured: boolean;
+  nameY: number;
+  textX: number;
+  avatarPresent: boolean;
 }
 
 /** The controller methods the fixture exposes on `window.__dialogue__`. */
@@ -32,8 +35,11 @@ interface HostHandle {
 }
 
 /** Switch the conversation to one of the extra scripts the fixture exposes
- *  (`hub` for overflow, `textured` for per-line `meta.chrome`). */
-async function playScript(page: Page, name: "hub" | "textured"): Promise<void> {
+ *  (`hub` overflow, `textured` meta.chrome, `position`, `avatar`). */
+async function playScript(
+  page: Page,
+  name: "hub" | "textured" | "position" | "avatar",
+): Promise<void> {
   await page.evaluate((key) => {
     const w = window as unknown as {
       __dialogue__: HostHandle;
@@ -320,5 +326,52 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     expect(restored?.bubbleVisible).toBe(true);
     expect(restored?.boxVisible).toBe(false);
     expect(restored?.lastLine).toContain("bubble"); // still the same line
+  });
+
+  test("meta.position moves the box frame (top above centre above bottom)", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+    await playScript(page, "position");
+    await stepFrames(page, 2);
+
+    // Each line's nameplate Y tracks the box frame top, which meta.position moves.
+    await advanceUntilLine(page, "bottom");
+    await stepFrames(page, 1);
+    const bottom = (await probe(page))!.nameY;
+
+    await advanceUntilLine(page, "top");
+    await stepFrames(page, 1);
+    const top = (await probe(page))!.nameY;
+
+    await advanceUntilLine(page, "centre");
+    await stepFrames(page, 1);
+    const centre = (await probe(page))!.nameY;
+
+    // The frame (and its nameplate + body text, all one panel) moves with the hint.
+    expect(top).toBeLessThan(centre);
+    expect(centre).toBeLessThan(bottom);
+  });
+
+  test("a line-driven avatar reflows the box text", async ({ page }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+    await playScript(page, "avatar");
+    await stepFrames(page, 2);
+
+    // First line: no portrait → the body text uses the full width.
+    await advanceUntilLine(page, "full width");
+    await stepFrames(page, 1);
+    const noAvatar = (await probe(page))!;
+
+    // Second line: meta.portrait → the avatar spawns and the body text shifts
+    // right, reflowing around the reserved column.
+    await advanceUntilLine(page, "reflows");
+    await stepFrames(page, 1);
+    const withAvatar = (await probe(page))!;
+
+    expect(withAvatar.avatarPresent).toBe(true);
+    expect(withAvatar.textX).toBeGreaterThan(noAvatar.textX);
   });
 });

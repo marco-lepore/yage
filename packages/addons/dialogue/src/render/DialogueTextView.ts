@@ -2,7 +2,13 @@
  * DialogueTextView — renders one parsed line as a single {@link SplitTextComponent}
  * (the engine wrapper for Pixi `SplitText`/`SplitBitmapText`) on a screen-space
  * layer, revealing it glyph-by-glyph (typewriter), honouring per-run colour/
- * bold/italic/speed and inline `[pause=ms]`, and driving animated effects.
+ * bold/italic, and driving animated effects.
+ *
+ * Reveal *timing* — the grapheme cursor, inline `[pause=ms]`, per-run/line
+ * `[speed]`, the hold multiplier, and fired-once completion — is owned by the
+ * headless {@link LineReveal} clock (pixi-free, reusable by a DOM presenter).
+ * This view keeps only the pixi-`SplitText` concerns: mapping the clock's
+ * grapheme cursor onto glyph visibility and fanning per-glyph styles out.
  *
  * Why one split per LINE (not per word): SplitText does its own tokenize /
  * measure / wrap / glyph-split, so we delegate layout to it instead of hand-
@@ -31,6 +37,7 @@
 
 import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { splitGraphemes } from "../core/markup.js";
+import { LineReveal } from "../core/LineReveal.js";
 import {
   SplitTextComponent,
   type DisplayContainer,
@@ -109,15 +116,14 @@ export class DialogueTextView implements TextPresenter {
   /** Non-space glyphs currently visible. */
   private shownCount = -1;
 
-  /** Reveal cursor, in graphemes (fractional while typing). */
-  private revealed = 0;
+  /** Headless reveal clock — owns the grapheme cursor, `[pause]` arming, hold +
+   *  per-line + per-run speed, and the fired-once completion. This view keeps
+   *  only the pixi-`SplitText` concerns (glyph prefix mapping + per-glyph style
+   *  fan-out) and maps the clock's grapheme cursor onto them. */
+  private readonly reveal: LineReveal;
+  /** Elapsed ms for animated per-glyph EFFECTS (wave/shake/…) — distinct from
+   *  the reveal cursor, which LineReveal owns. */
   private elapsedMs = 0;
-  private pauseTimer = 0;
-  private pauseIdx = 0;
-  private speedMul = 1;
-  private lineSpeed = 1;
-  private done = false;
-  private completed = false;
   /** Scratch for {@link evaluateEffect} — one object reused across all glyphs. */
   private readonly effectScratch: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined };
 
@@ -130,6 +136,11 @@ export class DialogueTextView implements TextPresenter {
   private hidden = false;
 
   constructor(private readonly cfg: DialogueTextConfig) {
+    this.reveal = new LineReveal(cfg.charsPerSec);
+    // The reveal clock reports completion through the view's session-owned
+    // listener — never a public field a game could clobber (the old
+    // onRevealComplete footgun).
+    this.reveal.setCompletionListener(() => this.revealListener?.());
     if (cfg.box) this.setBox(cfg.box.x, cfg.box.y, cfg.box.width);
   }
 
@@ -166,16 +177,16 @@ export class DialogueTextView implements TextPresenter {
 
   /** TextChannel: true once the line is fully revealed. */
   isRevealComplete(): boolean {
-    return this.done;
+    return this.reveal.isComplete();
   }
 
   /** Hold-to-speed multiplier (1 = normal, e.g. 3 while the skip key is held). */
   setSpeedMultiplier(m: number): void {
-    this.speedMul = Math.max(1, m);
+    this.reveal.setSpeedMultiplier(m);
   }
 
   isRevealing(): boolean {
-    return !this.done;
+    return this.reveal.isRevealing();
   }
 
   /**
@@ -200,22 +211,17 @@ export class DialogueTextView implements TextPresenter {
   show(parsed: ParsedText, lineSpeed = 1): void {
     this.clearLine();
     this.parsed = parsed;
-    this.lineSpeed = lineSpeed > 0 ? lineSpeed : 1;
-    this.revealed = 0;
     this.elapsedMs = 0;
-    this.pauseTimer = 0;
-    this.pauseIdx = 0;
     this.shownCount = -1;
-    // A stale hold-to-fast-forward multiplier must not leak into a new line
-    // (an active binding re-asserts it next poll anyway).
-    this.speedMul = 1;
-    this.done = parsed.length === 0;
-    this.completed = false;
-    if (!this.done) this.buildLine(parsed);
+    if (parsed.length > 0) this.buildLine(parsed);
+    // Start the reveal clock — an empty line completes (and fires the
+    // session-owned listener) synchronously here, the no-typewriter contract.
+    // The glyph tree is already built above, so completion observes a
+    // consistent view.
+    this.reveal.begin(parsed, lineSpeed);
     this.applyReveal();
     this.reposition(); // place immediately (esp. bubble follow) before first update
     this.applyHidden(); // a new line inherits the current hide state
-    if (this.done) this.finish();
   }
 
   /** Apply the master visibility gate to the laid-out line — toggles the split
@@ -226,35 +232,18 @@ export class DialogueTextView implements TextPresenter {
 
   /** Reveal everything immediately (jump-to-end on a click/tap). */
   skipToEnd(): void {
-    if (!this.parsed) return;
-    this.revealed = this.parsed.length;
-    this.pauseTimer = 0;
-    this.pauseIdx = this.parsed.pauses.length;
+    this.reveal.complete();
     this.applyReveal();
-    this.finish();
   }
 
   update(dt: number): void {
     if (!this.parsed) return;
     this.elapsedMs += dt;
-
-    if (!this.done) {
-      if (this.pauseTimer > 0) {
-        this.pauseTimer = Math.max(0, this.pauseTimer - dt);
-      } else {
-        this.triggerPauseAt(this.revealed);
-        if (this.pauseTimer === 0) {
-          const rate = this.cfg.charsPerSec * this.speedMul * this.lineSpeed * this.runSpeedAt(this.revealed);
-          this.revealed = Math.min(this.parsed.length, this.revealed + (rate * dt) / 1000);
-          this.triggerPauseAt(this.revealed);
-        }
-      }
-      this.applyReveal();
-      if (this.revealed >= this.parsed.length && this.pauseTimer === 0) {
-        this.finish();
-      }
-    }
-
+    // Advance the reveal cursor (fires completion exactly once when it lands),
+    // then map the new cursor onto glyph visibility. applyReveal is idempotent,
+    // so calling it after the line is done costs nothing.
+    this.reveal.update(dt);
+    this.applyReveal();
     this.reposition();
   }
 
@@ -268,14 +257,14 @@ export class DialogueTextView implements TextPresenter {
     this.originProvider = undefined;
   }
 
-  /** Per-line teardown (also the first step of `show()`). */
+  /** Per-line teardown (also the first step of `show()`). The reveal clock is
+   *  re-armed by the next `show()` via {@link LineReveal.begin}, so there is no
+   *  reveal state to reset here. */
   private clearLine(): void {
     this.line?.entity.destroy(); // destroys the split + glyphs
     this.line = undefined;
     this.parsed = undefined;
     this.shownCount = -1;
-    this.done = false;
-    this.completed = false;
   }
 
   /** Permanent teardown. (No measurer nodes to free — SplitText owns layout.) */
@@ -392,7 +381,7 @@ export class DialogueTextView implements TextPresenter {
 
   private applyReveal(): void {
     if (!this.line) return;
-    const cursor = MathUtils.clamp(Math.floor(this.revealed), 0, this.nonSpacePrefix.length - 1);
+    const cursor = MathUtils.clamp(Math.floor(this.reveal.revealed), 0, this.nonSpacePrefix.length - 1);
     const shown = this.nonSpacePrefix[cursor]!;
     if (shown === this.shownCount) return;
     // Toggle only the glyphs whose visibility changed since the last step —
@@ -425,41 +414,6 @@ export class DialogueTextView implements TextPresenter {
       if (out.scale !== 1) m.node.scale.set(out.scale, out.scale);
       if (effectDrivesTint(m.effect) && out.tint !== undefined) m.node.tint = out.tint;
     }
-  }
-
-  /** Reveal speed multiplier for whichever run the cursor currently sits in. */
-  private runSpeedAt(reveal: number): number {
-    if (!this.parsed) return 1;
-    const cursor = Math.floor(reveal);
-    let acc = 0;
-    for (const run of this.parsed.runs) {
-      if (cursor < acc + run.graphemeCount) return run.style.speed ?? 1;
-      acc += run.graphemeCount;
-    }
-    return 1;
-  }
-
-  private triggerPauseAt(reveal: number): void {
-    const pauses = this.parsed?.pauses;
-    if (!pauses) return;
-    while (this.pauseIdx < pauses.length && reveal >= pauses[this.pauseIdx]!.atChar) {
-      const pause = pauses[this.pauseIdx]!;
-      this.pauseTimer = pause.ms;
-      this.pauseIdx++;
-      if (this.pauseTimer > 0) {
-        // One frame's advance can overshoot the marker — clamp the cursor back
-        // to the FIRST armed pause so glyphs past the beat don't pop in early.
-        this.revealed = Math.min(this.revealed, pause.atChar);
-        return; // hold here this frame
-      }
-    }
-  }
-
-  private finish(): void {
-    this.done = true;
-    if (this.completed) return;
-    this.completed = true;
-    this.revealListener?.();
   }
 
   // ── node construction ─────────────────────────────────────────────────────────

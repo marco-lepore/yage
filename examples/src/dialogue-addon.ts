@@ -17,6 +17,11 @@
  *                   game decides what they do; rules-in / consequences-out).
  *
  * Walk up to an NPC and press F:
+ *   • Captain Vow (box) — the box presenter's per-line layout: a `meta.position:
+ *                         top` alert moves the frame + text to the top, a
+ *                         line-driven **in-box avatar** (`meta.portrait`/`side`)
+ *                         reflows the body text around her portrait, and a
+ *                         six-option briefing GROWS the frame to fit the menu.
  *   • Mira (box)        — markup effects + a **cycling counter** (`timesTalked`
  *                         persists, so she greets you differently each visit).
  *   • Quartermaster     — pays a one-time stipend via `give-gold`, gated on a
@@ -34,7 +39,8 @@
  *                         one. On unlock it spends the key (`take-item`) and runs
  *                         `open-gate` (a world consequence that extends the
  *                         walkable area).
- *   • Sage (bubble)     — a long line the speech bubble grows to fit.
+ *   • Sage (bubble)     — no `view` hint: the default route floats him in a
+ *                         bubble because he has a registered actor (speaker-aware).
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
  *                         (a second controller kept alive but input-disabled via
  *                         `setInputEnabled(false)` — the focus seam).
@@ -90,10 +96,13 @@ import {
   createMixedDialogue,
   createBubbleDialogue,
   DialogueActor,
+  InBoxAvatarPresenter,
+  BubbleAvatarPresenter,
   DIALOGUE_LAYERS,
+  DIALOGUE_LAYER_AVATAR,
   type DialogueTheme,
 } from "@yagejs-addons/dialogue/presenters";
-import { Texture } from "pixi.js";
+import { Assets, Texture } from "pixi.js";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
@@ -107,6 +116,13 @@ const PLAYER_SPEED = 165; // px/sec
 const KEY_PRICE = 50;
 const GATE_X = 1410; // the locked gate; blocks progress until unlocked
 const ROOK_TIMEOUT_MS = 5000; // Rook's timed choice: decide within 5s or freeze
+
+/** Portrait texture keys for the avatars (drawn on a canvas in onEnter, so the
+ *  demo stays asset-free). The Captain uses two expressions in the box; Sage
+ *  uses one beside his bubble. */
+const FACE_NEUTRAL = "cap-neutral";
+const FACE_STERN = "cap-stern";
+const FACE_SAGE = "sage-face";
 
 /** World-space render layers (under the camera) + the screen-space HUD. The
  *  dialogue box rides DIALOGUE_LAYERS (screen); bubbles ride BUBBLE_LAYER. */
@@ -384,6 +400,11 @@ const ROOK: DialogueScript = {
   },
 };
 
+/** Sage — note there is NO `view` hint on his lines. The default route still
+ *  floats him in a bubble because he has a registered {@link DialogueActor}
+ *  (speaker-aware routing); the box NPCs above, who have none, stay in the box.
+ *  His `meta.portrait` drives the bubble-side avatar (a portrait beside the
+ *  bubble), the diegetic counterpart to the Captain's in-box one. */
 const SAGE: DialogueScript = {
   id: "sage",
   start: "intro",
@@ -395,14 +416,107 @@ const SAGE: DialogueScript = {
         {
           kind: "say",
           speaker: "sage",
-          view: "bubble",
-          text: "Down here I speak from a bubble — and it grows to fit however much I ramble, instead of clipping my words at a fixed size.",
+          text: "No view hint on my lines — the default route floats me in a bubble because I have a registered actor. It grows to fit however much I ramble.",
+          meta: { portrait: FACE_SAGE, side: "left" },
         },
         {
           kind: "say",
           speaker: "sage",
-          view: "bubble",
           text: "Hold [b]X[/b] to skip me, or press [b]V[/b] to let me talk on my own.",
+          meta: { portrait: FACE_SAGE, side: "left" },
+        },
+        // A bubble CHOICE with a portrait: the panel grows + the options reflow
+        // around the in-bubble avatar, just like a box choice does.
+        {
+          kind: "choice",
+          speaker: "sage",
+          text: "Anything else?",
+          meta: { portrait: FACE_SAGE, side: "left" },
+          options: [
+            { text: "What's beyond the gate?", target: "gate" },
+            { text: "Nothing, thanks", target: "bye" },
+          ],
+        },
+      ],
+    },
+    gate: {
+      id: "gate",
+      steps: [
+        {
+          kind: "say",
+          speaker: "sage",
+          text: "Treasure — and trouble. Mind the guard.",
+          meta: { portrait: FACE_SAGE, side: "left" },
+        },
+        { kind: "end" },
+      ],
+    },
+    bye: {
+      id: "bye",
+      steps: [
+        { kind: "say", speaker: "sage", text: "Safe travels.", meta: { portrait: FACE_SAGE, side: "left" } },
+        { kind: "end" },
+      ],
+    },
+  },
+};
+
+/**
+ * Captain Vow — showcases the box presenter's per-line layout. Her lines carry
+ * `meta` the default box presenters read:
+ *   • `meta.position: "top"` — a screen-top alert: the frame AND the body text
+ *     move up together, then back to the resting bottom box.
+ *   • `meta.portrait` / `meta.side` — a line-driven, reflowing in-box avatar
+ *     (the `InBoxAvatarPresenter` wired into the bundle): her face sits in the
+ *     box and the body text wraps around it, switching sides mid-conversation.
+ *   • a six-option briefing — the box frame GROWS to fit the menu (frame +
+ *     nameplate + prompt + rows move as one panel).
+ */
+const CAPTAIN: DialogueScript = {
+  id: "captain",
+  start: "n",
+  speakers: { vow: { id: "vow", name: "Captain Vow", color: 0x86c5ff } },
+  nodes: {
+    n: {
+      id: "n",
+      steps: [
+        {
+          kind: "say",
+          speaker: "vow",
+          text: "⚠ To arms — intruders breached the east gate!",
+          meta: { position: "top", portrait: FACE_STERN, side: "left" },
+        },
+        {
+          kind: "say",
+          speaker: "vow",
+          text: "At ease, recruit. I'm Captain Vow — my portrait sits inside the box and the words [b]reflow[/b] around it, line by line.",
+          meta: { portrait: FACE_NEUTRAL, side: "left" },
+        },
+        {
+          kind: "choice",
+          speaker: "vow",
+          text: "Your orders? (the box grows to fit the menu)",
+          meta: { portrait: FACE_NEUTRAL, side: "left" },
+          options: [
+            { text: "Scout the perimeter", target: "ack" },
+            { text: "Reinforce the gate", target: "ack" },
+            { text: "Question the merchant", target: "ack" },
+            { text: "Sound the alarm", target: "ack" },
+            { text: "Guard the vault", target: "ack" },
+            { text: "Stand down", target: "ack" },
+          ],
+        },
+      ],
+    },
+    ack: {
+      id: "ack",
+      steps: [
+        {
+          kind: "say",
+          speaker: "vow",
+          // side: right — the portrait flips and the text reflows the other way.
+          text: "Aye. Move out — the town's counting on you.",
+          meta: { portrait: FACE_STERN, side: "right" },
         },
         { kind: "end" },
       ],
@@ -947,6 +1061,51 @@ function makeFrameTexture(edge: number, fill: number, border: number): Texture {
   return Texture.from(canvas);
 }
 
+/** A simple canvas-drawn face for the Captain's in-box avatar — keeps the demo
+ *  asset-free. `stern` angles the brows + frowns; otherwise a neutral look. */
+function makeFace(skin: number, stern: boolean): Texture {
+  const s = 72;
+  const canvas = document.createElement("canvas");
+  canvas.width = s;
+  canvas.height = s;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const hex = (c: number): string => `#${c.toString(16).padStart(6, "0")}`;
+    ctx.fillStyle = hex(skin);
+    ctx.beginPath();
+    ctx.arc(s / 2, s / 2, s / 2 - 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.45)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "#15151f";
+    for (const ex of [0.36, 0.64]) {
+      ctx.beginPath();
+      ctx.arc(s * ex, s * 0.44, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "#15151f";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    const browY = stern ? 0.38 : 0.32; // inner brow drops for a scowl
+    ctx.moveTo(s * 0.28, s * 0.34);
+    ctx.lineTo(s * 0.44, s * browY);
+    ctx.moveTo(s * 0.72, s * 0.34);
+    ctx.lineTo(s * 0.56, s * browY);
+    ctx.stroke();
+    ctx.beginPath();
+    if (stern) ctx.arc(s / 2, s * 0.82, 9, Math.PI * 1.15, Math.PI * 1.85); // frown
+    else ctx.arc(s / 2, s * 0.62, 9, Math.PI * 0.15, Math.PI * 0.85); // smile
+    ctx.stroke();
+  }
+  return Texture.from(canvas);
+}
+
+// Built once, then registered under their `meta.portrait` keys per scene mount.
+let faceNeutral: Texture | undefined;
+let faceStern: Texture | undefined;
+let faceSage: Texture | undefined;
+
 const insets = (n: number): { left: number; top: number; right: number; bottom: number } => ({
   left: n,
   top: n,
@@ -1022,6 +1181,16 @@ class RoomScene extends Scene {
 
   onEnter(): void {
     this.drawTown();
+
+    // Register the portraits under their `meta.portrait` keys (the renderer's
+    // Assets is up by now), so the avatars resolve them synchronously — a host
+    // preloads avatar art the same way.
+    faceNeutral ??= makeFace(0xe8c9a0, false);
+    faceStern ??= makeFace(0xe8c9a0, true);
+    faceSage ??= makeFace(0x9fc6e8, false);
+    Assets.cache.set(FACE_NEUTRAL, faceNeutral);
+    Assets.cache.set(FACE_STERN, faceStern);
+    Assets.cache.set(FACE_SAGE, faceSage);
 
     // Player.
     const player = this.spawn("player");
@@ -1108,7 +1277,30 @@ class RoomScene extends Scene {
         ...(texturedBubble ? { padding: 12 } : {}),
       },
     };
-    const bundle = createMixedDialogue(theme, bubbleOpts);
+    const bundle = createMixedDialogue(theme, {
+      ...bubbleOpts,
+      // Line-driven avatars per side, routed by the same route as the chrome/
+      // text/choices: an in-box reflowing portrait for box speakers (the
+      // Captain), and a portrait beside the bubble for bubble speakers (Sage).
+      avatar: {
+        box: (layout) =>
+          new InBoxAvatarPresenter(layout, {
+            layer: DIALOGUE_LAYER_AVATAR,
+            width: 84,
+            scale: 0.8,
+            align: "top",
+            background: { color: 0x2a2438, alpha: 0.9, radius: 10 },
+          }),
+        bubble: (layout) =>
+          new BubbleAvatarPresenter(layout, {
+            layer: BUBBLE_LAYER,
+            size: 56,
+            scale: 0.68,
+            align: "top",
+            background: { color: 0x14233a, alpha: 0.92, radius: 8 },
+          }),
+      },
+    });
 
     const host = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
@@ -1171,7 +1363,8 @@ class RoomScene extends Scene {
       );
     };
 
-    talker(280, 0xffd866, "Mira", "Talk to Mira (F)", MIRA);
+    talker(200, 0x86c5ff, "Vow", "Captain Vow (F)", CAPTAIN);
+    talker(320, 0xffd866, "Mira", "Talk to Mira (F)", MIRA);
     talker(520, 0x9ad17e, "Quinn", "Talk to the Quartermaster (F)", QUARTERMASTER);
     talker(760, 0xe6a3ff, "Vex", "Trade with Vex (F)", MERCHANT);
     talker(1040, 0xff6b6b, "Rook", "Talk to Rook (F)", ROOK);

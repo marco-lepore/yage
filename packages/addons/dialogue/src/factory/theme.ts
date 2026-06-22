@@ -21,11 +21,22 @@
 
 import type { TextureInput } from "@yagejs/renderer";
 
-/** Screen-space rectangle (pixels) for the dialogue box. */
-export interface BoxRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
+/**
+ * Viewport-relative bounds for the dialogue box (virtual px). The box is a
+ * full-width bottom bar resolved against the renderer's design size at mount, so
+ * the default presenter works at ANY virtual resolution with no override: the
+ * width is `viewport.width - 2*marginX`, and the frame anchors `marginY` from the
+ * screen edge. `meta.position` reuses these: `bottom` (default) anchors at the
+ * bottom edge, `top` mirrors `marginY` to the top, `center` ignores it.
+ */
+export interface BoxBounds {
+  /** Horizontal margin from the left and right screen edges (virtual px). */
+  readonly marginX: number;
+  /** Vertical margin from the anchored screen edge — the bottom by default, the
+   *  top for `meta.position: top` (the centred position ignores it). */
+  readonly marginY: number;
+  /** Box height (virtual px) — sized to hold the body text, not the screen, so
+   *  it holds the same number of lines at any resolution. */
   readonly height: number;
 }
 
@@ -43,8 +54,10 @@ export interface CaretTheme {
 }
 
 export interface DialogueTheme {
-  /** Bottom-anchored box geometry on the virtual screen (screen-space px). */
-  readonly box: BoxRect;
+  /** Box geometry as viewport-relative margins + height — a full-width bottom
+   *  bar resolved against the renderer's design size, so it works at any
+   *  resolution with no override. See {@link BoxBounds}. */
+  readonly box: BoxBounds;
   /** Inner padding between the frame and its contents. */
   readonly padding: number;
 

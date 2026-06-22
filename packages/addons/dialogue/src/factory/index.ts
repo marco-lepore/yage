@@ -1,7 +1,7 @@
 // Theme (flat visual config) + the opt-in textured nine-slice styles.
 export type {
   DialogueTheme,
-  BoxRect,
+  BoxBounds,
   CaretTheme,
   ChromeStyle,
   NineSliceFrame,
@@ -22,6 +22,7 @@ export { defaultTheme } from "./defaultTheme.js";
 
 // Bundle factories.
 export { createBoxDialogue } from "./createBoxDialogue.js";
+export type { BoxDialogueOptions } from "./createBoxDialogue.js";
 export {
   createBubbleDialogue,
   DEFAULT_BUBBLE,
@@ -31,3 +32,4 @@ export type {
   BubbleGeometry,
 } from "./createBubbleDialogue.js";
 export { createMixedDialogue } from "./createMixedDialogue.js";
+export type { MixedDialogueOptions } from "./createMixedDialogue.js";

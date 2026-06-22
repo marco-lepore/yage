@@ -14,12 +14,16 @@ import type { Scene } from "@yagejs/core";
 import { CompositeChrome } from "./CompositeChrome.js";
 import { CompositeTextPresenter } from "./CompositeTextPresenter.js";
 import { CompositeChoicePresenter } from "./CompositeChoicePresenter.js";
+import { CompositeAvatarPresenter } from "./CompositeAvatarPresenter.js";
+import { makeDefaultRoute, fixedRoute } from "./route.js";
+import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import type {
   ChoicePresenter,
   ChromePresenter,
   TextPresenter,
 } from "../chrome/DialogueUiAdapter.js";
-import type { PresentedLine, SpeakerView } from "../core/session.js";
+import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
+import type { ChoiceContext, PresentedChoice, PresentedLine, SpeakerView } from "../core/session.js";
 
 const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
@@ -242,6 +246,148 @@ describe("composite matrix — chrome-specific verbs", () => {
     c.setVisible(true);
     expect(box.visible).toBe(true);
     expect(bubble.visible).toBe(false);
+  });
+});
+
+class RecAvatar implements AvatarPresenter {
+  presents: (PresentedLine | undefined)[] = [];
+  speakers = 0;
+  expressions = 0;
+  speakings = 0;
+  visibles: boolean[] = [];
+  mount(): void {}
+  dispose(): void {}
+  setSpeaker(): void {
+    this.speakers++;
+  }
+  setExpression(): void {
+    this.expressions++;
+  }
+  setSpeaking(): void {
+    this.speakings++;
+  }
+  present(line: PresentedLine | undefined): void {
+    this.presents.push(line);
+  }
+  setVisible(v: boolean): void {
+    this.visibles.push(v);
+  }
+  update(): void {}
+  get lastPresent(): PresentedLine | undefined {
+    return this.presents.at(-1);
+  }
+}
+
+describe("composite matrix — avatar routes + forwards", () => {
+  it("routes present() to the matching side; clears the other", () => {
+    const box = new RecAvatar();
+    const bubble = new RecAvatar();
+    const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
+    c.mount(SCENE);
+
+    c.present(bubbleLine()); // speaker + view:bubble → bubble
+    expect(bubble.lastPresent?.view).toBe("bubble");
+    expect(box.lastPresent).toBeUndefined(); // box cleared
+
+    c.present(boxLine()); // narrator → box
+    expect(box.lastPresent?.view ?? "box").toBe("box");
+    expect(bubble.lastPresent).toBeUndefined(); // bubble cleared
+
+    c.present(undefined); // stop/end clears BOTH
+    expect(box.lastPresent).toBeUndefined();
+    expect(bubble.lastPresent).toBeUndefined();
+  });
+
+  it("forwards setSpeaker / setExpression / setSpeaking / setVisible to both", () => {
+    const box = new RecAvatar();
+    const bubble = new RecAvatar();
+    const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
+    c.setSpeaker(undefined);
+    c.setExpression(undefined);
+    c.setSpeaking(true);
+    c.setVisible(false);
+    for (const a of [box, bubble]) {
+      expect(a.speakers).toBe(1);
+      expect(a.expressions).toBe(1);
+      expect(a.speakings).toBe(1);
+      expect(a.visibles).toEqual([false]);
+    }
+  });
+
+  it("routes a registered-actor line (no view) to the bubble side", () => {
+    const scene = {} as unknown as Scene;
+    actorRegistryFor(scene).register("npc", {} as DialogueActor);
+    const box = new RecAvatar();
+    const bubble = new RecAvatar();
+    const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
+    c.mount(scene);
+    c.present({ text: { runs: [], pauses: [], length: 0 }, speed: 1, speaker });
+    expect(bubble.lastPresent).toBeDefined();
+    expect(box.lastPresent).toBeUndefined();
+  });
+});
+
+describe("composite matrix — routing: all three agree", () => {
+  const registeredLine = (): PresentedLine => ({
+    text: { runs: [], pauses: [], length: 0 },
+    speed: 1,
+    speaker, // no view → the registered actor decides
+  });
+
+  function freshScene(register: boolean): Scene {
+    const s = {} as unknown as Scene;
+    if (register) actorRegistryFor(s).register("npc", {} as DialogueActor);
+    return s;
+  }
+
+  it("the default route sends a registered-actor line to the bubble across all three", () => {
+    const scene = freshScene(true);
+    const routing = makeDefaultRoute();
+
+    const boxC = new RecChrome();
+    const bubC = new RecChrome();
+    const chrome = new CompositeChrome(boxC, bubC, routing);
+    chrome.mount(scene);
+    const boxT = new RecText();
+    const bubT = new RecText();
+    const text = new CompositeTextPresenter(boxT, bubT, routing);
+    text.mount(scene);
+    const boxCh = new RecChoice();
+    const bubCh = new RecChoice();
+    const choices = new CompositeChoicePresenter(boxCh, bubCh, routing);
+    choices.mount(scene);
+
+    chrome.present(registeredLine());
+    text.present(registeredLine());
+    choices.present([] as readonly PresentedChoice[], { speaker } as ChoiceContext);
+
+    expect(bubC.presents.length).toBeGreaterThan(0); // chrome → bubble
+    expect(bubT.presents).toBeGreaterThan(0); // text → bubble
+    expect(bubCh.presents).toBeGreaterThan(0); // choices → bubble
+    expect(boxC.presents.length).toBe(0);
+  });
+
+  it("an unregistered speaker (no view) goes to the box across all three", () => {
+    const scene = freshScene(false);
+    const routing = makeDefaultRoute();
+    const boxC = new RecChrome();
+    const bubC = new RecChrome();
+    const chrome = new CompositeChrome(boxC, bubC, routing);
+    chrome.mount(scene);
+    chrome.present(registeredLine());
+    expect(boxC.presents.length).toBeGreaterThan(0);
+    expect(bubC.presents.length).toBe(0);
+  });
+
+  it("a shared custom route overrides view + actor; all three follow it", () => {
+    const routing = fixedRoute(() => "bubble"); // route EVERYTHING to the bubble
+    const boxC = new RecChrome();
+    const bubC = new RecChrome();
+    const chrome = new CompositeChrome(boxC, bubC, routing);
+    chrome.mount(SCENE);
+    chrome.present(boxLine()); // a speakerless line that would default to the box
+    expect(bubC.presents.length).toBeGreaterThan(0); // override wins
+    expect(boxC.presents.length).toBe(0);
   });
 });
 

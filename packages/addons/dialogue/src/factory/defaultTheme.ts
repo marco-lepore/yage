@@ -16,13 +16,16 @@ import { DIALOGUE_LAYER_FRAME, DIALOGUE_LAYER_TEXT } from "../render/layers.js";
  * const theme = { ...defaultTheme(), textColor: 0xff0000 };
  * ```
  *
- * The `box` is a sensible bottom-anchored default; override it for your virtual
- * resolution. Bitmap fonts (`bitmapFont`) and textured nine-slice chrome (the
- * `textured` field) are OPT-IN re-theming paths, intentionally absent here.
+ * The `box` is viewport-relative (margins + height), so it's a full-width bottom
+ * bar at ANY virtual resolution with no override. Bitmap fonts (`bitmapFont`) and
+ * textured nine-slice chrome (the `textured` field) are OPT-IN re-theming paths,
+ * intentionally absent here.
  */
 export function defaultTheme(): DialogueTheme {
   return {
-    box: { x: 32, y: 360, width: 736, height: 160 },
+    // Viewport-relative: a full-width bottom bar resolved against the renderer's
+    // design size at mount, so this works at any resolution with no override.
+    box: { marginX: 32, marginY: 24, height: 160 },
     padding: 16,
 
     frameColor: 0x1a1a2e,

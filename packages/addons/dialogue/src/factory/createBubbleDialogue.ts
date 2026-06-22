@@ -20,6 +20,8 @@
 import { BubbleChrome } from "../chrome/BubbleChrome.js";
 import { BubbleChoicePresenter } from "../chrome/BubbleChoicePresenter.js";
 import { BubbleTextView } from "../render/BubbleTextView.js";
+import { BubbleLayout } from "../render/BubbleLayout.js";
+import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
 import { defaultBubbleFrame, type DialogueTheme } from "./theme.js";
 import { defaultTheme } from "./defaultTheme.js";
@@ -60,6 +62,10 @@ export interface BubbleDialogueOptions {
    * position regardless. Shared by the chrome, text, and choice presenters.
    */
   readonly fallbackAnchor?: () => { x: number; y: number };
+  /** Build an avatar presenter wired to the bubble's shared {@link BubbleLayout}
+   *  — e.g. the reference `BubbleAvatarPresenter`, a line-driven portrait beside
+   *  the bubble. Receives the layout the bubble chrome/text/choices share. */
+  readonly avatar?: (layout: BubbleLayout) => AvatarPresenter;
 }
 
 export function createBubbleDialogue(
@@ -69,31 +75,39 @@ export function createBubbleDialogue(
   const geo: BubbleGeometry = { ...DEFAULT_BUBBLE, ...opts.bubble };
   const fonts = themeFonts(theme);
 
-  const chrome = new BubbleChrome({
-    layer: opts.worldLayer,
+  // The single per-line geometry owner for the bubble coordinate model: one
+  // size measurement, one anchor resolver, one origin formula — shared by all
+  // three bubble presenters so they can't drift.
+  const layout = new BubbleLayout({
     minWidth: geo.minWidth,
     maxWidth: geo.maxWidth,
     height: geo.height,
     padding: geo.padding,
     offsetY: geo.offsetY,
-    tail: geo.tail,
-    tailLean: theme.tailLean,
-    frameColor: theme.frameColor,
-    frameAlpha: theme.frameAlpha,
-    borderColor: theme.borderColor,
-    cornerRadius: theme.cornerRadius,
-    nameColor: theme.nameColor,
-    nameSize: theme.nameSize,
-    indicatorColor: theme.indicatorColor,
-    caret: theme.caret,
-    frame: defaultBubbleFrame(theme.textured),
-    // Body-text metrics so the bubble grows to fit its wrapped text, in lockstep
-    // with the BubbleTextView below.
     textSize: theme.textSize,
     lineHeight: theme.lineHeight,
     fallbackAnchor: opts.fallbackAnchor,
     ...fonts,
   });
+
+  const chrome = new BubbleChrome(
+    {
+      layer: opts.worldLayer,
+      tail: geo.tail,
+      tailLean: theme.tailLean,
+      frameColor: theme.frameColor,
+      frameAlpha: theme.frameAlpha,
+      borderColor: theme.borderColor,
+      cornerRadius: theme.cornerRadius,
+      nameColor: theme.nameColor,
+      nameSize: theme.nameSize,
+      indicatorColor: theme.indicatorColor,
+      caret: theme.caret,
+      frame: defaultBubbleFrame(theme.textured),
+      ...fonts,
+    },
+    layout,
+  );
 
   const text = new BubbleTextView(
     {
@@ -104,38 +118,43 @@ export function createBubbleDialogue(
       layer: opts.worldLayer,
       ...fonts,
     },
-    {
-      minWidth: geo.minWidth,
-      maxWidth: geo.maxWidth,
-      height: geo.height,
-      padding: geo.padding,
-      offsetY: geo.offsetY,
-      fallbackAnchor: opts.fallbackAnchor,
-    },
+    layout,
   );
 
   // Choices float in their own self-contained bubble panel over the actor
   // (prompt header + options, its own bg) — so they never depend on the box
   // frame and the prompt lives in the same bubble as the options.
-  const choices = new BubbleChoicePresenter({
-    layer: opts.worldLayer,
-    width: geo.maxWidth,
-    padding: geo.padding,
-    offsetY: geo.offsetY,
-    tail: geo.tail,
-    choiceSize: theme.choiceSize,
-    choiceColor: theme.choiceColor,
-    choiceSelectedColor: theme.choiceSelectedColor,
-    highlightColor: theme.highlightColor,
-    choiceGap: theme.choiceGap,
-    textColor: theme.textColor,
-    frameColor: theme.frameColor,
-    frameAlpha: theme.frameAlpha,
-    borderColor: theme.borderColor,
-    cornerRadius: theme.cornerRadius,
-    fallbackAnchor: opts.fallbackAnchor,
-    ...fonts,
-  });
+  const choices = new BubbleChoicePresenter(
+    {
+      layer: opts.worldLayer,
+      width: geo.maxWidth,
+      padding: geo.padding,
+      offsetY: geo.offsetY,
+      tail: geo.tail,
+      choiceSize: theme.choiceSize,
+      choiceColor: theme.choiceColor,
+      choiceSelectedColor: theme.choiceSelectedColor,
+      highlightColor: theme.highlightColor,
+      choiceGap: theme.choiceGap,
+      textColor: theme.textColor,
+      frameColor: theme.frameColor,
+      frameAlpha: theme.frameAlpha,
+      borderColor: theme.borderColor,
+      cornerRadius: theme.cornerRadius,
+      ...fonts,
+    },
+    layout,
+  );
 
-  return { chrome, text, choices, skipMultiplier: theme.skipMultiplier };
+  // Opt-in bubble avatar, wired to the same layout owner (for the bubble size +
+  // speaker anchor it follows).
+  const avatar = opts.avatar?.(layout);
+
+  return {
+    chrome,
+    text,
+    choices,
+    ...(avatar ? { avatar } : {}),
+    skipMultiplier: theme.skipMultiplier,
+  };
 }
