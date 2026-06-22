@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { InBoxAvatarPresenter } from "./InBoxAvatarPresenter.js";
 import { BoxLayout, type BoxLayoutConfig } from "../render/BoxLayout.js";
@@ -68,5 +68,32 @@ describe("InBoxAvatarPresenter — line-driven reflow", () => {
     avatar.present(line({ portrait: "hero" }));
     avatar.present(undefined);
     expect(layout.textRegion().width).toBe(fullWidth);
+  });
+
+  it("repositions when the frame commits or grows, not just on present()", () => {
+    const place = vi.spyOn(
+      InBoxAvatarPresenter.prototype as unknown as { place: () => void },
+      "place",
+    );
+    try {
+      const layout = new BoxLayout(CFG);
+      layout.setViewport(800, 600);
+      const avatar = new InBoxAvatarPresenter(layout, { layer: "dialogue-avatar", width: 96 });
+
+      // Real session order: present() runs BEFORE the chrome commits this line's
+      // frame, so the avatar must follow the later commit (a stale present-time
+      // placement would leave it behind on meta.position / a grown choice panel).
+      avatar.present(line({ portrait: "hero" }));
+      place.mockClear();
+
+      layout.layoutLine(line({ position: "top" })); // chrome commits a moved frame
+      expect(place).toHaveBeenCalled();
+
+      place.mockClear();
+      layout.layoutChoicePanel([40, 40, 40, 40, 40]); // a choice grows the frame
+      expect(place).toHaveBeenCalled();
+    } finally {
+      place.mockRestore();
+    }
   });
 });

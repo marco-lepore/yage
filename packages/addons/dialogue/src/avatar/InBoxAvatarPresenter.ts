@@ -58,7 +58,13 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   constructor(
     private readonly layout: BoxLayout,
     private readonly cfg: InBoxAvatarConfig,
-  ) {}
+  ) {
+    // Reposition whenever the box frame commits or grows. The session calls
+    // avatar.present() BEFORE the chrome commits this line's frame (and a choice
+    // grows it later still), so place() in present() alone would read a stale
+    // rect — this follows every commit, like DialogueChrome's applyGeometry.
+    this.layout.onChange(() => this.place());
+  }
 
   mount(scene: Scene): void {
     this.scene = scene;
