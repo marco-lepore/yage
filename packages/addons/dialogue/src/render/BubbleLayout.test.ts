@@ -95,6 +95,23 @@ describe("BubbleLayout — in-bubble portrait inset", () => {
     expect(owner.textWrapWidth(owner.sizeFor(l))).toBe(baseWrap); // bubble reclaims full width
   });
 
+  it("tracks the active bubble (say bubble, then choice panel) + notifies on change", () => {
+    const owner = new BubbleLayout(CFG);
+    let changes = 0;
+    owner.onChange(() => changes++);
+
+    owner.sizeFor(line("hi")); // a say line sizes the bubble → active + notify
+    const afterSay = changes;
+    expect(owner.activeSize()).toBeDefined();
+
+    // A bubble choice commits its (inset-grown) panel → the avatar follows it.
+    owner.setChoicePanelSize({ width: 320, height: 140 });
+    expect(changes).toBe(afterSay + 1);
+    expect(owner.activeSize()).toEqual({ width: 320, height: 140 });
+    owner.setChoicePanelSize({ width: 320, height: 140 }); // unchanged → no notify
+    expect(changes).toBe(afterSay + 1);
+  });
+
   it("a right inset narrows the text but does not shift the origin", () => {
     const owner = new BubbleLayout(CFG);
     const l = line("a".repeat(30));

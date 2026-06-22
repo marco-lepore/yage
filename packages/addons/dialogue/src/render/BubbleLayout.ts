@@ -58,17 +58,54 @@ export class BubbleLayout {
   /** Reserved portrait column for the current line (set by the in-bubble avatar
    *  before the chrome/text present). */
   private inset: BubblePortraitInset | undefined;
+  /** The current bubble content size — the say bubble (from {@link sizeFor}) or a
+   *  choice panel (from {@link setChoicePanelSize}). The in-bubble avatar centres
+   *  in this, so it follows whichever is on screen. */
+  private active: BubbleSize | undefined;
+  private readonly listeners: Array<() => void> = [];
 
   constructor(private readonly cfg: BubbleLayoutConfig) {
     this.anchors = new BubbleAnchorResolver(cfg.fallbackAnchor);
   }
 
   /** Reserve (or clear with `undefined`) a portrait column inside the bubble.
-   *  The bubble then grows to contain it and the text wraps to the narrowed
-   *  column; the avatar sets this per line before the chrome/text present. */
+   *  The bubble (and a bubble choice panel) then grows to contain it and the
+   *  text/rows reflow to the narrowed column; the avatar sets this per line
+   *  before the chrome/text/choices present. */
   setPortraitInset(inset: BubblePortraitInset | undefined): void {
     this.inset = inset;
     this.memoLine = undefined; // re-measure with the new reserve
+  }
+
+  /** The reserved portrait column (or undefined) — a bubble choice presenter
+   *  reads it to reflow its panel around the portrait. */
+  portraitInset(): BubblePortraitInset | undefined {
+    return this.inset;
+  }
+
+  /** Register a callback fired when the active bubble content size changes (a
+   *  say line sizes its bubble, or a choice commits its panel) — the in-bubble
+   *  avatar re-places. */
+  onChange(listener: () => void): void {
+    this.listeners.push(listener);
+  }
+
+  /** The current bubble content size the avatar centres in (say bubble or choice
+   *  panel). */
+  activeSize(): BubbleSize | undefined {
+    return this.active;
+  }
+
+  /** A bubble choice presenter commits its (inset-grown) panel size here so the
+   *  in-bubble avatar follows the panel, not the say bubble. */
+  setChoicePanelSize(size: BubbleSize): void {
+    this.setActive(size);
+  }
+
+  private setActive(size: BubbleSize): void {
+    if (this.active && this.active.width === size.width && this.active.height === size.height) return;
+    this.active = size;
+    for (const fn of this.listeners) fn();
   }
 
   /** Inner padding (px) — the presenters position the name/caret/text by it. */
@@ -111,6 +148,7 @@ export class BubbleLayout {
     };
     this.memoLine = line;
     this.memoSize = size;
+    this.setActive(size); // a say line is the active bubble the avatar follows
     return size;
   }
 

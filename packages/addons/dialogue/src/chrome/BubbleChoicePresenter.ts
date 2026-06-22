@@ -109,7 +109,12 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     // a missing speaker resolves to the last-known / fallback anchor (with a
     // once-per-speaker warning), never the world origin — via the shared owner.
     const a = this.layout.anchorFor(this.scene, context?.speaker?.id);
-    const innerW = c.width - 2 * c.padding;
+    const innerW = c.width - 2 * c.padding; // content column width
+    // An in-bubble avatar reserves a portrait column: the panel grows to contain
+    // it and the prompt/rows reflow past it, like the say bubble does.
+    const inset = this.layout.portraitInset();
+    const reserve = inset?.width ?? 0;
+    const panelWidth = c.width + reserve;
 
     // Optional prompt header inside the same panel (one bubble, not two).
     const promptStr =
@@ -130,26 +135,29 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     const gap = c.choiceGap ?? DEFAULT_CHOICE_GAP;
     const lineH = c.choiceSize + gap;
     const headH = promptH > 0 ? promptH + gap : 0;
-    const h = c.padding + headH + n * lineH + c.padding;
-    const left = a.x - c.width / 2;
+    const contentH = c.padding + headH + n * lineH + c.padding;
+    const panelH = Math.max(contentH, (inset?.height ?? 0) + 2 * c.padding);
+    const left = a.x - panelWidth / 2;
     const bottom = a.y - c.offsetY;
-    const top = bottom - h;
+    const top = bottom - panelH;
+    // Content starts past a left-side portrait column; the tail stays under `a.x`.
+    const contentX = left + c.padding + (inset?.side === "left" ? reserve : 0);
 
-    this.drawPanel(left, top, h, a.x, bottom);
-    this.prompt?.entity.get(Transform).setPosition(left + c.padding, top + c.padding);
+    this.drawPanel(left, top, panelWidth, panelH, a.x, bottom);
+    this.prompt?.entity.get(Transform).setPosition(contentX, top + c.padding);
 
     const optionsTop = top + c.padding + headH;
     choices.forEach((choice, i) => {
       const rowY = optionsTop + i * lineH;
       const entity = this.scene!.spawn("dlg-bchoice");
-      entity.add(new Transform()).setPosition(left + c.padding + 4, rowY);
+      entity.add(new Transform()).setPosition(contentX + 4, rowY);
       const comp = entity.add(new TextComponent(this.textOptions(choiceRowLabel(choice), c.choiceColor)));
       comp.text.visible = true;
       this.rows.push({
         entity,
         comp,
-        x0: left + c.padding,
-        x1: left + c.width - c.padding,
+        x0: contentX,
+        x1: contentX + innerW,
         y0: rowY,
         y1: rowY + lineH,
         disabled: choice.disabled ?? false,
@@ -157,6 +165,8 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     });
     this.highlight(firstEnabledIndex(this.rows));
     this.applyHidden();
+    // Commit the panel as the active bubble so an in-bubble avatar centres in it.
+    this.layout.setChoicePanelSize({ width: panelWidth, height: panelH });
   }
 
   /** Show or hide the whole panel without clearing it — state-preserving. */
@@ -216,11 +226,18 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.highlightBar = undefined;
   }
 
-  private drawPanel(left: number, top: number, h: number, tailX: number, bottom: number): void {
+  private drawPanel(
+    left: number,
+    top: number,
+    width: number,
+    h: number,
+    tailX: number,
+    bottom: number,
+  ): void {
     const c = this.cfg;
     this.bg?.gfx.draw((g) => {
       g.clear();
-      g.roundRect(left, top, c.width, h, c.cornerRadius)
+      g.roundRect(left, top, width, h, c.cornerRadius)
         .fill({ color: c.frameColor, alpha: c.frameAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
       g.poly([tailX - c.tail, bottom, tailX + c.tail, bottom, tailX, bottom + c.tail]).fill({

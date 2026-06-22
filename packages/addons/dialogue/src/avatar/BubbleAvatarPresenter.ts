@@ -21,7 +21,6 @@ import {
 import type { AvatarPresenter } from "./AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
 import type { BubbleLayout } from "../render/BubbleLayout.js";
-import type { BubbleSize } from "../render/bubbleSizing.js";
 
 export interface BubbleAvatarConfig {
   /** World-space render layer (same as the bubble). */
@@ -51,8 +50,6 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   private bgTransform: Transform | undefined;
   private side: "left" | "right" = "left";
   private speakerId: string | undefined;
-  /** The current line's bubble size (the anchor is re-resolved every frame). */
-  private size: BubbleSize | undefined;
   private shown = false;
   private hidden = false;
   private readonly handles = new Map<string, TextureHandle>();
@@ -60,7 +57,11 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   constructor(
     private readonly layout: BubbleLayout,
     private readonly cfg: BubbleAvatarConfig,
-  ) {}
+  ) {
+    // Follow the active bubble content rect — a say bubble (sized after this
+    // avatar presents) or a choice panel (committed later still). Both notify.
+    this.layout.onChange(() => this.follow());
+  }
 
   mount(scene: Scene): void {
     this.scene = scene;
@@ -78,19 +79,18 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
     this.side = meta?.["side"] === "right" ? "right" : "left";
     this.speakerId = line?.speaker?.id;
     if (visible && portrait !== undefined && line) {
-      // Reserve the column BEFORE the chrome/text size the bubble, so it grows
-      // to contain the portrait and the text wraps to the narrowed column.
+      // Reserve the column BEFORE the chrome/text/choices size the bubble, so it
+      // grows to contain the portrait and the text/rows reflow past it.
       const gap = this.cfg.gap ?? 8;
       this.layout.setPortraitInset({ side: this.side, width: this.cfg.size + gap, height: this.cfg.size });
       this.ensureSprite(portrait);
       this.applyTexture(portrait);
-      this.size = this.layout.sizeFor(line); // inset-aware size
       this.shown = true;
     } else {
       this.layout.setPortraitInset(undefined); // bubble reclaims its full width
       this.shown = false;
     }
-    this.follow();
+    this.follow(); // re-runs via onChange once the bubble/panel size is committed
     this.applyVisibility();
   }
 
@@ -114,19 +114,21 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
     this.bgTransform = undefined;
   }
 
-  /** Place the portrait in its reserved column INSIDE the bubble, vertically
-   *  centred on the bubble body, tracking the speaker's (moving) anchor. */
+  /** Place the portrait in its reserved column INSIDE the active bubble (say
+   *  bubble or choice panel), vertically centred on the body, tracking the
+   *  speaker's (moving) anchor. */
   private follow(): void {
-    if (!this.transform || !this.scene || !this.size || !this.shown) return;
+    const size = this.layout.activeSize();
+    if (!this.transform || !this.scene || !size || !this.shown) return;
     const a = this.layout.anchorFor(this.scene, this.speakerId);
     const pad = this.layout.padding;
     const half = this.cfg.size / 2;
     const x =
       this.side === "left"
-        ? a.x - this.size.width / 2 + pad + half
-        : a.x + this.size.width / 2 - pad - half;
+        ? a.x - size.width / 2 + pad + half
+        : a.x + size.width / 2 - pad - half;
     // Bubble body spans [anchor.y - offsetY - height, anchor.y - offsetY].
-    const y = a.y - this.layout.offsetY - this.size.height / 2;
+    const y = a.y - this.layout.offsetY - size.height / 2;
     this.transform.setPosition(x, y);
     this.bgTransform?.setPosition(x, y);
   }

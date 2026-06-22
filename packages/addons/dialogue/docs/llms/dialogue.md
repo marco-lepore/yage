@@ -423,7 +423,7 @@ and reads `line.meta`. The shipped avatar references: `InBoxAvatarPresenter`
 reserves a text column via `BoxLayout.setInset(key, { side, width })` so the body
 text + choice rows reflow around it (`background?` for a panel); `BubbleAvatarPresenter`
 reserves a portrait column inside the bubble (`BubbleLayout.setPortraitInset`) so
-the bubble grows + its text reflows. Wire per side; a `CompositeAvatarPresenter`
+the bubble (and a bubble choice panel) grows + its text/rows reflow. Wire per side; a `CompositeAvatarPresenter`
 routes box-vs-bubble like the other composites:
 
 ```ts

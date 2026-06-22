@@ -425,6 +425,36 @@ const SAGE: DialogueScript = {
           text: "Hold [b]X[/b] to skip me, or press [b]V[/b] to let me talk on my own.",
           meta: { portrait: FACE_SAGE, side: "left" },
         },
+        // A bubble CHOICE with a portrait: the panel grows + the options reflow
+        // around the in-bubble avatar, just like a box choice does.
+        {
+          kind: "choice",
+          speaker: "sage",
+          text: "Anything else?",
+          meta: { portrait: FACE_SAGE, side: "left" },
+          options: [
+            { text: "What's beyond the gate?", target: "gate" },
+            { text: "Nothing, thanks", target: "bye" },
+          ],
+        },
+      ],
+    },
+    gate: {
+      id: "gate",
+      steps: [
+        {
+          kind: "say",
+          speaker: "sage",
+          text: "Treasure — and trouble. Mind the guard.",
+          meta: { portrait: FACE_SAGE, side: "left" },
+        },
+        { kind: "end" },
+      ],
+    },
+    bye: {
+      id: "bye",
+      steps: [
+        { kind: "say", speaker: "sage", text: "Safe travels.", meta: { portrait: FACE_SAGE, side: "left" } },
         { kind: "end" },
       ],
     },

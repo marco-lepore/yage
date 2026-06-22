@@ -595,7 +595,7 @@ contract: **`InBoxAvatarPresenter`** reads `meta.portrait` / `meta.side` /
 body text **and choice rows reflow** around the portrait (with an optional
 `background` panel); **`BubbleAvatarPresenter`** reserves a portrait column
 **inside** the speech bubble (`BubbleLayout.setPortraitInset(...)`) so the bubble
-grows and its text reflows past it. Wire them per side — a
+grows and its text — and a bubble choice panel's options — reflow past it. Wire them per side — a
 `CompositeAvatarPresenter` routes each line to the matching one, like the other
 composites:
 
