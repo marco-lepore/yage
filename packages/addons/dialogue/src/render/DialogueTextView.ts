@@ -45,11 +45,11 @@ import { evaluateEffect, effectDrivesTint, type EffectOutput } from "./textEffec
 
 export interface DialogueTextConfig extends FontConfig {
   /** Font size in px. */
-  readonly size: number;
+  readonly textSize: number;
   /** Vertical advance between wrapped lines, in px. */
   readonly lineHeight: number;
   /** Colour for runs that don't override it (0xRRGGBB). */
-  readonly defaultColor: number;
+  readonly textColor: number;
   /** Base reveal rate (graphemes/second). Scaled by per-run + hold speed. */
   readonly charsPerSec: number;
   /** Render layer name (screen-space). */
@@ -307,7 +307,7 @@ export class DialogueTextView implements TextPresenter {
     chars.forEach((node, i) => {
       const style = styles[i] ?? {};
       // Colour rides per-glyph `tint` (base fill is white); independent per glyph.
-      node.tint = style.color ?? this.cfg.defaultColor;
+      node.tint = style.color ?? this.cfg.textColor;
       node.visible = false;
       this.applyWeight(node, style);
       if (style.effect) {
@@ -380,7 +380,7 @@ export class DialogueTextView implements TextPresenter {
       return;
     }
     if (style.bold || style.italic) {
-      const s: TextStyle = { fontSize: this.cfg.size, fill: 0xffffff, lineHeight: this.cfg.lineHeight };
+      const s: TextStyle = { fontSize: this.cfg.textSize, fill: 0xffffff, lineHeight: this.cfg.lineHeight };
       if (this.cfg.fontFamily) s.fontFamily = this.cfg.fontFamily;
       if (style.bold) s.fontWeight = "bold";
       if (style.italic) s.fontStyle = "italic";
@@ -468,7 +468,7 @@ export class DialogueTextView implements TextPresenter {
    *  (per-glyph `tint` carries the real colour). */
   private lineSplitOptions(text: string): SplitTextComponentOptions {
     const style: TextStyle = {
-      fontSize: this.cfg.size,
+      fontSize: this.cfg.textSize,
       fill: 0xffffff,
       wordWrap: true,
       wordWrapWidth: this.wrapWidth,

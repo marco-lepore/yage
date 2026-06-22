@@ -26,6 +26,7 @@ import {
   DISABLED_CHOICE_ALPHA,
   type FontConfig,
 } from "./textOptions.js";
+import { DEFAULT_CHOICE_GAP } from "../factory/theme.js";
 
 export interface BubbleChoiceConfig extends FontConfig {
   /** World-space render layer (same as the bubble). */
@@ -39,10 +40,13 @@ export interface BubbleChoiceConfig extends FontConfig {
   readonly choiceColor: number;
   readonly choiceSelectedColor: number;
   readonly highlightColor: number;
-  /** Colour for the optional prompt header rendered inside the panel. */
-  readonly promptColor: number;
-  readonly bgColor: number;
-  readonly bgAlpha: number;
+  /** Vertical gap (px) between choice rows. Default {@link DEFAULT_CHOICE_GAP}. */
+  readonly choiceGap?: number | undefined;
+  /** Colour for the optional prompt header rendered inside the panel — the
+   *  theme's body `textColor`. */
+  readonly textColor: number;
+  readonly frameColor: number;
+  readonly frameAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
   /** Anchor for a missing/absent speaker with no last-known position.
@@ -59,8 +63,6 @@ interface Row {
   readonly y1: number;
   readonly disabled: boolean;
 }
-
-const GAP = 4;
 
 export class BubbleChoicePresenter implements ChoicePresenter {
   readonly pointerSpace = "world" as const;
@@ -120,15 +122,16 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     if (promptStr) {
       const e = this.scene.spawn("dlg-bchoice-prompt");
       e.add(new Transform());
-      const comp = e.add(new TextComponent(this.textOptions(promptStr, c.promptColor, innerW)));
+      const comp = e.add(new TextComponent(this.textOptions(promptStr, c.textColor, innerW)));
       comp.text.visible = true;
       promptH = Math.ceil(comp.text.height);
       this.prompt = { entity: e, comp };
     }
 
     const n = choices.length;
-    const lineH = c.choiceSize + GAP;
-    const headH = promptH > 0 ? promptH + GAP : 0;
+    const gap = c.choiceGap ?? DEFAULT_CHOICE_GAP;
+    const lineH = c.choiceSize + gap;
+    const headH = promptH > 0 ? promptH + gap : 0;
     const h = c.padding + headH + n * lineH + c.padding;
     const left = a.x - c.width / 2;
     const bottom = a.y - c.offsetY;
@@ -220,11 +223,11 @@ export class BubbleChoicePresenter implements ChoicePresenter {
     this.bg?.gfx.draw((g) => {
       g.clear();
       g.roundRect(left, top, c.width, h, c.cornerRadius)
-        .fill({ color: c.bgColor, alpha: c.bgAlpha })
+        .fill({ color: c.frameColor, alpha: c.frameAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
       g.poly([tailX - c.tail, bottom, tailX + c.tail, bottom, tailX, bottom + c.tail]).fill({
-        color: c.bgColor,
-        alpha: c.bgAlpha,
+        color: c.frameColor,
+        alpha: c.frameAlpha,
       });
     });
   }

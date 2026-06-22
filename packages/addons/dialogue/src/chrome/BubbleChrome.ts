@@ -5,18 +5,31 @@
  * speaker id). The matching body text is a {@link DialogueTextView} with an
  * origin provider tracking the same anchor — see `createBubbleDialogue`.
  *
- * Sizing is fixed from config (content-sizing a bubble is a future nicety); the
- * companion text view wraps to the same inner width so they stay aligned.
+ * The bubble is content-sized per line (see {@link bubbleSize}); the companion
+ * text view wraps to the same inner width so they stay aligned. With a textured
+ * {@link BubbleChromeConfig.frame}, the body renders as a nine-slice stretched
+ * to that same per-line size (the tail stays a drawn triangle).
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
+import {
+  createNineSlice,
+  GraphicsComponent,
+  TextComponent,
+  type NineSliceSprite,
+} from "@yagejs/renderer";
 import type { PresentedLine } from "../core/session.js";
 import { BubbleAnchorResolver, type AnchorPoint } from "../render/bubbleAnchor.js";
 import { bubbleSize } from "../render/bubbleSizing.js";
 import { caretAlpha, drawCaret } from "./caret.js";
 import type { ChromePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import {
+  DEFAULT_CARET_SIZE,
+  DEFAULT_TAIL_LEAN,
+  type CaretTheme,
+  type NineSliceFrame,
+} from "../factory/theme.js";
 
 export interface BubbleChromeConfig extends FontConfig {
   /** World-space render layer. */
@@ -32,13 +45,20 @@ export interface BubbleChromeConfig extends FontConfig {
   readonly offsetY: number;
   /** Tail height (the little pointer toward the speaker). */
   readonly tail: number;
-  readonly bgColor: number;
-  readonly bgAlpha: number;
+  /** Tail tip offset from the speaker anchor (the asymmetric "lean"). */
+  readonly tailLean?: { readonly x: number; readonly y: number } | undefined;
+  readonly frameColor: number;
+  readonly frameAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
   readonly nameColor: number;
   readonly nameSize: number;
   readonly indicatorColor: number;
+  /** Continue-caret blink + size (built-in defaults when omitted). */
+  readonly caret?: CaretTheme | undefined;
+  /** Optional textured nine-slice for the bubble body (the `"default"` style's
+   *  `bubble`). Resized per line; omit for the drawn Graphics bubble. */
+  readonly frame?: NineSliceFrame | undefined;
   /** Body-text size + line advance — to size the bubble to its wrapped text,
    *  matching the companion `BubbleTextView`. */
   readonly textSize: number;
@@ -54,6 +74,9 @@ export class BubbleChrome implements ChromePresenter {
   private root?: Entity | undefined;
   private gfx?: GraphicsComponent | undefined;
   private transform?: Transform | undefined;
+  /** Nine-slice body sprite (child of {@link gfx}) when textured; resized per
+   *  line. The tail stays a drawn triangle on {@link gfx}. */
+  private bubbleSlice?: NineSliceSprite | undefined;
   private name?: TextComponent | undefined;
   private nameTransform?: Transform | undefined;
   private caret?: GraphicsComponent | undefined;
@@ -89,6 +112,22 @@ export class BubbleChrome implements ChromePresenter {
     const root = scene.spawn("dlg-bubble");
     this.transform = root.add(new Transform());
     this.gfx = root.add(new GraphicsComponent({ layer: c.layer }));
+    if (c.frame) {
+      // Textured body: a nine-slice child of the bubble graphics, resized +
+      // positioned per line in drawBubble. createNineSlice keeps the addon off a
+      // direct pixi.js import.
+      const slice = createNineSlice({
+        texture: c.frame.texture,
+        leftWidth: c.frame.insets.left,
+        topHeight: c.frame.insets.top,
+        rightWidth: c.frame.insets.right,
+        bottomHeight: c.frame.insets.bottom,
+        width: this.currentWidth,
+        height: this.currentHeight,
+      });
+      this.gfx.graphics.addChild(slice);
+      this.bubbleSlice = slice;
+    }
     this.drawBubble();
     this.gfx.graphics.visible = false;
 
@@ -104,7 +143,7 @@ export class BubbleChrome implements ChromePresenter {
     this.caretTransform = caretEntity.add(new Transform());
     this.caret = caretEntity.add(new GraphicsComponent({ layer: c.layer }));
     // Drawn once in local coords; positioned each frame via the transform.
-    this.caret.draw((g) => drawCaret(g, c.indicatorColor));
+    this.caret.draw((g) => drawCaret(g, c.indicatorColor, c.caret?.size));
     this.caret.graphics.visible = false;
 
     this.root = root;
@@ -188,7 +227,7 @@ export class BubbleChrome implements ChromePresenter {
     const gfx = this.caret?.graphics;
     if (gfx?.visible) {
       this.caretTime += dt;
-      gfx.alpha = caretAlpha(this.caretTime);
+      gfx.alpha = caretAlpha(this.caretTime, this.cfg.caret?.blinkMs);
     }
   }
 
@@ -199,6 +238,7 @@ export class BubbleChrome implements ChromePresenter {
     this.root = undefined;
     this.gfx = undefined;
     this.transform = undefined;
+    this.bubbleSlice = undefined;
     this.name = undefined;
     this.nameTransform = undefined;
     this.caret = undefined;
@@ -213,11 +253,15 @@ export class BubbleChrome implements ChromePresenter {
     const c = this.cfg;
     const w = this.currentWidth;
     const h = this.currentHeight;
+    const caretSize = c.caret?.size ?? DEFAULT_CARET_SIZE;
     this.transform?.setPosition(a.x, a.y);
     // Name: top-left corner of the bubble, lifted by the (grown) bubble height.
     this.nameTransform?.setPosition(a.x - w / 2 + c.padding, a.y - (c.offsetY + h) - c.nameSize - 1);
     // Caret: bottom-right interior of the bubble (anchored near the bottom edge).
-    this.caretTransform?.setPosition(a.x + w / 2 - c.padding - 7, a.y - c.offsetY - c.padding - 2);
+    this.caretTransform?.setPosition(
+      a.x + w / 2 - c.padding - caretSize.width,
+      a.y - c.offsetY - c.padding - caretSize.height + 3,
+    );
   }
 
   private drawBubble(): void {
@@ -228,11 +272,26 @@ export class BubbleChrome implements ChromePresenter {
     const R = w / 2;
     const T = -(c.offsetY + h); // top edge
     const B = -c.offsetY; // bottom edge (the tail hangs below it to the speaker)
-    const r = Math.max(0, Math.min(c.cornerRadius, w / 2 - 1, h / 2 - 1));
     const half = c.tail; // tail base half-width
-    const tipX = -3; // slight lean
-    const tipY = -2; // just above the actor's head anchor (local 0,0)
+    const lean = c.tailLean ?? DEFAULT_TAIL_LEAN;
+    const tipX = lean.x; // slight lean
+    const tipY = lean.y; // just above the actor's head anchor (local 0,0)
     this.gfx?.graphics.clear(); // re-drawn per line at a new size — don't accumulate
+
+    if (this.bubbleSlice) {
+      // Textured body: stretch the nine-slice to the content size and place it
+      // at the bubble's top-left; draw only the tail triangle (the nine-slice is
+      // a rectangle and can't carry the pointer).
+      this.bubbleSlice.position.set(L, T);
+      this.bubbleSlice.width = w;
+      this.bubbleSlice.height = h;
+      this.gfx?.draw((g) => {
+        g.poly([-half, B, half, B, tipX, tipY]).fill({ color: c.frameColor, alpha: c.frameAlpha });
+      });
+      return;
+    }
+
+    const r = Math.max(0, Math.min(c.cornerRadius, w / 2 - 1, h / 2 - 1));
     // One closed silhouette (rounded rect + a tail notch on the bottom edge), so
     // the border flows around the tail instead of cutting across it.
     this.gfx?.draw((g) => {
@@ -249,9 +308,8 @@ export class BubbleChrome implements ChromePresenter {
         .lineTo(L, T + r)
         .arcTo(L, T, L + r, T, r) // top-left
         .closePath()
-        .fill({ color: c.bgColor, alpha: c.bgAlpha })
+        .fill({ color: c.frameColor, alpha: c.frameAlpha })
         .stroke({ color: c.borderColor, alpha: 1, width: 2 });
     });
   }
-
 }

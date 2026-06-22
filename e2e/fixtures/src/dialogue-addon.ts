@@ -24,6 +24,7 @@ import {
   CameraEntity,
   GraphicsComponent,
 } from "@yagejs/renderer";
+import { Texture } from "pixi.js";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import {
@@ -48,6 +49,25 @@ injectStyles();
 const WIDTH = 800;
 const HEIGHT = 600;
 const container = setupContainer(WIDTH, HEIGHT);
+
+/** A synchronous 48×48 nine-slice frame (8px border) for the textured
+ *  `meta.chrome` scenario — drawn on a canvas so it resolves immediately, with
+ *  no async asset load to race the chrome mount. */
+function makeFrameTexture(): Texture {
+  const size = 48;
+  const border = 8;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#b89a5e"; // border
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#2a2418"; // center
+    ctx.fillRect(border, border, size - 2 * border, size - 2 * border);
+  }
+  return Texture.from(canvas);
+}
 
 const SCRIPT: DialogueScript = {
   id: "demo",
@@ -108,6 +128,48 @@ const SCRIPT: DialogueScript = {
       id: "done",
       steps: [
         { kind: "say", speaker: "narrator", text: "Goodbye!" },
+        { kind: "end" },
+      ],
+    },
+  },
+};
+
+/** Overflow: a single choice with nine options. The spec navigates through all
+ *  nine and commits the last to prove the grown list stays usable. */
+const HUB_SCRIPT: DialogueScript = {
+  id: "hub",
+  start: "hub",
+  nodes: {
+    hub: {
+      id: "hub",
+      steps: [
+        {
+          kind: "choice",
+          text: "Pick a door (there are many):",
+          options: Array.from({ length: 9 }, (_, i) => ({
+            text: `Door number ${i + 1}`,
+            target: "out",
+          })),
+        },
+      ],
+    },
+    out: { id: "out", steps: [{ kind: "say", text: "Through it." }, { kind: "end" }] },
+  },
+};
+
+/** Per-line `meta.chrome` swaps the box frame style — a named textured
+ *  nine-slice, the built-in invisible "none", then back to the drawn default. */
+const TEXTURED_SCRIPT: DialogueScript = {
+  id: "textured",
+  start: "t",
+  speakers: { narrator: { id: "narrator", name: "Narrator", color: 0xffd866 } },
+  nodes: {
+    t: {
+      id: "t",
+      steps: [
+        { kind: "say", speaker: "narrator", text: "Parchment frame here.", meta: { chrome: "parchment" } },
+        { kind: "say", speaker: "narrator", text: "No frame at all.", meta: { chrome: "none" } },
+        { kind: "say", speaker: "narrator", text: "Back to the default frame." },
         { kind: "end" },
       ],
     },
@@ -178,6 +240,8 @@ class DialogueProbe extends Component {
     selectionIndex: number;
     boxVisible: boolean;
     bubbleVisible: boolean;
+    texturedVisible: boolean;
+    bubbleTextured: boolean;
   } {
     return {
       lastLine: this.lastLine,
@@ -193,12 +257,24 @@ class DialogueProbe extends Component {
       // back and the box frame must stay hidden.
       boxVisible: this.frameVisible("dlg-frame"),
       bubbleVisible: this.frameVisible("dlg-bubble"),
+      // The nine-slice host shows only while a textured `meta.chrome` style is
+      // the active box frame — so the spec can watch the style swap.
+      texturedVisible: this.frameVisible("dlg-frame-tex"),
+      // A textured bubble parents its nine-slice into the bubble's own Graphics
+      // (the tail stays drawn) — so a child means the bubble body is textured.
+      bubbleTextured: (this.frameChildren("dlg-bubble")) > 0,
     };
   }
 
   /** Whether the named chrome entity's Graphics is currently visible. */
   private frameVisible(name: string): boolean {
     return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.visible ?? false;
+  }
+
+  /** Child count of the named chrome entity's Graphics (a nine-slice sprite is
+   *  parented here when the bubble body is textured). */
+  private frameChildren(name: string): number {
+    return this.scene.findEntity(name)?.tryGet(GraphicsComponent)?.graphics.children.length ?? 0;
   }
 }
 
@@ -224,7 +300,29 @@ class DialogueScene extends Scene {
     );
     guide.add(new Guide());
 
-    const bundle = createMixedDialogue(defaultTheme(), {
+    // Default: a NAMED "parchment" style only (no "default"), so the main
+    // script's box lines keep the drawn Graphics frame and the existing specs
+    // that read `boxVisible` still hold; the `meta.chrome` script opts in per
+    // line. `?theme=textured` instead installs a fully-textured "default" style
+    // (box + bubble nine-slice) for the bubble-textured spec.
+    const insets = { left: 8, top: 8, right: 8, bottom: 8 };
+    const fullyTextured =
+      new URLSearchParams(location.search).get("theme") === "textured";
+    const theme = fullyTextured
+      ? {
+          ...defaultTheme(),
+          textured: {
+            default: {
+              frame: { texture: makeFrameTexture(), insets },
+              bubble: { texture: makeFrameTexture(), insets },
+            },
+          },
+        }
+      : {
+          ...defaultTheme(),
+          textured: { parchment: { frame: { texture: makeFrameTexture(), insets } } },
+        };
+    const bundle = createMixedDialogue(theme, {
       worldLayer: "bubble-world",
     });
 
@@ -245,6 +343,12 @@ class DialogueScene extends Scene {
     // the Inspector-visible DialogueProbe, not the controller directly.
     (window as unknown as { __dialogue__: DialogueController }).__dialogue__ =
       controller;
+    // Extra scripts the spec can `play()` to exercise overflow + textured chrome
+    // without disturbing the default conversation the other specs drive.
+    (window as unknown as { __scripts__: Record<string, DialogueScript> }).__scripts__ = {
+      hub: HUB_SCRIPT,
+      textured: TEXTURED_SCRIPT,
+    };
   }
 
   onExit(): void {
