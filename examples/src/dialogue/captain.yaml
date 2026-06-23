@@ -1,0 +1,42 @@
+# Captain Vow — showcases the box presenter's per-line layout. Her lines carry
+# `meta` the default box presenters read:
+#   • position: top         — a screen-top alert (frame + body text move up together)
+#   • portrait / side       — a line-driven, reflowing in-box avatar (portrait keys
+#                             "cap-stern" / "cap-neutral" registered by the scene)
+#   • a six-option briefing  — the box frame GROWS to fit the menu
+id: captain
+start: n
+speakers:
+  vow: { id: vow, name: Captain Vow, color: 0x86c5ff }
+nodes:
+  n:
+    id: n
+    steps:
+      - kind: say
+        speaker: vow
+        text: "⚠ To arms — intruders breached the east gate!"
+        meta: { position: top, portrait: cap-stern, side: left }
+      - kind: say
+        speaker: vow
+        text: "At ease, recruit. I'm Captain Vow — my portrait sits inside the box and the words [b]reflow[/b] around it, line by line."
+        meta: { portrait: cap-neutral, side: left }
+      - kind: choice
+        speaker: vow
+        text: "Your orders? (the box grows to fit the menu)"
+        meta: { portrait: cap-neutral, side: left }
+        options:
+          - { text: "Scout the perimeter", target: ack }
+          - { text: "Reinforce the gate", target: ack }
+          - { text: "Question the merchant", target: ack }
+          - { text: "Sound the alarm", target: ack }
+          - { text: "Guard the vault", target: ack }
+          - { text: "Stand down", target: ack }
+  ack:
+    id: ack
+    steps:
+      - kind: say
+        speaker: vow
+        # side: right — the portrait flips and the text reflows the other way.
+        text: "Aye. Move out — the town's counting on you."
+        meta: { portrait: cap-stern, side: right }
+      - { kind: end }

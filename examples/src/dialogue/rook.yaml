@@ -1,0 +1,35 @@
+# Rook — a TIMED choice (a recipe, not an engine feature). A non-blocking
+# `choice-timer` command before the choice arms a host-owned countdown; stall too
+# long and the host commits the default ("Freeze up", index 1). `meta.timeoutMs`
+# rides through to the presenter for a custom countdown.
+id: rook
+start: n
+speakers:
+  rook: { id: rook, name: Rook, color: 0xff6b6b }
+nodes:
+  n:
+    id: n
+    steps:
+      - kind: say
+        speaker: rook
+        text: "The guard's rounding the corner. Run or bluff — [b]fast[/b]!"
+      # Non-blocking command BEFORE the choice: it just arms the host timer.
+      - kind: command
+        commands: [{ type: choice-timer, ms: 5000, default: 1 }]
+      - kind: choice
+        speaker: rook
+        text: "Well?"
+        meta: { timeoutMs: 5000 }
+        options:
+          - { text: "Bluff it out", target: bluff }
+          - { text: "Freeze up", target: freeze } # index 1 — the timeout default
+  bluff:
+    id: bluff
+    steps:
+      - { kind: say, speaker: rook, text: "Ha — smooth. The guard waved us right through." }
+      - { kind: end }
+  freeze:
+    id: freeze
+    steps:
+      - { kind: say, speaker: rook, text: "…You froze. We got lucky the guard was bored." }
+      - { kind: end }

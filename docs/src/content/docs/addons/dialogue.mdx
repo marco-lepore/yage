@@ -31,22 +31,27 @@ npm install @yagejs/core @yagejs/input @yagejs/renderer
   needs it (and it brings `pixi.js` transitively). Consuming only the headless runner? Skip
   them.
 
-## Two entry points
+## Three entry points
 
-The package is split so the headless path never pulls a renderer:
+The package is split so the headless path never pulls a renderer — and so the
+JSON / TypeScript / expression authors never pull the YAML parser:
 
 ```ts
-// Headless + input only — no pixi, fully unit-testable.
-import { DialogueRunner, DialogueController } from "@yagejs-addons/dialogue";
+// Headless + input only — no pixi, no yaml, fully unit-testable.
+import { DialogueRunner, DialogueController, parseExpr } from "@yagejs-addons/dialogue";
 
 // Pixi presentation — Graphics chrome + canvas text, themes, factories.
 import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+// YAML-literal authoring — the only entry that pulls `yaml`.
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 ```
 
 | Entry          | Imports                          | Contains |
 | -------------- | -------------------------------- | -------- |
-| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical format, events, `DialogueController`, input bindings |
+| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical (JSON) format, the `parseExpr` string→expression parser, events, `DialogueController`, input bindings |
 | `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultTheme()`, textured nine-slice variants, radial (experimental) |
+| `./yaml`       | + `yaml`                         | `loadYaml` — kept off the root so non-YAML authors never bundle the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be tree-shaken) |
 
 ## Quick start
 
@@ -191,17 +196,83 @@ comparison still works as the degenerate one-level tree.
 { condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "rusty-key" }] } }
 ```
 
+#### Write them as strings
+
+Typing those trees by hand is tedious, so a `Condition` or `set` value can be a
+**string** — `parseExpr` parses it into the exact same IR when the script loads
+(every loader, JSON included), so the runtime never re-parses. The two snippets
+above are simply:
+
+```ts
+{ type: "set", var: "gold", value: "gold - 50" }
+{ condition: "has_item('rusty-key')" }
+{ kind: "command", commands: [], condition: "gold >= 50 and not rude", target: "buy" }
+```
+
+- Identifiers are `[A-Za-z_$]` then `[A-Za-z0-9_.$]`, so `$gold` and `quest.stage`
+  read as one name (Yarn-forward) but `-` is a minus operator — `hp-1` is `hp`
+  minus `1`, and a hyphenated id like `'rusty-key'` goes in a quoted string.
+- A **bare** name is a variable read (`"greeted"` → truthy check, the same as
+  before); a **quoted** string is literal text. So a `set` value of `"gold"` reads
+  the `gold` variable, while `"'gold'"` is the five-character string.
+- These words are **reserved** and can't be used *bare in a string* — quote them,
+  or use the `{ var, op, value }` form / `defineScript`: `and or not xor is eq neq
+  gt lt gte lte true false null`.
+
+You can call `parseExpr(src)` directly (it throws `DialogueExprError` with
+`line`/`col` on a bad string), but you rarely need to — the loaders run it for you.
+
+#### Author the whole script in YAML
+
+For a data-file workflow, `loadYaml` (from the `@yagejs-addons/dialogue/yaml`
+subpath) reads a YAML document whose shape mirrors the JSON `DialogueScript` and
+runs it through the same loader — same string-expression pre-walk, same
+validation, same frozen result. It lives behind a subpath so games that author in
+JSON/TypeScript never bundle the YAML parser.
+
+```ts
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+
+const script = loadYaml(`
+id: shop
+start: greet
+declare: { gold: 0 }
+nodes:
+  greet:
+    id: greet
+    steps:
+      - kind: say
+        text: "You have {gold} gold."
+      - kind: choice
+        options:
+          - { text: "Buy the sword (50g)", target: buy, condition: "gold >= 50" }
+          - { text: "Leave", target: bye }
+  buy:
+    id: buy
+    steps:
+      - { kind: command, commands: [ { type: set, var: gold, value: "gold - 50" } ] }
+      - { kind: say, text: "A fine blade." }
+      - { kind: end }
+  bye: { id: bye, steps: [ { kind: end } ] }
+`);
+```
+
+The root of the document must be a mapping (the script object); a list, a scalar,
+or an empty document is rejected with a clear `DialogueScriptError`.
+
 ### Validation
 
 The script is checked in two stages, both throwing hard errors so typos die early
 rather than silently mis-branching:
 
-- **Load-time** (`defineScript` / `loadScript`, environment-free): collects the
-  names read/written, functions called, and command types fired, and type-checks
-  what's statically knowable (an atomic numeric comparison against a declared
-  non-number, a literal `set` value against the target's declared type). Throws
-  `DialogueScriptError`. Undeclared *references* aren't rejected here — the
-  storage/functions may supply them, which is only known at play time.
+- **Load-time** (`defineScript` / `loadScript` / `loadYaml`, environment-free):
+  collects the names read/written, functions called, and command types fired, and
+  type-checks what's statically knowable — a numeric or arithmetic operator (in the
+  atomic form *or* inside a parsed expression) with a wrong-type literal operand or
+  a declared-non-number variable operand, and a literal `set` value against the
+  target's declared type. Throws `DialogueScriptError`. Undeclared *references*
+  aren't rejected here — the storage/functions may supply them, which is only known
+  at play time.
 - **Play-time** (when you call `play`): every read name must be provided (a
   declared default or a value in the storage), every called function installed,
   every command type handled, no `set` target that's a function, no

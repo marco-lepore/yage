@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { DialogueScriptError, loadScript } from "./canonical.js";
-import type { DialogueScript } from "../types.js";
+import { createScope, evalCondition, isExpr } from "../expr.js";
+import { MemoryVariableStorage } from "../vars.js";
+import type { CommandStep, Condition, DialogueScript } from "../types.js";
 
 function script(partial: Partial<DialogueScript>): DialogueScript {
   return {
@@ -10,6 +12,19 @@ function script(partial: Partial<DialogueScript>): DialogueScript {
     nodes: { a: { id: "a", steps: [{ kind: "say", text: "hi" }] } },
     ...partial,
   } as DialogueScript;
+}
+
+/** Load a one-node script whose only step is a conditional command, returning
+ *  the (pre-walked) condition. */
+function loadCondition(condition: Condition): Condition | undefined {
+  const s = loadScript(
+    script({
+      nodes: {
+        a: { id: "a", steps: [{ kind: "command", commands: [], condition, target: "a" }] },
+      },
+    }),
+  );
+  return (s.nodes.a!.steps[0] as CommandStep).condition;
 }
 
 describe("loadScript — structural validation", () => {
@@ -93,5 +108,77 @@ describe("loadScript — speaker validation", () => {
 
   it("speakerless lines remain valid (narrator)", () => {
     expect(() => loadScript(script({}))).not.toThrow();
+  });
+});
+
+describe("loadScript — string conditions / set values unify to Expr", () => {
+  it("a bare-name condition becomes a varRef and evaluates like the old truthy read", () => {
+    const condition = loadCondition("gate");
+    expect(condition).toEqual({ kind: "varRef", name: "gate" });
+    // Back-compat: identical to today's `truthy(scope.get("gate"))`.
+    const on = createScope(new MemoryVariableStorage({ gate: true }), {});
+    const off = createScope(new MemoryVariableStorage({ gate: false }), {});
+    expect(evalCondition(condition!, on)).toBe(true);
+    expect(evalCondition(condition!, off)).toBe(false);
+  });
+
+  it("operator-bearing condition strings now parse (`not greeted`)", () => {
+    const condition = loadCondition("not greeted");
+    expect(condition).toEqual({ kind: "unary", op: "!", operand: { kind: "varRef", name: "greeted" } });
+    const scope = createScope(new MemoryVariableStorage({ greeted: false }), {});
+    expect(evalCondition(condition!, scope)).toBe(true);
+  });
+
+  it("compound condition strings now parse (`a and b`)", () => {
+    const condition = loadCondition("a and b");
+    expect(condition).toEqual({
+      kind: "binary",
+      op: "&&",
+      left: { kind: "varRef", name: "a" },
+      right: { kind: "varRef", name: "b" },
+    });
+  });
+
+  it("leaves an atomic { var, op, value } condition untouched", () => {
+    const atomic = { var: "n", op: ">", value: 1 } as const;
+    expect(loadCondition(atomic)).toEqual(atomic);
+  });
+
+  it("leaves an already-built Expr condition untouched", () => {
+    const tree = { kind: "varRef", name: "x" } as const;
+    expect(loadCondition(tree)).toBe(tree);
+  });
+
+  it("resolves a string `set` RHS into an Expr tree (gold - 50)", () => {
+    const s = loadScript(
+      script({
+        declare: { gold: 100 },
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              { kind: "command", commands: [{ type: "set", var: "gold", value: "gold - 50" }] },
+              { kind: "end" },
+            ],
+          },
+        },
+      }),
+    );
+    const step = s.nodes.a!.steps[0] as CommandStep;
+    const value = step.commands[0]!.value;
+    expect(isExpr(value)).toBe(true);
+    expect(value).toEqual({
+      kind: "binary",
+      op: "-",
+      left: { kind: "varRef", name: "gold" },
+      right: { kind: "literal", value: 50 },
+    });
+  });
+
+  it("propagates a malformed condition string as a parse error", () => {
+    expect(() => loadCondition("a and")).toThrow(/end of input/);
+    // The parse error is a DialogueScriptError subtype, so a single load-time
+    // catch covers it (no separate error branch needed for string conditions).
+    expect(() => loadCondition("a and")).toThrow(DialogueScriptError);
   });
 });

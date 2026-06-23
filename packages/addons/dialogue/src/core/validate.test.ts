@@ -103,16 +103,73 @@ describe("analyzeScript — load-time walk + internal type checks", () => {
   });
 
   it("rejects a set whose literal value type mismatches the declared default", () => {
+    // A bare string `set` value now reads as a varRef (the unify pre-walk); a
+    // *quoted* string is the string literal — and it still type-checks against
+    // the target's declared type.
     const s = script({
       declare: { gold: 0 },
       nodes: {
         a: {
           id: "a",
-          steps: [{ kind: "command", commands: [{ type: "set", var: "gold", value: "lots" }] }],
+          steps: [{ kind: "command", commands: [{ type: "set", var: "gold", value: "'lots'" }] }],
         },
       },
     });
     expect(() => loadScript(s)).toThrow(/set "gold" expects number, got string/);
+  });
+
+  it("type-checks a string comparison's literal operand (Expr-path parity)", () => {
+    // "gold >= 'foo'" pre-walks to a `>=` tree; the quoted string is a wrong-type
+    // operand, mirroring the atomic `{ var, op, value }` value check.
+    const s = script({
+      declare: { gold: 0 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [], condition: "gold >= 'foo'", target: "a" }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).toThrow(/operator ">=" expects a number, got string/);
+  });
+
+  it("type-checks an arithmetic op's literal operand (gold + true)", () => {
+    const s = script({
+      declare: { gold: 0 },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "gold", value: "gold + true" }] }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).toThrow(/operator "\+" expects a number or string, got boolean/);
+  });
+
+  it("rejects a numeric op against a declared non-number var (Expr path)", () => {
+    const s = script({
+      declare: { flag: false },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [], condition: "flag > 1", target: "a" }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).toThrow(/needs a number; "flag" is boolean/);
+  });
+
+  it("allows `+` against a string var (concatenation is valid)", () => {
+    const s = script({
+      declare: { name: "x", note: "" },
+      nodes: {
+        a: {
+          id: "a",
+          steps: [{ kind: "command", commands: [{ type: "set", var: "note", value: "name + '!'" }] }],
+        },
+      },
+    });
+    expect(() => loadScript(s)).not.toThrow();
   });
 
   it("rejects a set command with no value (would write undefined)", () => {

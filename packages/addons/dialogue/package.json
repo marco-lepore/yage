@@ -45,6 +45,16 @@
         "types": "./dist/presenters.d.cts",
         "default": "./dist/presenters.cjs"
       }
+    },
+    "./yaml": {
+      "import": {
+        "types": "./dist/yaml.d.ts",
+        "default": "./dist/yaml.js"
+      },
+      "require": {
+        "types": "./dist/yaml.d.cts",
+        "default": "./dist/yaml.cjs"
+      }
     }
   },
   "files": [
@@ -60,6 +70,9 @@
     "lint": "eslint src/",
     "test": "vitest run",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "yaml": "^2.8.3"
   },
   "peerDependencies": {
     "@yagejs/core": ">=0.8.0 <0.9.0",

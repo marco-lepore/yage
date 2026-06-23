@@ -13,19 +13,26 @@ npm install @yagejs/core @yagejs/input @yagejs/renderer
 ```
 
 `@yagejs/core` + `@yagejs/input` are required peers; `@yagejs/renderer` + `pixi.js`
-are optional peers (only the `./presenters` subpath needs them).
+are optional peers (only the `./presenters` subpath needs them). `yaml` is the
+addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
 
-## Two entry points (export split — load-bearing)
+## Three entry points (export split — load-bearing)
 
 - **`.`** (root) — headless + non-pixi. Runner, session, types, markup, i18n,
-  canonical format, events, `DialogueController` (a `@yagejs/core` Component),
-  `@yagejs/input` bindings. **MUST NOT transitively import pixi / renderer.**
+  canonical (JSON) format, the string→expression parser (`parseExpr`), events,
+  `DialogueController` (a `@yagejs/core` Component), `@yagejs/input` bindings.
+  **MUST NOT transitively import pixi / renderer / `yaml`.**
 - **`./presenters`** — everything pixi. Chrome, text views, composites, avatars,
   factories, `defaultTheme()`, textured nine-slice variants, experimental radial.
+- **`./yaml`** — the YAML-literal loader (`loadYaml`). The ONLY entry that pulls
+  `yaml`. Kept off the root so JSON / TypeScript / expression authors never bundle
+  the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be
+  tree-shaken).
 
 ```ts
-import { DialogueController, DialogueRunner } from "@yagejs-addons/dialogue";
+import { DialogueController, parseExpr } from "@yagejs-addons/dialogue";
 import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 ```
 
 ## 5-minute setup (zero assets)
@@ -87,9 +94,11 @@ Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 - `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `presentation?`
   (`"hidden"` default | `"disabled"`), `disabledReason?`, `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
-- `Condition`: a variable name (truthy), the atomic `{ var, op, value }` (op =
-  `== != > >= < <= truthy falsy`), an `Expr` tree (see below), or `(vars) =>
-  boolean` (TS-only, not JSON; receives a materialized snapshot).
+- `Condition`: a **string expression** (`"hp > 0 and has_item('key')"`, parsed at
+  load — see below), the atomic `{ var, op, value }` (op = `== != > >= < <= truthy
+  falsy`), an `Expr` tree, or `(vars) => boolean` (TS-only, not JSON; receives a
+  materialized snapshot). A bare name (`"greeted"`) is the degenerate string
+  expression → a truthy read (back-compat).
 
 ### Variables, storage, and seed-if-absent
 
@@ -133,12 +142,80 @@ live-refresh while open.
 { condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "key" }] } }
 ```
 
+### String authoring — `parseExpr` (the canonical reading of every string)
+
+`parseExpr(src): Expr` parses a condition / `set`-value string into the IR above
+(no new node kinds). It is **purely syntactic** — no type-checking, no name
+resolution — so a future Yarn front-end reuses it 1:1. Throws `DialogueExprError`
+(carries `line` / `col`) on a bad source.
+
+`loadScript` / `loadYaml` run `parseExpr` over **every** string condition and
+string `set` value at load (a one-pass pre-walk), for every loader incl. JSON, so
+the frozen IR only ever holds trees and the runtime never re-parses.
+
+```ts
+parseExpr("hp > 0 and has_item('key')");
+// → binary && ( binary > (varRef hp, literal 0), call has_item(literal "key") )
+
+// In a script — authored as strings, identical to the hand-built IR above:
+{ kind: "command", commands: [], condition: "hp > 0 and has_item('key')", target: "fight" }
+{ type: "set", var: "gold", value: "gold - 50" }   // string set RHS → Expr
+```
+
+- **Identifiers** lex as `[A-Za-z_$]` then `[A-Za-z0-9_.$]` — `.`/`$` are name
+  chars (`$gold`, `quest.stage` are ONE name, Yarn-forward); `-` is NOT, so `hp-1`
+  is `hp` minus `1`. An item id with a hyphen lives in a quoted string:
+  `has_item('rusty-key')`.
+- **Bare string = a `varRef`** (a truthy read — back-compat with the old
+  string-condition behavior). A **quoted** string is a string literal: a `set`
+  value `"gold"` reads variable `gold`; `"'gold'"` is the literal text. Operator
+  strings (`"not rude"`, `"a or b"`) that the old runtime silently failed on now
+  work.
+- **Reserved words** (can't be referenced *bare in a string* — use `{ var, op,
+  value }`, `defineScript`, or rename): `and or not xor is eq neq gt lt gte lte
+  true false null`.
+- v1 wires `or/|| and/&& not/!`, the comparisons (+ word forms), unary `-`, binary
+  `+ -`, calls, and parens. `xor/^` and `* / %` are reserved but unwired (additive
+  later — the IR + evaluator already accept them). Word forms normalise to symbols
+  in the IR (`and` → `&&`, `eq` → `==`, …).
+
+### YAML authoring — `loadYaml` (the `./yaml` subpath)
+
+`loadYaml(text): DialogueScript` (from `@yagejs-addons/dialogue/yaml`) parses a
+YAML document whose shape mirrors the JSON `DialogueScript` and hands it to
+`loadScript` — same pre-walk, validation, and frozen IR as JSON. The root must be
+a mapping; a null / scalar / array / empty document → a YAML-specific
+`DialogueScriptError`. String conditions/`set`s resolve exactly as above.
+
+```ts
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+
+const script = loadYaml(`
+id: shop
+start: greet
+nodes:
+  greet:
+    id: greet
+    steps:
+      - kind: say
+        text: "You have {gold} gold."
+      - kind: choice
+        options:
+          - { text: "Buy the sword (50g)", target: buy, condition: "gold >= 50" }
+          - { text: "Leave", target: bye }
+  buy: { id: buy, steps: [ { kind: command, commands: [ { type: set, var: gold, value: "gold - 50" } ] }, { kind: end } ] }
+  bye: { id: bye, steps: [ { kind: end } ] }
+`);
+```
+
 ### Validation (two hard-error stages)
 - **Load-time** (`loadScript` / `defineScript`, environment-free): collects the
   names read/written, functions called, command types fired; type-checks what's
-  statically knowable (atomic numeric op vs a declared non-number, a literal `set`
-  value vs the target's declared type). Throws `DialogueScriptError`. Undeclared
-  *references* are NOT rejected here — the storage/functions may provide them.
+  statically knowable (a numeric/arithmetic op — atomic OR inside an expression
+  tree — with a wrong-type literal operand or a declared-non-number var operand; a
+  literal `set` value vs the target's declared type). Throws `DialogueScriptError`.
+  Undeclared *references* are NOT rejected here — the storage/functions may provide
+  them.
 - **Play-time** (`validatePlay`, on `play()`): every read name must be provided
   (declared default or `storage.has`), every called function installed, every
   command type handled (`commands`/`fallbackCommand`), no `set` target that's a
