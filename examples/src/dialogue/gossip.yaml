@@ -1,0 +1,26 @@
+# Ambient gossip — loops forever, each line auto-advancing, no input binding.
+id: gossip
+start: a
+speakers:
+  ann: { id: ann, name: Ann, color: 0xf5a168 }
+  bert: { id: bert, name: Bert, color: 0xaaaaaa }
+nodes:
+  a:
+    id: a
+    steps:
+      - kind: say
+        speaker: ann
+        view: bubble
+        text: "…and then the goblin tripped over its own feet!"
+        autoAdvanceMs: 1600
+      - kind: say
+        speaker: bert
+        view: bubble
+        text: "No! In front of the whole guild?"
+        autoAdvanceMs: 1500
+      - kind: say
+        speaker: ann
+        view: bubble
+        text: "Face first. I nearly dropped my mug."
+        autoAdvanceMs: 1600
+      - { kind: goto, target: a }

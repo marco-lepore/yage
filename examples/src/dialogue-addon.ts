@@ -52,8 +52,16 @@
  * mid-line, restoring it at the same reveal point (`setHidden`). The
  * **Font** button swaps every presenter to a baked bitmap font and back.
  *
+ * The eight scripts live in plain **YAML data files** under `./dialogue/` (a
+ * designer edits them without touching code), imported via Vite's `?raw` suffix
+ * and parsed by `loadYaml` (the `/yaml` subpath). Conditions and `set` values are
+ * plain string expressions (`"gold >= 50 and not has_item('rusty-key')"`,
+ * `"gold - 50"`) instead of hand-built trees — `loadYaml` runs them through the
+ * same string→expression parser the JSON loader uses.
+ *
  * Export split: runner / controller / events / input / the storage kit come from
- * the pixi-free root entry; presenters + theme come from `/presenters`.
+ * the pixi-free root entry; YAML authoring from `/yaml`; presenters + theme from
+ * `/presenters`.
  */
 
 import {
@@ -84,13 +92,24 @@ import {
   compose,
   fullControls,
   MemoryVariableStorage,
-  type BinaryOp,
   type CommandHandler,
   type DialogueFunction,
   type DialogueScript,
-  type Expr,
   type VariableStorage,
 } from "@yagejs-addons/dialogue";
+// YAML authoring lives behind the `/yaml` subpath so non-YAML games don't bundle
+// the parser; it returns the same validated, frozen `DialogueScript`.
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+// The dialogue itself lives in plain `.yaml` data files (a designer edits these
+// without touching code); Vite's `?raw` suffix imports each as a string.
+import miraYaml from "./dialogue/mira.yaml?raw";
+import quartermasterYaml from "./dialogue/quartermaster.yaml?raw";
+import merchantYaml from "./dialogue/merchant.yaml?raw";
+import guardYaml from "./dialogue/guard.yaml?raw";
+import rookYaml from "./dialogue/rook.yaml?raw";
+import sageYaml from "./dialogue/sage.yaml?raw";
+import captainYaml from "./dialogue/captain.yaml?raw";
+import gossipYaml from "./dialogue/gossip.yaml?raw";
 import {
   defaultTheme,
   createMixedDialogue,
@@ -113,9 +132,9 @@ const SKIP_HOLD_MS = 600; // hold X this long to confirm a skip
 const AUTO_ADVANCE_MS = 1500; // delay between lines when auto-advance is on
 const PLAYER_SPEED = 165; // px/sec
 
-const KEY_PRICE = 50;
+// The key price (50) and Rook's timeout (5000ms) now live in the dialogue data
+// files (`merchant.yaml` / `rook.yaml`).
 const GATE_X = 1410; // the locked gate; blocks progress until unlocked
-const ROOK_TIMEOUT_MS = 5000; // Rook's timed choice: decide within 5s or freeze
 
 /** Portrait texture keys for the avatars (drawn on a canvas in onEnter, so the
  *  demo stays asset-free). The Captain uses two expressions in the box; Sage
@@ -154,414 +173,44 @@ interface GameState {
   readonly inventory: Set<string>;
 }
 
-// ── expression helpers (keep the JSON-able IR readable) ──────────────────────
-
-const lit = (value: string | number | boolean): Expr => ({ kind: "literal", value });
-const ref = (name: string): Expr => ({ kind: "varRef", name });
-const call = (fn: string, ...args: Expr[]): Expr => ({ kind: "call", fn, args });
-const bin = (op: BinaryOp, left: Expr, right: Expr): Expr => ({ kind: "binary", op, left, right });
-
-// ── scripts (all content-only; storage/functions/commands live on the host) ───
+// ── scripts — authored in `./dialogue/*.yaml`, parsed by `loadYaml` ──────────
+//
+// The dialogue lives in plain YAML data files (imported above via Vite `?raw`),
+// each mirroring the JSON `DialogueScript` and all content-only
+// (storage/functions/commands live on the host). Conditions and `set` values are
+// plain string expressions (`gold >= 50 and not has_item('rusty-key')`,
+// `gold - 50`) — `loadYaml` parses them into the IR and validates at module load,
+// so a malformed file throws here rather than at first `play`. The portrait keys
+// (`cap-stern` / `cap-neutral` / `sage-face`) are the texture keys the scene
+// registers in `Assets` below.
 
 /** Mira — markup effects + a persistent visit counter (cycling NPC). */
-const MIRA: DialogueScript = {
-  id: "mira",
-  start: "n",
-  declare: { timesTalked: 0 },
-  speakers: { mira: { id: "mira", name: "Mira", color: 0xffd866 } },
-  nodes: {
-    n: {
-      id: "n",
-      steps: [
-        // Count this visit, then branch on the (persisted) prior count.
-        {
-          kind: "command",
-          commands: [{ type: "set", var: "timesTalked", value: bin("+", ref("timesTalked"), lit(1)) }],
-        },
-        { kind: "command", commands: [], condition: { var: "timesTalked", op: ">", value: 1 }, target: "again" },
-        {
-          kind: "say",
-          speaker: "mira",
-          text: "Welcome to town! This box can [wave]wave[/wave] and [shake]shout[/shake].",
-        },
-        {
-          kind: "say",
-          speaker: "mira",
-          text: "Timing matters:[pause=400] this part is [speed=0.4]slow[/speed].",
-        },
-        { kind: "end" },
-      ],
-    },
-    again: {
-      id: "again",
-      steps: [
-        {
-          kind: "say",
-          speaker: "mira",
-          text: "Back again? We've spoken [b]{timesTalked}[/b] times — the count [wave]persists[/wave].",
-        },
-        { kind: "end" },
-      ],
-    },
-  },
-};
-
+const MIRA = loadYaml(miraYaml);
 /** Quartermaster — a one-time stipend via `give-gold`, gated on a declared flag. */
-const QUARTERMASTER: DialogueScript = {
-  id: "quartermaster",
-  start: "n",
-  declare: { paid: false },
-  speakers: { quinn: { id: "quinn", name: "Quartermaster Quinn", color: 0x9ad17e } },
-  nodes: {
-    n: {
-      id: "n",
-      steps: [
-        { kind: "command", commands: [], condition: "paid", target: "already" },
-        { kind: "say", speaker: "quinn", text: "New recruit? Here's your stipend — 50 gold. Spend it well." },
-        {
-          kind: "command",
-          commands: [
-            { type: "give-gold", amount: 50 },
-            { type: "set", var: "paid", value: true },
-          ],
-        },
-        { kind: "say", speaker: "quinn", text: "You're carrying {gold} gold now. Vex sells a key you'll want." },
-        { kind: "end" },
-      ],
-    },
-    already: {
-      id: "already",
-      steps: [
-        { kind: "say", speaker: "quinn", text: "I already paid you — {gold} gold should be plenty for a key." },
-        { kind: "end" },
-      ],
-    },
-  },
-};
-
-/** Vex — buys the rusty key for gold: an expression-gated option that writes
+const QUARTERMASTER = loadYaml(quartermasterYaml);
+/** Vex — buys the rusty key for gold via an expression-gated option that writes
  *  through the two-way `gold` cell and hands over the item. */
-const MERCHANT: DialogueScript = {
-  id: "merchant",
-  start: "n",
-  speakers: { vex: { id: "vex", name: "Vex the Trader", color: 0xe6a3ff } },
-  nodes: {
-    n: {
-      id: "n",
-      steps: [
-        { kind: "say", speaker: "vex", text: "A rusty key? Fifty gold. You've got [b]{gold}[/b]." },
-        {
-          kind: "choice",
-          speaker: "vex",
-          text: "Well?",
-          options: [
-            {
-              text: "Buy the rusty key (50g)",
-              target: "bought",
-              // gold >= 50 AND you don't already own the key
-              condition: bin(
-                "and",
-                bin(">=", ref("gold"), lit(KEY_PRICE)),
-                { kind: "unary", op: "not", operand: call("has_item", lit("rusty-key")) },
-              ),
-              commands: [
-                // The script owns the arithmetic; the cell writes it back to the game.
-                { type: "set", var: "gold", value: bin("-", ref("gold"), lit(KEY_PRICE)) },
-                { type: "give-item", id: "rusty-key" },
-              ],
-            },
-            {
-              text: "(You already hold the key)",
-              target: "have",
-              condition: call("has_item", lit("rusty-key")),
-            },
-            { text: "Maybe later", target: "bye" },
-          ],
-        },
-      ],
-    },
-    bought: {
-      id: "bought",
-      steps: [
-        { kind: "say", speaker: "vex", text: "Pleasure doing business — {gold} gold left. The gate's east of here." },
-        { kind: "end" },
-      ],
-    },
-    have: {
-      id: "have",
-      steps: [{ kind: "say", speaker: "vex", text: "You've got it already. Go find that gate." }, { kind: "end" }],
-    },
-    bye: {
-      id: "bye",
-      steps: [
-        { kind: "say", speaker: "vex", text: "Gold talks. Come back when you have fifty." },
-        { kind: "end" },
-      ],
-    },
-  },
-};
-
+const MERCHANT = loadYaml(merchantYaml);
 /** Bron — opens the gate only with the key (a function gate), spends it, and
  *  fires a world-consequence command. */
-const GUARD: DialogueScript = {
-  id: "guard",
-  start: "n",
-  declare: { opened: false },
-  speakers: { bron: { id: "bron", name: "Gate Guard Bron", color: 0xff9a6b } },
-  nodes: {
-    n: {
-      id: "n",
-      steps: [
-        { kind: "command", commands: [], condition: "opened", target: "thanks" },
-        { kind: "say", speaker: "bron", text: "This gate's locked. Got a key?" },
-        {
-          kind: "choice",
-          speaker: "bron",
-          options: [
-            {
-              text: "Unlock it with the rusty key",
-              target: "open",
-              condition: call("has_item", lit("rusty-key")),
-              // Show the gate greyed-out before you own the key (Disco-Elysium
-              // style), so the player learns what's needed instead of seeing it
-              // vanish. "Not yet" stays enabled, so the step never soft-locks.
-              presentation: "disabled",
-              disabledReason: "needs the rusty key",
-            },
-            { text: "Not yet", target: "bye" },
-          ],
-        },
-      ],
-    },
-    open: {
-      id: "open",
-      steps: [
-        { kind: "say", speaker: "bron", text: "That's the one. Stand back…" },
-        {
-          kind: "command",
-          commands: [
-            { type: "take-item", id: "rusty-key" },
-            { type: "open-gate" },
-            { type: "set", var: "opened", value: true },
-          ],
-        },
-        { kind: "say", speaker: "bron", text: "Gate's open. The vault's all yours." },
-        { kind: "end" },
-      ],
-    },
-    thanks: {
-      id: "thanks",
-      steps: [{ kind: "say", speaker: "bron", text: "Gate's already open, friend. Mind the step." }, { kind: "end" }],
-    },
-    bye: {
-      id: "bye",
-      steps: [{ kind: "say", speaker: "bron", text: "No key, no passage." }, { kind: "end" }],
-    },
-  },
-};
-
-/** Rook — a TIMED choice (a recipe, not an engine feature). A non-blocking
- *  `choice-timer` command before it arms a host-owned countdown; stall too long
- *  and the host commits the default ("Freeze up", index 1) via `controller.choose`. The
- *  countdown rides the game clock (see {@link ChoiceTimer}), so pausing the
- *  conversation must also pause the timer — the example gates it on the pause
- *  flag. `meta.timeoutMs` rides through to the presenter for a custom countdown. */
-const ROOK: DialogueScript = {
-  id: "rook",
-  start: "n",
-  speakers: { rook: { id: "rook", name: "Rook", color: 0xff6b6b } },
-  nodes: {
-    n: {
-      id: "n",
-      steps: [
-        { kind: "say", speaker: "rook", text: "The guard's rounding the corner. Run or bluff — [b]fast[/b]!" },
-        // Non-blocking command BEFORE the choice: it just arms the host timer.
-        { kind: "command", commands: [{ type: "choice-timer", ms: ROOK_TIMEOUT_MS, default: 1 }] },
-        {
-          kind: "choice",
-          speaker: "rook",
-          text: "Well?",
-          meta: { timeoutMs: ROOK_TIMEOUT_MS },
-          options: [
-            { text: "Bluff it out", target: "bluff" },
-            { text: "Freeze up", target: "freeze" }, // index 1 — the timeout default
-          ],
-        },
-      ],
-    },
-    bluff: {
-      id: "bluff",
-      steps: [{ kind: "say", speaker: "rook", text: "Ha — smooth. The guard waved us right through." }, { kind: "end" }],
-    },
-    freeze: {
-      id: "freeze",
-      steps: [{ kind: "say", speaker: "rook", text: "…You froze. We got lucky the guard was bored." }, { kind: "end" }],
-    },
-  },
-};
-
-/** Sage — note there is NO `view` hint on his lines. The default route still
- *  floats him in a bubble because he has a registered {@link DialogueActor}
- *  (speaker-aware routing); the box NPCs above, who have none, stay in the box.
- *  His `meta.portrait` drives the bubble-side avatar (a portrait beside the
- *  bubble), the diegetic counterpart to the Captain's in-box one. */
-const SAGE: DialogueScript = {
-  id: "sage",
-  start: "intro",
-  speakers: { sage: { id: "sage", name: "Sage", color: 0x7ec8ff } },
-  nodes: {
-    intro: {
-      id: "intro",
-      steps: [
-        {
-          kind: "say",
-          speaker: "sage",
-          text: "No view hint on my lines — the default route floats me in a bubble because I have a registered actor. It grows to fit however much I ramble.",
-          meta: { portrait: FACE_SAGE, side: "left" },
-        },
-        {
-          kind: "say",
-          speaker: "sage",
-          text: "Hold [b]X[/b] to skip me, or press [b]V[/b] to let me talk on my own.",
-          meta: { portrait: FACE_SAGE, side: "left" },
-        },
-        // A bubble CHOICE with a portrait: the panel grows + the options reflow
-        // around the in-bubble avatar, just like a box choice does.
-        {
-          kind: "choice",
-          speaker: "sage",
-          text: "Anything else?",
-          meta: { portrait: FACE_SAGE, side: "left" },
-          options: [
-            { text: "What's beyond the gate?", target: "gate" },
-            { text: "Nothing, thanks", target: "bye" },
-          ],
-        },
-      ],
-    },
-    gate: {
-      id: "gate",
-      steps: [
-        {
-          kind: "say",
-          speaker: "sage",
-          text: "Treasure — and trouble. Mind the guard.",
-          meta: { portrait: FACE_SAGE, side: "left" },
-        },
-        { kind: "end" },
-      ],
-    },
-    bye: {
-      id: "bye",
-      steps: [
-        { kind: "say", speaker: "sage", text: "Safe travels.", meta: { portrait: FACE_SAGE, side: "left" } },
-        { kind: "end" },
-      ],
-    },
-  },
-};
-
-/**
- * Captain Vow — showcases the box presenter's per-line layout. Her lines carry
- * `meta` the default box presenters read:
- *   • `meta.position: "top"` — a screen-top alert: the frame AND the body text
- *     move up together, then back to the resting bottom box.
- *   • `meta.portrait` / `meta.side` — a line-driven, reflowing in-box avatar
- *     (the `InBoxAvatarPresenter` wired into the bundle): her face sits in the
- *     box and the body text wraps around it, switching sides mid-conversation.
- *   • a six-option briefing — the box frame GROWS to fit the menu (frame +
- *     nameplate + prompt + rows move as one panel).
- */
-const CAPTAIN: DialogueScript = {
-  id: "captain",
-  start: "n",
-  speakers: { vow: { id: "vow", name: "Captain Vow", color: 0x86c5ff } },
-  nodes: {
-    n: {
-      id: "n",
-      steps: [
-        {
-          kind: "say",
-          speaker: "vow",
-          text: "⚠ To arms — intruders breached the east gate!",
-          meta: { position: "top", portrait: FACE_STERN, side: "left" },
-        },
-        {
-          kind: "say",
-          speaker: "vow",
-          text: "At ease, recruit. I'm Captain Vow — my portrait sits inside the box and the words [b]reflow[/b] around it, line by line.",
-          meta: { portrait: FACE_NEUTRAL, side: "left" },
-        },
-        {
-          kind: "choice",
-          speaker: "vow",
-          text: "Your orders? (the box grows to fit the menu)",
-          meta: { portrait: FACE_NEUTRAL, side: "left" },
-          options: [
-            { text: "Scout the perimeter", target: "ack" },
-            { text: "Reinforce the gate", target: "ack" },
-            { text: "Question the merchant", target: "ack" },
-            { text: "Sound the alarm", target: "ack" },
-            { text: "Guard the vault", target: "ack" },
-            { text: "Stand down", target: "ack" },
-          ],
-        },
-      ],
-    },
-    ack: {
-      id: "ack",
-      steps: [
-        {
-          kind: "say",
-          speaker: "vow",
-          // side: right — the portrait flips and the text reflows the other way.
-          text: "Aye. Move out — the town's counting on you.",
-          meta: { portrait: FACE_STERN, side: "right" },
-        },
-        { kind: "end" },
-      ],
-    },
-  },
-};
-
+const GUARD = loadYaml(guardYaml);
+/** Rook — a TIMED choice (a recipe, not an engine feature): a non-blocking
+ *  `choice-timer` command arms a host-owned countdown on the game clock; stall too
+ *  long and {@link ChoiceTimer} commits the default ("Freeze up", index 1).
+ *  `meta.timeoutMs` rides through to the presenter for a custom countdown. */
+const ROOK = loadYaml(rookYaml);
+/** Sage — NO `view` hint on his lines: the default route floats him in a bubble
+ *  anyway because he has a registered {@link DialogueActor} (speaker-aware). His
+ *  `meta.portrait` drives the bubble-side avatar, the diegetic counterpart to the
+ *  Captain's in-box one. */
+const SAGE = loadYaml(sageYaml);
+/** Captain Vow — the box presenter's per-line layout: a `meta.position: "top"`
+ *  alert (frame + body move up together), a line-driven reflowing in-box avatar
+ *  (`meta.portrait` / `meta.side`, the `InBoxAvatarPresenter` wired into the
+ *  bundle), and a six-option briefing that GROWS the frame to fit the menu. */
+const CAPTAIN = loadYaml(captainYaml);
 /** Ambient gossip — loops forever, each line auto-advancing, no input binding. */
-const GOSSIP: DialogueScript = {
-  id: "gossip",
-  start: "a",
-  speakers: {
-    ann: { id: "ann", name: "Ann", color: 0xf5a168 },
-    bert: { id: "bert", name: "Bert", color: 0xaaaaaa },
-  },
-  nodes: {
-    a: {
-      id: "a",
-      steps: [
-        {
-          kind: "say",
-          speaker: "ann",
-          view: "bubble",
-          text: "…and then the goblin tripped over its own feet!",
-          autoAdvanceMs: 1600,
-        },
-        {
-          kind: "say",
-          speaker: "bert",
-          view: "bubble",
-          text: "No! In front of the whole guild?",
-          autoAdvanceMs: 1500,
-        },
-        {
-          kind: "say",
-          speaker: "ann",
-          view: "bubble",
-          text: "Face first. I nearly dropped my mug.",
-          autoAdvanceMs: 1600,
-        },
-        { kind: "goto", target: "a" },
-      ],
-    },
-  },
-};
+const GOSSIP = loadYaml(gossipYaml);
 
 // ── world entities (all Graphics, no assets) ─────────────────────────────────
 
