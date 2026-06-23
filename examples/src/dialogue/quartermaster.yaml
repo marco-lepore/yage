@@ -1,0 +1,29 @@
+# Quartermaster — a one-time stipend via `give-gold`, gated on a declared flag.
+id: quartermaster
+start: n
+declare: { paid: false }
+speakers:
+  quinn: { id: quinn, name: Quartermaster Quinn, color: 0x9ad17e }
+nodes:
+  n:
+    id: n
+    steps:
+      - { kind: command, commands: [], condition: "paid", target: already }
+      - kind: say
+        speaker: quinn
+        text: "New recruit? Here's your stipend — 50 gold. Spend it well."
+      - kind: command
+        commands:
+          - { type: give-gold, amount: 50 }
+          - { type: set, var: paid, value: true }
+      - kind: say
+        speaker: quinn
+        text: "You're carrying {gold} gold now. Vex sells a key you'll want."
+      - { kind: end }
+  already:
+    id: already
+    steps:
+      - kind: say
+        speaker: quinn
+        text: "I already paid you — {gold} gold should be plenty for a key."
+      - { kind: end }

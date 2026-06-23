@@ -3,10 +3,12 @@ import { defineConfig } from "tsup";
 const isWatch = process.argv.includes("--watch");
 
 export default defineConfig({
-  // Two entries enforce the export split:
-  //   "."           -> src/index.ts      (headless: no pixi / @yagejs/renderer)
+  // Three entries enforce the export splits:
+  //   "."            -> src/index.ts      (headless: no pixi / @yagejs/renderer)
   //   "./presenters" -> src/presenters.ts (pixi: chrome/render/composite/avatar)
-  entry: ["src/index.ts", "src/presenters.ts"],
+  //   "./yaml"       -> src/yaml.ts       (the ONLY entry that pulls `yaml`,
+  //                     kept off the root so JSON/expression authors never bundle it)
+  entry: ["src/index.ts", "src/presenters.ts", "src/yaml.ts"],
   format: ["esm", "cjs"],
   dts: !isWatch,
   clean: !isWatch,

@@ -1,0 +1,28 @@
+# Mira — markup effects + a persistent visit counter (cycling NPC).
+id: mira
+start: n
+declare: { timesTalked: 0 }
+speakers:
+  mira: { id: mira, name: Mira, color: 0xffd866 }
+nodes:
+  n:
+    id: n
+    steps:
+      # Count this visit, then branch on the (persisted) prior count.
+      - kind: command
+        commands: [{ type: set, var: timesTalked, value: "timesTalked + 1" }]
+      - { kind: command, commands: [], condition: "timesTalked > 1", target: again }
+      - kind: say
+        speaker: mira
+        text: "Welcome to town! This box can [wave]wave[/wave] and [shake]shout[/shake]."
+      - kind: say
+        speaker: mira
+        text: "Timing matters:[pause=400] this part is [speed=0.4]slow[/speed]."
+      - { kind: end }
+  again:
+    id: again
+    steps:
+      - kind: say
+        speaker: mira
+        text: "Back again? We've spoken [b]{timesTalked}[/b] times — the count [wave]persists[/wave]."
+      - { kind: end }

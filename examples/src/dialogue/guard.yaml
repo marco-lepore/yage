@@ -1,0 +1,46 @@
+# Bron — opens the gate only with the key (a function gate), spends it, and fires
+# a world-consequence command.
+id: guard
+start: n
+declare: { opened: false }
+speakers:
+  bron: { id: bron, name: Gate Guard Bron, color: 0xff9a6b }
+nodes:
+  n:
+    id: n
+    steps:
+      - { kind: command, commands: [], condition: "opened", target: thanks }
+      - { kind: say, speaker: bron, text: "This gate's locked. Got a key?" }
+      - kind: choice
+        speaker: bron
+        options:
+          # Show the gate greyed-out before you own the key (Disco-Elysium style),
+          # so the player learns what's needed instead of seeing it vanish.
+          # "Not yet" stays enabled, so the step never soft-locks.
+          - text: "Unlock it with the rusty key"
+            target: open
+            condition: "has_item('rusty-key')"
+            presentation: disabled
+            disabledReason: "needs the rusty key"
+          - { text: "Not yet", target: bye }
+  open:
+    id: open
+    steps:
+      - { kind: say, speaker: bron, text: "That's the one. Stand back…" }
+      - kind: command
+        commands:
+          - { type: take-item, id: rusty-key }
+          - { type: open-gate }
+          - { type: set, var: opened, value: true }
+      - { kind: say, speaker: bron, text: "Gate's open. The vault's all yours." }
+      - { kind: end }
+  thanks:
+    id: thanks
+    steps:
+      - { kind: say, speaker: bron, text: "Gate's already open, friend. Mind the step." }
+      - { kind: end }
+  bye:
+    id: bye
+    steps:
+      - { kind: say, speaker: bron, text: "No key, no passage." }
+      - { kind: end }

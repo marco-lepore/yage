@@ -23,6 +23,7 @@
 import { isExpr } from "./expr.js";
 import { tokensIn } from "./i18n.js";
 import type {
+  BinaryOp,
   ChoiceStep,
   Command,
   CommandStep,
@@ -45,9 +46,21 @@ export class DialoguePlayError extends Error {}
 type ValueType = "string" | "number" | "boolean" | "null";
 
 const NUMERIC_OPS: ReadonlySet<string> = new Set([">", ">=", "<", "<="]);
+/** Binary ops (symbol + word forms) whose operands must be numbers. `+` is
+ *  handled separately — it also accepts strings (concatenation). */
+const NUMERIC_EXPR_OPS: ReadonlySet<string> = new Set([
+  ">", "<", ">=", "<=", "gt", "lt", "gte", "lte", "-", "*", "/", "%",
+]);
 /** Built-in command types the runner/session handle — exempt from the
  *  "must have a handler" check. */
 const BUILTIN_COMMANDS: ReadonlySet<string> = new Set(["set", "expression"]);
+
+/** What a binary operator requires of a literal operand, for the load-time type
+ *  walk. `null` = no constraint (equality / logical ops accept any type). */
+function operandRequirement(op: BinaryOp): "number" | "numberOrString" | null {
+  if (op === "+") return "numberOrString"; // string concat OR numeric add
+  return NUMERIC_EXPR_OPS.has(op) ? "number" : null;
+}
 
 export interface ScriptAnalysis {
   /** Declared default types, keyed by name (drives seed-if-absent + typing). */
@@ -84,7 +97,9 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
   const calledFunctions = new Set<string>();
   const commandTypes = new Set<string>();
 
-  const collectExpr = (expr: Expr): void => {
+  // `where` is threaded so a wrong-type operand reports the same context the
+  // atomic `{ var, op, value }` check uses.
+  const collectExpr = (expr: Expr, where: string): void => {
     switch (expr.kind) {
       case "literal":
         return;
@@ -93,18 +108,49 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
         return;
       case "call":
         calledFunctions.add(expr.fn);
-        for (const arg of expr.args ?? []) collectExpr(arg);
+        for (const arg of expr.args ?? []) collectExpr(arg, where);
         return;
       case "group":
-        collectExpr(expr.expr);
+        collectExpr(expr.expr, where);
         return;
       case "unary":
-        collectExpr(expr.operand);
+        collectExpr(expr.operand, where);
         return;
       case "binary":
-        collectExpr(expr.left);
-        collectExpr(expr.right);
+        collectExpr(expr.left, where);
+        collectExpr(expr.right, where);
+        checkBinaryOperands(expr, where);
         return;
+    }
+  };
+
+  // Minimal parity with the atomic `{ var, op, value }` check, but on the tree:
+  // a numeric/arithmetic operator with a literal operand of the wrong type, or
+  // against a declared non-number var, is a script bug. Nothing deeper — no
+  // single-type inference; the parser stays purely syntactic.
+  const checkBinaryOperands = (
+    expr: Extract<Expr, { kind: "binary" }>,
+    where: string,
+  ): void => {
+    const req = operandRequirement(expr.op);
+    if (!req) return;
+    const expected = req === "numberOrString" ? "a number or string" : "a number";
+    for (const operand of [expr.left, expr.right]) {
+      if (operand.kind === "literal") {
+        const t = valueType(operand.value);
+        if (t === "number" || (req === "numberOrString" && t === "string")) continue;
+        throw new DialogueScriptError(
+          `${where}: operator "${expr.op}" expects ${expected}, got ${t}`,
+        );
+      }
+      if (operand.kind === "varRef" && req === "number") {
+        const t = declaredTypes.get(operand.name);
+        if (t !== undefined && t !== "number" && t !== "null") {
+          throw new DialogueScriptError(
+            `${where}: operator "${expr.op}" needs a number; "${operand.name}" is ${t}`,
+          );
+        }
+      }
     }
   };
 
@@ -120,7 +166,7 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
       return;
     }
     if (isExpr(condition)) {
-      collectExpr(condition);
+      collectExpr(condition, where);
       return;
     }
     // Atomic { var, op, value } — collect the operand and type-check numeric ops.
@@ -141,6 +187,23 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
     }
   };
 
+  // A literal `set` value must match its target's declared default type (e.g.
+  // `set gold = "lots"` against a numeric `gold`). `null` clears; an undeclared
+  // target is a local with no type to clash against.
+  const checkSetLiteralType = (target: string, value: unknown, where: string): void => {
+    const declared = declaredTypes.get(target);
+    if (
+      declared !== undefined &&
+      declared !== "null" &&
+      value !== null &&
+      typeof value !== declared
+    ) {
+      throw new DialogueScriptError(
+        `${where}: set "${target}" expects ${declared}, got ${typeof value}`,
+      );
+    }
+  };
+
   const checkCommands = (commands: readonly Command[] | undefined, where: string): void => {
     for (const cmd of commands ?? []) {
       if (cmd.type === "set") {
@@ -158,20 +221,15 @@ function computeAnalysis(script: DialogueScript): ScriptAnalysis {
           throw new DialogueScriptError(`${where}: set "${target}" has no value`);
         }
         if (isExpr(value)) {
-          collectExpr(value);
+          collectExpr(value, where);
+          // A bare literal RHS (incl. a quoted-string literal from the pre-walk,
+          // e.g. `set gold = "'lots'"`) is type-checked against the target like a
+          // raw literal would be.
+          if (value.kind === "literal") checkSetLiteralType(target, value.value, where);
         } else {
-          // Literal value: type-check against the target's declared default.
-          const declared = declaredTypes.get(target);
-          if (
-            declared !== undefined &&
-            declared !== "null" &&
-            value !== null &&
-            typeof value !== declared
-          ) {
-            throw new DialogueScriptError(
-              `${where}: set "${target}" expects ${declared}, got ${typeof value}`,
-            );
-          }
+          // Raw literal value (number/boolean/null — strings were pre-walked to
+          // an Expr): type-check against the target's declared default.
+          checkSetLiteralType(target, value, where);
         }
         continue;
       }
