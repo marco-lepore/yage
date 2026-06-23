@@ -22,10 +22,17 @@
  * like `'rusty-key'` must live in a quoted string literal.
  */
 
+import { DialogueScriptError } from "./validate.js";
 import type { BinaryOp, Expr, VarValue } from "./types.js";
 
-/** A string expression failed to parse. Carries the 1-based source position. */
-export class DialogueExprError extends Error {
+/**
+ * A string expression failed to parse. Carries the 1-based source position.
+ * Extends {@link DialogueScriptError} so the loaders' contract holds: a malformed
+ * string condition / `set` value surfaced by `loadScript` / `loadYaml` is caught
+ * by a single `catch (e instanceof DialogueScriptError)`, while `instanceof
+ * DialogueExprError` (and `line` / `col`) still distinguish a parse error.
+ */
+export class DialogueExprError extends DialogueScriptError {
   readonly line: number;
   readonly col: number;
   constructor(message: string, line: number, col: number) {

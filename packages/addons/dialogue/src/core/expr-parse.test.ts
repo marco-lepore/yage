@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DialogueExprError, parseExpr } from "./expr-parse.js";
+import { DialogueScriptError } from "./validate.js";
 import { createScope, evaluate } from "./expr.js";
 import { MemoryVariableStorage } from "./vars.js";
 import type { BinaryOp, Expr, UnaryOp, VarValue } from "./types.js";
@@ -145,6 +146,12 @@ describe("parseExpr — errors carry line/col", () => {
     expect(() => parseExpr("")).toThrow(DialogueExprError);
     expect(() => parseExpr("   ")).toThrow(DialogueExprError);
     expect(caught("").line).toBe(1);
+  });
+
+  it("DialogueExprError is a DialogueScriptError subtype (one load-time catch)", () => {
+    const e = caught("5 6");
+    expect(e).toBeInstanceOf(DialogueExprError);
+    expect(e).toBeInstanceOf(DialogueScriptError);
   });
 
   it("a trailing token after a complete expression", () => {

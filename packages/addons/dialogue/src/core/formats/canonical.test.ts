@@ -177,5 +177,8 @@ describe("loadScript — string conditions / set values unify to Expr", () => {
 
   it("propagates a malformed condition string as a parse error", () => {
     expect(() => loadCondition("a and")).toThrow(/end of input/);
+    // The parse error is a DialogueScriptError subtype, so a single load-time
+    // catch covers it (no separate error branch needed for string conditions).
+    expect(() => loadCondition("a and")).toThrow(DialogueScriptError);
   });
 });
