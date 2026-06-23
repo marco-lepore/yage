@@ -19,9 +19,10 @@ addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
 ## Three entry points (export split — load-bearing)
 
 - **`.`** (root) — headless + non-pixi. Runner, session, types, markup, i18n,
-  canonical (JSON) format, the string→expression parser (`parseExpr`), events,
-  `DialogueController` (a `@yagejs/core` Component), `@yagejs/input` bindings.
-  **MUST NOT transitively import pixi / renderer / `yaml`.**
+  canonical (JSON) format, the string→expression parser (`parseExpr`), the compact
+  DSL (`parseCompact` / `loadCompact`), events, `DialogueController` (a `@yagejs/core`
+  Component), `@yagejs/input` bindings. **MUST NOT transitively import pixi /
+  renderer / `yaml`.**
 - **`./presenters`** — everything pixi. Chrome, text views, composites, avatars,
   factories, `defaultTheme()`, textured nine-slice variants, experimental radial.
 - **`./yaml`** — the YAML-literal loader (`loadYaml`). The ONLY entry that pulls
@@ -30,7 +31,7 @@ addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
   tree-shaken).
 
 ```ts
-import { DialogueController, parseExpr } from "@yagejs-addons/dialogue";
+import { DialogueController, parseExpr, loadCompact } from "@yagejs-addons/dialogue";
 import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 ```
@@ -205,6 +206,74 @@ nodes:
           - { text: "Leave", target: bye }
   buy: { id: buy, steps: [ { kind: command, commands: [ { type: set, var: gold, value: "gold - 50" } ] }, { kind: end } ] }
   bye: { id: bye, steps: [ { kind: end } ] }
+`);
+```
+
+### Compact authoring — `parseCompact` / `loadCompact` (root entry)
+
+A line-oriented DSL for RPG branching, compiled to the same IR. `parseCompact(text):
+DialogueScript` builds the model; `loadCompact(text)` runs it through `loadScript`
+(same pre-walk, validation, frozen IR). Both are on the **root** entry — no `yaml`
+dep. One statement per line; blank lines and `// comment` lines are ignored;
+indentation is insignificant.
+
+| Line | → |
+| --- | --- |
+| `# id` | script id (required, once); start node = the first `::` node |
+| `@ id Name [#hex]` | a speaker: opaque id, display name (spaces ok), optional nameplate colour (`#ffcc00` / `#fc0`) |
+| `:: nodeId` | open a node; following step lines belong to it |
+| `speaker: text` · `speaker face: text` | a `say` line — ONLY when the first token is a declared `@`-speaker; a 2nd header token → `SayStep.expression` (the avatar face) |
+| `text` | a narrator `say` line (no declared-speaker prefix — colons and all stay in the text) |
+| `? text …` | a choice option; consecutive `?` lines coalesce into one `choice` step |
+| `-> nodeId` | unconditional jump (`goto`) |
+| `set v = rhs` | write a variable (bare number / `true` / `false` / `null` stays literal, else `parseExpr`) |
+| `do type k=v … #flag` | a host command — `type`, then `key=value` data and `#flag` booleans |
+| `end` | end the conversation |
+
+**Say-line hints** ride the end of the line: `view=` / `voice=` / `speed=` / `auto=`
+→ the first-class `SayStep` fields; trailing `#key:value` / bare `#flag` → `SayStep.meta`
+(Yarn-aligned — metadata is trailing). Say text is otherwise handed to markup
+**verbatim**, so inline `[..]` (and any tokens a later release adds) survives.
+
+**Choice attributes** come after the text, in this order: `if: cond`, then `-> target`
+(or `target=node`), then `#once` / `#disabled` / `#key:value`. They are lexed off and
+stripped before the choice text reaches markup — `[..]` is markup-only in a choice, so
+an unrecognized bracket tag is a load error (almost always a mistyped attribute that
+markup would otherwise drop silently). `#once` → `once: true`; `#disabled` →
+`presentation: "disabled"`; `#key:value` → `ChoiceOption.meta`.
+
+Conditions and non-literal `set` values go through `parseExpr` (same operators;
+`DialogueExprError` on a bad expression). The `set` / `do` / `end` leaders are
+lowercase and matched by full shape, so prose like `Set the table.` or `Do you agree?`
+falls through to narrator text.
+
+```ts
+import { loadCompact } from "@yagejs-addons/dialogue";
+
+const script = loadCompact(`
+# shop
+@ mira Mira Brightwater #ffcc00
+
+:: start
+mira: Welcome to my [b]shop[/b], traveler!
+mira happy: Got coin to spend?
+set gold = 100
+? Buy a potion if: gold >= 50 -> buy #once
+? Ask about [i]rumors[/i] -> rumors #side:right
+? Just browsing -> done
+
+:: buy
+set gold = gold - 50
+do give-item id=healing-potion count=1
+-> done
+
+:: rumors
+The shopkeeper leans in close.
+-> done
+
+:: done
+mira: Safe travels!
+end
 `);
 ```
 

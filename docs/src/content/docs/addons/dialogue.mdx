@@ -38,7 +38,7 @@ JSON / TypeScript / expression authors never pull the YAML parser:
 
 ```ts
 // Headless + input only — no pixi, no yaml, fully unit-testable.
-import { DialogueRunner, DialogueController, parseExpr } from "@yagejs-addons/dialogue";
+import { DialogueController, parseExpr, loadCompact } from "@yagejs-addons/dialogue";
 
 // Pixi presentation — Graphics chrome + canvas text, themes, factories.
 import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
@@ -49,7 +49,7 @@ import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 
 | Entry          | Imports                          | Contains |
 | -------------- | -------------------------------- | -------- |
-| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical (JSON) format, the `parseExpr` string→expression parser, events, `DialogueController`, input bindings |
+| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical (JSON) format, the `parseExpr` string→expression parser, the `parseCompact` / `loadCompact` compact DSL, events, `DialogueController`, input bindings |
 | `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultTheme()`, textured nine-slice variants, radial (experimental) |
 | `./yaml`       | + `yaml`                         | `loadYaml` — kept off the root so non-YAML authors never bundle the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be tree-shaken) |
 
@@ -259,6 +259,78 @@ nodes:
 
 The root of the document must be a mapping (the script object); a list, a scalar,
 or an empty document is rejected with a clear `DialogueScriptError`.
+
+#### Author with the compact DSL
+
+For hand-writing a lot of branching dialogue, the JSON/YAML shape gets noisy. The
+compact DSL is a line-oriented format aimed at that: one statement per line, a
+sigil at the front telling the parser what the line is. `loadCompact(text)`
+compiles it to the same validated, frozen script — it lives on the root entry, so
+it adds no dependency. (`parseCompact(text)` stops at the unfrozen `DialogueScript`
+if you want to inspect or post-process it first.)
+
+```ts
+import { loadCompact } from "@yagejs-addons/dialogue";
+
+const script = loadCompact(`
+# shop
+@ mira Mira Brightwater #ffcc00
+@ guard Guard
+
+:: start
+mira: Welcome to my [b]shop[/b], traveler!
+mira happy: You've got coin to spend, I hope.
+set gold = 100
+? Buy a healing potion if: gold >= 50 -> buy #once
+? Ask about the [i]rumors[/i] -> rumors #side:right
+? Just browsing -> done
+
+:: buy
+set gold = gold - 50
+mira: A fine choice. Here you are.
+do give-item id=healing-potion count=1
+-> done
+
+:: rumors
+guard: Keep your voice down.
+The tavern falls silent for a moment.
+-> done
+
+:: done
+mira: Safe travels!
+end
+`);
+```
+
+Reading it line by line:
+
+- **`# shop`** sets the script id. The start node is the first `::` node (`start`).
+- **`@ mira Mira Brightwater #ffcc00`** declares a speaker: an opaque id, a display
+  name (spaces allowed), and an optional `#rrggbb` / `#rgb` nameplate colour. `@`
+  lines may sit anywhere — before or after the lines that use them.
+- **`:: start`** opens a node; every step line until the next `::` belongs to it.
+- **`mira: …`** is a spoken line — but _only_ because `mira` is a declared speaker.
+  A second header token is the avatar expression, so **`mira happy: …`** sets
+  `expression: "happy"`. A line with no declared-speaker prefix is a narrator line,
+  colons and all — `The tavern falls silent for a moment.` and even
+  `Warning: do not enter.` stay intact as narration.
+- **`? …`** is one choice option; consecutive `?` lines merge into a single choice.
+  Its attributes follow the text as non-bracket sigils, in order: `if: cond`, then
+  `-> node` (or `target=node`), then `#once` / `#disabled` / `#key:value`
+  metadata. They're stripped before the visible text, so `[..]` stays reserved for
+  inline markup — `[b]…[/b]` in a choice renders bold, while a stray `[skill=8]`
+  (a flag the author should have written `#…`) is a load error instead of vanishing.
+- **`set gold = 100`** writes a variable. A bare number / `true` / `false` / `null`
+  stays a literal; anything else is parsed as an expression, so `set gold = gold - 50`
+  stores the subtraction the runtime evaluates later.
+- **`do give-item id=healing-potion count=1`** fires a host command: a `type`, then
+  `key=value` data and `#flag` booleans. Quote a value with spaces (`msg="two words"`).
+- **`-> done`** jumps; **`end`** stops the conversation.
+
+A line can also carry trailing hints: `view=` / `voice=` / `speed=` / `auto=` set the
+say-line fields, and trailing `#key:value` (or a bare `#flag`) becomes `meta`. The
+`set` / `do` / `end` keywords are lowercase and matched by their full shape, so
+ordinary prose that happens to start with `Set`, `Do`, or `End` stays narration.
 
 ### Validation
 

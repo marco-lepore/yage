@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseMarkup, splitGraphemes, stripMarkup } from "./markup.js";
+import { firstUnknownTag, parseMarkup, splitGraphemes, stripMarkup } from "./markup.js";
 import type { RunStyle, TextRun } from "./types.js";
 
 /** Expected-run helper for ASCII-only cases, where graphemes = code units. */
@@ -259,5 +259,21 @@ describe("stripMarkup", () => {
 
   it("strips pause tokens entirely", () => {
     expect(stripMarkup("a[pause=200]b")).toBe("ab");
+  });
+});
+
+describe("firstUnknownTag", () => {
+  it("returns null when every tag is a recognized markup tag", () => {
+    expect(firstUnknownTag("plain text")).toBeNull();
+    expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=100][speed=2]w[/speed]")).toBeNull();
+  });
+
+  it("returns the name of the first tag parseMarkup would drop silently", () => {
+    expect(firstUnknownTag("a [term=cauldron]b[/term]")).toBe("term");
+    expect(firstUnknownTag("[skill=8] roll")).toBe("skill");
+  });
+
+  it("ignores an escaped bracket (it is literal text, not a tag)", () => {
+    expect(firstUnknownTag("price is \\[skill=8]")).toBeNull();
   });
 });
