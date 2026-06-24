@@ -325,14 +325,27 @@ Reading it line by line:
   stores the subtraction the runtime evaluates later.
 - **`do give-item id=healing-potion count=1`** fires a host command: a `type`, then
   `key=value` data and `#flag` booleans. Quote a value with spaces (`msg="two words"`).
-  A data key can't be named `type` — that's the command's dispatch key, so a
+  A data key can't be named `type` — that's the command's own dispatch key, so a
   `type=` collision is a load error rather than silently overwriting it.
-- **`-> done`** jumps; **`end`** stops the conversation.
+- **`-> done`** jumps unconditionally; **`-> rich if: gold > 100`** jumps only when
+  the condition holds, otherwise it falls through to the next step (the "else" path).
+  **`end`** stops the conversation.
+- **`declare gold = 0`** — in the preamble or inside a node — sets a script-level
+  variable default (a literal value, seeded only if the storage doesn't already
+  hold it). It's the one leader that isn't a step; `parseExpr` is not applied.
+
+For **avatars**, you usually need no extra code or grammar: write `#portrait:key`
+(and optionally `#side:right`) on a line and wire a meta-driven avatar presenter —
+the in-box and bubble presenters read those per-line `meta` keys directly. A
+speaker-level `SpeakerDef.avatar` (with an `expressions` map) is only needed for
+the variant-swapping presenters, and is set in code on the parsed script.
 
 A line can also carry trailing hints: `view=` / `voice=` / `speed=` / `auto=` set the
-say-line fields, and trailing `#key:value` (or a bare `#flag`) becomes `meta`. The
-`set` / `do` / `end` keywords are lowercase and matched by their full shape, so
-ordinary prose that happens to start with `Set`, `Do`, or `End` stays narration.
+say-line fields, and trailing `#key:value` (or a bare `#flag`) becomes `meta` — except
+`#line:id`, which sets the i18n `key` (Yarn's localization tag) on a say line or choice
+option, so a string table can translate it. The `set` / `do` / `end` keywords are
+lowercase and matched by their full shape, so ordinary prose that happens to start with
+`Set`, `Do`, or `End` stays narration.
 
 ### Validation
 

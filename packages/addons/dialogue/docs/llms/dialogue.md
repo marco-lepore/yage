@@ -225,15 +225,18 @@ indentation is insignificant.
 | `speaker: text` · `speaker face: text` | a `say` line — ONLY when the first token is a declared `@`-speaker; a 2nd header token → `SayStep.expression` (the avatar face) |
 | `text` | a narrator `say` line (no declared-speaker prefix — colons and all stay in the text) |
 | `? text …` | a choice option; consecutive `?` lines coalesce into one `choice` step |
-| `-> nodeId` | unconditional jump (`goto`) |
+| `-> nodeId [if: cond]` | a jump — unconditional, or conditional (taken only if `cond` holds, else fall through to the next step) |
+| `declare v = value` | a script-level variable default (a literal scalar; `parseExpr` is NOT applied — declare values are plain values, seeded if-absent) |
 | `set v = rhs` | write a variable (bare number / `true` / `false` / `null` stays literal, else `parseExpr`) |
 | `do type k=v … #flag` | a host command — `type`, then `key=value` data and `#flag` booleans (a data key can't be `type` — that's the dispatch key; a `type=` collision is a load error) |
 | `end` | end the conversation |
 
 **Say-line hints** ride the end of the line: `view=` / `voice=` / `speed=` / `auto=`
 → the first-class `SayStep` fields; trailing `#key:value` / bare `#flag` → `SayStep.meta`
-(Yarn-aligned — metadata is trailing). Say text is otherwise handed to markup
-**verbatim**, so inline `[..]` (and any tokens a later release adds) survives.
+(Yarn-aligned — metadata is trailing); `#line:id` is special — it sets the i18n `key`
+(Yarn's localization tag), not `meta`, on a say line or a choice option. Say text is
+otherwise handed to markup **verbatim**, so inline `[..]` (and any tokens a later
+release adds) survives.
 
 **Choice attributes** come after the text, in this order: `if: cond`, then `-> target`
 (or `target=node`), then `#once` / `#disabled` / `#key:value`. They are lexed off and

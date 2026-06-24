@@ -23,7 +23,9 @@
  *   text                 a narrator line (no declared speaker prefix).
  *   ? text …             a choice option; consecutive `?` lines coalesce into
  *                        one choice step (see below).
- *   -> nodeId            an unconditional jump (goto).
+ *   -> nodeId [if: cond] a jump — unconditional, or conditional (taken only if
+ *                        `cond` holds, else fall through to the next step).
+ *   declare v = value    a script-level variable default (a literal value).
  *   set v = rhs          write a variable. A bare number / `true` / `false` /
  *                        `null` stays a literal; anything else is parsed as an
  *                        expression (`set hp = hp - 1`), so the host reads it
@@ -97,6 +99,7 @@ export function parseCompact(text: string): DialogueScript {
   const nodeOrder: string[] = [];
   let current: { id: string; steps: Step[] } | null = null;
   let choiceRun: ChoiceOption[] | null = null;
+  const declares: Record<string, VarValue> = {};
 
   const flushChoice = (): void => {
     if (choiceRun && current) current.steps.push({ kind: "choice", options: choiceRun });
@@ -136,8 +139,17 @@ export function parseCompact(text: string): DialogueScript {
       return;
     }
 
-    // Any other step ends a choice run before it is appended to the node.
+    // Any other line ends a choice run.
     flushChoice();
+
+    // `declare` is a script-level default — allowed anywhere, needs no node.
+    const decl = parseDeclare(line);
+    if (decl) {
+      declares[decl.name] = decl.value;
+      return;
+    }
+
+    // The remaining leaders are node steps.
     const node = current;
     if (!node) fail(lineNo, `dialogue line appears before any ':: <node>'  ("${line}")`);
 
@@ -174,6 +186,7 @@ export function parseCompact(text: string): DialogueScript {
     start: nodeOrder[0]!,
     nodes,
     ...(Object.keys(speakers).length > 0 ? { speakers } : {}),
+    ...(Object.keys(declares).length > 0 ? { declare: declares } : {}),
   };
 }
 
@@ -210,12 +223,30 @@ function hexColor(token: string): number {
   return parseInt(hex, 16);
 }
 
-// ── Goto (`-> nodeId`) ───────────────────────────────────────────────────────
+// ── Goto (`-> nodeId [if: cond]`) ────────────────────────────────────────────
 
 function parseGoto(line: string, lineNo: number): Step {
-  const m = /^->\s*(\S+)\s*$/.exec(line);
-  if (!m) fail(lineNo, "'->' goto needs a single target node id");
-  return { kind: "goto", target: m[1]! };
+  const m = /^->\s*(\S+)(?:\s+if:\s*(.+))?\s*$/.exec(line);
+  if (!m) fail(lineNo, "'->' goto needs a target node id (optionally `-> node if: cond`)");
+  const target = m[1]!;
+  // `-> node if: cond` is a conditional jump (a CommandStep with no commands):
+  // take the jump only if the condition holds, else fall through to the next
+  // step. Bare `-> node` is an unconditional GotoStep.
+  if (m[2] !== undefined) {
+    return { kind: "command", commands: [], condition: parseExpr(m[2].trim()), target };
+  }
+  return { kind: "goto", target };
+}
+
+// ── Declare (`declare v = value`) ────────────────────────────────────────────
+
+/** A script-level variable default, or `null` when the line is not a `declare`
+ *  (so `declare your intentions`, with no `=`, stays narrator text). The value
+ *  is a literal scalar — declare defaults are plain values, not expressions. */
+function parseDeclare(line: string): { name: string; value: VarValue } | null {
+  const m = /^declare\s+([A-Za-z_$][A-Za-z0-9_.$]*)\s*=\s*(\S.*)$/.exec(line);
+  if (!m) return null;
+  return { name: m[1]!, value: scalar(m[2]!.trim()) };
 }
 
 // ── `set v = rhs` ────────────────────────────────────────────────────────────
@@ -317,6 +348,8 @@ interface SayFields {
   voice?: string;
   speed?: number;
   autoAdvanceMs?: number;
+  /** i18n key from a `#line:id` hashtag (Yarn's localization tag). */
+  key?: string;
 }
 
 /** Strip the trailing run of `#hashtag` / `key=value` hints off a say body; the
@@ -333,7 +366,10 @@ function peelSayHints(
   for (;;) {
     const hash = /(^|\s)#(\S+)\s*$/.exec(rest);
     if (hash) {
-      metaCount += applyHashtag(meta, hash[2]!);
+      const tag = hash[2]!;
+      const lk = lineKey(tag);
+      if (lk !== undefined) fields.key = lk; // #line:id → SayStep.key (i18n)
+      else metaCount += applyHashtag(meta, tag);
       rest = rest.slice(0, hash.index).replace(/\s+$/, "");
       continue;
     }
@@ -382,6 +418,7 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
   let disabled = false;
   let target: string | undefined;
   let condition: Expr | undefined;
+  let key: string | undefined;
 
   // Peel attributes from the right, in reverse of the authored order: trailing
   // hashtags, then the target, then `if:` (which holds the rest of the line).
@@ -389,8 +426,10 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
     const hash = /(^|\s)#(\S+)\s*$/.exec(rest);
     if (!hash) break;
     const tag = hash[2]!;
+    const lk = lineKey(tag);
     if (tag === "once") once = true;
     else if (tag === "disabled") disabled = true;
+    else if (lk !== undefined) key = lk; // #line:id → ChoiceOption.key (i18n)
     else metaCount += applyHashtag(meta, tag);
     rest = rest.slice(0, hash.index).replace(/\s+$/, "");
   }
@@ -426,6 +465,7 @@ function parseChoice(body: string, lineNo: number): ChoiceOption {
 
   return {
     text,
+    ...(key !== undefined ? { key } : {}),
     ...(condition !== undefined ? { condition } : {}),
     ...(target !== undefined ? { target } : {}),
     ...(once ? { once: true } : {}),
@@ -444,6 +484,14 @@ function applyHashtag(meta: Record<string, unknown>, tag: string): 1 {
   if (colon === -1) meta[tag] = true;
   else meta[tag.slice(0, colon)] = scalar(tag.slice(colon + 1));
   return 1;
+}
+
+/** A `line:<id>` hashtag carries an i18n key (Yarn's `#line:` convention) →
+ *  the step's `key`, not `meta`. Returns the id, or `undefined` for any other
+ *  tag (which routes to `meta` as usual). */
+function lineKey(tag: string): string | undefined {
+  const colon = tag.indexOf(":");
+  return colon > 0 && tag.slice(0, colon) === "line" ? tag.slice(colon + 1) : undefined;
 }
 
 /** Sentinel: `numberBoolNull` returns this when the source is not one of the

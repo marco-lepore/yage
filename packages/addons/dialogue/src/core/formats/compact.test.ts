@@ -150,6 +150,12 @@ describe("loadCompact — choice text vs choice attributes", () => {
   it("accepts the `target=node` form as an alternative to `->`", () => {
     expect(wrap("? Leave target=exit").options[0]!.target).toBe("exit");
   });
+
+  it("`#line:id` sets the i18n key (not meta) on a choice option", () => {
+    const opt = wrap("? Trade -> shop #line:opt_trade").options[0]!;
+    expect(opt.key).toBe("opt_trade");
+    expect(opt.meta).toBeUndefined();
+  });
 });
 
 describe("parseCompact — say lines", () => {
@@ -172,6 +178,13 @@ describe("parseCompact — say lines", () => {
     const say = firstSay("hero: Look out! #side:right", "@ hero Hero\n");
     expect(say.meta).toEqual({ side: "right" });
     expect(say.text).toBe("Look out!");
+  });
+
+  it("`#line:id` sets the i18n key (not meta) on a say line", () => {
+    const say = firstSay("hero: Hello #line:greet_01", "@ hero Hero\n");
+    expect(say.key).toBe("greet_01");
+    expect(say.text).toBe("Hello");
+    expect(say.meta).toBeUndefined();
   });
 
   it("first-class hints view/voice/speed/auto map to SayStep fields", () => {
@@ -247,6 +260,44 @@ describe("parseCompact — set / do disambiguation", () => {
       kind: "say",
       text: "do spawn type=goblin extra",
     });
+  });
+});
+
+describe("parseCompact — conditional goto + declare", () => {
+  it("`-> node if: cond` is a conditional jump (CommandStep); the next step is the else path", () => {
+    const steps = parseCompact(
+      ["# t", ":: n", "-> rich if: gold > 100", "Still poor.", ":: rich", "end"].join("\n"),
+    ).nodes.n!.steps;
+    expect(steps[0]).toEqual({
+      kind: "command",
+      commands: [],
+      condition: bin(">", v("gold"), lit(100)),
+      target: "rich",
+    });
+    expect(steps[1]).toEqual({ kind: "say", text: "Still poor." });
+  });
+
+  it("bare `-> node` stays an unconditional goto", () => {
+    const steps = parseCompact(["# t", ":: n", "-> done", ":: done", "end"].join("\n")).nodes.n!.steps;
+    expect(steps[0]).toEqual({ kind: "goto", target: "done" });
+  });
+
+  it("loadCompact still validates a conditional jump's target", () => {
+    expect(() => loadCompact(["# t", ":: n", "-> nowhere if: x", "end"].join("\n"))).toThrow(
+      /jump target "nowhere"/,
+    );
+  });
+
+  it("`declare` sets script-level defaults (literal scalars), in the preamble or inside a node", () => {
+    const script = parseCompact(
+      ["# t", "declare gold = 100", 'declare name = "Hero"', ":: n", "declare ready = false", "end"].join("\n"),
+    );
+    expect(script.declare).toEqual({ gold: 100, name: "Hero", ready: false });
+  });
+
+  it("`declare your intentions` (no `=`) is not a declare — narrator fallthrough", () => {
+    const step = parseCompact(["# t", ":: n", "declare your intentions", "end"].join("\n")).nodes.n!.steps[0];
+    expect(step).toEqual({ kind: "say", text: "declare your intentions" });
   });
 });
 
