@@ -11,9 +11,14 @@ import {
 import type {
   ChoicePresenter,
   ChromePresenter,
+  Mountable,
   TextPresenter,
 } from "./chrome/DialogueUiAdapter.js";
-import type { DialogueScript, DialogueSession } from "./core/index.js";
+import type {
+  DialogueExtraChannel,
+  DialogueScript,
+  DialogueSession,
+} from "./core/index.js";
 import type { InputBinding } from "./input/index.js";
 
 class StubChrome implements ChromePresenter {
@@ -332,5 +337,75 @@ describe("DialogueController — levers set before onAdd reach the session", () 
     const session = configureThenAdd(() => {});
     expect(session.isPaused()).toBe(false);
     expect(session.isHidden()).toBe(false);
+  });
+});
+
+describe("DialogueController — extra channels (ctor + addChannel)", () => {
+  /** An extra channel that also needs the scene — both contracts in one. */
+  class StubSceneChannel implements DialogueExtraChannel, Mountable {
+    mounted = 0;
+    disposed = 0;
+    presents = 0;
+    mount(): void {
+      this.mounted++;
+    }
+    dispose(): void {
+      this.disposed++;
+    }
+    present(): void {
+      this.presents++;
+    }
+  }
+
+  it("mounts a Mountable ctor channel, streams to it, and disposes it on destroy", () => {
+    const { scene } = createMockScene();
+    const channel = new StubSceneChannel();
+    const host = scene.spawn("dlg");
+    const controller = host.add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text: new StubText(),
+        choices: new StubChoices(),
+        input: noopBinding,
+        channels: [channel],
+      }),
+    );
+    expect(channel.mounted).toBe(1); // mounted at onAdd
+
+    controller.play(SCRIPT); // a say line → present fans out to the channel
+    expect(channel.presents).toBe(1);
+
+    host.remove(DialogueController); // onDestroy
+    expect(channel.disposed).toBe(1);
+  });
+
+  it("addChannel mounts + registers a channel live; its disposer tears it down", () => {
+    const { scene } = createMockScene();
+    const controller = scene.spawn("dlg").add(makeController());
+    const channel = new StubSceneChannel();
+
+    const dispose = controller.addChannel(channel);
+    expect(channel.mounted).toBe(1);
+
+    controller.play(SCRIPT);
+    expect(channel.presents).toBe(1);
+
+    dispose();
+    expect(channel.disposed).toBe(1);
+
+    controller.play(SCRIPT); // the disposed channel no longer receives the stream
+    expect(channel.presents).toBe(1);
+  });
+
+  it("addChannel after destroy is refused and returns a no-op disposer", () => {
+    const { scene } = createMockScene();
+    const host = scene.spawn("dlg");
+    const controller = host.add(makeController());
+    host.remove(DialogueController);
+
+    const channel = new StubSceneChannel();
+    const dispose = controller.addChannel(channel);
+    expect(channel.mounted).toBe(0); // refused — nothing to mount onto
+    expect(() => dispose()).not.toThrow();
   });
 });

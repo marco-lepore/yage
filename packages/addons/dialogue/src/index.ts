@@ -23,6 +23,13 @@ export type {
   DialogueBundle,
 } from "./DialogueController.js";
 
+// `Mountable` — the YAGE lifecycle (`mount(scene)` / `dispose()`) an extra
+// channel implements when it needs the scene (e.g. a CameraEffects channel).
+// Structurally pixi-free (`import type { Scene }` only), so re-exporting the
+// type keeps the root dist-grep at 0. The presenter trio's adapter contracts
+// (Chrome/Choice/Text presenters) stay behind `./presenters`.
+export type { Mountable } from "./chrome/DialogueUiAdapter.js";
+
 // Engine-scoped lifecycle / command events.
 export {
   DialogueStartedEvent,

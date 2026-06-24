@@ -44,3 +44,9 @@ export type {
   AvatarChannel,
   ChromeChannel,
 } from "./session.js";
+// Extensible channels: the optional-hook channel a host registers (Voice / Shop /
+// CameraEffects / History), plus the built-in voice-over channel. The trio above
+// stays the typed built-in path; these are purely additive.
+export type { DialogueExtraChannel } from "./channels/index.js";
+export { createVoiceChannel } from "./channels/index.js";
+export type { VoiceChannelOptions, VoiceHandle } from "./channels/index.js";

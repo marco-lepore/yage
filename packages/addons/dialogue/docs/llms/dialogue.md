@@ -586,6 +586,123 @@ createMixedDialogue(theme, {
 // box-only: createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(...) })
 ```
 
+## Extra channels — register Voice / Shop / camera FX (additive)
+
+Beyond the typed trio, a host **registers** open-ended `DialogueExtraChannel`s on a
+running conversation — voice-over, a shop reacting to a `buy` command, a camera
+shake, a history recorder. Every method is **optional**; a one-method observer
+implements just what it needs. Purely additive (the trio is untouched).
+
+```ts
+interface DialogueExtraChannel {
+  present?(line: PresentedLine): void;        // a say line presented (read line.voice/meta) — NOT choices
+  revealComplete?(line: PresentedLine): void; // the say line finished revealing
+  command?(command, ctx): void;               // a non-built-in command fired (never set/expression)
+  clear?(): void;                             // conversation stopped/ended (per-conversation reset)
+  setVisible?(visible: boolean): void;        // the host setHidden lever
+  setPaused?(paused: boolean): void;          // the conversation paused/resumed
+  completeReveal?(): void;                    // player skipped the typewriter / section
+  update?(dt: number): void;                  // per-frame (already gated by pause)
+  dispose?(): void;                           // final teardown (distinct from clear)
+  isRevealComplete?(): boolean;               // gates auto-advance (see below); omit → pure observer
+}
+```
+
+Register via the controller (mounts a scene-needing channel, returns a disposer):
+
+```ts
+const off = controller.addChannel(channel);  // or: new DialogueController({ ..., channels: [voice] })
+// ...later:
+off();                                        // unregister + dispose
+```
+
+- A channel that also needs the scene implements `Mountable` (`mount(scene)` /
+  `dispose()`, re-exported from the **root**) — the controller mounts it in `onAdd`,
+  disposes it in `onDestroy`. A pure observer (Voice / Shop) skips `Mountable`.
+- On register a channel catches up the `setVisible` / `setPaused` levers **only** —
+  no `present` replay (that would restart a clip). `present` fans out for **say
+  lines only**, not choice prompts.
+- **Consequences out, one back-channel in.** A channel mutates game state via
+  `ctx.setVar` (write-only) and reads it back through the host-held
+  `handle.getVars()` — never the session. The ONLY value it hands the session is
+  `isRevealComplete()`.
+- Each fanned-out hook is wrapped → a throwing channel routes to the session
+  `onError`, never breaking the conversation (the trio stays trusted/unwrapped).
+
+### Auto-advance gate (arm-on-text, count-on-aggregate)
+
+A channel's `isRevealComplete()` joins the auto-advance gate: the clock is **armed**
+when the **text** reveal completes, but **counts down** only once text AND every
+registered gater report complete. So a voice clip outlasting the typewriter holds
+the line for **`max(clipEnd, revealEnd)`** — no duration plumbing. A **manual**
+advance is never gated (a player can always mash forward). A channel without
+`isRevealComplete` never gates.
+
+### `createVoiceChannel` — voice-over as a gating channel
+
+```ts
+import { createVoiceChannel } from "@yagejs-addons/dialogue";
+
+const voice = createVoiceChannel({
+  // The addon owns NO audio — wire `play` over @yagejs/audio in the game. Start the
+  // clip for the line's `voice` id; call onEnded when it finishes NATURALLY.
+  play: (id, onEnded) => {
+    const sound = audio.play(id, { onEnd: onEnded });
+    return { stop: () => sound.stop(), pause: () => sound.pause(), resume: () => sound.resume() };
+  },
+  onSkip: "cut",                  // "cut" (default) stops + releases on skip; "ring" plays out
+  pauseWithConversation: true,    // default: pause the clip when the conversation pauses
+  livenessMs: 30_000,             // optional safety cap: force-release if onEnded never arrives
+  onError: (m, e) => log.warn(m), // liveness diagnostics
+});
+controller.addChannel(voice);
+// script: { kind: "say", text: "...", voice: "vo_intro_01" }
+```
+
+`createVoiceChannel({ play, onSkip?, pauseWithConversation?, livenessMs?, onError? })`
+→ a `DialogueExtraChannel`. `play(id, onEnded) => { stop; pause?; resume? }`. It reads
+`PresentedLine.voice` in `present`, gates `isRevealComplete()` on the clip, and is
+hardened: a late `onEnded` from a superseded clip can't ungate the next line
+(generation guard); the optional `livenessMs` cap stops a wedged host soft-locking
+auto-advance.
+
+### Worked: a Shop channel (rules in, consequences out)
+
+```ts
+controller.addChannel({
+  command(cmd, ctx) {
+    if (cmd.type !== "buy") return;
+    ctx.setVar("owns_" + cmd.item, true);   // consequence-out (write-only ctx)
+  },
+});
+const handle = controller.play(shopScript); // script fires { type: "buy", item: "sword" }
+handle?.getVars();                           // host reads { owns_sword: true } back
+```
+
+The `buy` type still needs a registered handler/fallback to validate — the channel
+adds its consequence on top of the command pipeline.
+
+### Worked: a command-driven CameraEffects channel
+
+A `{ type: "shake" }` command in the script reaches a channel's `command?()` with
+**zero** addon change:
+
+```ts
+controller.addChannel({
+  command: (cmd) => { if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8)); },
+});
+// script: { kind: "command", commands: [{ type: "shake", power: 12 }] }
+```
+
+> An **inline** `[shake/]` reveal marker (fire mid-line at a char offset) depends on
+> the reveal-event feature (not yet shipped); the command path above works today.
+
+### Save / restore (v1.1, document-only)
+
+A mid-line restore **re-presents** the current line, so `present()` re-fires to the
+extras. `createVoiceChannel.present()` stops any active clip first, so a restore
+restarts the line's clip cleanly (the restore-safety property). Build nothing now.
+
 ## Line `meta` keys the default presenters read
 
 `meta` is the opaque per-line bag (`SayStep.meta`); the default presenters read a
