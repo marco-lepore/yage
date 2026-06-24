@@ -185,6 +185,10 @@ describe("parseCompact — say lines", () => {
       autoAdvanceMs: 2000,
     });
   });
+
+  it("rejects a non-numeric speed= / auto= hint", () => {
+    expect(() => firstSay("hero: Hi speed=fast", "@ hero Hero\n")).toThrow(/speed.*number/);
+  });
 });
 
 describe("parseCompact — set / do disambiguation", () => {
@@ -229,6 +233,21 @@ describe("parseCompact — set / do disambiguation", () => {
   it("`do you agree?` is not a command shape — it falls through to narrator", () => {
     expect(firstStep("do you agree?")).toEqual({ kind: "say", text: "do you agree?" });
   });
+
+  it("ERRORS when a `do` data key collides with the command type", () => {
+    // `type=` would overwrite the dispatch type — caught as a load error, not silently.
+    expect(() => firstStep("do spawn type=goblin")).toThrow(DialogueScriptError);
+    expect(() => firstStep("do spawn type=goblin")).toThrow(/collides with the command type/);
+  });
+
+  it("a `do`-shaped line with a trailing bare token stays narrator (no false error)", () => {
+    // The bare `extra` token means it isn't a command shape, so the type-collision
+    // check never fires — it falls through to narrator text.
+    expect(firstStep("do spawn type=goblin extra")).toEqual({
+      kind: "say",
+      text: "do spawn type=goblin extra",
+    });
+  });
 });
 
 describe("parseCompact — structure, comments, errors", () => {
@@ -255,6 +274,14 @@ describe("parseCompact — structure, comments, errors", () => {
 
   it("rejects a step before any `:: node`", () => {
     expect(() => parseCompact("# t\nhero: stray\n")).toThrow(/before any ':: <node>'/);
+  });
+
+  it("rejects a script with an id but no `:: node`", () => {
+    expect(() => parseCompact("# t\n")).toThrow(/has no ':: <node>'/);
+  });
+
+  it("rejects a speaker header with too many tokens", () => {
+    expect(() => parseCompact("# t\n@ h H\n:: n\nh one two: hi\n")).toThrow(/too many tokens/);
   });
 
   it("rejects duplicate ids, nodes, and speakers with the line number", () => {

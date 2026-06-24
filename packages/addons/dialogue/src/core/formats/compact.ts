@@ -145,12 +145,12 @@ export function parseCompact(text: string): DialogueScript {
       node.steps.push(parseGoto(line, lineNo));
       return;
     }
-    const set = parseSet(line, lineNo);
+    const set = parseSet(line);
     if (set) {
       node.steps.push(set);
       return;
     }
-    const cmd = parseDo(line);
+    const cmd = parseDo(line, lineNo);
     if (cmd) {
       node.steps.push(cmd);
       return;
@@ -222,12 +222,12 @@ function parseGoto(line: string, lineNo: number): Step {
 
 /** A `set` line, or `null` when the line is not a `set` (so it falls through to
  *  the say-line reading — `set the table` with no `=` is narrator text). */
-function parseSet(line: string, lineNo: number): Step | null {
+function parseSet(line: string): Step | null {
   const m = /^set\s+([A-Za-z_$][A-Za-z0-9_.$]*)\s*=\s*(\S.*)$/.exec(line);
   if (!m) return null;
   return {
     kind: "command",
-    commands: [{ type: "set", var: m[1]!, value: setValue(m[2]!.trim(), lineNo) }],
+    commands: [{ type: "set", var: m[1]!, value: setValue(m[2]!.trim()) }],
   };
 }
 
@@ -236,15 +236,11 @@ function parseSet(line: string, lineNo: number): Step | null {
  *  MUST go through `parseExpr` (→ an `Expr` literal), never be emitted as a raw
  *  string: `loadScript`'s pre-walk re-parses any string `set` value, so a raw
  *  `"hi"` would be misread as a variable reference. */
-function setValue(rhs: string, lineNo: number): VarValue | Expr {
+function setValue(rhs: string): VarValue | Expr {
   const literal = numberBoolNull(rhs);
-  if (literal !== NOT_LITERAL) return literal;
-  try {
-    return parseExpr(rhs);
-  } catch (e) {
-    if (e instanceof DialogueScriptError) throw e;
-    return fail(lineNo, `invalid 'set' value "${rhs}"`);
-  }
+  // A non-literal RHS is an expression. `parseExpr` throws `DialogueExprError`
+  // (a `DialogueScriptError`, carrying a source position) on a malformed value.
+  return literal === NOT_LITERAL ? parseExpr(rhs) : literal;
 }
 
 // ── `do type k=v … #flag` ────────────────────────────────────────────────────
@@ -252,12 +248,13 @@ function setValue(rhs: string, lineNo: number): VarValue | Expr {
 /** A `do` command line, or `null` when the line does not fully match the
  *  command shape (`do <type> (<k=v> | <#flag>)*`). A non-matching `do …` line
  *  falls through to the say reading, so prose like `do you agree?` stays text. */
-function parseDo(line: string): Step | null {
+function parseDo(line: string, lineNo: number): Step | null {
   if (!/^do(\s|$)/.test(line)) return null;
   const tokens = splitArgs(line.slice(2).trim());
   const type = tokens[0];
   if (type === undefined || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(type)) return null;
   const command: Record<string, unknown> = { type };
+  let typeKeyCollision = false;
   for (const tok of tokens.slice(1)) {
     if (tok.startsWith("#")) {
       const flag = tok.slice(1);
@@ -266,8 +263,16 @@ function parseDo(line: string): Step | null {
       continue;
     }
     const eq = tok.indexOf("=");
-    if (eq <= 0) return null; // not `key=value` → not a command shape
-    command[tok.slice(0, eq)] = scalar(tok.slice(eq + 1));
+    if (eq <= 0) return null; // not `key=value` → not a command shape (falls through to narrator)
+    const key = tok.slice(0, eq);
+    // `type` is the command's dispatch key (the leading token); a `type=` data
+    // key would overwrite it. Flag it, but only fail once the whole line is
+    // confirmed a valid command shape — a later bare token still falls through.
+    if (key === "type") typeKeyCollision = true;
+    else command[key] = scalar(tok.slice(eq + 1));
+  }
+  if (typeKeyCollision) {
+    fail(lineNo, `'do' data key "type" collides with the command type (the leading token); rename the key`);
   }
   return { kind: "command", commands: [command as Command] };
 }

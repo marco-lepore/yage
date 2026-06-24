@@ -325,6 +325,8 @@ Reading it line by line:
   stores the subtraction the runtime evaluates later.
 - **`do give-item id=healing-potion count=1`** fires a host command: a `type`, then
   `key=value` data and `#flag` booleans. Quote a value with spaces (`msg="two words"`).
+  A data key can't be named `type` — that's the command's dispatch key, so a
+  `type=` collision is a load error rather than silently overwriting it.
 - **`-> done`** jumps; **`end`** stops the conversation.
 
 A line can also carry trailing hints: `view=` / `voice=` / `speed=` / `auto=` set the

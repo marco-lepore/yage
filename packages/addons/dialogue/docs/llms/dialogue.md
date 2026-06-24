@@ -227,7 +227,7 @@ indentation is insignificant.
 | `? text …` | a choice option; consecutive `?` lines coalesce into one `choice` step |
 | `-> nodeId` | unconditional jump (`goto`) |
 | `set v = rhs` | write a variable (bare number / `true` / `false` / `null` stays literal, else `parseExpr`) |
-| `do type k=v … #flag` | a host command — `type`, then `key=value` data and `#flag` booleans |
+| `do type k=v … #flag` | a host command — `type`, then `key=value` data and `#flag` booleans (a data key can't be `type` — that's the dispatch key; a `type=` collision is a load error) |
 | `end` | end the conversation |
 
 **Say-line hints** ride the end of the line: `view=` / `voice=` / `speed=` / `auto=`
