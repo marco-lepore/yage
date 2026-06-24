@@ -261,6 +261,16 @@ describe("parseCompact — set / do disambiguation", () => {
       text: "do spawn type=goblin extra",
     });
   });
+
+  it("ERRORS on the `#type` flag form too (same dispatch-type collision)", () => {
+    // `#type` would set command.type = true; guard it like `type=`.
+    expect(() => firstStep("do spawn #type")).toThrow(DialogueScriptError);
+    expect(() => firstStep("do spawn #type")).toThrow(/collides with the command type/);
+  });
+
+  it("a `#type` flag with a trailing bare token also stays narrator", () => {
+    expect(firstStep("do spawn #type extra")).toEqual({ kind: "say", text: "do spawn #type extra" });
+  });
 });
 
 describe("parseCompact — conditional goto + declare", () => {

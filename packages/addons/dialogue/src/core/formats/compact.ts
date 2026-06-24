@@ -283,25 +283,27 @@ function parseDo(line: string, lineNo: number): Step | null {
   const type = tokens[0];
   if (type === undefined || !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(type)) return null;
   const command: Record<string, unknown> = { type };
+  // `type` is the command's dispatch key (the leading token); a `type=` data key
+  // OR a `#type` flag would overwrite it. Flag either form, but only fail once the
+  // whole line is confirmed a valid command shape — a later bare token still
+  // falls through to narrator, so `do spawn #type extra` stays text, not an error.
   let typeKeyCollision = false;
   for (const tok of tokens.slice(1)) {
     if (tok.startsWith("#")) {
       const flag = tok.slice(1);
       if (!flag) return null;
-      command[flag] = true;
+      if (flag === "type") typeKeyCollision = true;
+      else command[flag] = true;
       continue;
     }
     const eq = tok.indexOf("=");
     if (eq <= 0) return null; // not `key=value` → not a command shape (falls through to narrator)
     const key = tok.slice(0, eq);
-    // `type` is the command's dispatch key (the leading token); a `type=` data
-    // key would overwrite it. Flag it, but only fail once the whole line is
-    // confirmed a valid command shape — a later bare token still falls through.
     if (key === "type") typeKeyCollision = true;
     else command[key] = scalar(tok.slice(eq + 1));
   }
   if (typeKeyCollision) {
-    fail(lineNo, `'do' data key "type" collides with the command type (the leading token); rename the key`);
+    fail(lineNo, `'do' data key "type" collides with the command type (the leading token); rename it`);
   }
   return { kind: "command", commands: [command as Command] };
 }
