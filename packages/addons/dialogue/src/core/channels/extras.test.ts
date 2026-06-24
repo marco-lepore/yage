@@ -147,6 +147,48 @@ describe("DialogueSession — extra channels", () => {
     expect(autoAdvances).toBe(1);
   });
 
+  it("the voice liveness cap force-releases the gate end-to-end, so a wedged clip can't soft-lock auto-advance", async () => {
+    const text = new StubText();
+    let autoAdvances = 0;
+    const session = new DialogueSession(
+      { text, choices: new StubChoices() },
+      { onAutoAdvance: () => autoAdvances++ },
+    );
+    const errors: string[] = [];
+    session.addChannel(
+      createVoiceChannel({
+        play: () => ({ stop: () => {} }), // wedged: onEnded is NEVER called
+        livenessMs: 200,
+        onError: (message) => errors.push(message),
+      }),
+    );
+    session.setAutoAdvance(50);
+
+    session.play({
+      id: "v",
+      start: "n",
+      nodes: {
+        n: {
+          id: "n",
+          steps: [
+            { kind: "say", text: "Wedged voice.", voice: "vo_stuck" },
+            { kind: "say", text: "Freed." },
+          ],
+        },
+      },
+    });
+
+    text.finishReveal(); // arms the auto-timer on the text reveal
+    await flush();
+    session.update(100); // under the 200ms budget → the wedged voice still gates
+    expect(autoAdvances).toBe(0);
+    expect(errors).toHaveLength(0);
+
+    session.update(150); // 250ms total > budget → liveness trips through the session
+    expect(errors).toHaveLength(1); // reported once
+    expect(autoAdvances).toBe(1); // …and auto-advance proceeds (no soft-lock)
+  });
+
   it("a pure observer (no isRevealComplete) never gates auto-advance", async () => {
     const text = new StubText();
     let autoAdvances = 0;
