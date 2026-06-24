@@ -69,8 +69,6 @@ import type {
   VarValue,
 } from "../types.js";
 
-export { loadScript, DialogueScriptError };
-
 /**
  * Parse compact-DSL source into a (mutable) {@link DialogueScript}. Throws
  * {@link DialogueScriptError} on a structural problem (with the 1-based line) and
