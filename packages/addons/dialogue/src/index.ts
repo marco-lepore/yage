@@ -3,9 +3,9 @@
  *
  * This barrel MUST NOT transitively import `pixi.js` or `@yagejs/renderer`.
  * It re-exports the headless dialogue model (runner, session, types, markup,
- * i18n, canonical format), engine-scoped events, the `DialogueController`
- * (a `@yagejs/core` Component), public types, and the `@yagejs/input`
- * keyboard/pointer bindings.
+ * i18n, the canonical JSON loader plus the `parseExpr` and compact-DSL
+ * front-ends), engine-scoped events, the `DialogueController` (a `@yagejs/core`
+ * Component), public types, and the `@yagejs/input` keyboard/pointer bindings.
  *
  * Pixi-backed presenters (chrome, text views, composites, avatars, factories,
  * default/textured themes, radial) live behind the `./presenters` subpath so
