@@ -408,4 +408,11 @@ describe("DialogueController — extra channels (ctor + addChannel)", () => {
     expect(channel.mounted).toBe(0); // refused — nothing to mount onto
     expect(() => dispose()).not.toThrow();
   });
+
+  it("addChannel before the component is added throws a clear error (mirrors play())", () => {
+    const controller = makeController(); // never added to an entity
+    expect(() => controller.addChannel(new StubSceneChannel())).toThrow(
+      /before the component was added/,
+    );
+  });
 });

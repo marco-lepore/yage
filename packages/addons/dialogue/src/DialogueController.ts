@@ -263,7 +263,9 @@ export class DialogueController<
    * (where it joins the cross-cutting stream and can gate auto-advance), and
    * returns a disposer that unregisters + disposes it. The `channels` ctor option
    * registers a bundle the same way at mount. Returns a no-op disposer if the
-   * controller was destroyed or has not been added to an entity yet.
+   * controller was destroyed; **throws** if called before the component is added
+   * to an entity (use the `channels` ctor option to pre-wire a channel) — mirrors
+   * {@link play}.
    */
   addChannel(ch: DialogueExtraChannel): () => void {
     if (this.destroyed) {
@@ -273,9 +275,14 @@ export class DialogueController<
       );
       return () => {};
     }
-    // Before onAdd there's no session/scene to mount onto — use the `channels`
-    // ctor option for a channel that must be present from the first play().
-    if (!this.session) return () => {};
+    // Before onAdd there is no session/scene to mount onto — and no Logger yet
+    // (it's captured in onAdd), so a warn here couldn't surface. Throw loudly like
+    // play() does, and point at the `channels` ctor option (the pre-onAdd path).
+    if (!this.session) {
+      throw new Error(
+        "DialogueController.addChannel() called before the component was added to an entity (onAdd has not run yet). Use the `channels` constructor option to pre-wire a channel.",
+      );
+    }
     if (isMountable(ch)) {
       try {
         ch.mount(this.scene);
