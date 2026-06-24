@@ -44,6 +44,11 @@
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
  *                         (a second controller kept alive but input-disabled via
  *                         `setInputEnabled(false)` — the focus seam).
+ *   • Pip the Locksmith — the one NPC authored in the **compact DSL** (not YAML):
+ *                         a conditional jump (`-> regreet if: pip_seen`) re-greets
+ *                         a returning customer, with a `declare`d flag, line-driven
+ *                         `#portrait:`/`#side:` avatars, and `set` / `do` against
+ *                         the same shared storage.
  *
  * The HUD shows your live gold + items. Hold **J** to fast-forward, hold **X** to
  * skip, press **V** to toggle auto-advance; the pointer works too. The three
@@ -52,12 +57,14 @@
  * mid-line, restoring it at the same reveal point (`setHidden`). The
  * **Font** button swaps every presenter to a baked bitmap font and back.
  *
- * The eight scripts live in plain **YAML data files** under `./dialogue/` (a
- * designer edits them without touching code), imported via Vite's `?raw` suffix
- * and parsed by `loadYaml` (the `/yaml` subpath). Conditions and `set` values are
- * plain string expressions (`"gold >= 50 and not has_item('rusty-key')"`,
- * `"gold - 50"`) instead of hand-built trees — `loadYaml` runs them through the
- * same string→expression parser the JSON loader uses.
+ * Eight scripts live in plain **YAML data files** under `./dialogue/` (a designer
+ * edits them without touching code), imported via Vite's `?raw` suffix and parsed
+ * by `loadYaml` (the `/yaml` subpath). Conditions and `set` values are plain string
+ * expressions (`"gold >= 50 and not has_item('rusty-key')"`, `"gold - 50"`) instead
+ * of hand-built trees — `loadYaml` runs them through the same string→expression
+ * parser the JSON loader uses. Pip's script (`./dialogue/locksmith.dlg`) is the
+ * same idea in the **compact DSL**: `loadCompact` (the root entry, no `yaml` dep)
+ * over a terse, line-oriented format that compiles to the identical frozen IR.
  *
  * Export split: runner / controller / events / input / the storage kit come from
  * the pixi-free root entry; YAML authoring from `/yaml`; presenters + theme from
@@ -91,6 +98,7 @@ import {
   cells,
   compose,
   fullControls,
+  loadCompact,
   MemoryVariableStorage,
   type CommandHandler,
   type DialogueFunction,
@@ -110,6 +118,9 @@ import rookYaml from "./dialogue/rook.yaml?raw";
 import sageYaml from "./dialogue/sage.yaml?raw";
 import captainYaml from "./dialogue/captain.yaml?raw";
 import gossipYaml from "./dialogue/gossip.yaml?raw";
+// One NPC's script is authored in the compact DSL instead of YAML — loaded with
+// `loadCompact` from the root entry (no `yaml` dep), same validated/frozen IR.
+import locksmithCompact from "./dialogue/locksmith.dlg?raw";
 import {
   defaultTheme,
   createMixedDialogue,
@@ -142,6 +153,8 @@ const GATE_X = 1410; // the locked gate; blocks progress until unlocked
 const FACE_NEUTRAL = "cap-neutral";
 const FACE_STERN = "cap-stern";
 const FACE_SAGE = "sage-face";
+const FACE_PIP_SMILE = "pip-smile";
+const FACE_PIP_THINK = "pip-think";
 
 /** World-space render layers (under the camera) + the screen-space HUD. The
  *  dialogue box rides DIALOGUE_LAYERS (screen); bubbles ride BUBBLE_LAYER. */
@@ -211,6 +224,13 @@ const SAGE = loadYaml(sageYaml);
 const CAPTAIN = loadYaml(captainYaml);
 /** Ambient gossip — loops forever, each line auto-advancing, no input binding. */
 const GOSSIP = loadYaml(gossipYaml);
+/** Pip — the one NPC authored in the **compact DSL** (`./dialogue/locksmith.dlg`,
+ *  parsed by `loadCompact`, not `loadYaml`). Shows the compact-only conveniences:
+ *  a `declare`d visit flag + a conditional jump (`-> regreet if: pip_seen`) that
+ *  re-greets a returning customer, line-driven `#portrait:`/`#side:` avatars, a
+ *  `#line:` i18n key, per-line `speed=`, and `set` / `do` against the SAME shared
+ *  storage the YAML NPCs use. It compiles to the identical frozen IR. */
+const LOCKSMITH = loadCompact(locksmithCompact);
 
 // ── world entities (all Graphics, no assets) ─────────────────────────────────
 
@@ -754,6 +774,8 @@ function makeFace(skin: number, stern: boolean): Texture {
 let faceNeutral: Texture | undefined;
 let faceStern: Texture | undefined;
 let faceSage: Texture | undefined;
+let facePipSmile: Texture | undefined;
+let facePipThink: Texture | undefined;
 
 const insets = (n: number): { left: number; top: number; right: number; bottom: number } => ({
   left: n,
@@ -837,9 +859,13 @@ class RoomScene extends Scene {
     faceNeutral ??= makeFace(0xe8c9a0, false);
     faceStern ??= makeFace(0xe8c9a0, true);
     faceSage ??= makeFace(0x9fc6e8, false);
+    facePipSmile ??= makeFace(0xffcf9a, false);
+    facePipThink ??= makeFace(0xffcf9a, true);
     Assets.cache.set(FACE_NEUTRAL, faceNeutral);
     Assets.cache.set(FACE_STERN, faceStern);
     Assets.cache.set(FACE_SAGE, faceSage);
+    Assets.cache.set(FACE_PIP_SMILE, facePipSmile);
+    Assets.cache.set(FACE_PIP_THINK, facePipThink);
 
     // Player.
     const player = this.spawn("player");
@@ -1015,6 +1041,7 @@ class RoomScene extends Scene {
     talker(200, 0x86c5ff, "Vow", "Captain Vow (F)", CAPTAIN);
     talker(320, 0xffd866, "Mira", "Talk to Mira (F)", MIRA);
     talker(520, 0x9ad17e, "Quinn", "Talk to the Quartermaster (F)", QUARTERMASTER);
+    talker(640, 0xffb86b, "Pip", "Talk to Pip the Locksmith (F)", LOCKSMITH);
     talker(760, 0xe6a3ff, "Vex", "Trade with Vex (F)", MERCHANT);
     talker(1040, 0xff6b6b, "Rook", "Talk to Rook (F)", ROOK);
     talker(GATE_X - 70, 0xff9a6b, "Bron", "Talk to the Guard (F)", GUARD);

@@ -40,6 +40,24 @@ const NAMED_COLORS: Record<string, number> = {
 
 const EFFECTS = new Set<EffectId>(["wave", "shake", "pulse", "rainbow"]);
 
+/**
+ * Every tag name {@link parseMarkup} acts on (styling, effects, and the
+ * self-closing `pause`); any other tag is dropped silently. Kept beside
+ * {@link styleForTag} and {@link EFFECTS} so the recognized set has one home —
+ * {@link firstUnknownTag} reads it to tell a real markup tag from a typo.
+ */
+const KNOWN_TAGS: ReadonlySet<string> = new Set<string>([
+  "b",
+  "bold",
+  "i",
+  "italic",
+  "color",
+  "c",
+  "speed",
+  "pause",
+  ...EFFECTS,
+]);
+
 function parseColor(raw: string): number | undefined {
   const v = raw.trim().toLowerCase();
   if (v.startsWith("#")) {
@@ -266,4 +284,31 @@ export function stripMarkup(input: string): string {
   return parseMarkup(input)
     .runs.map((r) => r.text)
     .join("");
+}
+
+/**
+ * The name of the first bracketed `[tag]` in `input` that {@link parseMarkup}
+ * would drop silently (an unrecognized tag), or `null` when every tag is known.
+ * Escape-aware: `\[x]` is literal text, not a tag, matching the parser.
+ *
+ * The compact authoring front-end uses this to reject a `[..]` an author meant
+ * as a choice attribute. Brackets are markup-only there, and markup's silent
+ * drop would otherwise make a mistyped `#flag` / `-> target` / `if:` vanish
+ * without a trace. (Say-line text is passed through untouched, so future markup
+ * tokens stay forward-compatible — this guard is for the choice grammar only.)
+ */
+export function firstUnknownTag(input: string): string | null {
+  TAG_RE.lastIndex = 0;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TAG_RE.exec(input)) !== null) {
+    // Same odd-backslash escape test parseMarkup uses: an escaped `\[` is text.
+    let backslashes = 0;
+    for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
+    lastIndex = TAG_RE.lastIndex;
+    if (backslashes % 2 === 1) continue;
+    const name = m[2]!.toLowerCase();
+    if (!KNOWN_TAGS.has(name)) return name;
+  }
+  return null;
 }

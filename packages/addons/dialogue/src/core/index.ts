@@ -4,6 +4,10 @@ export { parseMarkup, stripMarkup, splitGraphemes } from "./markup.js";
 // reveal timing / pauses / per-run speed / completion without re-implementing.
 export { LineReveal } from "./LineReveal.js";
 export { loadScript, DialogueScriptError } from "./formats/canonical.js";
+// Compact authoring DSL (`parseCompact` → IR; `loadCompact` → validated IR). It
+// imports only the headless core (no `yaml`, no pixi), so unlike `loadYaml` it
+// stays on the root entry.
+export { parseCompact, loadCompact } from "./formats/compact.js";
 // NB: the YAML-literal front-end (`loadYaml`) is intentionally NOT re-exported
 // here. It lives behind the `@yagejs-addons/dialogue/yaml` subpath so the `yaml`
 // runtime dep stays out of the root/JSON/expression import graph (it can't be
