@@ -87,6 +87,19 @@ describe("createVoiceChannel", () => {
     expect(errors).toHaveLength(1);
   });
 
+  it("a throwing play() releases the gate immediately (no soft-lock) and surfaces the error", () => {
+    const voice = createVoiceChannel({
+      play: () => {
+        throw new Error("decode failed");
+      },
+    });
+    // The host error surfaces (the session's present fan-out routes it to onError)…
+    expect(() => voice.present?.(line("a"))).toThrow("decode failed");
+    // …but the gate is released at once, not stuck waiting on a clip that never
+    // started (no livenessMs needed — the throw is handled at the boundary).
+    expect(voice.isRevealComplete?.()).toBe(true);
+  });
+
   it("no liveness cap by default — a slow clip keeps gating", () => {
     const { play } = scriptedPlay();
     const voice = createVoiceChannel({ play }); // no livenessMs

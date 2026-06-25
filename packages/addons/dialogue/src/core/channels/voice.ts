@@ -118,11 +118,20 @@ export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChan
       }
       done = false;
       const token = startToken;
-      active = play(id, () => {
-        if (token !== startToken) return; // generation guard: a superseded clip
+      try {
+        active = play(id, () => {
+          if (token !== startToken) return; // generation guard: a superseded clip
+          done = true;
+          active = undefined;
+        });
+      } catch (error) {
+        // The host's play() threw before returning a handle — no clip started, so
+        // release the gate (this line can't soft-lock waiting on a clip that never
+        // ran) and surface the failure (the session's present fan-out routes it to
+        // onError).
         done = true;
-        active = undefined;
-      });
+        throw error;
+      }
     },
     completeReveal(): void {
       if (onSkip === "ring") return; // let the clip ring out; the gate holds
@@ -134,7 +143,11 @@ export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChan
       else active?.resume?.();
     },
     update(dt: number): void {
-      if (done || active === undefined || !livenessMs) return;
+      // `done` already covers every no-clip case (voiceless line, natural end,
+      // clear, a throwing play()); only an in-flight clip (done=false) ticks the
+      // budget. An `active === undefined` guard here would wrongly freeze the
+      // timer if play() ever left `active` unset.
+      if (done || !livenessMs) return;
       elapsed += dt;
       if (elapsed >= livenessMs) {
         // The host never reported the clip's end — release the gate so
