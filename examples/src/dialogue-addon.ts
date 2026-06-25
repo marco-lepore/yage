@@ -1,9 +1,11 @@
 /**
  * @yagejs-addons/dialogue — a walkable town that drives the game-state model.
  *
- * Zero bundled assets: the town, the player, and the NPCs are all Graphics; the
- * dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text). The
- * level is wider than the canvas, so a **follow camera** scrolls as you walk.
+ * Zero bundled ART assets: the town, the player, and the NPCs are all Graphics;
+ * the dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text).
+ * The one bundled asset is Sage's voice-over — real synthesized speech under
+ * `public/assets/voice/` (see the voice channel below). The level is wider than
+ * the canvas, so a **follow camera** scrolls as you walk.
  *
  * The interactive controller installs a `VariableStorage` ONCE, then every NPC's
  * `play(script)` is content-only and shares it:
@@ -42,8 +44,8 @@
  *   • Sage (bubble)     — no `view` hint: the default route floats him in a
  *                         bubble because he has a registered actor (speaker-aware).
  *                         He's also the **voiced** NPC: each line carries a `voice`
- *                         id a registered voice channel "plays" (synthetic, since
- *                         the demo ships no audio), gating auto-advance to the clip.
+ *                         id played as a real clip over `@yagejs/audio`, gating
+ *                         auto-advance until the voice finishes.
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
  *                         (a second controller kept alive but input-disabled via
  *                         `setInputEnabled(false)` — the focus seam).
@@ -64,13 +66,15 @@
  * open-ended extensibility seam, each added with zero addon change via the
  * controller's `channels` option:
  *   • a built-in `createVoiceChannel` voice-over — reads Sage's per-line `voice`
- *     id, shows a "🔊" indicator, and **gates auto-advance until the clip ends**
- *     (so with **V** on, Sage waits for his own voice — `max(clipEnd, revealEnd)`);
- *     **P** pauses the clip with the conversation. The clip is synthetic (the demo
- *     ships no audio); a real game wires `play` over `@yagejs/audio`.
+ *     id and plays it over `@yagejs/audio` (a "voice" channel). It **gates
+ *     auto-advance until the clip ends** (so with **V** on, Sage waits for his own
+ *     voice — `max(clipEnd, revealEnd)`), **P** pauses the clip with the
+ *     conversation, and the gate releases via `@yagejs/audio`'s `onEnd` (no
+ *     polling). With `onSkip: "ring"`, completing the typewriter does NOT cut the
+ *     voice — it's stopped only when you move to the next line.
  *   • a custom `TranscriptChannel` — a `Mountable` observer implementing only
- *     `revealComplete`, logging the last few revealed lines to a top-right HUD
- *     panel (a channel that gates nothing and just watches the stream).
+ *     `present`, logging each line the moment it appears (no waiting for the
+ *     typewriter) to a small semi-opaque HUD panel; a channel that gates nothing.
  *
  * Eight scripts live in plain **YAML data files** under `./dialogue/` (a designer
  * edits them without touching code), imported via Vite's `?raw` suffix and parsed
@@ -104,6 +108,7 @@ import {
   type LayerDef,
 } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import {
   createVoiceChannel,
   DialogueController,
@@ -123,7 +128,6 @@ import {
   type Mountable,
   type PresentedLine,
   type VariableStorage,
-  type VoiceHandle,
 } from "@yagejs-addons/dialogue";
 // YAML authoring lives behind the `/yaml` subpath so non-YAML games don't bundle
 // the parser; it returns the same validated, frozen `DialogueScript`.
@@ -736,106 +740,87 @@ class ChoiceTimer extends Component {
 // controller's `channels` option below. The addon owns no audio and no transcript
 // UI — these are the GAME's, added with zero addon change.
 
-/**
- * The host half of {@link createVoiceChannel}. The demo ships NO audio, so this
- * stands in for a voice player: each line's `voice` id becomes a synthetic clip
- * that counts down on the GAME clock. `play(id, onEnded)` starts a clip and hands
- * back the handle the channel drives — `stop` on a skip, `pause` / `resume` when
- * the conversation pauses (so **P** freezes the voice too). A "🔊" indicator shows
- * while a clip plays, and the auto-advance gate waits for `onEnded`, so a short
- * line with a long clip stays up for `max(clipEnd, revealEnd)`. A real game wires
- * `play` over `@yagejs/audio` instead.
- */
-class VoiceClips extends Component {
-  /** Fixed ~2s synthetic clip; a real host uses the audio file's length. */
-  private static readonly CLIP_MS = 2000;
-  private readonly clips = new Set<{ remaining: number; paused: boolean; onEnded: () => void }>();
-  private indicator!: TextComponent;
+/** Sage's voice clips — real synthesized speech (macOS `say`, the Daniel voice),
+ *  preloaded by the scene. The map turns each opaque `voice` id (authored in the
+ *  YAML) into its clip; a host maps voice ids to assets exactly like this. */
+const VOICE: Record<string, ReturnType<typeof sound>> = {
+  vo_sage_ramble: sound("/assets/voice/sage_ramble.mp3"),
+  vo_sage_controls: sound("/assets/voice/sage_controls.mp3"),
+  vo_sage_gate: sound("/assets/voice/sage_gate.mp3"),
+  vo_sage_bye: sound("/assets/voice/sage_bye.mp3"),
+};
 
-  onAdd(): void {
-    const e = this.scene.spawn("voice-indicator");
-    e.add(new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 168) }));
-    this.indicator = e.add(
-      new TextComponent({
-        text: "🔊 voice…",
-        style: { fontSize: 14, fill: 0x9ad1ff, fontFamily: "sans-serif" },
-        layer: HUD_LAYER,
-        anchor: { x: 0.5, y: 0.5 },
-      }),
-    );
-    this.indicator.text.visible = false;
-  }
-
-  /** Start a synthetic clip and return the {@link VoiceHandle} the channel drives. */
-  play(_id: string, onEnded: () => void): VoiceHandle {
-    const clip = { remaining: VoiceClips.CLIP_MS, paused: false, onEnded };
-    this.clips.add(clip);
-    this.indicator.text.visible = true;
-    return {
-      stop: () => {
-        this.clips.delete(clip);
-        this.indicator.text.visible = this.clips.size > 0;
-      },
-      pause: () => (clip.paused = true), // P pauses the conversation → pauses the clip
-      resume: () => (clip.paused = false),
-    };
-  }
-
-  update(dt: number): void {
-    if (this.clips.size === 0) return;
-    for (const clip of this.clips) {
-      if (clip.paused) continue; // frozen while the conversation is paused
-      clip.remaining -= dt;
-      if (clip.remaining <= 0) {
-        this.clips.delete(clip);
-        clip.onEnded(); // releases the voice gate → the line may now auto-advance
-      }
-    }
-    this.indicator.text.visible = this.clips.size > 0;
-  }
-}
+// The voice channel's host half is wired inline in `onEnter` (it just plays the
+// line's clip over @yagejs/audio); see `createVoiceChannel({ play })` below.
 
 /**
  * A CUSTOM extra channel — the "another channel" a game adds with zero addon
- * change. It implements ONLY `revealComplete` (a pure observer: it never gates
- * auto-advance and hands the session nothing back), appending each fully-revealed
- * line to a small HUD transcript. It also implements {@link Mountable}, so the
- * controller mounts it on the scene in `onAdd` and disposes it in `onDestroy`,
- * exactly like a presenter.
+ * change. It implements ONLY `present` (a pure observer: it never gates
+ * auto-advance and hands the session nothing back), logging each line the moment
+ * it APPEARS (not waiting for the typewriter) to a small semi-opaque HUD panel. It
+ * also implements {@link Mountable}, so the controller mounts it on the scene in
+ * `onAdd` and disposes it in `onDestroy`, exactly like a presenter.
  */
 class TranscriptChannel implements DialogueExtraChannel, Mountable {
   private static readonly MAX = 3;
+  private static readonly W = 286; // panel width
+  private static readonly PAD = 8;
+  private static readonly ROW = 16; // line height
   private readonly lines: string[] = [];
-  private entity: Entity | undefined;
+  private bg: Entity | undefined;
+  private textEntity: Entity | undefined;
   private panel: TextComponent | undefined;
 
   mount(scene: Scene): void {
-    const e = scene.spawn("transcript");
-    e.add(new Transform({ position: new Vec2(WIDTH - 12, 54) }));
-    this.entity = e;
-    this.panel = e.add(
+    const { W, PAD, ROW, MAX } = TranscriptChannel;
+    const h = PAD * 2 + ROW * MAX;
+    // Top-left, under the gold/items line: clear of the bottom box AND the speech
+    // bubbles (which float over the centre/right NPCs).
+    const x = 12;
+    const y = 52;
+    // A semi-opaque backing panel keeps the log legible over the playfield.
+    this.bg = scene.spawn("transcript-bg");
+    this.bg.add(new Transform({ position: new Vec2(x, y) }));
+    this.bg.add(
+      new GraphicsComponent({ layer: HUD_LAYER }).draw((g) => {
+        g.roundRect(0, 0, W, h, 6)
+          .fill({ color: 0x0a0c16, alpha: 0.6 })
+          .stroke({ color: 0x2a3146, width: 1, alpha: 0.8 });
+      }),
+    );
+    // Text on top — spawned after the panel, so it renders above it in the layer.
+    this.textEntity = scene.spawn("transcript-text");
+    this.textEntity.add(new Transform({ position: new Vec2(x + PAD, y + PAD) }));
+    this.panel = this.textEntity.add(
       new TextComponent({
         text: "",
-        style: { fontSize: 11, fill: 0x8890a0, fontFamily: "sans-serif", align: "right" },
+        style: { fontSize: 11, fill: 0xaab2c6, fontFamily: "sans-serif", lineHeight: ROW },
         layer: HUD_LAYER,
-        anchor: { x: 1, y: 0 },
+        anchor: { x: 0, y: 0 },
       }),
     );
   }
 
   dispose(): void {
-    this.entity?.destroy();
-    this.entity = undefined;
+    this.bg?.destroy();
+    this.textEntity?.destroy();
+    this.bg = undefined;
+    this.textEntity = undefined;
     this.panel = undefined;
   }
 
-  /** Fires once per say line, after it has finished revealing. */
-  revealComplete(line: PresentedLine): void {
-    const text = line.text.runs.map((r) => r.text).join("");
+  /** Fires when a say line is PRESENTED — logged at once, not on reveal. */
+  present(line: PresentedLine): void {
+    const body = line.text.runs.map((r) => r.text).join("");
     const who = line.speaker?.name ? `${line.speaker.name}: ` : "";
-    this.lines.push(`${who}${text}`);
+    this.lines.push(this.clip(`${who}${body}`, 42));
     if (this.lines.length > TranscriptChannel.MAX) this.lines.shift();
-    this.panel?.setText(this.lines.map((l) => `› ${l}`).join("\n"));
+    this.panel?.setText(this.lines.join("\n"));
+  }
+
+  /** Clip a row to a single line. */
+  private clip(s: string, n: number): string {
+    return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
   }
 }
 
@@ -970,6 +955,8 @@ const THEME_PRESETS: readonly ThemePreset[] = [
 class RoomScene extends Scene {
   readonly name = "dialogue-addon";
   readonly layers = LAYERS;
+  /** Preload Sage's voice clips so `audio.play` resolves them synchronously. */
+  readonly preload = Object.values(VOICE);
 
   /** `themeBuild` picks the look (cycled by the Theme button); `bitmapFont` (the
    *  Font button) layers a baked atlas on top. Both rebuild the scene. */
@@ -1112,14 +1099,29 @@ class RoomScene extends Scene {
     const hud = host.add(new Hud(() => state.gold, () => [...state.inventory]));
 
     // Two registered extra channels (the open-ended companion to the trio):
-    //  • a BUILT-IN voice-over channel — reads each line's `voice` id and gates
-    //    auto-advance until the (synthetic) clip ends; and
-    //  • a CUSTOM transcript channel — a pure observer logging revealed lines.
+    //  • a BUILT-IN voice-over channel — plays each line's `voice` clip over
+    //    @yagejs/audio and gates auto-advance until it ends; and
+    //  • a CUSTOM transcript channel — a pure observer logging lines as they appear.
     // Both ride the controller's `channels` option and need zero addon change.
-    const voiceClips = host.add(new VoiceClips());
+    const audio = this.context.resolve(AudioManagerKey);
     const voice = createVoiceChannel({
-      // The host owns audio; here it's the synthetic VoiceClips countdown.
-      play: (id, onEnded) => voiceClips.play(id, onEnded),
+      // `ring`: completing the typewriter doesn't cut the voice — it plays on, and
+      // is stopped only when the next line presents (or the conversation clears).
+      onSkip: "ring",
+      play: (id, onEnded) => {
+        const asset = VOICE[id];
+        if (!asset) {
+          onEnded(); // unknown id → don't gate (degrade gracefully)
+          return { stop() {}, pause() {}, resume() {} };
+        }
+        // `onEnd` releases the auto-advance gate the instant the clip finishes.
+        const h = audio.play(asset.path, { channel: "voice", onEnd: onEnded });
+        return {
+          stop: () => h.stop(),
+          pause: () => (h.paused = true), // P pauses the conversation → pauses the voice
+          resume: () => (h.paused = false),
+        };
+      },
     });
     const transcript = new TranscriptChannel();
 
@@ -1293,6 +1295,8 @@ async function main(): Promise<void> {
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
+  // A dedicated "voice" channel for Sage's clips (own volume, mute, pause).
+  engine.use(new AudioPlugin({ channels: { voice: { volume: 1 } } }));
 
   await engine.start();
   await engine.scenes.push(new RoomScene());

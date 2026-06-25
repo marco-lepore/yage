@@ -847,12 +847,10 @@ import { createVoiceChannel } from "@yagejs-addons/dialogue";
 
 const voice = createVoiceChannel({
   play: (id, onEnded) => {
-    const sound = audio.play(id, { onEnd: onEnded });   // call onEnded on NATURAL end
-    return {
-      stop: () => sound.stop(),
-      pause: () => sound.pause(),     // optional — pause/resume degrade to no-ops
-      resume: () => sound.resume(),
-    };
+    // Map the line's voice id → a preloaded clip. `@yagejs/audio`'s `onEnd` fires
+    // onEnded on natural completion (not on stop()); pause/resume is `h.paused`.
+    const h = audio.play(clips[id], { channel: "voice", onEnd: onEnded });
+    return { stop: () => h.stop(), pause: () => (h.paused = true), resume: () => (h.paused = false) };
   },
   onSkip: "cut",                 // "cut" (default): skipping the line stops the clip and
                                  // releases the gate. "ring": let it play out.
@@ -872,6 +870,9 @@ already been superseded (the next line started) can't ungate the new line, and t
 optional **`livenessMs`** cap force-releases the gate (and reports through
 `onError`) if a clip's `onEnded` never arrives — so a wedged audio host can't
 soft-lock the conversation.
+
+The `dialogue-addon` example wires exactly this over `@yagejs/audio` — one NPC's
+lines play as real (synthesized) voice clips, gating auto-advance until each finishes.
 
 ### A shop channel: rules in, consequences out
 

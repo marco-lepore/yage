@@ -644,11 +644,12 @@ advance is never gated (a player can always mash forward). A channel without
 import { createVoiceChannel } from "@yagejs-addons/dialogue";
 
 const voice = createVoiceChannel({
-  // The addon owns NO audio — wire `play` over @yagejs/audio in the game. Start the
-  // clip for the line's `voice` id; call onEnded when it finishes NATURALLY.
+  // The addon owns NO audio — wire `play` over @yagejs/audio in the game. Map the
+  // line's voice id → a preloaded clip; @yagejs/audio's `onEnd` fires onEnded on
+  // NATURAL completion (not on stop()). Pause/resume is the handle's `paused` setter.
   play: (id, onEnded) => {
-    const sound = audio.play(id, { onEnd: onEnded });
-    return { stop: () => sound.stop(), pause: () => sound.pause(), resume: () => sound.resume() };
+    const h = audio.play(clips[id], { channel: "voice", onEnd: onEnded });
+    return { stop: () => h.stop(), pause: () => (h.paused = true), resume: () => (h.paused = false) };
   },
   onSkip: "cut",                  // "cut" (default) stops + releases on skip; "ring" plays out
   pauseWithConversation: true,    // default: pause the clip when the conversation pauses
