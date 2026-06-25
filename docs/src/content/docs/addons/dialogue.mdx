@@ -776,6 +776,151 @@ createMixedDialogue(theme, {
 // createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(layout, { layer, width }) });
 ```
 
+## Extra channels: voice-over, shops, and camera FX
+
+The four built-in channels (text, choices, avatar, chrome) cover presentation. For
+everything **else** a conversation should reach into — a voice clip, a shop that
+reacts to a `buy` command, a camera shake, a history log — the host **registers** an
+extra channel. It's the open-ended companion to the trio, and entirely additive:
+the built-ins are untouched.
+
+A `DialogueExtraChannel` has **only optional methods**, so a one-purpose channel
+implements just what it cares about:
+
+```ts
+import type { DialogueExtraChannel } from "@yagejs-addons/dialogue";
+
+const historyLog: DialogueExtraChannel = {
+  // Fires for each say line once it's fully revealed. A shop would implement
+  // `command`; a camera-shake channel `command` + `update`; voice the lot.
+  revealComplete: (line) => log.push(line.text.runs.map((r) => r.text).join("")),
+};
+```
+
+Register it on the controller — that mounts it (if it needs the scene), wires it
+into the conversation stream, and hands back a disposer:
+
+```ts
+const off = controller.addChannel(historyLog);
+// ...later, to remove it:
+off();
+
+// Or pre-wire a bundle at construction (a factory can include a voice channel):
+new DialogueController({ ...createBoxDialogue(theme), channels: [voice] });
+```
+
+The session fans its stream — `present`, `command`, `clear`, `setVisible`,
+`setPaused`, `completeReveal`, `update` — out to every registered channel at the
+same moments it drives the built-ins. A few rules keep the seam honest:
+
+- **`present` is fired for say lines only**, never choice prompts, and a channel
+  registered mid-conversation catches up the `setVisible` / `setPaused` levers but
+  is **not** replayed the current line (which would restart a clip).
+- **Consequences out, one signal in.** A channel changes game state through
+  `ctx.setVar` and reads it back through the host-held `handle.getVars()` — never
+  through the session. The only value it hands back is `isRevealComplete()` (below).
+- **A throwing channel can't break the conversation** — each call is wrapped and
+  routed to the session's `onError`. The trusted built-ins stay unwrapped.
+- A channel that needs the scene also implements `Mountable` (`mount(scene)` /
+  `dispose()`, exported from the package root). The controller mounts it on add and
+  disposes it on destroy. A pure observer (voice, a shop) skips `Mountable`.
+
+### Gating auto-advance (`max(clipEnd, revealEnd)`)
+
+A channel may implement `isRevealComplete()` to **gate auto-advance**. The
+auto-advance clock is *armed* the moment the **text** finishes revealing, but it
+only *counts down* once the text **and every registered gater** report complete. So
+a voice line that runs longer than its typewriter holds the line until the clip
+ends — `max(clipEnd, revealEnd)` — with no duration arithmetic anywhere. A **manual**
+advance is never gated (a player can always press forward), and a channel that omits
+`isRevealComplete` never blocks.
+
+### Voice-over with `createVoiceChannel`
+
+Voice-over is a gating channel you get for free. The addon owns **no audio** — you
+hand it a `play` function wired over [`@yagejs/audio`](/packages/audio/) (or any
+player). It starts the clip for a line's `voice` id and gates auto-advance until the
+clip ends:
+
+```ts
+import { createVoiceChannel } from "@yagejs-addons/dialogue";
+
+const voice = createVoiceChannel({
+  play: (id, onEnded) => {
+    // Map the line's voice id → a preloaded clip. `@yagejs/audio`'s `onEnd` fires
+    // onEnded on natural completion (not on stop()); pause/resume is `h.paused`.
+    const h = audio.play(clips[id], { channel: "voice", onEnd: onEnded });
+    return { stop: () => h.stop(), pause: () => (h.paused = true), resume: () => (h.paused = false) };
+  },
+  onSkip: "cut",                 // "cut" (default): skipping the line stops the clip and
+                                 // releases the gate. "ring": let it play out.
+  pauseWithConversation: true,   // default: pause the clip whenever the conversation pauses
+  livenessMs: 30_000,            // optional safety cap (see below)
+});
+controller.addChannel(voice);
+```
+
+```ts
+// A line with a voice id:
+{ kind: "say", speaker: "guard", text: "Halt! Who goes there?", voice: "vo_guard_halt" }
+```
+
+It's hardened against two real failure modes: a late `onEnded` from a clip that's
+already been superseded (the next line started) can't ungate the new line, and the
+optional **`livenessMs`** cap force-releases the gate (and reports through
+`onError`) if a clip's `onEnded` never arrives — so a wedged audio host can't
+soft-lock the conversation.
+
+The `dialogue-addon` example wires exactly this over `@yagejs/audio` — one NPC's
+lines play as real (synthesized) voice clips, gating auto-advance until each finishes.
+
+### A shop channel: rules in, consequences out
+
+A channel sees every non-built-in command, so a shop can grant the purchase and the
+host reads the result back through the play handle:
+
+```ts
+controller.addChannel({
+  command(cmd, ctx) {
+    if (cmd.type !== "buy") return;
+    ctx.setVar(`owns_${cmd.item}`, true);     // the consequence (write-only ctx)
+  },
+});
+
+const handle = controller.play(shopScript);   // a step fires { type: "buy", item: "sword" }
+handle?.getVars();                             // → { owns_sword: true }
+```
+
+The `buy` command still needs a registered handler (or `fallbackCommand`) to pass
+validation; the channel layers its consequence on top of the command pipeline.
+
+### A camera-effects channel
+
+Because a channel receives commands, a `{ type: "shake" }` step drives a camera
+effect with zero addon change:
+
+```ts
+controller.addChannel({
+  command: (cmd) => {
+    if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8));
+  },
+});
+// script: { kind: "command", commands: [{ type: "shake", power: 12 }] }
+```
+
+:::note
+An **inline** `[shake/]` marker — firing mid-line at a character offset as the text
+reveals — depends on the reveal-event feature, which is not shipped yet. The
+command-step path above works today.
+:::
+
+### Save / restore
+
+Restoring a save mid-line **re-presents** the current line, so a channel's
+`present()` fires again. `createVoiceChannel` stops any active clip at the start of
+`present`, so a restore restarts the line's clip cleanly. (Save/load itself is
+deferred to v1.1 — nothing to build for it now.)
+
 ## Input
 
 The controller attaches a `KeyboardInputBinding` by default. Swap or compose it:
