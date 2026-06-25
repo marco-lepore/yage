@@ -77,6 +77,10 @@ export class AudioManager {
     result.once("end", cleanup);
     result.once("stop", cleanup);
 
+    // Caller-supplied natural-completion hook (e.g. gating dialogue auto-advance
+    // on a voice clip). Fires on `end` only — not on `stop()`.
+    if (options?.onEnd) result.once("end", options.onEnd);
+
     // Apply channel mute/pause state to new handle
     if (channel.muted) {
       handle.muted = true;

@@ -272,6 +272,24 @@ describe("AudioManager", () => {
     });
   });
 
+  describe("onEnd option", () => {
+    it("calls onEnd once when the sound finishes (its end event)", () => {
+      const onEnd = vi.fn();
+      manager.play("test", { onEnd });
+      const inst = mockSound._instances.get("test")!;
+      expect(onEnd).not.toHaveBeenCalled();
+      inst._emit("end");
+      expect(onEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT call onEnd when the sound is stopped", () => {
+      const onEnd = vi.fn();
+      const handle = manager.play("test", { onEnd });
+      handle.stop(); // emits the instance's `stop` event, not `end`
+      expect(onEnd).not.toHaveBeenCalled();
+    });
+  });
+
   describe("new handle inherits channel state", () => {
     it("applies channel mute to new handles", () => {
       manager.muteChannel("sfx");
