@@ -539,7 +539,12 @@ export class DialogueSession {
     } catch (error) {
       this.opts.onError?.("dialogue: channel setPaused() failed", error);
     }
+    // Idempotent: a second call no-ops (so a host that disposes twice can't
+    // double-`dispose()` the channel — the splice already no-ops on re-call).
+    let disposed = false;
     return () => {
+      if (disposed) return;
+      disposed = true;
       const i = this.extras.indexOf(ch);
       if (i >= 0) this.extras.splice(i, 1);
       try {

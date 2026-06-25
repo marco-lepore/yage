@@ -370,6 +370,9 @@ describe("DialogueSession — extra channels", () => {
     dispose();
     expect(disposed).toBe(1);
 
+    dispose(); // idempotent — a second call must not double-dispose
+    expect(disposed).toBe(1);
+
     session.play(oneLine); // re-play → the disposed channel is gone
     expect(presents).toBe(1);
   });
