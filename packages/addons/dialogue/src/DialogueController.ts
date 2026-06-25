@@ -19,6 +19,7 @@ import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
   type CommandHandler,
+  type DialogueExtraChannel,
   type DialogueFunction,
   type DialogueHandle,
   type DialoguePlayOptions,
@@ -31,6 +32,7 @@ import {
 import type {
   ChromePresenter,
   ChoicePresenter,
+  Mountable,
   TextPresenter,
 } from "./chrome/DialogueUiAdapter.js";
 import type { AvatarPresenter } from "./avatar/AvatarPresenter.js";
@@ -79,6 +81,15 @@ export interface DialogueControllerOptions<TStorage extends VariableStorage = Va
   readonly fallbackCommand?: CommandHandler | undefined;
   /** Device → session binding. Omit for the default keyboard binding. */
   readonly input?: InputBinding;
+  /**
+   * Extra channels registered on the session at mount (Voice / Shop /
+   * CameraEffects / History) — the open-ended companion to the presenter trio.
+   * Each is wired via {@link DialogueController.addChannel}; one that also
+   * implements {@link Mountable} (it needs the scene) is mounted in `onAdd` and
+   * disposed in `onDestroy`. A factory bundle can pre-wire e.g. a voice channel
+   * here; a game can also add one live with {@link DialogueController.addChannel}.
+   */
+  readonly channels?: readonly DialogueExtraChannel[] | undefined;
   /** Called once when a conversation ends (in addition to the scene event). */
   readonly onEnded?: () => void;
 }
@@ -106,6 +117,10 @@ export class DialogueController<
   /** Hidden. Mirrors the session's hide so a `setHidden` issued before the
    *  component was added isn't lost — it's re-applied once the session exists. */
   private hidden = false;
+  /** Disposers for every registered extra channel (ctor `channels` + live
+   *  `addChannel`). `onDestroy` runs them all — each idempotent — to unregister
+   *  and dispose (unmounting the Mountable ones). */
+  private readonly channelDisposers = new Set<() => void>();
 
   constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
@@ -179,14 +194,22 @@ export class DialogueController<
     // controller-only and read live in update().
     if (this.paused) this.session.setPaused(true);
     if (this.hidden) this.session.setHidden(true);
+
+    // Register any pre-wired extra channels (a factory bundle can include a
+    // voice channel). Same path as a live addChannel: mount the scene-needing
+    // ones, hand each to the session, and track its disposer for onDestroy.
+    for (const ch of this.opts.channels ?? []) this.addChannel(ch);
   }
 
   onDestroy(): void {
     this.destroyed = true;
     // Stop first: bumps the session generation so an in-flight blocking-command
     // continuation bails instead of presenting onto presenters we're about to
-    // dispose; also clears visuals while they're still valid.
+    // dispose; also clears visuals (and fans clear() to the extras) while valid.
     this.session?.stop();
+    // Tear down every registered extra channel — unregister + dispose, which
+    // unmounts the Mountable ones. A snapshot copy: each disposer mutates the set.
+    for (const dispose of [...this.channelDisposers]) dispose();
     this.binding.dispose?.();
     this.opts.text.dispose();
     this.opts.choices.dispose();
@@ -232,6 +255,53 @@ export class DialogueController<
   /** Abandon the current conversation and reset to idle. */
   stop(): void {
     this.session?.stop();
+  }
+
+  /**
+   * Register an extra channel live — Voice / Shop / CameraEffects / History.
+   * Mounts it if it needs the scene ({@link Mountable}), hands it to the session
+   * (where it joins the cross-cutting stream and can gate auto-advance), and
+   * returns a disposer that unregisters + disposes it. The `channels` ctor option
+   * registers a bundle the same way at mount. Returns a no-op disposer if the
+   * controller was destroyed; **throws** if called before the component is added
+   * to an entity (use the `channels` ctor option to pre-wire a channel) — mirrors
+   * {@link play}.
+   */
+  addChannel(ch: DialogueExtraChannel): () => void {
+    if (this.destroyed) {
+      this.logger?.warn(
+        "dialogue",
+        "DialogueController.addChannel() ignored: the component has been removed/destroyed.",
+      );
+      return () => {};
+    }
+    // Before onAdd there is no session/scene to mount onto — and no Logger yet
+    // (it's captured in onAdd), so a warn here couldn't surface. Throw loudly like
+    // play() does, and point at the `channels` ctor option (the pre-onAdd path).
+    if (!this.session) {
+      throw new Error(
+        "DialogueController.addChannel() called before the component was added to an entity (onAdd has not run yet). Use the `channels` constructor option to pre-wire a channel.",
+      );
+    }
+    if (isMountable(ch)) {
+      try {
+        ch.mount(this.scene);
+      } catch (error) {
+        this.logger?.warn(
+          "dialogue",
+          `extra channel mount() failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    const unregister = this.session.addChannel(ch);
+    const dispose = (): void => {
+      if (!this.channelDisposers.delete(dispose)) return; // idempotent
+      unregister(); // splices the session's extras + calls ch.dispose?.()
+    };
+    this.channelDisposers.add(dispose);
+    return dispose;
   }
 
   /** Fast-forward the current section to the next choice or the end. */
@@ -324,4 +394,13 @@ export class DialogueController<
     this.session?.update(dt);
     if (this.inputEnabled && !this.paused) this.binding.poll();
   }
+}
+
+/** Whether an extra channel also needs the scene — it implements {@link Mountable}
+ *  (a `mount(scene)`), beyond the `DialogueExtraChannel` hooks. A plain observer
+ *  (Voice / Shop) has no `mount`. */
+function isMountable(
+  ch: DialogueExtraChannel,
+): ch is DialogueExtraChannel & Mountable {
+  return typeof (ch as { mount?: unknown }).mount === "function";
 }

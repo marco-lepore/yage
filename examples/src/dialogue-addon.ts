@@ -1,9 +1,11 @@
 /**
  * @yagejs-addons/dialogue — a walkable town that drives the game-state model.
  *
- * Zero bundled assets: the town, the player, and the NPCs are all Graphics; the
- * dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text). The
- * level is wider than the canvas, so a **follow camera** scrolls as you walk.
+ * Zero bundled ART assets: the town, the player, and the NPCs are all Graphics;
+ * the dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text).
+ * The one bundled asset is Sage's voice-over — real synthesized speech under
+ * `public/assets/voice/` (see the voice channel below). The level is wider than
+ * the canvas, so a **follow camera** scrolls as you walk.
  *
  * The interactive controller installs a `VariableStorage` ONCE, then every NPC's
  * `play(script)` is content-only and shares it:
@@ -41,6 +43,9 @@
  *                         walkable area).
  *   • Sage (bubble)     — no `view` hint: the default route floats him in a
  *                         bubble because he has a registered actor (speaker-aware).
+ *                         He's also the **voiced** NPC: each line carries a `voice`
+ *                         id played as a real clip over `@yagejs/audio`, gating
+ *                         auto-advance until the voice finishes.
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
  *                         (a second controller kept alive but input-disabled via
  *                         `setInputEnabled(false)` — the focus seam).
@@ -56,6 +61,20 @@
  * intact behind a dim overlay — `setPaused`) and **H** hides the dialogue UI
  * mid-line, restoring it at the same reveal point (`setHidden`). The
  * **Font** button swaps every presenter to a baked bitmap font and back.
+ *
+ * Two **registered channels** ride alongside the built-in presenter trio — the
+ * open-ended extensibility seam, each added with zero addon change via the
+ * controller's `channels` option:
+ *   • a built-in `createVoiceChannel` voice-over — reads Sage's per-line `voice`
+ *     id and plays it over `@yagejs/audio` (a "voice" channel). It **gates
+ *     auto-advance until the clip ends** (so with **V** on, Sage waits for his own
+ *     voice — `max(clipEnd, revealEnd)`), **P** pauses the clip with the
+ *     conversation, and the gate releases via `@yagejs/audio`'s `onEnd` (no
+ *     polling). With `onSkip: "ring"`, completing the typewriter does NOT cut the
+ *     voice — it's stopped only when you move to the next line.
+ *   • a custom `TranscriptChannel` — a `Mountable` observer implementing only
+ *     `present`, logging each line the moment it appears (no waiting for the
+ *     typewriter) to a small semi-opaque HUD panel; a channel that gates nothing.
  *
  * Eight scripts live in plain **YAML data files** under `./dialogue/` (a designer
  * edits them without touching code), imported via Vite's `?raw` suffix and parsed
@@ -89,7 +108,9 @@ import {
   type LayerDef,
 } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
+import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import {
+  createVoiceChannel,
   DialogueController,
   DialogueLineEvent,
   DialogueChoiceShownEvent,
@@ -101,8 +122,11 @@ import {
   loadCompact,
   MemoryVariableStorage,
   type CommandHandler,
+  type DialogueExtraChannel,
   type DialogueFunction,
   type DialogueScript,
+  type Mountable,
+  type PresentedLine,
   type VariableStorage,
 } from "@yagejs-addons/dialogue";
 // YAML authoring lives behind the `/yaml` subpath so non-YAML games don't bundle
@@ -709,6 +733,97 @@ class ChoiceTimer extends Component {
   }
 }
 
+// ── extra channels: a built-in voice-over + a custom transcript ────────────────
+//
+// Channels a host *registers* on the conversation, alongside the built-in
+// presenter trio (text / choices / avatar / chrome). They're wired through the
+// controller's `channels` option below. The addon owns no audio and no transcript
+// UI — these are the GAME's, added with zero addon change.
+
+/** Sage's voice clips — real synthesized speech (macOS `say`, the Daniel voice),
+ *  preloaded by the scene. The map turns each opaque `voice` id (authored in the
+ *  YAML) into its clip; a host maps voice ids to assets exactly like this. */
+const VOICE: Record<string, ReturnType<typeof sound>> = {
+  vo_sage_ramble: sound("/assets/voice/sage_ramble.mp3"),
+  vo_sage_controls: sound("/assets/voice/sage_controls.mp3"),
+  vo_sage_gate: sound("/assets/voice/sage_gate.mp3"),
+  vo_sage_bye: sound("/assets/voice/sage_bye.mp3"),
+};
+
+// The voice channel's host half is wired inline in `onEnter` (it just plays the
+// line's clip over @yagejs/audio); see `createVoiceChannel({ play })` below.
+
+/**
+ * A CUSTOM extra channel — the "another channel" a game adds with zero addon
+ * change. It implements ONLY `present` (a pure observer: it never gates
+ * auto-advance and hands the session nothing back), logging each line the moment
+ * it APPEARS (not waiting for the typewriter) to a small semi-opaque HUD panel. It
+ * also implements {@link Mountable}, so the controller mounts it on the scene in
+ * `onAdd` and disposes it in `onDestroy`, exactly like a presenter.
+ */
+class TranscriptChannel implements DialogueExtraChannel, Mountable {
+  private static readonly MAX = 3;
+  private static readonly W = 286; // panel width
+  private static readonly PAD = 8;
+  private static readonly ROW = 16; // line height
+  private readonly lines: string[] = [];
+  private bg: Entity | undefined;
+  private textEntity: Entity | undefined;
+  private panel: TextComponent | undefined;
+
+  mount(scene: Scene): void {
+    const { W, PAD, ROW, MAX } = TranscriptChannel;
+    const h = PAD * 2 + ROW * MAX;
+    // Top-left, under the gold/items line: clear of the bottom box AND the speech
+    // bubbles (which float over the centre/right NPCs).
+    const x = 12;
+    const y = 52;
+    // A semi-opaque backing panel keeps the log legible over the playfield.
+    this.bg = scene.spawn("transcript-bg");
+    this.bg.add(new Transform({ position: new Vec2(x, y) }));
+    this.bg.add(
+      new GraphicsComponent({ layer: HUD_LAYER }).draw((g) => {
+        g.roundRect(0, 0, W, h, 6)
+          .fill({ color: 0x0a0c16, alpha: 0.6 })
+          .stroke({ color: 0x2a3146, width: 1, alpha: 0.8 });
+      }),
+    );
+    // Text on top — spawned after the panel, so it renders above it in the layer.
+    this.textEntity = scene.spawn("transcript-text");
+    this.textEntity.add(new Transform({ position: new Vec2(x + PAD, y + PAD) }));
+    this.panel = this.textEntity.add(
+      new TextComponent({
+        text: "",
+        style: { fontSize: 11, fill: 0xaab2c6, fontFamily: "sans-serif", lineHeight: ROW },
+        layer: HUD_LAYER,
+        anchor: { x: 0, y: 0 },
+      }),
+    );
+  }
+
+  dispose(): void {
+    this.bg?.destroy();
+    this.textEntity?.destroy();
+    this.bg = undefined;
+    this.textEntity = undefined;
+    this.panel = undefined;
+  }
+
+  /** Fires when a say line is PRESENTED — logged at once, not on reveal. */
+  present(line: PresentedLine): void {
+    const body = line.text.runs.map((r) => r.text).join("");
+    const who = line.speaker?.name ? `${line.speaker.name}: ` : "";
+    this.lines.push(this.clip(`${who}${body}`, 42));
+    if (this.lines.length > TranscriptChannel.MAX) this.lines.shift();
+    this.panel?.setText(this.lines.join("\n"));
+  }
+
+  /** Clip a row to a single line. */
+  private clip(s: string, n: number): string {
+    return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
+  }
+}
+
 // ── theme presets (cycled by the "Theme" button) ─────────────────────────────
 
 /** A canvas-drawn nine-slice frame (a coloured `border`-px ring around a fill)
@@ -840,6 +955,8 @@ const THEME_PRESETS: readonly ThemePreset[] = [
 class RoomScene extends Scene {
   readonly name = "dialogue-addon";
   readonly layers = LAYERS;
+  /** Preload Sage's voice clips so `audio.play` resolves them synchronously. */
+  readonly preload = Object.values(VOICE);
 
   /** `themeBuild` picks the look (cycled by the Theme button); `bitmapFont` (the
    *  Font button) layers a baked atlas on top. Both rebuild the scene. */
@@ -980,6 +1097,34 @@ class RoomScene extends Scene {
     const host = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
     const hud = host.add(new Hud(() => state.gold, () => [...state.inventory]));
+
+    // Two registered extra channels (the open-ended companion to the trio):
+    //  • a BUILT-IN voice-over channel — plays each line's `voice` clip over
+    //    @yagejs/audio and gates auto-advance until it ends; and
+    //  • a CUSTOM transcript channel — a pure observer logging lines as they appear.
+    // Both ride the controller's `channels` option and need zero addon change.
+    const audio = this.context.resolve(AudioManagerKey);
+    const voice = createVoiceChannel({
+      // `ring`: completing the typewriter doesn't cut the voice — it plays on, and
+      // is stopped only when the next line presents (or the conversation clears).
+      onSkip: "ring",
+      play: (id, onEnded) => {
+        const asset = VOICE[id];
+        if (!asset) {
+          onEnded(); // unknown id → don't gate (degrade gracefully)
+          return { stop() {}, pause() {}, resume() {} };
+        }
+        // `onEnd` releases the auto-advance gate the instant the clip finishes.
+        const h = audio.play(asset.path, { channel: "voice", onEnd: onEnded });
+        return {
+          stop: () => h.stop(),
+          pause: () => (h.paused = true), // P pauses the conversation → pauses the voice
+          resume: () => (h.paused = false),
+        };
+      },
+    });
+    const transcript = new TranscriptChannel();
+
     const interactive = host.add(
       new DialogueController({
         ...bundle,
@@ -987,6 +1132,7 @@ class RoomScene extends Scene {
         functions,
         commands,
         input: fullControls(bundle.choices, { skipHoldMs: SKIP_HOLD_MS }),
+        channels: [voice, transcript],
       }),
     );
     hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE_MS : null);
@@ -1149,6 +1295,8 @@ async function main(): Promise<void> {
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
+  // A dedicated "voice" channel for Sage's clips (own volume, mute, pause).
+  engine.use(new AudioPlugin({ channels: { voice: { volume: 1 } } }));
 
   await engine.start();
   await engine.scenes.push(new RoomScene());

@@ -18,6 +18,7 @@
  */
 
 import { loadScript } from "./formats/canonical.js";
+import type { DialogueExtraChannel } from "./channels/types.js";
 import { createScope, evalCondition, type EvalScope } from "./expr.js";
 import { IdentityI18n, type I18nAdapter } from "./i18n.js";
 import { parseMarkup, stripMarkup } from "./markup.js";
@@ -360,6 +361,14 @@ export class DialogueSession {
   /** Plain (speaker, text) of the line on screen — for the reveal-completed
    *  event, which fires after `present` has discarded the resolved string. */
   private currentLine: { speaker?: string | undefined; text: string } | undefined;
+  /** The full {@link PresentedLine} on screen — handed to an extra channel's
+   *  `revealComplete` (the session discards the local `line` after present). */
+  private currentPresented: PresentedLine | undefined;
+
+  /** Host-registered extra channels (Voice / Shop / CameraEffects / History).
+   *  The session fans its cross-cutting stream to these alongside the typed trio
+   *  and folds their `isRevealComplete()` into the auto-advance gate. */
+  private readonly extras: DialogueExtraChannel[] = [];
 
   constructor(
     private readonly channels: DialogueChannels,
@@ -507,6 +516,45 @@ export class DialogueSession {
     return this.mode === "choosing";
   }
 
+  /**
+   * Register an extra channel (Voice / Shop / CameraEffects / History) — the
+   * open-ended companion to the built-in trio. It receives the cross-cutting
+   * stream (`present` / `command` / `clear` / `setVisible` / `setPaused` /
+   * `completeReveal` / `update`) and can gate auto-advance via
+   * `isRevealComplete()`. Returns a disposer that unregisters **and** disposes
+   * it. On register the channel catches up the current `setVisible` / `setPaused`
+   * lever state ONLY — no content replay (replaying `present` would re-trigger a
+   * voice clip). Safe to call mid-conversation.
+   */
+  addChannel(ch: DialogueExtraChannel): () => void {
+    this.extras.push(ch);
+    // Catch up the host-level levers so a mid-line registration matches state.
+    try {
+      ch.setVisible?.(!this.hidden);
+    } catch (error) {
+      this.opts.onError?.("dialogue: channel setVisible() failed", error);
+    }
+    try {
+      ch.setPaused?.(this.paused);
+    } catch (error) {
+      this.opts.onError?.("dialogue: channel setPaused() failed", error);
+    }
+    // Idempotent: a second call no-ops (so a host that disposes twice can't
+    // double-`dispose()` the channel — the splice already no-ops on re-call).
+    let disposed = false;
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      const i = this.extras.indexOf(ch);
+      if (i >= 0) this.extras.splice(i, 1);
+      try {
+        ch.dispose?.();
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel dispose() failed", error);
+      }
+    };
+  }
+
   // ── lifecycle levers ──────────────────────────────────────────────────
 
   /**
@@ -537,6 +585,14 @@ export class DialogueSession {
    */
   setPaused(paused: boolean): void {
     this.paused = paused;
+    // A voice channel pauses its clip here; a CameraEffects channel freezes.
+    for (const ch of this.extras) {
+      try {
+        ch.setPaused?.(paused);
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel setPaused() failed", error);
+      }
+    }
   }
 
   /** True while the conversation is frozen via {@link setPaused}. */
@@ -560,6 +616,15 @@ export class DialogueSession {
     this.channels.choices.setVisible(shown && choosing);
     this.channels.chrome?.setVisible(shown && (saying || (choosing && this.choiceShowsChrome)));
     this.channels.avatar?.setVisible?.(shown && (saying || choosing));
+    // Extras track the host-hidden lever directly (they aren't mode-bound
+    // content): the whole UI shown/hidden, not per-line visibility.
+    for (const ch of this.extras) {
+      try {
+        ch.setVisible?.(shown);
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel setVisible() failed", error);
+      }
+    }
   }
 
   /** Abandon the current conversation and reset to idle (clears all visuals).
@@ -577,6 +642,7 @@ export class DialogueSession {
     this.afterRevealFired = false;
     this.confirming = false;
     this.currentLine = undefined;
+    this.currentPresented = undefined;
     this.choiceShowsChrome = false;
     this.choiceShowsBody = false;
     this.channels.text.clear();
@@ -587,6 +653,16 @@ export class DialogueSession {
     this.channels.avatar?.setSpeaker(undefined);
     this.channels.avatar?.setSpeaking(false);
     this.channels.avatar?.present?.(undefined); // clear any line-driven avatar + its inset
+    // Per-conversation reset for the extras (a voice channel stops its clip).
+    // clear(), NOT dispose() — extras survive across plays; they're disposed only
+    // by the addChannel disposer / controller onDestroy.
+    for (const ch of this.extras) {
+      try {
+        ch.clear?.();
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel clear() failed", error);
+      }
+    }
     // Honest hide of every channel (idle mode → nothing shown), preserving the
     // host-hidden lever. Replaces the old setNameplate(undefined) covert hide-all.
     this.applyVisibility();
@@ -601,8 +677,15 @@ export class DialogueSession {
     this.channels.text.update(dt);
     this.channels.chrome?.update(dt);
     this.channels.avatar?.update(dt);
+    for (const ch of this.extras) {
+      try {
+        ch.update?.(dt);
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel update() failed", error);
+      }
+    }
     if (!this.runner || this.mode !== "saying") return;
-    if (this.autoTimer !== undefined && this.channels.text.isRevealComplete()) {
+    if (this.autoTimer !== undefined && this.allRevealsComplete()) {
       this.autoTimer -= dt;
       // Consume the timer only when advance() can actually act — a blocking
       // line-command (or an in-flight advance) would silently refuse it, and
@@ -625,6 +708,22 @@ export class DialogueSession {
   }
 
   /**
+   * The auto-advance gate: the text reveal AND every registered extra channel
+   * that *gates* (implements `isRevealComplete`) report complete. The clock is
+   * armed on the text reveal alone (see `handleRevealComplete`/`setAutoAdvance`)
+   * but only counts down once this is true — so a voice clip outlasting the
+   * typewriter holds the line for `max(clipEnd, revealEnd)` with no duration
+   * plumbing. A channel without the method never gates (a pure observer).
+   */
+  private allRevealsComplete(): boolean {
+    if (!this.channels.text.isRevealComplete()) return false;
+    for (const ch of this.extras) {
+      if (ch.isRevealComplete && !ch.isRevealComplete()) return false;
+    }
+    return true;
+  }
+
+  /**
    * The storage read view for `{token}` interpolation at *this* present-time.
    * Materialized per evaluation so an earlier command's `set` shows up on a
    * later line; already-shown lines never re-render.
@@ -640,8 +739,18 @@ export class DialogueSession {
     if (this.paused) return; // frozen: input is inert
     if (this.lineBlocked || this.advancing) return; // a line-command is in flight
     if (this.mode === "saying") {
-      if (this.channels.text.isRevealing()) this.channels.text.completeReveal();
-      else void this.advanceLine();
+      if (this.channels.text.isRevealing()) {
+        this.channels.text.completeReveal();
+        // The player skipped the typewriter — let extras cut in step (a voice
+        // channel stops/rings its clip per its onSkip policy).
+        for (const ch of this.extras) {
+          try {
+            ch.completeReveal?.();
+          } catch (error) {
+            this.opts.onError?.("dialogue: channel completeReveal() failed", error);
+          }
+        }
+      } else void this.advanceLine();
     } else if (this.mode === "choosing") {
       this.confirm();
     }
@@ -681,6 +790,16 @@ export class DialogueSession {
     if (this.paused) return; // frozen: input is inert
     if (this.mode !== "saying" || this.lineBlocked || this.advancing) return;
     this.opts.onSkipUsed?.({ scriptId: this.scriptId });
+    // The player fast-forwarded the section — cut extras in step. Done here (not
+    // only at the next present) so a skip landing on a choice / the end, where no
+    // present supersedes the clip, still cuts a voice channel immediately.
+    for (const ch of this.extras) {
+      try {
+        ch.completeReveal?.();
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel completeReveal() failed", error);
+      }
+    }
     void this.skipLine();
   }
 
@@ -925,6 +1044,19 @@ export class DialogueSession {
     this.channels.chrome?.present?.(line);
     this.channels.text.present(line);
 
+    // Fan the say line out to the extras — a voice channel reads `line.voice`
+    // and starts its clip here; a history channel buffers it. After the text
+    // channel, before the line's `show` commands. NOT done for choice prompts
+    // (only say lines carry a voice / a reveal to gate on).
+    this.currentPresented = line;
+    for (const ch of this.extras) {
+      try {
+        ch.present?.(line);
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel present() failed", error);
+      }
+    }
+
     const plain = stripMarkup(resolved);
     this.currentLine = { speaker: this.speakerName(speaker, view), text: plain };
     this.opts.onLine?.({ speaker: this.currentLine.speaker, text: plain });
@@ -1042,6 +1174,16 @@ export class DialogueSession {
     // blocking command pause the runner until the game finishes handling it.
     // validateBinding guarantees a handler/fallback exists for every command type.
     this.opts.onCommand?.(command, ctx);
+    // Fan the command out to extras (a shop channel reacts to `buy` here). Same
+    // exclusions as the host hook: `expression` early-returned above, `set` is
+    // runner-owned and never reaches this handler.
+    for (const ch of this.extras) {
+      try {
+        ch.command?.(command, ctx);
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel command() failed", error);
+      }
+    }
     const handler = this.commands[command.type] ?? this.fallbackCommand;
     return handler?.(command, ctx);
   }
@@ -1052,6 +1194,7 @@ export class DialogueSession {
     this.resolved = [];
     this.confirming = false;
     this.currentLine = undefined;
+    this.currentPresented = undefined;
     this.choiceShowsChrome = false;
     this.choiceShowsBody = false;
     this.channels.text.clear();
@@ -1062,6 +1205,14 @@ export class DialogueSession {
     this.channels.avatar?.setSpeaker(undefined);
     this.channels.avatar?.setSpeaking(false);
     this.channels.avatar?.present?.(undefined); // clear any line-driven avatar + its inset
+    // Per-conversation reset for the extras (clear, not dispose — see stop()).
+    for (const ch of this.extras) {
+      try {
+        ch.clear?.();
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel clear() failed", error);
+      }
+    }
     // Honest hide of every channel (ended mode → nothing shown), preserving the
     // host-hidden lever. Replaces the old setNameplate(undefined) covert hide-all.
     this.applyVisibility();
@@ -1086,6 +1237,19 @@ export class DialogueSession {
     // The "typing finished" hook — after afterReveal commands settle, as the
     // continue caret appears. Carries the line so a game needn't track it.
     if (this.currentLine) this.opts.onRevealCompleted?.(this.currentLine);
+    // Fan reveal-completion out to extras (a history channel commits the line
+    // once it's fully shown). The PresentedLine, since the plain currentLine
+    // dropped the markup/meta.
+    const presented = this.currentPresented;
+    if (presented) {
+      for (const ch of this.extras) {
+        try {
+          ch.revealComplete?.(presented);
+        } catch (error) {
+          this.opts.onError?.("dialogue: channel revealComplete() failed", error);
+        }
+      }
+    }
     // Per-line `autoAdvanceMs` wins; otherwise fall back to the session default.
     const auto = this.saying?.autoAdvanceMs ?? this.autoAdvanceDefault;
     if (auto !== null) this.autoTimer = auto;
