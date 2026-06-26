@@ -201,6 +201,17 @@ describe("parseMarkup — self-closing markers", () => {
     expect(r.markers).toEqual([{ atChar: 1, name: "shake", props: {} }]);
   });
 
+  it("a props-bearing tag with NO trailing slash stays literal (forgotten `/`)", () => {
+    // `[shake amount=3]` must NOT open an effect span / drop the props — it's a
+    // mistyped marker, kept as visible literal text (the pre-marker behavior).
+    const r = parseMarkup("Hi [shake amount=3]there");
+    expect(r.runs).toEqual([run("Hi [shake amount=3]there")]);
+    expect(r.runs.every((x) => x.style.effect === undefined)).toBe(true);
+    expect(r.markers).toEqual([]);
+    // …and the choice-attr guard doesn't flag it (it isn't dropped).
+    expect(firstUnknownTag("Hi [shake amount=3]there")).toBeNull();
+  });
+
   it("stripMarkup drops markers entirely (no text)", () => {
     expect(stripMarkup("a[sfx=ding/]b")).toBe("ab");
   });

@@ -119,9 +119,6 @@ export class LineReveal {
   update(dt: number): void {
     const parsed = this.parsed;
     if (!parsed || this.done) return;
-    // Fire any marker the cursor has already reached BEFORE we decide to hold on
-    // a pause — so a marker stays drained during the hold (it fired on entry).
-    this.drainMarkers();
     if (this.pauseTimer > 0) {
       this.pauseTimer = Math.max(0, this.pauseTimer - dt);
     } else {
@@ -132,8 +129,11 @@ export class LineReveal {
         this.cursor = Math.min(parsed.length, this.cursor + (rate * dt) / 1000);
         // Clamp back to any pause the advance overshot FIRST, then emit a tick
         // per actually-revealed grapheme and drain markers up to the (clamped)
-        // cursor — so a marker co-located with the pause fires on hold-entry and
-        // glyphs past the beat don't tick early.
+        // cursor. Draining AFTER the clamp is what makes a marker co-located with
+        // a [pause] fire on hold-ENTRY: the cursor sits exactly at the offset, so
+        // the marker drains this frame, while glyphs past the beat don't tick
+        // early. No advance happens during a hold, so no marker becomes eligible
+        // until it ends — this (with begin()/complete()) is the only drain needed.
         this.triggerPauseAt(this.cursor);
         this.emitTicks();
         this.drainMarkers();

@@ -170,6 +170,14 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     ]);
     // No glyph past the pause ticked early, either.
     expect(tickIndexes(beats())).toEqual([0, 1]);
+
+    // During the hold the cursor is frozen — no further ticks/markers emitted.
+    reveal.update(400); // sit out the pause (no advance this frame)
+    expect(tickIndexes(beats())).toEqual([0, 1]);
+    expect(markerBeats(beats())).toHaveLength(1);
+    // After the hold, ticks resume at the next index with no gap or repeat.
+    reveal.update(2); // reveal c, d
+    expect(tickIndexes(beats())).toEqual([0, 1, 2, 3]);
   });
 
   it("complete() drains pending markers (viaSkip=true) but emits no pending ticks", () => {

@@ -24,6 +24,7 @@ import type {
 } from "../chrome/DialogueUiAdapter.js";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { RevealBeat } from "../core/LineReveal.js";
+import type { MarkerToken } from "../core/types.js";
 import type { ChoiceContext, PresentedChoice, PresentedLine, SpeakerView } from "../core/session.js";
 
 const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
@@ -263,6 +264,7 @@ class RecAvatar implements AvatarPresenter {
   speakers = 0;
   expressions = 0;
   speakings = 0;
+  markers: MarkerToken[] = [];
   visibles: boolean[] = [];
   mount(): void {}
   dispose(): void {}
@@ -274,6 +276,9 @@ class RecAvatar implements AvatarPresenter {
   }
   setSpeaking(): void {
     this.speakings++;
+  }
+  marker(marker: MarkerToken): void {
+    this.markers.push(marker);
   }
   present(line: PresentedLine | undefined): void {
     this.presents.push(line);
@@ -307,7 +312,7 @@ describe("composite matrix — avatar routes + forwards", () => {
     expect(bubble.lastPresent).toBeUndefined();
   });
 
-  it("forwards setSpeaker / setExpression / setSpeaking / setVisible to both", () => {
+  it("forwards setSpeaker / setExpression / setSpeaking / setVisible / marker to both", () => {
     const box = new RecAvatar();
     const bubble = new RecAvatar();
     const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
@@ -315,11 +320,14 @@ describe("composite matrix — avatar routes + forwards", () => {
     c.setExpression(undefined);
     c.setSpeaking(true);
     c.setVisible(false);
+    const marker: MarkerToken = { atChar: 3, name: "expression", props: { expression: "happy" } };
+    c.marker(marker); // an inline reveal marker reaches both sides
     for (const a of [box, bubble]) {
       expect(a.speakers).toBe(1);
       expect(a.expressions).toBe(1);
       expect(a.speakings).toBe(1);
       expect(a.visibles).toEqual([false]);
+      expect(a.markers).toEqual([marker]);
     }
   });
 

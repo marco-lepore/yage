@@ -209,6 +209,17 @@ export function parseMarkup(input: string): ParsedText {
     const propsStr = m[4];
     const selfClosing = m[5] === "/";
 
+    // A tag carrying `key=value` props but no trailing `/` is neither a styled
+    // span (those take no props) nor a self-closing marker (those require the
+    // `/`). Emit it verbatim as literal text — restoring the pre-marker behavior
+    // where a space-bearing `[name k=v]` simply didn't match the tag regex, so a
+    // forgotten slash shows up as visible text instead of silently opening an
+    // effect span over the rest of the line and dropping the props.
+    if (propsStr && !selfClosing) {
+      buffer += m[0];
+      continue;
+    }
+
     if (closing) {
       flush();
       // Pop the innermost frame opened by a tag of this name (BBCode rule);
@@ -255,10 +266,13 @@ export function parseMarkup(input: string): ParsedText {
 }
 
 /**
- * Build a marker's props. The Yarn self-named shortcut `[name=val/]` (group 3)
- * yields `{ [name]: val }`; explicit space-separated `key=value` pairs (group 4)
- * merge on top. `[name/]` → `{}`. Keys lower-cased (like tag names); values kept
- * verbatim.
+ * Build a marker's props. Two authoring forms, naturally mutually exclusive: the
+ * Yarn self-named shortcut `[name=val/]` (group 3) yields `{ [name]: val }`, and
+ * explicit space-separated `key=value` pairs (group 4) yield `{ k: v, … }`. They
+ * don't combine — group 3's value match (`[^\]/]*`) greedily eats any trailing
+ * ` k=v`, so the `[name=val k=v/]` mix lands wholly in the shortcut value rather
+ * than splitting. `[name/]` → `{}`. Keys lower-cased (like tag names); values
+ * kept verbatim. (The explicit-props-merge is defensive and a no-op in practice.)
  */
 function markerProps(
   name: string,
@@ -366,9 +380,11 @@ export function firstUnknownTag(input: string): string | null {
     for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
     lastIndex = TAG_RE.lastIndex;
     if (backslashes % 2 === 1) continue;
-    // A self-closing marker (`[sfx=ding/]`) is parsed into a MarkerToken, not
-    // dropped — so it is recognized, never a typo'd choice attribute.
-    if (m[5] === "/") continue;
+    // Neither of these is dropped by parseMarkup, so neither is a typo'd choice
+    // attribute: a self-closing marker (`[sfx=ding/]`, `m[5]`) parses to a
+    // MarkerToken, and a props-bearing tag with no slash (`[name k=v]`, `m[4]`)
+    // is kept as literal text. Only a bare unknown tag is silently dropped.
+    if (m[4] || m[5] === "/") continue;
     const name = m[2]!.toLowerCase();
     if (!KNOWN_TAGS.has(name)) return name;
   }
