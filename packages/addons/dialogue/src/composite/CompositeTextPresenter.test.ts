@@ -29,6 +29,7 @@ class StubView implements TextPresenter {
   setRevealListener(l: (() => void) | undefined): void {
     this.revealListener = l;
   }
+  setBeatListener(): void {}
   update(): void {}
   clear(): void {
     this.cleared++;
@@ -40,7 +41,7 @@ class StubView implements TextPresenter {
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
 
 const line = (view?: string, withSpeaker = false): PresentedLine => ({
-  text: { runs: [], pauses: [], length: 0 },
+  text: { runs: [], pauses: [], markers: [], length: 0 },
   speed: 1,
   ...(view !== undefined ? { view } : {}),
   ...(withSpeaker ? { speaker } : {}),

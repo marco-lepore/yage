@@ -20,7 +20,7 @@ const CFG: BoxLayoutConfig = {
 };
 
 const line = (meta?: Record<string, unknown>): PresentedLine => ({
-  text: { runs: [], pauses: [], length: 0 },
+  text: { runs: [], pauses: [], markers: [], length: 0 },
   speed: 1,
   ...(meta ? { meta } : {}),
 });

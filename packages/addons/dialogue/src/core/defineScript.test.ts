@@ -24,6 +24,7 @@ class NoopText implements TextChannel {
   setRevealListener(l: (() => void) | undefined): void {
     this.revealListener = l;
   }
+  setBeatListener(): void {}
 }
 class NoopChoices implements ChoiceChannel {
   present(): void {}

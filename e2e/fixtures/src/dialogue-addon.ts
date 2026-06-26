@@ -33,6 +33,7 @@ import {
   DialogueChoiceShownEvent,
   DialogueChoiceMadeEvent,
   DialogueSelectionChangedEvent,
+  DialogueRevealMarkerEvent,
   DialogueEndedEvent,
   type DialogueScript,
 } from "@yagejs-addons/dialogue";
@@ -207,6 +208,24 @@ const AVATAR_SCRIPT: DialogueScript = {
   },
 };
 
+/** Inline reveal markers + per-grapheme ticks. The line carries a self-closing
+ *  `[sfx=knock/]` marker; as it types, ticks fire per grapheme and the marker
+ *  fires at its offset → `DialogueRevealMarkerEvent` (the probe records both). */
+const MARKER_SCRIPT: DialogueScript = {
+  id: "marker",
+  start: "m",
+  speakers: { narrator: { id: "narrator", name: "Narrator", color: 0xffd866 } },
+  nodes: {
+    m: {
+      id: "m",
+      steps: [
+        { kind: "say", speaker: "narrator", text: "Knock[sfx=knock/] knock." },
+        { kind: "end" },
+      ],
+    },
+  },
+};
+
 /** Per-line `meta.chrome` swaps the box frame style — a named textured
  *  nine-slice, the built-in invisible "none", then back to the drawn default. */
 const TEXTURED_SCRIPT: DialogueScript = {
@@ -256,10 +275,22 @@ class DialogueProbe extends Component {
   shownOptions: readonly string[] = [];
   /** Original option index of the last selection-changed event (nav/hover). */
   selectionIndex = -1;
+  /** Name of the last inline reveal marker that fired (DialogueRevealMarkerEvent). */
+  markerName = "";
+  markerCount = 0;
+  /** Count of per-grapheme typewriter ticks (controller onRevealTick callback). */
+  tickCount = 0;
 
   onLine(text: string): void {
     this.lastLine = text;
     this.lineCount++;
+  }
+  onMarker(name: string): void {
+    this.markerName = name;
+    this.markerCount++;
+  }
+  onTick(): void {
+    this.tickCount++;
   }
   onChoiceShown(options: readonly string[]): void {
     this.choosing = true;
@@ -288,6 +319,9 @@ class DialogueProbe extends Component {
     ended: boolean;
     shownOptions: readonly string[];
     selectionIndex: number;
+    markerName: string;
+    markerCount: number;
+    tickCount: number;
     boxVisible: boolean;
     bubbleVisible: boolean;
     texturedVisible: boolean;
@@ -305,6 +339,9 @@ class DialogueProbe extends Component {
       ended: this.ended,
       shownOptions: this.shownOptions,
       selectionIndex: this.selectionIndex,
+      markerName: this.markerName,
+      markerCount: this.markerCount,
+      tickCount: this.tickCount,
       // Nameplate Y tracks the box frame top — moves with meta.position.
       nameY: this.entityY("dlg-name"),
       // Body-text X tracks the (possibly avatar-inset) text region (reflow).
@@ -408,12 +445,17 @@ class DialogueScene extends Scene {
 
     const host: Entity = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
-    const controller = host.add(new DialogueController(bundle));
+    // onRevealTick is a controller callback (NOT an entity event — it fires per
+    // grapheme); the marker is an entity event the probe listens for below.
+    const controller = host.add(
+      new DialogueController({ ...bundle, onRevealTick: () => probe.onTick() }),
+    );
 
     host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
     host.on(DialogueChoiceShownEvent, (e) => probe.onChoiceShown(e.options));
     host.on(DialogueSelectionChangedEvent, (e) => probe.onSelectionChanged(e.index));
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoiceMade(e.text));
+    host.on(DialogueRevealMarkerEvent, (e) => probe.onMarker(e.marker.name));
     host.on(DialogueEndedEvent, () => probe.onEnded());
 
     controller.play(SCRIPT);
@@ -430,6 +472,7 @@ class DialogueScene extends Scene {
       textured: TEXTURED_SCRIPT,
       position: POSITION_SCRIPT,
       avatar: AVATAR_SCRIPT,
+      marker: MARKER_SCRIPT,
     };
   }
 

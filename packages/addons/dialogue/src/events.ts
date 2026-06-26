@@ -1,5 +1,5 @@
 import { defineEvent } from "@yagejs/core";
-import type { Command, RunMode } from "./core/types.js";
+import type { Command, MarkerToken, RunMode } from "./core/types.js";
 
 /**
  * Lifecycle + command events the {@link DialogueController} emits from its host
@@ -59,3 +59,18 @@ export const DialogueSkipUsedEvent = defineEvent<{ scriptId: string }>(
 export const DialogueAutoAdvanceEvent = defineEvent<{ scriptId: string }>(
   "dialogue:auto-advance",
 );
+
+/**
+ * An inline `[name k=v/]` reveal marker reached its char offset during the
+ * current line's typewriter — the game hook for positional effects
+ * (`[sfx=ding/]` → play a sound). `viaSkip` is true when a skip / complete
+ * drained it, so a loud one-shot can be suppressed. The avatar channel handles
+ * `[expression=…/]` itself; the addon name-matches no marker, so every other
+ * name flows here opaquely. Per-grapheme typewriter *ticks* are deliberately NOT
+ * an event (they fire hundreds of times per line) — wire `onRevealTick` on the
+ * controller instead.
+ */
+export const DialogueRevealMarkerEvent = defineEvent<{
+  marker: MarkerToken;
+  viaSkip: boolean;
+}>("dialogue:reveal-marker");

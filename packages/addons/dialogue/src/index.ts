@@ -39,6 +39,7 @@ export {
   DialogueCommandEvent,
   DialogueEndedEvent,
   DialogueRevealCompletedEvent,
+  DialogueRevealMarkerEvent,
   DialogueSelectionChangedEvent,
   DialogueSkipUsedEvent,
   DialogueAutoAdvanceEvent,

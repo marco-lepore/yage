@@ -9,19 +9,38 @@
  *   [wave]animated[/wave] [shake]..[/shake] [pulse]..[/pulse] [rainbow]..[/rainbow]
  *   [speed=2]faster[/speed]  [speed=0.5]slower[/speed]
  *   [pause=400]                (zero-width reveal pause, in ms)
+ *   [sfx=ding/]                (self-closing reveal MARKER — fires at its offset)
+ *   [expression=happy/]        (self-named shortcut → props { expression: happy })
+ *   [shake amount=3/]          (marker with explicit key=value props)
  *   \[literal bracket]
  *
  * Tags nest; styles inherit down the stack (so [b][color=red]X[/color][/b]
- * is bold+red). Unknown tags are dropped silently (forward-compatible).
+ * is bold+red). A trailing `/` makes a tag **self-closing** — a zero-width
+ * {@link MarkerToken} that fires as a reveal event at its char offset, distinct
+ * from the styling/`pause` tags (which never end in `/`). Unknown *non*-self-
+ * closing tags are dropped silently (forward-compatible); translators MUST keep
+ * the self-closing `/` so the marker survives a re-order.
  */
 
 import type {
   EffectId,
+  MarkerToken,
   ParsedText,
   PauseToken,
   RunStyle,
   TextRun,
 } from "./types.js";
+
+/** The empty parse result (no runs / pauses / markers, length 0). Shared so a
+ *  presenter or the session can present a contentless line (an empty choice
+ *  prompt) without re-constructing the shape — and without forgetting the now-
+ *  required `markers` field. */
+export const EMPTY_PARSED: ParsedText = Object.freeze({
+  runs: Object.freeze([]) as readonly TextRun[],
+  pauses: Object.freeze([]) as readonly PauseToken[],
+  markers: Object.freeze([]) as readonly MarkerToken[],
+  length: 0,
+});
 
 const NAMED_COLORS: Record<string, number> = {
   black: 0x000000,
@@ -116,7 +135,13 @@ function stripUndefined(s: Partial<RunStyle>): Partial<RunStyle> {
   return out;
 }
 
-const TAG_RE = /\[(\/?)([a-zA-Z]+)(?:=([^\]]*))?\]/g;
+// Groups: 1 closing `/`, 2 name, 3 `=value` (styled spans / `pause` / a marker's
+// self-named shortcut — the shared `=`-separator, left as-is), 4 marker-only
+// space-separated `key=value` props, 5 a trailing `/` marking a self-closing
+// MARKER. Values/props exclude `/` so the trailing slash is unambiguous. Groups
+// 4–5 are additive: an existing styled/`pause`/closing tag matches them empty.
+const TAG_RE =
+  /\[(\/?)([a-zA-Z]+)(?:=([^\]/]*))?((?:\s+[A-Za-z_][\w-]*=[^\s\]/]*)*)(\/)?\]/g;
 
 /**
  * Grapheme segmenter for all reveal bookkeeping. Pixi's `SplitText` /
@@ -143,6 +168,7 @@ export function splitGraphemes(text: string): string[] {
 export function parseMarkup(input: string): ParsedText {
   const runs: TextRun[] = [];
   const pauses: PauseToken[] = [];
+  const markers: MarkerToken[] = [];
   const stack: Frame[] = [];
   let charCount = 0;
   let buffer = "";
@@ -180,6 +206,8 @@ export function parseMarkup(input: string): ParsedText {
     const closing = m[1] === "/";
     const name = m[2]!.toLowerCase();
     const arg = m[3];
+    const propsStr = m[4];
+    const selfClosing = m[5] === "/";
 
     if (closing) {
       flush();
@@ -191,6 +219,15 @@ export function parseMarkup(input: string): ParsedText {
           break;
         }
       }
+      continue;
+    }
+
+    // Self-closing MARKER (`[name k=v/]`): a zero-width reveal event at this char
+    // offset. The trailing `/` distinguishes it from a styling tag of the same
+    // name (`[shake]…[/shake]` is an effect span; `[shake/]` is a marker).
+    if (selfClosing) {
+      flush();
+      markers.push({ atChar: charCount, name, props: markerProps(name, arg, propsStr) });
       continue;
     }
 
@@ -214,7 +251,29 @@ export function parseMarkup(input: string): ParsedText {
   buffer += unescape(input.slice(lastIndex));
   flush();
 
-  return { runs: mergeAdjacent(runs), pauses, length: charCount };
+  return { runs: mergeAdjacent(runs), pauses, markers, length: charCount };
+}
+
+/**
+ * Build a marker's props. The Yarn self-named shortcut `[name=val/]` (group 3)
+ * yields `{ [name]: val }`; explicit space-separated `key=value` pairs (group 4)
+ * merge on top. `[name/]` → `{}`. Keys lower-cased (like tag names); values kept
+ * verbatim.
+ */
+function markerProps(
+  name: string,
+  arg: string | undefined,
+  propsStr: string | undefined,
+): Record<string, string> {
+  const props: Record<string, string> = {};
+  if (arg !== undefined) props[name] = arg;
+  if (propsStr) {
+    for (const tok of propsStr.trim().split(/\s+/)) {
+      const eq = tok.indexOf("=");
+      if (eq > 0) props[tok.slice(0, eq).toLowerCase()] = tok.slice(eq + 1);
+    }
+  }
+  return props;
 }
 
 function styleForTag(name: string, arg?: string): Partial<RunStyle> | null {
@@ -307,6 +366,9 @@ export function firstUnknownTag(input: string): string | null {
     for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
     lastIndex = TAG_RE.lastIndex;
     if (backslashes % 2 === 1) continue;
+    // A self-closing marker (`[sfx=ding/]`) is parsed into a MarkerToken, not
+    // dropped — so it is recognized, never a typo'd choice attribute.
+    if (m[5] === "/") continue;
     const name = m[2]!.toLowerCase();
     if (!KNOWN_TAGS.has(name)) return name;
   }

@@ -20,7 +20,21 @@
  * `PauseToken.atChar`) and never re-segments.
  */
 
-import type { ParsedText } from "./types.js";
+import type { MarkerToken, ParsedText } from "./types.js";
+
+/**
+ * A reveal-time beat the clock emits as the cursor advances: a per-grapheme
+ * `tick` (one per revealed grapheme — raw, including whitespace; the host
+ * filters) and a `marker` when the cursor reaches a {@link MarkerToken}'s
+ * offset. `viaSkip` is true when the marker was drained by {@link
+ * LineReveal.complete} (a skip / fast-forward) rather than reached during normal
+ * typing, so a host can suppress a loud one-shot that only fired because of a
+ * skip click. Ticks are NOT emitted on a skip (replaying dozens at once would
+ * machine-gun).
+ */
+export type RevealBeat =
+  | { readonly kind: "tick"; readonly index: number }
+  | { readonly kind: "marker"; readonly marker: MarkerToken; readonly viaSkip: boolean };
 
 export class LineReveal {
   private parsed: ParsedText | undefined;
@@ -28,6 +42,10 @@ export class LineReveal {
   private cursor = 0;
   private pauseTimer = 0;
   private pauseIdx = 0;
+  /** Next un-fired marker in `parsed.markers` (drains in char order). */
+  private markerIdx = 0;
+  /** Graphemes already ticked (so each grapheme ticks exactly once). */
+  private tickCount = 0;
   /** Hold-to-fast-forward rate (1 = normal). */
   private speedMul = 1;
   /** Per-line `say.speed` multiplier (1 = base). */
@@ -38,6 +56,9 @@ export class LineReveal {
    *  wires this to the session-owned reveal listener (NOT a public mutable
    *  field a game could clobber). */
   private onComplete: (() => void) | undefined;
+  /** Per-grapheme ticks + inline markers, wired by the consuming view to the
+   *  session-owned beat listener (like {@link onComplete}, never a public field). */
+  private onBeat: ((beat: RevealBeat) => void) | undefined;
 
   /** @param charsPerSec base reveal rate (graphemes/second), scaled by the
    *   hold, per-line, and per-run multipliers. */
@@ -53,6 +74,15 @@ export class LineReveal {
   }
 
   /**
+   * Register the reveal-beat listener — per-grapheme ticks and inline markers,
+   * in char order, the moment the cursor reaches each. Session-owned (set once,
+   * like {@link setCompletionListener}); pass `undefined` to clear.
+   */
+  setBeatListener(listener: ((beat: RevealBeat) => void) | undefined): void {
+    this.onBeat = listener;
+  }
+
+  /**
    * Start revealing a new line. Resets the cursor, pauses, and the hold
    * multiplier (a stale fast-forward must not leak into the next line — an
    * active binding re-asserts it on its next poll). An **empty** line
@@ -65,9 +95,16 @@ export class LineReveal {
     this.cursor = 0;
     this.pauseTimer = 0;
     this.pauseIdx = 0;
+    this.markerIdx = 0;
+    this.tickCount = 0;
     this.speedMul = 1;
     this.done = parsed.length === 0;
     this.completed = false;
+    // Fire any offset-0 markers synchronously (a marker-only / length-0 line, or
+    // a line that opens with a marker) — the beat listener is session-owned and
+    // wired before begin(), like the completion listener. Markers come before the
+    // empty-line completion: they're part of the line, completion ends it.
+    this.drainMarkers();
     if (this.done) this.finish();
   }
 
@@ -82,6 +119,9 @@ export class LineReveal {
   update(dt: number): void {
     const parsed = this.parsed;
     if (!parsed || this.done) return;
+    // Fire any marker the cursor has already reached BEFORE we decide to hold on
+    // a pause — so a marker stays drained during the hold (it fired on entry).
+    this.drainMarkers();
     if (this.pauseTimer > 0) {
       this.pauseTimer = Math.max(0, this.pauseTimer - dt);
     } else {
@@ -90,19 +130,30 @@ export class LineReveal {
         const rate =
           this.charsPerSec * this.speedMul * this.lineSpeed * this.runSpeedAt(this.cursor);
         this.cursor = Math.min(parsed.length, this.cursor + (rate * dt) / 1000);
+        // Clamp back to any pause the advance overshot FIRST, then emit a tick
+        // per actually-revealed grapheme and drain markers up to the (clamped)
+        // cursor — so a marker co-located with the pause fires on hold-entry and
+        // glyphs past the beat don't tick early.
         this.triggerPauseAt(this.cursor);
+        this.emitTicks();
+        this.drainMarkers();
       }
     }
     if (this.cursor >= parsed.length && this.pauseTimer === 0) this.finish();
   }
 
-  /** Reveal everything now (skip-to-end on a click/tap). Fires completion. */
+  /** Reveal everything now (skip-to-end on a click/tap). Drains any not-yet-fired
+   *  markers in order so their consequences still happen (`viaSkip=true` lets a
+   *  host suppress a loud one-shot) but DISCARDS pending ticks — replaying dozens
+   *  of typewriter blips at once would machine-gun. Fires completion. */
   complete(): void {
     const parsed = this.parsed;
     if (!parsed) return;
     this.cursor = parsed.length;
     this.pauseTimer = 0;
     this.pauseIdx = parsed.pauses.length;
+    this.drainMarkers(true);
+    this.tickCount = parsed.length; // swallow the pending ticks
     this.finish();
   }
 
@@ -127,6 +178,30 @@ export class LineReveal {
     if (this.completed) return;
     this.completed = true;
     this.onComplete?.();
+  }
+
+  /** Fire markers whose offset the cursor has reached, in char order. `viaSkip`
+   *  tags the ones drained by {@link complete}. Monotonic `markerIdx` → each
+   *  fires exactly once. */
+  private drainMarkers(viaSkip = false): void {
+    const markers = this.parsed?.markers;
+    if (!markers) return;
+    while (this.markerIdx < markers.length && this.cursor >= markers[this.markerIdx]!.atChar) {
+      const marker = markers[this.markerIdx]!;
+      this.markerIdx++;
+      this.onBeat?.({ kind: "marker", marker, viaSkip });
+    }
+  }
+
+  /** Emit a `tick` for each grapheme newly revealed since the last call (raw —
+   *  no whitespace test; the host filters). Multiple in order on a large-dt
+   *  frame; `tickCount` is monotonic so none repeat. */
+  private emitTicks(): void {
+    const next = Math.floor(this.cursor);
+    for (let i = this.tickCount; i < next; i++) {
+      this.onBeat?.({ kind: "tick", index: i });
+    }
+    this.tickCount = next;
   }
 
   /** Reveal speed multiplier for whichever run the cursor currently sits in. */

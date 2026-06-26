@@ -1,8 +1,10 @@
 export * from "./types.js";
-export { parseMarkup, stripMarkup, splitGraphemes } from "./markup.js";
+export { parseMarkup, stripMarkup, splitGraphemes, EMPTY_PARSED } from "./markup.js";
 // Headless typewriter clock — a custom text presenter reuses it to honour
-// reveal timing / pauses / per-run speed / completion without re-implementing.
+// reveal timing / pauses / per-run speed / completion / reveal beats without
+// re-implementing.
 export { LineReveal } from "./LineReveal.js";
+export type { RevealBeat } from "./LineReveal.js";
 export { loadScript, DialogueScriptError } from "./formats/canonical.js";
 // Compact authoring DSL (`parseCompact` → IR; `loadCompact` → validated IR). It
 // imports only the headless core (no `yaml`, no pixi), so unlike `loadYaml` it

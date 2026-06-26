@@ -15,8 +15,8 @@
 
 import type { Scene } from "@yagejs/core";
 import { actorRegistryFor } from "../actor/index.js";
+import { EMPTY_PARSED } from "../core/markup.js";
 import type { PresentedLine, ChoiceContext } from "../core/session.js";
-import type { ParsedText } from "../core/types.js";
 
 /** Decides which variant a line renders in. Reads `view`/`speaker`/`meta`; a
  *  custom route can key off any of them (e.g. `meta.aside → bubble`). */
@@ -33,8 +33,6 @@ export interface MountRoute {
   /** Bind the scene at mount (idempotent across the three composites). */
   bind(scene: Scene): void;
 }
-
-const EMPTY_TEXT: ParsedText = { runs: [], pauses: [], length: 0 };
 
 /**
  * The default route decision as a pure function of the line + an actor lookup
@@ -88,7 +86,7 @@ export function choiceAsLine(context: ChoiceContext | undefined): PresentedLine 
     view: context?.view,
     speaker: context?.speaker,
     meta: context?.meta,
-    text: context?.prompt ?? EMPTY_TEXT,
+    text: context?.prompt ?? EMPTY_PARSED,
     speed: 1,
   };
 }

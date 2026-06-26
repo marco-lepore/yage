@@ -21,7 +21,8 @@ import { loadScript } from "./formats/canonical.js";
 import type { DialogueExtraChannel } from "./channels/types.js";
 import { createScope, evalCondition, type EvalScope } from "./expr.js";
 import { IdentityI18n, type I18nAdapter } from "./i18n.js";
-import { parseMarkup, stripMarkup } from "./markup.js";
+import { EMPTY_PARSED, parseMarkup, stripMarkup } from "./markup.js";
+import type { RevealBeat } from "./LineReveal.js";
 import { DialogueRunner, type ResolvedChoice } from "./runner.js";
 import { MemoryVariableStorage, materialize } from "./vars.js";
 import { analyzeScript, validatePlay, DialoguePlayError } from "./validate.js";
@@ -37,6 +38,7 @@ import type {
   DialogueHandle,
   DialoguePlayOptions,
   DialogueScript,
+  MarkerToken,
   ParsedText,
   RunMode,
   SayStep,
@@ -122,6 +124,15 @@ export interface TextChannel {
    * footgun). Pass `undefined` to clear.
    */
   setRevealListener(listener: (() => void) | undefined): void;
+  /**
+   * Register the reveal-beat listener — per-grapheme typewriter ticks and inline
+   * `[name k=v/]` markers, in char order, as the reveal cursor reaches each.
+   * Session-owned like {@link setRevealListener} (registered once in the ctor);
+   * pass `undefined` to clear. A no-typewriter presenter that reveals instantly
+   * may omit beats; the bundled view forwards the headless {@link LineReveal}
+   * clock's beats.
+   */
+  setBeatListener(listener: ((beat: RevealBeat) => void) | undefined): void;
 }
 
 /** Per-choice presentation context, so a choice list can route/anchor the same
@@ -173,6 +184,15 @@ export interface AvatarChannel {
    * avatars (portrait, scene-figure) omit it.
    */
   present?(line: PresentedLine | undefined): void;
+  /**
+   * Optional inline-marker hook (sibling to {@link present} / {@link setVisible}).
+   * The Session fans every `[name k=v/]` reveal marker here so an avatar can
+   * interpret the ones it owns — the bundled portrait/scene presenters read
+   * `[expression=…/]` and call their own `setExpression`. The Session name-matches
+   * NOTHING; an avatar ignores markers it doesn't recognize. `viaSkip` markers
+   * (drained by a skip) arrive here too — the avatar collapses to the last one.
+   */
+  marker?(marker: MarkerToken): void;
   /** Optional visibility gate — a portrait hides during a cutscene; a
    *  scene-figure avatar (a world NPC the game owns) omits it and stays put. */
   setVisible?(visible: boolean): void;
@@ -265,9 +285,9 @@ export interface DialogueSessionOptions {
   readonly onChoiceShown?: (e: { options: readonly string[] }) => void;
   readonly onChoiceMade?: (e: { index: number; text: string }) => void;
   /**
-   * Observation hook fired for every non-built-in command (after `expression`,
-   * never for `set`) — the host forwards it to {@link DialogueCommandEvent}. The
-   * actual *handling* (and any `blocking` await) is the binding's `commands`
+   * Observation hook fired for every non-built-in command (`set` is runner-owned
+   * and never reaches it) — the host forwards it to {@link DialogueCommandEvent}.
+   * The actual *handling* (and any `blocking` await) is the binding's `commands`
    * map / `fallbackCommand`, not this; this returns nothing.
    */
   readonly onCommand?: (command: Command, ctx: CommandContext) => void;
@@ -275,6 +295,23 @@ export interface DialogueSessionOptions {
   /** A line finished its typewriter reveal — the "typing finished" hook
    *  (audio blip, etc.). Plain (markup-stripped) text, like {@link onLine}. */
   readonly onRevealCompleted?: (e: { speaker?: string | undefined; text: string }) => void;
+  /**
+   * Per-grapheme typewriter tick — a direct CALLBACK only (NOT forwarded to an
+   * entity event; it fires hundreds of times per line). `index` is the 0-based
+   * grapheme index just revealed, raw (whitespace included — the host filters if
+   * it only wants a blip on visible glyphs). Wire a typewriter SFX here. Not
+   * fired on a skip / fast-forward (pending ticks are discarded).
+   */
+  readonly onRevealTick?: ((index: number) => void) | undefined;
+  /**
+   * An inline `[name k=v/]` marker reached its char offset during reveal — the
+   * host forwards it to {@link DialogueRevealMarkerEvent}. `viaSkip` is true when
+   * a skip/complete drained it (a host can suppress a loud one-shot that only
+   * fired because the player skipped). The Session name-matches NO marker: the
+   * avatar channel interprets `[expression=…/]` itself; every other name flows
+   * opaquely to the host / registered channels.
+   */
+  readonly onRevealMarker?: (marker: MarkerToken, viaSkip: boolean) => void;
   /** The choice cursor moved — keyboard nav AND pointer hover both funnel here
    *  `index` is the resolved option index, `text` its plain label. */
   readonly onSelectionChanged?: (e: { index: number; text: string }) => void;
@@ -383,6 +420,8 @@ export class DialogueSession {
     // register the reveal seam through a method the Session owns, so a game
     // can't silently clobber it by reassigning a public field.
     this.channels.text.setRevealListener(() => this.handleRevealComplete());
+    // Same ownership for the per-line beat stream (ticks + inline markers).
+    this.channels.text.setBeatListener((beat) => this.handleRevealBeat(beat));
     // Pointer/touch commit from a presenter that owns its own hit-testing.
     // Routes through confirmAt so a tap on a disabled row is refused (it would
     // otherwise commit the previously-highlighted enabled row).
@@ -1088,15 +1127,14 @@ export class DialogueSession {
       speaker: this.speakerView(speaker, view),
       text: step.text
         ? parseMarkup(this.i18n.t(step.key, step.text, view))
-        : { runs: [], pauses: [], length: 0 },
+        : EMPTY_PARSED,
       speed: 1,
       view: step.view,
       meta: step.meta,
     };
 
     // Drive the avatar like a say-line would: the choice's speaker owns the
-    // portrait (a stale say-speaker must not linger through the choice, and an
-    // `expression` command on an option should route to the right face). No
+    // portrait (a stale say-speaker must not linger through the choice). No
     // expression of its own and no talk-state — choices don't reveal.
     this.channels.avatar?.setSpeaker(speaker);
     this.channels.avatar?.setExpression(undefined);
@@ -1163,20 +1201,16 @@ export class DialogueSession {
     command: Command,
     ctx: CommandContext,
   ): void | Promise<void> {
-    // `expression` is a built-in convenience: route it straight to the avatar
-    // so scripts can change a face mid-line without the host wiring anything.
-    if (command.type === "expression" && typeof command.value === "string") {
-      this.channels.avatar?.setExpression(command.value);
-      return;
-    }
     // Observation first (the host emits DialogueCommandEvent); then the binding's
     // handler does the actual work. Returning its (possibly async) result lets a
     // blocking command pause the runner until the game finishes handling it.
     // validateBinding guarantees a handler/fallback exists for every command type.
+    // The Session does NO channel-specific name-matching: a mid-line face change
+    // is the `[expression=…/]` reveal marker (read by the avatar channel), not a
+    // command.
     this.opts.onCommand?.(command, ctx);
-    // Fan the command out to extras (a shop channel reacts to `buy` here). Same
-    // exclusions as the host hook: `expression` early-returned above, `set` is
-    // runner-owned and never reaches this handler.
+    // Fan the command out to extras (a shop channel reacts to `buy` here). `set`
+    // is runner-owned and never reaches this handler.
     for (const ch of this.extras) {
       try {
         ch.command?.(command, ctx);
@@ -1253,6 +1287,30 @@ export class DialogueSession {
     // Per-line `autoAdvanceMs` wins; otherwise fall back to the session default.
     const auto = this.saying?.autoAdvanceMs ?? this.autoAdvanceDefault;
     if (auto !== null) this.autoTimer = auto;
+  }
+
+  /**
+   * Fan one reveal beat out — the per-line typewriter stream. Extras (Voice /
+   * CameraEffects / a typewriter-SFX channel) see the WHOLE stream via
+   * `revealBeat?`. A `tick` then reaches the host's `onRevealTick` callback; a
+   * `marker` reaches the avatar channel (which interprets `[expression=…/]`
+   * itself — the Session name-matches nothing) and the host's `onRevealMarker`.
+   */
+  private handleRevealBeat(beat: RevealBeat): void {
+    for (const ch of this.extras) {
+      try {
+        ch.revealBeat?.(beat);
+      } catch (error) {
+        this.opts.onError?.("dialogue: channel revealBeat() failed", error);
+      }
+    }
+    if (beat.kind === "tick") {
+      this.opts.onRevealTick?.(beat.index);
+      return;
+    }
+    // marker: the avatar reads the names it owns; the host gets every one.
+    this.channels.avatar?.marker?.(beat.marker);
+    this.opts.onRevealMarker?.(beat.marker, beat.viaSkip);
   }
 
   /**

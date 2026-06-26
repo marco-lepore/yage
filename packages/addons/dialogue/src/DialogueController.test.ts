@@ -44,6 +44,7 @@ class StubText implements TextPresenter {
   setSpeedMultiplier(): void {}
   setVisible(): void {}
   setRevealListener(): void {}
+  setBeatListener(): void {}
   update(): void {}
   clear(): void {}
 }
@@ -83,6 +84,7 @@ class DrivableText implements TextPresenter {
   setRevealListener(l: (() => void) | undefined): void {
     this.listener = l;
   }
+  setBeatListener(): void {}
   update(): void {}
   clear(): void {
     this.revealing = false;

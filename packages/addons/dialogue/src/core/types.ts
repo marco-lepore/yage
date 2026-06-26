@@ -351,10 +351,31 @@ export interface PauseToken {
   readonly ms: number;
 }
 
+/**
+ * A self-closing inline marker (`[name k=v/]`) that fires as a **reveal event**
+ * when the typewriter cursor reaches its char offset — the sibling of
+ * {@link PauseToken}, but a one-shot consequence rather than a timing hold. The
+ * canonical use is positional SFX (`[sfx=ding/]`) and a mid-line face change
+ * (`[expression=happy/]`); the addon interprets none of the names (the avatar
+ * channel reads `[expression]`, the host reads the rest). The Yarn self-named
+ * shortcut `[name=val/]` → `props { [name]: val }`.
+ */
+export interface MarkerToken {
+  /** Grapheme index into the flattened text where the marker fires. */
+  readonly atChar: number;
+  /** Marker name (lower-cased), e.g. `expression`, `sfx`, `shake`. */
+  readonly name: string;
+  /** Parsed `key=value` props (all string-valued). `[expression=happy/]` →
+   *  `{ expression: "happy" }` via the self-named shortcut. */
+  readonly props: Readonly<Record<string, string>>;
+}
+
 /** Result of parsing one line's markup. */
 export interface ParsedText {
   readonly runs: readonly TextRun[];
   readonly pauses: readonly PauseToken[];
+  /** Inline reveal markers, in char order. Empty when the line has none. */
+  readonly markers: readonly MarkerToken[];
   /** Total grapheme count across all runs (the reveal denominator). */
   readonly length: number;
 }

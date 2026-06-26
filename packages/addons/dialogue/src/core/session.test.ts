@@ -13,7 +13,8 @@ import type {
   PresentedLine,
   TextChannel,
 } from "./session.js";
-import type { Command, DialogueScript, SpeakerDef } from "./types.js";
+import type { Command, DialogueScript, MarkerToken, SpeakerDef } from "./types.js";
+import type { RevealBeat } from "./LineReveal.js";
 
 /**
  * A controllable text channel. Reveal does NOT advance on its own — a test
@@ -30,6 +31,7 @@ class StubText implements TextChannel {
   visible = false;
   private revealing = false;
   private revealListener?: (() => void) | undefined;
+  private beatListener?: ((beat: RevealBeat) => void) | undefined;
 
   present(line: PresentedLine): void {
     this.presented.push(line);
@@ -59,11 +61,18 @@ class StubText implements TextChannel {
   setRevealListener(listener: (() => void) | undefined): void {
     this.revealListener = listener;
   }
+  setBeatListener(listener: ((beat: RevealBeat) => void) | undefined): void {
+    this.beatListener = listener;
+  }
   /** Test hook: simulate the typewriter finishing the current line. */
   finishReveal(): void {
     if (!this.revealing) return;
     this.revealing = false;
     this.revealListener?.();
+  }
+  /** Test hook: emit a reveal beat (tick/marker) to the Session. */
+  fireBeat(beat: RevealBeat): void {
+    this.beatListener?.(beat);
   }
   get lastText(): string {
     const last = this.presented[this.presented.length - 1];
@@ -111,6 +120,8 @@ class StubAvatar implements AvatarChannel {
   visibles: boolean[] = [];
   /** Line-driven hook: records each present, including the undefined clear. */
   presents: (PresentedLine | undefined)[] = [];
+  /** Raw inline markers the Session fanned in (no name-matching by the Session). */
+  markers: MarkerToken[] = [];
   setSpeaker(speaker: SpeakerDef | undefined): void {
     this.speakers.push(speaker);
   }
@@ -122,6 +133,11 @@ class StubAvatar implements AvatarChannel {
   }
   present(line: PresentedLine | undefined): void {
     this.presents.push(line);
+  }
+  /** Interprets the `[expression=…/]` marker itself, like the bundled presenters. */
+  marker(marker: MarkerToken): void {
+    this.markers.push(marker);
+    if (marker.name === "expression") this.setExpression(marker.props["expression"]);
   }
   setVisible(visible: boolean): void {
     this.visibles.push(visible);
@@ -995,8 +1011,7 @@ describe("DialogueSession — commands by timing", () => {
     expect(h.text.lastText).toBe("two");
   });
 
-  it("routes a built-in `expression` command straight to the avatar", () => {
-    const onCommand = vi.fn();
+  it("no longer treats `expression` as a built-in command — it needs a handler", () => {
     const h = makeHarness();
     const script: DialogueScript = {
       id: "expr",
@@ -1011,11 +1026,88 @@ describe("DialogueSession — commands by timing", () => {
         },
       },
     };
-    // `expression` is a built-in, so no handler is required for it; the fallback
-    // is wired only to prove it is NOT reached.
-    h.session.play(script, { fallbackCommand: onCommand });
+    // The `expression` command was deleted: face changes are SayStep.expression
+    // (initial) + the `[expression=…/]` reveal marker (mid-line). With no handler
+    // wired, `expression` is now an unknown command and play() rejects up front.
+    expect(() => h.session.play(script)).toThrow(DialoguePlayError);
+  });
+
+  it("a script-initial SayStep.expression still drives the avatar face", () => {
+    const h = makeHarness();
+    h.session.play({
+      id: "face",
+      start: "a",
+      nodes: {
+        a: { id: "a", steps: [{ kind: "say", text: "x", expression: "happy" }] },
+      },
+    });
+    // The typed setExpression call on present stays — only the COMMAND is gone.
     expect(h.avatar.expressions).toContain("happy");
-    expect(onCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe("DialogueSession — reveal beats (ticks + markers)", () => {
+  const oneLine: DialogueScript = {
+    id: "one",
+    start: "a",
+    nodes: { a: { id: "a", steps: [{ kind: "say", text: "hello" }] } },
+  };
+
+  it("fans an [expression] marker to the avatar + onRevealMarker, with NO session name-match", () => {
+    const onRevealMarker = vi.fn();
+    const h = makeHarness({ onRevealMarker });
+    h.session.play(oneLine);
+    const marker = { atChar: 0, name: "expression", props: { expression: "happy" } };
+    h.text.fireBeat({ kind: "marker", marker, viaSkip: false });
+    // The avatar got the RAW marker and interpreted it ITSELF — the session never
+    // name-matches; it just hands the marker over.
+    expect(h.avatar.markers).toEqual([marker]);
+    expect(h.avatar.expressions).toContain("happy");
+    // The host event seam fired with the same payload.
+    expect(onRevealMarker).toHaveBeenCalledWith(marker, false);
+  });
+
+  it("an [sfx] marker reaches a registered extra channel + onRevealMarker; the avatar ignores it", () => {
+    const onRevealMarker = vi.fn();
+    const h = makeHarness({ onRevealMarker });
+    const seen: RevealBeat[] = [];
+    h.session.addChannel({ revealBeat: (beat) => seen.push(beat) });
+    h.session.play(oneLine);
+    const before = h.avatar.expressions.length;
+    const marker = { atChar: 1, name: "sfx", props: { sfx: "ding" } };
+    h.text.fireBeat({ kind: "marker", marker, viaSkip: false });
+    expect(seen).toEqual([{ kind: "marker", marker, viaSkip: false }]);
+    expect(onRevealMarker).toHaveBeenCalledWith(marker, false);
+    // The avatar saw it (no session match) but didn't change face — name ≠ expression.
+    expect(h.avatar.markers).toEqual([marker]);
+    expect(h.avatar.expressions.length).toBe(before);
+  });
+
+  it("a tick reaches onRevealTick + an extra's revealBeat, but NOT onRevealMarker", () => {
+    const onRevealTick = vi.fn();
+    const onRevealMarker = vi.fn();
+    const h = makeHarness({ onRevealTick, onRevealMarker });
+    const seen: RevealBeat[] = [];
+    h.session.addChannel({ revealBeat: (beat) => seen.push(beat) });
+    h.session.play(oneLine);
+    h.text.fireBeat({ kind: "tick", index: 3 });
+    expect(onRevealTick).toHaveBeenCalledWith(3);
+    expect(onRevealMarker).not.toHaveBeenCalled();
+    expect(seen).toEqual([{ kind: "tick", index: 3 }]);
+    expect(h.avatar.markers).toEqual([]);
+  });
+
+  it("a throwing extra revealBeat is routed to onError, not the conversation", () => {
+    const onError = vi.fn();
+    const h = makeHarness({ onError });
+    h.session.addChannel({
+      revealBeat: () => {
+        throw new Error("boom");
+      },
+    });
+    h.session.play(oneLine);
+    expect(() => h.text.fireBeat({ kind: "tick", index: 0 })).not.toThrow();
+    expect(onError).toHaveBeenCalled();
   });
 });
 

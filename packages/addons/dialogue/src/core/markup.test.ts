@@ -163,6 +163,61 @@ describe("parseMarkup — grapheme counting (F12)", () => {
   });
 });
 
+describe("parseMarkup — self-closing markers", () => {
+  it("a bare [name/] marker fires at its char offset with empty props", () => {
+    const r = parseMarkup("ab[sfx/]cd");
+    expect(r.runs).toEqual([run("abcd")]); // marker is zero-width
+    expect(r.length).toBe(4);
+    expect(r.markers).toEqual([{ atChar: 2, name: "sfx", props: {} }]);
+  });
+
+  it("the self-named shortcut [name=val/] → props { name: val }", () => {
+    const r = parseMarkup("[expression=happy/]hi");
+    expect(r.markers).toEqual([{ atChar: 0, name: "expression", props: { expression: "happy" } }]);
+    expect(r.runs).toEqual([run("hi")]);
+  });
+
+  it("explicit space-separated key=value props", () => {
+    const r = parseMarkup("x[shake amount=3 speed=2/]y");
+    expect(r.markers).toEqual([
+      { atChar: 1, name: "shake", props: { amount: "3", speed: "2" } },
+    ]);
+  });
+
+  it("records markers at grapheme offsets, alongside pauses, in order", () => {
+    const r = parseMarkup("🔥[sfx=a/]ab[pause=100][expression=sad/]z");
+    expect(r.length).toBe(4); // 🔥 a b z
+    expect(r.markers).toEqual([
+      { atChar: 1, name: "sfx", props: { sfx: "a" } },
+      { atChar: 3, name: "expression", props: { expression: "sad" } },
+    ]);
+    expect(r.pauses).toEqual([{ atChar: 3, ms: 100 }]);
+  });
+
+  it("a marker name shadowing an effect ([shake/]) is a marker, not a span", () => {
+    const r = parseMarkup("a[shake/]b");
+    expect(r.runs).toEqual([run("ab")]); // no effect style applied
+    expect(r.runs.every((x) => x.style.effect === undefined)).toBe(true);
+    expect(r.markers).toEqual([{ atChar: 1, name: "shake", props: {} }]);
+  });
+
+  it("stripMarkup drops markers entirely (no text)", () => {
+    expect(stripMarkup("a[sfx=ding/]b")).toBe("ab");
+  });
+
+  it("leaves styling / pause tags untouched (no marker emitted)", () => {
+    const r = parseMarkup("[b]x[/b][pause=50]y[color=red]z[/color]");
+    expect(r.markers).toEqual([]);
+    expect(r.pauses).toEqual([{ atChar: 1, ms: 50 }]);
+  });
+
+  it("firstUnknownTag does NOT flag a self-closing marker (markup consumes it)", () => {
+    expect(firstUnknownTag("pick [sfx=ding/] this")).toBeNull();
+    // a non-self-closing unknown tag is still flagged
+    expect(firstUnknownTag("[sfx=ding]")).toBe("sfx");
+  });
+});
+
 describe("parseMarkup — term / glossary is REMOVED", () => {
   it("[term]/[gloss] tags are treated as unknown and dropped (text flows through)", () => {
     const r = parseMarkup("a [term=cauldron]cauldron[/term] b");

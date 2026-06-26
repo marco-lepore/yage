@@ -22,7 +22,7 @@ const CFG: BoxLayoutConfig = {
 const BODY_OFFSET = CFG.nameSize + 4; // nameplate band + gap (TEXT_GAP)
 
 const line = (over: Partial<PresentedLine> = {}): PresentedLine => ({
-  text: { runs: [], pauses: [], length: 0 },
+  text: { runs: [], pauses: [], markers: [], length: 0 },
   speed: 1,
   ...over,
 });
