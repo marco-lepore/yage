@@ -90,12 +90,12 @@ describe("SceneFigurePresenter — [expression] marker bridge", () => {
 
     // A mid-line face change — the presenter interprets the marker itself; the
     // session does not name-match.
-    presenter.marker({ atChar: 4, name: "expression", props: { expression: "happy" } });
+    presenter.marker({ kind: "marker", atChar: 4, name: "expression", props: { expression: "happy" } });
     expect(seen).toEqual(["happy"]);
 
     // Any other marker name is ignored (the session fans every name; the presenter
     // only owns `expression`).
-    presenter.marker({ atChar: 6, name: "sfx", props: { sfx: "ding" } });
+    presenter.marker({ kind: "marker", atChar: 6, name: "sfx", props: { sfx: "ding" } });
     expect(seen).toEqual(["happy"]);
   });
 });

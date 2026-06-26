@@ -318,25 +318,34 @@ interpolate; there is no separate i18n `key`). `PresentedChoice` carries
 
 BBCode-ish, survives translation, nests, unknown tags dropped silently:
 `[b]` `[i]` `[color=#ffcc00]`/`[color=gold]` `[wave]` `[shake]` `[pulse]`
-`[rainbow]` `[speed=2]` `[pause=400]` (zero-width ms). `\[` escapes a literal
-bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]` markup were
-intentionally removed — unknown tags drop silently, so old scripts still parse.)
+`[rainbow]` `[speed=2]`. `\[` escapes a literal bracket. (NOTE: ruby/furigana and
+glossary `[term]`/`[gloss]` markup were intentionally removed — unknown tags drop
+silently, so old scripts still parse.)
 
-**Self-closing markers** (a trailing `/`) fire as **reveal events** at their char
-offset instead of styling text: `[sfx=ding/]`, `[expression=happy/]`, `[shake amount=3/]`.
-The self-named shortcut `[name=val/]` → `props { name: val }` (Yarn's rule); explicit
-`[name k=v k2=v2/]` props are space-separated `key=value` (values can't contain `/`).
-Emitted as `MarkerToken { atChar, name, props }` on `ParsedText.markers`. Translators
-**must keep the trailing `/`** so the marker survives a re-order. Unknown *non*-self-
-closing tags still drop silently; a self-closing marker is never dropped. See
-**Reveal events** below for where markers surface.
+**Self-closing tokens** (a trailing `/`) are the reveal-timeline controls — a
+`[pause=600/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
+(`ParsedText.tokens: RevealToken[]`, each `{ kind: "pause" | "marker", atChar, … }`),
+so **source order is drain order**:
+- `[pause=600/]` holds the typewriter 600ms at its offset (the only pause spelling
+  now — a bare `[pause=600]` without the slash is a dropped unknown tag).
+- `[sfx=ding/]`, `[expression=happy/]`, `[shake amount=3/]` fire as **reveal events**.
+  The self-named shortcut `[name=val/]` ≡ `[name name=val/]` (Yarn), so it composes
+  with explicit props: `[shake=500 amount=3/]` → `{ shake: "500", amount: "3" }`.
+  Values/props can't contain whitespace or `/`.
+- `[pause=600/][shake/]` holds **then** fires; `[shake/][pause=600/]` fires **then**
+  holds. The "effect + hold" idiom is just `[shake=500/][pause=500/]` — fire a marker
+  (host plays a 500ms shake), then a 500ms pause holds while it plays. Markers are
+  non-blocking; the pause is the only timing primitive (no combined `[shake hold/]`).
+
+Translators **must keep the trailing `/`** so a token survives a re-order. Unknown
+*non*-self-closing tags still drop silently; a self-closing token is never dropped.
+See **Reveal events** below for where markers surface.
 
 All character counts are **graphemes** (user-perceived characters, via
 `Intl.Segmenter` — the same segmentation pixi's SplitText renders one glyph
-per): `ParsedText.length`, `TextRun.graphemeCount`, `PauseToken.atChar`,
-`MarkerToken.atChar`, and the reveal rate (`charsPerSec` = graphemes/second). An
-emoji, ZWJ sequence, or base+combining-mark cluster counts as 1.
-`splitGraphemes(str)` is exported.
+per): `ParsedText.length`, `TextRun.graphemeCount`, a token's `atChar`, and the
+reveal rate (`charsPerSec` = graphemes/second). An emoji, ZWJ sequence, or
+base+combining-mark cluster counts as 1. `splitGraphemes(str)` is exported.
 
 ### Reveal events (per-grapheme ticks + inline markers)
 
@@ -552,9 +561,11 @@ by speaker id) + `actorRegistryFor(scene)`.
   share one `route: (line) => "box" | "bubble"`. Default = narrator → box; explicit `view`
   wins for a real speaker; else a registered `DialogueActor` → bubble, otherwise
   box. Override in one place via `createMixedDialogue(theme, { route })`.
-- **`LineReveal`** (core, pixi-free): the typewriter clock — grapheme cursor,
-  `[pause]` arming, per-run/line `[speed]`, hold multiplier, fired-once
-  completion. `DialogueTextView` consumes it; a custom presenter reuses it.
+- **`LineReveal`** (core, pixi-free): the typewriter clock — grapheme cursor, the
+  ordered `tokens` drain (a `[pause=N/]` holds, a `[name k=v/]` marker fires a
+  beat), per-run/line `[speed]`, hold multiplier, fired-once completion.
+  `DialogueTextView` consumes it; a custom presenter reuses it (forwards beats via
+  `setBeatListener`).
 
 `DialogueTextView` renders one `SplitTextComponent` per line, maps `LineReveal`'s
 grapheme cursor onto glyph visibility (`chars[i].visible`), and applies per-run

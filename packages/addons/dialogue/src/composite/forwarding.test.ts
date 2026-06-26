@@ -31,11 +31,11 @@ const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
 
 const boxLine = (): PresentedLine => ({
-  text: { runs: [], pauses: [], markers: [], length: 0 },
+  text: { runs: [], tokens: [], length: 0 },
   speed: 1,
 }); // no speaker → box
 const bubbleLine = (): PresentedLine => ({
-  text: { runs: [], pauses: [], markers: [], length: 0 },
+  text: { runs: [], tokens: [], length: 0 },
   speed: 1,
   view: "bubble",
   speaker,
@@ -252,7 +252,7 @@ describe("composite matrix — chrome-specific verbs", () => {
     const bubble = new RecChrome();
     const c = new CompositeChrome(box, bubble);
     c.mount(SCENE);
-    c.present({ text: { runs: [], pauses: [], markers: [], length: 0 }, speed: 1, view: "bubble" });
+    c.present({ text: { runs: [], tokens: [], length: 0 }, speed: 1, view: "bubble" });
     c.setVisible(true);
     expect(box.visible).toBe(true);
     expect(bubble.visible).toBe(false);
@@ -320,7 +320,7 @@ describe("composite matrix — avatar routes + forwards", () => {
     c.setExpression(undefined);
     c.setSpeaking(true);
     c.setVisible(false);
-    const marker: MarkerToken = { atChar: 3, name: "expression", props: { expression: "happy" } };
+    const marker: MarkerToken = { kind: "marker", atChar: 3, name: "expression", props: { expression: "happy" } };
     c.marker(marker); // an inline reveal marker reaches both sides
     for (const a of [box, bubble]) {
       expect(a.speakers).toBe(1);
@@ -338,7 +338,7 @@ describe("composite matrix — avatar routes + forwards", () => {
     const bubble = new RecAvatar();
     const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
     c.mount(scene);
-    c.present({ text: { runs: [], pauses: [], markers: [], length: 0 }, speed: 1, speaker });
+    c.present({ text: { runs: [], tokens: [], length: 0 }, speed: 1, speaker });
     expect(bubble.lastPresent).toBeDefined();
     expect(box.lastPresent).toBeUndefined();
   });
@@ -346,7 +346,7 @@ describe("composite matrix — avatar routes + forwards", () => {
 
 describe("composite matrix — routing: all three agree", () => {
   const registeredLine = (): PresentedLine => ({
-    text: { runs: [], pauses: [], markers: [], length: 0 },
+    text: { runs: [], tokens: [], length: 0 },
     speed: 1,
     speaker, // no view → the registered actor decides
   });
@@ -442,7 +442,7 @@ describe("composite matrix — text reveal seam", () => {
     expect(beats).toEqual([{ kind: "tick", index: 0 }]);
 
     c.present(bubbleLine()); // active = bubble
-    const marker = { atChar: 2, name: "sfx", props: { sfx: "ding" } };
+    const marker: MarkerToken = { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } };
     bubble.fireBeat({ kind: "marker", marker, viaSkip: false });
     box.fireBeat({ kind: "tick", index: 1 }); // now inactive → ignored
     expect(beats).toEqual([

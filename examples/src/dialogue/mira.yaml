@@ -17,7 +17,7 @@ nodes:
         text: "Welcome to town! This box can [wave]wave[/wave] and [shake]shout[/shake]."
       - kind: say
         speaker: mira
-        text: "Timing matters:[pause=400] this part is [speed=0.4]slow[/speed]."
+        text: "Timing matters:[pause=400/] this part is [speed=0.4]slow[/speed]."
       - { kind: end }
   again:
     id: again

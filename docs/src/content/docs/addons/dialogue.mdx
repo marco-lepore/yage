@@ -429,25 +429,35 @@ silently.
 | `[color=#ffcc00]…[/color]` / `[color=gold]…` | colour (hex or named) |
 | `[wave]` `[shake]` `[pulse]` `[rainbow]` | per-glyph animated effects |
 | `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
-| `[pause=400]` | zero-width reveal pause, in ms |
+| `[pause=600/]` | **self-closing** — holds the typewriter 600ms at this offset |
 | `[sfx=ding/]` `[expression=happy/]` `[shake amount=3/]` | **self-closing marker** — a reveal event at this char offset (see below) |
 | `\[` `\]` | a literal bracket |
 
-A tag ending in `/` is a **self-closing marker**: it adds no styling, it fires as
-a reveal event when the typewriter cursor reaches it. The Yarn-style shortcut
-`[name=val/]` becomes `props { name: val }`; explicit props are space-separated
-`key=value` (`[shake amount=3 speed=2/]`). Markup keeps the trailing `/`, so
-**translators must preserve it** for the marker to survive a re-order.
+A tag ending in `/` is a **self-closing reveal token** — a `[pause=N/]` hold or a
+`[name k=v/]` marker. They share one ordered stream (`ParsedText.tokens`), so
+**source order is drain order**: `[pause=600/][shake/]` holds *then* fires, while
+`[shake/][pause=600/]` fires *then* holds. A marker adds no styling — it fires as a
+reveal event when the cursor reaches it. The Yarn-style shortcut `[name=val/]` is
+exactly `[name name=val/]`, so it composes with explicit `key=value` props:
+`[shake=500 amount=3/]` → `props { shake: "500", amount: "3" }` (values can't
+contain whitespace or `/`). Markup keeps the trailing `/`, so **translators must
+preserve it** for a token to survive a re-order. (`[pause=600/]` is the only pause
+spelling — a bare `[pause=600]` without the slash is treated as an unknown tag.)
+
+The **effect + hold** idiom drops out of the two primitives: `[shake=500/][pause=500/]`
+fires a fire-and-forget marker (your host plays a 500ms shake) and then a 500ms pause
+holds the reveal while it plays. There's no combined `[shake hold/]` sugar — markers
+fire and pauses hold; ordering carries the intent.
 
 `parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
 
 Every character count in the parsed result — `ParsedText.length`,
-`TextRun.graphemeCount`, a pause's or marker's `atChar`, and the `charsPerSec`
-reveal rate — is in **graphemes** (user-perceived characters), not UTF-16 code
-units. An emoji like 🔥, a ZWJ sequence like 👩‍🚀, or an accent composed with a
-combining mark counts as one character, matching the glyphs the renderer actually
-draws, so reveal timing and `[pause]` positions stay put in any language.
-`splitGraphemes(str)` exposes the same segmentation for tooling.
+`TextRun.graphemeCount`, a token's `atChar`, and the `charsPerSec` reveal rate —
+is in **graphemes** (user-perceived characters), not UTF-16 code units. An emoji
+like 🔥, a ZWJ sequence like 👩‍🚀, or an accent composed with a combining mark
+counts as one character, matching the glyphs the renderer actually draws, so
+reveal timing and pause positions stay put in any language. `splitGraphemes(str)`
+exposes the same segmentation for tooling.
 
 ### Reveal events: typewriter ticks and inline markers
 
@@ -754,9 +764,10 @@ and the text channel fires its reveal-completed listener **exactly once** per
 line (the Session owns that seam, so there's no public field to clobber).
 
 Reuse `LineReveal` — the headless, pixi-free typewriter clock (grapheme cursor,
-`[pause]` timing, per-run/line `[speed]`, completion) — instead of
-re-implementing reveal timing. A DOM, per-word, or accessibility presenter then
-only maps the grapheme cursor onto its own rendering:
+the ordered `tokens` drain for `[pause=N/]` holds and `[name k=v/]` markers,
+per-run/line `[speed]`, completion) — instead of re-implementing reveal timing. A
+DOM, per-word, or accessibility presenter then only maps the grapheme cursor onto
+its own rendering:
 
 ```ts
 import { LineReveal, splitGraphemes } from "@yagejs-addons/dialogue";

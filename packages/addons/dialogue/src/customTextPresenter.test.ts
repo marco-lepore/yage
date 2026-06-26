@@ -109,7 +109,7 @@ describe("a custom text presenter from the documented contract", () => {
 
   it("honours an inline [pause] without showing past it", () => {
     const p = new DomTextPresenter(1000);
-    present(p, "ab[pause=300]cd");
+    present(p, "ab[pause=300/]cd");
     p.update(5); // overshoots the pause at 2 → clamps
     expect(p.revealed).toBe("ab");
     p.update(300); // sit out the pause

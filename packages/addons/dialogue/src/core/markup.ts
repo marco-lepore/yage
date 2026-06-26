@@ -1,6 +1,6 @@
 /**
  * Inline-markup parser. Turns an authored string into styled {@link TextRun}s
- * plus {@link PauseToken}s, using a small BBCode-ish tag syntax that survives
+ * plus {@link RevealToken}s, using a small BBCode-ish tag syntax that survives
  * translation (translators keep the tags, reorder the words):
  *
  *   plain text
@@ -8,37 +8,33 @@
  *   [color=#ffcc00]hex[/color]   [color=gold]named[/color]
  *   [wave]animated[/wave] [shake]..[/shake] [pulse]..[/pulse] [rainbow]..[/rainbow]
  *   [speed=2]faster[/speed]  [speed=0.5]slower[/speed]
- *   [pause=400]                (zero-width reveal pause, in ms)
+ *   [pause=400/]               (self-closing reveal PAUSE — holds at its offset, in ms)
  *   [sfx=ding/]                (self-closing reveal MARKER — fires at its offset)
  *   [expression=happy/]        (self-named shortcut → props { expression: happy })
  *   [shake amount=3/]          (marker with explicit key=value props)
+ *   [shake=500 amount=3/]      (shortcut + props compose → { shake: 500, amount: 3 })
  *   \[literal bracket]
  *
  * Tags nest; styles inherit down the stack (so [b][color=red]X[/color][/b]
  * is bold+red). A trailing `/` makes a tag **self-closing** — a zero-width
- * {@link MarkerToken} that fires as a reveal event at its char offset, distinct
- * from the styling/`pause` tags (which never end in `/`). Unknown *non*-self-
- * closing tags are dropped silently (forward-compatible); translators MUST keep
- * the self-closing `/` so the marker survives a re-order.
+ * {@link RevealToken} (a `[pause=600/]` hold or a `[name k=v/]` marker) that the
+ * reveal drains at its char offset, distinct from the styling tags (which never
+ * end in `/`). Pause + markers share one ordered stream, so **source order is
+ * drain order**: `[pause=600/][shake/]` holds then fires; `[shake/][pause=600/]`
+ * fires then holds. Unknown *non*-self-closing tags are dropped silently
+ * (forward-compatible); translators MUST keep the self-closing `/` so the token
+ * survives a re-order.
  */
 
-import type {
-  EffectId,
-  MarkerToken,
-  ParsedText,
-  PauseToken,
-  RunStyle,
-  TextRun,
-} from "./types.js";
+import type { EffectId, ParsedText, RevealToken, RunStyle, TextRun } from "./types.js";
 
-/** The empty parse result (no runs / pauses / markers, length 0). Shared so a
- *  presenter or the session can present a contentless line (an empty choice
- *  prompt) without re-constructing the shape — and without forgetting the now-
- *  required `markers` field. */
+/** The empty parse result (no runs / tokens, length 0). Shared so a presenter or
+ *  the session can present a contentless line (an empty choice prompt) without
+ *  re-constructing the shape — and without forgetting the required `tokens`
+ *  field. */
 export const EMPTY_PARSED: ParsedText = Object.freeze({
   runs: Object.freeze([]) as readonly TextRun[],
-  pauses: Object.freeze([]) as readonly PauseToken[],
-  markers: Object.freeze([]) as readonly MarkerToken[],
+  tokens: Object.freeze([]) as readonly RevealToken[],
   length: 0,
 });
 
@@ -60,10 +56,12 @@ const NAMED_COLORS: Record<string, number> = {
 const EFFECTS = new Set<EffectId>(["wave", "shake", "pulse", "rainbow"]);
 
 /**
- * Every tag name {@link parseMarkup} acts on (styling, effects, and the
- * self-closing `pause`); any other tag is dropped silently. Kept beside
- * {@link styleForTag} and {@link EFFECTS} so the recognized set has one home —
- * {@link firstUnknownTag} reads it to tell a real markup tag from a typo.
+ * Every NON-self-closing styling tag {@link parseMarkup} acts on; any other bare
+ * tag is dropped silently. (`pause` is NOT here — it is a self-closing
+ * `[pause=600/]` token now, like a marker; a bare `[pause=600]` is treated as an
+ * unknown tag.) Kept beside {@link styleForTag} and {@link EFFECTS} so the
+ * recognized set has one home — {@link firstUnknownTag} reads it to tell a real
+ * markup tag from a typo.
  */
 const KNOWN_TAGS: ReadonlySet<string> = new Set<string>([
   "b",
@@ -73,7 +71,6 @@ const KNOWN_TAGS: ReadonlySet<string> = new Set<string>([
   "color",
   "c",
   "speed",
-  "pause",
   ...EFFECTS,
 ]);
 
@@ -135,13 +132,15 @@ function stripUndefined(s: Partial<RunStyle>): Partial<RunStyle> {
   return out;
 }
 
-// Groups: 1 closing `/`, 2 name, 3 `=value` (styled spans / `pause` / a marker's
-// self-named shortcut — the shared `=`-separator, left as-is), 4 marker-only
-// space-separated `key=value` props, 5 a trailing `/` marking a self-closing
-// MARKER. Values/props exclude `/` so the trailing slash is unambiguous. Groups
-// 4–5 are additive: an existing styled/`pause`/closing tag matches them empty.
+// Groups: 1 closing `/`, 2 name, 3 `=value` (styled spans + a marker's self-named
+// shortcut — the shared `=`-separator), 4 space-separated `key=value` props, 5 a
+// trailing `/` marking a self-closing token (`[pause=N/]` or a marker). The value
+// (3) and prop values (4) both exclude whitespace and `/`, so the self-named
+// shortcut composes with explicit props (`[shake=500 amount=3/]` → group 3 `500`,
+// group 4 ` amount=3`) and the trailing slash stays unambiguous. Groups 4–5 are
+// additive: an existing styled/closing tag matches them empty.
 const TAG_RE =
-  /\[(\/?)([a-zA-Z]+)(?:=([^\]/]*))?((?:\s+[A-Za-z_][\w-]*=[^\s\]/]*)*)(\/)?\]/g;
+  /\[(\/?)([a-zA-Z]+)(?:=([^\s\]/]*))?((?:\s+[A-Za-z_][\w-]*=[^\s\]/]*)*)(\/)?\]/g;
 
 /**
  * Grapheme segmenter for all reveal bookkeeping. Pixi's `SplitText` /
@@ -167,8 +166,7 @@ export function splitGraphemes(text: string): string[] {
 
 export function parseMarkup(input: string): ParsedText {
   const runs: TextRun[] = [];
-  const pauses: PauseToken[] = [];
-  const markers: MarkerToken[] = [];
+  const tokens: RevealToken[] = [];
   const stack: Frame[] = [];
   let charCount = 0;
   let buffer = "";
@@ -233,21 +231,24 @@ export function parseMarkup(input: string): ParsedText {
       continue;
     }
 
-    // Self-closing MARKER (`[name k=v/]`): a zero-width reveal event at this char
-    // offset. The trailing `/` distinguishes it from a styling tag of the same
-    // name (`[shake]…[/shake]` is an effect span; `[shake/]` is a marker).
+    // Self-closing reveal token (`[name k=v/]`): the trailing `/` distinguishes
+    // it from a styling tag of the same name (`[shake]…[/shake]` is an effect
+    // span; `[shake/]` is a marker). `pause` is the one parser-reserved name —
+    // it becomes a typed PauseToken (hold), everything else a MarkerToken.
     if (selfClosing) {
       flush();
-      markers.push({ atChar: charCount, name, props: markerProps(name, arg, propsStr) });
-      continue;
-    }
-
-    // Self-closing zero-width tokens.
-    if (name === "pause") {
-      flush();
-      const ms = Number(arg ?? "0");
-      if (Number.isFinite(ms) && ms > 0) {
-        pauses.push({ atChar: charCount, ms });
+      if (name === "pause") {
+        const ms = Number(arg ?? "0");
+        if (Number.isFinite(ms) && ms > 0) {
+          tokens.push({ kind: "pause", atChar: charCount, ms });
+        }
+      } else {
+        tokens.push({
+          kind: "marker",
+          atChar: charCount,
+          name,
+          props: markerProps(name, arg, propsStr),
+        });
       }
       continue;
     }
@@ -262,17 +263,16 @@ export function parseMarkup(input: string): ParsedText {
   buffer += unescape(input.slice(lastIndex));
   flush();
 
-  return { runs: mergeAdjacent(runs), pauses, markers, length: charCount };
+  return { runs: mergeAdjacent(runs), tokens, length: charCount };
 }
 
 /**
- * Build a marker's props. Two authoring forms, naturally mutually exclusive: the
- * Yarn self-named shortcut `[name=val/]` (group 3) yields `{ [name]: val }`, and
- * explicit space-separated `key=value` pairs (group 4) yield `{ k: v, … }`. They
- * don't combine — group 3's value match (`[^\]/]*`) greedily eats any trailing
- * ` k=v`, so the `[name=val k=v/]` mix lands wholly in the shortcut value rather
- * than splitting. `[name/]` → `{}`. Keys lower-cased (like tag names); values
- * kept verbatim. (The explicit-props-merge is defensive and a no-op in practice.)
+ * Build a marker's props from the Yarn-style forms. The self-named shortcut
+ * `[name=val/]` (group 3) ≡ `[name name=val/]`, so it seeds `{ [name]: val }`,
+ * and explicit space-separated `key=value` pairs (group 4) merge on top — the two
+ * compose (`[shake=500 amount=3/]` → `{ shake: "500", amount: "3" }`), because the
+ * value group excludes whitespace and so stops at the first space. `[name/]` →
+ * `{}`. Keys lower-cased (like tag names); values kept verbatim (no whitespace).
  */
 function markerProps(
   name: string,

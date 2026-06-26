@@ -1057,7 +1057,7 @@ describe("DialogueSession — reveal beats (ticks + markers)", () => {
     const onRevealMarker = vi.fn();
     const h = makeHarness({ onRevealMarker });
     h.session.play(oneLine);
-    const marker = { atChar: 0, name: "expression", props: { expression: "happy" } };
+    const marker: MarkerToken = { kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } };
     h.text.fireBeat({ kind: "marker", marker, viaSkip: false });
     // The avatar got the RAW marker and interpreted it ITSELF — the session never
     // name-matches; it just hands the marker over.
@@ -1074,7 +1074,7 @@ describe("DialogueSession — reveal beats (ticks + markers)", () => {
     h.session.addChannel({ revealBeat: (beat) => seen.push(beat) });
     h.session.play(oneLine);
     const before = h.avatar.expressions.length;
-    const marker = { atChar: 1, name: "sfx", props: { sfx: "ding" } };
+    const marker: MarkerToken = { kind: "marker", atChar: 1, name: "sfx", props: { sfx: "ding" } };
     h.text.fireBeat({ kind: "marker", marker, viaSkip: false });
     expect(seen).toEqual([{ kind: "marker", marker, viaSkip: false }]);
     expect(onRevealMarker).toHaveBeenCalledWith(marker, false);

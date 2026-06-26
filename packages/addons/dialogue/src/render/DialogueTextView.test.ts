@@ -30,7 +30,7 @@ describe("DialogueTextView — pause clamp (F13)", () => {
     let completed = 0;
     view.setRevealListener(() => completed++);
     // 20 chars at 1000 chars/s with a 400ms pause after char 10.
-    view.show(parseMarkup("0123456789[pause=400]abcdefghij"));
+    view.show(parseMarkup("0123456789[pause=400/]abcdefghij"));
 
     view.update(15); // one frame overshoots the pause (cursor would hit 15)
     view.update(400); // sit out the pause
@@ -62,7 +62,7 @@ describe("DialogueTextView — grapheme reveal units (F12)", () => {
     let completed = 0;
     view.setRevealListener(() => completed++);
     // Pause sits after 2 graphemes (4 code units); 2 graphemes follow.
-    view.show(parseMarkup("🔥🔥[pause=400]ab"));
+    view.show(parseMarkup("🔥🔥[pause=400/]ab"));
 
     view.update(3); // overshoots the pause at 2; cursor clamps back to it
     view.update(400); // sit out the pause

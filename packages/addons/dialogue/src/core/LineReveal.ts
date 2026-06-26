@@ -1,10 +1,11 @@
 /**
  * LineReveal — the headless typewriter clock. Given a {@link ParsedText} (markup
- * already parsed into runs + `[pause]` tokens), a base `charsPerSec`, a per-line
- * speed multiplier, and `update(dt)` ticks, it advances a reveal cursor in
- * **graphemes** (the unit `markup.ts` counts and the renderer splits glyphs by),
- * arms inline pauses, applies per-run `[speed]`, and fires completion **exactly
- * once** per line.
+ * already parsed into runs + an ordered {@link RevealToken} stream), a base
+ * `charsPerSec`, a per-line speed multiplier, and `update(dt)` ticks, it advances
+ * a reveal cursor in **graphemes** (the unit `markup.ts` counts and the renderer
+ * splits glyphs by), drains the tokens IN SOURCE ORDER (a `pause` holds, a
+ * `marker` fires a {@link RevealBeat}), applies per-run `[speed]`, and fires
+ * completion **exactly once** per line.
  *
  * It is renderer-free on purpose: a DOM-overlay or per-word presenter can drive
  * the same reveal logic and map the grapheme cursor onto its own rendering,
@@ -12,12 +13,13 @@
  * and keeps only the SplitText concerns — the code-unit→glyph prefix mapping and
  * per-glyph style fan-out — which LineReveal deliberately does NOT own.
  *
- * What it owns: the reveal cursor, `ParsedText.pauses` arming/state, the hold-to-
- * fast-forward multiplier, the per-line and per-run (`RunStyle.speed`) speeds,
- * and the fired-once completion. What it does NOT own: anything that touches a
- * glyph, a texture, or a layout. Counts are graphemes throughout — it reads the
- * pre-computed grapheme counts off `ParsedText` (`length`, `TextRun.graphemeCount`,
- * `PauseToken.atChar`) and never re-segments.
+ * What it owns: the reveal cursor, the `ParsedText.tokens` drain (one ordered
+ * index over pauses + markers), the hold-to-fast-forward multiplier, the per-line
+ * and per-run (`RunStyle.speed`) speeds, and the fired-once completion. What it
+ * does NOT own: anything that touches a glyph, a texture, or a layout. Counts are
+ * graphemes throughout — it reads the pre-computed grapheme counts off
+ * `ParsedText` (`length`, `TextRun.graphemeCount`, a token's `atChar`) and never
+ * re-segments.
  */
 
 import type { MarkerToken, ParsedText } from "./types.js";
@@ -41,9 +43,9 @@ export class LineReveal {
   /** Reveal cursor, in graphemes (fractional while typing). */
   private cursor = 0;
   private pauseTimer = 0;
-  private pauseIdx = 0;
-  /** Next un-fired marker in `parsed.markers` (drains in char order). */
-  private markerIdx = 0;
+  /** Next un-drained token in `parsed.tokens` (one ordered cursor over pauses +
+   *  markers — source order is drain order). */
+  private tokenIdx = 0;
   /** Graphemes already ticked (so each grapheme ticks exactly once). */
   private tickCount = 0;
   /** Hold-to-fast-forward rate (1 = normal). */
@@ -94,17 +96,17 @@ export class LineReveal {
     this.lineSpeed = lineSpeed > 0 ? lineSpeed : 1;
     this.cursor = 0;
     this.pauseTimer = 0;
-    this.pauseIdx = 0;
-    this.markerIdx = 0;
+    this.tokenIdx = 0;
     this.tickCount = 0;
     this.speedMul = 1;
     this.done = parsed.length === 0;
     this.completed = false;
-    // Fire any offset-0 markers synchronously (a marker-only / length-0 line, or
-    // a line that opens with a marker) — the beat listener is session-owned and
-    // wired before begin(), like the completion listener. Markers come before the
-    // empty-line completion: they're part of the line, completion ends it.
-    this.drainMarkers();
+    // Drain any offset-0 tokens synchronously (a marker-only / length-0 line, a
+    // line that opens with a marker, or a leading `[pause/]` that delays the
+    // first glyph) — the beat listener is session-owned and wired before begin(),
+    // like the completion listener. Tokens come before the empty-line completion:
+    // they're part of the line, completion ends it.
+    this.drainTokens();
     if (this.done) this.finish();
   }
 
@@ -122,21 +124,20 @@ export class LineReveal {
     if (this.pauseTimer > 0) {
       this.pauseTimer = Math.max(0, this.pauseTimer - dt);
     } else {
-      this.triggerPauseAt(this.cursor);
+      // A token sitting exactly at the current cursor (a leading token, or the
+      // next one when resuming after a hold) drains before we advance — a marker
+      // fires, a pause re-arms (and re-clamps), so the advance is skipped.
+      this.drainTokens();
       if (this.pauseTimer === 0) {
         const rate =
           this.charsPerSec * this.speedMul * this.lineSpeed * this.runSpeedAt(this.cursor);
         this.cursor = Math.min(parsed.length, this.cursor + (rate * dt) / 1000);
-        // Clamp back to any pause the advance overshot FIRST, then emit a tick
-        // per actually-revealed grapheme and drain markers up to the (clamped)
-        // cursor. Draining AFTER the clamp is what makes a marker co-located with
-        // a [pause] fire on hold-ENTRY: the cursor sits exactly at the offset, so
-        // the marker drains this frame, while glyphs past the beat don't tick
-        // early. No advance happens during a hold, so no marker becomes eligible
-        // until it ends — this (with begin()/complete()) is the only drain needed.
-        this.triggerPauseAt(this.cursor);
+        // Drain tokens up to the new cursor IN SOURCE ORDER: a marker fires, a
+        // pause clamps the cursor back to its offset and stops the drain (so a
+        // later token waits for the next hold-resume). emitTicks runs AFTER, so
+        // ticks stop at the clamp and glyphs past a [pause] don't reveal early.
+        this.drainTokens();
         this.emitTicks();
-        this.drainMarkers();
       }
     }
     if (this.cursor >= parsed.length && this.pauseTimer === 0) this.finish();
@@ -144,15 +145,15 @@ export class LineReveal {
 
   /** Reveal everything now (skip-to-end on a click/tap). Drains any not-yet-fired
    *  markers in order so their consequences still happen (`viaSkip=true` lets a
-   *  host suppress a loud one-shot) but DISCARDS pending ticks — replaying dozens
-   *  of typewriter blips at once would machine-gun. Fires completion. */
+   *  host suppress a loud one-shot) and blows straight through pending pauses (a
+   *  skip ignores holds), but DISCARDS pending ticks — replaying dozens of
+   *  typewriter blips at once would machine-gun. Fires completion. */
   complete(): void {
     const parsed = this.parsed;
     if (!parsed) return;
     this.cursor = parsed.length;
     this.pauseTimer = 0;
-    this.pauseIdx = parsed.pauses.length;
-    this.drainMarkers(true);
+    this.drainTokens(true);
     this.tickCount = parsed.length; // swallow the pending ticks
     this.finish();
   }
@@ -180,16 +181,28 @@ export class LineReveal {
     this.onComplete?.();
   }
 
-  /** Fire markers whose offset the cursor has reached, in char order. `viaSkip`
-   *  tags the ones drained by {@link complete}. Monotonic `markerIdx` → each
-   *  fires exactly once. */
-  private drainMarkers(viaSkip = false): void {
-    const markers = this.parsed?.markers;
-    if (!markers) return;
-    while (this.markerIdx < markers.length && this.cursor >= markers[this.markerIdx]!.atChar) {
-      const marker = markers[this.markerIdx]!;
-      this.markerIdx++;
-      this.onBeat?.({ kind: "marker", marker, viaSkip });
+  /**
+   * Drain tokens whose offset the cursor has reached, IN SOURCE ORDER. A `marker`
+   * emits a beat; a `pause` arms the hold, clamps the cursor to its offset, and
+   * STOPS the drain for this frame (a one-frame advance can overshoot the offset,
+   * so the clamp keeps glyphs past the beat from popping in early, and a later
+   * token waits until the hold resumes). `viaSkip` (from {@link complete}) tags
+   * drained markers and blows straight through pauses without holding. Monotonic
+   * `tokenIdx` → each token is handled exactly once.
+   */
+  private drainTokens(viaSkip = false): void {
+    const tokens = this.parsed?.tokens;
+    if (!tokens) return;
+    while (this.tokenIdx < tokens.length && this.cursor >= tokens[this.tokenIdx]!.atChar) {
+      const tok = tokens[this.tokenIdx]!;
+      this.tokenIdx++;
+      if (tok.kind === "marker") {
+        this.onBeat?.({ kind: "marker", marker: tok, viaSkip });
+      } else if (!viaSkip && tok.ms > 0) {
+        this.pauseTimer = tok.ms;
+        this.cursor = Math.min(this.cursor, tok.atChar);
+        return; // hold here this frame; later tokens wait
+      }
     }
   }
 
@@ -215,21 +228,5 @@ export class LineReveal {
       acc += run.graphemeCount;
     }
     return 1;
-  }
-
-  private triggerPauseAt(reveal: number): void {
-    const pauses = this.parsed?.pauses;
-    if (!pauses) return;
-    while (this.pauseIdx < pauses.length && reveal >= pauses[this.pauseIdx]!.atChar) {
-      const pause = pauses[this.pauseIdx]!;
-      this.pauseTimer = pause.ms;
-      this.pauseIdx++;
-      if (this.pauseTimer > 0) {
-        // One frame's advance can overshoot the marker — clamp the cursor back
-        // to the FIRST armed pause so glyphs past the beat don't pop in early.
-        this.cursor = Math.min(this.cursor, pause.atChar);
-        return; // hold here this frame
-      }
-    }
   }
 }

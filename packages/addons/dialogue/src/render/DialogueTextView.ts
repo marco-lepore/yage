@@ -4,7 +4,7 @@
  * layer, revealing it glyph-by-glyph (typewriter), honouring per-run colour/
  * bold/italic, and driving animated effects.
  *
- * Reveal *timing* — the grapheme cursor, inline `[pause=ms]`, per-run/line
+ * Reveal *timing* — the grapheme cursor, inline `[pause=ms/]`, per-run/line
  * `[speed]`, the hold multiplier, and fired-once completion — is owned by the
  * headless {@link LineReveal} clock (pixi-free, reusable by a DOM presenter).
  * This view keeps only the pixi-`SplitText` concerns: mapping the clock's

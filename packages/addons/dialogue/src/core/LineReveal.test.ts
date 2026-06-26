@@ -65,7 +65,7 @@ describe("LineReveal — pauses (grapheme positions)", () => {
   it("holds at a [pause] and clamps an overshooting cursor back to it", () => {
     const { reveal, completed } = clock(1000);
     // 10 graphemes, a 400ms pause after char 10, 10 more graphemes.
-    reveal.begin(parseMarkup("0123456789[pause=400]abcdefghij"));
+    reveal.begin(parseMarkup("0123456789[pause=400/]abcdefghij"));
     reveal.update(15); // overshoots the pause; cursor clamps to 10
     expect(reveal.revealed).toBe(10);
     reveal.update(400); // sit out the pause
@@ -77,7 +77,7 @@ describe("LineReveal — pauses (grapheme positions)", () => {
 
   it("holds a [pause] at its grapheme position, unmoved by astral chars", () => {
     const { reveal, completed } = clock(1000);
-    reveal.begin(parseMarkup("🔥🔥[pause=400]ab")); // pause after 2 graphemes
+    reveal.begin(parseMarkup("🔥🔥[pause=400/]ab")); // pause after 2 graphemes
     reveal.update(3); // overshoots → clamps to 2
     reveal.update(400);
     reveal.update(1);
@@ -154,30 +154,55 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     expect(markerBeats(beats())).toEqual([]);
     reveal.update(1); // cursor 2 — reaches the marker
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
     ]);
   });
 
-  it("a marker co-located with a [pause] fires on hold-entry, not when the hold ends", () => {
+  it("co-located pause + marker, source order PAUSE-first: holds THEN fires", () => {
     const { reveal, beats } = beatClock(1000);
-    // pause AND marker both at grapheme 2.
-    reveal.begin(parseMarkup("ab[pause=400][sfx=ding/]cd"));
+    reveal.begin(parseMarkup("ab[pause=400/][sfx=ding/]cd")); // pause @2, then marker @2
     reveal.update(3); // overshoots → clamps to 2, arms the 400ms pause
     expect(reveal.revealed).toBe(2);
-    // The marker already fired this frame (hold-entry), before the pause elapses.
+    // The pause is first in source, so it holds and the marker has NOT fired.
+    expect(markerBeats(beats())).toEqual([]);
+    expect(tickIndexes(beats())).toEqual([0, 1]); // nothing past the pause ticked
+    reveal.update(400); // sit out the hold — cursor frozen, still no marker/ticks
+    expect(markerBeats(beats())).toEqual([]);
+    expect(tickIndexes(beats())).toEqual([0, 1]);
+    reveal.update(1); // resume: the marker at the offset fires now, then 'c' reveals
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
     ]);
-    // No glyph past the pause ticked early, either.
-    expect(tickIndexes(beats())).toEqual([0, 1]);
+    expect(tickIndexes(beats())).toEqual([0, 1, 2]);
+  });
 
-    // During the hold the cursor is frozen — no further ticks/markers emitted.
-    reveal.update(400); // sit out the pause (no advance this frame)
-    expect(tickIndexes(beats())).toEqual([0, 1]);
-    expect(markerBeats(beats())).toHaveLength(1);
-    // After the hold, ticks resume at the next index with no gap or repeat.
-    reveal.update(2); // reveal c, d
-    expect(tickIndexes(beats())).toEqual([0, 1, 2, 3]);
+  it("co-located pause + marker, source order MARKER-first: fires THEN holds", () => {
+    const { reveal, beats } = beatClock(1000);
+    reveal.begin(parseMarkup("ab[sfx=ding/][pause=400/]cd")); // marker @2, then pause @2
+    reveal.update(3); // reach offset 2: the marker fires, then the pause arms + clamps
+    expect(reveal.revealed).toBe(2);
+    expect(markerBeats(beats())).toEqual([
+      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+    ]);
+    expect(tickIndexes(beats())).toEqual([0, 1]); // held at the pause, nothing past it
+  });
+
+  it("the effect+hold idiom: [shake=500/][pause=500/] fires the marker, then holds", () => {
+    // Orthogonal primitives — a fire-and-forget marker (the host plays a 500ms
+    // shake) immediately followed by a fixed 500ms pause that holds the reveal
+    // while it plays. Source order carries the intent; no combined sugar.
+    const { reveal, beats } = beatClock(1000);
+    reveal.begin(parseMarkup("hi[shake=500/][pause=500/]there")); // both @2
+    reveal.update(3); // reveal "hi", fire shake, arm the 500ms hold
+    expect(reveal.revealed).toBe(2);
+    expect(markerBeats(beats())).toEqual([
+      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "shake", props: { shake: "500" } }, viaSkip: false },
+    ]);
+    expect(tickIndexes(beats())).toEqual([0, 1]); // held — "there" not revealing yet
+    reveal.update(500); // sit out the hold
+    expect(reveal.revealed).toBe(2);
+    reveal.update(1); // resume revealing past the hold
+    expect(reveal.revealed).toBeGreaterThan(2);
   });
 
   it("complete() drains pending markers (viaSkip=true) but emits no pending ticks", () => {
@@ -188,8 +213,8 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     reveal.complete(); // skip to end
     expect(tickIndexes(beats())).toEqual([0]); // only the pre-skip tick — no machine-gun
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { atChar: 2, name: "sfx", props: { sfx: "one" } }, viaSkip: true },
-      { kind: "marker", marker: { atChar: 6, name: "expression", props: { expression: "sad" } }, viaSkip: true },
+      { kind: "marker", marker: { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "one" } }, viaSkip: true },
+      { kind: "marker", marker: { kind: "marker", atChar: 6, name: "expression", props: { expression: "sad" } }, viaSkip: true },
     ]);
   });
 
@@ -198,7 +223,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     reveal.begin(parseMarkup("[sfx=ding/]")); // length 0, marker at 0
     expect(reveal.isComplete()).toBe(true);
     expect(beats()).toEqual([
-      { kind: "marker", marker: { atChar: 0, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
+      { kind: "marker", marker: { kind: "marker", atChar: 0, name: "sfx", props: { sfx: "ding" } }, viaSkip: false },
     ]);
   });
 
@@ -206,7 +231,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     const { reveal, beats } = beatClock(1000);
     reveal.begin(parseMarkup("[expression=happy/]hi")); // marker at 0, then 2 graphemes
     expect(markerBeats(beats())).toEqual([
-      { kind: "marker", marker: { atChar: 0, name: "expression", props: { expression: "happy" } }, viaSkip: false },
+      { kind: "marker", marker: { kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } }, viaSkip: false },
     ]);
     expect(tickIndexes(beats())).toEqual([]); // begin() reveals nothing yet
   });

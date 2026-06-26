@@ -19,6 +19,7 @@ import type {
   DialogueExtraChannel,
   DialogueScript,
   DialogueSession,
+  MarkerToken,
   RevealBeat,
 } from "./core/index.js";
 import type { InputBinding } from "./input/index.js";
@@ -281,7 +282,7 @@ describe("DialogueController — observation events forwarded entity→scene", (
     host.on(DialogueRevealMarkerEvent, markerSeen);
     controller.play(sayScript);
 
-    const marker = { atChar: 0, name: "sfx", props: { sfx: "ding" } };
+    const marker: MarkerToken = { kind: "marker", atChar: 0, name: "sfx", props: { sfx: "ding" } };
     text.fireBeat({ kind: "marker", marker, viaSkip: false });
     text.fireBeat({ kind: "tick", index: 2 });
 

@@ -41,7 +41,7 @@ class StubView implements TextPresenter {
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
 
 const line = (view?: string, withSpeaker = false): PresentedLine => ({
-  text: { runs: [], pauses: [], markers: [], length: 0 },
+  text: { runs: [], tokens: [], length: 0 },
   speed: 1,
   ...(view !== undefined ? { view } : {}),
   ...(withSpeaker ? { speaker } : {}),
