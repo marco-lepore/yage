@@ -316,18 +316,23 @@ interpolate; there is no separate i18n `key`). `PresentedChoice` carries
 
 ## Inline markup (`parseMarkup` / `stripMarkup`)
 
-BBCode-ish, survives translation, nests, unknown tags dropped silently:
-`[b]` `[i]` `[color=#ffcc00]`/`[color=gold]` `[wave]` `[shake]` `[pulse]`
-`[rainbow]` `[speed=2]`. `\[` escapes a literal bracket. (NOTE: ruby/furigana and
-glossary `[term]`/`[gloss]` markup were intentionally removed — unknown tags drop
-silently, so old scripts still parse.)
+BBCode-ish, survives translation, nests. Styling attributes are a **fixed set** —
+`[b]` `[i]` `[color=#ffcc00]`/`[color=gold]` `[speed=2]`. **Effects are an open
+vocabulary**: `[wave]` `[shake]` `[pulse]` `[rainbow]` are the four the bundled
+presenter animates, but any other `[name]…[/name]` opens an effect span named
+`name` (`RunStyle.effect` is an open `string`) — a presenter that doesn't recognise
+the name (including the bundled one) renders the run as plain styled text. `\[`
+escapes a literal bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]`
+markup were removed — they now parse as ordinary effect spans the bundled presenter
+renders as plain text, so old scripts still parse.)
 
 **Self-closing tokens** (a trailing `/`) are the reveal-timeline controls — a
 `[pause=600/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
 (`ParsedText.tokens: RevealToken[]`, each `{ kind: "pause" | "marker", atChar, … }`),
 so **source order is drain order**:
 - `[pause=600/]` holds the typewriter 600ms at its offset (the only pause spelling
-  now — a bare `[pause=600]` without the slash is a dropped unknown tag).
+  now — a bare `[pause=600]` without the slash opens an effect span named `pause`,
+  not a hold).
 - `[sfx=ding/]`, `[expression=happy/]`, `[shake amount=3/]` fire as **reveal events**.
   The self-named shortcut `[name=val/]` ≡ `[name name=val/]` (Yarn), so it composes
   with explicit props: `[shake=500 amount=3/]` → `{ shake: "500", amount: "3" }`.
@@ -337,8 +342,9 @@ so **source order is drain order**:
   (host plays a 500ms shake), then a 500ms pause holds while it plays. Markers are
   non-blocking; the pause is the only timing primitive (no combined `[shake hold/]`).
 
-Translators **must keep the trailing `/`** so a token survives a re-order. Unknown
-*non*-self-closing tags still drop silently; a self-closing token is never dropped.
+Translators **must keep the trailing `/`** so a token survives a re-order. A
+*non*-self-closing tag that isn't a built-in styling attribute opens an effect span
+(open vocabulary); a self-closing token is never dropped.
 See **Reveal events** below for where markers surface.
 
 All character counts are **graphemes** (user-perceived characters, via

@@ -72,6 +72,15 @@ export default tseslint.config(
     },
   },
   {
+    // Tests lean on `arr[0]!` after a known-length array — the non-null assertion
+    // is idiomatic and safe there — so it isn't worth flagging in the dialogue
+    // addon's test files; keeps the addon's lint output to actionable source warnings.
+    files: ["packages/addons/dialogue/**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+    },
+  },
+  {
     files: ["packages/*/src/**/*.ts"],
     ignores: ["**/*.test.ts", "packages/core/src/Random.ts"],
     plugins: {

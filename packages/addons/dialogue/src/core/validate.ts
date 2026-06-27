@@ -1,5 +1,5 @@
 /**
- * Two-stage validation for the storage model (D4).
+ * Two-stage validation for the storage model.
  *
  *   • **Load-time** ({@link analyzeScript}, environment-free): walk the script
  *     once, collecting the names it **reads** (conditions, `{token}`s, `set`
@@ -308,7 +308,7 @@ export function validatePlay(analysis: ScriptAnalysis, env: PlayEnv): void {
   // 2. Every name the script reads must be provided — declared (it'll be seeded),
   //    already in storage, OR written by a `set` somewhere in the script (a local
   //    the script manages itself). The walk is flow-insensitive, so it can't (and
-  //    per D3 needn't) reason about read-before-write order: a read of an as-yet-
+  //    needn't) reason about read-before-write order: a read of an as-yet-
   //    unset local is a script logic bug, not a missing binding — at runtime it
   //    reads null. A typo (a name that is read but never declared/stored/written)
   //    still dies here.

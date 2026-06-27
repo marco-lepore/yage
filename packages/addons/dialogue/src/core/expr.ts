@@ -1,15 +1,14 @@
 /**
- * Expression evaluator (D5). `Condition`s and `set` values are expression
+ * Expression evaluator. `Condition`s and `set` values are expression
  * *trees* — `literal | varRef | call | unary | binary | group` — evaluated
  * against an {@link EvalScope} (variable reads + installed functions). The
  * operator set mirrors Yarn Spinner so a future Yarn parser maps onto this IR
- * 1:1; the old atomic `{ var, op, value }` comparison still works as the
- * degenerate one-level tree.
+ * 1:1; the atomic `{ var, op, value }` comparison evaluates as the degenerate
+ * one-level tree (lowered into a `binary` node in {@link evalCondition}).
  */
 
 import { materialize } from "./vars.js";
 import type {
-  CompareOp,
   Condition,
   DialogueFunction,
   Expr,
@@ -47,13 +46,35 @@ export function createScope(
   };
 }
 
+/** A condition (or none) holds against `scope`: an absent condition always holds;
+ *  otherwise it's evaluated via {@link evalCondition}. The one no-condition gate
+ *  shared by the runner and the session's preview walk. */
+export function holds(condition: Condition | undefined, scope: EvalScope): boolean {
+  return condition === undefined ? true : evalCondition(condition, scope);
+}
+
 /** A condition holds when its value is truthy. */
 export function evalCondition(condition: Condition, scope: EvalScope): boolean {
   if (typeof condition === "function") return condition(scope.vars());
   if (typeof condition === "string") return truthy(scope.get(condition));
   if (isExpr(condition)) return truthy(evaluate(condition, scope));
-  // Atomic { var, op, value } — the degenerate comparison tree.
-  return compareAtomic(scope.get(condition.var), condition.op, condition.value);
+  // Atomic { var, op, value } — the degenerate one-level tree. `truthy`/`falsy`
+  // are presence checks; every other op lowers into a `binary` node so the
+  // comparison runs through the single operator implementation (applyBinary).
+  const { var: name, op, value } = condition;
+  if (op === "truthy") return truthy(scope.get(name));
+  if (op === "falsy") return !truthy(scope.get(name));
+  return truthy(
+    evaluate(
+      {
+        kind: "binary",
+        op,
+        left: { kind: "varRef", name },
+        right: { kind: "literal", value: value as VarValue },
+      },
+      scope,
+    ),
+  );
 }
 
 /** Evaluate an expression tree to a single value. */
@@ -151,28 +172,6 @@ function applyBinary(op: string, l: VarValue, r: VarValue): VarValue {
       return num(l) % num(r);
     default:
       throw new Error(`dialogue: unknown binary operator "${op}"`);
-  }
-}
-
-/** Evaluate the atomic `{ var, op, value }` comparison. */
-function compareAtomic(left: VarValue, op: CompareOp, right: unknown): boolean {
-  switch (op) {
-    case "==":
-      return left === right;
-    case "!=":
-      return left !== right;
-    case ">":
-      return num(left) > num(right);
-    case ">=":
-      return num(left) >= num(right);
-    case "<":
-      return num(left) < num(right);
-    case "<=":
-      return num(left) <= num(right);
-    case "truthy":
-      return truthy(left);
-    case "falsy":
-      return !truthy(left);
   }
 }
 

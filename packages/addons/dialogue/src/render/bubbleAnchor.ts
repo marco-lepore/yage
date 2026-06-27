@@ -18,8 +18,8 @@
  *  - A **speakerless narrator** line (no id) uses the same fallback chain but
  *    never warns — it is authored intent, not a failure.
  *
- * The bubble stays VISIBLE in every case (the old code hid it at world origin),
- * so a line is always readable somewhere sane with its continue caret.
+ * The bubble stays VISIBLE in every case — anchored to a sane fallback rather
+ * than hidden — so a line is always readable somewhere with its continue caret.
  */
 
 import type { Scene } from "@yagejs/core";

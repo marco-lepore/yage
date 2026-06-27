@@ -19,7 +19,7 @@
 
 import { loadScript } from "./formats/canonical.js";
 import type { DialogueExtraChannel } from "./channels/types.js";
-import { createScope, evalCondition, type EvalScope } from "./expr.js";
+import { createScope, holds } from "./expr.js";
 import { IdentityI18n, type I18nAdapter } from "./i18n.js";
 import { EMPTY_PARSED, parseMarkup, stripMarkup } from "./markup.js";
 import type { RevealBeat } from "./LineReveal.js";
@@ -33,7 +33,6 @@ import type {
   CommandContext,
   CommandHandler,
   CommandTiming,
-  Condition,
   DialogueFunction,
   DialogueHandle,
   DialoguePlayOptions,
@@ -119,9 +118,8 @@ export interface TextChannel {
   clear(): void;
   /**
    * Register the reveal-completed listener. The Session owns this seam — it
-   * registers its handler once in the ctor — so a game can no longer clobber the
-   * wiring by assigning a public field (the old single-slot `onRevealComplete`
-   * footgun). Pass `undefined` to clear.
+   * registers its handler once in the ctor — so a game can't clobber the wiring
+   * by assigning a public field. Pass `undefined` to clear.
    */
   setRevealListener(listener: (() => void) | undefined): void;
   /**
@@ -666,24 +664,12 @@ export class DialogueSession {
     }
   }
 
-  /** Abandon the current conversation and reset to idle (clears all visuals).
-   *  Useful for ambient/eavesdrop dialogue that should stop when out of range. */
-  stop(): void {
-    this.generation++;
-    this.runner = undefined;
-    this.mode = "idle";
-    this.saying = undefined;
-    this.resolved = [];
-    this.autoTimer = undefined;
-    this.blockedCount = 0;
-    this.advancing = false;
-    this.advanceFired = false;
-    this.afterRevealFired = false;
-    this.confirming = false;
-    this.currentLine = undefined;
-    this.currentPresented = undefined;
-    this.choiceShowsChrome = false;
-    this.choiceShowsBody = false;
+  /** Clear every presentation channel's content — text, choices, chrome
+   *  (nameplate + caret + line), the avatar, and the registered extras. The
+   *  shared teardown for {@link stop} and the ended state; it touches no session
+   *  bookkeeping or visibility (the caller resets its own state, then
+   *  {@link goIdle} reasserts visibility). */
+  private clearAllChannels(): void {
     this.channels.text.clear();
     this.channels.choices.clear();
     this.channels.chrome?.setContinueVisible(false);
@@ -702,9 +688,39 @@ export class DialogueSession {
         this.opts.onError?.("dialogue: channel clear() failed", error);
       }
     }
-    // Honest hide of every channel (idle mode → nothing shown), preserving the
-    // host-hidden lever. Replaces the old setNameplate(undefined) covert hide-all.
+  }
+
+  /** Drop to a quiescent presentation state (`mode` "idle" or "ended"): reset the
+   *  per-line/choice bookkeeping, clear every channel, and reassert visibility
+   *  (idle/ended → nothing shown, honestly via each channel's `setVisible`,
+   *  preserving the host-hidden lever). The caller owns any further reset —
+   *  {@link stop} also abandons the runner + timing latches. */
+  private goIdle(mode: "idle" | "ended"): void {
+    this.mode = mode;
+    this.saying = undefined;
+    this.resolved = [];
+    this.confirming = false;
+    this.currentLine = undefined;
+    this.currentPresented = undefined;
+    this.choiceShowsChrome = false;
+    this.choiceShowsBody = false;
+    this.clearAllChannels();
     this.applyVisibility();
+  }
+
+  /** Abandon the current conversation and reset to idle (clears all visuals).
+   *  Useful for ambient/eavesdrop dialogue that should stop when out of range. */
+  stop(): void {
+    // Abandon the in-flight runner and timing latches; bumping the generation
+    // makes any still-pending async continuation bail on resume.
+    this.generation++;
+    this.runner = undefined;
+    this.autoTimer = undefined;
+    this.blockedCount = 0;
+    this.advancing = false;
+    this.advanceFired = false;
+    this.afterRevealFired = false;
+    this.goIdle("idle");
   }
 
   update(dt: number): void {
@@ -902,7 +918,7 @@ export class DialogueSession {
         });
         i++;
       } else if (step.kind === "command") {
-        if (step.target !== undefined && testCondition(step.condition, scope)) {
+        if (step.target !== undefined && holds(step.condition, scope)) {
           node = step.target;
           i = 0;
         } else {
@@ -980,45 +996,42 @@ export class DialogueSession {
 
   /** Commit the highlighted choice. */
   confirm(): void {
-    if (this.paused) return; // frozen: input is inert
-    // The latch (not the runner) is what guarantees a single commit: `mode`
-    // stays "choosing" while the runner awaits the option's blocking commands,
-    // so without it a second confirm would emit a duplicate onChoiceMade.
-    if (this.mode !== "choosing" || this.confirming) return;
-    const chosen = this.resolved[this.selected];
-    if (!chosen || chosen.disabled) return; // never commit a disabled row
-    this.confirming = true;
-    const text = this.i18n.t(
-      chosen.option.key,
-      chosen.option.text,
-      this.readView(),
-    );
-    this.opts.onChoiceMade?.({ index: chosen.index, text });
-    this.runner?.choose(chosen.index);
+    this.commit(this.selected);
   }
 
   /** Commit by original option index (e.g. a direct pointer hit, or the
    *  timed-choice recipe firing its default). Refuses an unknown or disabled
    *  option. */
   choose(optionIndex: number): void {
-    if (this.paused) return; // frozen: input is inert
-    if (this.mode !== "choosing" || this.confirming) return;
-    const pos = this.resolved.findIndex((c) => c.index === optionIndex);
-    if (pos < 0 || this.resolved[pos]?.disabled) return;
-    this.selected = pos;
-    this.confirm();
+    this.commit(this.resolved.findIndex((c) => c.index === optionIndex));
   }
 
   /** Commit by display position (a pointer hit on a row). The position-keyed
    *  counterpart to {@link choose}; refuses an out-of-range or disabled row.
    *  Used by the pointer binding and the presenter pointer-commit seam. */
   confirmAt(position: number): void {
+    this.commit(position);
+  }
+
+  /**
+   * The single choice-commit authority: every commit path routes here after
+   * translating its argument to a display position. It guards (paused / not
+   * choosing / already confirming / a missing or disabled row), latches against a
+   * double-commit, fires `onChoiceMade`, and steps the runner. The latch (not the
+   * runner) is what guarantees a single commit: `mode` stays "choosing" while the
+   * runner awaits the option's blocking commands, so without it a second confirm
+   * would emit a duplicate `onChoiceMade`.
+   */
+  private commit(position: number): void {
     if (this.paused) return; // frozen: input is inert
     if (this.mode !== "choosing" || this.confirming) return;
     const chosen = this.resolved[position];
-    if (!chosen || chosen.disabled) return;
+    if (!chosen || chosen.disabled) return; // never commit a missing or disabled row
     this.selected = position;
-    this.confirm();
+    this.confirming = true;
+    const text = this.i18n.t(chosen.option.key, chosen.option.text, this.readView());
+    this.opts.onChoiceMade?.({ index: chosen.index, text });
+    this.runner?.choose(chosen.index);
   }
 
   /** Toggle hold-to-fast-forward; the text channel scales its reveal rate. */
@@ -1114,9 +1127,14 @@ export class DialogueSession {
   ): void {
     this.mode = "choosing";
     this.resolved = choices;
-    // Start on the first ENABLED row (the runner guarantees ≥1 exists; the
-    // findIndex never returns -1, the Math.max only guards the impossible).
-    this.selected = Math.max(0, choices.findIndex((c) => !c.disabled));
+    // Start on the first ENABLED row. The runner skips a step with zero
+    // selectable rows, so one always exists — assert it rather than silently
+    // masking a regression (a -1 would seed the highlight on a disabled row).
+    const firstEnabled = choices.findIndex((c) => !c.disabled);
+    if (firstEnabled < 0) {
+      throw new Error("dialogue: choice step presented with no enabled option");
+    }
+    this.selected = firstEnabled;
     this.confirming = false;
     const view = this.readView();
 
@@ -1223,33 +1241,7 @@ export class DialogueSession {
   }
 
   private handleEnd(): void {
-    this.mode = "ended";
-    this.saying = undefined;
-    this.resolved = [];
-    this.confirming = false;
-    this.currentLine = undefined;
-    this.currentPresented = undefined;
-    this.choiceShowsChrome = false;
-    this.choiceShowsBody = false;
-    this.channels.text.clear();
-    this.channels.choices.clear();
-    this.channels.chrome?.setContinueVisible(false);
-    this.channels.chrome?.setNameplate(undefined); // clear the name (content), not a hide
-    this.channels.chrome?.present?.(undefined); // clear the chrome's line content
-    this.channels.avatar?.setSpeaker(undefined);
-    this.channels.avatar?.setSpeaking(false);
-    this.channels.avatar?.present?.(undefined); // clear any line-driven avatar + its inset
-    // Per-conversation reset for the extras (clear, not dispose — see stop()).
-    for (const ch of this.extras) {
-      try {
-        ch.clear?.();
-      } catch (error) {
-        this.opts.onError?.("dialogue: channel clear() failed", error);
-      }
-    }
-    // Honest hide of every channel (ended mode → nothing shown), preserving the
-    // host-hidden lever. Replaces the old setNameplate(undefined) covert hide-all.
-    this.applyVisibility();
+    this.goIdle("ended");
     this.opts.onEnded?.({ scriptId: this.scriptId });
   }
 
@@ -1357,9 +1349,4 @@ export class DialogueSession {
       color: speaker.color,
     };
   }
-}
-
-/** True when no condition, else the condition holds against `scope`. */
-function testCondition(condition: Condition | undefined, scope: EvalScope): boolean {
-  return condition === undefined ? true : evalCondition(condition, scope);
 }

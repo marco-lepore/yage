@@ -146,7 +146,7 @@ function makeController(input: InputBinding = noopBinding): DialogueController {
   });
 }
 
-describe("DialogueController — play() lifecycle guards (F49)", () => {
+describe("DialogueController — play() lifecycle guards", () => {
   it("play() before the component is added throws a clear error", () => {
     const controller = makeController();
     expect(() => controller.play(SCRIPT)).toThrow(

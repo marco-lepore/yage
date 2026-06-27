@@ -4,9 +4,13 @@
  * along the line — so `[wave]` ripples letter-by-letter, `[shake]` jitters each
  * glyph, `[rainbow]` cycles per glyph. Effects are pure functions of time + the
  * glyph's resting x (the phase), so they're deterministic and snapshot-safe.
+ *
+ * The effect name is an OPEN vocabulary (any `[name]` markup tag). This bundled
+ * evaluator animates the four built-ins (wave / shake / pulse / rainbow — the
+ * `BuiltinEffectId`s) and treats any other name — one a custom text channel owns,
+ * or a typo — as a no-op (identity transform), so the run renders as plain styled
+ * text.
  */
-
-import type { EffectId } from "../core/types.js";
 
 /** Mutable so a per-frame caller can reuse one scratch instance (see `out`). */
 export interface EffectOutput {
@@ -20,7 +24,7 @@ export interface EffectOutput {
 }
 
 /**
- * @param effect    which effect (undefined → no motion)
+ * @param effect    which effect by name (undefined or an unrecognized name → no motion)
  * @param timeMs    elapsed time the run has been on screen
  * @param phase     a per-run phase seed (use the run's resting x) so adjacent
  *                  runs animate out of sync instead of in lockstep
@@ -28,7 +32,7 @@ export interface EffectOutput {
  *                  caller to avoid an allocation per animated glyph per frame
  */
 export function evaluateEffect(
-  effect: EffectId | undefined,
+  effect: string | undefined,
   timeMs: number,
   phase: number,
   out: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined },
@@ -56,8 +60,9 @@ export function evaluateEffect(
   return out;
 }
 
-/** True if the effect needs a tint each frame (so the view skips static tint). */
-export function effectDrivesTint(effect: EffectId | undefined): boolean {
+/** True if the effect needs a tint each frame (so the view skips static tint).
+ *  False for an unrecognized name (it animates nothing). */
+export function effectDrivesTint(effect: string | undefined): boolean {
   return effect === "rainbow";
 }
 

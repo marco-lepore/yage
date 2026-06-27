@@ -11,7 +11,7 @@ import {
 /**
  * These tests run the view UNMOUNTED (no scene): no glyph nodes are built, but
  * the reveal cursor / pause / completion machinery runs in full, which is what
- * F13 needs. The origin test pokes the private field directly — building a
+ * these tests need. The origin test pokes the private field directly — building a
  * real glyph tree headless would need the whole renderer service graph for no
  * extra coverage.
  */
@@ -24,7 +24,7 @@ const CFG: DialogueTextConfig = {
   layer: "dialogue-text",
 };
 
-describe("DialogueTextView — pause clamp (F13)", () => {
+describe("DialogueTextView — pause clamp", () => {
   it("clamps the reveal cursor back to a [pause] marker it overshot", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
@@ -43,7 +43,7 @@ describe("DialogueTextView — pause clamp (F13)", () => {
   });
 });
 
-describe("DialogueTextView — grapheme reveal units (F12)", () => {
+describe("DialogueTextView — grapheme reveal units", () => {
   it("completes at the grapheme count, not the code-unit count", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
@@ -125,7 +125,7 @@ describe("splitGraphemes ↔ pixi SplitText parity", () => {
   });
 });
 
-describe("DialogueTextView — delta reveal (F16)", () => {
+describe("DialogueTextView — delta reveal", () => {
   /** A fake glyph node that counts `visible` writes. */
   function instrumentedChar(counter: { writes: number }): { visible: boolean } {
     let v = false;
@@ -175,8 +175,8 @@ describe("DialogueTextView — reveal seam", () => {
     let real = 0;
     let ghost = 0;
     view.setRevealListener(() => real++);
-    // A game's mistaken "hook reveal" via the old public field, which no longer
-    // exists — it must NOT detach the session-owned listener.
+    // A game's mistaken "hook reveal" via a public field (there is none) must
+    // NOT detach the session-owned listener.
     (view as unknown as { onRevealComplete?: () => void }).onRevealComplete = () => ghost++;
     view.show(parseMarkup("hi"));
     view.update(100); // finish the reveal
@@ -185,7 +185,7 @@ describe("DialogueTextView — reveal seam", () => {
   });
 });
 
-describe("DialogueTextView — origin provider retention (F17)", () => {
+describe("DialogueTextView — origin provider retention", () => {
   it("clear() drops the origin closure; the per-line reset keeps it", () => {
     const view = new DialogueTextView(CFG);
     const internals = view as unknown as {

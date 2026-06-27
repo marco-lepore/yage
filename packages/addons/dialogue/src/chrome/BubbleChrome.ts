@@ -160,8 +160,9 @@ export class BubbleChrome implements ChromePresenter {
   }
 
   setNameplate(name: string | undefined): void {
-    // the bubble owns its own nameplate (set from present's speaker); this
-    // only tracks "no name" (undefined). NOT a covert hide-all — that died.
+    // The bubble owns its own nameplate (set from present's speaker); this
+    // handles only the "no name" (undefined) clear. Visibility is governed by
+    // setVisible, never by the nameplate.
     if (name === undefined) {
       this.nameShown = false;
       this.apply();

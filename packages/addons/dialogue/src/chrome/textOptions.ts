@@ -1,15 +1,12 @@
 /**
- * Shared helpers for the renderer-backed presenters. Two groups live here:
+ * Font plumbing shared by the renderer-backed presenters: every chrome / choice
+ * presenter renders incidental text (nameplates, choice labels) the same way — an
+ * optional baked bitmap font wins, else the canvas family + resolution. One
+ * {@link FontConfig} triplet + one {@link makeTextOptions} builder keep the
+ * presenter configs and their `TextComponent` construction in lockstep.
  *
- * 1. Font plumbing — every chrome / choice presenter renders incidental text
- *    (nameplates, choice labels) the same way: an optional baked bitmap font
- *    wins, else the canvas family + resolution. One {@link FontConfig} triplet
- *    + one {@link makeTextOptions} builder keeps the presenter configs and their
- *    `TextComponent` construction in lockstep.
- * 2. Choice-row helpers — {@link DISABLED_CHOICE_ALPHA}, {@link choiceRowLabel},
- *    and {@link firstEnabledIndex}, shared by the list/bubble/radial choice
- *    presenters so disabled-row dimming, labelling, and initial-highlight
- *    selection stay consistent across all three.
+ * (Choice-row helpers — labelling, disabled-row dimming, highlight — live in
+ * `./choiceRow.js`.)
  */
 
 import type { TextComponentOptions, TextStyle } from "@yagejs/renderer";
@@ -44,36 +41,4 @@ export function makeTextOptions(
   if (fonts.bitmapFont) base.bitmap = true;
   else if (fonts.resolution !== undefined) base.resolution = fonts.resolution;
   return base;
-}
-
-/** Opacity applied to a disabled (non-selectable) choice row, so the default
- *  presenters grey it out without needing a dedicated theme colour. */
-export const DISABLED_CHOICE_ALPHA = 0.4;
-
-/**
- * A choice row's display text: the label, plus its `disabledReason` in
- * parentheses when the row is disabled and carries one. Parens (not an em-dash)
- * keep it renderable on baked bitmap-font atlases that may omit punctuation
- * glyphs. Used by the single-line list/bubble presenters; the radial wheel has
- * no room for a reason and shows the bare label.
- */
-export function choiceRowLabel(choice: {
-  readonly label: string;
-  readonly disabled?: boolean | undefined;
-  readonly disabledReason?: string | undefined;
-}): string {
-  return choice.disabled && choice.disabledReason
-    ? `${choice.label} (${choice.disabledReason})`
-    : choice.label;
-}
-
-/** Display position of the first selectable (non-disabled) row, or 0 when every
- *  row is disabled — a case the runner prevents by skipping a zero-enabled step,
- *  so the 0 is only a defensive fallback. Shared by all three choice presenters
- *  to seed the initial highlight. */
-export function firstEnabledIndex(
-  rows: readonly { readonly disabled?: boolean | undefined }[],
-): number {
-  const i = rows.findIndex((r) => !r.disabled);
-  return i < 0 ? 0 : i;
 }

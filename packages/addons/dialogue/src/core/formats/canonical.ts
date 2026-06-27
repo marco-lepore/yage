@@ -60,10 +60,10 @@ export function loadScript(raw: DialogueScript): DialogueScript {
 
   // One pre-walk resolving every string condition and string `set` value to an
   // expression tree, so the frozen IR carries only `Expr`s and the runtime never
-  // re-parses. A bare name (`"gate"`) becomes a `varRef` — evaluating identically
-  // to the old truthy read — while operator strings (`"hp > 0 and not rude"`)
-  // that the old runtime couldn't read now work. Runs on every loader (JSON
-  // included). A malformed string throws `DialogueExprError` with its position.
+  // re-parses. A bare name (`"gate"`) becomes a `varRef` (a truthy read of that
+  // variable); operator strings (`"hp > 0 and not rude"`) parse to comparison /
+  // logical trees. Runs on every loader (JSON included). A malformed string
+  // throws `DialogueExprError` with its position.
   const resolved = resolveExpressions(raw);
 
   const script = Object.freeze({ ...resolved, start });
