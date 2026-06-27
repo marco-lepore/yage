@@ -1,5 +1,30 @@
 # @yagejs/save
 
+## 0.8.0
+
+### Minor Changes
+
+- [#112](https://github.com/marco-lepore/yage/pull/112) [`8e2ab0b`](https://github.com/marco-lepore/yage/commit/8e2ab0b301748c2ac5f3d90224d3a2cc92393865) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add a per-entity `timeScale` multiplier (closes [#92](https://github.com/marco-lepore/yage/issues/92)).
+  - `Entity.timeScale` (default `1`) scales the delta time the engine feeds an
+    entity's components: `dt * scene.timeScale * entity.timeScale`. It composes
+    on top of the scene's `timeScale`, so `0` freezes a single entity while the
+    scene keeps running and `2` runs it at double speed.
+  - Applies to component `update()` / `fixedUpdate()`
+    (`ComponentUpdateSystem`), the entity's `ProcessComponent` tween tick
+    (`ProcessSystem` — scene-scoped processes stay scene-only), and the entity's
+    particle emitters (`ParticleSystem`).
+  - Physics is deliberately carved out: a scene shares one Rapier world stepped
+    once per (scene-scaled) fixed tick, so a rigid body cannot be individually
+    time-scaled. Use `scene.timeScale`, a kinematic body, or manual velocity
+    scaling for per-body time control.
+  - `entity.timeScale` is captured and restored by the save snapshot (omitted
+    from the snapshot when left at the default to keep saves compact).
+
+### Patch Changes
+
+- Updated dependencies [[`62da81f`](https://github.com/marco-lepore/yage/commit/62da81f67076fccaff3a8af6c805dd919c6a687f), [`8e2ab0b`](https://github.com/marco-lepore/yage/commit/8e2ab0b301748c2ac5f3d90224d3a2cc92393865), [`face78b`](https://github.com/marco-lepore/yage/commit/face78ba63f9ef6eb52d8a677fc1d8b1457212e6), [`555a868`](https://github.com/marco-lepore/yage/commit/555a86888ec3aedca42587fab7eb3ec5f0c6eeb8), [`4627c80`](https://github.com/marco-lepore/yage/commit/4627c80e409226ff58c2214c2e1bb76e9e1d769f), [`3991288`](https://github.com/marco-lepore/yage/commit/39912883cf191cd065ef0b5779f1b65b53bcbea8), [`23e357f`](https://github.com/marco-lepore/yage/commit/23e357f605957cc24e58ec2e504a82d4ebdcc9a0)]:
+  - @yagejs/core@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

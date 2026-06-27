@@ -1,7 +1,7 @@
 {
   "name": "@yagejs/examples",
   "private": true,
-  "version": "0.0.6",
+  "version": "0.0.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,19 +15,19 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@yagejs-addons/dialogue": "^0.1.0",
-    "@yagejs/audio": "^0.7.0",
-    "@yagejs/core": "^0.7.0",
-    "@yagejs/debug": "^0.7.0",
-    "@yagejs/effects": "^0.7.0",
-    "@yagejs/input": "^0.7.0",
-    "@yagejs/particles": "^0.7.0",
-    "@yagejs/physics": "^0.7.0",
-    "@yagejs/renderer": "^0.7.0",
-    "@yagejs/save": "^0.7.0",
-    "@yagejs/tilemap": "^0.7.0",
-    "@yagejs/ui": "^0.7.0",
-    "@yagejs/ui-react": "^0.7.0",
+    "@yagejs-addons/dialogue": "^0.2.0",
+    "@yagejs/audio": "^0.8.0",
+    "@yagejs/core": "^0.8.0",
+    "@yagejs/debug": "^0.8.0",
+    "@yagejs/effects": "^0.8.0",
+    "@yagejs/input": "^0.8.0",
+    "@yagejs/particles": "^0.8.0",
+    "@yagejs/physics": "^0.8.0",
+    "@yagejs/renderer": "^0.8.0",
+    "@yagejs/save": "^0.8.0",
+    "@yagejs/tilemap": "^0.8.0",
+    "@yagejs/ui": "^0.8.0",
+    "@yagejs/ui-react": "^0.8.0",
     "react": "^19.0.0"
   }
 }

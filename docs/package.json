@@ -22,11 +22,11 @@
     "vite-plugin-wasm": "^3.6.0"
   },
   "devDependencies": {
-    "@yagejs/core": "^0.7.0",
-    "@yagejs/debug": "^0.7.0",
-    "@yagejs/input": "^0.7.0",
-    "@yagejs/physics": "^0.7.0",
-    "@yagejs/renderer": "^0.7.0",
-    "@yagejs/ui": "^0.7.0"
+    "@yagejs/core": "^0.8.0",
+    "@yagejs/debug": "^0.8.0",
+    "@yagejs/input": "^0.8.0",
+    "@yagejs/physics": "^0.8.0",
+    "@yagejs/renderer": "^0.8.0",
+    "@yagejs/ui": "^0.8.0"
   }
 }
