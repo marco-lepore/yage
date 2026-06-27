@@ -1,5 +1,14 @@
 import { AssetHandle } from "@yagejs/core";
-import { Assets, BitmapFont, Rectangle, Texture } from "pixi.js";
+import {
+  Assets,
+  BitmapFont,
+  BitmapFontManager,
+  CanvasTextMetrics,
+  NineSliceSprite,
+  Rectangle,
+  Texture,
+  TextStyle as PixiTextStyle,
+} from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import {
   emphasisKey,
@@ -12,6 +21,10 @@ import {
   acquireBakedFamily,
   releaseBakedFamily,
 } from "./internal/bitmapFontRegistry.js";
+import {
+  resolveTextStyle,
+  selectBitmapVariant,
+} from "./internal/textConstruction.js";
 import type {
   BitmapFontHandle,
   RendererAsset,
@@ -604,6 +617,154 @@ export function resolveTextureInput(input: TextureInput): TextureResource {
   return input;
 }
 
+/** Options for {@link createNineSlice}. Slice insets follow pixi's `NineSliceSprite`. */
+export interface NineSliceOptions {
+  /** Frame {@link TextureInput} — handle, asset key, or raw `Texture`. */
+  readonly texture: TextureInput;
+  /** Left slice-guide inset (source px). */
+  readonly leftWidth: number;
+  /** Top slice-guide inset (source px). */
+  readonly topHeight: number;
+  /** Right slice-guide inset (source px). */
+  readonly rightWidth: number;
+  /** Bottom slice-guide inset (source px). */
+  readonly bottomHeight: number;
+  /** Rendered width (px) the frame stretches to. */
+  readonly width: number;
+  /** Rendered height (px) the frame stretches to. */
+  readonly height: number;
+}
+
+/**
+ * Build a `NineSliceSprite` from an engine-resolved {@link TextureInput} — a
+ * stretchable textured frame whose corners stay crisp at any size. Returns the
+ * raw display object so callers can parent it into their own container, the
+ * same escape-hatch shape as {@link resolveTextureInput}. This is the renderer's
+ * nine-slice primitive: reach for it (not a direct `pixi.js` import) when
+ * building textured panels, dialogue/UI frames, or buttons.
+ *
+ * `width`/`height` are required: a nine-slice is stretched to a target size, and
+ * defaulting to the (possibly unloaded → 0×0) texture size would silently bake a
+ * degenerate frame.
+ */
+export function createNineSlice(options: NineSliceOptions): NineSliceSprite {
+  return new NineSliceSprite({
+    texture: resolveTextureInput(options.texture),
+    leftWidth: options.leftWidth,
+    topHeight: options.topHeight,
+    rightWidth: options.rightWidth,
+    bottomHeight: options.bottomHeight,
+    width: options.width,
+    height: options.height,
+  });
+}
+
+/** Inputs for {@link measureWrappedText}. */
+export interface MeasureTextOptions {
+  /** Canvas font family (or a baked bitmap-font name when `bitmap`). */
+  readonly fontFamily?: string;
+  /** Font size in px. */
+  readonly fontSize: number;
+  /** Vertical advance per line in px (defaults to the font's natural height). */
+  readonly lineHeight?: number;
+  /** Wrap width in px. Omit or `<= 0` to measure a single unwrapped line. */
+  readonly wordWrapWidth?: number;
+  /**
+   * Measure via the bitmap-font path (`BitmapFontManager`): `fontFamily` names
+   * a baked atlas. Wrap-aware like the canvas path, and returns px (the atlas's
+   * base-unit metrics are scaled to `fontSize`).
+   */
+  readonly bitmap?: boolean;
+}
+
+/** Natural laid-out size of a (optionally wrapped) text string. */
+export interface MeasuredText {
+  readonly width: number;
+  readonly height: number;
+  /** Number of laid-out lines (wrap-aware on the canvas path; `>= 1`). */
+  readonly lineCount: number;
+}
+
+/**
+ * One reused mutable style for all measurement. Pixi keys its metrics caches on
+ * `style.styleKey` = `${uid}-${tick}` (identity-based), so a fresh `TextStyle`
+ * per call could never hit and would push a dead entry into the 1000-slot LRU
+ * each time. Reusing one instance keeps the key stable across identical
+ * consecutive measures (pixi setters no-op on same-value writes). Lazy so
+ * importing this module never constructs pixi state.
+ */
+let measureStyle: PixiTextStyle | undefined;
+/** Style keys applied by the previous measure (to reset what this one omits). */
+let measureStyleKeys: readonly string[] = [];
+
+/** Apply `resolved` onto the shared measurement style, clearing leftovers. */
+function applyMeasureStyle(resolved: TextStyle): PixiTextStyle {
+  const style = (measureStyle ??= new PixiTextStyle());
+  const target = style as unknown as Record<string, unknown>;
+  const next = resolved as Record<string, unknown>;
+  const defaults = PixiTextStyle.defaultTextStyle as Record<string, unknown>;
+  for (const key of measureStyleKeys) {
+    if (!(key in next)) target[key] = defaults[key];
+  }
+  for (const key in next) target[key] = next[key];
+  measureStyleKeys = Object.keys(next);
+  return style;
+}
+
+/**
+ * Measure the natural size of a text string — wrap-aware — without constructing
+ * a live text node. This is the renderer's text-metrics primitive: reach for it
+ * (not a direct `pixi.js` import) when a layout needs to size a panel to its
+ * text (e.g. a content-sized dialogue bubble).
+ *
+ * Both paths honour `wordWrapWidth`, so `lineCount` reflects the wrapped line
+ * count: canvas via Pixi's `CanvasTextMetrics`, bitmap via `BitmapFontManager`
+ * (whose base-unit metrics are scaled to `fontSize`, matching what a
+ * `BitmapText` renders at). Measurement resolves the engine-level
+ * `defaultTextStyle` under the given options — the same merge the render path
+ * applies — so the measured box matches the drawn text.
+ *
+ * Requires a DOM/canvas at runtime (the browser) for the canvas path; unit tests
+ * mock `CanvasTextMetrics` (there is no canvas under the node test env).
+ */
+export function measureWrappedText(
+  text: string,
+  options: MeasureTextOptions,
+): MeasuredText {
+  const wrap = options.wordWrapWidth !== undefined && options.wordWrapWidth > 0;
+  const resolved =
+    resolveTextStyle({
+      fontSize: options.fontSize,
+      ...(options.fontFamily !== undefined
+        ? { fontFamily: options.fontFamily }
+        : {}),
+      ...(options.lineHeight !== undefined
+        ? { lineHeight: options.lineHeight }
+        : {}),
+      wordWrap: wrap,
+      ...(wrap ? { wordWrapWidth: options.wordWrapWidth } : {}),
+    }) ?? {};
+  // Bitmap text redirects `fontFamily` to a registered emphasis-variant atlas
+  // (e.g. a defaultTextStyle `fontWeight` selecting the bold bake) — measure
+  // through the same atlas the render path draws from.
+  const style = applyMeasureStyle(
+    options.bitmap ? (selectBitmapVariant(resolved) ?? resolved) : resolved,
+  );
+  if (options.bitmap) {
+    // `getLayout` (what `measureText` delegates to, with `lines` in its type)
+    // returns font base-measurement units; scale to px the same way pixi's own
+    // `BitmapText.updateBounds` does.
+    const m = BitmapFontManager.getLayout(text, style);
+    return {
+      width: m.width * m.scale,
+      height: m.height * m.scale,
+      lineCount: m.lines.length,
+    };
+  }
+  const m = CanvasTextMetrics.measureText(text, style);
+  return { width: m.width, height: m.height, lineCount: m.lines.length };
+}
+
 /** Slice a texture input into an array of frame textures. */
 export function sliceTextureFrames(
   input: TextureInput,
@@ -619,10 +780,7 @@ export function sliceTextureFrames(
 
   const computedColumns =
     options.columns ??
-    Math.max(
-      1,
-      Math.floor((base.width - startX + gapX) / (frameWidth + gapX)),
-    );
+    Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
   const count = options.count ?? computedColumns;
   const frames: TextureResource[] = [];
 

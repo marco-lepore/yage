@@ -1,0 +1,44 @@
+# locksmith
+// Pip the Locksmith — authored in YAGE's compact DSL, loaded with `loadCompact`
+// (the root entry — no `yaml` dependency). One statement per line; this whole
+// file compiles to the SAME validated IR as the eight YAML neighbours, and shares
+// the town's storage / functions / commands (gold cell, has_item, give-item).
+@ pip Pip the Locksmith #ffb86b
+
+// A declared default, seeded once into the persistent store; it survives plays,
+// so the conditional jump below greets a returning customer differently.
+declare pip_seen = false
+
+:: start
+// Conditional jump: on a return visit (pip_seen persisted) skip the introduction.
+-> regreet if: pip_seen
+pip happy: Ah, a new face! [b]Welcome[/b] to the workshop. #portrait:pip-smile #line:pip_intro
+pip: Locks, keys, picks — if it clicks, I fix it.
+set pip_seen = true
+-> menu
+
+:: regreet
+pip happy: Back already? The bench is always open. #portrait:pip-smile
+-> menu
+
+:: menu
+? Buy a lockpick (20g) if: gold >= 20 and not has_item('lockpick') -> buy
+? Forge a master key if: has_item('master-die') -> bye #disabled
+? What's with the east gate? -> gate #once
+? Nothing for now -> bye
+
+:: buy
+set gold = gold - 20
+do give-item id=lockpick
+pip happy: One lockpick, [b]sharp[/b] as ever. Mind the tumblers. #portrait:pip-smile
+-> menu
+
+:: gate
+pip: That old gate to the east? #portrait:pip-think #side:right
+The locksmith leans in, voice low. speed=0.6
+pip: It wants the [i]rusty key[/i] — and Bron won't part with the lock. #line:pip_gate
+-> menu
+
+:: bye
+pip happy: Mind how you go. #portrait:pip-smile
+end

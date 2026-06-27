@@ -18,6 +18,13 @@ export interface AudioPlayOptions {
   volume?: number; // instance volume override, default: 1
   loop?: boolean; // default: false
   speed?: number; // playback rate, default: 1
+  /**
+   * Called once when the sound finishes **on its own** (its `end` event). NOT
+   * called when you `stop()` it, and never for a `loop`ing sound (it has no end).
+   * The "tell me when this clip is done" seam — e.g. gating dialogue auto-advance
+   * on a voice clip.
+   */
+  onEnd?: () => void;
 }
 
 export interface SoundComponentOptions {

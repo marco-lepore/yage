@@ -1,0 +1,49 @@
+# Vex — buys the rusty key for gold: an expression-gated option that writes
+# through the two-way `gold` cell and hands over the item. The gate and the spend
+# are plain string expressions — no hand-built IR.
+id: merchant
+start: n
+speakers:
+  vex: { id: vex, name: Vex the Trader, color: 0xe6a3ff }
+nodes:
+  n:
+    id: n
+    steps:
+      - kind: say
+        speaker: vex
+        text: "A rusty key? Fifty gold. You've got [b]{gold}[/b]."
+      - kind: choice
+        speaker: vex
+        text: "Well?"
+        options:
+          - text: "Buy the rusty key (50g)"
+            target: bought
+            # gold >= price AND you don't already own the key
+            condition: "gold >= 50 and not has_item('rusty-key')"
+            commands:
+              # The script owns the arithmetic; the cell writes it back to the game.
+              - { type: set, var: gold, value: "gold - 50" }
+              - { type: give-item, id: rusty-key }
+          - text: "(You already hold the key)"
+            target: have
+            condition: "has_item('rusty-key')"
+          - { text: "Maybe later", target: bye }
+  bought:
+    id: bought
+    steps:
+      - kind: say
+        speaker: vex
+        text: "Pleasure doing business — {gold} gold left. The gate's east of here."
+      - { kind: end }
+  have:
+    id: have
+    steps:
+      - { kind: say, speaker: vex, text: "You've got it already. Go find that gate." }
+      - { kind: end }
+  bye:
+    id: bye
+    steps:
+      - kind: say
+        speaker: vex
+        text: "Gold talks. Come back when you have fifty."
+      - { kind: end }

@@ -1,0 +1,51 @@
+# Sage — NO `view` hint on his lines. The default route still floats him in a
+# bubble because he has a registered DialogueActor (speaker-aware routing). His
+# `meta.portrait` (the "sage-face" key the scene registers in Assets) drives the
+# bubble-side avatar. He is also the demo's VOICED NPC: each line carries a
+# `voice` id, which a registered createVoiceChannel "plays" (a synthetic clip in
+# this asset-free demo) and which gates auto-advance until the clip ends.
+id: sage
+start: intro
+speakers:
+  sage: { id: sage, name: Sage, color: 0x7ec8ff }
+nodes:
+  intro:
+    id: intro
+    steps:
+      - kind: say
+        speaker: sage
+        text: "No view hint on my lines — the default route floats me in a bubble because I have a registered actor. It grows to fit however much I ramble."
+        meta: { portrait: sage-face, side: left }
+        voice: vo_sage_ramble
+      - kind: say
+        speaker: sage
+        text: "Hold [b]X[/b] to skip me, or press [b]V[/b] to let me talk on my own — with auto on, I wait for my own voice to finish."
+        meta: { portrait: sage-face, side: left }
+        voice: vo_sage_controls
+      # A bubble CHOICE with a portrait: the panel grows + the options reflow
+      # around the in-bubble avatar, just like a box choice does.
+      - kind: choice
+        speaker: sage
+        text: "Anything else?"
+        meta: { portrait: sage-face, side: left }
+        options:
+          - { text: "What's beyond the gate?", target: gate }
+          - { text: "Nothing, thanks", target: bye }
+  gate:
+    id: gate
+    steps:
+      - kind: say
+        speaker: sage
+        text: "Treasure — and trouble. Mind the guard."
+        meta: { portrait: sage-face, side: left }
+        voice: vo_sage_gate
+      - { kind: end }
+  bye:
+    id: bye
+    steps:
+      - kind: say
+        speaker: sage
+        text: "Safe travels."
+        meta: { portrait: sage-face, side: left }
+        voice: vo_sage_bye
+      - { kind: end }

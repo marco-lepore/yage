@@ -156,7 +156,9 @@ export * from "./transitions/index.js";
 // Asset factories
 export {
   bitmapFont,
+  createNineSlice,
   installBitmapFont,
+  measureWrappedText,
   renderAsset,
   resolveTextureInput,
   sliceTextureFrames,
@@ -168,9 +170,14 @@ export {
 export type {
   BitmapFontVariant,
   InstallBitmapFontOptions,
+  MeasuredText,
+  MeasureTextOptions,
+  NineSliceOptions,
   WebFontBakeOptions,
   WebFontOptions,
 } from "./assets.js";
+/** Raw pixi nine-slice display type returned by {@link createNineSlice}. */
+export type { NineSliceSprite } from "pixi.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";

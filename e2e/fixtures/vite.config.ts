@@ -41,6 +41,7 @@ export default defineConfig({
         "split-text-reveal": resolve(__dirname, "split-text-reveal.html"),
         "tooltip-glued": resolve(__dirname, "tooltip-glued.html"),
         platformer: resolve(__dirname, "platformer.html"),
+        "dialogue-addon": resolve(__dirname, "dialogue-addon.html"),
       },
     },
   },

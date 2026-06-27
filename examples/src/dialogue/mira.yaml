@@ -1,0 +1,37 @@
+# Mira — markup effects + a persistent visit counter (cycling NPC).
+id: mira
+start: n
+declare: { timesTalked: 0 }
+speakers:
+  mira: { id: mira, name: Mira, color: 0xffd866 }
+nodes:
+  n:
+    id: n
+    steps:
+      # Count this visit, then branch on the (persisted) prior count.
+      - kind: command
+        commands: [{ type: set, var: timesTalked, value: "timesTalked + 1" }]
+      - { kind: command, commands: [], condition: "timesTalked > 1", target: again }
+      - kind: say
+        speaker: mira
+        text: "Welcome to town! This box can [wave]wave[/wave] and [shake]shout[/shake]."
+      - kind: say
+        speaker: mira
+        text: "Timing matters:[pause=400/] this part is [speed=0.4]slow[/speed]."
+      # Reveal-driven events: positional [sfx=…/] cues + the effect+hold idiom.
+      # The trailing [pause=N/] holds the typewriter while the cue plays — source
+      # order is the timing ([sfx]→fire, then [pause]→hold).
+      - kind: say
+        speaker: mira
+        text: "It clicks as it types[sfx=page/] and rings cues[pause=300/] mid-line."
+      - kind: say
+        speaker: mira
+        text: "Listen:[sfx=chime/][pause=500/] a chime, then a beat. It can even [screenShake/][pause=300/] shake the screen!"
+      - { kind: end }
+  again:
+    id: again
+    steps:
+      - kind: say
+        speaker: mira
+        text: "Back again? We've spoken [b]{timesTalked}[/b] times — the count [wave]persists[/wave]."
+      - { kind: end }

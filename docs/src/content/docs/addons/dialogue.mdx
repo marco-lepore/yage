@@ -1,0 +1,1165 @@
+---
+title: Dialogue
+description: Branching dialogue with a typewriter box or speech bubbles, inline markup, and swappable themeable presenters
+---
+
+import { Aside, Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+`@yagejs-addons/dialogue` is the first **YAGE addon**: an installable,
+opinionated dialogue system. A headless branching runner drives a swappable,
+themeable presentation layer, so you drop it into a scene, point it at a script,
+and get a working typewriter box (or speech bubble) with branching choices and
+inline markup — then re-theme or replace any piece without forking.
+
+## Install
+
+```bash
+npm install @yagejs-addons/dialogue
+```
+
+The addon declares the engine packages as **peer dependencies**, so it reuses
+your single engine install rather than duplicating it. Install the engine
+yourself:
+
+```bash
+npm install @yagejs/core @yagejs/input @yagejs/renderer
+```
+
+- `@yagejs/core` and `@yagejs/input` are **required** peers — the headless runner
+  and the `DialogueController` use them.
+- `@yagejs/renderer` is the **optional** peer — only the `./presenters` subpath
+  needs it (and it brings `pixi.js` transitively). Consuming only the headless runner? Skip
+  them.
+
+## Three entry points
+
+The package is split so the headless path never pulls a renderer — and so the
+JSON / TypeScript / expression authors never pull the YAML parser:
+
+```ts
+// Headless + input only — no pixi, no yaml, fully unit-testable.
+import { DialogueController, parseExpr, loadCompact } from "@yagejs-addons/dialogue";
+
+// Pixi presentation — Graphics chrome + canvas text, themes, factories.
+import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+// YAML-literal authoring — the only entry that pulls `yaml`.
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+```
+
+| Entry          | Imports                          | Contains |
+| -------------- | -------------------------------- | -------- |
+| `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical (JSON) format, the `parseExpr` string→expression parser, the `parseCompact` / `loadCompact` compact DSL, events, `DialogueController`, input bindings |
+| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultTheme()`, textured nine-slice variants, radial (experimental) |
+| `./yaml`       | + `yaml`                         | `loadYaml` — kept off the root so non-YAML authors never bundle the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be tree-shaken) |
+
+## Quick start
+
+The default presenters are **zero-asset**: Graphics objects for the box frame
+plus canvas `SplitText`/`Text` for the typewriter, with native bold/italic and
+per-glyph effects. `defaultTheme()` gives you a working look with no bundled
+files.
+
+<Steps>
+
+1. **Declare the dialogue layers on your scene.** They are screen-space and sit
+   above the in-scene UI so a conversation overlays everything.
+
+   ```ts
+   import { Scene } from "@yagejs/core";
+   import { DIALOGUE_LAYERS } from "@yagejs-addons/dialogue/presenters";
+
+   class TalkScene extends Scene {
+     readonly layers = [...DIALOGUE_LAYERS];
+     // ...
+   }
+   ```
+
+2. **Spawn a host entity and add the controller.** Spread a factory bundle into
+   `DialogueController` and override any one piece.
+
+   ```ts
+   import { DialogueController, DialogueEndedEvent } from "@yagejs-addons/dialogue";
+   import { createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+
+   onEnter() {
+     const host = this.spawn("dialogue");
+     const dlg = host.add(new DialogueController({ ...createBoxDialogue() }));
+     host.on(DialogueEndedEvent, () => host.destroy());
+     dlg.play(script);
+   }
+   ```
+
+3. **Author a script** (plain data — see below) and pass it to `play()`.
+
+</Steps>
+
+<Aside type="tip">
+`createBoxDialogue()` defaults its theme to `defaultTheme()`. Pass a theme to
+restyle: `createBoxDialogue(myTheme)`. For a diegetic look, use
+`createBubbleDialogue(theme?, { worldLayer })`; to mix both per line, use
+`createMixedDialogue(theme?, opts)`. Speech bubbles size to their text — they grow
+**width first** (up to `maxWidth`), then wrap and grow height — so a long line
+widens the bubble instead of clipping (configure `minWidth` / `maxWidth` / `height`
+on the bubble geometry).
+</Aside>
+
+## Writing a script
+
+Author scripts with **`defineScript()`** — an identity helper (no runtime cost)
+that captures the script's declared variable types so `play()` hands back a typed
+handle. A plain `DialogueScript` literal still works and is validated identically
+at runtime; the typing is the only thing you give up. Both are JSON-able, so you
+can also load a script from disk.
+
+```ts
+import { defineScript } from "@yagejs-addons/dialogue";
+
+const script = defineScript({
+  id: "intro",
+  start: "greeting",
+  declare: { rude: false, timesTalked: 0 },   // variable defaults (seed-if-absent)
+  speakers: {
+    gwen: { id: "gwen", name: "Gwen", color: 0xffd866 },
+  },
+  nodes: {
+    greeting: {
+      id: "greeting",
+      steps: [
+        { kind: "say", speaker: "gwen", text: "Hello, [b]traveler[/b]. You carry {gold} gold." },
+        {
+          kind: "choice",
+          text: "What do you say?",
+          options: [
+            { text: "Greet her back.", target: "friendly" },
+            {
+              text: "Walk off.",
+              once: true,
+              commands: [{ type: "set", var: "rude", value: true }],
+            },
+          ],
+        },
+      ],
+    },
+    friendly: {
+      id: "friendly",
+      steps: [{ kind: "say", text: "Safe travels." }, { kind: "end" }],
+    },
+  },
+});
+```
+
+### Variables and storage
+
+Variables live in **one opaque name namespace** — conditions, `{token}`
+interpolation, and choice gates all read it. The namespace is backed by a
+**`VariableStorage`** (Yarn's `get` / `set` / `has` shape) **installed once on the
+controller** and **persisted across plays** — which is what makes cycling-NPC
+counters and quest flags survive. (A choice's `once` flag is *per-conversation*
+state, not stored — a fresh `play()` starts it clear; it travels with the future
+save cursor.) `play(script)` is content-only.
+
+- **`declare`** holds variable *defaults*. On each `play()` a default seeds the
+  storage **only if it's absent** (seed-if-absent) — a game-linked value always
+  wins, the addon never clobbers. Reset by re-initializing explicitly.
+- The default storage is a `MemoryVariableStorage` (zero config). To bridge game
+  state, use `cells` (two-way `{ get, set }` or read-only `() => value`) and
+  `compose` to layer:
+
+  ```ts
+  import { cells, compose, MemoryVariableStorage } from "@yagejs-addons/dialogue";
+
+  const storage = compose(
+    cells({ gold: { get: () => player.gold, set: (v) => (player.gold = Number(v)) } }),
+    new MemoryVariableStorage(), // catch-all for dialogue-locals + seeded defaults
+  );
+  ```
+
+`{gold}` (and any condition on `gold`) resolves **when the line is presented**, so
+an earlier command's effect shows up on a later line. Already-shown lines never
+re-render, and a choice menu's conditions don't live-refresh while it's open.
+
+### Conditions and `set` are expressions
+
+A `Condition` and a `set` value are expression **trees**, so `gold - 50` and
+`has_item("key") and not rude` are plain data. Nodes are `literal | varRef | call
+| unary | binary | group`; operators follow Yarn (`== != > < >= <=` with word
+forms, `and`/`or`/`xor`/`not`, `+ - * / %`). The flat `{ var, op, value }`
+comparison still works as the degenerate one-level tree.
+
+```ts
+// "set gold = gold - 50" — needs a writable `gold` cell:
+{ type: "set", var: "gold", value: { kind: "binary", op: "-",
+  left: { kind: "varRef", name: "gold" }, right: { kind: "literal", value: 50 } } }
+
+// a choice gated on an argument-read function:
+{ condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "rusty-key" }] } }
+```
+
+#### Write them as strings
+
+Typing those trees by hand is tedious, so a `Condition` or `set` value can be a
+**string** — `parseExpr` parses it into the exact same IR when the script loads
+(every loader, JSON included), so the runtime never re-parses. The two snippets
+above are simply:
+
+```ts
+{ type: "set", var: "gold", value: "gold - 50" }
+{ condition: "has_item('rusty-key')" }
+{ kind: "command", commands: [], condition: "gold >= 50 and not rude", target: "buy" }
+```
+
+- Identifiers are `[A-Za-z_$]` then `[A-Za-z0-9_.$]`, so `$gold` and `quest.stage`
+  read as one name (Yarn-forward) but `-` is a minus operator — `hp-1` is `hp`
+  minus `1`, and a hyphenated id like `'rusty-key'` goes in a quoted string.
+- A **bare** name is a variable read (`"greeted"` → truthy check, the same as
+  before); a **quoted** string is literal text. So a `set` value of `"gold"` reads
+  the `gold` variable, while `"'gold'"` is the five-character string.
+- These words are **reserved** and can't be used *bare in a string* — quote them,
+  or use the `{ var, op, value }` form / `defineScript`: `and or not xor is eq neq
+  gt lt gte lte true false null`.
+
+You can call `parseExpr(src)` directly (it throws `DialogueExprError` with
+`line`/`col` on a bad string), but you rarely need to — the loaders run it for you.
+
+#### Author the whole script in YAML
+
+For a data-file workflow, `loadYaml` (from the `@yagejs-addons/dialogue/yaml`
+subpath) reads a YAML document whose shape mirrors the JSON `DialogueScript` and
+runs it through the same loader — same string-expression pre-walk, same
+validation, same frozen result. It lives behind a subpath so games that author in
+JSON/TypeScript never bundle the YAML parser.
+
+```ts
+import { loadYaml } from "@yagejs-addons/dialogue/yaml";
+
+const script = loadYaml(`
+id: shop
+start: greet
+declare: { gold: 0 }
+nodes:
+  greet:
+    id: greet
+    steps:
+      - kind: say
+        text: "You have {gold} gold."
+      - kind: choice
+        options:
+          - { text: "Buy the sword (50g)", target: buy, condition: "gold >= 50" }
+          - { text: "Leave", target: bye }
+  buy:
+    id: buy
+    steps:
+      - { kind: command, commands: [ { type: set, var: gold, value: "gold - 50" } ] }
+      - { kind: say, text: "A fine blade." }
+      - { kind: end }
+  bye: { id: bye, steps: [ { kind: end } ] }
+`);
+```
+
+The root of the document must be a mapping (the script object); a list, a scalar,
+or an empty document is rejected with a clear `DialogueScriptError`.
+
+#### Author with the compact DSL
+
+For hand-writing a lot of branching dialogue, the JSON/YAML shape gets noisy. The
+compact DSL is a line-oriented format aimed at that: one statement per line, a
+sigil at the front telling the parser what the line is. `loadCompact(text)`
+compiles it to the same validated, frozen script — it lives on the root entry, so
+it adds no dependency. (`parseCompact(text)` stops at the unfrozen `DialogueScript`
+if you want to inspect or post-process it first.)
+
+```ts
+import { loadCompact } from "@yagejs-addons/dialogue";
+
+const script = loadCompact(`
+# shop
+@ mira Mira Brightwater #ffcc00
+@ guard Guard
+
+:: start
+mira: Welcome to my [b]shop[/b], traveler!
+mira happy: You've got coin to spend, I hope.
+set gold = 100
+? Buy a healing potion if: gold >= 50 -> buy #once
+? Ask about the [i]rumors[/i] -> rumors #side:right
+? Just browsing -> done
+
+:: buy
+set gold = gold - 50
+mira: A fine choice. Here you are.
+do give-item id=healing-potion count=1
+-> done
+
+:: rumors
+guard: Keep your voice down.
+The tavern falls silent for a moment.
+-> done
+
+:: done
+mira: Safe travels!
+end
+`);
+```
+
+Reading it line by line:
+
+- **`# shop`** sets the script id. The start node is the first `::` node (`start`).
+- **`@ mira Mira Brightwater #ffcc00`** declares a speaker: an opaque id, a display
+  name (spaces allowed), and an optional `#rrggbb` / `#rgb` nameplate colour. `@`
+  lines may sit anywhere — before or after the lines that use them.
+- **`:: start`** opens a node; every step line until the next `::` belongs to it.
+- **`mira: …`** is a spoken line — but _only_ because `mira` is a declared speaker.
+  A second header token is the avatar expression, so **`mira happy: …`** sets
+  `expression: "happy"`. A line with no declared-speaker prefix is a narrator line,
+  colons and all — `The tavern falls silent for a moment.` and even
+  `Warning: do not enter.` stay intact as narration.
+- **`? …`** is one choice option; consecutive `?` lines merge into a single choice.
+  Its attributes follow the text as non-bracket sigils, in order: `if: cond`, then
+  `-> node` (or `target=node`), then `#once` / `#disabled` / `#key:value`
+  metadata. They're stripped before the visible text, so `[..]` stays reserved for
+  inline markup — `[b]…[/b]` and any effect span like `[glitch]…[/glitch]` render
+  in the choice, while a malformed built-in tag the parser can't act on (e.g.
+  `[color=notacolor]`) is a load error instead of vanishing.
+- **`set gold = 100`** writes a variable. A bare number / `true` / `false` / `null`
+  stays a literal; anything else is parsed as an expression, so `set gold = gold - 50`
+  stores the subtraction the runtime evaluates later.
+- **`do give-item id=healing-potion count=1`** fires a host command: a `type`, then
+  `key=value` data and `#flag` booleans. Quote a value with spaces (`msg="two words"`).
+  A data key can't be named `type` — that's the command's own dispatch key, so a
+  `type=` collision is a load error rather than silently overwriting it.
+- **`-> done`** jumps unconditionally; **`-> rich if: gold > 100`** jumps only when
+  the condition holds, otherwise it falls through to the next step (the "else" path).
+  **`end`** stops the conversation.
+- **`declare gold = 0`** — in the preamble or inside a node — sets a script-level
+  variable default (a literal value, seeded only if the storage doesn't already
+  hold it). It's the one leader that isn't a step; `parseExpr` is not applied.
+
+For **avatars**, you usually need no extra code or grammar: write `#portrait:key`
+(and optionally `#side:right`) on a line and wire a meta-driven avatar presenter —
+the in-box and bubble presenters read those per-line `meta` keys directly. A
+speaker-level `SpeakerDef.avatar` (with an `expressions` map) is only needed for
+the variant-swapping presenters, and is set in code on the parsed script.
+
+A line can also carry trailing hints: `view=` / `voice=` / `speed=` / `auto=` set the
+say-line fields, and trailing `#key:value` (or a bare `#flag`) becomes `meta` — except
+`#line:id`, which sets the i18n `key` (Yarn's localization tag) on a say line or choice
+option, so a string table can translate it. The `set` / `do` / `end` keywords are
+lowercase and matched by their full shape, so ordinary prose that happens to start with
+`Set`, `Do`, or `End` stays narration.
+
+### Validation
+
+The script is checked in two stages, both throwing hard errors so typos die early
+rather than silently mis-branching:
+
+- **Load-time** (`defineScript` / `loadScript` / `loadYaml`, environment-free):
+  collects the names read/written, functions called, and command types fired, and
+  type-checks what's statically knowable — a numeric or arithmetic operator (in the
+  atomic form *or* inside a parsed expression) with a wrong-type literal operand or
+  a declared-non-number variable operand, and a literal `set` value against the
+  target's declared type. Throws `DialogueScriptError`. Undeclared *references*
+  aren't rejected here — the storage/functions may supply them, which is only known
+  at play time.
+- **Play-time** (when you call `play`): every read name must be provided (a
+  declared default or a value in the storage), every called function installed,
+  every command type handled, no `set` target that's a function, no
+  declared-default/storage type clash. Throws `DialoguePlayError`.
+
+### Step kinds
+
+| Kind      | Purpose |
+| --------- | ------- |
+| `say`     | A line spoken by an optional `speaker`. Supports markup, `speed`, `autoAdvanceMs`, `expression`, `commands`, `view`, `meta`, `voice`. |
+| `choice`  | A branch with `options` (each: `text`, `target?`, `condition?`, `once?`, `presentation?`, `disabledReason?`, `commands?`, `meta?`) and an optional prompt `text`. |
+| `command` | Fire commands without showing anything; optionally a conditional `goto` via `condition` + `target`. |
+| `goto`    | Unconditional jump to another node. |
+| `end`     | Ends the conversation. |
+
+A **condition** is a variable name (truthy check), an atomic comparison
+`{ var, op, value }` (`op` is one of `== != > >= < <= truthy falsy`), a full
+expression tree (see above), or — in TypeScript only — a `(vars) => boolean`
+predicate (it receives a materialized snapshot of the readable variables).
+
+### Disabled choices
+
+By default an option whose `condition` is false is **filtered out** of the menu.
+Set `presentation: "disabled"` to keep it on screen instead — greyed-out and
+non-selectable, the Disco-Elysium "[Strength 8] Force the door" pattern that lets
+the player see a gate before they can pass it. `disabledReason` adds a short
+explanation shown beside the row (it runs through the i18n adapter, so `{token}`s
+interpolate; there is no separate translation key for it).
+
+```ts
+{
+  kind: "choice",
+  options: [
+    {
+      text: "Unlock the gate",
+      target: "open",
+      condition: { kind: "call", fn: "has_item", args: [{ kind: "literal", value: "rusty-key" }] },
+      presentation: "disabled",          // shown greyed-out when you lack the key
+      disabledReason: "needs the rusty key",
+    },
+    { text: "Walk away", target: "leave" }, // always enabled — keeps the step pickable
+  ],
+}
+```
+
+Rules to keep in mind:
+
+- A spent `once` option is **always** hidden — `presentation` only governs
+  condition failures, never a consumed one-shot.
+- A step is **skipped** if it has zero *enabled* options (the same fall-through as
+  when every option is hidden), so a disabled row never soft-locks a conversation
+  — always leave at least one enabled option.
+- Selection starts on the first enabled row; arrow-key navigation and pointer
+  hover skip disabled rows, and confirming or clicking one is refused. The
+  default list and bubble presenters grey the row and append the reason in
+  parentheses; the experimental radial wheel greys it without a reason.
+
+## Inline markup
+
+Markup is a small BBCode-ish syntax that nests, inherits down the stack, and
+survives translation (translators keep the tags). The styling attributes are a
+fixed set (`b` / `i` / `color` / `speed`); **effects are an open vocabulary** —
+any other `[name]…[/name]` opens an effect span the presenter interprets (see
+below).
+
+| Tag | Effect |
+| --- | ------ |
+| `[b]…[/b]` `[i]…[/i]` | bold / italic |
+| `[color=#ffcc00]…[/color]` / `[color=gold]…` | colour (hex or named) |
+| `[wave]` `[shake]` `[pulse]` `[rainbow]` | the four built-in per-glyph effects (any `[name]…[/name]` is an effect — see below) |
+| `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
+| `[pause=600/]` | **self-closing** — holds the typewriter 600ms at this offset |
+| `[sfx=ding/]` `[expression=happy/]` `[shake amount=3/]` | **self-closing marker** — a reveal event at this char offset (see below) |
+| `\[` `\]` | a literal bracket |
+
+A tag ending in `/` is a **self-closing reveal token** — a `[pause=N/]` hold or a
+`[name k=v/]` marker. They share one ordered stream (`ParsedText.tokens`), so
+**source order is drain order**: `[pause=600/][shake/]` holds *then* fires, while
+`[shake/][pause=600/]` fires *then* holds. A marker adds no styling — it fires as a
+reveal event when the cursor reaches it. The Yarn-style shortcut `[name=val/]` is
+exactly `[name name=val/]`, so it composes with explicit `key=value` props:
+`[shake=500 amount=3/]` → `props { shake: "500", amount: "3" }` (values can't
+contain whitespace or `/`). Markup keeps the trailing `/`, so **translators must
+preserve it** for a token to survive a re-order. (`[pause=600/]` is the only pause
+spelling — a bare `[pause=600]` without the slash is an ordinary tag, so it opens
+an effect span named `pause` rather than a hold.)
+
+The **effect + hold** idiom drops out of the two primitives: `[shake=500/][pause=500/]`
+fires a fire-and-forget marker (your host plays a 500ms shake) and then a 500ms pause
+holds the reveal while it plays. There's no combined `[shake hold/]` sugar — markers
+fire and pauses hold; ordering carries the intent.
+
+**Effects are an open vocabulary.** `[wave]`, `[shake]`, `[pulse]`, and `[rainbow]`
+are the four the bundled text presenter animates, but the parser accepts *any* tag
+name: `[glitch]…[/glitch]` parses to a run with `effect: "glitch"`. A custom text
+channel can animate any name it knows; a presenter that doesn't recognise an
+effect (including the bundled one) renders the run as plain styled text. So you
+widen the effect set by writing a text channel that reads the `effect` name —
+nothing in the core or parser is a closed list.
+
+`parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
+
+Every character count in the parsed result — `ParsedText.length`,
+`TextRun.graphemeCount`, a token's `atChar`, and the `charsPerSec` reveal rate —
+is in **graphemes** (user-perceived characters), not UTF-16 code units. An emoji
+like 🔥, a ZWJ sequence like 👩‍🚀, or an accent composed with a combining mark
+counts as one character, matching the glyphs the renderer actually draws, so
+reveal timing and pause positions stay put in any language. `splitGraphemes(str)`
+exposes the same segmentation for tooling.
+
+### Reveal events: typewriter ticks and inline markers
+
+As a line types, the headless `LineReveal` clock emits a stream of **reveal
+beats** you can hook for positional sound and effects:
+
+- **Per-grapheme ticks** — wire the controller's `onRevealTick(index)` callback
+  for a typewriter blip. It is a plain callback, **not** an event, because it
+  fires once per grapheme (hundreds of times a line). `index` is the raw grapheme
+  index including whitespace, so filter spaces yourself if you only want a blip on
+  visible glyphs.
+- **Inline markers** — a `[name k=v/]` marker surfaces as
+  `DialogueRevealMarkerEvent` (`{ marker, viaSkip }`) on the entity bus. `viaSkip`
+  is `true` when a skip / fast-forward drained the marker, so you can suppress a
+  loud one-shot that only fired because the player skipped. Skipping still fires
+  every pending marker's consequence, but **discards** the pending ticks (no
+  machine-gun of blips).
+
+```ts
+host.add(new DialogueController({ ...createBoxDialogue(theme), onRevealTick: () => sfx.play("type") }));
+host.on(DialogueRevealMarkerEvent, ({ marker }) => {
+  if (marker.name === "sfx") sfx.play(marker.props.sfx); // [sfx=door/] → play "door"
+});
+```
+
+The addon **name-matches no marker**. The avatar channel interprets
+`[expression=happy/]` itself — the bundled portrait and scene-figure presenters
+call their own `setExpression`, so a mid-line face change is zero-config — while
+every other name (`sfx`, your own) flows straight through to your event handler. A
+registered extra channel sees the whole stream (ticks + markers) via its optional
+`revealBeat(beat)` hook, so a self-contained typewriter-SFX or camera-shake channel
+needs no game wiring.
+
+## Game state: storage, functions, commands
+
+The bridge between your game and a conversation is **installed on the
+controller** (`storage`, `functions`, `commands`); `play(script)` is content-only.
+A per-`play()` `overrides` argument layers entity-specifics on top.
+
+```ts
+const dlg = host.add(new DialogueController({
+  ...createBoxDialogue(),
+  storage: compose(
+    // two-way: the script can spend gold; reads stay live
+    cells({ gold: { get: () => player.gold, set: (v) => (player.gold = Number(v)) } }),
+    new MemoryVariableStorage(), // dialogue-locals + seeded defaults
+  ),
+  functions: {
+    has_item: (id) => inventory.has(String(id)), // argument-read for conditions
+  },
+  commands: {
+    "give-item": (cmd) => inventory.add(cmd.id as string),
+    "skill-check": async (cmd, ctx) => {
+      ctx.setVar("passed", await roll(cmd.stat as string)); // result for THIS conversation
+    },
+  },
+  fallbackCommand: (cmd) => log(cmd), // optional: catch dynamically-typed commands
+}));
+
+const handle = dlg.play(script);
+handle.setVar("rude", true); // poke a variable live (typed to keyof declare)
+handle.getVars();            // read the storage's current variables
+```
+
+- **`cells` getters and `functions` must be cheap and side-effect-free** —
+  they're called on every condition test and every line/choice presented.
+- **`ctx.setVar` / `handle.setVar` / `set`** all write through the storage. A
+  read-only `cells` getter (no setter) rejects the write — `handle.setVar` throws
+  to you, while a script `set` is logged (via the engine logger) and ignored, so
+  a misconfigured script can't wedge the conversation. Prefer a **command** for
+  game mutations (so your game rules run); two-way `cells` are for when the
+  *script* owns the arithmetic (`set gold = gold - 50`).
+- A per-`play()` `overrides.storage` replaces the controller's for that
+  conversation (`compose` it yourself to layer); `overrides.functions` /
+  `overrides.commands` merge over the controller's, call site winning.
+
+After the conversation, the **handle** no-ops harmlessly (a stale `setVar` is
+ignored; `getVars` returns an empty snapshot), so you can keep a reference past
+`DialogueEndedEvent` without guarding it.
+
+### Commands — rules in, consequences out
+
+The runner owns one built-in command: `set`, which writes a variable through the
+storage (a write to a read-only `cells` getter is logged and ignored, never a
+wedge). **Every other command**
+dispatches to your `commands[type]` handler (or `fallbackCommand`) *and* fires a
+`DialogueCommandEvent` for observation — so *the game* decides what `give-item`
+or `play-sfx` actually mean.
+
+- A `say` line's commands fire by timing: `at: "show"` (default), `"afterReveal"`
+  (once typed), or `"advance"` (as the player leaves the line).
+- A command with `blocking: true` whose handler returns a promise **pauses** the
+  conversation until it resolves — for cinematic sequencing ("wait for the NPC to
+  walk off, then continue").
+- Every command type a script uses must have a handler or a `fallbackCommand`, or
+  `play()` throws — no command silently does nothing. `set` is the only built-in.
+- There is **no `expression` command**. The line-initial face is
+  `SayStep.expression`; a mid-line face change is the `[expression=…/]` reveal
+  marker (the avatar interprets it — see [Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)).
+
+## Lifecycle events
+
+The controller emits these from its host entity (they bubble entity → scene, so
+a scene can listen with `this.on(...)`):
+
+| Event | Payload |
+| ----- | ------- |
+| `DialogueStartedEvent` | `{ scriptId }` |
+| `DialogueLineEvent` | `{ speaker?, text }` (plain, markup-stripped — handy for a backlog/a11y) |
+| `DialogueChoiceShownEvent` | `{ options }` |
+| `DialogueChoiceMadeEvent` | `{ index, text }` |
+| `DialogueCommandEvent` | `{ command, mode }` |
+| `DialogueEndedEvent` | `{ scriptId }` |
+| `DialogueRevealMarkerEvent` | `{ marker, viaSkip }` — an inline `[name k=v/]` reveal marker reached its char offset ([Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)) |
+| `DialogueRevealCompletedEvent` | `{ speaker?, text }` — a line finished its typewriter reveal (the "typing finished" hook) |
+| `DialogueSelectionChangedEvent` | `{ index, text }` — the choice cursor moved (keyboard nav **and** pointer hover) |
+| `DialogueSkipUsedEvent` | `{ scriptId }` — the player skipped a section |
+| `DialogueAutoAdvanceEvent` | `{ scriptId }` — a line advanced on its own via the auto-advance clock |
+
+These are the moments games actually hook — a typing-finished blip, a
+choice-hover tick, skip-used analytics, an auto-advance beat. Observation is
+events-only: the reveal-completed seam is owned by the session, so there is no
+public field a game can accidentally clobber.
+
+## Timed choices (a recipe)
+
+A Telltale-style "pick within 5 seconds or a default fires" is **not** a built-in
+— there is no `timeoutMs` field. It's a short recipe you own, which keeps the
+clock policy (does it pause? does it slow down?) entirely in your game.
+
+The shape: a non-blocking `choice-timer` command just before the choice step
+carries the budget and the default; your host runs a timer **on its own clock**
+and commits the default with `controller.choose(default)` when it runs out. The
+only addon support is that the choice step's `meta` is handed to the choice
+presenter (via `ChoiceContext.meta`), so a custom presenter can draw a countdown
+from `meta.timeoutMs`.
+
+```ts
+// In the script: arm the timer, then show the choice.
+{ kind: "command", commands: [{ type: "choice-timer", ms: 5000, default: 1 }] },
+{
+  kind: "choice",
+  text: "Quick — what do you do?",
+  meta: { timeoutMs: 5000 },            // a custom presenter can render this
+  options: [
+    { text: "Fight", target: "fight" },
+    { text: "Hesitate", target: "hesitate" }, // index 1 — the default on timeout
+  ],
+}
+```
+
+```ts
+// In the host: arm/cancel off the dialogue events; tick on your own clock.
+let pending: { ms: number; def: number } | undefined;
+let remaining = -1;
+let def = 0;
+
+new DialogueController({
+  ...createBoxDialogue(),
+  commands: {
+    // The command just stashes the budget — the timer arms when the menu shows.
+    "choice-timer": (cmd) => {
+      pending = { ms: Number(cmd.ms), def: Number(cmd.default) };
+    },
+  },
+});
+
+// Re-arm or cancel on EVERY choice-shown — this is the load-bearing guard. Without
+// it, a timer armed for one menu could fire into a later, unrelated menu.
+host.on(DialogueChoiceShownEvent, () => {
+  remaining = -1; // drop any prior timer first…
+  if (pending) {
+    // …then re-arm only if THIS menu was the timed one.
+    remaining = pending.ms;
+    def = pending.def;
+    pending = undefined;
+  }
+});
+host.on(DialogueChoiceMadeEvent, () => { remaining = -1; pending = undefined; });
+host.on(DialogueEndedEvent, () => { remaining = -1; pending = undefined; });
+
+// In your own update(dt): the conversation's setPaused does NOT freeze this —
+// pause your timer with whatever pauses the game.
+function update(dt: number) {
+  if (remaining < 0 || paused) return;
+  remaining -= dt;
+  if (remaining <= 0) {
+    remaining = -1;
+    controller.choose(def); // commit the default; must be an ENABLED option
+  }
+}
+```
+
+Two things bite naive versions: skipping the choice-shown re-arm/cancel (so a
+stale timer fires into the wrong menu later), and forgetting that the timer is on
+*your* clock — `setPaused` freezes the conversation but not your timer, so pause
+it yourself.
+
+## Lifecycle: cutscenes, pause, and focus
+
+Beyond `play`/`stop`, the controller gives the host three **orthogonal** levers.
+Each is purely a host policy — the addon ships the mechanism, your game decides
+when to pull it. All three are **persistent**: they survive `stop()` and the next
+`play()`, so a host that hides for a cutscene and forgets to unhide gets exactly
+what it asked for.
+
+| Lever | What it does |
+| ----- | ------------ |
+| `setHidden(bool)` | **Visual only.** Hides/shows the whole UI without ending or freezing the conversation. State-preserving — hide mid-typewriter and show again to resume the exact line and cursor. A composite chrome restores its *active* variant on show (a bubble line comes back as a bubble, not an empty box frame). |
+| `setPaused(bool)` | **Freezes time and input.** The reveal, auto-advance clock, caret blink, and avatar animation all halt, and input is inert — with no state lost (an in-flight blocking command keeps running and lands normally). It does **not** block host-driven `handle.setVar` / storage writes: a paused conversation can still be poked programmatically. |
+| `setInputEnabled(bool)` | **Input focus.** The conversation keeps updating (an ambient one stays alive and animating) but stops consuming device input. This is the focus seam for the multi-instance story — not `Component.enabled`, which would freeze the whole component. |
+
+Compose them: a **cutscene takeover** is hidden + paused; a **pause menu** is
+paused; an **ambient** conversation is input-disabled.
+
+```ts
+// Cutscene takeover: hide + freeze, pan the camera, then restore the exact line.
+dlg.setHidden(true);
+dlg.setPaused(true);
+await camera.panTo(spot);
+dlg.setPaused(false);
+dlg.setHidden(false); // the bubble line and its continue caret reappear in place
+```
+
+### Two conversations, one interactive
+
+`DialogueController` is multi-instance friendly: several ambient conversations
+can run at once. *Which one is interactive* is your game's one-liner via input
+focus. (YAGE input is non-consuming by design, so two **enabled** controllers
+would both advance on one key press — focus is the game's policy.)
+
+```ts
+// Talk to whichever NPC the player is near; the other keeps chatting ambiently.
+function focus(near: "a" | "b") {
+  npcA.setInputEnabled(near === "a");
+  npcB.setInputEnabled(near === "b");
+}
+```
+
+### Narrator and missing actors (speech bubbles)
+
+In a mixed box/bubble bundle, a **speakerless narrator** line types in the box by
+convention (a bubble has no head to float over). To *position* a narrator, use
+the **invisible-anchor** recipe: give it a `speaker` whose `DialogueActor` sits on
+an invisible entity, and it floats like any other speaker.
+
+If a speaker's actor goes missing at runtime (despawned, or never registered),
+the bubble no longer vanishes off-camera: it anchors at the actor's last-known
+position (or `createBubbleDialogue`'s `fallbackAnchor`, defaulting to the world
+origin — point it at your camera centre for a pure-bubble narrator bundle), stays
+visible with its continue caret, and logs a one-time developer warning through the
+engine logger.
+
+## Presenters & channels
+
+The view splits into narrow **capability channels** — `TextChannel`,
+`ChoiceChannel`, `AvatarChannel`, `ChromeChannel` — so the typewriter, choice UI,
+portrait, and frame are each swappable and composable. Presenter adapters add the
+YAGE lifecycle (`mount`/`dispose`) and pointer hit-test seams.
+
+| Concern | Default (box) | Default (bubble) |
+| ------- | ------------- | ---------------- |
+| Chrome  | `DialogueChrome` | `BubbleChrome` |
+| Text    | `BoxTextView` | `BubbleTextView` |
+| Choices | `ChoiceListPresenter` | `BubbleChoicePresenter` |
+
+Each coordinate model has a **layout owner** the presenters share, so they can
+never drift. `BubbleLayout` measures the bubble size + resolves the speaker
+anchor (including the missing-actor fallback) **once** per line for the bubble
+chrome, text, and choices. `BoxLayout` owns the box frame rect and text region:
+per-line position (`meta.position`), the unified panel grow (a choice grows the
+frame, nameplate, prompt, and rows as one), and an inset registry an in-box
+avatar reflows the text — and the choice rows — around.
+
+`createMixedDialogue` composes box + bubble behind `CompositeChrome` /
+`CompositeTextPresenter` / `CompositeChoicePresenter` / `CompositeAvatarPresenter`.
+All four share one **route** so a line's chrome, text, choices, and avatar always
+agree. The default is speaker-aware (a narrator goes to the box; an explicit
+`view` wins; otherwise a speaker with a registered `DialogueActor` floats in a
+bubble). Override the policy in one place:
+
+```ts
+createMixedDialogue(theme, {
+  worldLayer: "world",
+  // e.g. all of the boss's lines in bubbles, everything else boxed
+  route: (line) => (line?.speaker?.id === "boss" ? "bubble" : "box"),
+});
+```
+
+Avatars are decoupled too: `PortraitPresenter` (a sprite beside the box),
+`SceneFigurePresenter` (an NPC already in the world), the line-driven
+`InBoxAvatarPresenter` (the reflowing in-box portrait below) and
+`BubbleAvatarPresenter` (a portrait inside the bubble), or `NullAvatarPresenter`.
+A `DialogueActor` component on a world entity self-registers under a speaker id
+(via `actorRegistryFor(scene)`) so a speech bubble can find and follow the
+speaker's head anchor.
+
+### Writing a custom presenter
+
+A custom presenter implements the channel contract; the Session drives it in a
+guaranteed order — `chrome.present(line)` runs **before** `text.present(line)`
+(so a composite or layout owner commits first), geometry is set before `present`,
+and the text channel fires its reveal-completed listener **exactly once** per
+line (the Session owns that seam, so there's no public field to clobber).
+
+Reuse `LineReveal` — the headless, pixi-free typewriter clock (grapheme cursor,
+the ordered `tokens` drain for `[pause=N/]` holds and `[name k=v/]` markers,
+per-run/line `[speed]`, completion) — instead of re-implementing reveal timing. A
+DOM, per-word, or accessibility presenter then only maps the grapheme cursor onto
+its own rendering:
+
+```ts
+import { LineReveal, splitGraphemes } from "@yagejs-addons/dialogue";
+import type { TextChannel, PresentedLine, RevealBeat } from "@yagejs-addons/dialogue";
+
+class DomTextPresenter implements TextChannel {
+  private reveal = new LineReveal(45 /* graphemes/sec */);
+  private graphemes: string[] = [];
+  private onDone?: () => void;
+  private onBeat?: (beat: RevealBeat) => void;
+  constructor(private el: HTMLElement) {
+    this.reveal.setCompletionListener(() => this.onDone?.());
+    // Forward the clock's ticks + inline markers — the Session fans them on.
+    this.reveal.setBeatListener((beat) => this.onBeat?.(beat));
+  }
+  setRevealListener(fn: (() => void) | undefined) { this.onDone = fn; }
+  setBeatListener(fn: ((beat: RevealBeat) => void) | undefined) { this.onBeat = fn; }
+  present(line: PresentedLine) {
+    this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
+    this.reveal.begin(line.text, line.speed);
+  }
+  update(dt: number) {
+    this.reveal.update(dt);
+    this.el.textContent = this.graphemes.slice(0, Math.floor(this.reveal.revealed)).join("");
+  }
+  completeReveal() { this.reveal.complete(); }
+  isRevealComplete() { return this.reveal.isComplete(); }
+  isRevealing() { return this.reveal.isRevealing(); }
+  setSpeedMultiplier(m: number) { this.reveal.setSpeedMultiplier(m); }
+  setVisible(v: boolean) { this.el.style.visibility = v ? "visible" : "hidden"; }
+  clear() { this.el.textContent = ""; }
+}
+```
+
+The Session registers its reveal-completed **and** reveal-beat listeners through
+`setRevealListener` / `setBeatListener` (it owns both seams), so forwarding the
+`LineReveal` clock's beats is all a presenter does — markers and ticks then reach
+`DialogueRevealMarkerEvent` / `onRevealTick` and any registered channel.
+
+A line-driven avatar or chrome implements the optional `present(line)` and reads
+`line.meta`. Two shipped avatar references, both built only from the public
+contract: **`InBoxAvatarPresenter`** reads `meta.portrait` / `meta.side` /
+`meta.presence` and reserves a column via `BoxLayout.setInset(...)` so the box
+body text **and choice rows reflow** around the portrait (with an optional
+`background` panel); **`BubbleAvatarPresenter`** reserves a portrait column
+**inside** the speech bubble (`BubbleLayout.setPortraitInset(...)`) so the bubble
+grows and its text — and a bubble choice panel's options — reflow past it. Wire them per side — a
+`CompositeAvatarPresenter` routes each line to the matching one, like the other
+composites:
+
+```ts
+import {
+  InBoxAvatarPresenter,
+  BubbleAvatarPresenter,
+  DIALOGUE_LAYER_AVATAR,
+} from "@yagejs-addons/dialogue/presenters";
+
+createMixedDialogue(theme, {
+  worldLayer: "world",
+  avatar: {
+    box: (layout) => new InBoxAvatarPresenter(layout, { layer: DIALOGUE_LAYER_AVATAR, width: 84 }),
+    bubble: (layout) => new BubbleAvatarPresenter(layout, { layer: "world", size: 56 }),
+  },
+});
+
+// Box-only bundles take the in-box avatar directly:
+// createBoxDialogue(theme, { avatar: (layout) => new InBoxAvatarPresenter(layout, { layer, width }) });
+```
+
+## Extra channels: voice-over, shops, and camera FX
+
+The four built-in channels (text, choices, avatar, chrome) cover presentation. For
+everything **else** a conversation should reach into — a voice clip, a shop that
+reacts to a `buy` command, a camera shake, a history log — the host **registers** an
+extra channel. It's the open-ended companion to the trio, and entirely additive:
+the built-ins are untouched.
+
+A `DialogueExtraChannel` has **only optional methods**, so a one-purpose channel
+implements just what it cares about:
+
+```ts
+import type { DialogueExtraChannel } from "@yagejs-addons/dialogue";
+
+const historyLog: DialogueExtraChannel = {
+  // Fires for each say line once it's fully revealed. A shop would implement
+  // `command`; a camera-shake channel `command` + `update`; voice the lot.
+  revealComplete: (line) => log.push(line.text.runs.map((r) => r.text).join("")),
+};
+```
+
+Register it on the controller — that mounts it (if it needs the scene), wires it
+into the conversation stream, and hands back a disposer:
+
+```ts
+const off = controller.addChannel(historyLog);
+// ...later, to remove it:
+off();
+
+// Or pre-wire a bundle at construction (a factory can include a voice channel):
+new DialogueController({ ...createBoxDialogue(theme), channels: [voice] });
+```
+
+The session fans its stream — `present`, `command`, `clear`, `setVisible`,
+`setPaused`, `completeReveal`, `update` — out to every registered channel at the
+same moments it drives the built-ins. A few rules keep the seam honest:
+
+- **`present` is fired for say lines only**, never choice prompts, and a channel
+  registered mid-conversation catches up the `setVisible` / `setPaused` levers but
+  is **not** replayed the current line (which would restart a clip).
+- **Consequences out, one signal in.** A channel changes game state through
+  `ctx.setVar` and reads it back through the host-held `handle.getVars()` — never
+  through the session. The only value it hands back is `isRevealComplete()` (below).
+- **A throwing channel can't break the conversation** — each call is wrapped and
+  routed to the session's `onError`. The trusted built-ins stay unwrapped.
+- A channel that needs the scene also implements `Mountable` (`mount(scene)` /
+  `dispose()`, exported from the package root). The controller mounts it on add and
+  disposes it on destroy. A pure observer (voice, a shop) skips `Mountable`.
+
+### Gating auto-advance (`max(clipEnd, revealEnd)`)
+
+A channel may implement `isRevealComplete()` to **gate auto-advance**. The
+auto-advance clock is *armed* the moment the **text** finishes revealing, but it
+only *counts down* once the text **and every registered gater** report complete. So
+a voice line that runs longer than its typewriter holds the line until the clip
+ends — `max(clipEnd, revealEnd)` — with no duration arithmetic anywhere. A **manual**
+advance is never gated (a player can always press forward), and a channel that omits
+`isRevealComplete` never blocks.
+
+### Voice-over with `createVoiceChannel`
+
+Voice-over is a gating channel you get for free. The addon owns **no audio** — you
+hand it a `play` function wired over [`@yagejs/audio`](/packages/audio/) (or any
+player). It starts the clip for a line's `voice` id and gates auto-advance until the
+clip ends:
+
+```ts
+import { createVoiceChannel } from "@yagejs-addons/dialogue";
+
+const voice = createVoiceChannel({
+  play: (id, onEnded) => {
+    // Map the line's voice id → a preloaded clip. `@yagejs/audio`'s `onEnd` fires
+    // onEnded on natural completion (not on stop()); pause/resume is `h.paused`.
+    const h = audio.play(clips[id], { channel: "voice", onEnd: onEnded });
+    return { stop: () => h.stop(), pause: () => (h.paused = true), resume: () => (h.paused = false) };
+  },
+  onSkip: "cut",                 // "cut" (default): skipping the line stops the clip and
+                                 // releases the gate. "ring": let it play out.
+  pauseWithConversation: true,   // default: pause the clip whenever the conversation pauses
+  livenessMs: 30_000,            // optional safety cap (see below)
+});
+controller.addChannel(voice);
+```
+
+```ts
+// A line with a voice id:
+{ kind: "say", speaker: "guard", text: "Halt! Who goes there?", voice: "vo_guard_halt" }
+```
+
+It's hardened against two real failure modes: a late `onEnded` from a clip that's
+already been superseded (the next line started) can't ungate the new line, and the
+optional **`livenessMs`** cap force-releases the gate (and reports through
+`onError`) if a clip's `onEnded` never arrives — so a wedged audio host can't
+soft-lock the conversation.
+
+The `dialogue-addon` example wires exactly this over `@yagejs/audio` — one NPC's
+lines play as real (synthesized) voice clips, gating auto-advance until each finishes.
+
+### A shop channel: rules in, consequences out
+
+A channel sees every non-built-in command, so a shop can grant the purchase and the
+host reads the result back through the play handle:
+
+```ts
+controller.addChannel({
+  command(cmd, ctx) {
+    if (cmd.type !== "buy") return;
+    ctx.setVar(`owns_${cmd.item}`, true);     // the consequence (write-only ctx)
+  },
+});
+
+const handle = controller.play(shopScript);   // a step fires { type: "buy", item: "sword" }
+handle?.getVars();                             // → { owns_sword: true }
+```
+
+The `buy` command still needs a registered handler (or `fallbackCommand`) to pass
+validation; the channel layers its consequence on top of the command pipeline.
+
+### A camera-effects channel
+
+Because a channel receives commands, a `{ type: "shake" }` step drives a camera
+effect with zero addon change:
+
+```ts
+controller.addChannel({
+  command: (cmd) => {
+    if (cmd.type === "shake") camera.shake(Number(cmd.power ?? 8));
+  },
+});
+// script: { kind: "command", commands: [{ type: "shake", power: 12 }] }
+```
+
+:::note
+An **inline** `[shake/]` marker — firing mid-line at a character offset as the text
+reveals — depends on the reveal-event feature, which is not shipped yet. The
+command-step path above works today.
+:::
+
+### Save / restore
+
+Restoring a save mid-line **re-presents** the current line, so a channel's
+`present()` fires again. `createVoiceChannel` stops any active clip at the start of
+`present`, so a restore restarts the line's clip cleanly. (Save/load itself is
+deferred to v1.1 — nothing to build for it now.)
+
+## Input
+
+The controller attaches a `KeyboardInputBinding` by default. Swap or compose it:
+
+```ts
+import { fullControls } from "@yagejs-addons/dialogue";
+
+new DialogueController({
+  ...createBoxDialogue(),
+  // choice presenter for pointer hit-testing; hold X ~600ms to skip
+  input: fullControls(bundle.choices, { skipHoldMs: 600 }),
+});
+```
+
+- `KeyboardInputBinding(actions?, skipHoldMs?)` — advance / hold-to-fast-forward
+  / choice nav / skip. `skipHoldMs > 0` gives the classic **hold-to-confirm skip**
+  (default `0` = fire on press).
+- `PointerInputBinding(choiceTarget?)` — tap to advance; tap/hover choice rows.
+- `CompositeInputBinding` / `fullControls(choiceTarget?, { actions?, skipHoldMs? })`
+  — both at once.
+- `DEFAULT_ACTIONS` / `FULL_ACTIONS` — action-map presets.
+
+For a VN-style **auto-advance** toggle, call `controller.setAutoAdvance(ms)` (and
+`setAutoAdvance(null)` to turn it off); a per-line `autoAdvanceMs` still overrides
+it. An ambient (always auto-advancing) conversation simply attaches no binding.
+
+## Theming
+
+A `DialogueTheme` is one flat data object (geometry, colours, fonts, layers,
+reveal rate, and the opt-in textured styles). `defaultTheme()` returns a fresh
+zero-asset instance each call, so spread-and-tweak is safe:
+
+```ts
+const theme = { ...defaultTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
+createBoxDialogue(theme);
+```
+
+The `box` is **viewport-relative** — `{ marginX, marginY, height }` (virtual px),
+not absolute coordinates. The box presenters read the renderer's design size at
+mount and resolve a full-width bottom bar (`width = viewport.width − 2·marginX`,
+anchored `marginY` from the bottom edge), so the **default works at any
+resolution with no override**. `meta.position` reuses the same margins to anchor
+to the top or centre instead. (For a pixel-exact box at a known resolution,
+choose margins that resolve to it.)
+
+Presenter-config field names match the theme field names exactly (theme
+`frameColor` becomes config `frameColor`, theme `textSize` becomes config
+`textSize`, and so on), so re-skinning is just data — a test asserts every theme
+field reaches a presenter. Alongside the colours and sizes, the theme carries
+`caret` (`{ blinkMs, size }` for the blinking continue indicator), `choiceGap`
+(the gap between choice rows), and `tailLean` (the speech-bubble tail-tip
+offset).
+
+<Tabs>
+  <TabItem label="Default (zero assets)">
+    Graphics chrome + canvas `SplitText`/`Text`, native bold/italic, per-glyph
+    effects. Set `fontFamily` to choose the canvas font. No bundled files.
+  </TabItem>
+  <TabItem label="Bitmap fonts (opt-in)">
+    Set `bitmapFont` (baked via `installBitmapFont`) for a crisp pixel-font
+    look. Bold/italic are synthesised on the regular atlas (skew +
+    double-draw), so no variant atlases are needed. Not the default.
+  </TabItem>
+  <TabItem label="Textured nine-slice (opt-in)">
+    `theme.textured` is a **map of named chrome styles**, each a nine-slice
+    frame (`{ frame: { texture, insets }, bubble? }`) drawn through the
+    renderer's `createNineSlice` — so the addon needs no `pixi.js` peer. A box
+    line picks its style by name through its `meta.chrome` key; the speech
+    bubble uses the `"default"` style's `bubble`, content-sized per line.
+  </TabItem>
+</Tabs>
+
+### Textured chrome and `meta.chrome`
+
+Set `theme.textured` to a map of styles. Two names are reserved: `"default"` is
+the look for lines that name no style, and `"none"` (built-in, no entry needed)
+hides the box frame for a single line.
+
+```ts
+const theme = {
+  ...defaultTheme(),
+  textured: {
+    default: {
+      frame: { texture: "ui/box", insets: { left: 16, top: 16, right: 16, bottom: 16 } },
+      bubble: { texture: "ui/bubble", insets: { left: 12, top: 12, right: 12, bottom: 12 } },
+    },
+    parchment: { frame: { texture: "ui/parchment", insets: { left: 16, top: 16, right: 16, bottom: 16 } } },
+  },
+};
+```
+
+`meta.chrome` is line-level metadata. In YAML you write `meta` directly; in Yarn
+it is a `#chrome:` hashtag (Yarn line hashtags fold straight into `meta`):
+
+```yaml
+- { speaker: hero, text: "An ornate proclamation.", meta: { chrome: parchment } }
+- { text: "The cave swallows your words.", meta: { chrome: none } }
+```
+
+```text
+Hero: An ornate proclamation. #chrome:parchment
+The cave swallows your words. #chrome:none
+```
+
+A line that names no style — or an unknown one — falls back to the `"default"`
+textured style if present, otherwise the drawn Graphics frame. `meta.chrome` is
+box-only; the diegetic bubble keeps its single textured (or drawn) look.
+
+### Per-line position and in-box avatars (`meta`)
+
+The default box presenters read a few more line-level `meta` keys (the same
+`meta` bag as `meta.chrome`, written directly in YAML or as Yarn `#key:value`
+hashtags). `view` stays the coarse box/bubble selector; these are fine-grained
+hints within the box variant. Unknown keys are ignored.
+
+- **`meta.position`** — `top`, `center`, or `bottom` (default). Moves the box
+  frame **and** the body text together (RPG-Maker top/middle/bottom).
+- **`meta.portrait` / `meta.side` / `meta.presence`** — read by the avatar
+  presenters (`InBoxAvatarPresenter` for box lines, `BubbleAvatarPresenter` for
+  bubble lines): the portrait texture key, which side it sits on (`left` default /
+  `right`), and `presence: false` to speak from off-screen (portrait hidden, text
+  reclaims the full width). With an in-box avatar wired, the body text + choice
+  rows reflow around the reserved column.
+
+```yaml
+- { speaker: hero, text: "A message from on high.", meta: { position: top } }
+- { speaker: hero, text: "Good to see you.", meta: { portrait: hero_smug, side: right } }
+```
+
+```text
+Hero: A message from on high. #position:top
+Hero: Good to see you. #portrait:hero_smug #side:right
+```
+
+### Choice overflow
+
+The box presenters grow as **one panel**: the frame expands to fit the choice
+rows (plus the prompt and nameplate), labels word-wrap, and the chrome,
+nameplate, and rows move together (for the default bottom position the bottom
+edge stays pinned and the top rises). Row placement, the selection highlight, and
+pointer hit-testing all come from the layout owner's one geometry pass, so even a
+long, wrapped, partly-disabled list stays selectable exactly where it's drawn.
+The grow is capped at the screen; a menu taller than that spills off the top
+non-overlapping rather than piling rows. A menu longer than the presenter's soft
+cap (`softMaxChoices`, default 8) logs an advisory through the engine logger — it
+still renders, but a shorter menu (or a sub-menu) usually reads better.
+
+## Experimental: radial choices
+
+A Mass-Effect-style choice wheel ships under `./presenters` as
+`RadialChoicePresenter`, marked **`@experimental`**. It proves the choice seam is
+swappable, but it is not part of any default factory bundle and is intentionally
+unpolished — its geometry and API may change. Opt in by constructing it yourself
+and passing it as the `choices` channel.
+
+## Save / load
+
+<Aside type="caution" title="Deferred to v1.1">
+Mid-dialogue **cursor** save/restore is **not supported yet**. Snapshot/restore
+is not built, `@yagejs/save` is **not** a dependency, and the runner's positional
+getters (`getNodeId()`, `getStepIndex()`, `getChosenOnce()`) are **not reachable**
+through `DialogueController` / `DialogueSession` — there is no way to capture a
+resumable conversation cursor from a game. (`handle.getVars()` *is* reachable, but
+that's the variable snapshot, not a cursor.) The storage model makes the eventual
+API purely additive — a cursor is `{ nodeId, stepIndex, chosenOnce }` plus the
+in-memory default store's contents, while game-backed `cells` serialize through
+your own save. Save outside conversations (or replay the script on load) until
+v1.1 adds the seam.
+</Aside>

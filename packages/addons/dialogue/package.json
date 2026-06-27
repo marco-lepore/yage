@@ -1,0 +1,94 @@
+{
+  "name": "@yagejs-addons/dialogue",
+  "version": "0.1.0",
+  "description": "Dialogue runner, branching, and swappable presenters for YAGE — the first YAGE addon",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "dialogue",
+    "narrative",
+    "branching",
+    "visual-novel"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/dialogue"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./presenters": {
+      "import": {
+        "types": "./dist/presenters.d.ts",
+        "default": "./dist/presenters.js"
+      },
+      "require": {
+        "types": "./dist/presenters.d.cts",
+        "default": "./dist/presenters.cjs"
+      }
+    },
+    "./yaml": {
+      "import": {
+        "types": "./dist/yaml.d.ts",
+        "default": "./dist/yaml.js"
+      },
+      "require": {
+        "types": "./dist/yaml.d.cts",
+        "default": "./dist/yaml.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "yaml": "^2.8.3"
+  },
+  "peerDependencies": {
+    "@yagejs/core": ">=0.8.0 <0.9.0",
+    "@yagejs/input": ">=0.8.0 <0.9.0",
+    "@yagejs/renderer": ">=0.8.0 <0.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/renderer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/core": ">=0.7.0 <0.9.0",
+    "@yagejs/input": ">=0.7.0 <0.9.0",
+    "@yagejs/renderer": ">=0.7.0 <0.9.0",
+    "pixi.js": "^8.5.0"
+  }
+}
