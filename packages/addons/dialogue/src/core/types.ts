@@ -344,17 +344,55 @@ export interface TextRun {
   readonly graphemeCount: number;
 }
 
-/** A zero-width control marker interleaved between runs during reveal. */
+/**
+ * A self-closing `[pause=600/]` token — a zero-width timing hold the reveal
+ * arms when the cursor reaches its offset. One member of the unified
+ * {@link RevealToken} stream; `kind` discriminates it from a {@link MarkerToken}.
+ */
 export interface PauseToken {
+  readonly kind: "pause";
   /** Grapheme index into the flattened text where the pause occurs. */
   readonly atChar: number;
+  /** Hold duration in ms (always > 0; a non-positive `[pause=0/]` emits no token). */
   readonly ms: number;
 }
+
+/**
+ * A self-closing inline marker (`[name k=v/]`) that fires as a **reveal event**
+ * when the typewriter cursor reaches its char offset — the sibling of
+ * {@link PauseToken}, but a one-shot consequence rather than a timing hold. The
+ * canonical use is positional SFX (`[sfx=ding/]`) and a mid-line face change
+ * (`[expression=happy/]`); the addon interprets none of the names (the avatar
+ * channel reads `[expression]`, the host reads the rest). The Yarn self-named
+ * shortcut `[name=val/]` ≡ `[name name=val/]`, so it composes with explicit
+ * props (`[shake=500 amount=3/]` → `{ shake: "500", amount: "3" }`).
+ */
+export interface MarkerToken {
+  readonly kind: "marker";
+  /** Grapheme index into the flattened text where the marker fires. */
+  readonly atChar: number;
+  /** Marker name (lower-cased), e.g. `expression`, `sfx`, `shake`. */
+  readonly name: string;
+  /** Parsed `key=value` props (all string-valued). `[expression=happy/]` →
+   *  `{ expression: "happy" }` via the self-named shortcut. */
+  readonly props: Readonly<Record<string, string>>;
+}
+
+/**
+ * One inline control token interleaved between text runs during reveal — a
+ * timing {@link PauseToken} or a fire-and-forget {@link MarkerToken}. They share
+ * one ordered stream on {@link ParsedText.tokens}, so **source order is drain
+ * order**: `[pause=600/][shake/]` holds then fires; `[shake/][pause=600/]` fires
+ * then holds.
+ */
+export type RevealToken = PauseToken | MarkerToken;
 
 /** Result of parsing one line's markup. */
 export interface ParsedText {
   readonly runs: readonly TextRun[];
-  readonly pauses: readonly PauseToken[];
+  /** Inline pause + marker tokens in source (left-to-right) order — the order
+   *  the reveal drains them. Empty when the line has none. */
+  readonly tokens: readonly RevealToken[];
   /** Total grapheme count across all runs (the reveal denominator). */
   readonly length: number;
 }

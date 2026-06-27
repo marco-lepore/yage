@@ -24,8 +24,15 @@
  *                         line-driven **in-box avatar** (`meta.portrait`/`side`)
  *                         reflows the body text around her portrait, and a
  *                         six-option briefing GROWS the frame to fit the menu.
- *   • Mira (box)        — markup effects + a **cycling counter** (`timesTalked`
- *                         persists, so she greets you differently each visit).
+ *   • Mira (box)        — markup + **reveal-driven events**: a per-glyph
+ *                         typewriter click (`onRevealTick`, whitespace-filtered),
+ *                         positional `[sfx=…/]` cues and a `[screenShake/]` marker
+ *                         (`DialogueRevealMarkerEvent` — the host plays a tone /
+ *                         shakes the camera; the addon name-matches nothing), and
+ *                         the effect+hold idiom `[sfx=chime/][pause=500/]` (fire,
+ *                         then hold while it plays — source order is the timing).
+ *                         Plus a **cycling counter** (`timesTalked` persists, so
+ *                         she greets you differently each visit).
  *   • Quartermaster     — pays a one-time stipend via `give-gold`, gated on a
  *                         declared `paid` flag (a second visit knows you're paid).
  *   • Vex the trader    — sells the rusty key for 50g: the buy option appears only
@@ -116,10 +123,12 @@ import {
   DialogueChoiceShownEvent,
   DialogueChoiceMadeEvent,
   DialogueEndedEvent,
+  DialogueRevealMarkerEvent,
   cells,
   compose,
   fullControls,
   loadCompact,
+  splitGraphemes,
   MemoryVariableStorage,
   type CommandHandler,
   type DialogueExtraChannel,
@@ -750,6 +759,61 @@ const VOICE: Record<string, ReturnType<typeof sound>> = {
   vo_sage_bye: sound("/assets/voice/sage_bye.mp3"),
 };
 
+/**
+ * A tiny asset-free WebAudio synth for the **reveal-events** demo: a soft
+ * per-grapheme typewriter `tick()` (wired to the controller's `onRevealTick`) and
+ * a named `cue(name)` played at an inline `[sfx=name/]` marker (wired to
+ * `DialogueRevealMarkerEvent`). A real game would play `@yagejs/audio` clips like
+ * Sage's voice above; synth keeps the showcase asset-free. The `AudioContext` is
+ * created lazily and `resume()`d — by the time you reach an NPC, a keypress has
+ * already satisfied the browser's autoplay gesture requirement.
+ */
+class BlipSynth {
+  private ctx: AudioContext | undefined;
+  private lastTick = 0;
+
+  private ac(): AudioContext | undefined {
+    if (this.ctx === undefined && typeof AudioContext !== "undefined") {
+      this.ctx = new AudioContext();
+    }
+    void this.ctx?.resume();
+    return this.ctx;
+  }
+
+  private blip(freq: number, ms: number, gain: number, type: OscillatorType): void {
+    const ctx = this.ac();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + ms / 1000);
+  }
+
+  /** Per-grapheme typewriter click — rate-limited so a fast reveal stays subtle. */
+  tick(): void {
+    const ctx = this.ac();
+    if (!ctx || ctx.currentTime - this.lastTick < 0.028) return;
+    this.lastTick = ctx.currentTime;
+    this.blip(620, 13, 0.035, "square");
+  }
+
+  /** A named positional cue (`[sfx=name/]`) — a distinct tone per name. */
+  cue(name: string): void {
+    const tones: Record<string, [number, number, number, OscillatorType]> = {
+      chime: [1320, 240, 0.16, "sine"],
+      page: [360, 80, 0.12, "triangle"],
+    };
+    const [f, ms, gain, type] = tones[name] ?? [880, 100, 0.12, "sine"];
+    this.blip(f, ms, gain, type);
+  }
+}
+
 // The voice channel's host half is wired inline in `onEnter` (it just plays the
 // line's clip over @yagejs/audio); see `createVoiceChannel({ play })` below.
 
@@ -1125,6 +1189,16 @@ class RoomScene extends Scene {
     });
     const transcript = new TranscriptChannel();
 
+    // ── reveal-driven events (Feature 3) ──────────────────────────────────────
+    // `onRevealTick` is a per-grapheme CALLBACK (not an entity event — it fires
+    // hundreds of times a line); the host filters whitespace itself. Inline
+    // `[name k=v/]` markers arrive as `DialogueRevealMarkerEvent` on the entity
+    // bus. Mira's lines carry `[sfx=chime/]` / `[sfx=page/]` audio cues and a
+    // `[screenShake/]` (named so it doesn't shadow the `[shake]…[/shake]` styling
+    // effect) — the host decides what each opaque name means.
+    const blip = new BlipSynth();
+    let lineGraphemes: string[] = [];
+
     const interactive = host.add(
       new DialogueController({
         ...bundle,
@@ -1133,11 +1207,31 @@ class RoomScene extends Scene {
         commands,
         input: fullControls(bundle.choices, { skipHoldMs: SKIP_HOLD_MS }),
         channels: [voice, transcript],
+        // A typewriter click per revealed glyph — `index` is a raw grapheme index
+        // (whitespace included), so we look it up and skip spaces.
+        onRevealTick: (index) => {
+          const g = lineGraphemes[index];
+          if (g !== undefined && g.trim() !== "") blip.tick();
+        },
       }),
     );
     hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE_MS : null);
-    host.on(DialogueLineEvent, (e) => probe.onLine(e.text));
+    host.on(DialogueLineEvent, (e) => {
+      probe.onLine(e.text);
+      // `onRevealTick` indexes the parsed line in graphemes; the event's plain
+      // (markup-stripped) text shares that basis, so split it for the lookup.
+      lineGraphemes = splitGraphemes(e.text);
+    });
     host.on(DialogueChoiceMadeEvent, (e) => probe.onChoice(e.text));
+    // The addon name-matches NO marker — the game does. Marker names are
+    // lower-cased by the parser (`[screenShake/]` → `"screenshake"`), so match the
+    // lower-case form. `viaSkip` markers (drained by a skip) are suppressed so a
+    // fast-forward doesn't fire a loud one-shot.
+    host.on(DialogueRevealMarkerEvent, ({ marker, viaSkip }) => {
+      if (viaSkip) return;
+      if (marker.name === "screenshake") cam.shake(7, 320);
+      else if (marker.name === "sfx") blip.cue(marker.props["sfx"] ?? "");
+    });
 
     // Host-owned timer for Rook's timed choice. Gated on `lifecycle.paused`
     // so P freezes the countdown along with the conversation.

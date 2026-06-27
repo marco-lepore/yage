@@ -56,6 +56,7 @@ class StubText implements TextChannel {
   setRevealListener(l: (() => void) | undefined): void {
     this.listener = l;
   }
+  setBeatListener(): void {}
   finishReveal(): void {
     if (!this.revealing) return;
     this.revealing = false;

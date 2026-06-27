@@ -18,8 +18,9 @@ import {
   texture,
   type TextureHandle,
 } from "@yagejs/renderer";
-import type { AvatarPresenter } from "./AvatarPresenter.js";
+import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
+import type { MarkerToken } from "../core/types.js";
 import type { BubbleLayout } from "../render/BubbleLayout.js";
 
 export interface BubbleAvatarConfig {
@@ -74,6 +75,12 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   setSpeaker(): void {}
   setExpression(): void {}
   setSpeaking(): void {}
+
+  /** Uniform marker contract: routes `[expression=…/]` to its own setExpression
+   *  (inert here — this avatar is portrait-by-`meta`). */
+  marker(marker: MarkerToken): void {
+    applyExpressionMarker(this, marker);
+  }
 
   present(line: PresentedLine | undefined): void {
     const meta = line?.meta;

@@ -10,6 +10,7 @@ import {
   LineReveal,
   splitGraphemes,
   parseMarkup,
+  type RevealBeat,
   type TextChannel,
   type PresentedLine,
 } from "./index.js";
@@ -24,6 +25,7 @@ class DomTextPresenter implements TextChannel {
   private readonly reveal: LineReveal;
   private graphemes: string[] = [];
   private revealListener: (() => void) | undefined;
+  private beatListener: ((beat: RevealBeat) => void) | undefined;
   /** The "DOM": the substring currently shown. */
   revealed = "";
   visible = true;
@@ -31,10 +33,17 @@ class DomTextPresenter implements TextChannel {
   constructor(charsPerSec: number) {
     this.reveal = new LineReveal(charsPerSec);
     this.reveal.setCompletionListener(() => this.revealListener?.());
+    // A custom presenter forwards beats straight off the headless clock — no
+    // addon internals, just the public LineReveal seam.
+    this.reveal.setBeatListener((beat) => this.beatListener?.(beat));
   }
 
   setRevealListener(listener: (() => void) | undefined): void {
     this.revealListener = listener;
+  }
+
+  setBeatListener(listener: ((beat: RevealBeat) => void) | undefined): void {
+    this.beatListener = listener;
   }
 
   present(line: PresentedLine): void {
@@ -100,7 +109,7 @@ describe("a custom text presenter from the documented contract", () => {
 
   it("honours an inline [pause] without showing past it", () => {
     const p = new DomTextPresenter(1000);
-    present(p, "ab[pause=300]cd");
+    present(p, "ab[pause=300/]cd");
     p.update(5); // overshoots the pause at 2 → clamps
     expect(p.revealed).toBe("ab");
     p.update(300); // sit out the pause

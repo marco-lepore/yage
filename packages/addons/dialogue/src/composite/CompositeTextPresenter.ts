@@ -9,12 +9,14 @@
 
 import type { Scene } from "@yagejs/core";
 import type { PresentedLine } from "../core/session.js";
+import type { RevealBeat } from "../core/LineReveal.js";
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
 import { makeDefaultRoute, lineRoutesToBubble, type MountRoute } from "./route.js";
 
 export class CompositeTextPresenter implements TextPresenter {
   private active?: TextPresenter | undefined;
   private revealListener?: (() => void) | undefined;
+  private beatListener?: ((beat: RevealBeat) => void) | undefined;
   /** Master visibility gate from the Session's setVisible. */
   private visible = false;
 
@@ -23,11 +25,14 @@ export class CompositeTextPresenter implements TextPresenter {
     private readonly bubble: TextPresenter,
     private readonly routing: MountRoute = makeDefaultRoute(),
   ) {
-    // Each sub-view's reveal forwards to the Session's listener ONLY when that
-    // sub-view is the active one (the composite wrinkle): the inactive view
-    // can't fire a stale reveal-completed for a line it isn't showing.
+    // Each sub-view's reveal/beats forward to the Session's listeners ONLY when
+    // that sub-view is the active one (the composite wrinkle): the inactive view
+    // can't fire a stale reveal-completed or a marker/tick for a line it isn't
+    // showing.
     this.box.setRevealListener(() => this.fireReveal(this.box));
     this.bubble.setRevealListener(() => this.fireReveal(this.bubble));
+    this.box.setBeatListener((beat) => this.fireBeat(this.box, beat));
+    this.bubble.setBeatListener((beat) => this.fireBeat(this.bubble, beat));
   }
 
   /** Register the Session's reveal-completed listener. */
@@ -35,8 +40,17 @@ export class CompositeTextPresenter implements TextPresenter {
     this.revealListener = listener;
   }
 
+  /** Register the Session's reveal-beat listener (ticks + inline markers). */
+  setBeatListener(listener: ((beat: RevealBeat) => void) | undefined): void {
+    this.beatListener = listener;
+  }
+
   private fireReveal(view: TextPresenter): void {
     if (this.active === view) this.revealListener?.();
+  }
+
+  private fireBeat(view: TextPresenter, beat: RevealBeat): void {
+    if (this.active === view) this.beatListener?.(beat);
   }
 
   setDiagnostics(warn: (message: string) => void): void {

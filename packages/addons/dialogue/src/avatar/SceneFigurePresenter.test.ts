@@ -75,3 +75,27 @@ describe("SceneFigurePresenter — talk bob vs entity movement (F47)", () => {
     expect(t.position.y).toBe(200);
   });
 });
+
+describe("SceneFigurePresenter — [expression] marker bridge", () => {
+  it("interprets an [expression=…/] marker as its own setExpression, and ignores other names", () => {
+    const { scene } = createMockScene();
+    const npc = scene.spawn("npc");
+    npc.add(new Transform({ position: new Vec2(0, 0) }));
+    const seen: (string | undefined)[] = [];
+    const presenter = new SceneFigurePresenter({
+      onExpression: (_fig, e) => seen.push(e),
+    });
+    presenter.mount(scene);
+    presenter.setSpeaker({ id: "npc", name: "NPC", avatar: { kind: "scene", ref: "npc" } });
+
+    // A mid-line face change — the presenter interprets the marker itself; the
+    // session does not name-match.
+    presenter.marker({ kind: "marker", atChar: 4, name: "expression", props: { expression: "happy" } });
+    expect(seen).toEqual(["happy"]);
+
+    // Any other marker name is ignored (the session fans every name; the presenter
+    // only owns `expression`).
+    presenter.marker({ kind: "marker", atChar: 6, name: "sfx", props: { sfx: "ding" } });
+    expect(seen).toEqual(["happy"]);
+  });
+});

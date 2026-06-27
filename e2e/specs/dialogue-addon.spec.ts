@@ -15,6 +15,9 @@ interface ProbeData {
   ended: boolean;
   shownOptions: string[];
   selectionIndex: number;
+  markerName: string;
+  markerCount: number;
+  tickCount: number;
   boxVisible: boolean;
   bubbleVisible: boolean;
   texturedVisible: boolean;
@@ -38,7 +41,7 @@ interface HostHandle {
  *  (`hub` overflow, `textured` meta.chrome, `position`, `avatar`). */
 async function playScript(
   page: Page,
-  name: "hub" | "textured" | "position" | "avatar",
+  name: "hub" | "textured" | "position" | "avatar" | "marker",
 ): Promise<void> {
   await page.evaluate((key) => {
     const w = window as unknown as {
@@ -352,6 +355,29 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     // The frame (and its nameplate + body text, all one panel) moves with the hint.
     expect(top).toBeLessThan(centre);
     expect(centre).toBeLessThan(bottom);
+  });
+
+  test("an inline marker fires a reveal event and ticks fire per grapheme", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/dialogue-addon.html");
+    await waitForClock(page);
+    await playScript(page, "marker");
+
+    // Let the line "Knock[sfx=knock/] knock." type itself out over frames — ticks
+    // fire per grapheme, and the [sfx=knock/] marker fires at its char offset →
+    // DialogueRevealMarkerEvent. Step until both have happened (bounded).
+    for (let i = 0; i < 80; i++) {
+      const p = await probe(page);
+      if (p && p.markerCount > 0 && p.tickCount > 0) break;
+      await stepFrames(page, 2);
+    }
+
+    const p = await probe(page);
+    expect(p?.tickCount).toBeGreaterThan(0); // per-grapheme typewriter ticks
+    expect(p?.markerCount).toBeGreaterThan(0); // the inline marker fired
+    // `[sfx=knock/]` → name "sfx" (the value "knock" rides in props), opaque to the addon.
+    expect(p?.markerName).toBe("sfx");
   });
 
   test("a line-driven avatar reflows the box text", async ({ page }) => {

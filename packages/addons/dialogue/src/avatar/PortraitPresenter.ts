@@ -7,8 +7,8 @@
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { SpriteComponent, texture, type TextureHandle } from "@yagejs/renderer";
-import type { AvatarRef, SpeakerDef } from "../core/types.js";
-import type { AvatarPresenter } from "./AvatarPresenter.js";
+import type { AvatarRef, MarkerToken, SpeakerDef } from "../core/types.js";
+import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
 
 export interface PortraitPresenterConfig {
   readonly layer: string;
@@ -79,6 +79,12 @@ export class PortraitPresenter implements AvatarPresenter {
     if (!this.current) return;
     const variant = expression ? this.current.expressions?.[expression] : undefined;
     this.applyTexture(variant ?? this.current.ref);
+  }
+
+  /** Interpret a mid-line `[expression=…/]` reveal marker as a face swap (the
+   *  Session name-matches nothing — the presenter owns the convention). */
+  marker(marker: MarkerToken): void {
+    applyExpressionMarker(this, marker);
   }
 
   setSpeaking(speaking: boolean): void {

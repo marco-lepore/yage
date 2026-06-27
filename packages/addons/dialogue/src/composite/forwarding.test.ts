@@ -23,17 +23,19 @@ import type {
   TextPresenter,
 } from "../chrome/DialogueUiAdapter.js";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
+import type { RevealBeat } from "../core/LineReveal.js";
+import type { MarkerToken } from "../core/types.js";
 import type { ChoiceContext, PresentedChoice, PresentedLine, SpeakerView } from "../core/session.js";
 
 const SCENE = {} as unknown as Scene; // the recording stubs ignore the scene
 const speaker: SpeakerView = { id: "npc", name: "NPC" };
 
 const boxLine = (): PresentedLine => ({
-  text: { runs: [], pauses: [], length: 0 },
+  text: { runs: [], tokens: [], length: 0 },
   speed: 1,
 }); // no speaker → box
 const bubbleLine = (): PresentedLine => ({
-  text: { runs: [], pauses: [], length: 0 },
+  text: { runs: [], tokens: [], length: 0 },
   speed: 1,
   view: "bubble",
   speaker,
@@ -74,6 +76,7 @@ class RecText implements TextPresenter {
   clears = 0;
   diagnostics = 0;
   private listener?: (() => void) | undefined;
+  private beatListener?: ((beat: RevealBeat) => void) | undefined;
   mount(): void {}
   dispose(): void {}
   present(): void {
@@ -93,6 +96,9 @@ class RecText implements TextPresenter {
   setRevealListener(l: (() => void) | undefined): void {
     this.listener = l;
   }
+  setBeatListener(l: ((beat: RevealBeat) => void) | undefined): void {
+    this.beatListener = l;
+  }
   update(): void {}
   clear(): void {
     this.clears++;
@@ -103,6 +109,10 @@ class RecText implements TextPresenter {
   /** Test hook: simulate this sub-view finishing its reveal. */
   fireReveal(): void {
     this.listener?.();
+  }
+  /** Test hook: simulate this sub-view emitting a reveal beat. */
+  fireBeat(beat: RevealBeat): void {
+    this.beatListener?.(beat);
   }
   get visible(): boolean {
     return this.visibles.at(-1) ?? false;
@@ -242,7 +252,7 @@ describe("composite matrix — chrome-specific verbs", () => {
     const bubble = new RecChrome();
     const c = new CompositeChrome(box, bubble);
     c.mount(SCENE);
-    c.present({ text: { runs: [], pauses: [], length: 0 }, speed: 1, view: "bubble" });
+    c.present({ text: { runs: [], tokens: [], length: 0 }, speed: 1, view: "bubble" });
     c.setVisible(true);
     expect(box.visible).toBe(true);
     expect(bubble.visible).toBe(false);
@@ -254,6 +264,7 @@ class RecAvatar implements AvatarPresenter {
   speakers = 0;
   expressions = 0;
   speakings = 0;
+  markers: MarkerToken[] = [];
   visibles: boolean[] = [];
   mount(): void {}
   dispose(): void {}
@@ -265,6 +276,9 @@ class RecAvatar implements AvatarPresenter {
   }
   setSpeaking(): void {
     this.speakings++;
+  }
+  marker(marker: MarkerToken): void {
+    this.markers.push(marker);
   }
   present(line: PresentedLine | undefined): void {
     this.presents.push(line);
@@ -298,7 +312,7 @@ describe("composite matrix — avatar routes + forwards", () => {
     expect(bubble.lastPresent).toBeUndefined();
   });
 
-  it("forwards setSpeaker / setExpression / setSpeaking / setVisible to both", () => {
+  it("forwards setSpeaker / setExpression / setSpeaking / setVisible / marker to both", () => {
     const box = new RecAvatar();
     const bubble = new RecAvatar();
     const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
@@ -306,11 +320,14 @@ describe("composite matrix — avatar routes + forwards", () => {
     c.setExpression(undefined);
     c.setSpeaking(true);
     c.setVisible(false);
+    const marker: MarkerToken = { kind: "marker", atChar: 3, name: "expression", props: { expression: "happy" } };
+    c.marker(marker); // an inline reveal marker reaches both sides
     for (const a of [box, bubble]) {
       expect(a.speakers).toBe(1);
       expect(a.expressions).toBe(1);
       expect(a.speakings).toBe(1);
       expect(a.visibles).toEqual([false]);
+      expect(a.markers).toEqual([marker]);
     }
   });
 
@@ -321,7 +338,7 @@ describe("composite matrix — avatar routes + forwards", () => {
     const bubble = new RecAvatar();
     const c = new CompositeAvatarPresenter(box, bubble, makeDefaultRoute());
     c.mount(scene);
-    c.present({ text: { runs: [], pauses: [], length: 0 }, speed: 1, speaker });
+    c.present({ text: { runs: [], tokens: [], length: 0 }, speed: 1, speaker });
     expect(bubble.lastPresent).toBeDefined();
     expect(box.lastPresent).toBeUndefined();
   });
@@ -329,7 +346,7 @@ describe("composite matrix — avatar routes + forwards", () => {
 
 describe("composite matrix — routing: all three agree", () => {
   const registeredLine = (): PresentedLine => ({
-    text: { runs: [], pauses: [], length: 0 },
+    text: { runs: [], tokens: [], length: 0 },
     speed: 1,
     speaker, // no view → the registered actor decides
   });
@@ -410,5 +427,27 @@ describe("composite matrix — text reveal seam", () => {
     expect(fired).toBe(2);
     box.fireReveal(); // now inactive → ignored
     expect(fired).toBe(2);
+  });
+
+  it("forwards the ACTIVE sub-view's reveal BEATS and ignores the inactive one's", () => {
+    const box = new RecText();
+    const bubble = new RecText();
+    const c = new CompositeTextPresenter(box, bubble);
+    const beats: RevealBeat[] = [];
+    c.setBeatListener((beat) => beats.push(beat));
+
+    c.present(boxLine()); // active = box
+    box.fireBeat({ kind: "tick", index: 0 }); // active → forwarded
+    bubble.fireBeat({ kind: "tick", index: 9 }); // inactive → ignored
+    expect(beats).toEqual([{ kind: "tick", index: 0 }]);
+
+    c.present(bubbleLine()); // active = bubble
+    const marker: MarkerToken = { kind: "marker", atChar: 2, name: "sfx", props: { sfx: "ding" } };
+    bubble.fireBeat({ kind: "marker", marker, viaSkip: false });
+    box.fireBeat({ kind: "tick", index: 1 }); // now inactive → ignored
+    expect(beats).toEqual([
+      { kind: "tick", index: 0 },
+      { kind: "marker", marker, viaSkip: false },
+    ]);
   });
 });

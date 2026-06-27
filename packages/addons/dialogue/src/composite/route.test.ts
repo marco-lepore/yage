@@ -12,7 +12,7 @@ import type { PresentedLine, SpeakerView } from "../core/session.js";
 
 const npc: SpeakerView = { id: "npc", name: "NPC" };
 const line = (over: Partial<PresentedLine> = {}): PresentedLine => ({
-  text: { runs: [], pauses: [], length: 0 },
+  text: { runs: [], tokens: [], length: 0 },
   speed: 1,
   ...over,
 });

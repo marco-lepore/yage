@@ -45,6 +45,7 @@ import {
   DialogueEndedEvent,
   DialogueLineEvent,
   DialogueRevealCompletedEvent,
+  DialogueRevealMarkerEvent,
   DialogueSelectionChangedEvent,
   DialogueSkipUsedEvent,
   DialogueStartedEvent,
@@ -90,6 +91,14 @@ export interface DialogueControllerOptions<TStorage extends VariableStorage = Va
    * here; a game can also add one live with {@link DialogueController.addChannel}.
    */
   readonly channels?: readonly DialogueExtraChannel[] | undefined;
+  /**
+   * Per-grapheme typewriter tick — a direct callback (NOT an entity event; it
+   * fires hundreds of times per line). `index` is the raw grapheme index revealed
+   * (whitespace included — filter if you only want a blip on visible glyphs).
+   * Wire a typewriter SFX here. Inline `[name k=v/]` markers, by contrast, come
+   * through {@link DialogueRevealMarkerEvent} on the entity bus.
+   */
+  readonly onRevealTick?: ((index: number) => void) | undefined;
   /** Called once when a conversation ends (in addition to the scene event). */
   readonly onEnded?: () => void;
 }
@@ -182,6 +191,11 @@ export class DialogueController<
         onSelectionChanged: (e) => this.entity.emit(DialogueSelectionChangedEvent, e),
         onSkipUsed: (e) => this.entity.emit(DialogueSkipUsedEvent, e),
         onAutoAdvance: (e) => this.entity.emit(DialogueAutoAdvanceEvent, e),
+        // Inline markers fan to an entity event; per-grapheme ticks stay a direct
+        // callback (forwarded verbatim — undefined when the host wires none).
+        onRevealMarker: (marker, viaSkip) =>
+          this.entity.emit(DialogueRevealMarkerEvent, { marker, viaSkip }),
+        onRevealTick: this.opts.onRevealTick,
       },
     );
     this.binding.bind(this.input, this.session);

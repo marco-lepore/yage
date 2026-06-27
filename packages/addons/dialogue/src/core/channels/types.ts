@@ -11,6 +11,7 @@
 
 import type { Command, CommandContext } from "../types.js";
 import type { PresentedLine } from "../session.js";
+import type { RevealBeat } from "../LineReveal.js";
 
 /**
  * An optional-hook channel the host registers via
@@ -46,8 +47,9 @@ export interface DialogueExtraChannel {
   revealComplete?(line: PresentedLine): void;
   /**
    * A non-built-in command fired — mirrors the host `onCommand`, with the same
-   * exclusions (never `set`, which the runner owns; never `expression`, which
-   * the avatar handles). A shop channel reacts to a `buy` command here.
+   * exclusion (never `set`, which the runner owns). A shop channel reacts to a
+   * `buy` command here. (A mid-line face change is an `[expression=…/]` reveal
+   * marker on {@link revealBeat}, not a command.)
    */
   command?(command: Command, ctx: CommandContext): void;
   /** The conversation cleared (a `stop()` or its natural end) — reset any
@@ -61,6 +63,15 @@ export interface DialogueExtraChannel {
   /** The player skipped the typewriter (advance-while-revealing) or fast-forwarded
    *  the section (skip) — cut a clip, drain a queued effect. */
   completeReveal?(): void;
+  /**
+   * A reveal beat fired during the current say line's typewriter — a
+   * per-grapheme `tick` or an inline `[name k=v/]` `marker`. A typewriter-SFX
+   * channel blips on ticks; a CameraEffects channel reacts to a `[shake/]`
+   * marker. Fires once per grapheme (hundreds per line), so keep it cheap.
+   * Markers also reach the host via `DialogueRevealMarkerEvent` and the avatar
+   * channel; this is the registered-channel path to the same stream.
+   */
+  revealBeat?(beat: RevealBeat): void;
   /** Per-frame tick. Already gated by the session pause (not called while
    *  paused), so a dt-driven timer freezes for free. */
   update?(dt: number): void;

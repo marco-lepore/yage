@@ -4,7 +4,7 @@
  * layer, revealing it glyph-by-glyph (typewriter), honouring per-run colour/
  * bold/italic, and driving animated effects.
  *
- * Reveal *timing* — the grapheme cursor, inline `[pause=ms]`, per-run/line
+ * Reveal *timing* — the grapheme cursor, inline `[pause=ms/]`, per-run/line
  * `[speed]`, the hold multiplier, and fired-once completion — is owned by the
  * headless {@link LineReveal} clock (pixi-free, reusable by a DOM presenter).
  * This view keeps only the pixi-`SplitText` concerns: mapping the clock's
@@ -37,7 +37,7 @@
 
 import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
 import { splitGraphemes } from "../core/markup.js";
-import { LineReveal } from "../core/LineReveal.js";
+import { LineReveal, type RevealBeat } from "../core/LineReveal.js";
 import {
   SplitTextComponent,
   type DisplayContainer,
@@ -131,16 +131,20 @@ export class DialogueTextView implements TextPresenter {
    *  {@link setRevealListener} (a private seam, not a public field, so a
    *  game can't clobber the session's wiring). */
   private revealListener?: (() => void) | undefined;
+  /** Reveal-beat listener (ticks + inline markers), registered by the Session
+   *  through {@link setBeatListener} — same private-seam discipline. */
+  private beatListener?: ((beat: RevealBeat) => void) | undefined;
   /** Master visibility gate ({@link setVisible}); hides the line WITHOUT
    *  clearing it, so a hide/show round-trip resumes mid-typewriter. */
   private hidden = false;
 
   constructor(private readonly cfg: DialogueTextConfig) {
     this.reveal = new LineReveal(cfg.charsPerSec);
-    // The reveal clock reports completion through the view's session-owned
-    // listener — never a public field a game could clobber (the old
-    // onRevealComplete footgun).
+    // The reveal clock reports completion + beats through the view's
+    // session-owned listeners — never public fields a game could clobber (the
+    // old onRevealComplete footgun).
     this.reveal.setCompletionListener(() => this.revealListener?.());
+    this.reveal.setBeatListener((beat) => this.beatListener?.(beat));
     if (cfg.box) this.setBox(cfg.box.x, cfg.box.y, cfg.box.width);
   }
 
@@ -205,6 +209,12 @@ export class DialogueTextView implements TextPresenter {
    *  clobber. */
   setRevealListener(listener: (() => void) | undefined): void {
     this.revealListener = listener;
+  }
+
+  /** Register the reveal-beat listener (ticks + inline markers). Session-owned;
+   *  pass `undefined` to clear. The clock emits in char order as glyphs reveal. */
+  setBeatListener(listener: ((beat: RevealBeat) => void) | undefined): void {
+    this.beatListener = listener;
   }
 
   /** Build the split for a parsed line and start revealing. */

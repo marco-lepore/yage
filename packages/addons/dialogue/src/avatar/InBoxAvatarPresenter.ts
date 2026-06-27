@@ -26,8 +26,9 @@ import {
   texture,
   type TextureHandle,
 } from "@yagejs/renderer";
-import type { AvatarPresenter } from "./AvatarPresenter.js";
+import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
+import type { MarkerToken } from "../core/types.js";
 import type { BoxLayout } from "../render/BoxLayout.js";
 
 export interface InBoxAvatarConfig {
@@ -96,6 +97,13 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   setSpeaker(): void {}
   setExpression(): void {}
   setSpeaking(): void {}
+
+  /** Routes a mid-line `[expression=…/]` marker to its own setExpression (inert
+   *  here — this avatar is portrait-by-`meta`, not expression-mapped — so it's
+   *  the uniform contract, not a visible face swap). */
+  marker(marker: MarkerToken): void {
+    applyExpressionMarker(this, marker);
+  }
 
   /** Read the line's `meta` to show/hide the portrait and reserve (or clear) the
    *  text-reflow inset. Called before the body text presents, so the text wraps

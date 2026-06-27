@@ -9,9 +9,9 @@
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import type { SpeakerDef } from "../core/types.js";
+import type { MarkerToken, SpeakerDef } from "../core/types.js";
 import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
-import type { AvatarPresenter } from "./AvatarPresenter.js";
+import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
 
 export interface SceneFigurePresenterConfig {
   /** Map a script expression id onto your character system. */
@@ -62,6 +62,12 @@ export class SceneFigurePresenter implements AvatarPresenter {
   setExpression(expression: string | undefined): void {
     if (this.actor) this.actor.setExpression(expression);
     else if (this.figure) this.cfg.onExpression?.(this.figure, expression);
+  }
+
+  /** Mid-line `[expression=…/]` reveal marker → the figure's own expression
+   *  (actor or the `onExpression` callback). The Session name-matches nothing. */
+  marker(marker: MarkerToken): void {
+    applyExpressionMarker(this, marker);
   }
 
   setSpeaking(speaking: boolean): void {

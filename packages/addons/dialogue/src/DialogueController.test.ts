@@ -5,6 +5,7 @@ import { DialogueController } from "./DialogueController.js";
 import {
   DialogueAutoAdvanceEvent,
   DialogueRevealCompletedEvent,
+  DialogueRevealMarkerEvent,
   DialogueSelectionChangedEvent,
   DialogueSkipUsedEvent,
 } from "./events.js";
@@ -18,6 +19,8 @@ import type {
   DialogueExtraChannel,
   DialogueScript,
   DialogueSession,
+  MarkerToken,
+  RevealBeat,
 } from "./core/index.js";
 import type { InputBinding } from "./input/index.js";
 
@@ -44,6 +47,7 @@ class StubText implements TextPresenter {
   setSpeedMultiplier(): void {}
   setVisible(): void {}
   setRevealListener(): void {}
+  setBeatListener(): void {}
   update(): void {}
   clear(): void {}
 }
@@ -63,6 +67,7 @@ class StubChoices implements ChoicePresenter {
  *  reachable without a real renderer. */
 class DrivableText implements TextPresenter {
   private listener: (() => void) | undefined;
+  private beatListener: ((beat: RevealBeat) => void) | undefined;
   private revealing = false;
   mount(): void {}
   dispose(): void {}
@@ -83,6 +88,9 @@ class DrivableText implements TextPresenter {
   setRevealListener(l: (() => void) | undefined): void {
     this.listener = l;
   }
+  setBeatListener(l: ((beat: RevealBeat) => void) | undefined): void {
+    this.beatListener = l;
+  }
   update(): void {}
   clear(): void {
     this.revealing = false;
@@ -91,6 +99,10 @@ class DrivableText implements TextPresenter {
     if (!this.revealing) return;
     this.revealing = false;
     this.listener?.();
+  }
+  /** Test hook: simulate the reveal clock emitting a beat (tick/marker). */
+  fireBeat(beat: RevealBeat): void {
+    this.beatListener?.(beat);
   }
 }
 
@@ -250,6 +262,34 @@ describe("DialogueController — observation events forwarded entity→scene", (
     text.finish(); // typewriter done → reveal-completed hook
     await flush();
     expect(seen).toHaveBeenCalledWith({ speaker: "Bee", text: "hi" });
+  });
+
+  it("forwards a reveal MARKER → DialogueRevealMarkerEvent, but a TICK → the callback only", () => {
+    const { scene } = createMockScene();
+    const host = scene.spawn("dlg");
+    const text = new DrivableText();
+    const ticks: number[] = [];
+    const controller = host.add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text,
+        choices: new StubChoices(),
+        input: new CapturingBinding(),
+        onRevealTick: (i) => ticks.push(i),
+      }),
+    );
+    const markerSeen = vi.fn();
+    host.on(DialogueRevealMarkerEvent, markerSeen);
+    controller.play(sayScript);
+
+    const marker: MarkerToken = { kind: "marker", atChar: 0, name: "sfx", props: { sfx: "ding" } };
+    text.fireBeat({ kind: "marker", marker, viaSkip: false });
+    text.fireBeat({ kind: "tick", index: 2 });
+
+    // The marker fans to an entity event; the tick is a callback only (no event).
+    expect(markerSeen).toHaveBeenCalledTimes(1);
+    expect(markerSeen).toHaveBeenCalledWith({ marker, viaSkip: false });
+    expect(ticks).toEqual([2]);
   });
 
   it("forwards onSelectionChanged → DialogueSelectionChangedEvent on cursor move", () => {

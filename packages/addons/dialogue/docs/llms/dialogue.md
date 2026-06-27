@@ -318,15 +318,52 @@ interpolate; there is no separate i18n `key`). `PresentedChoice` carries
 
 BBCode-ish, survives translation, nests, unknown tags dropped silently:
 `[b]` `[i]` `[color=#ffcc00]`/`[color=gold]` `[wave]` `[shake]` `[pulse]`
-`[rainbow]` `[speed=2]` `[pause=400]` (zero-width ms). `\[` escapes a literal
-bracket. (NOTE: ruby/furigana and glossary `[term]`/`[gloss]` markup were
-intentionally removed — unknown tags drop silently, so old scripts still parse.)
+`[rainbow]` `[speed=2]`. `\[` escapes a literal bracket. (NOTE: ruby/furigana and
+glossary `[term]`/`[gloss]` markup were intentionally removed — unknown tags drop
+silently, so old scripts still parse.)
+
+**Self-closing tokens** (a trailing `/`) are the reveal-timeline controls — a
+`[pause=600/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
+(`ParsedText.tokens: RevealToken[]`, each `{ kind: "pause" | "marker", atChar, … }`),
+so **source order is drain order**:
+- `[pause=600/]` holds the typewriter 600ms at its offset (the only pause spelling
+  now — a bare `[pause=600]` without the slash is a dropped unknown tag).
+- `[sfx=ding/]`, `[expression=happy/]`, `[shake amount=3/]` fire as **reveal events**.
+  The self-named shortcut `[name=val/]` ≡ `[name name=val/]` (Yarn), so it composes
+  with explicit props: `[shake=500 amount=3/]` → `{ shake: "500", amount: "3" }`.
+  Values/props can't contain whitespace or `/`.
+- `[pause=600/][shake/]` holds **then** fires; `[shake/][pause=600/]` fires **then**
+  holds. The "effect + hold" idiom is just `[shake=500/][pause=500/]` — fire a marker
+  (host plays a 500ms shake), then a 500ms pause holds while it plays. Markers are
+  non-blocking; the pause is the only timing primitive (no combined `[shake hold/]`).
+
+Translators **must keep the trailing `/`** so a token survives a re-order. Unknown
+*non*-self-closing tags still drop silently; a self-closing token is never dropped.
+See **Reveal events** below for where markers surface.
 
 All character counts are **graphemes** (user-perceived characters, via
 `Intl.Segmenter` — the same segmentation pixi's SplitText renders one glyph
-per): `ParsedText.length`, `TextRun.graphemeCount`, `PauseToken.atChar`, and
-the reveal rate (`charsPerSec` = graphemes/second). An emoji, ZWJ sequence, or
+per): `ParsedText.length`, `TextRun.graphemeCount`, a token's `atChar`, and the
+reveal rate (`charsPerSec` = graphemes/second). An emoji, ZWJ sequence, or
 base+combining-mark cluster counts as 1. `splitGraphemes(str)` is exported.
+
+### Reveal events (per-grapheme ticks + inline markers)
+
+The headless `LineReveal` clock emits a `RevealBeat` stream as the cursor advances:
+- a **`tick`** per revealed grapheme — surfaced as the controller `onRevealTick(index)`
+  **callback** (NOT an entity event; it fires hundreds of times per line). `index` is the
+  raw grapheme index, whitespace included — the host filters. Wire a typewriter SFX here.
+- a **`marker`** when the cursor reaches a `[name k=v/]` offset — surfaced as
+  `DialogueRevealMarkerEvent` (`{ marker, viaSkip }`) on the entity bus. `viaSkip` is true
+  when a skip / complete drained it (suppress a loud one-shot). A skip drains pending
+  **markers** (consequences still fire) but **discards** pending ticks (no machine-gun).
+
+The addon **name-matches no marker**: the avatar channel interprets `[expression=…/]`
+itself (the bundled portrait/scene presenters call their own `setExpression`), and every
+other name (`sfx`, …) flows opaquely to the host and to registered channels. A registered
+`DialogueExtraChannel` sees the whole stream via the optional `revealBeat?(beat)` hook (a
+typewriter-SFX or CameraEffects channel reacts there). A custom text presenter forwards
+beats off `LineReveal` via `setBeatListener`.
 
 ## Game state — storage / functions / commands, the typed handle out
 
@@ -369,9 +406,10 @@ dispatches to `commands[type]` (or `fallbackCommand`) **and** fires
 `DialogueCommandEvent` (observation). `ctx.mode` is `"play" | "skip"`. A `say`
 line's commands fire by timing `at: "show" | "afterReveal" | "advance"` (default
 `show`). `blocking: true` + an async handler pauses the conversation until it
-resolves (cinematic sequencing). `{ type: "expression", value }` is the avatar
-built-in (no handler needed). Every non-built-in command `type` a script uses
-must resolve to a handler/fallback, else play-time error.
+resolves (cinematic sequencing). Every non-built-in command `type` a script uses
+must resolve to a handler/fallback, else play-time error. (There is **no**
+`expression` command — `set` is the only built-in. A mid-line face change is the
+`[expression=…/]` reveal marker; the line-initial face is `SayStep.expression`.)
 
 ## DialogueController (L2a Component) — host owns focus/pause
 
@@ -453,11 +491,15 @@ pure-bubble narrator bundles); the bubble, text, choices, and caret stay
 Events (entity → scene bubbling): `DialogueStartedEvent`, `DialogueLineEvent`
 (`{ speaker?, text }` plain text), `DialogueChoiceShownEvent`,
 `DialogueChoiceMadeEvent`, `DialogueCommandEvent` (`{ command, mode }`),
-`DialogueEndedEvent`, and four observation events — `DialogueRevealCompletedEvent`
-(`{ speaker?, text }`, "typing finished"), `DialogueSelectionChangedEvent`
-(`{ index, text }`, keyboard nav **and** pointer hover), `DialogueSkipUsedEvent`
-(`{ scriptId }`), `DialogueAutoAdvanceEvent` (`{ scriptId }`). Observation is
-events-only: the reveal-completed seam is session-owned (no public mutable field
+`DialogueEndedEvent`, `DialogueRevealMarkerEvent` (`{ marker, viaSkip }`, an inline
+`[name k=v/]` reveal marker — see **Reveal events**), and four observation events —
+`DialogueRevealCompletedEvent` (`{ speaker?, text }`, "typing finished"),
+`DialogueSelectionChangedEvent` (`{ index, text }`, keyboard nav **and** pointer
+hover), `DialogueSkipUsedEvent` (`{ scriptId }`), `DialogueAutoAdvanceEvent`
+(`{ scriptId }`). Per-grapheme **ticks** are NOT an event — wire the controller
+`onRevealTick(index)` callback option (it fires hundreds of times per line; the host
+filters whitespace). Observation is events-only: the reveal-completed seam is
+session-owned (no public mutable field
 a game can clobber).
 
 ## Timed choices — a recipe, not a feature
@@ -519,9 +561,11 @@ by speaker id) + `actorRegistryFor(scene)`.
   share one `route: (line) => "box" | "bubble"`. Default = narrator → box; explicit `view`
   wins for a real speaker; else a registered `DialogueActor` → bubble, otherwise
   box. Override in one place via `createMixedDialogue(theme, { route })`.
-- **`LineReveal`** (core, pixi-free): the typewriter clock — grapheme cursor,
-  `[pause]` arming, per-run/line `[speed]`, hold multiplier, fired-once
-  completion. `DialogueTextView` consumes it; a custom presenter reuses it.
+- **`LineReveal`** (core, pixi-free): the typewriter clock — grapheme cursor, the
+  ordered `tokens` drain (a `[pause=N/]` holds, a `[name k=v/]` marker fires a
+  beat), per-run/line `[speed]`, hold multiplier, fired-once completion.
+  `DialogueTextView` consumes it; a custom presenter reuses it (forwards beats via
+  `setBeatListener`).
 
 `DialogueTextView` renders one `SplitTextComponent` per line, maps `LineReveal`'s
 grapheme cursor onto glyph visibility (`chars[i].visible`), and applies per-run
@@ -597,7 +641,8 @@ implements just what it needs. Purely additive (the trio is untouched).
 interface DialogueExtraChannel {
   present?(line: PresentedLine): void;        // a say line presented (read line.voice/meta) — NOT choices
   revealComplete?(line: PresentedLine): void; // the say line finished revealing
-  command?(command, ctx): void;               // a non-built-in command fired (never set/expression)
+  revealBeat?(beat: RevealBeat): void;        // a per-grapheme tick or an inline [name k=v/] marker
+  command?(command, ctx): void;               // a non-built-in command fired (never set)
   clear?(): void;                             // conversation stopped/ended (per-conversation reset)
   setVisible?(visible: boolean): void;        // the host setHidden lever
   setPaused?(paused: boolean): void;          // the conversation paused/resumed

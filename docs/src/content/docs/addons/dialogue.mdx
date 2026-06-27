@@ -429,18 +429,67 @@ silently.
 | `[color=#ffcc00]…[/color]` / `[color=gold]…` | colour (hex or named) |
 | `[wave]` `[shake]` `[pulse]` `[rainbow]` | per-glyph animated effects |
 | `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
-| `[pause=400]` | zero-width reveal pause, in ms |
+| `[pause=600/]` | **self-closing** — holds the typewriter 600ms at this offset |
+| `[sfx=ding/]` `[expression=happy/]` `[shake amount=3/]` | **self-closing marker** — a reveal event at this char offset (see below) |
 | `\[` `\]` | a literal bracket |
+
+A tag ending in `/` is a **self-closing reveal token** — a `[pause=N/]` hold or a
+`[name k=v/]` marker. They share one ordered stream (`ParsedText.tokens`), so
+**source order is drain order**: `[pause=600/][shake/]` holds *then* fires, while
+`[shake/][pause=600/]` fires *then* holds. A marker adds no styling — it fires as a
+reveal event when the cursor reaches it. The Yarn-style shortcut `[name=val/]` is
+exactly `[name name=val/]`, so it composes with explicit `key=value` props:
+`[shake=500 amount=3/]` → `props { shake: "500", amount: "3" }` (values can't
+contain whitespace or `/`). Markup keeps the trailing `/`, so **translators must
+preserve it** for a token to survive a re-order. (`[pause=600/]` is the only pause
+spelling — a bare `[pause=600]` without the slash is treated as an unknown tag.)
+
+The **effect + hold** idiom drops out of the two primitives: `[shake=500/][pause=500/]`
+fires a fire-and-forget marker (your host plays a 500ms shake) and then a 500ms pause
+holds the reveal while it plays. There's no combined `[shake hold/]` sugar — markers
+fire and pauses hold; ordering carries the intent.
 
 `parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
 
 Every character count in the parsed result — `ParsedText.length`,
-`TextRun.graphemeCount`, a pause's `atChar`, and the `charsPerSec` reveal rate —
-is in **graphemes** (user-perceived characters), not UTF-16 code units. An
-emoji like 🔥, a ZWJ sequence like 👩‍🚀, or an accent composed with a combining
-mark counts as one character, matching the glyphs the renderer actually draws,
-so reveal timing and `[pause]` positions stay put in any language.
-`splitGraphemes(str)` exposes the same segmentation for tooling.
+`TextRun.graphemeCount`, a token's `atChar`, and the `charsPerSec` reveal rate —
+is in **graphemes** (user-perceived characters), not UTF-16 code units. An emoji
+like 🔥, a ZWJ sequence like 👩‍🚀, or an accent composed with a combining mark
+counts as one character, matching the glyphs the renderer actually draws, so
+reveal timing and pause positions stay put in any language. `splitGraphemes(str)`
+exposes the same segmentation for tooling.
+
+### Reveal events: typewriter ticks and inline markers
+
+As a line types, the headless `LineReveal` clock emits a stream of **reveal
+beats** you can hook for positional sound and effects:
+
+- **Per-grapheme ticks** — wire the controller's `onRevealTick(index)` callback
+  for a typewriter blip. It is a plain callback, **not** an event, because it
+  fires once per grapheme (hundreds of times a line). `index` is the raw grapheme
+  index including whitespace, so filter spaces yourself if you only want a blip on
+  visible glyphs.
+- **Inline markers** — a `[name k=v/]` marker surfaces as
+  `DialogueRevealMarkerEvent` (`{ marker, viaSkip }`) on the entity bus. `viaSkip`
+  is `true` when a skip / fast-forward drained the marker, so you can suppress a
+  loud one-shot that only fired because the player skipped. Skipping still fires
+  every pending marker's consequence, but **discards** the pending ticks (no
+  machine-gun of blips).
+
+```ts
+host.add(new DialogueController({ ...createBoxDialogue(theme), onRevealTick: () => sfx.play("type") }));
+host.on(DialogueRevealMarkerEvent, ({ marker }) => {
+  if (marker.name === "sfx") sfx.play(marker.props.sfx); // [sfx=door/] → play "door"
+});
+```
+
+The addon **name-matches no marker**. The avatar channel interprets
+`[expression=happy/]` itself — the bundled portrait and scene-figure presenters
+call their own `setExpression`, so a mid-line face change is zero-config — while
+every other name (`sfx`, your own) flows straight through to your event handler. A
+registered extra channel sees the whole stream (ticks + markers) via its optional
+`revealBeat(beat)` hook, so a self-contained typewriter-SFX or camera-shake channel
+needs no game wiring.
 
 ## Game state: storage, functions, commands
 
@@ -503,10 +552,11 @@ or `play-sfx` actually mean.
 - A command with `blocking: true` whose handler returns a promise **pauses** the
   conversation until it resolves — for cinematic sequencing ("wait for the NPC to
   walk off, then continue").
-- `{ type: "expression", value }` is a built-in convenience routed straight to
-  the avatar (no handler needed).
-- Every non-built-in command type a script uses must have a handler or a
-  `fallbackCommand`, or `play()` throws — no command silently does nothing.
+- Every command type a script uses must have a handler or a `fallbackCommand`, or
+  `play()` throws — no command silently does nothing. `set` is the only built-in.
+- There is **no `expression` command**. The line-initial face is
+  `SayStep.expression`; a mid-line face change is the `[expression=…/]` reveal
+  marker (the avatar interprets it — see [Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)).
 
 ## Lifecycle events
 
@@ -521,6 +571,7 @@ a scene can listen with `this.on(...)`):
 | `DialogueChoiceMadeEvent` | `{ index, text }` |
 | `DialogueCommandEvent` | `{ command, mode }` |
 | `DialogueEndedEvent` | `{ scriptId }` |
+| `DialogueRevealMarkerEvent` | `{ marker, viaSkip }` — an inline `[name k=v/]` reveal marker reached its char offset ([Reveal events](#reveal-events-typewriter-ticks-and-inline-markers)) |
 | `DialogueRevealCompletedEvent` | `{ speaker?, text }` — a line finished its typewriter reveal (the "typing finished" hook) |
 | `DialogueSelectionChangedEvent` | `{ index, text }` — the choice cursor moved (keyboard nav **and** pointer hover) |
 | `DialogueSkipUsedEvent` | `{ scriptId }` — the player skipped a section |
@@ -713,22 +764,27 @@ and the text channel fires its reveal-completed listener **exactly once** per
 line (the Session owns that seam, so there's no public field to clobber).
 
 Reuse `LineReveal` — the headless, pixi-free typewriter clock (grapheme cursor,
-`[pause]` timing, per-run/line `[speed]`, completion) — instead of
-re-implementing reveal timing. A DOM, per-word, or accessibility presenter then
-only maps the grapheme cursor onto its own rendering:
+the ordered `tokens` drain for `[pause=N/]` holds and `[name k=v/]` markers,
+per-run/line `[speed]`, completion) — instead of re-implementing reveal timing. A
+DOM, per-word, or accessibility presenter then only maps the grapheme cursor onto
+its own rendering:
 
 ```ts
 import { LineReveal, splitGraphemes } from "@yagejs-addons/dialogue";
-import type { TextChannel, PresentedLine } from "@yagejs-addons/dialogue";
+import type { TextChannel, PresentedLine, RevealBeat } from "@yagejs-addons/dialogue";
 
 class DomTextPresenter implements TextChannel {
   private reveal = new LineReveal(45 /* graphemes/sec */);
   private graphemes: string[] = [];
   private onDone?: () => void;
+  private onBeat?: (beat: RevealBeat) => void;
   constructor(private el: HTMLElement) {
     this.reveal.setCompletionListener(() => this.onDone?.());
+    // Forward the clock's ticks + inline markers — the Session fans them on.
+    this.reveal.setBeatListener((beat) => this.onBeat?.(beat));
   }
   setRevealListener(fn: (() => void) | undefined) { this.onDone = fn; }
+  setBeatListener(fn: ((beat: RevealBeat) => void) | undefined) { this.onBeat = fn; }
   present(line: PresentedLine) {
     this.graphemes = splitGraphemes(line.text.runs.map((r) => r.text).join(""));
     this.reveal.begin(line.text, line.speed);
@@ -745,6 +801,11 @@ class DomTextPresenter implements TextChannel {
   clear() { this.el.textContent = ""; }
 }
 ```
+
+The Session registers its reveal-completed **and** reveal-beat listeners through
+`setRevealListener` / `setBeatListener` (it owns both seams), so forwarding the
+`LineReveal` clock's beats is all a presenter does — markers and ticks then reach
+`DialogueRevealMarkerEvent` / `onRevealTick` and any registered channel.
 
 A line-driven avatar or chrome implements the optional `present(line)` and reads
 `line.meta`. Two shipped avatar references, both built only from the public

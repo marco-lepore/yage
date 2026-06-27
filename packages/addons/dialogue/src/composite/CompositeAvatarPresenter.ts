@@ -11,7 +11,7 @@
 import type { Scene } from "@yagejs/core";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
-import type { SpeakerDef } from "../core/types.js";
+import type { MarkerToken, SpeakerDef } from "../core/types.js";
 import { lineRoutesToBubble, type MountRoute } from "./route.js";
 
 export class CompositeAvatarPresenter implements AvatarPresenter {
@@ -35,6 +35,13 @@ export class CompositeAvatarPresenter implements AvatarPresenter {
   setExpression(expression: string | undefined): void {
     this.box.setExpression(expression);
     this.bubble.setExpression(expression);
+  }
+
+  /** Forward an inline reveal marker to both (cheap + idempotent, like
+   *  setExpression — the inactive side's setExpression no-ops with no speaker). */
+  marker(marker: MarkerToken): void {
+    this.box.marker?.(marker);
+    this.bubble.marker?.(marker);
   }
 
   setSpeaking(speaking: boolean): void {

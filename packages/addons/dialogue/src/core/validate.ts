@@ -51,9 +51,11 @@ const NUMERIC_OPS: ReadonlySet<string> = new Set([">", ">=", "<", "<="]);
 const NUMERIC_EXPR_OPS: ReadonlySet<string> = new Set([
   ">", "<", ">=", "<=", "gt", "lt", "gte", "lte", "-", "*", "/", "%",
 ]);
-/** Built-in command types the runner/session handle — exempt from the
- *  "must have a handler" check. */
-const BUILTIN_COMMANDS: ReadonlySet<string> = new Set(["set", "expression"]);
+/** Built-in command types the runner handles — exempt from the "must have a
+ *  handler" check. Only `set` (runner-owned flow op); every other command type,
+ *  including a face change, needs a handler. (A mid-line face change is the
+ *  `[expression=…/]` reveal marker, not a command.) */
+const BUILTIN_COMMANDS: ReadonlySet<string> = new Set(["set"]);
 
 /** What a binary operator requires of a literal operand, for the load-time type
  *  walk. `null` = no constraint (equality / logical ops accept any type). */

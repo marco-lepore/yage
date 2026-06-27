@@ -5,7 +5,7 @@ import type { PresentedLine } from "../session.js";
 
 /** A minimal presented line carrying an optional voice id. */
 function line(voice?: string): PresentedLine {
-  return { text: { runs: [], pauses: [], length: 0 }, speed: 1, voice };
+  return { text: { runs: [], tokens: [], length: 0 }, speed: 1, voice };
 }
 
 /** A scriptable host clip: the test captures `onEnded` to end it on demand and

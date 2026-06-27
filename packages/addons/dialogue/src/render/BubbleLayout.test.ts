@@ -29,7 +29,7 @@ const CFG: BubbleLayoutConfig = {
 };
 
 const line = (text: string): PresentedLine => ({
-  text: { runs: [{ text, style: {}, graphemeCount: text.length }], pauses: [], length: text.length },
+  text: { runs: [{ text, style: {}, graphemeCount: text.length }], tokens: [], length: text.length },
   speed: 1,
   speaker: { id: "npc", name: "NPC" },
 });

@@ -15,7 +15,7 @@ describe("parseMarkup — plain text", () => {
     const r = parseMarkup("hello world");
     expect(r.runs).toEqual([run("hello world")]);
     expect(r.length).toBe(11);
-    expect(r.pauses).toEqual([]);
+    expect(r.tokens).toEqual([]);
   });
 
   it("empty input yields no runs and zero length", () => {
@@ -97,17 +97,26 @@ describe("parseMarkup — speed", () => {
   });
 });
 
-describe("parseMarkup — pauses", () => {
+describe("parseMarkup — pauses (self-closing [pause=N/])", () => {
   it("emits a zero-width pause token at the right character index", () => {
-    const r = parseMarkup("ab[pause=400]cd");
+    const r = parseMarkup("ab[pause=400/]cd");
     expect(r.runs).toEqual([run("abcd")]);
     expect(r.length).toBe(4);
-    expect(r.pauses).toEqual([{ atChar: 2, ms: 400 }]);
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 2, ms: 400 }]);
   });
 
-  it("ignores a pause with a non-positive duration", () => {
-    expect(parseMarkup("a[pause=0]b").pauses).toEqual([]);
-    expect(parseMarkup("a[pause]b").pauses).toEqual([]);
+  it("ignores a pause with a non-positive or absent duration", () => {
+    expect(parseMarkup("a[pause=0/]b").tokens).toEqual([]);
+    expect(parseMarkup("a[pause/]b").tokens).toEqual([]);
+  });
+
+  it("a bare [pause=N] without the slash is NOT a pause", () => {
+    // pause is self-closing now: the old no-slash spelling drops as an unknown
+    // tag in a say line (text flows) and is flagged in a compact choice.
+    const r = parseMarkup("a[pause=400]b");
+    expect(r.tokens).toEqual([]);
+    expect(r.runs).toEqual([run("ab")]);
+    expect(firstUnknownTag("a[pause=400]b")).toBe("pause");
   });
 });
 
@@ -140,19 +149,19 @@ describe("parseMarkup — grapheme counting (F12)", () => {
   });
 
   it("places pause atChar at a grapheme index, not a code-unit index", () => {
-    const r = parseMarkup("🔥🔥[pause=300]ab"); // 4 code units but 2 graphemes before
-    expect(r.pauses).toEqual([{ atChar: 2, ms: 300 }]);
+    const r = parseMarkup("🔥🔥[pause=300/]ab"); // 4 code units but 2 graphemes before
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 2, ms: 300 }]);
     expect(r.length).toBe(4);
   });
 
   it("keeps counts aligned across styled runs and pauses", () => {
-    const r = parseMarkup("[b]🔥a[/b]e\u0301[pause=100]👩‍🚀");
+    const r = parseMarkup("[b]🔥a[/b]e\u0301[pause=100/]👩‍🚀");
     expect(r.runs).toEqual([
       { text: "🔥a", style: { bold: true }, graphemeCount: 2 },
       // The pause flushes, then the two same-style runs re-merge (counts sum).
       { text: "e\u0301👩‍🚀", style: {}, graphemeCount: 2 },
     ]);
-    expect(r.pauses).toEqual([{ atChar: 3, ms: 100 }]);
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 3, ms: 100 }]);
     expect(r.length).toBe(4);
   });
 
@@ -160,6 +169,80 @@ describe("parseMarkup — grapheme counting (F12)", () => {
     const r = parseMarkup("[b]🔥[/b][b]🔥[/b]");
     expect(r.runs).toEqual([{ text: "🔥🔥", style: { bold: true }, graphemeCount: 2 }]);
     expect(r.length).toBe(2);
+  });
+});
+
+describe("parseMarkup — self-closing markers", () => {
+  it("a bare [name/] marker fires at its char offset with empty props", () => {
+    const r = parseMarkup("ab[sfx/]cd");
+    expect(r.runs).toEqual([run("abcd")]); // marker is zero-width
+    expect(r.length).toBe(4);
+    expect(r.tokens).toEqual([{ kind: "marker", atChar: 2, name: "sfx", props: {} }]);
+  });
+
+  it("the self-named shortcut [name=val/] → props { name: val }", () => {
+    const r = parseMarkup("[expression=happy/]hi");
+    expect(r.tokens).toEqual([{ kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } }]);
+    expect(r.runs).toEqual([run("hi")]);
+  });
+
+  it("explicit space-separated key=value props", () => {
+    const r = parseMarkup("x[shake amount=3 speed=2/]y");
+    expect(r.tokens).toEqual([
+      { kind: "marker", atChar: 1, name: "shake", props: { amount: "3", speed: "2" } },
+    ]);
+  });
+
+  it("the self-named shortcut composes with explicit props (Yarn [name=val] ≡ [name name=val])", () => {
+    const r = parseMarkup("[shake=500 amount=3/]go");
+    expect(r.tokens).toEqual([
+      { kind: "marker", atChar: 0, name: "shake", props: { shake: "500", amount: "3" } },
+    ]);
+  });
+
+  it("records markers at grapheme offsets, alongside pauses, in order", () => {
+    const r = parseMarkup("🔥[sfx=a/]ab[pause=100/][expression=sad/]z");
+    expect(r.length).toBe(4); // 🔥 a b z
+    // One ordered stream: source order is drain order (sfx @1, then pause then
+    // expression both @3).
+    expect(r.tokens).toEqual([
+      { kind: "marker", atChar: 1, name: "sfx", props: { sfx: "a" } },
+      { kind: "pause", atChar: 3, ms: 100 },
+      { kind: "marker", atChar: 3, name: "expression", props: { expression: "sad" } },
+    ]);
+  });
+
+  it("a marker name shadowing an effect ([shake/]) is a marker, not a span", () => {
+    const r = parseMarkup("a[shake/]b");
+    expect(r.runs).toEqual([run("ab")]); // no effect style applied
+    expect(r.runs.every((x) => x.style.effect === undefined)).toBe(true);
+    expect(r.tokens).toEqual([{ kind: "marker", atChar: 1, name: "shake", props: {} }]);
+  });
+
+  it("a props-bearing tag with NO trailing slash stays literal (forgotten `/`)", () => {
+    // `[shake amount=3]` must NOT open an effect span / drop the props — it's a
+    // mistyped marker, kept as visible literal text (the pre-marker behavior).
+    const r = parseMarkup("Hi [shake amount=3]there");
+    expect(r.runs).toEqual([run("Hi [shake amount=3]there")]);
+    expect(r.runs.every((x) => x.style.effect === undefined)).toBe(true);
+    expect(r.tokens).toEqual([]);
+    // …and the choice-attr guard doesn't flag it (it isn't dropped).
+    expect(firstUnknownTag("Hi [shake amount=3]there")).toBeNull();
+  });
+
+  it("stripMarkup drops markers entirely (no text)", () => {
+    expect(stripMarkup("a[sfx=ding/]b")).toBe("ab");
+  });
+
+  it("leaves styling / pause tags untouched (no marker emitted)", () => {
+    const r = parseMarkup("[b]x[/b][pause=50/]y[color=red]z[/color]");
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 1, ms: 50 }]);
+  });
+
+  it("firstUnknownTag does NOT flag a self-closing marker (markup consumes it)", () => {
+    expect(firstUnknownTag("pick [sfx=ding/] this")).toBeNull();
+    // a non-self-closing unknown tag is still flagged
+    expect(firstUnknownTag("[sfx=ding]")).toBe("sfx");
   });
 });
 
@@ -223,7 +306,7 @@ describe("parseMarkup — escaped tag-shaped sequences", () => {
   it("\\[pause=400] is literal text, not a reveal pause", () => {
     const r = parseMarkup("wait \\[pause=400] here");
     expect(r.runs).toEqual([run("wait [pause=400] here")]);
-    expect(r.pauses).toEqual([]);
+    expect(r.tokens).toEqual([]);
   });
 
   it("\\[unknowntag] is kept literally rather than silently swallowed", () => {
@@ -258,14 +341,14 @@ describe("stripMarkup", () => {
   });
 
   it("strips pause tokens entirely", () => {
-    expect(stripMarkup("a[pause=200]b")).toBe("ab");
+    expect(stripMarkup("a[pause=200/]b")).toBe("ab");
   });
 });
 
 describe("firstUnknownTag", () => {
   it("returns null when every tag is a recognized markup tag", () => {
     expect(firstUnknownTag("plain text")).toBeNull();
-    expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=100][speed=2]w[/speed]")).toBeNull();
+    expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=100/][speed=2]w[/speed]")).toBeNull();
   });
 
   it("returns the name of the first tag parseMarkup would drop silently", () => {

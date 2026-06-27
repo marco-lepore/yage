@@ -70,8 +70,8 @@ export interface RunnerHandlers {
     speaker: SpeakerDef | undefined,
   ): void;
   /**
-   * A non-built-in command fired (give-item, play-sfx, expression, …). May
-   * return a promise; if the command is `blocking`, the runner waits for it.
+   * A non-built-in command fired (give-item, play-sfx, …). May return a promise;
+   * if the command is `blocking`, the runner waits for it.
    */
   onCommand(command: Command, ctx: CommandContext): void | Promise<void>;
   /** Conversation finished (ran off the end or hit an `end` step). */
