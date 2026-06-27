@@ -9,16 +9,12 @@
  * `./presenters` subpath; it is not part of the default factory bundles.
  */
 
-import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
+import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
-import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
+import type { PresentedChoice } from "../core/session.js";
 import type { ChoicePresenter } from "./DialogueUiAdapter.js";
-import {
-  makeTextOptions,
-  DISABLED_CHOICE_ALPHA,
-  firstEnabledIndex,
-  type FontConfig,
-} from "./textOptions.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import { applyChoiceTint, clampSelection, firstEnabledIndex } from "./choiceRow.js";
 
 export interface RadialChoiceConfig extends FontConfig {
   readonly center: { readonly x: number; readonly y: number };
@@ -41,7 +37,7 @@ interface Spoke {
 }
 
 /** @experimental Unpolished radial choice wheel; see file header. */
-export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
+export class RadialChoicePresenter implements ChoicePresenter {
   private scene?: Scene | undefined;
   private hub?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private spokes: Spoke[] = [];
@@ -93,12 +89,11 @@ export class RadialChoicePresenter implements ChoicePresenter, ChoiceChannel {
 
   highlight(position: number): void {
     if (this.spokes.length === 0) return;
-    this.selected = MathUtils.clamp(position, 0, this.spokes.length - 1);
+    this.selected = clampSelection(position, this.spokes.length);
+    applyChoiceTint(this.spokes, this.selected, this.cfg.choiceColor, this.cfg.choiceSelectedColor);
+    // Radial-only: scale the selected spoke up.
     this.spokes.forEach((s, i) => {
-      const active = i === this.selected && !s.disabled;
-      s.comp.text.style.fill = active ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
-      s.comp.text.alpha = s.disabled ? DISABLED_CHOICE_ALPHA : 1;
-      const scale = active ? 1.15 : 1;
+      const scale = i === this.selected && !s.disabled ? 1.15 : 1;
       s.entity.get(Transform).setScale(scale, scale);
     });
     this.drawHub();

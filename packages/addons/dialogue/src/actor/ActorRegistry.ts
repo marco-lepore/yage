@@ -6,8 +6,8 @@
  * in the script.
  *
  * The registry is keyed off the `Scene` via a WeakMap, so it needs no service
- * registration and is torn down with the scene. D2 (multiple live entities per
- * speaker) is punted: last registration wins.
+ * registration and is torn down with the scene. Multiple live entities for one
+ * speaker id is unsupported: last registration wins.
  */
 
 import type { Scene } from "@yagejs/core";

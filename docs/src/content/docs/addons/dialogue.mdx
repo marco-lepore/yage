@@ -318,8 +318,9 @@ Reading it line by line:
   Its attributes follow the text as non-bracket sigils, in order: `if: cond`, then
   `-> node` (or `target=node`), then `#once` / `#disabled` / `#key:value`
   metadata. They're stripped before the visible text, so `[..]` stays reserved for
-  inline markup — `[b]…[/b]` in a choice renders bold, while a stray `[skill=8]`
-  (a flag the author should have written `#…`) is a load error instead of vanishing.
+  inline markup — `[b]…[/b]` and any effect span like `[glitch]…[/glitch]` render
+  in the choice, while a malformed built-in tag the parser can't act on (e.g.
+  `[color=notacolor]`) is a load error instead of vanishing.
 - **`set gold = 100`** writes a variable. A bare number / `true` / `false` / `null`
   stays a literal; anything else is parsed as an expression, so `set gold = gold - 50`
   stores the subtraction the runtime evaluates later.
@@ -420,14 +421,16 @@ Rules to keep in mind:
 ## Inline markup
 
 Markup is a small BBCode-ish syntax that nests, inherits down the stack, and
-survives translation (translators keep the tags). Unknown tags are dropped
-silently.
+survives translation (translators keep the tags). The styling attributes are a
+fixed set (`b` / `i` / `color` / `speed`); **effects are an open vocabulary** —
+any other `[name]…[/name]` opens an effect span the presenter interprets (see
+below).
 
 | Tag | Effect |
 | --- | ------ |
 | `[b]…[/b]` `[i]…[/i]` | bold / italic |
 | `[color=#ffcc00]…[/color]` / `[color=gold]…` | colour (hex or named) |
-| `[wave]` `[shake]` `[pulse]` `[rainbow]` | per-glyph animated effects |
+| `[wave]` `[shake]` `[pulse]` `[rainbow]` | the four built-in per-glyph effects (any `[name]…[/name]` is an effect — see below) |
 | `[speed=2]…[/speed]` | reveal-speed multiplier for the span |
 | `[pause=600/]` | **self-closing** — holds the typewriter 600ms at this offset |
 | `[sfx=ding/]` `[expression=happy/]` `[shake amount=3/]` | **self-closing marker** — a reveal event at this char offset (see below) |
@@ -442,12 +445,21 @@ exactly `[name name=val/]`, so it composes with explicit `key=value` props:
 `[shake=500 amount=3/]` → `props { shake: "500", amount: "3" }` (values can't
 contain whitespace or `/`). Markup keeps the trailing `/`, so **translators must
 preserve it** for a token to survive a re-order. (`[pause=600/]` is the only pause
-spelling — a bare `[pause=600]` without the slash is treated as an unknown tag.)
+spelling — a bare `[pause=600]` without the slash is an ordinary tag, so it opens
+an effect span named `pause` rather than a hold.)
 
 The **effect + hold** idiom drops out of the two primitives: `[shake=500/][pause=500/]`
 fires a fire-and-forget marker (your host plays a 500ms shake) and then a 500ms pause
 holds the reveal while it plays. There's no combined `[shake hold/]` sugar — markers
 fire and pauses hold; ordering carries the intent.
+
+**Effects are an open vocabulary.** `[wave]`, `[shake]`, `[pulse]`, and `[rainbow]`
+are the four the bundled text presenter animates, but the parser accepts *any* tag
+name: `[glitch]…[/glitch]` parses to a run with `effect: "glitch"`. A custom text
+channel can animate any name it knows; a presenter that doesn't recognise an
+effect (including the bundled one) renders the run as plain styled text. So you
+widen the effect set by writing a text channel that reads the `effect` name —
+nothing in the core or parser is a closed list.
 
 `parseMarkup(str)` and `stripMarkup(str)` are exported for tooling.
 

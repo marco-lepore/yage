@@ -1,6 +1,6 @@
 /**
  * {@link VariableStorage} implementations — the read/write bridge between a
- * conversation and game state (D1/D2). One **opaque** name namespace; scoping is
+ * conversation and game state. One **opaque** name namespace; scoping is
  * the host's policy. Three building blocks:
  *
  *   • {@link MemoryVariableStorage} — the zero-config default. A plain Map; holds
@@ -47,7 +47,7 @@ export class MemoryVariableStorage implements VariableStorage {
   entries(): Iterable<readonly [string, VarValue]> {
     return this.map.entries();
   }
-  /** Drop everything — host-controlled reset (D3: variables persist by default). */
+  /** Drop everything — host-controlled reset (variables persist across plays by default). */
   clear(): void {
     this.map.clear();
   }

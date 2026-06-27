@@ -10,7 +10,7 @@
  * the panel is placed once on `present` rather than followed each frame.
  */
 
-import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
+import { Transform, type Entity, type Scene } from "@yagejs/core";
 import {
   GraphicsComponent,
   TextComponent,
@@ -19,13 +19,8 @@ import {
 import type { ChoiceContext, PresentedChoice } from "../core/session.js";
 import type { BubbleLayout } from "../render/BubbleLayout.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
-import {
-  makeTextOptions,
-  choiceRowLabel,
-  firstEnabledIndex,
-  DISABLED_CHOICE_ALPHA,
-  type FontConfig,
-} from "./textOptions.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import { applyChoiceTint, choiceRowLabel, clampSelection, firstEnabledIndex } from "./choiceRow.js";
 import { DEFAULT_CHOICE_GAP } from "../factory/theme.js";
 
 export interface BubbleChoiceConfig extends FontConfig {
@@ -190,12 +185,8 @@ export class BubbleChoicePresenter implements ChoicePresenter {
 
   highlight(position: number): void {
     if (this.rows.length === 0) return;
-    this.selected = MathUtils.clamp(position, 0, this.rows.length - 1);
-    this.rows.forEach((row, i) => {
-      const active = i === this.selected && !row.disabled;
-      row.comp.text.style.fill = active ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
-      row.comp.text.alpha = row.disabled ? DISABLED_CHOICE_ALPHA : 1;
-    });
+    this.selected = clampSelection(position, this.rows.length);
+    applyChoiceTint(this.rows, this.selected, this.cfg.choiceColor, this.cfg.choiceSelectedColor);
     this.drawHighlight();
   }
 

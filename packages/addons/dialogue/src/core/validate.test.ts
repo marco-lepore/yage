@@ -233,7 +233,7 @@ describe("validatePlay — play-time environment check", () => {
 
   it("accepts an undeclared local that is written by `set` then read", () => {
     // A flow-insensitive walk can't order read vs write; a name the script writes
-    // is provided by the script itself (D3 — locals are just names in the store).
+    // is provided by the script itself (locals are just names in the store).
     const s = loadScript(
       script({
         nodes: {

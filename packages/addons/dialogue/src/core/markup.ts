@@ -6,7 +6,8 @@
  *   plain text
  *   [b]bold[/b] [i]italic[/i]
  *   [color=#ffcc00]hex[/color]   [color=gold]named[/color]
- *   [wave]animated[/wave] [shake]..[/shake] [pulse]..[/pulse] [rainbow]..[/rainbow]
+ *   [wave]animated[/wave]      (effect span — OPEN vocabulary: any [name]..[/name];
+ *                               the bundled view animates wave/shake/pulse/rainbow)
  *   [speed=2]faster[/speed]  [speed=0.5]slower[/speed]
  *   [pause=400/]               (self-closing reveal PAUSE — holds at its offset, in ms)
  *   [sfx=ding/]                (self-closing reveal MARKER — fires at its offset)
@@ -21,12 +22,13 @@
  * reveal drains at its char offset, distinct from the styling tags (which never
  * end in `/`). Pause + markers share one ordered stream, so **source order is
  * drain order**: `[pause=600/][shake/]` holds then fires; `[shake/][pause=600/]`
- * fires then holds. Unknown *non*-self-closing tags are dropped silently
- * (forward-compatible); translators MUST keep the self-closing `/` so the token
- * survives a re-order.
+ * fires then holds. A non-self-closing tag that isn't a built-in text attribute
+ * opens an EFFECT span named after the tag (an open vocabulary the presenter
+ * interprets); translators MUST keep a marker/pause's self-closing `/` so the
+ * token survives a re-order.
  */
 
-import type { EffectId, ParsedText, RevealToken, RunStyle, TextRun } from "./types.js";
+import type { ParsedText, RevealToken, RunStyle, TextRun } from "./types.js";
 
 /** The empty parse result (no runs / tokens, length 0). Shared so a presenter or
  *  the session can present a contentless line (an empty choice prompt) without
@@ -52,27 +54,6 @@ const NAMED_COLORS: Record<string, number> = {
   gray: 0x9aa0a6,
   grey: 0x9aa0a6,
 };
-
-const EFFECTS = new Set<EffectId>(["wave", "shake", "pulse", "rainbow"]);
-
-/**
- * Every NON-self-closing styling tag {@link parseMarkup} acts on; any other bare
- * tag is dropped silently. (`pause` is NOT here — it is a self-closing
- * `[pause=600/]` token now, like a marker; a bare `[pause=600]` is treated as an
- * unknown tag.) Kept beside {@link styleForTag} and {@link EFFECTS} so the
- * recognized set has one home — {@link firstUnknownTag} reads it to tell a real
- * markup tag from a typo.
- */
-const KNOWN_TAGS: ReadonlySet<string> = new Set<string>([
-  "b",
-  "bold",
-  "i",
-  "italic",
-  "color",
-  "c",
-  "speed",
-  ...EFFECTS,
-]);
 
 function parseColor(raw: string): number | undefined {
   const v = raw.trim().toLowerCase();
@@ -258,7 +239,7 @@ export function parseMarkup(input: string): ParsedText {
       flush();
       stack.push({ name, override });
     }
-    // Unknown opening tag: ignore, leave text flowing.
+    // A built-in styling tag with a bad/missing arg (color/speed) → ignore; text flows.
   }
   buffer += unescape(input.slice(lastIndex));
   flush();
@@ -308,8 +289,12 @@ function styleForTag(name: string, arg?: string): Partial<RunStyle> | null {
       return Number.isFinite(s) && s > 0 ? { speed: s } : null;
     }
     default:
-      if (EFFECTS.has(name as EffectId)) return { effect: name as EffectId };
-      return null;
+      // Any other paired (non-self-closing) tag opens an effect span carrying its
+      // name — an OPEN vocabulary the presenter interprets. The bundled text view
+      // animates the BuiltinEffectIds; an unrecognized name renders as plain
+      // styled text. (Built-in text attributes are handled above; a marker is the
+      // self-closing `[name/]` form, parsed before styleForTag is reached.)
+      return { effect: name };
   }
 }
 
@@ -361,14 +346,18 @@ export function stripMarkup(input: string): string {
 
 /**
  * The name of the first bracketed `[tag]` in `input` that {@link parseMarkup}
- * would drop silently (an unrecognized tag), or `null` when every tag is known.
- * Escape-aware: `\[x]` is literal text, not a tag, matching the parser.
+ * would drop silently, or `null` when every tag is meaningful. Escape-aware:
+ * `\[x]` is literal text, not a tag, matching the parser.
  *
- * The compact authoring front-end uses this to reject a `[..]` an author meant
- * as a choice attribute. Brackets are markup-only there, and markup's silent
- * drop would otherwise make a mistyped `#flag` / `-> target` / `if:` vanish
- * without a trace. (Say-line text is passed through untouched, so future markup
- * tokens stay forward-compatible — this guard is for the choice grammar only.)
+ * Because the effect vocabulary is open, every paired `[name]…[/name]` opens an
+ * effect span and every `[name/]` is a marker — both are meaningful, so neither
+ * is flagged. What remains droppable is a built-in styling tag with a malformed
+ * argument (`[color=notacolor]`, `[speed=abc]`), which {@link styleForTag} can't
+ * act on and discards — almost always a typo.
+ *
+ * The compact authoring front-end calls this on choice text, where `[..]` is
+ * reserved for inline markup, to surface such a dropped tag instead of letting a
+ * mistyped attribute vanish. (Say-line text is passed through untouched.)
  */
 export function firstUnknownTag(input: string): string | null {
   TAG_RE.lastIndex = 0;
@@ -380,13 +369,16 @@ export function firstUnknownTag(input: string): string | null {
     for (let i = m.index - 1; i >= lastIndex && input[i] === "\\"; i--) backslashes++;
     lastIndex = TAG_RE.lastIndex;
     if (backslashes % 2 === 1) continue;
-    // Neither of these is dropped by parseMarkup, so neither is a typo'd choice
-    // attribute: a self-closing marker (`[sfx=ding/]`, `m[5]`) parses to a
+    // None of these is dropped, so none is a typo: a closing tag (`m[1]`) pops a
+    // frame, a self-closing marker (`[sfx=ding/]`, `m[5]`) parses to a
     // MarkerToken, and a props-bearing tag with no slash (`[name k=v]`, `m[4]`)
-    // is kept as literal text. Only a bare unknown tag is silently dropped.
-    if (m[4] || m[5] === "/") continue;
+    // is kept as literal text.
+    if (m[1] === "/" || m[4] || m[5] === "/") continue;
     const name = m[2]!.toLowerCase();
-    if (!KNOWN_TAGS.has(name)) return name;
+    // Every other opening tag opens a span — a built-in text attribute or, for
+    // any other name, an effect. The lone droppable case is a built-in styling
+    // tag whose argument doesn't parse (styleForTag returns null).
+    if (styleForTag(name, m[3]) === null) return name;
   }
   return null;
 }

@@ -15,18 +15,13 @@
  * desync them. A list longer than `softMaxChoices` logs a soft-cap advisory.
  */
 
-import { MathUtils, Transform, type Entity, type Scene } from "@yagejs/core";
+import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { GraphicsComponent, TextComponent, type TextComponentOptions } from "@yagejs/renderer";
-import type { ChoiceChannel, PresentedChoice } from "../core/session.js";
+import type { PresentedChoice } from "../core/session.js";
 import { type BoxLayout, type ChoiceRowRect } from "../render/BoxLayout.js";
 import type { ChoicePresenter, DiagnosticSink } from "./DialogueUiAdapter.js";
-import {
-  makeTextOptions,
-  choiceRowLabel,
-  firstEnabledIndex,
-  DISABLED_CHOICE_ALPHA,
-  type FontConfig,
-} from "./textOptions.js";
+import { makeTextOptions, type FontConfig } from "./textOptions.js";
+import { applyChoiceTint, choiceRowLabel, clampSelection, firstEnabledIndex } from "./choiceRow.js";
 import { DEFAULT_CHOICE_GAP } from "../factory/theme.js";
 
 export interface ChoiceListConfig extends FontConfig {
@@ -61,7 +56,7 @@ export const DEFAULT_SOFT_MAX_CHOICES = 8;
  *  highlight bar's rounded edge. */
 const ROW_TEXT_INDENT = 6;
 
-export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
+export class ChoiceListPresenter implements ChoicePresenter {
   private scene?: Scene | undefined;
   private highlightBar?: { entity: Entity; gfx: GraphicsComponent } | undefined;
   private rows: ChoiceRow[] = [];
@@ -181,12 +176,8 @@ export class ChoiceListPresenter implements ChoicePresenter, ChoiceChannel {
 
   private highlightAt(position: number): void {
     if (this.rows.length === 0) return;
-    this.selected = MathUtils.clamp(position, 0, this.rows.length - 1);
-    this.rows.forEach((row, i) => {
-      const active = i === this.selected && !row.disabled;
-      row.comp.text.style.fill = active ? this.cfg.choiceSelectedColor : this.cfg.choiceColor;
-      row.comp.text.alpha = row.disabled ? DISABLED_CHOICE_ALPHA : 1;
-    });
+    this.selected = clampSelection(position, this.rows.length);
+    applyChoiceTint(this.rows, this.selected, this.cfg.choiceColor, this.cfg.choiceSelectedColor);
     this.drawHighlight();
   }
 

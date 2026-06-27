@@ -410,7 +410,7 @@ describe("DialogueSession — i18n & interpolation", () => {
     expect(h.chrome.nameplates.at(-1)).toEqual({ name: "Mara" });
   });
 
-  it("interpolation reads a live storage value at each present (scenario 3)", async () => {
+  it("interpolation reads a live storage value at each present", async () => {
     const onLine = vi.fn();
     const h = makeHarness({ onLine });
     let gold = 5; // the host's game state, behind a cells getter
@@ -1614,7 +1614,7 @@ describe("DialogueSession — handle & play-time validation", () => {
   });
 
   it("a stale blocking command's ctx.setVar does not mutate the storage after replace", async () => {
-    // The skill-check seam under a generation race (PR-A1 checklist): a slow
+    // The skill-check seam under a generation race: a slow
     // blocking command captured before the conversation is replaced must not
     // write through when it finally resolves. ctx.setVar and handle.setVar share
     // the same generation-guarded storage view, so the guard covers both.
@@ -1742,8 +1742,8 @@ describe("DialogueSession — handle & play-time validation", () => {
 });
 
 describe("DialogueSession — storage model", () => {
-  // Scenario 1: a choice gated on an item the player is granted mid-conversation.
-  it("a give-item command grants a key a later choice gate reads (scenario 1)", async () => {
+  // A choice gated on an item the player is granted mid-conversation.
+  it("a give-item command grants a key a later choice gate reads", async () => {
     const inventory = new Set<string>();
     const h = makeHarness({
       functions: { has_item: (id) => inventory.has(String(id)) },
@@ -1784,8 +1784,8 @@ describe("DialogueSession — storage model", () => {
     expect(h.text.lastText).toBe("handed-over");
   });
 
-  // Scenario 2: a blocking skill-check writes a var the next node branches on.
-  it("a blocking skill-check ctx.setVar drives the next branch (scenario 2)", async () => {
+  // A blocking skill-check writes a var the next node branches on.
+  it("a blocking skill-check ctx.setVar drives the next branch", async () => {
     const h = makeHarness({
       commands: {
         "skill-check": (_cmd, ctx) => {
@@ -1929,10 +1929,9 @@ describe("DialogueSession — storage model", () => {
   });
 
   it("a read-only `set` in an option's commands is reported, not a wedge", async () => {
-    // Greptile's choose() dead-lock: a `set` to a getter-only cell inside an
-    // option's commands used to throw out of the un-awaited choose() chain and
-    // freeze the choosing state. Now it's caught + reported, and the choice
-    // still branches.
+    // A `set` to a getter-only cell inside an option's commands must be caught +
+    // reported, not thrown out of the un-awaited choose() chain (which would
+    // freeze the choosing state). The choice still branches.
     const errors: string[] = [];
     const h = makeHarness({
       storage: cells({ hp: () => 10 }),

@@ -73,11 +73,18 @@ describe("parseMarkup — color parsing", () => {
 });
 
 describe("parseMarkup — effects", () => {
-  it("recognises all four effect tags", () => {
+  it("recognises all four built-in effect tags", () => {
     for (const fx of ["wave", "shake", "pulse", "rainbow"] as const) {
       const r = parseMarkup(`[${fx}]x[/${fx}]`);
       expect(r.runs[0]!.style.effect).toBe(fx);
     }
+  });
+
+  it("opens an effect span for ANY tag name (open vocabulary)", () => {
+    // The four built-ins aren't special to the parser — any [name]…[/name] opens
+    // an effect span carrying that name; the presenter decides what to animate.
+    expect(parseMarkup("[glitch]x[/glitch]").runs[0]!.style.effect).toBe("glitch");
+    expect(parseMarkup("[sparkle=2]y[/sparkle]").runs[0]!.style.effect).toBe("sparkle");
   });
 });
 
@@ -110,13 +117,14 @@ describe("parseMarkup — pauses (self-closing [pause=N/])", () => {
     expect(parseMarkup("a[pause/]b").tokens).toEqual([]);
   });
 
-  it("a bare [pause=N] without the slash is NOT a pause", () => {
-    // pause is self-closing now: the old no-slash spelling drops as an unknown
-    // tag in a say line (text flows) and is flagged in a compact choice.
+  it("a bare [pause=N] without the slash is NOT a pause hold", () => {
+    // Only the self-closing `[pause=400/]` is a timing hold. A bare `[pause=400]`
+    // is an ordinary (paired) tag, so it opens an effect span named "pause" — no
+    // token — and is not flagged as a typo.
     const r = parseMarkup("a[pause=400]b");
     expect(r.tokens).toEqual([]);
-    expect(r.runs).toEqual([run("ab")]);
-    expect(firstUnknownTag("a[pause=400]b")).toBe("pause");
+    expect(r.runs).toEqual([run("a"), run("b", { effect: "pause" })]);
+    expect(firstUnknownTag("a[pause=400]b")).toBeNull();
   });
 });
 
@@ -130,7 +138,7 @@ describe("splitGraphemes", () => {
   });
 });
 
-describe("parseMarkup — grapheme counting (F12)", () => {
+describe("parseMarkup — grapheme counting", () => {
   it("counts an astral emoji as one grapheme, not two code units", () => {
     const r = parseMarkup("🔥 now");
     expect(r.runs).toEqual([{ text: "🔥 now", style: {}, graphemeCount: 5 }]);
@@ -241,15 +249,18 @@ describe("parseMarkup — self-closing markers", () => {
 
   it("firstUnknownTag does NOT flag a self-closing marker (markup consumes it)", () => {
     expect(firstUnknownTag("pick [sfx=ding/] this")).toBeNull();
-    // a non-self-closing unknown tag is still flagged
-    expect(firstUnknownTag("[sfx=ding]")).toBe("sfx");
+    // a non-self-closing tag now opens an effect span, so it isn't a typo either
+    expect(firstUnknownTag("[sfx=ding]")).toBeNull();
   });
 });
 
 describe("parseMarkup — term / glossary is REMOVED", () => {
-  it("[term]/[gloss] tags are treated as unknown and dropped (text flows through)", () => {
+  it("[term]/[gloss] are no longer special — they parse as plain effect spans", () => {
+    // The glossary feature is gone; `[term]` is now just an (unrecognized) effect
+    // span the bundled presenter renders as plain styled text. Text flows intact.
     const r = parseMarkup("a [term=cauldron]cauldron[/term] b");
-    expect(r.runs).toEqual([run("a cauldron b")]);
+    expect(r.runs.map((x) => x.text).join("")).toBe("a cauldron b");
+    expect(stripMarkup("a [term=cauldron]cauldron[/term] b")).toBe("a cauldron b");
     expect(stripMarkup("[gloss=mana]mana[/gloss]")).toBe("mana");
   });
 });
@@ -267,9 +278,9 @@ describe("parseMarkup — ruby/furigana is REMOVED", () => {
 });
 
 describe("parseMarkup — robustness", () => {
-  it("drops unknown tags but keeps their inner text", () => {
+  it("opens an effect span for an unknown tag, keeping its inner text", () => {
     const r = parseMarkup("a[blink]b[/blink]c");
-    expect(r.runs).toEqual([run("abc")]);
+    expect(r.runs).toEqual([run("a"), run("b", { effect: "blink" }), run("c")]);
   });
 
   it("ignores a stray closing tag with no matching open", () => {
@@ -346,14 +357,24 @@ describe("stripMarkup", () => {
 });
 
 describe("firstUnknownTag", () => {
-  it("returns null when every tag is a recognized markup tag", () => {
+  it("returns null when every tag is meaningful markup", () => {
     expect(firstUnknownTag("plain text")).toBeNull();
     expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=100/][speed=2]w[/speed]")).toBeNull();
   });
 
-  it("returns the name of the first tag parseMarkup would drop silently", () => {
-    expect(firstUnknownTag("a [term=cauldron]b[/term]")).toBe("term");
-    expect(firstUnknownTag("[skill=8] roll")).toBe("skill");
+  it("does NOT flag an unknown effect span — the vocabulary is open", () => {
+    // Any [name]…[/name] is a valid effect span now, so a custom effect (or what
+    // used to be a glossary / skill tag) flows as markup, not a typo.
+    expect(firstUnknownTag("a [term=cauldron]b[/term]")).toBeNull();
+    expect(firstUnknownTag("[skill=8] roll")).toBeNull();
+    expect(firstUnknownTag("cast [glitch]fire[/glitch]")).toBeNull();
+  });
+
+  it("flags a built-in styling tag whose argument doesn't parse (it is dropped)", () => {
+    // The only silently-dropped tag left: a color/speed tag the parser can't act
+    // on. In a compact choice that signals a typo'd attribute, so it's surfaced.
+    expect(firstUnknownTag("[color=notacolor] x")).toBe("color");
+    expect(firstUnknownTag("[speed=abc] x")).toBe("speed");
   });
 
   it("ignores an escaped bracket (it is literal text, not a tag)", () => {

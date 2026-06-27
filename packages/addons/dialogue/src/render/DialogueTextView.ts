@@ -47,7 +47,7 @@ import {
 import type { TextPresenter } from "../chrome/DialogueUiAdapter.js";
 import type { FontConfig } from "../chrome/textOptions.js";
 import type { PresentedLine } from "../core/session.js";
-import type { EffectId, ParsedText, RunStyle } from "../core/types.js";
+import type { ParsedText, RunStyle } from "../core/types.js";
 import { evaluateEffect, effectDrivesTint, type EffectOutput } from "./textEffects.js";
 
 export interface DialogueTextConfig extends FontConfig {
@@ -83,7 +83,7 @@ type CharNode = SplitTextComponent["chars"][number];
  *  need none — their tint/weight are applied once at build). */
 interface EffectMeta {
   readonly node: CharNode;
-  readonly effect: EffectId;
+  readonly effect: string;
   /** Resting position within the glyph's own parent (word) — effects offset from this. */
   readonly baseX: number;
   readonly baseY: number;
@@ -141,8 +141,7 @@ export class DialogueTextView implements TextPresenter {
   constructor(private readonly cfg: DialogueTextConfig) {
     this.reveal = new LineReveal(cfg.charsPerSec);
     // The reveal clock reports completion + beats through the view's
-    // session-owned listeners — never public fields a game could clobber (the
-    // old onRevealComplete footgun).
+    // session-owned listeners — never public fields a game could clobber.
     this.reveal.setCompletionListener(() => this.revealListener?.());
     this.reveal.setBeatListener((beat) => this.beatListener?.(beat));
     if (cfg.box) this.setBox(cfg.box.x, cfg.box.y, cfg.box.width);
@@ -204,9 +203,8 @@ export class DialogueTextView implements TextPresenter {
     this.applyHidden();
   }
 
-  /** Register the reveal-completed listener. Session-owned; pass `undefined`
-   *  to clear. Replaces the old public `onRevealComplete` field a game could
-   *  clobber. */
+  /** Register the reveal-completed listener. Session-owned (a private seam, not a
+   *  public field a game could clobber); pass `undefined` to clear. */
   setRevealListener(listener: (() => void) | undefined): void {
     this.revealListener = listener;
   }

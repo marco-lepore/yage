@@ -29,7 +29,7 @@ function setup(): {
   return { scene, npc, presenter, speaker };
 }
 
-describe("SceneFigurePresenter — talk bob vs entity movement (F47)", () => {
+describe("SceneFigurePresenter — talk bob vs entity movement", () => {
   it("releasing the bob returns an unmoved figure exactly to rest", () => {
     const { npc, presenter, speaker } = setup();
     const t = npc.get(Transform);

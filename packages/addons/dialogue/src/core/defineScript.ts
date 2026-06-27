@@ -1,5 +1,5 @@
 /**
- * `defineScript` — the TS-first authoring path (D4). An identity function at
+ * `defineScript` — the TS-first authoring path. An identity function at
  * runtime; at compile time it captures the script's declared variable value
  * types (from their {@link DialogueScript.declare} defaults), branding the
  * returned script so `play()` can hand back a typed {@link DialogueHandle}.

@@ -13,7 +13,7 @@
  * `{ type: "give-item", id: "key" }` into an actual effect.
  */
 
-import { createScope, evalCondition, evaluate, isExpr, type EvalScope } from "./expr.js";
+import { createScope, evaluate, holds, isExpr, type EvalScope } from "./expr.js";
 import { materialize } from "./vars.js";
 import type {
   ChoiceOption,
@@ -83,13 +83,13 @@ type RunnerState = "idle" | "saying" | "choosing" | "awaiting-command" | "ended"
 export class DialogueRunner {
   /** `option.once` keys already picked — per-conversation **cursor** state, NOT
    *  the variable storage. Fresh per runner, so a new `play()` starts it empty
-   *  (a re-played conversation re-shows its `once` options until the v1.1 save
-   *  cursor captures/restores it via {@link getChosenOnce}). */
+   *  (a re-played conversation re-shows its `once` options; {@link getChosenOnce}
+   *  exposes the set so a save cursor could capture/restore it). */
   private readonly chosenOnce = new Set<string>();
   private nodeId: string;
   private stepIndex = 0;
   private state: RunnerState = "idle";
-  /** "play" normally; flipped to "skip" by a future fast-forward (see C2). */
+  /** "play" normally; `skip()` flips it to "skip" to fast-forward the section. */
   private runMode: RunMode = "play";
 
   /** Storage (write through this so a read-only `cells` accessor throws) +
@@ -116,23 +116,23 @@ export class DialogueRunner {
     return materialize(this.storage);
   }
 
-  // ── v1.1 save seam (read-only cursor getters) ─────────────────────────────
+  // ── save seam (read-only cursor getters) ──────────────────────────────────
   // The runner's durable cursor is (nodeId, stepIndex, chosenOnce) + getVars().
   // These getters exist so a future `SnapshotContributor` can capture/restore a
   // conversation WITHOUT a breaking API change. Snapshot/restore itself is
-  // deliberately NOT built yet (deferred to v1.1) — keep these read-only.
+  // deliberately NOT built yet — keep these read-only.
 
-  /** Current node id (durable cursor; v1.1 save seam). */
+  /** Current node id (durable cursor; save seam). */
   getNodeId(): string {
     return this.nodeId;
   }
 
-  /** Current step index within the node (durable cursor; v1.1 save seam). */
+  /** Current step index within the node (durable cursor; save seam). */
   getStepIndex(): number {
     return this.stepIndex;
   }
 
-  /** One-shot choice keys already picked (`option.once`); v1.1 save seam. */
+  /** One-shot choice keys already picked (`option.once`); save seam. */
   getChosenOnce(): ReadonlySet<string> {
     return this.chosenOnce;
   }
@@ -141,11 +141,10 @@ export class DialogueRunner {
     return this.state === "ended";
   }
 
-  /** Begin at the start node. Idempotent guard against double-start. */
+  /** Begin at the start node. Idempotent guard against double-start. The cursor
+   *  (`nodeId`/`stepIndex`) is already at the start from the ctor + field init. */
   start(): void {
     if (this.state !== "idle") return;
-    this.nodeId = this.script.start;
-    this.stepIndex = 0;
     void this.run();
   }
 
@@ -169,15 +168,15 @@ export class DialogueRunner {
   }
 
   /**
-   * Run a command list now — the seam the host's Session uses to fire a `say`
-   * line's commands at show / after-reveal / advance time. Handles built-in
-   * `set`, surfaces the rest with the current mode (or `mode`, when the Session
-   * fires the displayed line's batches as part of its own skip), and awaits
-   * `blocking` ones. Does not touch the runner's wait-state (the Session gates
-   * its own input).
+   * Public, **wait-state-free** entry the Session uses to fire a `say` line's
+   * commands at show / after-reveal / advance time. Handles built-in `set`,
+   * surfaces the rest with the current mode (or `mode`, when the Session fires the
+   * displayed line's batches as part of its own skip), and awaits `blocking` ones.
+   * Delegates to {@link executeBatch}; the runner's wait-state is untouched (the
+   * Session gates its own input).
    */
   runCommands(commands: readonly Command[] | undefined, mode?: RunMode): Promise<void> {
-    return this.execCommands(commands, mode);
+    return this.executeBatch(commands, mode);
   }
 
   /** Pick choice `index` (the original option index). */
@@ -192,7 +191,7 @@ export class DialogueRunner {
     // Hold a transient state so a second confirm during an awaited blocking
     // command is ignored, then run the option's commands before branching.
     this.state = "awaiting-command";
-    await this.fireCommands(option.commands);
+    await this.fireBatch(option.commands);
     if (this.isEnded()) return;
 
     if (option.target !== undefined) this.jump(option.target);
@@ -222,7 +221,7 @@ export class DialogueRunner {
         if (this.runMode === "skip") {
           // Fast-forward: run the line's commands (world reconstruction) but
           // present nothing, then move on. In `play` the Session fires these.
-          await this.fireCommands(step.commands);
+          await this.fireBatch(step.commands);
           if (this.isEnded()) return true;
           this.stepIndex++;
           return false;
@@ -248,7 +247,7 @@ export class DialogueRunner {
         return true;
       }
       case "command": {
-        await this.fireCommands(step.commands);
+        await this.fireBatch(step.commands);
         if (this.state === "ended") return true;
         if (step.target !== undefined && this.test(step.condition)) {
           this.jump(step.target);
@@ -294,7 +293,7 @@ export class DialogueRunner {
   private resolveChoices(step: ChoiceStep): ResolvedChoice[] {
     const out: ResolvedChoice[] = [];
     step.options.forEach((option, index) => {
-      if (this.isSpent(step, index, option)) return;
+      if (this.isSpent(step, index)) return;
       // The enabled test here is the visible-row companion to `choiceEnabled`
       // (the commit gate): both gate on `isSpent` + `test(condition)`. A new
       // "disabled" reason must be added to both, or a row could show as enabled
@@ -309,14 +308,16 @@ export class DialogueRunner {
    *  A spent `once` option or a failing condition refuses (a `"disabled"` row is
    *  shown but still unpickable, so this stays the single selection authority). */
   private choiceEnabled(step: ChoiceStep, index: number, option: ChoiceOption): boolean {
-    return !this.isSpent(step, index, option) && this.test(option.condition);
+    return !this.isSpent(step, index) && this.test(option.condition);
   }
 
   /** A `once` option already chosen this run — always dropped from the menu
    *  regardless of `presentation`. Single source of truth for the once-gate,
-   *  shared by `resolveChoices` and `choiceEnabled`. */
-  private isSpent(step: ChoiceStep, index: number, option: ChoiceOption): boolean {
-    return option.once === true && this.chosenOnce.has(this.onceKey(step, index));
+   *  shared by `resolveChoices` and `choiceEnabled`. Reads the option from
+   *  `step.options[index]`, so `(step, index)` is the only input. */
+  private isSpent(step: ChoiceStep, index: number): boolean {
+    const option = step.options[index];
+    return option?.once === true && this.chosenOnce.has(this.onceKey(step, index));
   }
 
   private onceKey(step: ChoiceStep, index: number): string {
@@ -325,24 +326,25 @@ export class DialogueRunner {
   }
 
   /**
-   * Inline command firing (a `command` step or a chosen option). Enters the
-   * `awaiting-command` wait-state up front when the batch contains a blocking
-   * command, so a stray advance/confirm during the await is ignored; the caller
-   * transitions out of the state afterwards.
+   * Fire an inline command batch (a `command` step or a chosen option). Manages
+   * wait-state: enters `awaiting-command` up front when the batch contains a
+   * blocking command, so a stray advance/confirm during the await is ignored; the
+   * caller transitions out of the state afterwards. The work itself goes through
+   * the wait-state-free {@link executeBatch}.
    */
-  private async fireCommands(commands: readonly Command[] | undefined): Promise<void> {
+  private async fireBatch(commands: readonly Command[] | undefined): Promise<void> {
     if (!commands || commands.length === 0) return;
     if (commands.some((c) => c.blocking)) this.state = "awaiting-command";
-    await this.execCommands(commands);
+    await this.executeBatch(commands);
   }
 
   /**
-   * The command executor, shared by inline firing and the Session's line-timed
-   * firing. Applies built-in `set`; surfaces the rest to the host with the
-   * current mode; awaits `blocking` handlers and fire-and-forgets the others.
-   * Touches no wait-state of its own.
+   * The wait-state-free command executor, shared by {@link fireBatch} (inline
+   * firing) and {@link runCommands} (the Session's line-timed firing). Applies
+   * built-in `set`; surfaces the rest to the host with the current mode; awaits
+   * `blocking` handlers and fire-and-forgets the others. Touches no wait-state.
    */
-  private async execCommands(
+  private async executeBatch(
     commands: readonly Command[] | undefined,
     mode: RunMode = this.runMode,
   ): Promise<void> {
@@ -399,7 +401,7 @@ export class DialogueRunner {
   }
 
   private test(condition: Condition | undefined): boolean {
-    return condition === undefined ? true : evalCondition(condition, this.scope);
+    return holds(condition, this.scope);
   }
 }
 

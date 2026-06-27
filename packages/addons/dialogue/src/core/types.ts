@@ -86,11 +86,11 @@ export type CompareOp = "==" | "!=" | ">" | ">=" | "<" | "<=" | "truthy" | "fals
 export type VarValue = string | number | boolean | null;
 export type VarMap = Record<string, VarValue>;
 
-// ── Expression IR (D5) ──────────────────────────────────────────────────────
+// ── Expression IR ───────────────────────────────────────────────────────────
 // `Condition` and a `set`'s value are expression *trees*, not atomic
-// comparisons — so `gold - 50` (the landmine the old flat form couldn't express)
-// and `has_item("key") and not rude` are plain data. The operator set is modeled
-// on Yarn Spinner so a future Yarn front-end maps 1:1 onto this IR.
+// comparisons — so `gold - 50` and `has_item("key") and not rude` are plain
+// data. The operator set is modeled on Yarn Spinner so a future Yarn front-end
+// maps 1:1 onto this IR.
 
 /** Comparison operators (symbol + Yarn word forms). `is`/`eq` ≡ `==`. */
 export type ComparisonOp =
@@ -323,13 +323,23 @@ export interface RunStyle {
   readonly italic?: boolean;
   /** 0xRRGGBB. */
   readonly color?: number;
-  /** Animated effect id applied to the whole run. */
-  readonly effect?: EffectId;
+  /**
+   * Animated effect applied to the whole run — an **open vocabulary** the
+   * presenter interprets, like an inline marker name. The bundled text presenter
+   * animates the {@link BuiltinEffectId}s; a custom text channel can animate any
+   * name; an effect a presenter doesn't recognize renders as plain styled text.
+   * `bold`/`italic`/`color`/`speed` are the typed, universal set — `effect` is
+   * the one open dimension.
+   */
+  readonly effect?: string;
   /** Reveal-speed multiplier for characters in this run. */
   readonly speed?: number;
 }
 
-export type EffectId = "wave" | "shake" | "pulse" | "rainbow";
+/** The text effects the bundled renderer presenter animates out of the box.
+ *  {@link RunStyle.effect} is an open string; these are just the built-ins — a
+ *  documented reference, not a closed set the parser enforces. */
+export type BuiltinEffectId = "wave" | "shake" | "pulse" | "rainbow";
 
 /** A contiguous span of text sharing one style. */
 export interface TextRun {

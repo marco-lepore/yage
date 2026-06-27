@@ -130,9 +130,19 @@ describe("loadCompact — choice text vs choice attributes", () => {
     expect(opt.text).not.toContain("#disabled");
   });
 
-  it("ERRORS on an unconsumed bracket-attr ('[..]' is markup-only in a choice)", () => {
-    expect(() => wrap("? Pick the lock [skill=8] -> done")).toThrow(DialogueScriptError);
-    expect(() => wrap("? Pick the lock [skill=8] -> done")).toThrow(/markup only|\[skill\]/);
+  it("accepts an unknown effect span in choice text (open vocabulary)", () => {
+    // `[..]` is markup, and the effect vocabulary is open, so a custom effect (or
+    // a former skill/glossary tag) survives in the text instead of being an error.
+    const opt = wrap("? Pick the [glitch]lock[/glitch] -> done").options[0]!;
+    expect(opt.text).toBe("Pick the [glitch]lock[/glitch]");
+    expect(opt.target).toBe("done");
+  });
+
+  it("ERRORS on a malformed built-in markup tag (a typo'd choice attribute)", () => {
+    // The one tag markup still drops silently is a built-in styling tag the parser
+    // can't act on (here a bad color), so the choice grammar surfaces it.
+    expect(() => wrap("? Pick the lock [color=notacolor] -> done")).toThrow(DialogueScriptError);
+    expect(() => wrap("? Pick the lock [color=notacolor] -> done")).toThrow(/markup only|\[color\]/);
   });
 
   it("lexes `#once` / `#disabled` flags and `#key:value` meta off the text", () => {

@@ -112,7 +112,7 @@ describe("loadScript — speaker validation", () => {
 });
 
 describe("loadScript — string conditions / set values unify to Expr", () => {
-  it("a bare-name condition becomes a varRef and evaluates like the old truthy read", () => {
+  it("a bare-name condition becomes a varRef and evaluates as a truthy read", () => {
     const condition = loadCondition("gate");
     expect(condition).toEqual({ kind: "varRef", name: "gate" });
     // Back-compat: identical to today's `truthy(scope.get("gate"))`.
