@@ -1,5 +1,63 @@
 # @yagejs/core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#121](https://github.com/marco-lepore/yage/pull/121) [`62da81f`](https://github.com/marco-lepore/yage/commit/62da81f67076fccaff3a8af6c805dd919c6a687f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Reference-count shared assets so a font or texture held by more than one owner survives until the last release.
+  - `AssetManager` now reference-counts loads by `type:path`. Every `loadAll` adds a reference — including for already-cached handles — and `unload` invokes the loader's `unload` (and drops the cache entry) only when the last reference is released; earlier calls just decrement. Two scenes preloading the same asset no longer tear it out from under each other on the first `unload`. `clear` still frees everything outright, ignoring counts. Behaviour is unchanged for an asset loaded once.
+
+- [#112](https://github.com/marco-lepore/yage/pull/112) [`8e2ab0b`](https://github.com/marco-lepore/yage/commit/8e2ab0b301748c2ac5f3d90224d3a2cc92393865) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add a per-entity `timeScale` multiplier (closes [#92](https://github.com/marco-lepore/yage/issues/92)).
+  - `Entity.timeScale` (default `1`) scales the delta time the engine feeds an
+    entity's components: `dt * scene.timeScale * entity.timeScale`. It composes
+    on top of the scene's `timeScale`, so `0` freezes a single entity while the
+    scene keeps running and `2` runs it at double speed.
+  - Applies to component `update()` / `fixedUpdate()`
+    (`ComponentUpdateSystem`), the entity's `ProcessComponent` tween tick
+    (`ProcessSystem` — scene-scoped processes stay scene-only), and the entity's
+    particle emitters (`ParticleSystem`).
+  - Physics is deliberately carved out: a scene shares one Rapier world stepped
+    once per (scene-scaled) fixed tick, so a rigid body cannot be individually
+    time-scaled. Use `scene.timeScale`, a kinematic body, or manual velocity
+    scaling for per-body time control.
+  - `entity.timeScale` is captured and restored by the save snapshot (omitted
+    from the snapshot when left at the default to keep saves compact).
+
+- [#114](https://github.com/marco-lepore/yage/pull/114) [`555a868`](https://github.com/marco-lepore/yage/commit/555a86888ec3aedca42587fab7eb3ec5f0c6eeb8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add a derived rendered-geometry / visibility facet to the Inspector snapshot, wired through a generic facet-contributor seam so `@yagejs/core` stays renderer-agnostic.
+  - `@yagejs/core`: the Inspector gains a generic facet seam — `registerFacetContributor()` lets a plugin attach a namespaced facet (`InspectorFacetContributor`) to component and entity snapshots, surfaced under an open `facets?: InspectorFacets` map on `WorldEntitySnapshot` and `ComponentStateSnapshot`. Core knows nothing about rendering: it just invokes each registered contributor per component (tolerating an absent or throwing hook), lets the contributor pick an entity-level facet, attaches results under their namespace, and keeps everything out of `serialize()`. This mirrors the contributor pattern already used by `DebugContributor` and save's `SnapshotContributor`. No Pixi or renderer concept leaks into core.
+  - `@yagejs/renderer`: now owns the render facet end-to-end. Exports `RenderFacetSnapshot<Extra>` (moved out of core) and a `RenderFacetContributor` that `RendererPlugin` registers with the Inspector on install (removed on teardown). The contributor duck-types `inspectRender()` off each graphical component and surfaces the first painted component at the entity level. `SpriteComponent`, `AnimatedSpriteComponent`, `GraphicsComponent`, `TextComponent`, and `SplitTextComponent` expose `inspectRender()` — a compute-on-demand, read-only method deriving the live display object's world-space bounds and visibility from `getLocalBounds()` (leaving the scene graph's cached transforms untouched). `SplitTextComponent` additionally reports per-glyph visibility (`glyphs`) and the visible substring (`visibleText`), so a typewriter reveal is observable from the public Inspector API. Read the facet at `snapshot.entities[].facets?.render` / `component.facets?.render`; `bounds` are world-space pixels measured from the geometry itself (a sized-but-hidden object still reports its real box; `null` only for genuinely empty/zero-area geometry, with `visible` carrying the hidden/shown state).
+
+- [#98](https://github.com/marco-lepore/yage/pull/98) [`3991288`](https://github.com/marco-lepore/yage/commit/39912883cf191cd065ef0b5779f1b65b53bcbea8) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Add split text for per-glyph / animated text — typewriter reveals, per-letter colour / wave, staggered line entrances.
+
+  Wraps Pixi v8's experimental `SplitText` / `SplitBitmapText` and exposes the text as arrays of individually transformable display objects — `chars` (per-glyph `Text` / `BitmapText`), `words`, and `lines`.
+  - **`@yagejs/renderer` — `SplitTextComponent`** (free-positioned, Transform-synced, layer-attached like `TextComponent`). `chars` / `words` / `lines` getters, `setText` / `setStyle`, `charAnchor` / `wordAnchor` / `lineAnchor` segment pivots, `resplit()` for batching under `autoSplit: false`, `tint` / `alpha`, the underlying `splitText` escape hatch, and the `bitmap` discriminator. Serializable.
+  - **`@yagejs/ui` — `UISplitText`** (Yoga-laid-out UI element). Same segment API plus an `onSplit` subscription that fires whenever a re-split invalidates `chars`. Measures its natural size via Pixi's text metrics (stable under per-glyph animation). No `truncate` / word-wrap — pre-break with `\n` or use `UIText` for flowing paragraphs.
+  - **`@yagejs/ui-react` — `<SplitText>` + `useSplitText`**. `useSplitText()` returns a `[ref, controls]` tuple: live `chars` / `words` / `lines` / `segments` accessors, `resplit()`, and `run(process | process[])`. `run` enqueues on a scene-scoped process queue (pauses with the scene; cancelled on unmount and on re-split so a tween never targets a destroyed glyph) and returns a `{ cancel() }` handle for that batch. Animate imperatively from any handler rather than binding up front.
+  - **`@yagejs/core` — `Tween.stagger(items, factory, stepMs)`**. Maps a `Process` factory over an array, staggering each item's start by `stepMs` (the factory runs at start time, so a `Tween.to` reads its `from` then). Pairs with `useSplitText`'s `run` to cascade a tween across `chars` / `words` / `lines`.
+
+  `SplitText` is flagged experimental in Pixi and re-lays-out on every `text` / `style` change — prefer `TextComponent` / `UIText` for static or simple dynamic strings.
+
+- [#97](https://github.com/marco-lepore/yage/pull/97) [`23e357f`](https://github.com/marco-lepore/yage/commit/23e357f605957cc24e58ec2e504a82d4ebdcc9a0) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Web-font asset handle, engine-level default text style, and bitmap-font DX.
+  - New `webFont(path, { family })` asset factory (wired as the renderer `"web-font"` loader) — a declarative `AssetHandle` for loading a plain `.ttf`/`.woff`/`.woff2` as a canvas `Text` font, resolvable through `Scene.preload` (the canvas sibling of `bitmapFont`). The `family` registers the `@font-face`; omit it to let Pixi derive it from the file name. To carry that metadata, `AssetHandle` gains an optional third `data` argument, forwarded to `AssetLoader.load(path, data)` (backward-compatible — existing loaders ignore it).
+  - Engine-level default text style: `RendererConfig.defaultTextStyle` sets an app-wide base under every `TextComponent` / `UIText` `style`, and `UIPlugin({ defaultTextStyle })` layers a UI-only override on top. Precedence: per-text `style` → `UIPlugin` default → `RendererPlugin` default → Pixi default. Re-applied on `setStyle` so a recolour keeps it — no more importing `pixi.js` to touch `TextStyle.defaultTextStyle`. The renderer-level mutation is captured/restored on plugin destroy, like `pixelArtPreset`.
+  - `bitmap` is now a plain `boolean` on `TextComponent` / `UIText` / `<Text>` / `UIButton` (**breaking**: the `{ font, size }` object form is removed, and the `BitmapTextOption` type is no longer exported). The bitmap font is a normal style property — pass the installed/baked font name as `style.fontFamily` (and the glyph size as `style.fontSize`) alongside `bitmap: true`. `installBitmapFont` still returns that name.
+  - New `mergeStyle(style)` on `TextComponent` / `UIText`: patches the current style instead of replacing it, so an imperative recolour (`mergeStyle({ fill })`) keeps the font, size, weight, etc. `setStyle` remains a full replace (the semantics the React reconciler relies on).
+  - `bitmap` DX: passing `bitmap` nested inside `style` (a silent no-op before) now emits a dev-mode warning, surfaced on every construction and `setStyle` path. `UIButton` and the React `<Button>` forward a `bitmap` boolean to their auto-wrapped string label (no effect when the child is a composed element). `UIButton.update()` refreshes the cached `bitmap` flag and `textStyle` before promoting a not-yet-created label (so a `bitmap`/`textStyle`-before-`children` two-step reconcile builds the label with the right class and style), and warns when a `bitmap` change can't apply to an existing label, mirroring `UIText`.
+  - `UIPlugin` now captures and restores the UI default text-style singleton on destroy (like `RendererPlugin`), so the default no longer leaks across engine lifecycles.
+  - Bitmap text no longer loses its font on re-render / recolour ([#86](https://github.com/marco-lepore/yage/issues/86)): the font now lives in `style.fontFamily` (a normal style property carried on every re-apply), and `mergeStyle` preserves it on an imperative recolour — superseding the construction-time `bitmap.font → fontFamily` fold.
+  - `installBitmapFont` bakes glyphs **white** by default ([#87](https://github.com/marco-lepore/yage/issues/87)) instead of Pixi's black `TextStyle` default, so a per-text `fill` / `tint` (a multiply over the atlas) recolours them out of the box — `black × tint = black` otherwise. An explicit `style.fill` still wins.
+
+### Patch Changes
+
+- [#103](https://github.com/marco-lepore/yage/pull/103) [`face78b`](https://github.com/marco-lepore/yage/commit/face78ba63f9ef6eb52d8a677fc1d8b1457212e6) Thanks [@marco-lepore](https://github.com/marco-lepore)! - Fix a one-frame flash of the outgoing scene at the end of a `pop`/`replace` transition.
+  - Tear the outgoing scene down inside the transition's finalize step so the stack is in its post-mutation shape before `scene:transition:ended` is emitted. End-of-transition listeners (e.g. the renderer's visibility recompute) now see the settled stack instead of the stale pre-teardown one.
+  - For a transitioned `pop`/`replace`, the stack-mutation event (`scene:popped` / `scene:replaced`) now fires just before `scene:transition:ended` rather than just after. `isTransitioning` is still `true` when it fires.
+
+- [#95](https://github.com/marco-lepore/yage/pull/95) [`4627c80`](https://github.com/marco-lepore/yage/commit/4627c80e409226ff58c2214c2e1bb76e9e1d769f) Thanks [@marco-lepore](https://github.com/marco-lepore)! - `Scene.service()` and the new `Scene.use()` are now scope-aware, so a scene can resolve its own scene-scoped services (e.g. `SceneRenderTreeKey`, `PhysicsWorldKey`) directly.
+  - Added `Scene.use(key)`, mirroring `Component.use`: scene scope is checked first, then engine scope. Previously `Scene.service()` resolved only against the engine context, so scene-scoped keys were unreachable from `onEnter` and game code had to fall back to the near-identical provider key.
+  - A scene-scoped key that resolves only at engine scope now logs a warning (likely a plugin missing its `beforeEnter` registration), and an unresolved scene-scoped key throws a named, actionable error instead of failing opaquely.
+  - `Scene.service()` delegates to `use()` for lazy field-initializer resolution. Note the proxy caches its first resolved value: prefer `use()` inside `onEnter()` for scene-scoped keys, since a cached value would go stale across scene exit/re-entry.
+
 ## 0.7.0
 
 ### Minor Changes
