@@ -64,6 +64,26 @@ class GameScene extends Scene {
 }
 ```
 
+## Entity "&lt;name&gt;" renders on layer "&lt;layer&gt;" which scene "&lt;scene&gt;" does not declare
+
+A visual component (`SpriteComponent`, `GraphicsComponent`, `AnimatedSpriteComponent`,
+`TextComponent`, `SplitTextComponent`, or a custom `LayerRenderable`) asked for a
+`layer` name the scene never declared in its `layers`. The component falls back to
+the `"default"` layer so it still renders — but on the wrong layer, which usually
+looks like a missing or mis-ordered sprite. Common cause: a layer added to one scene
+file but forgotten on a sibling scene that uses the same component.
+
+Fix: add the layer to the scene's `layers`.
+
+```ts
+class SiblingScene extends Scene {
+  readonly layers = [
+    { name: "default", order: 0 },
+    { name: "fx", order: 10 }, // declare the layer the component targets
+  ];
+}
+```
+
 ## Polygon collider with N input vertices reduced to M after convex hull
 
 `ColliderShape: "polygon"` builds a Rapier convex hull, which drops vertices

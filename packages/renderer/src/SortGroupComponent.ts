@@ -1,4 +1,4 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Component, Transform, devWarn, serializable } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { Container } from "pixi.js";
 import type { LayerSortFn } from "./LayerDef.js";
@@ -46,6 +46,11 @@ function isLayerRenderable(
  * at `entity` (inclusive), so a visual on a group-owning entity joins that
  * group.
  *
+ * When `layerName` names a layer the scene never declared in its `layers`,
+ * this warns in dev (naming the entity, the missing layer, and the scene) and
+ * falls back to the scene's default layer, so the visual still renders instead
+ * of throwing or silently disappearing.
+ *
  * The built-in visual components call this in their `onAdd`. A custom visual
  * component (one implementing {@link LayerRenderable}) should do the same, so
  * it joins an enclosing group on its initial add rather than only when the
@@ -71,7 +76,15 @@ export function resolveRenderParent(
     if (group && group.layer === layerName) return group.container;
     current = current.parent;
   }
-  return tree.get(layerName).container;
+  const layer = tree.tryGet(layerName);
+  if (layer) return layer.container;
+  devWarn(
+    `Entity "${entity.name}" renders on layer "${layerName}" which scene ` +
+      `"${entity.tryScene?.name ?? "<unattached>"}" does not declare in its ` +
+      `\`layers\`; falling back to the "default" layer. Add ` +
+      `\`{ name: "${layerName}", order: 0 }\` to the scene's \`layers\`.`,
+  );
+  return tree.defaultLayer.container;
 }
 
 /**
