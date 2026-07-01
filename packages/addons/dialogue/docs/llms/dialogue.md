@@ -75,7 +75,7 @@ const script = defineScript({
   id: "intro",
   start: "n1",
   declare: { rude: false, timesTalked: 0 },   // variable defaults (seed-if-absent)
-  speakers: { gwen: { id: "gwen", name: "Gwen", color: 0xffd866 } },
+  speakers: { gwen: { name: "Gwen", color: 0xffd866 } },
   nodes: {
     n1: { id: "n1", steps: [
       { kind: "say", speaker: "gwen", text: "You carry {gold} gold, [b]traveler[/b]." },
@@ -88,6 +88,10 @@ const script = defineScript({
   },
 });
 ```
+
+`SpeakerDef`: `{ name, nameKey?, color?, avatar? }`. The speaker's **id is its
+key** in `speakers` — steps reference it (`speaker: "gwen"`) and presenters anchor
+actors by it; the loader stamps it on, so never write `id` inside the entry.
 
 Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 - `SayStep`: `text` (+ optional i18n `key`), `speaker?`, `expression?`, `speed?`,

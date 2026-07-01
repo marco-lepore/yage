@@ -7,7 +7,7 @@
 id: sage
 start: intro
 speakers:
-  sage: { id: sage, name: Sage, color: 0x7ec8ff }
+  sage: { name: Sage, color: 0x7ec8ff }
 nodes:
   intro:
     id: intro

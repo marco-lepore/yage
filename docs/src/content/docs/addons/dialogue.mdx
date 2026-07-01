@@ -120,7 +120,7 @@ const script = defineScript({
   start: "greeting",
   declare: { rude: false, timesTalked: 0 },   // variable defaults (seed-if-absent)
   speakers: {
-    gwen: { id: "gwen", name: "Gwen", color: 0xffd866 },
+    gwen: { name: "Gwen", color: 0xffd866 },
   },
   nodes: {
     greeting: {
@@ -148,6 +148,10 @@ const script = defineScript({
   },
 });
 ```
+
+A speaker's **id is its key in the `speakers` map** — `say`/`choice` steps
+reference it (`speaker: "gwen"`), and presenters anchor actors by it. You never
+repeat the key inside the entry.
 
 ### Variables and storage
 

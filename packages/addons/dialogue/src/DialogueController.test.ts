@@ -252,7 +252,7 @@ describe("DialogueController — observation events forwarded entity→scene", (
   const sayScript: DialogueScript = {
     id: "say",
     start: "a",
-    speakers: { npc: { id: "npc", name: "Bee" } },
+    speakers: { npc: { name: "Bee" } },
     nodes: { a: { id: "a", steps: [{ kind: "say", speaker: "npc", text: "hi" }] } },
   };
 

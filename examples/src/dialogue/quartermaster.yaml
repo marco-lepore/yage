@@ -3,7 +3,7 @@ id: quartermaster
 start: n
 declare: { paid: false }
 speakers:
-  quinn: { id: quinn, name: Quartermaster Quinn, color: 0x9ad17e }
+  quinn: { name: Quartermaster Quinn, color: 0x9ad17e }
 nodes:
   n:
     id: n

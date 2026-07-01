@@ -61,6 +61,14 @@ describe("loadCompact — the worked shop script round-trips to IR", () => {
     expect(Object.isFrozen(script)).toBe(true);
   });
 
+  it("parseCompact keys speakers off the directive id and emits no own id field", () => {
+    const parsed = parseCompact(SHOP);
+    expect(Object.keys(parsed.speakers ?? {})).toEqual(["mira", "guard"]);
+    // The id is loader-derived: the raw parse carries only authored fields.
+    expect(parsed.speakers?.mira).toEqual({ name: "Mira Brightwater", color: 0xffcc00 });
+    expect(parsed.speakers?.guard).toEqual({ name: "Guard" });
+  });
+
   it("reads say lines, faces, narrator lines, and keeps markup verbatim", () => {
     const start = script.nodes.start!.steps;
     expect(start[0]).toEqual({

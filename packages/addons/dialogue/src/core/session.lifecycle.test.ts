@@ -336,7 +336,7 @@ describe("DialogueSession — observation events (audio/FX hooks)", () => {
     const script: DialogueScript = {
       id: "rc",
       start: "a",
-      speakers: { npc: { id: "npc", name: "Bee" } },
+      speakers: { npc: { name: "Bee" } },
       nodes: { a: { id: "a", steps: [{ kind: "say", speaker: "npc", text: "[b]hi[/b] there" }] } },
     };
     h.session.play(script);

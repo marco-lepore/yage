@@ -7,7 +7,7 @@
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
 import { SpriteComponent, texture, type TextureHandle } from "@yagejs/renderer";
-import type { AvatarRef, MarkerToken, SpeakerDef } from "../core/types.js";
+import type { AvatarRef, LoadedSpeaker, MarkerToken } from "../core/types.js";
 import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
 
 export interface PortraitPresenterConfig {
@@ -45,7 +45,7 @@ export class PortraitPresenter implements AvatarPresenter {
     this.scene = scene;
   }
 
-  setSpeaker(speaker: SpeakerDef | undefined): void {
+  setSpeaker(speaker: LoadedSpeaker | undefined): void {
     const av = speaker?.avatar;
     if (!av || av.kind !== "portrait") {
       this.hide();

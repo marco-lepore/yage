@@ -7,7 +7,7 @@
 id: captain
 start: n
 speakers:
-  vow: { id: vow, name: Captain Vow, color: 0x86c5ff }
+  vow: { name: Captain Vow, color: 0x86c5ff }
 nodes:
   n:
     id: n

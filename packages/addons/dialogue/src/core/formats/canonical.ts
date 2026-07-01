@@ -17,14 +17,17 @@ import type {
   DialogueScript,
   DialogueNode,
   Expr,
+  LoadedScript,
+  LoadedSpeaker,
   NodeId,
   SayStep,
+  SpeakerId,
   Step,
 } from "../types.js";
 
 export { DialogueScriptError };
 
-export function loadScript(raw: DialogueScript): DialogueScript {
+export function loadScript(raw: DialogueScript): LoadedScript {
   if (!raw || typeof raw !== "object") {
     throw new DialogueScriptError("script must be an object");
   }
@@ -42,16 +45,10 @@ export function loadScript(raw: DialogueScript): DialogueScript {
     throw new DialogueScriptError(`start node "${start}" not found in "${raw.id}"`);
   }
 
-  // Speakers are resolved by record KEY at runtime but presenters look actors
-  // up by `SpeakerDef.id` — a mismatch silently splits nameplate vs actor
-  // anchoring, so the two must agree (same rule as node key ↔ node.id).
-  for (const [key, speaker] of Object.entries(raw.speakers ?? {})) {
-    if (speaker.id !== key) {
-      throw new DialogueScriptError(
-        `speaker key "${key}" != speaker.id "${speaker.id}"`,
-      );
-    }
-  }
+  // The speaker's id is its map key. Stamp it onto each def so the runtime
+  // (presenters anchor actors by `speaker.id`) and the nameplate (resolved by
+  // key) always agree, without the author repeating the key.
+  const speakers = normalizeSpeakers(raw.speakers);
 
   // Each node's id must match its key; every jump target must resolve.
   for (const [id, node] of Object.entries(raw.nodes)) {
@@ -66,12 +63,31 @@ export function loadScript(raw: DialogueScript): DialogueScript {
   // throws `DialogueExprError` with its position.
   const resolved = resolveExpressions(raw);
 
-  const script = Object.freeze({ ...resolved, start });
+  // Replace the authored speakers (no `id`) with the normalized record.
+  const base: Omit<DialogueScript, "speakers"> = resolved;
+  const script: LoadedScript = Object.freeze({
+    ...base,
+    start,
+    ...(speakers ? { speakers } : {}),
+  });
   // Binding-free load-time walk: condition vars, set targets, and {token}s must
   // resolve to declared vars/externals; type-incompatible ops error. Memoized on
   // the frozen script, so the session's play-time re-check is free.
   analyzeScript(script);
   return script;
+}
+
+/** Stamp each speaker's `id` from its map key, producing the runtime-facing
+ *  {@link LoadedSpeaker} record. Returns `undefined` when no speakers exist. */
+function normalizeSpeakers(
+  speakers: DialogueScript["speakers"],
+): Record<SpeakerId, LoadedSpeaker> | undefined {
+  if (!speakers) return undefined;
+  const out: Record<SpeakerId, LoadedSpeaker> = {};
+  for (const [key, def] of Object.entries(speakers)) {
+    out[key] = { ...def, id: key };
+  }
+  return out;
 }
 
 function validateNode(script: DialogueScript, id: string, node: DialogueNode): void {

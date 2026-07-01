@@ -66,17 +66,18 @@ describe("loadScript — structural validation", () => {
 });
 
 describe("loadScript — speaker validation", () => {
-  it("rejects a speakers record whose key != speaker.id", () => {
+  it("stamps each speaker's id from its map key", () => {
     const s = script({
-      speakers: { gwen: { id: "gewn", name: "Gwen" } },
+      speakers: { gwen: { name: "Gwen" }, mara: { name: "Mara", color: 0xff0000 } },
     });
-    expect(() => loadScript(s)).toThrow(DialogueScriptError);
-    expect(() => loadScript(s)).toThrow(/speaker key "gwen" != speaker.id "gewn"/);
+    const loaded = loadScript(s);
+    expect(loaded.speakers?.gwen).toEqual({ id: "gwen", name: "Gwen" });
+    expect(loaded.speakers?.mara).toEqual({ id: "mara", name: "Mara", color: 0xff0000 });
   });
 
   it("rejects a say.speaker that is not in script.speakers", () => {
     const s = script({
-      speakers: { gwen: { id: "gwen", name: "Gwen" } },
+      speakers: { gwen: { name: "Gwen" } },
       nodes: {
         a: { id: "a", steps: [{ kind: "say", speaker: "gwne", text: "typo" }] },
       },
@@ -96,9 +97,9 @@ describe("loadScript — speaker validation", () => {
     expect(() => loadScript(s)).toThrow(/speaker "ghost"/);
   });
 
-  it("accepts matching keys and resolvable speaker references", () => {
+  it("accepts resolvable speaker references", () => {
     const s = script({
-      speakers: { gwen: { id: "gwen", name: "Gwen" } },
+      speakers: { gwen: { name: "Gwen" } },
       nodes: {
         a: { id: "a", steps: [{ kind: "say", speaker: "gwen", text: "hi" }] },
       },
