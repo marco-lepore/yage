@@ -519,6 +519,15 @@ export class RendererPlugin implements Plugin {
    * `markPointerConsumeContainer`. Used by `@yagejs/input`'s drain step to
    * auto-claim presses landing on UI surfaces.
    *
+   * Scope: this only sees surfaces marked via `markPointerConsumeContainer` —
+   * `@yagejs/ui` primitives (`UIPanel`, `UIButton`, …) plus `Sprite` /
+   * `AnimatedSprite` components configured with
+   * `interactive: { consumeOnInteraction: true }`. A plain sprite is not a
+   * consume surface. It does not detect raw-Pixi UI drawn directly
+   * with `GraphicsComponent` / `TextComponent`, such as the `@yagejs-addons/dialogue`
+   * box, which never marks its containers. Dialogue-aware callers should gate
+   * on `DialogueController.isActive()` / `isChoosing()` instead.
+   *
    * Coordinates are supplied in virtual space (matching how the input plugin
    * stores pointer positions); they are converted to canvas space via
    * `FitController.virtualToCanvas` before being forwarded to

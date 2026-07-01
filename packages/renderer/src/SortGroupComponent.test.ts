@@ -362,4 +362,71 @@ describe("SortGroupComponent", () => {
       trail.renderObject,
     );
   });
+
+  describe("undeclared layer", () => {
+    it("warns once and renders into the default layer instead of throwing", () => {
+      const { scene, tree, system } = setup();
+      // Only the auto-created "default" layer exists; "fx" is never declared.
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const entity = spawnEntityInScene(scene, "spark");
+      entity.add(new Transform({ position: new Vec2(0, 0) }));
+      const graphics = entity.add(
+        new SpriteComponent({ texture: {} as never, layer: "fx" }),
+      );
+
+      system.update();
+
+      const defaultContainer = tree.defaultLayer.container;
+      expect(defaultContainer.children).toContain(graphics.sprite);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = warn.mock.calls[0]![0] as string;
+      expect(message).toContain("spark");
+      expect(message).toContain("fx");
+      expect(message).toContain("test-scene");
+      // The actionable remedy is part of the warning's contract.
+      expect(message).toContain('{ name: "fx", order: 0 }');
+      expect(message).toContain('"default"');
+
+      warn.mockRestore();
+    });
+
+    it("warns for each built-in visual that targets an undeclared layer", () => {
+      const { scene, system } = setup();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const a = spawnEntityInScene(scene, "a");
+      a.add(new SpriteComponent({ texture: {} as never, layer: "fx" }));
+      const b = spawnEntityInScene(scene, "b");
+      b.add(new SpriteComponent({ texture: {} as never, layer: "fx" }));
+
+      system.update();
+
+      expect(warn).toHaveBeenCalledTimes(2);
+      warn.mockRestore();
+    });
+
+    it("leaves the enclosing-group path unwarned and ungrouped on a missing layer", () => {
+      const { scene, tree, system } = setup();
+      tree.ensureLayer({ name: "world", order: 0, sort: ySort });
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // A group on "world" plus a same-layer visual: the visual joins the
+      // group via the ancestor branch and never reaches the tryGet fallback.
+      const knight = spawnEntityInScene(scene, "knight");
+      knight.add(new Transform({ position: new Vec2(0, 100) }));
+      knight.add(new SortGroupComponent({ layer: "world" }));
+      const body = knight.add(
+        new SpriteComponent({ texture: {} as never, layer: "world" }),
+      );
+
+      system.update();
+
+      const group = knight.get(SortGroupComponent).container;
+      expect(group.children).toContain(body.sprite);
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+  });
 });
