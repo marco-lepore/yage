@@ -196,6 +196,15 @@ input.consumeWheel();              // suppress wheel action edges for this frame
 
 `consumePointer` lifetime is per-pointer-event-cycle: cleared when the pointer's last button releases (drained `pointerUp`) or on `pointercancel`. So a tap-and-drag pattern works naturally — claim on `pointerdown`, the matching `pointerup` is also gated, and a fresh down later starts unmarked.
 
+`consumePointer` is also the answer to **forwarding or replaying a synthetic pointer to the canvas**. A DOM overlay above the canvas (virtual joystick, accessibility overlay, input-replay tooling) that dispatches a synthetic `PointerEvent` so listeners underneath still receive it must pair the dispatch with `consumePointer`, or every forwarded tap leaks into the `MouseLeft/Middle/Right` action edge:
+
+```ts
+overlayEl.addEventListener("pointerdown", (e) => {
+  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...e, button: 0 }));
+  input.consumePointer(e.pointerId); // underneath listeners still fire; no action edge
+});
+```
+
 ## UI auto-consume
 
 Every primitive in `@yagejs/ui` (and `UIRoot` in `@yagejs/ui-react`) marks its underlying Pixi `Container` as a "consume surface" via a shared `WeakSet` in `@yagejs/core`. The renderer's optional `RendererAdapter.hitTestUI(x, y)` walks `EventBoundary.hitTest`'s parent chain looking for a marked ancestor; `@yagejs/input`'s drain step calls it on each `pointerdown` and auto-claims the pointer when the press lands on UI. Result: clicks on UI panels, buttons, decorative text, layout containers — **none of them fire gameplay actions** by default, with no per-component handler boilerplate.
@@ -394,6 +403,22 @@ input.firePointerDown(0);
 input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
 input.firePointerUp(0, { id: 5 });
 ```
+
+### Synthetic action injection (by action name)
+
+Drive actions directly by name — no keymap knowledge — for synthetic devices (touch buttons, virtual controls) and tests. Symmetric to the physical-key path (`fireKeyDown`/`fireKeyUp`) but keyed by action. All three throw on an unknown action name.
+
+```ts
+input.fireAction("attack");          // one-frame pulse: isJustPressed true for 1 frame
+
+input.fireActionDown("attack");      // sustained: isPressed stays true across frames,
+                                     //   getHoldDuration accrues, onAction fires once
+input.fireActionUp("attack");        // real release: isJustReleased edge + onActionReleased
+
+input.setActionHeld("attack", held); // mirror a pointer's held boolean onto down/up
+```
+
+`fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: `setActionHeld("attack", pointerDown)` each frame, then read `getHoldDuration("attack")` to charge while held and `isJustReleased("attack")` to fire on release.
 
 For deterministic inspector probes with a real controller plugged in, pair
 `new InputPlugin({ pollGamepads: false })` with

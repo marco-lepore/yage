@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Vec2 } from "@yagejs/core";
 import { InputManager } from "./InputManager.js";
+import type { PointerInfo } from "./types.js";
 
 describe("InputManager", () => {
   let input: InputManager;
@@ -563,6 +564,53 @@ describe("InputManager", () => {
       expect(upButtons).toEqual([2]);
     });
 
+    it("consumePointer keeps a forwarded synthetic pointerdown out of action edges while listeners still fire", () => {
+      // A DOM overlay forwards a synthetic button-0 pointerdown to the canvas
+      // and pairs it with consumePointer(id). The MouseLeft action edge is
+      // suppressed, but raw onPointerDown listeners (e.g. a dialogue box under
+      // the overlay) still receive the event.
+      const downs: PointerInfo[] = [];
+      const fires: string[] = [];
+      input.onPointerDown((info) => downs.push(info));
+      input.onAction("fire", (n) => fires.push(n));
+
+      input._enqueuePointerDown({
+        id: 7,
+        screenX: 10,
+        screenY: 20,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+      input.consumePointer(7);
+      input._drainInputQueue();
+
+      expect(input.isPressed("fire")).toBe(false);
+      expect(input.isJustPressed("fire")).toBe(false);
+      expect(fires).toEqual([]);
+      expect(input.snapshotState().mouse.buttons).not.toContain(0);
+      // The forward still reached the raw listener.
+      expect(downs.map((d) => d.id)).toEqual([7]);
+    });
+
+    it("without consumePointer a forwarded button-0 pointerdown fires the action edge", () => {
+      const fires: string[] = [];
+      input.onAction("fire", (n) => fires.push(n));
+
+      input._enqueuePointerDown({
+        id: 7,
+        screenX: 10,
+        screenY: 20,
+        type: "touch",
+        isPrimary: true,
+        button: 0,
+      });
+      input._drainInputQueue();
+
+      expect(input.isPressed("fire")).toBe(true);
+      expect(fires).toEqual(["fire"]);
+    });
+
     it("moves and query snapshots carry button === -1", () => {
       const moveButtons: number[] = [];
       input.onPointerMove((info) => moveButtons.push(info.button));
@@ -814,6 +862,117 @@ describe("InputManager", () => {
 
     it("fireAction throws for unknown actions", () => {
       expect(() => input.fireAction("unknown")).toThrow('unknown action "unknown"');
+    });
+
+    it("fireActionDown sustains isPressed across frames", () => {
+      input.fireActionDown("jump");
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustPressed("jump")).toBe(true);
+
+      input._clearFrameState();
+      // The press edge has passed, but the hold persists.
+      expect(input.isPressed("jump")).toBe(true);
+      expect(input.isJustPressed("jump")).toBe(false);
+
+      input._clearFrameState();
+      expect(input.isPressed("jump")).toBe(true);
+    });
+
+    it("fireActionUp emits a one-frame release edge and fires onActionReleased", () => {
+      const released: string[] = [];
+      input.onActionReleased("jump", (n) => released.push(n));
+
+      input.fireActionDown("jump");
+      input._clearFrameState();
+      input.fireActionUp("jump");
+
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.isJustReleased("jump")).toBe(true);
+      expect(released).toEqual(["jump"]);
+
+      input._clearFrameState();
+      expect(input.isJustReleased("jump")).toBe(false);
+    });
+
+    it("getHoldDuration accrues while a synthetic action is held and resets on release", () => {
+      input.fireActionDown("jump");
+      input._advanceTime(100);
+      expect(input.getHoldDuration("jump")).toBe(100);
+
+      input._clearFrameState();
+      input._advanceTime(150);
+      expect(input.getHoldDuration("jump")).toBe(250);
+      expect(input.isHeldFor("jump", 200)).toBe(true);
+
+      input.fireActionUp("jump");
+      expect(input.getHoldDuration("jump")).toBe(0);
+    });
+
+    it("fireActionDown is idempotent — a repeat does not reset the hold start", () => {
+      input.fireActionDown("jump");
+      input._advanceTime(100);
+      input._clearFrameState();
+      input.fireActionDown("jump");
+      input._advanceTime(100);
+      // Re-down kept the original start, so the duration keeps growing.
+      expect(input.getHoldDuration("jump")).toBe(200);
+    });
+
+    it("fireActionDown fires onAction only on the rising edge", () => {
+      const pressed: string[] = [];
+      input.onAction("jump", (n) => pressed.push(n));
+
+      input.fireActionDown("jump");
+      input._clearFrameState();
+      input.fireActionDown("jump");
+
+      expect(pressed).toEqual(["jump"]);
+    });
+
+    it("setActionHeld mirrors a held boolean onto down/up", () => {
+      input.setActionHeld("jump", true);
+      expect(input.isPressed("jump")).toBe(true);
+
+      input._clearFrameState();
+      input.setActionHeld("jump", false);
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.isJustReleased("jump")).toBe(true);
+    });
+
+    it("fireActionUp is a no-op when the action is not held", () => {
+      const released: string[] = [];
+      input.onActionReleased("jump", (n) => released.push(n));
+      input.fireActionUp("jump");
+      expect(input.isJustReleased("jump")).toBe(false);
+      expect(released).toEqual([]);
+    });
+
+    it("snapshotState lists a held synthetic action under actions", () => {
+      input.fireActionDown("jump");
+      input._clearFrameState();
+      expect(input.snapshotState().actions).toContain("jump");
+    });
+
+    it("clearAll releases held synthetic actions", () => {
+      input.fireActionDown("jump");
+      input.clearAll();
+      expect(input.isPressed("jump")).toBe(false);
+      expect(input.snapshotState().actions).toEqual([]);
+    });
+
+    it("fireActionDown / fireActionUp / setActionHeld throw for unknown actions", () => {
+      expect(() => input.fireActionDown("unknown")).toThrow(
+        'unknown action "unknown"',
+      );
+      expect(() => input.fireActionUp("unknown")).toThrow(
+        'unknown action "unknown"',
+      );
+      expect(() => input.setActionHeld("unknown", true)).toThrow(
+        'unknown action "unknown"',
+      );
+      expect(() => input.setActionHeld("unknown", false)).toThrow(
+        'unknown action "unknown"',
+      );
     });
 
     it("snapshotState includes synthetic keyboard, mouse, and gamepad state", () => {

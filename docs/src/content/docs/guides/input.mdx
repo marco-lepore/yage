@@ -238,6 +238,26 @@ later fresh down starts unmarked.
 There's an analogous `consumeWheel()` for one-frame suppression of
 `WheelUp/Down/Left/Right` action edges.
 
+`consumePointer` is also the answer to **forwarding or replaying a synthetic
+pointer to the canvas**. A DOM overlay above the canvas — a virtual joystick,
+an accessibility overlay, input-replay/macro tooling — often dispatches a
+synthetic `PointerEvent` to the canvas so game UI underneath (say a dialogue
+box) still receives the tap. Pair every such dispatch with `consumePointer`,
+or each forwarded touch leaks into the `MouseLeft/Middle/Right` action edge and
+fires whatever gameplay action is bound there:
+
+```ts
+overlayEl.addEventListener("pointerdown", (e) => {
+  // Forward to the canvas so UI listeners underneath still see the tap.
+  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...e, button: 0 }));
+  // ...but keep it out of gameplay actions.
+  input.consumePointer(e.pointerId);
+});
+```
+
+`onPointerDown` listeners (the dialogue box's binding, the renderer's UI
+hit-test) still fire — only the action-map edge is suppressed.
+
 ## Frame deferral
 
 DOM-originated keyboard, pointer, and wheel events buffer onto an internal
@@ -446,6 +466,39 @@ runs:
 ```typescript
 new InputPlugin({ pollGamepads: false, /* ... */ });
 new DebugPlugin({ deterministicSeed: 42 });
+```
+
+### Synthetic action injection (by action name)
+
+Sometimes you want to drive an **action** directly — from an on-screen touch
+button or virtual controls — without knowing which physical key it's bound to.
+These methods are keyed by action name and throw on an unknown action:
+
+```typescript
+input.fireAction("attack");      // one-frame pulse (isJustPressed for 1 frame)
+
+input.fireActionDown("attack");  // sustained press: isPressed stays true,
+                                 //   getHoldDuration accrues, onAction fires once
+input.fireActionUp("attack");    // real release: isJustReleased + onActionReleased
+
+input.setActionHeld("attack", held); // mirror a boolean onto down/up
+```
+
+`fireActionDown`/`fireActionUp` are the action-name twins of `fireKeyDown`/
+`fireKeyUp`, so a touch overlay can drive hold and charge actions purely
+through the action map. `fireActionDown` is idempotent — re-calling while held
+neither resets the hold start nor re-fires the press edge.
+
+A hold-to-charge attack driven by a touch button, with zero keymap knowledge:
+
+```typescript
+// Each frame, mirror the button's held state onto the action.
+input.setActionHeld("attack", chargeButton.isHeld);
+
+if (input.isJustReleased("attack")) {
+  const power = Math.min(input.getHoldDuration("attack") / 1000, 1); // 0..1 over 1s
+  fireChargedAttack(power);
+}
 ```
 
 ## Rebinding Actions
