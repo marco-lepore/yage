@@ -38,7 +38,9 @@ const player = scene.spawn(Player, {
 ```
 
 `scene.spawn()` infers the params type from the class, so you get full
-autocomplete and type checking.
+autocomplete and type checking. If you omit a required `setup()` field, the
+error names the field that's actually missing (`Property 'spawnPoint' is
+missing`) rather than blaming an unrelated property.
 
 ## Why setup() Instead of constructor
 
