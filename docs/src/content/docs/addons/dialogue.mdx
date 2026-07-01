@@ -996,24 +996,44 @@ deferred to v1.1 — nothing to build for it now.)
 
 ## Input
 
-The controller attaches a `KeyboardInputBinding` by default. Swap or compose it:
+With no `input` option the controller attaches `fullControls()` — keyboard/gamepad
+**and** mouse/touch (tap to advance). The keyboard side polls the action names in
+`FULL_ACTIONS` (`interact`, `attack`, `move-up`, `move-down`, `skip`), so those
+names must exist in your game's `InputManager` action map. An unmapped action name
+silently never fires; if **none** of the default names are mapped, keyboard/gamepad
+nav does nothing and the controller logs a dev-mode warning at startup. The
+zero-config pointer binding has no choice geometry, so it can tap-to-advance but
+can't hit-test choice rows — pass your own `fullControls(choices)` for that.
+
+When your action map uses different names (e.g. camelCase `moveUp`/`moveDown`),
+supply an `input` binding wired to them:
 
 ```ts
 import { fullControls } from "@yagejs-addons/dialogue";
 
 new DialogueController({
   ...createBoxDialogue(),
-  // choice presenter for pointer hit-testing; hold X ~600ms to skip
-  input: fullControls(bundle.choices, { skipHoldMs: 600 }),
+  // choice presenter for pointer hit-testing; hold X ~600ms to skip;
+  // remap the action names to match the game's InputManager map
+  input: fullControls(bundle.choices, {
+    actions: {
+      advance: ["interact"],
+      speed: ["attack"],
+      up: ["moveUp"],
+      down: ["moveDown"],
+      skip: ["skip"],
+    },
+    skipHoldMs: 600,
+  }),
 });
 ```
 
 - `KeyboardInputBinding(actions?, skipHoldMs?)` — advance / hold-to-fast-forward
   / choice nav / skip. `skipHoldMs > 0` gives the classic **hold-to-confirm skip**
-  (default `0` = fire on press).
+  (default `0` = fire on press). `actions` defaults to `DEFAULT_ACTIONS`.
 - `PointerInputBinding(choiceTarget?)` — tap to advance; tap/hover choice rows.
 - `CompositeInputBinding` / `fullControls(choiceTarget?, { actions?, skipHoldMs? })`
-  — both at once.
+  — both at once (the zero-config default; `actions` defaults to `FULL_ACTIONS`).
 - `DEFAULT_ACTIONS` / `FULL_ACTIONS` — action-map presets.
 
 For a VN-style **auto-advance** toggle, call `controller.setAutoAdvance(ms)` (and

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockScene } from "@yagejs/core";
+import { Logger, LoggerKey, LogLevel, createMockScene } from "@yagejs/core";
+import { InputManager, InputManagerKey } from "@yagejs/input";
 
 import { DialogueController } from "./DialogueController.js";
+import { CompositeInputBinding, PointerInputBinding } from "./input/index.js";
 import {
   DialogueAutoAdvanceEvent,
   DialogueRevealCompletedEvent,
@@ -454,5 +456,81 @@ describe("DialogueController — extra channels (ctor + addChannel)", () => {
     expect(() => controller.addChannel(new StubSceneChannel())).toThrow(
       /before the component was added/,
     );
+  });
+});
+
+describe("DialogueController — zero-config default binding", () => {
+  it("defaults to a composite that includes a PointerInputBinding (mouse/touch works out of the box)", () => {
+    const controller = new DialogueController({
+      chrome: new StubChrome(),
+      text: new StubText(),
+      choices: new StubChoices(),
+      // no `input` → zero-config default
+    });
+    const binding = (controller as unknown as { binding: unknown }).binding;
+    expect(binding).toBeInstanceOf(CompositeInputBinding);
+    const children = (binding as unknown as { bindings: unknown[] }).bindings;
+    expect(children.some((b) => b instanceof PointerInputBinding)).toBe(true);
+  });
+});
+
+describe("DialogueController — default action names validated against the live map", () => {
+  /** Mock scene whose context also carries an InputManager (with `actions`) and a
+   *  Logger we can spy on — the two seams the warning check reads in onAdd. */
+  function sceneWithInput(actions: Record<string, string[]>) {
+    const { scene, context } = createMockScene();
+    const input = new InputManager();
+    input.setActionMap(actions);
+    context.register(InputManagerKey, input);
+    const logger = new Logger({ level: LogLevel.Debug });
+    context.register(LoggerKey, logger);
+    const warn = vi.spyOn(logger, "warn");
+    return { scene, warn };
+  }
+
+  function addZeroConfig(scene: ReturnType<typeof createMockScene>["scene"]) {
+    return scene.spawn("dlg").add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text: new StubText(),
+        choices: new StubChoices(),
+        // zero-config → fullControls() over move-up/move-down/interact/attack/skip
+      }),
+    );
+  }
+
+  it("warns once when the default keyboard action names are absent from a custom map", () => {
+    // A camelCase game map — none of the kebab-case defaults match.
+    const { scene, warn } = sceneWithInput({
+      moveUp: ["ArrowUp"],
+      moveDown: ["ArrowDown"],
+      confirm: ["Space"],
+    });
+    addZeroConfig(scene);
+
+    const dialogueWarns = warn.mock.calls.filter((c) => c[0] === "dialogue");
+    expect(dialogueWarns).toHaveLength(1);
+    expect(dialogueWarns[0]?.[1]).toMatch(/action names absent/i);
+    // Names the missing actions so the misconfiguration is discoverable.
+    expect(dialogueWarns[0]?.[1]).toMatch(/move-up/);
+  });
+
+  it("stays silent when the map carries the default action names", () => {
+    const { scene, warn } = sceneWithInput({
+      interact: ["Space"],
+      attack: ["KeyZ"],
+      "move-up": ["ArrowUp"],
+      "move-down": ["ArrowDown"],
+    });
+    addZeroConfig(scene);
+
+    expect(warn.mock.calls.filter((c) => c[0] === "dialogue")).toHaveLength(0);
+  });
+
+  it("stays silent when even one default action name is mapped (partial overlap is intentional)", () => {
+    const { scene, warn } = sceneWithInput({ interact: ["Space"] });
+    addZeroConfig(scene);
+
+    expect(warn.mock.calls.filter((c) => c[0] === "dialogue")).toHaveLength(0);
   });
 });

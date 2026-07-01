@@ -425,7 +425,7 @@ new DialogueController({
   avatar,                          // optional AvatarPresenter override
   i18n,                            // optional I18nAdapter
   storage, functions, commands, fallbackCommand,  // installed once (see Game state)
-  input,                           // optional InputBinding (default: KeyboardInputBinding)
+  input,                           // optional InputBinding (default: fullControls() — keyboard + pointer)
   onEnded: () => {},
 });
 ```
@@ -784,14 +784,21 @@ hints within a variant.
 
 ## Input (root entry, `@yagejs/input` — not pixi)
 
-`KeyboardInputBinding(actions?, skipHoldMs?)` (default),
-`PointerInputBinding(choiceTarget?)`, `CompositeInputBinding`,
-`fullControls(choiceTarget?, { actions?, skipHoldMs? })`. Actions:
-`DEFAULT_ACTIONS` (advance/speed/up/down), `FULL_ACTIONS` (+ skip). `skipHoldMs > 0`
-is the classic hold-to-confirm skip (default `0` = fire on press); fast-forward is
-the `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test
-choice rows without owning geometry. Ambient/auto-advancing dialogue attaches no
-binding.
+`KeyboardInputBinding(actions?, skipHoldMs?)`, `PointerInputBinding(choiceTarget?)`,
+`CompositeInputBinding`, `fullControls(choiceTarget?, { actions?, skipHoldMs? })`.
+Zero-config default (no `input` option) is `fullControls()` — keyboard + pointer
+(tap-to-advance), `FULL_ACTIONS`, no choice geometry (can't hit-test rows). Actions:
+`DEFAULT_ACTIONS` (advance/speed/up/down), `FULL_ACTIONS` (+ skip). Default keyboard
+action names are kebab-case (`interact`/`attack`/`move-up`/`move-down`/`skip`) — an
+unmapped name silently never fires; a FULL mismatch with the live `InputManager` map
+logs a dev-mode warning at startup. Wire a custom map by passing
+`input: fullControls(choices, { actions })`. `KeyboardInputBinding.actionNames()` and
+`CompositeInputBinding.actionNames()` expose the polled names. `skipHoldMs > 0` is the
+classic hold-to-confirm skip (default `0` = fire on press); fast-forward is the
+`speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test choice
+rows without owning geometry. There is no binding-free path; an
+ambient/auto-advancing conversation calls `setInputEnabled(false)` rather than
+omitting the binding.
 
 ## Theming
 
