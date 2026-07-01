@@ -70,7 +70,7 @@ Leaf builder methods on `s`:
 - `s.record<T>({ default, codec? })` — object with shallow merge.
 - `s.map<K, V>({ default? })` — key→value.
 - `s.set<K>({ default? })` — keys.
-- `s.list<T>({ default? })` — ordered list with stable monotonic ids.
+- `s.list<T>({ default?, keyBy? })` — ordered list with stable monotonic ids. Pass `keyBy: (item) => string | number` to enable O(1) lookup by a domain key via `findId` / `getByKey` / `upsert`.
 
 The compound bundles every leaf so they serialise/restore atomically as one
 document. Reserved leaf keys — `subscribe`, `serialize`, `hydrate`, `reset`
@@ -109,7 +109,29 @@ Shape APIs (every value also exposes `subscribe(fn)`, `serialize()`,
 - `createCounter` / `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
 - `createMap<K, V>` / `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries()`, `size()`, `clear()`.
 - `createSet<K>` / `s.set`: `add(k)`, `delete(k)`, `has(k)`, `values()`, `size()`, `clear()`.
-- `createList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list()`, `size()`, `clear()`.
+- `createList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list()`, `size()`, `clear()`. With a `keyBy` option, also `findId(key)`, `getByKey(key)`, and `upsert(key, item): number` (merge if the key exists, else insert). Without `keyBy`, the keyed methods throw.
+
+#### Keyed lists (lookup by a domain field)
+
+Inventories, registries, and similar collections often need "find or update the
+entry for key X". Pass `keyBy` so the list maintains a key→id index:
+
+```typescript
+const inventory = createList<{ itemId: string; quantity: number }>({
+  keyBy: (slot) => slot.itemId,
+});
+
+inventory.upsert("sword", { itemId: "sword", quantity: 1 }); // insert
+inventory.upsert("sword", { itemId: "sword", quantity: 2 }); // merge in place
+
+inventory.findId("sword");   // -> the stable id
+inventory.getByKey("sword"); // -> { itemId: "sword", quantity: 2 }
+inventory.getByKey("axe");   // -> undefined
+```
+
+The index is derived, not stored — saves load unchanged and the index rebuilds
+on `hydrate`. Keys are last-writer-wins: if two items share a key, the index
+points at the most recently written one.
 
 Codecs are bundled for Set/Map/Counter/List — you only specify a custom
 `codec` on `createRecord<T>` / `createValue<T>` (or the matching leaves)

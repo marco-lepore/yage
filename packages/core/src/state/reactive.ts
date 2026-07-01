@@ -114,9 +114,18 @@ export interface ListEncoded<T> {
   nextId: number;
 }
 
+/** Domain key derived from a list item by a `keyBy` function. */
+export type ListKey = string | number;
+
 /**
  * Ordered list of items with monotonically-assigned numeric ids. Insertion
  * order is preserved across save/restore; ids are stable.
+ *
+ * The keyed methods ({@link ReactiveList.findId}, {@link ReactiveList.getByKey},
+ * {@link ReactiveList.upsert}) require a `keyBy` option on `createList`/`s.list`.
+ * They derive a domain key from each item (e.g. an `itemId` for an inventory)
+ * and maintain a key→id index for O(1) lookup. Calling them without `keyBy`
+ * throws.
  */
 export interface ReactiveList<T>
   extends Reactive,
@@ -134,4 +143,20 @@ export interface ReactiveList<T>
   list(): T[];
   size(): number;
   clear(): void;
+  /**
+   * Look up the id of the item whose `keyBy` key equals `key`, or `undefined`
+   * if no item carries that key. Requires the `keyBy` option.
+   */
+  findId(key: ListKey): number | undefined;
+  /**
+   * Look up the item whose `keyBy` key equals `key`, or `undefined` if no item
+   * carries that key. Requires the `keyBy` option.
+   */
+  getByKey(key: ListKey): T | undefined;
+  /**
+   * Update the item whose `keyBy` key equals `key` (shallow merge) if present,
+   * otherwise insert `item`. Returns the affected id. Requires the `keyBy`
+   * option.
+   */
+  upsert(key: ListKey, item: T): number;
 }

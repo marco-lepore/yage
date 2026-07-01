@@ -32,6 +32,7 @@ import {
   type ReactiveSet,
   type ReactiveValue,
   type ListEncoded,
+  type ListKey,
   type Resettable,
   type Serializable,
 } from "./reactive.js";
@@ -322,6 +323,14 @@ export function createSet<K>(opts?: CreateSetOptions<K>): ReactiveSet<K> {
 
 export interface CreateListOptions<T> {
   default?: Iterable<T> | (() => Iterable<T>);
+  /**
+   * Derive a domain key from each item to enable O(1) keyed lookup via
+   * `findId` / `getByKey` / `upsert`. Without it those methods throw. The key
+   * field may change via `update`; the index reindexes on every mutation.
+   * Keys are last-writer-wins: if two items share a key, the index points at
+   * the most recently written one.
+   */
+  keyBy?: (item: T) => ListKey;
 }
 
 interface ListState<T> {
@@ -334,6 +343,7 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
     opts?.default !== undefined
       ? toFactory(opts.default)
       : (): Iterable<T> => [];
+  const keyBy = opts?.keyBy;
 
   const buildDefault = (): ListState<T> => {
     const items: Array<{ id: number; value: T }> = [];
@@ -348,9 +358,31 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
   let state: ListState<T> = buildDefault();
   const listeners = new Set<() => void>();
 
+  // key → id index, maintained only when keyBy is supplied. Rebuilt from the
+  // current items so any mutation (add/remove/update/clear/hydrate/reset) can
+  // restore it in one pass; the index is never serialized.
+  const keyIndex: Map<ListKey, number> | null = keyBy ? new Map() : null;
+  const rebuildIndex = (): void => {
+    if (keyIndex === null || keyBy === undefined) return;
+    keyIndex.clear();
+    for (const entry of state.items) {
+      keyIndex.set(keyBy(entry.value), entry.id);
+    }
+  };
+  rebuildIndex();
+
+  const requireKeyBy = (method: string): void => {
+    if (keyBy === undefined) {
+      throw new Error(
+        `ReactiveList.${method} requires a keyBy option on createList/s.list`,
+      );
+    }
+  };
+
   let listSnapshot: T[] | null = null;
   const notify = (): void => {
     listSnapshot = null;
+    rebuildIndex();
     for (const fn of listeners) fn();
   };
 
@@ -389,6 +421,47 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
       state = { items: next, nextId: state.nextId };
       notify();
       return true;
+    },
+    findId: (key) => {
+      requireKeyBy("findId");
+      return keyIndex?.get(key);
+    },
+    getByKey: (key) => {
+      requireKeyBy("getByKey");
+      const id = keyIndex?.get(key);
+      if (id === undefined) return undefined;
+      return state.items.find((entry) => entry.id === id)?.value;
+    },
+    upsert: (key, item) => {
+      requireKeyBy("upsert");
+      const existing = keyIndex?.get(key);
+      if (existing !== undefined) {
+        const idx = state.items.findIndex((entry) => entry.id === existing);
+        if (idx >= 0) {
+          const current = state.items[idx];
+          if (current !== undefined) {
+            const merged =
+              typeof current.value === "object" &&
+              current.value !== null &&
+              typeof item === "object" &&
+              item !== null
+                ? ({ ...(current.value as object), ...(item as object) } as T)
+                : item;
+            const next = state.items.slice();
+            next[idx] = { id: existing, value: merged };
+            state = { items: next, nextId: state.nextId };
+            notify();
+            return existing;
+          }
+        }
+      }
+      const id = state.nextId;
+      state = {
+        items: [...state.items, { id, value: item }],
+        nextId: id + 1,
+      };
+      notify();
+      return id;
     },
     list: () => {
       if (listSnapshot === null) {
@@ -494,6 +567,7 @@ export interface LeafBuilder {
   }): ReactiveSet<K>;
   list<T>(opts?: {
     default?: Iterable<T> | (() => Iterable<T>);
+    keyBy?: (item: T) => ListKey;
   }): ReactiveList<T>;
 }
 
@@ -606,7 +680,10 @@ export function createStore<L extends StoreLeaves>(
       ),
     list: (o) =>
       collect(
-        createList(o?.default !== undefined ? { default: o.default } : {}),
+        createList({
+          ...(o?.default !== undefined ? { default: o.default } : {}),
+          ...(o?.keyBy !== undefined ? { keyBy: o.keyBy } : {}),
+        }),
       ),
   };
 

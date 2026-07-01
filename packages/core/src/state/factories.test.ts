@@ -482,6 +482,96 @@ describe("createList", () => {
   it("carries the 'list' STATE_KIND brand", () => {
     expect(createList<string>()[STATE_KIND]).toBe("list");
   });
+
+  describe("keyBy", () => {
+    interface Slot {
+      itemId: string;
+      quantity: number;
+    }
+
+    const makeInventory = () =>
+      createList<Slot>({ keyBy: (s) => s.itemId });
+
+    it("findId / getByKey resolve by domain key; miss returns undefined", () => {
+      const inv = makeInventory();
+      const swordId = inv.add({ itemId: "sword", quantity: 1 });
+      inv.add({ itemId: "shield", quantity: 2 });
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.getByKey("shield")).toEqual({ itemId: "shield", quantity: 2 });
+      expect(inv.findId("potion")).toBeUndefined();
+      expect(inv.getByKey("potion")).toBeUndefined();
+    });
+
+    it("upsert inserts then updates in place under the same id", () => {
+      const inv = makeInventory();
+      const id = inv.upsert("sword", { itemId: "sword", quantity: 1 });
+      expect(inv.size()).toBe(1);
+      const again = inv.upsert("sword", { itemId: "sword", quantity: 5 });
+      expect(again).toBe(id);
+      expect(inv.size()).toBe(1);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 5 });
+    });
+
+    it("upsert shallow-merges over the existing item", () => {
+      const inv = makeInventory();
+      inv.upsert("sword", { itemId: "sword", quantity: 1 });
+      inv.upsert("sword", { itemId: "sword", quantity: 9 });
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 9 });
+    });
+
+    it("reindexes when update changes the key field", () => {
+      const inv = makeInventory();
+      const id = inv.add({ itemId: "old", quantity: 1 });
+      inv.update(id, { itemId: "new" });
+      expect(inv.findId("old")).toBeUndefined();
+      expect(inv.findId("new")).toBe(id);
+    });
+
+    it("remove / clear / reset drop entries from the index", () => {
+      const inv = createList<Slot>({
+        keyBy: (s) => s.itemId,
+        default: () => [{ itemId: "seed", quantity: 1 }],
+      });
+      const id = inv.add({ itemId: "sword", quantity: 1 });
+      inv.remove(id);
+      expect(inv.findId("sword")).toBeUndefined();
+      inv.clear();
+      expect(inv.findId("seed")).toBeUndefined();
+      inv.reset();
+      expect(inv.findId("seed")).toBe(1);
+      expect(inv.findId("sword")).toBeUndefined();
+    });
+
+    it("supports numeric keys", () => {
+      const reg = createList<{ uid: number; name: string }>({
+        keyBy: (r) => r.uid,
+      });
+      const id = reg.add({ uid: 42, name: "ann" });
+      expect(reg.findId(42)).toBe(id);
+      expect(reg.getByKey(42)).toEqual({ uid: 42, name: "ann" });
+    });
+
+    it("index survives serialize -> hydrate", () => {
+      const a = makeInventory();
+      a.add({ itemId: "sword", quantity: 1 });
+      a.add({ itemId: "shield", quantity: 2 });
+      const payload = a.serialize();
+
+      const b = makeInventory();
+      b.hydrate(payload);
+      expect(b.getByKey("sword")).toEqual({ itemId: "sword", quantity: 1 });
+      expect(b.findId("shield")).toBe(2);
+    });
+
+    it("keyed methods throw without keyBy", () => {
+      const l = createList<Slot>();
+      expect(() => l.findId("sword")).toThrow(/keyBy/);
+      expect(() => l.getByKey("sword")).toThrow(/keyBy/);
+      expect(() => l.upsert("sword", { itemId: "sword", quantity: 1 })).toThrow(
+        /keyBy/,
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -655,5 +745,26 @@ describe("createStore (compound)", () => {
     const encoded = game.serialize();
     expect(encoded.flag).toEqual({ value: false });
     expect(encoded.flags).toEqual([]);
+  });
+
+  it("a keyed list leaf exposes findId/getByKey/upsert and round-trips", () => {
+    const make = () =>
+      createStore((s) => ({
+        bag: s.list<{ itemId: string; quantity: number }>({
+          keyBy: (i) => i.itemId,
+        }),
+      }));
+    const game = make();
+    game.bag.upsert("sword", { itemId: "sword", quantity: 1 });
+    game.bag.upsert("sword", { itemId: "sword", quantity: 3 });
+    expect(game.bag.findId("sword")).toBe(1);
+    expect(game.bag.getByKey("sword")).toEqual({ itemId: "sword", quantity: 3 });
+
+    const restored = make();
+    restored.hydrate(game.serialize());
+    expect(restored.bag.getByKey("sword")).toEqual({
+      itemId: "sword",
+      quantity: 3,
+    });
   });
 });

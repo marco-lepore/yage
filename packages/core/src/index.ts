@@ -220,6 +220,7 @@ export type {
   ReactiveList,
   ReactiveStore,
   ListEncoded,
+  ListKey,
   CreateValueOptions,
   CreateCounterOptions,
   CreateRecordOptions,
