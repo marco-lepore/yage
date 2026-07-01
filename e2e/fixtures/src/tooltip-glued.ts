@@ -32,7 +32,7 @@ const container = setupContainer(WIDTH, HEIGHT);
 class Drift extends Component {
   private readonly transform = this.sibling(Transform);
   update(dt: number): void {
-    this.transform.translate(0.15 * dt, 0);
+    this.transform.translate(150 * dt, 0);
   }
 }
 
