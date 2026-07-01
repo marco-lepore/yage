@@ -39,6 +39,15 @@ class RequiredParam extends Entity {
 
 class Plain extends Entity {}
 
+// Explicit zero-parameter `setup(): void`. Behaves like a class with no
+// declared setup: no params slot, only the trailing options slot.
+class VoidSetup extends Entity {
+  ready = false;
+  override setup(): void {
+    this.ready = true;
+  }
+}
+
 // Optional parameter (default value) — a zero-argument `setup()` is valid, so
 // the params slot is optional.
 class DefaultedSetup extends Entity {
@@ -83,6 +92,13 @@ function assertTypes(): void {
   // @ts-expect-error `wrongProp` is not a SpawnOptions field
   scene.spawn(Plain, { wrongProp: 1 });
 
+  // Zero-parameter `setup(): void`: same shape as no-setup. The class alone
+  // works, and a 2nd arg routes to options (there is no params slot).
+  scene.spawn(VoidSetup);
+  scene.spawn(VoidSetup, { key: "captured" });
+  // @ts-expect-error `wrongProp` is not a SpawnOptions field
+  scene.spawn(VoidSetup, { wrongProp: 1 });
+
   // All-optional setup: the class alone, real params, or explicit options all
   // work. A key-only literal is NOT accepted in the params slot (it isn't a
   // `{ x?: number }`); key via the 3-arg form instead.
@@ -121,6 +137,10 @@ function assertTypes(): void {
 
   parent.spawnChild("marker", Plain);
   parent.spawnChild("marker", Plain, { key: "m" });
+
+  // Zero-parameter setup mirrors no-setup in the child form too.
+  parent.spawnChild("ready", VoidSetup);
+  parent.spawnChild("ready", VoidSetup, { key: "captured" });
   // @ts-expect-error a SpawnOptions-shaped literal is not a { x?: number } param
   parent.spawnChild("def", DefaultedSetup, { key: "m" });
   parent.spawnChild("def", DefaultedSetup, {}, { key: "m" });

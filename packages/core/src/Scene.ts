@@ -70,12 +70,20 @@ type SetupParamTuple<E> = E extends { setup(...args: infer A): void }
  *
  * The params slot follows the `setup` PARAMETER, not the param object's fields:
  *   - no declared `setup` → only the trailing options slot.
+ *   - `setup(): void` with zero parameters → no params slot; behaves like a
+ *     class with no declared `setup`, so `spawn(Class, options?)`.
  *   - `setup(params?)` or a defaulted parameter (a zero-argument call is valid,
  *     so `[]` is assignable to the parameter tuple) → params slot optional.
  *   - `setup(params)` with a required parameter → params slot required, even
  *     when the param object's own fields are all optional. `setup(undefined)`
  *     at runtime would break a body that reads `params`, so the type demands
  *     the argument.
+ *
+ * The zero-parameter branch (`SetupParamTuple<E> extends readonly []`) must
+ * precede the optional-parameter branch: an exactly-empty tuple `[]` is
+ * assignable to `readonly []`, while an optional-first-parameter tuple `[X?]`
+ * is not, so the check catches only a genuine zero-arg `setup` and leaves
+ * `setup(params?)` to the branch below.
  *
  * The params slot is typed as `SetupParams<E>` alone (not
  * `SetupParams<E> | SpawnOptions`), so a `SpawnOptions`-shaped object is not
@@ -86,9 +94,11 @@ type SetupParamTuple<E> = E extends { setup(...args: infer A): void }
  */
 export type ClassSpawnArgs<E> = [SetupParamTuple<E>] extends [never]
   ? [options?: SpawnOptions]
-  : [] extends SetupParamTuple<E>
-    ? [params?: SetupParams<E>, options?: SpawnOptions]
-    : [params: SetupParams<E>, options?: SpawnOptions];
+  : SetupParamTuple<E> extends readonly []
+    ? [options?: SpawnOptions]
+    : [] extends SetupParamTuple<E>
+      ? [params?: SetupParams<E>, options?: SpawnOptions]
+      : [params: SetupParams<E>, options?: SpawnOptions];
 
 /**
  * Heuristic: is this object exactly the shape of `SpawnOptions`? Used by the
