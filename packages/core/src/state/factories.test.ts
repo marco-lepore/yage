@@ -482,6 +482,229 @@ describe("createList", () => {
   it("carries the 'list' STATE_KIND brand", () => {
     expect(createList<string>()[STATE_KIND]).toBe("list");
   });
+
+  describe("keyBy", () => {
+    interface Slot {
+      itemId: string;
+      quantity: number;
+    }
+
+    const makeInventory = () =>
+      createList<Slot>({ keyBy: (s) => s.itemId });
+
+    it("findId / getByKey resolve by domain key; miss returns undefined", () => {
+      const inv = makeInventory();
+      const swordId = inv.add({ itemId: "sword", quantity: 1 });
+      inv.add({ itemId: "shield", quantity: 2 });
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.getByKey("shield")).toEqual({ itemId: "shield", quantity: 2 });
+      expect(inv.findId("potion")).toBeUndefined();
+      expect(inv.getByKey("potion")).toBeUndefined();
+    });
+
+    it("upsert inserts then updates in place under the same id", () => {
+      const inv = makeInventory();
+      const id = inv.upsert("sword", { itemId: "sword", quantity: 1 });
+      expect(inv.size()).toBe(1);
+      const again = inv.upsert("sword", { itemId: "sword", quantity: 5 });
+      expect(again).toBe(id);
+      expect(inv.size()).toBe(1);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 5 });
+    });
+
+    it("upsert replaces the existing item wholesale", () => {
+      const inv = makeInventory();
+      inv.upsert("sword", { itemId: "sword", quantity: 1 });
+      inv.upsert("sword", { itemId: "sword", quantity: 9 });
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 9 });
+    });
+
+    it("upsert replaces rather than merges: an omitted optional field is gone", () => {
+      interface Weapon {
+        itemId: string;
+        quantity: number;
+        enchant?: string;
+      }
+      const inv = createList<Weapon>({ keyBy: (w) => w.itemId });
+      inv.upsert("sword", { itemId: "sword", quantity: 1, enchant: "fire" });
+      // Second item omits `enchant`; a merge would keep the old "fire".
+      const id = inv.upsert("sword", { itemId: "sword", quantity: 2 });
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 2 });
+      expect(inv.getByKey("sword")).not.toHaveProperty("enchant");
+      // The slot stays resolvable by its key immediately after the replace.
+      expect(inv.findId("sword")).toBe(id);
+    });
+
+    it("upsert replacing an item that omits a key-contributing field stays resolvable", () => {
+      interface Row {
+        group: string;
+        itemId: string;
+        quantity: number;
+      }
+      // Composite key drawn from two fields. If upsert merged, replacing with an
+      // item that omits `group` would keep the old one and reindex the slot
+      // under a different composite key than the caller looked up.
+      const rows = createList<Row>({
+        keyBy: (r) => `${r.group}:${r.itemId}`,
+      });
+      rows.upsert("g:x", { group: "g", itemId: "x", quantity: 1 });
+      const id = rows.upsert("g:x", { group: "g", itemId: "x", quantity: 5 });
+      expect(rows.findId("g:x")).toBe(id);
+      expect(rows.getByKey("g:x")).toEqual({
+        group: "g",
+        itemId: "x",
+        quantity: 5,
+      });
+    });
+
+    it("reindexes when update changes the key field", () => {
+      const inv = makeInventory();
+      const id = inv.add({ itemId: "old", quantity: 1 });
+      inv.update(id, { itemId: "new" });
+      expect(inv.findId("old")).toBeUndefined();
+      expect(inv.findId("new")).toBe(id);
+    });
+
+    it("remove / clear / reset drop entries from the index", () => {
+      const inv = createList<Slot>({
+        keyBy: (s) => s.itemId,
+        default: () => [{ itemId: "seed", quantity: 1 }],
+      });
+      const id = inv.add({ itemId: "sword", quantity: 1 });
+      inv.remove(id);
+      expect(inv.findId("sword")).toBeUndefined();
+      inv.clear();
+      expect(inv.findId("seed")).toBeUndefined();
+      inv.reset();
+      expect(inv.findId("seed")).toBe(1);
+      expect(inv.findId("sword")).toBeUndefined();
+    });
+
+    it("supports numeric keys", () => {
+      const reg = createList<{ uid: number; name: string }>({
+        keyBy: (r) => r.uid,
+      });
+      const id = reg.add({ uid: 42, name: "ann" });
+      expect(reg.findId(42)).toBe(id);
+      expect(reg.getByKey(42)).toEqual({ uid: 42, name: "ann" });
+    });
+
+    it("index survives serialize -> hydrate", () => {
+      const a = makeInventory();
+      a.add({ itemId: "sword", quantity: 1 });
+      a.add({ itemId: "shield", quantity: 2 });
+      const payload = a.serialize();
+
+      const b = makeInventory();
+      b.hydrate(payload);
+      expect(b.getByKey("sword")).toEqual({ itemId: "sword", quantity: 1 });
+      expect(b.findId("shield")).toBe(2);
+    });
+
+    it("keyed methods throw without keyBy", () => {
+      const l = createList<Slot>();
+      expect(() => l.findId("sword")).toThrow(/keyBy/);
+      expect(() => l.getByKey("sword")).toThrow(/keyBy/);
+      expect(() => l.upsert("sword", { itemId: "sword", quantity: 1 })).toThrow(
+        /keyBy/,
+      );
+    });
+
+    it("add throws when a live item already holds the derived key", () => {
+      const inv = makeInventory();
+      const swordId = inv.add({ itemId: "sword", quantity: 1 });
+      expect(() => inv.add({ itemId: "sword", quantity: 9 })).toThrow(
+        /at most one item per key/,
+      );
+      // The rejected add left the list and index untouched.
+      expect(inv.size()).toBe(1);
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 1 });
+    });
+
+    it("update throws when the new key collides with another item", () => {
+      const inv = makeInventory();
+      const swordId = inv.add({ itemId: "sword", quantity: 1 });
+      const shieldId = inv.add({ itemId: "shield", quantity: 2 });
+      expect(() => inv.update(swordId, { itemId: "shield" })).toThrow(
+        /at most one item per key/,
+      );
+      // Both items keep their original keys.
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.findId("shield")).toBe(shieldId);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 1 });
+    });
+
+    it("update to a fresh key still reindexes", () => {
+      const inv = makeInventory();
+      const id = inv.add({ itemId: "old", quantity: 1 });
+      inv.add({ itemId: "shield", quantity: 2 });
+      inv.update(id, { itemId: "new" });
+      expect(inv.findId("old")).toBeUndefined();
+      expect(inv.findId("new")).toBe(id);
+      expect(inv.getByKey("new")).toEqual({ itemId: "new", quantity: 1 });
+    });
+
+    it("update keeping its own key is allowed", () => {
+      const inv = makeInventory();
+      const id = inv.add({ itemId: "sword", quantity: 1 });
+      expect(inv.update(id, { quantity: 5 })).toBe(true);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 5 });
+      expect(inv.findId("sword")).toBe(id);
+    });
+
+    it("upsert throws when the item's key does not match the lookup key", () => {
+      const inv = makeInventory();
+      expect(() =>
+        inv.upsert("sword", { itemId: "axe", quantity: 1 }),
+      ).toThrow(/keyBy\(item\) === key/);
+      // Nothing was inserted under either key.
+      expect(inv.size()).toBe(0);
+      expect(inv.findId("sword")).toBeUndefined();
+      expect(inv.findId("axe")).toBeUndefined();
+    });
+
+    it("upsert inserts a new key then replaces an existing one", () => {
+      const inv = makeInventory();
+      const swordId = inv.upsert("sword", { itemId: "sword", quantity: 1 });
+      const axeId = inv.upsert("axe", { itemId: "axe", quantity: 1 });
+      expect(inv.size()).toBe(2);
+      expect(swordId).not.toBe(axeId);
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.findId("axe")).toBe(axeId);
+
+      const again = inv.upsert("sword", { itemId: "sword", quantity: 7 });
+      expect(again).toBe(swordId);
+      expect(inv.size()).toBe(2);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 7 });
+      expect(inv.getByKey("axe")).toEqual({ itemId: "axe", quantity: 1 });
+    });
+
+    it("hydrate rejects a payload with duplicate derived keys", () => {
+      const inv = makeInventory();
+      expect(() =>
+        inv.hydrate({
+          items: [
+            { id: 1, value: { itemId: "sword", quantity: 1 } },
+            { id: 2, value: { itemId: "sword", quantity: 2 } },
+          ],
+          nextId: 3,
+        }),
+      ).toThrow(/at most one item per key/);
+    });
+
+    it("createList throws when the default has duplicate keys", () => {
+      expect(() =>
+        createList<Slot>({
+          keyBy: (s) => s.itemId,
+          default: () => [
+            { itemId: "sword", quantity: 1 },
+            { itemId: "sword", quantity: 2 },
+          ],
+        }),
+      ).toThrow(/at most one item per key/);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -655,5 +878,26 @@ describe("createStore (compound)", () => {
     const encoded = game.serialize();
     expect(encoded.flag).toEqual({ value: false });
     expect(encoded.flags).toEqual([]);
+  });
+
+  it("a keyed list leaf exposes findId/getByKey/upsert and round-trips", () => {
+    const make = () =>
+      createStore((s) => ({
+        bag: s.list<{ itemId: string; quantity: number }>({
+          keyBy: (i) => i.itemId,
+        }),
+      }));
+    const game = make();
+    game.bag.upsert("sword", { itemId: "sword", quantity: 1 });
+    game.bag.upsert("sword", { itemId: "sword", quantity: 3 });
+    expect(game.bag.findId("sword")).toBe(1);
+    expect(game.bag.getByKey("sword")).toEqual({ itemId: "sword", quantity: 3 });
+
+    const restored = make();
+    restored.hydrate(game.serialize());
+    expect(restored.bag.getByKey("sword")).toEqual({
+      itemId: "sword",
+      quantity: 3,
+    });
   });
 });

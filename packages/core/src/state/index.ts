@@ -14,6 +14,7 @@ export type {
   ReactiveSet,
   ReactiveList,
   ListEncoded,
+  ListKey,
 } from "./reactive.js";
 
 // ---------------------------------------------------------------------------

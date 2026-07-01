@@ -458,6 +458,12 @@ interface ReactiveList<T>           extends Reactive, Serializable<ListEncoded<T
   remove(id: number): boolean;     // by id, not delete — semantically distinct
   get(id: number): T | undefined; update(id: number, partial: Partial<T>): boolean;
   list(): T[]; size(): number; clear(): void;
+  // keyed lookup — requires the `keyBy` option, else these throw.
+  // A keyed list holds at most one item per key; add/update/upsert throw on a
+  // duplicate key. upsert requires keyBy(item) === key.
+  findId(key: string | number): number | undefined;   // id for a domain key
+  getByKey(key: string | number): T | undefined;       // item for a domain key
+  upsert(key: string | number, item: T): number;       // add-or-replace by key; returns id
 }
 interface ReactiveStore<L>          extends Reactive, Serializable<EncodedStore<L>>, Resettable { /* plus L's leaves */ }
 ```
@@ -477,6 +483,17 @@ const enemies   = createMap<string, number>();
 const restEpoch = createCounter();
 const day       = createValue<number>({ default: 1 });
 const journal   = createList<{ at: number; text: string }>();
+
+// Keyed list — pass `keyBy` to look items up by a domain field in O(1).
+// Keys are unique: at most one item per key. add/update/upsert throw if the
+// result would share a key with another item; upsert requires keyBy(item) === key.
+const inventory = createList<{ itemId: string; quantity: number }>({
+  keyBy: (slot) => slot.itemId,
+});
+inventory.upsert("sword", { itemId: "sword", quantity: 1 }); // insert
+inventory.upsert("sword", { itemId: "sword", quantity: 2 }); // replace in place
+inventory.findId("sword");    // -> id
+inventory.getByKey("sword");  // -> { itemId: "sword", quantity: 2 }
 
 // Compound — bundle leaves so they serialise/restore atomically.
 const game = createStore((s) => ({

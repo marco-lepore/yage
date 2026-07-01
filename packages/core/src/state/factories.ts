@@ -32,6 +32,7 @@ import {
   type ReactiveSet,
   type ReactiveValue,
   type ListEncoded,
+  type ListKey,
   type Resettable,
   type Serializable,
 } from "./reactive.js";
@@ -322,6 +323,17 @@ export function createSet<K>(opts?: CreateSetOptions<K>): ReactiveSet<K> {
 
 export interface CreateListOptions<T> {
   default?: Iterable<T> | (() => Iterable<T>);
+  /**
+   * Derive a domain key from each item to enable O(1) keyed lookup via
+   * `findId` / `getByKey` / `upsert`. Without it those methods throw. The key
+   * field may change via `update`; the index reindexes on every mutation.
+   *
+   * Keys are unique: a keyed list holds at most one item per derived key.
+   * `add`, `update`, and `upsert` throw if the operation would leave two live
+   * items sharing a key. This keeps the key→id index unambiguous — every key
+   * resolves to exactly one item.
+   */
+  keyBy?: (item: T) => ListKey;
 }
 
 interface ListState<T> {
@@ -334,11 +346,23 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
     opts?.default !== undefined
       ? toFactory(opts.default)
       : (): Iterable<T> => [];
+  const keyBy = opts?.keyBy;
 
   const buildDefault = (): ListState<T> => {
     const items: Array<{ id: number; value: T }> = [];
     let nextId = 1;
+    const seenKeys = keyBy ? new Set<ListKey>() : null;
     for (const value of makeDefault()) {
+      if (keyBy !== undefined && seenKeys !== null) {
+        const key = keyBy(value);
+        if (seenKeys.has(key)) {
+          throw new Error(
+            `createList: default contains duplicate key ${JSON.stringify(key)}. ` +
+              `A keyed list holds at most one item per key.`,
+          );
+        }
+        seenKeys.add(key);
+      }
       items.push({ id: nextId, value });
       nextId += 1;
     }
@@ -348,15 +372,61 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
   let state: ListState<T> = buildDefault();
   const listeners = new Set<() => void>();
 
+  // key → id index, maintained only when keyBy is supplied. Rebuilt from the
+  // current items so any mutation (add/remove/update/clear/hydrate/reset) can
+  // restore it in one pass; the index is never serialized. Key uniqueness is
+  // enforced on the mutation path, so the index is unambiguous: at most one
+  // entry per key.
+  const keyIndex: Map<ListKey, number> | null = keyBy ? new Map() : null;
+  const rebuildIndex = (): void => {
+    if (keyIndex === null || keyBy === undefined) return;
+    keyIndex.clear();
+    for (const entry of state.items) {
+      keyIndex.set(keyBy(entry.value), entry.id);
+    }
+  };
+  rebuildIndex();
+
+  const requireKeyBy = (method: string): ((item: T) => ListKey) => {
+    if (keyBy === undefined) {
+      throw new Error(
+        `ReactiveList.${method} requires a keyBy option on createList/s.list`,
+      );
+    }
+    return keyBy;
+  };
+
+  // Reject a mutation that would leave two live items sharing `key`. `ownerId`
+  // is the id the key is allowed to resolve to (the item being updated in
+  // place); a collision with any other id throws. No-op for non-keyed lists.
+  const assertKeyFree = (
+    method: string,
+    key: ListKey,
+    ownerId: number | undefined,
+  ): void => {
+    if (keyIndex === null) return;
+    const holder = keyIndex.get(key);
+    if (holder !== undefined && holder !== ownerId) {
+      throw new Error(
+        `ReactiveList.${method}: key ${JSON.stringify(key)} is already held ` +
+          `by item id ${holder}. A keyed list holds at most one item per key.`,
+      );
+    }
+  };
+
   let listSnapshot: T[] | null = null;
   const notify = (): void => {
     listSnapshot = null;
+    rebuildIndex();
     for (const fn of listeners) fn();
   };
 
   const api: ReactiveList<T> = {
     [STATE_KIND]: "list",
     add: (item) => {
+      if (keyBy !== undefined) {
+        assertKeyFree("add", keyBy(item), undefined);
+      }
       const id = state.nextId;
       state = {
         items: [...state.items, { id, value: item }],
@@ -384,11 +454,58 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
         typeof current.value === "object" && current.value !== null
           ? ({ ...(current.value as object), ...partial } as T)
           : (partial as T);
+      if (keyBy !== undefined) {
+        assertKeyFree("update", keyBy(merged), id);
+      }
       const next = state.items.slice();
       next[idx] = { id, value: merged };
       state = { items: next, nextId: state.nextId };
       notify();
       return true;
+    },
+    findId: (key) => {
+      requireKeyBy("findId");
+      return keyIndex?.get(key);
+    },
+    getByKey: (key) => {
+      requireKeyBy("getByKey");
+      const id = keyIndex?.get(key);
+      if (id === undefined) return undefined;
+      return state.items.find((entry) => entry.id === id)?.value;
+    },
+    upsert: (key, item) => {
+      const derived = requireKeyBy("upsert")(item);
+      if (derived !== key) {
+        throw new Error(
+          `ReactiveList.upsert: item's derived key ${JSON.stringify(derived)} ` +
+            `does not match the lookup key ${JSON.stringify(key)}. ` +
+            `upsert(key, item) requires keyBy(item) === key.`,
+        );
+      }
+      // The item's key equals `key`, so replacing the slot that already holds
+      // `key` (if any) preserves uniqueness; a fresh key adds a new item. The
+      // existing slot is replaced with `item` as-is — no field merge — so the
+      // stored value's derived key always equals `key`. Merging `current.value`
+      // could retain a stale key-contributing field that `item` omits, leaving
+      // the slot indexed under a different key than the caller looked up.
+      const existing = keyIndex?.get(key);
+      if (existing !== undefined) {
+        const idx = state.items.findIndex((entry) => entry.id === existing);
+        if (idx >= 0) {
+          const next = state.items.slice();
+          next[idx] = { id: existing, value: item };
+          state = { items: next, nextId: state.nextId };
+          notify();
+          return existing;
+        }
+      }
+      const id = state.nextId;
+      state = {
+        items: [...state.items, { id, value: item }],
+        nextId: id + 1,
+      };
+      notify();
+      return id;
     },
     list: () => {
       if (listSnapshot === null) {
@@ -456,6 +573,23 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
           `createList.hydrate: nextId (${obj.nextId}) must be greater than the largest item id (${maxId})`,
         );
       }
+      // A keyed list holds at most one item per derived key. Reject a payload
+      // that would violate that invariant — otherwise `rebuildIndex` would
+      // silently keep only the last item under a shared key and `findId`/
+      // `getByKey` would resolve to the wrong row.
+      if (keyBy !== undefined) {
+        const seenKeys = new Set<ListKey>();
+        for (const entry of items) {
+          const key = keyBy(entry.value);
+          if (seenKeys.has(key)) {
+            throw new Error(
+              `createList.hydrate: duplicate key ${JSON.stringify(key)}. ` +
+                `A keyed list holds at most one item per key.`,
+            );
+          }
+          seenKeys.add(key);
+        }
+      }
       state = { items, nextId: obj.nextId };
       notify();
     },
@@ -494,6 +628,7 @@ export interface LeafBuilder {
   }): ReactiveSet<K>;
   list<T>(opts?: {
     default?: Iterable<T> | (() => Iterable<T>);
+    keyBy?: (item: T) => ListKey;
   }): ReactiveList<T>;
 }
 
@@ -606,7 +741,10 @@ export function createStore<L extends StoreLeaves>(
       ),
     list: (o) =>
       collect(
-        createList(o?.default !== undefined ? { default: o.default } : {}),
+        createList({
+          ...(o?.default !== undefined ? { default: o.default } : {}),
+          ...(o?.keyBy !== undefined ? { keyBy: o.keyBy } : {}),
+        }),
       ),
   };
 
