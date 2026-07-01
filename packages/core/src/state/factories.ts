@@ -483,26 +483,20 @@ export function createList<T>(opts?: CreateListOptions<T>): ReactiveList<T> {
         );
       }
       // The item's key equals `key`, so replacing the slot that already holds
-      // `key` (if any) preserves uniqueness; a fresh key adds a new item.
+      // `key` (if any) preserves uniqueness; a fresh key adds a new item. The
+      // existing slot is replaced with `item` as-is — no field merge — so the
+      // stored value's derived key always equals `key`. Merging `current.value`
+      // could retain a stale key-contributing field that `item` omits, leaving
+      // the slot indexed under a different key than the caller looked up.
       const existing = keyIndex?.get(key);
       if (existing !== undefined) {
         const idx = state.items.findIndex((entry) => entry.id === existing);
         if (idx >= 0) {
-          const current = state.items[idx];
-          if (current !== undefined) {
-            const merged =
-              typeof current.value === "object" &&
-              current.value !== null &&
-              typeof item === "object" &&
-              item !== null
-                ? ({ ...(current.value as object), ...(item as object) } as T)
-                : item;
-            const next = state.items.slice();
-            next[idx] = { id: existing, value: merged };
-            state = { items: next, nextId: state.nextId };
-            notify();
-            return existing;
-          }
+          const next = state.items.slice();
+          next[idx] = { id: existing, value: item };
+          state = { items: next, nextId: state.nextId };
+          notify();
+          return existing;
         }
       }
       const id = state.nextId;

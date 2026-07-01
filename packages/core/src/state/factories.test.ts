@@ -512,11 +512,49 @@ describe("createList", () => {
       expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 5 });
     });
 
-    it("upsert shallow-merges over the existing item", () => {
+    it("upsert replaces the existing item wholesale", () => {
       const inv = makeInventory();
       inv.upsert("sword", { itemId: "sword", quantity: 1 });
       inv.upsert("sword", { itemId: "sword", quantity: 9 });
       expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 9 });
+    });
+
+    it("upsert replaces rather than merges: an omitted optional field is gone", () => {
+      interface Weapon {
+        itemId: string;
+        quantity: number;
+        enchant?: string;
+      }
+      const inv = createList<Weapon>({ keyBy: (w) => w.itemId });
+      inv.upsert("sword", { itemId: "sword", quantity: 1, enchant: "fire" });
+      // Second item omits `enchant`; a merge would keep the old "fire".
+      const id = inv.upsert("sword", { itemId: "sword", quantity: 2 });
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 2 });
+      expect(inv.getByKey("sword")).not.toHaveProperty("enchant");
+      // The slot stays resolvable by its key immediately after the replace.
+      expect(inv.findId("sword")).toBe(id);
+    });
+
+    it("upsert replacing an item that omits a key-contributing field stays resolvable", () => {
+      interface Row {
+        group: string;
+        itemId: string;
+        quantity: number;
+      }
+      // Composite key drawn from two fields. If upsert merged, replacing with an
+      // item that omits `group` would keep the old one and reindex the slot
+      // under a different composite key than the caller looked up.
+      const rows = createList<Row>({
+        keyBy: (r) => `${r.group}:${r.itemId}`,
+      });
+      rows.upsert("g:x", { group: "g", itemId: "x", quantity: 1 });
+      const id = rows.upsert("g:x", { group: "g", itemId: "x", quantity: 5 });
+      expect(rows.findId("g:x")).toBe(id);
+      expect(rows.getByKey("g:x")).toEqual({
+        group: "g",
+        itemId: "x",
+        quantity: 5,
+      });
     });
 
     it("reindexes when update changes the key field", () => {

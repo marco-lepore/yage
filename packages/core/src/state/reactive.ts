@@ -158,9 +158,10 @@ export interface ReactiveList<T>
    */
   getByKey(key: ListKey): T | undefined;
   /**
-   * Add-or-replace by key. If `key` already exists, shallow-merge `item` over
-   * that slot; otherwise insert `item`. Returns the affected id. Requires the
-   * `keyBy` option, and requires `keyBy(item) === key` — a mismatch throws.
+   * Add-or-replace by key. If `key` already exists, replace that slot with
+   * `item` in place (a full replace, not a partial-field merge); otherwise
+   * insert `item`. Returns the affected id. Requires the `keyBy` option, and
+   * requires `keyBy(item) === key` — a mismatch throws.
    */
   upsert(key: ListKey, item: T): number;
 }
