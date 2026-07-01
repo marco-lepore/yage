@@ -1,12 +1,13 @@
 import { describe, it, expect, expectTypeOf } from "vitest";
 import { Entity } from "./Entity.js";
-import type { Scene } from "./Scene.js";
+import type { Scene, SpawnOptions } from "./Scene.js";
 
 // Type-level regression coverage for the class form of `Scene.spawn` and
 // `Entity.spawnChild`. The single class-form overload derives its trailing
-// arguments from the entity's `setup()` signature, so omitting a required
-// field reports that field as missing on the params object instead of falling
-// through to an options-only overload that mislabels a valid field as unknown.
+// arguments from the entity's `setup()` PARAMETER: whether a params argument is
+// required, and its type. Omitting a required field reports that field as
+// missing on the params object instead of falling through to an options-only
+// overload that mislabels a valid field as unknown.
 //
 // The assertions run at compile time. The `assertTypes` body is never invoked
 // — it exists so `tsc` (via the test build) type-checks the calls and the
@@ -26,8 +27,20 @@ class Enemy extends Entity {
   }
 }
 
+// Required parameter, but every field of the parameter object is optional.
+// The params ARGUMENT is still required — `setup(undefined)` would crash a body
+// that reads `params`, so `spawn(RequiredParam)` must be a type error.
+class RequiredParam extends Entity {
+  x = 0;
+  override setup(params: { x?: number }): void {
+    this.x = params.x ?? 0;
+  }
+}
+
 class Plain extends Entity {}
 
+// Optional parameter (default value) — a zero-argument `setup()` is valid, so
+// the params slot is optional.
 class DefaultedSetup extends Entity {
   x = 0;
   override setup(params: { x?: number } = {}): void {
@@ -56,14 +69,34 @@ function assertTypes(): void {
     spawnPoint: { x: 0, y: 0 },
   });
 
-  // No-setup entity: 2nd arg routes to options.
+  // A required-parameter setup demands the params argument even when the
+  // param object's fields are all optional. Omitting it is a type error — the
+  // runtime would call setup(undefined) and crash a body that reads params.
+  // @ts-expect-error params argument is required by RequiredParam.setup()
+  scene.spawn(RequiredParam);
+  scene.spawn(RequiredParam, {}); // empty object satisfies the required slot
+  scene.spawn(RequiredParam, { x: 1 });
+
+  // No-setup entity: 1-arg is valid; 2nd arg routes to options.
+  scene.spawn(Plain);
   scene.spawn(Plain, { key: "marker" });
   // @ts-expect-error `wrongProp` is not a SpawnOptions field
   scene.spawn(Plain, { wrongProp: 1 });
 
-  // All-optional setup: a key-only object and a real-params object both work.
-  scene.spawn(DefaultedSetup, { key: "k" });
+  // All-optional setup: the class alone, real params, or explicit options all
+  // work. A key-only literal is NOT accepted in the params slot (it isn't a
+  // `{ x?: number }`); key via the 3-arg form instead.
+  scene.spawn(DefaultedSetup);
   scene.spawn(DefaultedSetup, { x: 42 });
+  scene.spawn(DefaultedSetup, {}, { key: "k" });
+  scene.spawn(DefaultedSetup, undefined, { key: "k" });
+  // @ts-expect-error a SpawnOptions-shaped literal is not a { x?: number } param
+  scene.spawn(DefaultedSetup, { key: "k" });
+  // Same rejection in the explicit 3-arg form: the params slot must be the
+  // setup param type, not an arbitrary options object. Overload resolution
+  // surfaces the error on the call, so the guard sits on the call line.
+  // @ts-expect-error { key } is not a { x?: number } param in the 3-arg form
+  scene.spawn(DefaultedSetup, { key: "setup-key" }, { key: "entity-key" });
 
   // Explicit 3-arg form (params, options).
   scene.spawn(
@@ -82,11 +115,41 @@ function assertTypes(): void {
   // @ts-expect-error spawnPoint is required by Enemy.setup()
   parent.spawnChild("foe", Enemy, { archetype: "goblin", hp: 10 });
 
+  // @ts-expect-error params argument is required by RequiredParam.setup()
+  parent.spawnChild("opt", RequiredParam);
+  parent.spawnChild("opt", RequiredParam, {});
+
+  parent.spawnChild("marker", Plain);
   parent.spawnChild("marker", Plain, { key: "m" });
+  // @ts-expect-error a SpawnOptions-shaped literal is not a { x?: number } param
+  parent.spawnChild("def", DefaultedSetup, { key: "m" });
+  parent.spawnChild("def", DefaultedSetup, {}, { key: "m" });
+}
+
+// Residual case that structural typing cannot close: when the setup param type
+// itself declares an optional `key`, a `{ key }` literal satisfies the params
+// slot and the runtime routes it to options (the "don't name a top-level setup
+// field `key`" footgun documented on `SpawnOptions.key`). Documented here, not
+// silently accepted elsewhere.
+class KeyishSetup extends Entity {
+  seen: { key?: string; hp?: number } = {};
+  override setup(params: { key?: string; hp?: number } = {}): void {
+    this.seen = params;
+  }
+}
+
+function assertResidual(): void {
+  // Accepted by the type; at runtime `{ key }` routes to options, not params.
+  scene.spawn(KeyishSetup, { key: "k" });
+  // The unambiguous fix is the 3-arg form.
+  scene.spawn(KeyishSetup, { key: "player-1" }, { key: "entity-key" });
+  // `SpawnOptions` still refers to the shared options type.
+  expectTypeOf<SpawnOptions>().toMatchTypeOf<{ key?: string }>();
 }
 
 describe("spawn / spawnChild class-form types", () => {
   it("type-checks the class form (assertions enforced at compile time)", () => {
     expect(typeof assertTypes).toBe("function");
+    expect(typeof assertResidual).toBe("function");
   });
 });

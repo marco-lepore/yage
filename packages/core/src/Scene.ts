@@ -54,21 +54,40 @@ export type SetupParams<E> = E extends { setup(params: infer P): void }
   : never;
 
 /**
+ * The parameter tuple of an entity's declared `setup` method. Resolves to
+ * `never` when the entity only inherits the base optional `setup?` — the base
+ * signature is optional, so a class that doesn't override it fails the
+ * required-method match.
+ */
+type SetupParamTuple<E> = E extends { setup(...args: infer A): void }
+  ? A
+  : never;
+
+/**
  * Trailing arguments of the class form of `spawn` / `spawnChild`, derived from
  * the entity's `setup()` signature. An omitted required field is reported as a
  * missing property on the params type.
  *
- * Three shapes:
- *   - no `setup` → only the trailing options slot.
- *   - all-optional params (`{}` is assignable) → first slot accepts params or
- *     options, so the keyed-without-params call stays valid; the runtime shape
- *     check disambiguates.
- *   - required params → params first, then options.
+ * The params slot follows the `setup` PARAMETER, not the param object's fields:
+ *   - no declared `setup` → only the trailing options slot.
+ *   - `setup(params?)` or a defaulted parameter (a zero-argument call is valid,
+ *     so `[]` is assignable to the parameter tuple) → params slot optional.
+ *   - `setup(params)` with a required parameter → params slot required, even
+ *     when the param object's own fields are all optional. `setup(undefined)`
+ *     at runtime would break a body that reads `params`, so the type demands
+ *     the argument.
+ *
+ * The params slot is typed as `SetupParams<E>` alone (not
+ * `SetupParams<E> | SpawnOptions`), so a `SpawnOptions`-shaped object is not
+ * silently accepted where params belong. The one residual: if the param type
+ * itself declares an optional `key`, a `{ key }` literal satisfies the slot and
+ * the runtime routes it to options — the "don't name a top-level setup field
+ * `key`" footgun documented on `SpawnOptions.key`. Use the explicit 3-arg form.
  */
-export type ClassSpawnArgs<E> = [SetupParams<E>] extends [never]
+export type ClassSpawnArgs<E> = [SetupParamTuple<E>] extends [never]
   ? [options?: SpawnOptions]
-  : object extends SetupParams<E>
-    ? [paramsOrOptions?: SetupParams<E> | SpawnOptions, options?: SpawnOptions]
+  : [] extends SetupParamTuple<E>
+    ? [params?: SetupParams<E>, options?: SpawnOptions]
     : [params: SetupParams<E>, options?: SpawnOptions];
 
 /**

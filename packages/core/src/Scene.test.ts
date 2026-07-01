@@ -347,14 +347,14 @@ describe("Scene", () => {
       expect(e.capturedKey).toBe("captured");
     });
 
-    it("spawn(Class, options) keys a setup-bearing class when the 2nd arg is options-shaped", () => {
-      // setup(params = {}) — arity 0 but params still flow when present.
-      // Passing a key-only object as the 2nd arg routes it to options, not
-      // params, because the shape matches SpawnOptions exactly.
+    it("spawn(Class, params, { key }) keys an all-optional-setup class and still runs setup", () => {
+      // setup(params: T = {}) has an optional parameter, so the params slot is
+      // optional in the type but stays a distinct slot from options. Pass the
+      // key via the explicit 3-arg form; setup receives the params argument.
       const { ctx } = createContext();
       const scene = new TestScene();
       scene._setContext(ctx);
-      const e = scene.spawn(DefaultedSetup, { key: "defaulted" });
+      const e = scene.spawn(DefaultedSetup, {}, { key: "defaulted" });
       expect(e.key).toBe("defaulted");
       expect(e.received).toEqual({});
     });
