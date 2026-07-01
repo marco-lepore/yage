@@ -3,7 +3,7 @@ import type { ComponentClass } from "./types.js";
 import type { EventToken } from "./EventToken.js";
 import type { Blueprint } from "./Blueprint.js";
 import type { SnapshotResolver } from "./Serializable.js";
-import type { Scene, SpawnOptions } from "./Scene.js";
+import type { Scene, SpawnOptions, ClassSpawnArgs } from "./Scene.js";
 import { TRAITS_KEY, type TraitToken } from "./Trait.js";
 import { Transform } from "./Transform.js";
 
@@ -162,13 +162,7 @@ export class Entity {
   spawnChild<E extends Entity>(
     name: string,
     Class: new () => E,
-    options?: SpawnOptions,
-  ): E;
-  spawnChild<E extends Entity, P>(
-    name: string,
-    Class: new () => E & { setup(params: P): void },
-    params: P,
-    options?: SpawnOptions,
+    ...rest: ClassSpawnArgs<E>
   ): E;
   spawnChild<P>(
     name: string,
@@ -176,7 +170,6 @@ export class Entity {
     params: P,
     options?: SpawnOptions,
   ): Entity;
-  // eslint-disable-next-line @typescript-eslint/unified-signatures -- preserves Class return-type narrowing on the overload above
   spawnChild(
     name: string,
     blueprint: Blueprint<void>,

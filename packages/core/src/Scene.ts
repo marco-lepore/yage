@@ -46,6 +46,61 @@ export interface SpawnOptions {
 }
 
 /**
+ * The params object an entity's `setup(params)` accepts, inferred from the
+ * class. Resolves to `never` for entities that declare no `setup` method.
+ */
+export type SetupParams<E> = E extends { setup(params: infer P): void }
+  ? P
+  : never;
+
+/**
+ * The parameter tuple of an entity's declared `setup` method. Resolves to
+ * `never` when the entity only inherits the base optional `setup?` — the base
+ * signature is optional, so a class that doesn't override it fails the
+ * required-method match.
+ */
+type SetupParamTuple<E> = E extends { setup(...args: infer A): void }
+  ? A
+  : never;
+
+/**
+ * Trailing arguments of the class form of `spawn` / `spawnChild`, derived from
+ * the entity's `setup()` signature. An omitted required field is reported as a
+ * missing property on the params type.
+ *
+ * The params slot follows the `setup` PARAMETER, not the param object's fields:
+ *   - no declared `setup` → only the trailing options slot.
+ *   - `setup(): void` with zero parameters → no params slot; behaves like a
+ *     class with no declared `setup`, so `spawn(Class, options?)`.
+ *   - `setup(params?)` or a defaulted parameter (a zero-argument call is valid,
+ *     so `[]` is assignable to the parameter tuple) → params slot optional.
+ *   - `setup(params)` with a required parameter → params slot required, even
+ *     when the param object's own fields are all optional. `setup(undefined)`
+ *     at runtime would break a body that reads `params`, so the type demands
+ *     the argument.
+ *
+ * The zero-parameter branch (`SetupParamTuple<E> extends readonly []`) must
+ * precede the optional-parameter branch: an exactly-empty tuple `[]` is
+ * assignable to `readonly []`, while an optional-first-parameter tuple `[X?]`
+ * is not, so the check catches only a genuine zero-arg `setup` and leaves
+ * `setup(params?)` to the branch below.
+ *
+ * The params slot is typed as `SetupParams<E>` alone (not
+ * `SetupParams<E> | SpawnOptions`), so a `SpawnOptions`-shaped object is not
+ * silently accepted where params belong. The one residual: if the param type
+ * itself declares an optional `key`, a `{ key }` literal satisfies the slot and
+ * the runtime routes it to options — the "don't name a top-level setup field
+ * `key`" footgun documented on `SpawnOptions.key`. Use the explicit 3-arg form.
+ */
+export type ClassSpawnArgs<E> = [SetupParamTuple<E>] extends [never]
+  ? [options?: SpawnOptions]
+  : SetupParamTuple<E> extends readonly []
+    ? [options?: SpawnOptions]
+    : [] extends SetupParamTuple<E>
+      ? [params?: SetupParams<E>, options?: SpawnOptions]
+      : [params: SetupParams<E>, options?: SpawnOptions];
+
+/**
  * Heuristic: is this object exactly the shape of `SpawnOptions`? Used by the
  * runtime to disambiguate the 2-arg `spawn(Class, X)` / `spawn(Blueprint, X)`
  * forms when both params and options are plausible.
@@ -238,6 +293,10 @@ export abstract class Scene {
    * identity key, looked up later via `scene.findByKey`. The key is assigned
    * before `setup()` runs, so `entity.requireKey()` is safe inside it.
    *
+   * For the class form, the params type is inferred from the entity's
+   * `setup(params)` signature. Omitting a required field reports that field as
+   * missing on the params object, naming the field that's actually absent.
+   *
    * Runtime routing for the 2-arg class form (`spawn(Class, X)`):
    *   - If the class doesn't declare `setup` → `X` is options.
    *   - Else if `X`'s own keys are exactly SpawnOptions fields (`{ key }`) →
@@ -258,14 +317,8 @@ export abstract class Scene {
    */
   spawn<P>(blueprint: Blueprint<P>, params: P, options?: SpawnOptions): Entity;
   spawn(blueprint: Blueprint<void>, options?: SpawnOptions): Entity;
-  /** Spawn an entity subclass with setup params. */
-  spawn<E extends Entity, P>(
-    Class: new () => E & { setup(params: P): void },
-    params: P,
-    options?: SpawnOptions,
-  ): E;
-  /** Spawn an entity subclass without setup params. */
-  spawn<E extends Entity>(Class: new () => E, options?: SpawnOptions): E;
+  /** Spawn an entity subclass; trailing args follow its `setup()` signature. */
+  spawn<E extends Entity>(Class: new () => E, ...rest: ClassSpawnArgs<E>): E;
   spawn(
     nameOrBlueprintOrClass?: string | Blueprint<unknown> | (new () => Entity),
     paramsOrOptions?: unknown,
