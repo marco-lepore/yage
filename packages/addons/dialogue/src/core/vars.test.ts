@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { MemoryVariableStorage, cells, compose, materialize } from "./vars.js";
+import {
+  MemoryVariableStorage,
+  cells,
+  compose,
+  createRecordStorage,
+  materialize,
+} from "./vars.js";
 
 describe("MemoryVariableStorage", () => {
   it("get / set / has / entries round-trip, seeded from the ctor", () => {
@@ -86,5 +92,52 @@ describe("compose", () => {
 
   it("throws when composed with zero storages", () => {
     expect(() => compose()).toThrow(/at least one/);
+  });
+});
+
+describe("createRecordStorage", () => {
+  it("get / set / has / entries round-trip, seeded from the record", () => {
+    const rec: Record<string, string | number | boolean> = { gold: 5 };
+    const s = createRecordStorage(rec);
+    expect(s.has("gold")).toBe(true);
+    expect(s.get("gold")).toBe(5);
+    expect(s.get("missing")).toBeUndefined();
+    s.set("greeted", true);
+    expect(materialize(s)).toEqual({ gold: 5, greeted: true });
+  });
+
+  it("writes through, mutating the backing record in place", () => {
+    const rec: Record<string, string | number | boolean> = { gold: 5 };
+    const s = createRecordStorage(rec);
+    s.set("gold", 40);
+    s.set("name", "Mira");
+    expect(rec).toEqual({ gold: 40, name: "Mira" });
+  });
+
+  it("treats set(name, null) as unset: deletes the key", () => {
+    const rec: Record<string, string | number | boolean> = { gold: 5 };
+    const s = createRecordStorage(rec);
+    s.set("gold", null);
+    expect(s.has("gold")).toBe(false);
+    expect(s.get("gold")).toBeUndefined();
+    expect(Object.hasOwn(rec, "gold")).toBe(false);
+  });
+
+  it("reads an absent name as undefined (not null)", () => {
+    const s = createRecordStorage({});
+    expect(s.get("nope")).toBeUndefined();
+  });
+
+  it("does not leak Object.prototype names (own-property checks only)", () => {
+    const s = createRecordStorage({ gold: 1 });
+    for (const proto of ["toString", "constructor", "hasOwnProperty"]) {
+      expect(s.has(proto)).toBe(false);
+      expect(s.get(proto)).toBeUndefined();
+    }
+  });
+
+  it("materializes to the backing non-null record", () => {
+    const rec: Record<string, string | number | boolean> = { gold: 5, greeted: true };
+    expect(materialize(createRecordStorage(rec))).toEqual(rec);
   });
 });

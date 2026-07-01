@@ -18,7 +18,7 @@ export { DialoguePlayError } from "./validate.js";
 export { defineScript } from "./defineScript.js";
 export type { TypedScript, VarsOf } from "./defineScript.js";
 // Variable storage kit (the host's bridge to game state).
-export { MemoryVariableStorage, cells, compose, materialize } from "./vars.js";
+export { MemoryVariableStorage, cells, compose, createRecordStorage, materialize } from "./vars.js";
 export type { Cell } from "./vars.js";
 // Expression evaluator (conditions + `set` values).
 export { evaluate, evalCondition, isExpr } from "./expr.js";
