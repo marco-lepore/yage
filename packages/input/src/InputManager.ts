@@ -90,8 +90,14 @@ export class InputManager {
   private justPressedKeys = new Set<string>();
   private justReleasedKeys = new Set<string>();
   private holdStart = new Map<string, number>();
-  private syntheticPressedActions = new Set<string>();
+  /** One-frame synthetic action pulses from {@link fireAction}, cleared each frame. */
+  private pulsedSyntheticActions = new Set<string>();
+  /** Sustained synthetic actions from {@link fireActionDown}, held until {@link fireActionUp}. */
+  private heldSyntheticActions = new Set<string>();
+  /** Per-action synthetic hold start times (ms), for both pulse and held entries. */
   private syntheticActionStarts = new Map<string, number>();
+  /** Synthetic action release edges, true for one frame after {@link fireActionUp}. */
+  private justReleasedActions = new Set<string>();
   private actionMap = new Map<string, string[]>();
   private defaultBindings = new Map<string, string[]>();
   private groups = new Map<string, Set<string>>();
@@ -164,24 +170,39 @@ export class InputManager {
 
   // -- Action-based queries --
 
+  /** Whether the action has a sustained or one-frame synthetic press active. */
+  private isSyntheticPressed(action: string): boolean {
+    return (
+      this.heldSyntheticActions.has(action) ||
+      this.pulsedSyntheticActions.has(action)
+    );
+  }
+
   /** Whether any key mapped to this action is currently held. */
   isPressed(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
-    return this.syntheticPressedActions.has(action) ||
-      this.anyKeyInSet(action, this.pressedKeys);
+    return (
+      this.isSyntheticPressed(action) ||
+      this.anyKeyInSet(action, this.pressedKeys)
+    );
   }
 
   /** Whether any key mapped to this action was pressed this frame. */
   isJustPressed(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
-    return this.syntheticPressedActions.has(action) ||
-      this.anyKeyInSet(action, this.justPressedKeys);
+    return (
+      this.pulsedSyntheticActions.has(action) ||
+      this.anyKeyInSet(action, this.justPressedKeys)
+    );
   }
 
   /** Whether any key mapped to this action was released this frame. */
   isJustReleased(action: string): boolean {
     if (!this.isActionEnabled(action)) return false;
-    return this.anyKeyInSet(action, this.justReleasedKeys);
+    return (
+      this.justReleasedActions.has(action) ||
+      this.anyKeyInSet(action, this.justReleasedKeys)
+    );
   }
 
   /** Returns true if any key bound to the action exists in the given set. */
@@ -198,7 +219,7 @@ export class InputManager {
   getHoldDuration(action: string): number {
     if (!this.isActionEnabled(action)) return 0;
     const keys = this.actionMap.get(action);
-    if (!keys && !this.syntheticPressedActions.has(action)) return 0;
+    if (!keys && !this.isSyntheticPressed(action)) return 0;
     let maxDuration = 0;
     for (const key of keys ?? []) {
       const start = this.holdStart.get(key);
@@ -346,9 +367,25 @@ export class InputManager {
    * `pointerdown` would normally fire) are suppressed; `onPointerDown/Up/Move`
    * listeners still fire because they are explicit user opt-ins.
    *
+   * Two cases use this:
+   *
+   * 1. A UI handler claims a real event. Call from a Pixi `pointerdown`
+   *    handler that wants to own the event: `manager.consumePointer(e.pointerId)`.
+   *
+   * 2. You forwarded or replayed a synthetic pointer to the canvas and need it
+   *    kept out of gameplay actions. A DOM overlay above the canvas (virtual
+   *    joystick, accessibility overlay, input-replay tooling) that dispatches a
+   *    synthetic `PointerEvent` to the canvas — so listeners underneath still
+   *    receive it — must pair the dispatch with `consumePointer` or every
+   *    forwarded tap leaks into the `MouseLeft/Middle/Right` action edge:
+   *
+   *    ```ts
+   *    canvas.dispatchEvent(syntheticPointerDown); // underneath listeners still fire
+   *    input.consumePointer(e.pointerId);          // but no gameplay action edge
+   *    ```
+   *
    * The mark clears automatically when the pointer's last button releases or
-   * on `pointercancel`. Call from a Pixi `pointerdown` handler that wants to
-   * own the event: `manager.consumePointer(e.pointerId)`.
+   * on `pointercancel`.
    */
   consumePointer(id: number): void {
     this.consumedPointers.add(id);
@@ -1240,9 +1277,77 @@ export class InputManager {
     if (!this.actionMap.has(name)) {
       throw new Error(`InputManager.fireAction(): unknown action "${name}".`);
     }
-    this.syntheticPressedActions.add(name);
+    this.pulsedSyntheticActions.add(name);
+    // Preserve a held action's start so a stray pulse can't rewind its hold.
+    if (!this.heldSyntheticActions.has(name)) {
+      this.syntheticActionStarts.set(name, this.elapsedMs);
+    }
+    // Match the physical path: a disabled action's state is already suppressed
+    // at query time, so its listeners must not fire either.
+    if (this.isActionEnabled(name)) {
+      this.notifyActionListeners(this.actionListeners, name);
+    }
+  }
+
+  /**
+   * Begin a sustained synthetic press on an action by name. Unlike
+   * {@link fireAction} (a one-frame pulse), the press persists across frames
+   * until {@link fireActionUp}, so `isPressed` stays true, `getHoldDuration`
+   * accrues, and a real release edge fires later. Symmetric to the physical-key
+   * path ({@link fireKeyDown}) but keyed by action, so synthetic devices (touch,
+   * virtual controls) drive hold and charge actions with no keymap knowledge.
+   *
+   * Idempotent: re-calling while already held does not reset the hold start or
+   * re-fire the press edge. Throws on an unknown action name.
+   */
+  fireActionDown(name: string): void {
+    if (!this.actionMap.has(name)) {
+      throw new Error(`InputManager.fireActionDown(): unknown action "${name}".`);
+    }
+    if (this.heldSyntheticActions.has(name)) return;
+    this.heldSyntheticActions.add(name);
+    this.pulsedSyntheticActions.add(name);
+    this.justReleasedActions.delete(name);
     this.syntheticActionStarts.set(name, this.elapsedMs);
-    this.notifyActionListeners(this.actionListeners, name);
+    // Match the physical path: a disabled action's state is already suppressed
+    // at query time, so its press listeners must not fire either.
+    if (this.isActionEnabled(name)) {
+      this.notifyActionListeners(this.actionListeners, name);
+    }
+  }
+
+  /**
+   * Release a sustained synthetic press started by {@link fireActionDown}.
+   * Emits a one-frame `isJustReleased` edge and fires `onActionReleased`. No-op
+   * if the action is not currently held. Throws on an unknown action name.
+   */
+  fireActionUp(name: string): void {
+    if (!this.actionMap.has(name)) {
+      throw new Error(`InputManager.fireActionUp(): unknown action "${name}".`);
+    }
+    if (!this.heldSyntheticActions.has(name)) return;
+    this.heldSyntheticActions.delete(name);
+    this.pulsedSyntheticActions.delete(name);
+    this.syntheticActionStarts.delete(name);
+    this.justReleasedActions.add(name);
+    // Match the physical path: a disabled action's release listeners must not
+    // fire, mirroring how its press was suppressed.
+    if (this.isActionEnabled(name)) {
+      this.notifyActionListeners(this.actionReleasedListeners, name);
+    }
+  }
+
+  /**
+   * Mirror a held boolean onto an action: `true` routes to
+   * {@link fireActionDown}, `false` to {@link fireActionUp}. Lets a caller feed
+   * a pointer's held state directly each frame. Throws on an unknown action name.
+   */
+  setActionHeld(name: string, held: boolean): void {
+    if (held) {
+      this.fireActionDown(name);
+    } else {
+      this.fireActionUp(name);
+    }
   }
 
   /** Release all synthetic and physical input state. */
@@ -1256,8 +1361,10 @@ export class InputManager {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
     this.holdStart.clear();
-    this.syntheticPressedActions.clear();
+    this.pulsedSyntheticActions.clear();
+    this.heldSyntheticActions.clear();
     this.syntheticActionStarts.clear();
+    this.justReleasedActions.clear();
     this.pointers.clear();
     this.primaryPointerId = null;
     this.mouseButtonAggregate.clear();
@@ -1799,8 +1906,14 @@ export class InputManager {
   _clearFrameState(): void {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
-    this.syntheticPressedActions.clear();
-    this.syntheticActionStarts.clear();
+    this.justReleasedActions.clear();
+    // One-frame pulses clear; sustained holds from fireActionDown persist.
+    for (const action of this.pulsedSyntheticActions) {
+      if (!this.heldSyntheticActions.has(action)) {
+        this.syntheticActionStarts.delete(action);
+      }
+    }
+    this.pulsedSyntheticActions.clear();
     this.consumedWheelThisFrame = false;
   }
 
