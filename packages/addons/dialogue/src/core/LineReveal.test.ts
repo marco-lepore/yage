@@ -20,8 +20,8 @@ function clock(charsPerSec: number): { reveal: LineReveal; completed: () => numb
 
 describe("LineReveal — cursor + completion", () => {
   it("reveals at charsPerSec in graphemes and completes exactly once", () => {
-    const { reveal, completed } = clock(1000); // 1 grapheme/ms
-    reveal.begin(parseMarkup("abcd")); // 4 graphemes → 4ms
+    const { reveal, completed } = clock(1); // 1 grapheme/second
+    reveal.begin(parseMarkup("abcd")); // 4 graphemes → 4s
     reveal.update(3);
     expect(reveal.revealed).toBeCloseTo(3);
     expect(completed()).toBe(0);
@@ -34,7 +34,7 @@ describe("LineReveal — cursor + completion", () => {
   });
 
   it("an empty line completes synchronously in begin()", () => {
-    const { reveal, completed } = clock(1000);
+    const { reveal, completed } = clock(1);
     reveal.begin(parseMarkup("")); // length 0
     expect(completed()).toBe(1);
     expect(reveal.isComplete()).toBe(true);
@@ -42,16 +42,16 @@ describe("LineReveal — cursor + completion", () => {
   });
 
   it("counts graphemes, not code units (astral chars)", () => {
-    const { reveal, completed } = clock(1000);
+    const { reveal, completed } = clock(1);
     reveal.begin(parseMarkup("🔥🔥🔥🔥")); // 4 graphemes / 8 code units
     reveal.update(3);
     expect(completed()).toBe(0);
     reveal.update(1);
-    expect(completed()).toBe(1); // done at 4ms, not 8ms
+    expect(completed()).toBe(1); // done at 4 graphemes, not 8 code units
   });
 
   it("complete() jumps to the end and fires once", () => {
-    const { reveal, completed } = clock(1000);
+    const { reveal, completed } = clock(1);
     reveal.begin(parseMarkup("a very long line that has not been revealed yet"));
     reveal.complete();
     expect(reveal.isComplete()).toBe(true);
@@ -63,7 +63,7 @@ describe("LineReveal — cursor + completion", () => {
 
 describe("LineReveal — pauses (grapheme positions)", () => {
   it("holds at a [pause] and clamps an overshooting cursor back to it", () => {
-    const { reveal, completed } = clock(1000);
+    const { reveal, completed } = clock(1);
     // 10 graphemes, a 400ms pause after char 10, 10 more graphemes.
     reveal.begin(parseMarkup("0123456789[pause=400/]abcdefghij"));
     reveal.update(15); // overshoots the pause; cursor clamps to 10
@@ -76,7 +76,7 @@ describe("LineReveal — pauses (grapheme positions)", () => {
   });
 
   it("holds a [pause] at its grapheme position, unmoved by astral chars", () => {
-    const { reveal, completed } = clock(1000);
+    const { reveal, completed } = clock(1);
     reveal.begin(parseMarkup("🔥🔥[pause=400/]ab")); // pause after 2 graphemes
     reveal.update(3); // overshoots → clamps to 2
     reveal.update(400);
@@ -89,8 +89,8 @@ describe("LineReveal — pauses (grapheme positions)", () => {
 
 describe("LineReveal — speed", () => {
   it("applies per-run [speed] to the run the cursor is in", () => {
-    const { reveal, completed } = clock(1000);
-    // Run 1: 2 graphemes at 1x → 2ms. Run 2: 2 graphemes at 0.5x → 4ms.
+    const { reveal, completed } = clock(1);
+    // Run 1: 2 graphemes at 1x → 2s. Run 2: 2 graphemes at 0.5x → 4s.
     reveal.begin(parseMarkup("🔥🔥[speed=0.5]ab[/speed]"));
     reveal.update(2); // run 1 done
     reveal.update(3);
@@ -100,8 +100,8 @@ describe("LineReveal — speed", () => {
   });
 
   it("scales by the per-line speed multiplier", () => {
-    const { reveal, completed } = clock(1000);
-    reveal.begin(parseMarkup("abcd"), 2); // 2x → 4 graphemes in 2ms
+    const { reveal, completed } = clock(1);
+    reveal.begin(parseMarkup("abcd"), 2); // 2x → 4 graphemes in 2s
     reveal.update(1);
     expect(completed()).toBe(0);
     reveal.update(1);
@@ -109,7 +109,7 @@ describe("LineReveal — speed", () => {
   });
 
   it("a hold-to-fast-forward multiplier speeds the reveal and resets on a new line", () => {
-    const { reveal, completed } = clock(1000);
+    const { reveal, completed } = clock(1);
     reveal.begin(parseMarkup("abcdefgh")); // 8 graphemes
     reveal.setSpeedMultiplier(4); // 4x
     reveal.update(2); // 8 graphemes revealed
@@ -135,7 +135,7 @@ const tickIndexes = (beats: RevealBeat[]): number[] =>
 
 describe("LineReveal — reveal beats (ticks + markers)", () => {
   it("emits one tick per grapheme, multiple in order on a large-dt frame", () => {
-    const { reveal, beats } = beatClock(1000); // 1 grapheme/ms
+    const { reveal, beats } = beatClock(1); // 1 grapheme/second
     reveal.begin(parseMarkup("abcde")); // 5 graphemes
     reveal.update(3); // reveal 3 graphemes in one frame
     expect(beats()).toEqual([
@@ -148,7 +148,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
   });
 
   it("fires a marker when the cursor reaches its atChar", () => {
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("ab[sfx=ding/]cd")); // marker at grapheme 2
     reveal.update(1); // cursor 1 — before the marker
     expect(markerBeats(beats())).toEqual([]);
@@ -159,7 +159,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
   });
 
   it("co-located pause + marker, source order PAUSE-first: holds THEN fires", () => {
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("ab[pause=400/][sfx=ding/]cd")); // pause @2, then marker @2
     reveal.update(3); // overshoots → clamps to 2, arms the 400ms pause
     expect(reveal.revealed).toBe(2);
@@ -177,7 +177,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
   });
 
   it("co-located pause + marker, source order MARKER-first: fires THEN holds", () => {
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("ab[sfx=ding/][pause=400/]cd")); // marker @2, then pause @2
     reveal.update(3); // reach offset 2: the marker fires, then the pause arms + clamps
     expect(reveal.revealed).toBe(2);
@@ -191,7 +191,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
     // Orthogonal primitives — a fire-and-forget marker (the host plays a 500ms
     // shake) immediately followed by a fixed 500ms pause that holds the reveal
     // while it plays. Source order carries the intent; no combined sugar.
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("hi[shake=500/][pause=500/]there")); // both @2
     reveal.update(3); // reveal "hi", fire shake, arm the 500ms hold
     expect(reveal.revealed).toBe(2);
@@ -206,7 +206,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
   });
 
   it("complete() drains pending markers (viaSkip=true) but emits no pending ticks", () => {
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     // markers at grapheme 2 and 6.
     reveal.begin(parseMarkup("ab[sfx=one/]cdef[expression=sad/]gh"));
     reveal.update(1); // reveal 1 grapheme → tick 0; no marker reached yet
@@ -219,7 +219,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
   });
 
   it("drains an offset-0 / marker-only line synchronously in begin()", () => {
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("[sfx=ding/]")); // length 0, marker at 0
     expect(reveal.isComplete()).toBe(true);
     expect(beats()).toEqual([
@@ -228,7 +228,7 @@ describe("LineReveal — reveal beats (ticks + markers)", () => {
   });
 
   it("fires an offset-0 marker on a non-empty line synchronously in begin()", () => {
-    const { reveal, beats } = beatClock(1000);
+    const { reveal, beats } = beatClock(1);
     reveal.begin(parseMarkup("[expression=happy/]hi")); // marker at 0, then 2 graphemes
     expect(markerBeats(beats())).toEqual([
       { kind: "marker", marker: { kind: "marker", atChar: 0, name: "expression", props: { expression: "happy" } }, viaSkip: false },

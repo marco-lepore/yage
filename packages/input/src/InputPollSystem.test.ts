@@ -24,7 +24,7 @@ describe("InputPollSystem", () => {
 
   it("advances input elapsed time on update", () => {
     const spy = vi.spyOn(manager, "_advanceTime");
-    system.update(16);
+    system.update(0.016); // dt is seconds; converted to ms for the input clock
     expect(spy).toHaveBeenCalledWith(16);
   });
 

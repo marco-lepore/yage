@@ -1,8 +1,8 @@
 /** Configuration for a ProcessSlot. */
 export interface ProcessSlotConfig {
-  /** Auto-complete after this duration in ms. */
+  /** Auto-complete after this duration in seconds. */
   duration?: number;
-  /** Called each frame with dt (ms) and elapsed (ms). Return true to complete early. */
+  /** Called each frame with dt (seconds) and elapsed (seconds). Return true to complete early. */
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
   update?: (dt: number, elapsed: number) => boolean | void;
   /** Called on natural completion only. */
@@ -45,7 +45,7 @@ export class ProcessSlot {
     return !this._completed && !this._paused;
   }
 
-  /** Milliseconds elapsed since start. */
+  /** Seconds elapsed since start. */
   get elapsed(): number {
     return this._elapsed;
   }
@@ -107,7 +107,7 @@ export class ProcessSlot {
   }
 
   /**
-   * Advance the slot by dt milliseconds.
+   * Advance the slot by dt seconds.
    * @internal — called by ProcessComponent
    */
   _tick(dt: number): void {

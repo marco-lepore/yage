@@ -17,9 +17,9 @@ all expose effects through the same `.fx` property:
 ```ts
 import { hitFlash } from "@yagejs/effects";
 
-const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff, duration: 100 }));
+const flash = sprite.fx.addEffect(hitFlash({ color: 0xffffff, duration: 0.1 }));
 flash.trigger();         // one-shot ramp up + down
-flash.fadeOut(200);      // returns a Process
+flash.fadeOut(0.2);      // returns a Process
 flash.setEnabled(false); // toggle without removing
 flash.remove();          // detach + destroy
 ```
@@ -31,8 +31,8 @@ The base handle is shared across every preset:
 | `remove()` | Detach + destroy. Idempotent. |
 | `setEnabled(on)` | Toggle the underlying filter's `enabled` flag without removing. |
 | `enabled` | Current enabled state (live). |
-| `fadeIn(ms)` | Tween primary intensity 0 → 1. Returns a `Process`. |
-| `fadeOut(ms)` | Tween primary intensity → 0. Returns a `Process`. |
+| `fadeIn(seconds)` | Tween primary intensity 0 → 1. Returns a `Process`. |
+| `fadeOut(seconds)` | Tween primary intensity → 0. Returns a `Process`. |
 | `run(p)` | Schedule a `Process` scoped to this effect — pauses with the owning scene, time-scales with it, auto-cancels on `remove()`. Use for custom uniform tweens. |
 
 Each preset extends the base with its own knobs — `OutlineHandle.setThickness(n)`,
@@ -145,7 +145,7 @@ import { colorize } from "@yagejs/effects";
 const recolour = sprite.fx.addEffect(colorize({ color: 0xf2c14e }));
 recolour.setColor("#d94a4a");  // numbers or strings ("#…", "red", "rgb(…)")
 recolour.setStrength(0.6);     // rebases full ceiling; preserves ratio
-recolour.fadeOut(200);         // strength → 0 cross-fades back to the source
+recolour.fadeOut(0.2);         // strength → 0 cross-fades back to the source
 ```
 
 Output per pixel is `mix(sourceRGB, tintColor * L, strength)` where `L`
@@ -244,7 +244,7 @@ const handle = sprite.fx.addEffect(
     },
   }),
 );
-handle.fadeIn(200);
+handle.fadeIn(0.2);
 ```
 
 Without the `intensity` accessor, `fadeIn` / `fadeOut` no-op and warn once.

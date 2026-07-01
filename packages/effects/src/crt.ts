@@ -58,12 +58,12 @@ export const crt = defineEffect<CRTHandle, CRTOptions>({
       },
       onActivate: (base) => {
         // Self-schedule the noise animator. Auto-cancels on `base.remove()`,
-        // pauses with scene, time-scales with scene. YAGE dt is in ms;
-        // CRTFilter.time is unitless and conventionally advanced as seconds.
+        // pauses with scene, time-scales with scene. `dt` is in seconds, the
+        // unit CRTFilter.time conventionally advances in.
         base.run(
           new Process({
             update: (dt) => {
-              filter.time += dt / 1000;
+              filter.time += dt;
               filter.seed = globalRandom.float();
             },
           }),

@@ -26,8 +26,8 @@ import { Process } from "./Process.js";
  * ```ts
  * class Boot extends LoadingScene {
  *   readonly target = new GameScene();
- *   readonly minDuration = 500;
- *   readonly transition = fade({ duration: 300 });
+ *   readonly minDuration = 0.5;
+ *   readonly transition = fade({ duration: 0.3 });
  *   override onEnter() {
  *     this.spawn(LoadingSceneProgressBar);
  *     this.startLoading();
@@ -54,7 +54,7 @@ export abstract class LoadingScene extends Scene {
   abstract readonly target: Scene | (() => Scene);
 
   /**
-   * Minimum wall-clock ms the scene stays visible before handing off.
+   * Minimum wall-clock seconds the scene stays visible before handing off.
    * Prevents flicker on cached loads. Default 0.
    */
   readonly minDuration: number = 0;
@@ -227,18 +227,18 @@ export abstract class LoadingScene extends Scene {
     );
   }
 
-  private _createEngineTimeDelay(ms: number): {
+  private _createEngineTimeDelay(seconds: number): {
     promise: Promise<void>;
     cancel: () => void;
   } {
-    if (ms <= 0) {
+    if (seconds <= 0) {
       return {
         promise: Promise.resolve(),
         cancel: () => {},
       };
     }
 
-    const wait = Process.delay(ms);
+    const wait = Process.delay(seconds);
     this._pendingWaits.add(wait);
     this.context.resolve(ProcessSystemKey).add(wait);
     return {

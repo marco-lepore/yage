@@ -140,11 +140,11 @@ describe("DialogueSession — extra channels", () => {
     expect(startedId).toBe("vo_1"); // present fanned out → the clip started
     text.finishReveal(); // arms the auto-timer on the TEXT reveal
     await flush();
-    session.update(500); // well past 100ms…
+    session.update(0.5); // well past 0.1s…
     expect(autoAdvances).toBe(0); // …but the voice gate freezes the clock
 
     endClip?.(); // the clip ends → the gate releases (count-on-aggregate)
-    session.update(100); // the armed clock now counts down
+    session.update(0.15); // the armed clock now counts down
     expect(autoAdvances).toBe(1);
   });
 
@@ -181,11 +181,11 @@ describe("DialogueSession — extra channels", () => {
 
     text.finishReveal(); // arms the auto-timer on the text reveal
     await flush();
-    session.update(100); // under the 200ms budget → the wedged voice still gates
+    session.update(0.1); // 100ms, under the 200ms budget → the wedged voice still gates
     expect(autoAdvances).toBe(0);
     expect(errors).toHaveLength(0);
 
-    session.update(150); // 250ms total > budget → liveness trips through the session
+    session.update(0.15); // 250ms total > budget → liveness trips through the session
     expect(errors).toHaveLength(1); // reported once
     expect(autoAdvances).toBe(1); // …and auto-advance proceeds (no soft-lock)
   });
@@ -212,7 +212,7 @@ describe("DialogueSession — extra channels", () => {
     expect(seen).toEqual(["Only line."]); // present fanned out for the say line
     text.finishReveal();
     await flush();
-    session.update(50);
+    session.update(0.05);
     expect(autoAdvances).toBe(1); // an observer without the method never blocks
   });
 
@@ -332,10 +332,10 @@ describe("DialogueSession — extra channels", () => {
     let ticks = 0;
     session.addChannel({ update: () => ticks++ });
     session.play(oneLine);
-    session.update(16);
+    session.update(0.016);
     expect(ticks).toBe(1);
     session.setPaused(true);
-    session.update(16); // frozen: the pause guard returns before the extras tick
+    session.update(0.016); // frozen: the pause guard returns before the extras tick
     expect(ticks).toBe(1);
   });
 

@@ -54,9 +54,9 @@ function makeCtx(opts: {
 }
 
 describe("flash", () => {
-  it("defaults to 200ms duration and white", () => {
+  it("defaults to 0.2s duration and white", () => {
     const t = flash();
-    expect(t.duration).toBe(200);
+    expect(t.duration).toBe(0.2);
   });
 
   it("accepts custom duration and color", () => {

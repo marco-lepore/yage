@@ -14,7 +14,7 @@ each is the cleanest fit for a different shape of problem.
 
 | Use                                           | Reach for                  |
 | --------------------------------------------- | -------------------------- |
-| Wait N ms then run a callback                 | `Process.delay()`          |
+| Wait N seconds then run a callback            | `Process.delay()`          |
 | Cooldown / restartable timer                  | `pc.slot()`                |
 | Animate a single property A → B               | `Tween.to()` / `.vec2()`   |
 | Interpolate a number from→to with a custom setter | `Tween.custom()`        |
@@ -33,7 +33,7 @@ A few rules of thumb:
   the individual steps happen to be tweens.
 - **`KeyframeAnimator` is for curves a tween can't draw.** A bobbing motion
   that goes up, back down, and past the start; an idle loop with three
-  hand-tuned poses; a track that needs to fire a sound at exactly t=400ms.
+  hand-tuned poses; a track that needs to fire a sound at exactly t=0.4s.
   If a single ease curve isn't enough, you want keyframes.
 - **`pc.slot()` is for state, not animation.** Cooldowns, invincibility
   windows, "time until next spawn" — anything you'll check repeatedly with
@@ -61,7 +61,7 @@ cooldowns, timers, and anything that needs to be checked or restarted
 repeatedly.
 
 ```typescript
-const cooldown = pc.slot({ duration: 300 });
+const cooldown = pc.slot({ duration: 0.3 });
 
 // In update():
 if (cooldown.completed) {
@@ -81,7 +81,7 @@ Slots can also run callbacks on completion:
 
 ```typescript
 const invincibility = pc.slot({
-  duration: 2000,
+  duration: 2,
   onComplete: () => entity.get(HealthComponent).vulnerable = true,
 });
 ```
@@ -93,7 +93,7 @@ For fire-and-forget delays or single-use timers, use `pc.run()`:
 ```typescript
 import { Process } from "@yagejs/core";
 
-pc.run(Process.delay(500, () => {
+pc.run(Process.delay(0.5, () => {
   spawnExplosion(entity.transform.position);
   entity.destroy();
 }));
@@ -107,8 +107,8 @@ respect pause state and entity lifetime.
 ```typescript
 import { Tween, Transform, easeOutQuad, easeInOutQuad } from "@yagejs/core";
 
-// Tween a single property
-pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad));
+// Tween a single property (durations in seconds)
+pc.run(Tween.to(sprite, "alpha", 0, 0.3, easeOutQuad));
 
 // Tween a Vec2 (e.g., position) — pass a setter that applies the value
 const t = entity.get(Transform);
@@ -116,7 +116,7 @@ pc.run(Tween.vec2(
   (v) => t.setPosition(v.x, v.y),
   t.position,
   targetPos,
-  600,
+  0.6,
   easeInOutQuad,
 ));
 
@@ -125,7 +125,7 @@ pc.run(Tween.vec2(
 pc.run(
   Tween.custom(
     (v) => t.setScale(1 + v, 1 + v),
-    0, 0.5, 500, easeOutQuad,
+    0, 0.5, 0.5, easeOutQuad,
   ),
 );
 ```
@@ -153,8 +153,8 @@ import { Sequence } from "@yagejs/core";
 pc.run(
   new Sequence()
     .call(() => sprite.alpha = 1)
-    .wait(200)
-    .then(Tween.to(sprite, "alpha", 0, 400, easeOutQuad))
+    .wait(0.2)
+    .then(Tween.to(sprite, "alpha", 0, 0.4, easeOutQuad))
     .call(() => entity.destroy())
     .start(),
 );
@@ -169,8 +169,8 @@ const t = entity.get(Transform);
 pc.run(
   new Sequence()
     .parallel(
-      Tween.to(sprite, "alpha", 0, 300, easeOutQuad),
-      Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 300, easeInQuad),
+      Tween.to(sprite, "alpha", 0, 0.3, easeOutQuad),
+      Tween.vec2((v) => t.setPosition(v.x, v.y), t.position, offscreen, 0.3, easeInQuad),
     )
     .call(() => entity.destroy())
     .start(),
@@ -190,8 +190,8 @@ actually tick.
 // Loop forever
 pc.run(
   new Sequence()
-    .then(Tween.to(sprite, "alpha", 0.5, 500, easeInOutQuad))
-    .then(Tween.to(sprite, "alpha", 1.0, 500, easeInOutQuad))
+    .then(Tween.to(sprite, "alpha", 0.5, 0.5, easeInOutQuad))
+    .then(Tween.to(sprite, "alpha", 1.0, 0.5, easeInOutQuad))
     .loop()
     .start(),
 );
@@ -200,7 +200,7 @@ pc.run(
 pc.run(
   new Sequence()
     .call(() => flash())
-    .wait(100)
+    .wait(0.1)
     .repeat(5)
     .start(),
 );
@@ -216,7 +216,7 @@ need to create a custom entity:
 import { TimerEntity, Process } from "@yagejs/core";
 
 const timer = scene.spawn(TimerEntity);
-timer.run(Process.delay(3000, () => {
+timer.run(Process.delay(3, () => {
   scene.switchTo(NextLevel);
 }));
 ```
@@ -230,8 +230,8 @@ the component manually.
 Tag processes so you can cancel groups of them later:
 
 ```typescript
-pc.run(Tween.to(sprite, "alpha", 0, 300, easeOutQuad), { tags: ["vfx"] });
-pc.run(Tween.to(sprite, "scale", 2, 300, easeOutQuad), { tags: ["vfx"] });
+pc.run(Tween.to(sprite, "alpha", 0, 0.3, easeOutQuad), { tags: ["vfx"] });
+pc.run(Tween.to(sprite, "scale", 2, 0.3, easeOutQuad), { tags: ["vfx"] });
 
 // Cancel all processes tagged "vfx"
 pc.cancel("vfx");
@@ -272,8 +272,8 @@ const anim = entity.add(
     bob: {
       keyframes: [
         { time: 0, data: 0 },
-        { time: 500, data: 10 },
-        { time: 1000, data: 0 },
+        { time: 0.5, data: 10 },
+        { time: 1, data: 0 },
       ],
       setter: (v) => (entity.get(Transform).y = 200 + (v as number)),
       loop: true,
@@ -288,7 +288,7 @@ anim.play("bob");
 This lantern rises 10 pixels, falls back, and loops forever — something
 neither a single `Tween` nor an easing function could express on its own.
 `KeyframeAnimator` requires `ProcessComponent` on the same entity because it
-runs as a process under the hood. Each keyframe's `time` is in milliseconds
+runs as a process under the hood. Each keyframe's `time` is in seconds
 along the track.
 
 ### Multiple Tracks
@@ -301,8 +301,8 @@ const anim = entity.add(
     bob: {
       keyframes: [
         { time: 0, data: 0 },
-        { time: 500, data: 10 },
-        { time: 1000, data: 0 },
+        { time: 0.5, data: 10 },
+        { time: 1, data: 0 },
       ],
       setter: (v) => (entity.get(Transform).y = baseY + (v as number)),
       loop: true,
@@ -310,8 +310,8 @@ const anim = entity.add(
     pulse: {
       keyframes: [
         { time: 0, data: 1.0 },
-        { time: 400, data: 1.2 },
-        { time: 800, data: 1.0 },
+        { time: 0.4, data: 1.2 },
+        { time: 0.8, data: 1.0 },
       ],
       setter: (v) => entity.get(Transform).setScale(v as number, v as number),
       loop: true,
@@ -354,9 +354,9 @@ beats, gameplay-rhythm cues, audio one-shots — leave `setter` off:
 new KeyframeAnimator({
   intro: {
     keyframes: [
-      { time: 0,   data: 0, event: () => audio.play("step") },
-      { time: 250, data: 0, event: () => audio.play("step") },
-      { time: 500, data: 0, event: () => audio.play("door") },
+      { time: 0,    data: 0, event: () => audio.play("step") },
+      { time: 0.25, data: 0, event: () => audio.play("step") },
+      { time: 0.5,  data: 0, event: () => audio.play("door") },
     ],
     // no setter — the values aren't read, only the events matter
   },
@@ -376,7 +376,7 @@ pc.run(
   createKeyframeTrack({
     keyframes: [
       { time: 0, data: 0 },
-      { time: 600, data: 100 },
+      { time: 0.6, data: 100 },
     ],
     setter: (v) => (entity.get(Transform).x = v as number),
   }),
@@ -412,7 +412,7 @@ function damageFlash(entity: Entity) {
   pc.run(
     new Sequence()
       .call(() => (sprite.tint = TINT_HIT))
-      .wait(120)
+      .wait(0.12)
       .call(() => (sprite.tint = TINT_NORMAL))
       .start(),
     { tags: ["flash"] },
@@ -433,10 +433,10 @@ Single keyframe track — scale Y squashes down, then bounces back. The
 const anim = entity.add(new KeyframeAnimator<"land">({
   land: {
     keyframes: [
-      { time: 0,   data: 1.0 },
-      { time: 80,  data: 0.7 },
-      { time: 240, data: 1.1 },
-      { time: 360, data: 1.0 },
+      { time: 0,    data: 1.0 },
+      { time: 0.08, data: 0.7 },
+      { time: 0.24, data: 1.1 },
+      { time: 0.36, data: 1.0 },
     ],
     setter: (v) => entity.get(Transform).setScale(1, v as number),
     easing: easeOutQuad,
@@ -453,7 +453,7 @@ Random offset for a fixed window, decaying to zero. Shake intensity drives
 both magnitude and the per-frame jitter.
 
 ```typescript
-function shake(camera: Entity, magnitude = 8, duration = 250) {
+function shake(camera: Entity, magnitude = 8, duration = 0.25) {
   const t = camera.get(Transform);
   const baseX = t.x, baseY = t.y;
   camera.get(ProcessComponent).run(
@@ -505,8 +505,8 @@ function telegraph(enemy: Entity, attack: () => void) {
   pc.run(
     new Sequence()
       .call(() => (sprite.tint = 0xff5050))
-      .then(Tween.to(sprite, "alpha", 0.5, 200, easeInOutQuad))
-      .wait(300)
+      .then(Tween.to(sprite, "alpha", 0.5, 0.2, easeInOutQuad))
+      .wait(0.3)
       .call(() => {
         sprite.alpha = 1;
         sprite.tint = 0xffffff;
@@ -523,7 +523,7 @@ Two tweens — one for entry, one for exit. Tag so a fade-out cancels an
 in-flight fade-in cleanly.
 
 ```typescript
-function fadeIn(entity: Entity, duration = 200) {
+function fadeIn(entity: Entity, duration = 0.2) {
   const sprite = entity.get(SpriteComponent);
   sprite.alpha = 0;
   entity.get(ProcessComponent).cancel("fade");
@@ -533,7 +533,7 @@ function fadeIn(entity: Entity, duration = 200) {
   );
 }
 
-function fadeOut(entity: Entity, duration = 200, onDone?: () => void) {
+function fadeOut(entity: Entity, duration = 0.2, onDone?: () => void) {
   const sprite = entity.get(SpriteComponent);
   entity.get(ProcessComponent).cancel("fade");
   entity.get(ProcessComponent).run(
@@ -555,9 +555,9 @@ Lightweight idle motion for an NPC or pickup. `KeyframeAnimator` with
 const anim = entity.add(new KeyframeAnimator<"idle">({
   idle: {
     keyframes: [
-      { time: 0,    data: 0 },
-      { time: 800,  data: 4 },
-      { time: 1600, data: 0 },
+      { time: 0,   data: 0 },
+      { time: 0.8, data: 4 },
+      { time: 1.6, data: 0 },
     ],
     setter: (v) => (entity.get(Transform).y = baseY + (v as number)),
     loop: true,

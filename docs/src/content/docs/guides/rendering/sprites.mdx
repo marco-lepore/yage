@@ -122,9 +122,9 @@ type-only and `sibling()` can only narrow by the runtime class.
 When a character is built from multiple sprite layers — head + body +
 outfit, each with its own `AnimatedSpriteComponent` and
 `AnimationController` — every `playOneShot` call computes its lock
-duration from `frames.length / speed`, rounded to whole frame-ms. When
+duration from `frames.length / speed`, in whole-frame increments. When
 the layers have different frame counts or speeds, those durations
-disagree by a millisecond or two, the locks expire on different
+disagree by a frame or two, the locks expire on different
 frames, and one sprite snaps back to idle while the others are still
 mid-swing. The visual giveaway is a single layer flickering at the
 tail of every attack animation.

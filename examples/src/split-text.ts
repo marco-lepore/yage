@@ -86,8 +86,7 @@ class SplitTextShowcase extends Component {
   update(dt: number): void {
     if (!this.ready()) return;
 
-    const s = dt / 1000;
-    this.localT += s;
+    this.localT += dt;
     const t = this.localT;
     const chars = this.split.chars;
     const name = EFFECTS[this.current]!.name;
@@ -140,7 +139,7 @@ class SplitTextShowcase extends Component {
         const dur = EFFECTS[this.current]!.duration;
         for (let k = 0; k < chars.length; k++) {
           const c = chars[k]!;
-          this.vy[k]! += 0.0008 * dt; // gentle gravity so shards arc
+          this.vy[k]! += 800 * dt; // gentle gravity so shards arc
           c.x += this.vx[k]! * dt;
           c.y += this.vy[k]! * dt;
           c.rotation += this.vr[k]! * dt;
@@ -151,7 +150,7 @@ class SplitTextShowcase extends Component {
       case "Fall to pieces": {
         for (let k = 0; k < chars.length; k++) {
           const c = chars[k]!;
-          this.vy[k]! += 0.0016 * dt; // gravity
+          this.vy[k]! += 1600 * dt; // gravity
           c.x += this.vx[k]! * dt;
           c.y += this.vy[k]! * dt;
           c.rotation += this.vr[k]! * dt;
@@ -230,16 +229,16 @@ class SplitTextShowcase extends Component {
         const dx = h.x - this.cx;
         const dy = h.y - this.cy;
         const len = Math.hypot(dx, dy) || 1;
-        const speed = 0.22 + Math.random() * 0.4;
-        this.vx[k] = (dx / len) * speed + (Math.random() - 0.5) * 0.15;
-        this.vy[k] = (dy / len) * speed - 0.25 - Math.random() * 0.2;
-        this.vr[k] = (Math.random() - 0.5) * 0.025;
+        const speed = 220 + Math.random() * 400;
+        this.vx[k] = (dx / len) * speed + (Math.random() - 0.5) * 150;
+        this.vy[k] = (dy / len) * speed - 250 - Math.random() * 200;
+        this.vr[k] = (Math.random() - 0.5) * 25;
       }
     } else if (effect.name === "Fall to pieces") {
       for (let k = 0; k < chars.length; k++) {
-        this.vx[k] = (Math.random() - 0.5) * 0.18;
-        this.vy[k] = -0.18 - Math.random() * 0.22; // small initial hop
-        this.vr[k] = (Math.random() - 0.5) * 0.03;
+        this.vx[k] = (Math.random() - 0.5) * 180;
+        this.vy[k] = -180 - Math.random() * 220; // small initial hop
+        this.vr[k] = (Math.random() - 0.5) * 30;
       }
     } else if (effect.name === "Assemble") {
       for (let k = 0; k < chars.length; k++) {

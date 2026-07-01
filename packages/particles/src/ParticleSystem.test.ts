@@ -112,7 +112,7 @@ describe("ParticleSystem", () => {
     emitter.emit();
 
     const spy = vi.spyOn(emitter, "_update");
-    system.update(100); // 100ms → 0.1s
+    system.update(0.1); // dt is in seconds
 
     expect(spy).toHaveBeenCalledWith(0.1, 50, 75);
   });
@@ -147,7 +147,7 @@ describe("ParticleSystem", () => {
     const spy1 = vi.spyOn(em1, "_update");
     const spy2 = vi.spyOn(em2, "_update");
 
-    system.update(50);
+    system.update(0.05);
 
     expect(spy1).toHaveBeenCalledWith(0.05, 10, 20);
     expect(spy2).toHaveBeenCalledWith(0.05, 30, 40);

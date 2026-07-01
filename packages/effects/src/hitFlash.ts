@@ -8,7 +8,7 @@ import type { HitFlashHandle } from "./handles.js";
 export interface HitFlashOptions {
   /** Flash color (0xRRGGBB). Default: 0xffffff (white). */
   color?: number;
-  /** Total trigger duration in ms (up + back down). Default: 120. */
+  /** Total trigger duration in seconds (up + back down). Default: 0.12. */
   duration?: number;
   /** Peak intensity 0..1. Default: 1. */
   peak?: number;
@@ -29,7 +29,7 @@ export const hitFlash = defineEffect<HitFlashHandle, HitFlashOptions>({
   factory: (options) => {
     const opts: Required<HitFlashOptions> = {
       color: options.color ?? 0xffffff,
-      duration: options.duration ?? 120,
+      duration: options.duration ?? 0.12,
       peak: options.peak ?? 1,
     };
     let intensity = 0;

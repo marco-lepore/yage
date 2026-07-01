@@ -38,7 +38,7 @@ import { RandomKey } from "./Random.js";
 export interface EngineConfig {
   /** Enable debug mode (Inspector API, debug logging). */
   debug?: boolean;
-  /** Fixed timestep in ms (default: 1000/60). */
+  /** Fixed timestep in seconds (default: 1/60). */
   fixedTimestep?: number;
   /** Max fixed steps per frame to prevent spiral of death (default: 5). */
   maxFixedStepsPerFrame?: number;

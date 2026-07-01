@@ -66,21 +66,21 @@ export const Tween = {
 
   /**
    * Map a Process factory over an array, staggering each item's START by
-   * `stepMs` (item 0 starts immediately, item 1 after `stepMs`, and so on).
-   * Returns one Process per item — enqueue them all on a process queue (or
-   * `useSplitText`'s `run`) to play a staggered cascade across a split text's
-   * `chars` / `words` / `lines`. The factory runs when each item's turn
+   * `stepSeconds` (item 0 starts immediately, item 1 after `stepSeconds`, and
+   * so on). Returns one Process per item — enqueue them all on a process queue
+   * (or `useSplitText`'s `run`) to play a staggered cascade across a split
+   * text's `chars` / `words` / `lines`. The factory runs when each item's turn
    * begins, so a `Tween.to` built inside it reads its `from` value at start
    * time, not build time.
    */
   stagger<T>(
     items: readonly T[],
     factory: (item: T, index: number) => Process,
-    stepMs: number,
+    stepSeconds: number,
   ): Process[] {
     return items.map((item, i) => {
       const seq = new Sequence();
-      if (i > 0 && stepMs > 0) seq.wait(i * stepMs);
+      if (i > 0 && stepSeconds > 0) seq.wait(i * stepSeconds);
       return seq.then(() => factory(item, i)).start();
     });
   },

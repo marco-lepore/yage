@@ -56,9 +56,9 @@ function makeCtx(opts: {
 }
 
 describe("fade", () => {
-  it("defaults to 300ms duration and black", () => {
+  it("defaults to 0.3s duration and black", () => {
     const t = fade();
-    expect(t.duration).toBe(300);
+    expect(t.duration).toBe(0.3);
   });
 
   it("accepts custom duration", () => {

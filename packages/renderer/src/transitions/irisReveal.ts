@@ -5,7 +5,7 @@ import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface IrisRevealOptions {
-  /** Iris duration in ms. Default: 600. */
+  /** Iris duration in seconds. Default: 0.6. */
   duration?: number;
   /**
    * Iris center in virtual-space pixels. Default: virtual-space center.
@@ -35,7 +35,7 @@ export interface IrisRevealOptions {
  * would render over the masked destination.
  */
 export function irisReveal(opts: IrisRevealOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 600;
+  const duration = opts.duration ?? 0.6;
   const easing = opts.easing ?? ((t) => t);
 
   let toContainer: Container | undefined;

@@ -4,7 +4,7 @@ import { RendererKey } from "../types.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface IrisOptions {
-  /** Iris duration in ms. Default: 600. */
+  /** Iris duration in seconds. Default: 0.6. */
   duration?: number;
   /** Fill color visible outside the iris. Default: 0x000000. */
   color?: number;
@@ -44,7 +44,7 @@ export interface IrisOptions {
  *   the opening half.
  */
 export function iris(opts: IrisOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 600;
+  const duration = opts.duration ?? 0.6;
   const color = opts.color ?? 0x000000;
   const coverScreen = opts.coverScreen ?? false;
 

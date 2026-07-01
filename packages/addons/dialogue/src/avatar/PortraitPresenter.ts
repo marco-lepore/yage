@@ -97,7 +97,8 @@ export class PortraitPresenter implements AvatarPresenter {
 
   update(dt: number): void {
     if (!this.speaking || !this.transform) return;
-    this.bobMs += dt;
+    // `dt` is seconds; `bobMs` feeds the millisecond-tuned bob sine.
+    this.bobMs += dt * 1000;
     this.transform.setPosition(this.baseX, this.baseY + Math.sin(this.bobMs / 110) * 1.5);
   }
 

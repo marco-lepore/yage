@@ -17,7 +17,7 @@ class Spinner extends Component {
   private readonly speed = 0.3 + Math.random() * 0.7;
   update(dt: number): void {
     const t = this.entity.get(Transform);
-    t.rotation += this.speed * (dt / 1000);
+    t.rotation += this.speed * dt;
   }
 }
 

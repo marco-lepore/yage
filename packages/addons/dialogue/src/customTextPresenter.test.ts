@@ -91,7 +91,7 @@ const present = (p: DomTextPresenter, markup: string, speed = 1): void =>
 
 describe("a custom text presenter from the documented contract", () => {
   it("reveals grapheme-by-grapheme and reports completion exactly once", () => {
-    const p = new DomTextPresenter(1000); // 1 grapheme/ms
+    const p = new DomTextPresenter(1); // 1 grapheme/second
     let done = 0;
     p.setRevealListener(() => done++);
     present(p, "Hello");
@@ -108,7 +108,7 @@ describe("a custom text presenter from the documented contract", () => {
   });
 
   it("honours an inline [pause] without showing past it", () => {
-    const p = new DomTextPresenter(1000);
+    const p = new DomTextPresenter(1);
     present(p, "ab[pause=300/]cd");
     p.update(5); // overshoots the pause at 2 → clamps
     expect(p.revealed).toBe("ab");
@@ -128,7 +128,7 @@ describe("a custom text presenter from the documented contract", () => {
   });
 
   it("an emoji counts as one grapheme (reveal aligns with what a DOM would show)", () => {
-    const p = new DomTextPresenter(1000);
+    const p = new DomTextPresenter(1);
     present(p, "🔥🔥ab");
     p.update(3);
     expect(p.revealed).toBe("🔥🔥a");

@@ -72,8 +72,8 @@ export interface CameraComponentData {
   name?: string;
 }
 
-/** Frame-rate-independent reference timestep (ms). */
-export const CAMERA_REFERENCE_DT = 16.67;
+/** Frame-rate-independent reference timestep (seconds). */
+export const CAMERA_REFERENCE_DT = 1 / 60;
 
 /**
  * Core camera state component. Added by `CameraEntity`; holds position,

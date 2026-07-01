@@ -182,7 +182,7 @@ export class AnimationController<
   }
 
   /**
-   * Calculate the wall-clock duration (ms) of a named animation.
+   * Calculate the wall-clock duration (seconds) of a named animation.
    *
    * Frame-rate independent: PixiJS normalises `deltaTime` via
    * `Ticker.targetFPMS` (0.06), so the formula holds at any actual fps.
@@ -190,7 +190,7 @@ export class AnimationController<
    */
   calcDuration(name: T): number {
     const def = this._anims[name];
-    return (def.frames.length * (1000 / 60)) / (def.speed * this._speed);
+    return (def.frames.length * (1 / 60)) / (def.speed * this._speed);
   }
 
   /** Check whether the current frame is within [start, end] inclusive. */

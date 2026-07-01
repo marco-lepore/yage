@@ -286,7 +286,7 @@ class PlayerMover extends Component {
     const dy = this.input.getAxis("move-up", "move-down");
     if (dx === 0 && dy === 0) return;
     const len = Math.hypot(dx, dy) || 1;
-    const step = (PLAYER_SPEED * dt) / 1000;
+    const step = PLAYER_SPEED * dt;
     const p = this.transform.position;
     this.transform.setPosition(
       MathUtils.clamp(p.x + (dx / len) * step, this.bounds.minX, this.bounds.maxX),
@@ -667,8 +667,8 @@ class LifecycleControls extends Component {
  *     so the timer gates itself on the shared pause flag (pause your own timer).
  */
 class ChoiceTimer extends Component {
-  private remaining = -1; // ms left; < 0 = disarmed
-  private pending: { ms: number; def: number } | undefined;
+  private remaining = -1; // seconds left; < 0 = disarmed
+  private pending: { seconds: number; def: number } | undefined;
   private def = 0;
   private label!: TextComponent;
 
@@ -697,16 +697,18 @@ class ChoiceTimer extends Component {
     this.entity.on(DialogueEndedEvent, () => this.cancel());
   }
 
-  /** The `choice-timer` command handler stashes its params here. */
+  /** The `choice-timer` command handler stashes its params here. The dialogue
+   *  command authors the timeout in milliseconds; convert to the engine's
+   *  seconds once on the way in. */
   arm(ms: number, def: number): void {
-    this.pending = { ms, def };
+    this.pending = { seconds: ms / 1000, def };
   }
 
   private onShown(): void {
     this.remaining = -1; // guard: drop any prior timer first…
     if (this.pending) {
       // …then re-arm only if THIS menu is timed.
-      this.remaining = this.pending.ms;
+      this.remaining = this.pending.seconds;
       this.def = this.pending.def;
       this.pending = undefined;
     }
@@ -737,7 +739,7 @@ class ChoiceTimer extends Component {
       this.label.text.visible = false;
       return;
     }
-    this.label.setText(`⏳ ${Math.ceil(this.remaining / 1000)}s`);
+    this.label.setText(`⏳ ${Math.ceil(this.remaining)}s`);
     this.label.text.visible = true;
   }
 }

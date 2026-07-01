@@ -5,7 +5,7 @@ import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 
 export interface ChessboardOptions {
-  /** Total duration in ms. Default: 700. */
+  /** Total duration in seconds. Default: 0.7. */
   duration?: number;
   /** Grid rows. Default: 6. */
   rows?: number;
@@ -35,7 +35,7 @@ export interface ChessboardOptions {
  * would render over the masked destination.
  */
 export function chessboard(opts: ChessboardOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 700;
+  const duration = opts.duration ?? 0.7;
   const rows = Math.max(1, Math.floor(opts.rows ?? 6));
   const cols = Math.max(1, Math.floor(opts.cols ?? 10));
 

@@ -40,15 +40,13 @@ class ShipController extends Component {
   private boosting = false;
 
   update(dt: number): void {
-    const seconds = dt / 1000;
-
     // -- Movement: left stick OR WASD --
     let move = this.input.getStick("left");
     if (move.x === 0 && move.y === 0) {
       move = this.input.getVector("kbLeft", "kbRight", "kbUp", "kbDown");
       if (move.lengthSq() > 1) move = move.normalize();
     }
-    this.transform.translate(move.x * SHIP_SPEED * seconds, move.y * SHIP_SPEED * seconds);
+    this.transform.translate(move.x * SHIP_SPEED * dt, move.y * SHIP_SPEED * dt);
 
     // Keep ship in bounds
     const pos = this.transform.position;
@@ -65,7 +63,7 @@ class ShipController extends Component {
       this.transform.rotation = stepTowardAngle(
         this.transform.rotation,
         target,
-        ROTATE_SNAP * seconds,
+        ROTATE_SNAP * dt,
       );
     }
 

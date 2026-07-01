@@ -135,8 +135,8 @@ Vec2.moveTowards(current: Vec2Like, target: Vec2Like, maxDelta: number): Vec2
 ```
 
 For `smoothDamp`, pass the returned `velocity` into the next frame. `smoothTime`
-and `deltaTime` must use the same unit; `maxSpeed` is in units per that same
-time base.
+and `deltaTime` must use the same unit — pass the `dt` (seconds) the engine
+gives you and express `smoothTime` in seconds; `maxSpeed` is in units per second.
 
 ### Scale inheritance
 
@@ -172,7 +172,7 @@ Negative scale on a child still composes — a child with `setScale(-1, 1)` unde
 
 | Export | Purpose |
 |---|---|
-| `Process` | Frame-updated action; `Process.delay(ms, cb)` |
+| `Process` | Frame-updated action; `Process.delay(seconds, cb)` |
 | `ProcessComponent` | Entity component managing processes and slots |
 | `ProcessSlot` | Reusable restartable handle (cooldowns, effects) |
 | `Tween` | Static factory: `to`, `custom`, `vec2`, `stagger` |
@@ -183,7 +183,7 @@ Decision matrix:
 
 | Need | Reach for |
 |---|---|
-| Wait N ms then run a callback | `Process.delay()` |
+| Wait N seconds then run a callback | `Process.delay()` |
 | Cooldown / restartable timer (`completed`, `restart`) | `pc.slot()` |
 | Animate one property A → B | `Tween.to()` / `.vec2()` |
 | Interpolate a number from→to with a custom setter | `Tween.custom(setter, from, to, duration, easing?)` |
@@ -217,8 +217,8 @@ const anim = entity.add(new KeyframeAnimator({
   bob: {
     keyframes: [
       { time: 0, data: 0 },
-      { time: 500, data: 10 },
-      { time: 1000, data: 0 },
+      { time: 0.5, data: 10 },
+      { time: 1, data: 0 },
     ],
     setter: (v) => (entity.get(Transform).y = v as number),
     loop: true,
@@ -227,7 +227,7 @@ const anim = entity.add(new KeyframeAnimator({
 anim.play("bob");
 ```
 
-`KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in milliseconds along the track.
+`KeyframeAnimator` requires `ProcessComponent` on the same entity. Each keyframe's `time` is in seconds along the track.
 
 `setter` is **optional** — omit it for "pure timeline" animations that only
 fire keyframe `event` callbacks (cutscenes, audio cues, gameplay beats):
@@ -366,7 +366,7 @@ Duplicate keys throw at spawn time with no orphan side-effect — the entity is 
 | `createTestEngine(config?)` | Fully wired Engine for integration tests |
 | `createMockScene(name?)` | Lightweight scene with EngineContext for unit tests |
 | `createMockEntity(name?)` | Entity spawned in a mock scene |
-| `advanceFrames(engine, n, dtMs?)` | Advance game loop by N frames |
+| `advanceFrames(engine, n, dtMs?)` | Advance game loop by N frames (`dtMs` is the per-frame ms delta; default `1000/60`) |
 
 See also the `Testing & Debugging` section in the Quick Start for a runnable example and the Inspector API for runtime introspection.
 
@@ -412,8 +412,8 @@ import { LoadingSceneProgressBar } from "@yagejs/ui";
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
-  readonly minDuration = 500;
-  readonly transition = fade({ duration: 300 });
+  readonly minDuration = 0.5;
+  readonly transition = fade({ duration: 0.3 });
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
     this.startLoading();

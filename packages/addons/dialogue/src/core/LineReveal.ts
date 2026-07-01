@@ -115,9 +115,9 @@ export class LineReveal {
     this.speedMul = Math.max(1, m);
   }
 
-  /** Advance the reveal cursor by `dt` (ms). Honours armed pauses and per-run
-   *  speed; fires completion once the cursor reaches the end. No-op after the
-   *  line is done or before the first {@link begin}. */
+  /** Advance the reveal cursor by `dt` (seconds). Honours armed pauses and
+   *  per-run speed; fires completion once the cursor reaches the end. No-op
+   *  after the line is done or before the first {@link begin}. */
   update(dt: number): void {
     const parsed = this.parsed;
     if (!parsed || this.done) return;
@@ -131,7 +131,7 @@ export class LineReveal {
       if (this.pauseTimer === 0) {
         const rate =
           this.charsPerSec * this.speedMul * this.lineSpeed * this.runSpeedAt(this.cursor);
-        this.cursor = Math.min(parsed.length, this.cursor + (rate * dt) / 1000);
+        this.cursor = Math.min(parsed.length, this.cursor + rate * dt);
         // Drain tokens up to the new cursor IN SOURCE ORDER: a marker fires, a
         // pause clamps the cursor back to its offset and stops the drain (so a
         // later token waits for the next hold-resume). emitTicks runs AFTER, so
@@ -199,7 +199,9 @@ export class LineReveal {
       if (tok.kind === "marker") {
         this.onBeat?.({ kind: "marker", marker: tok, viaSkip });
       } else if (!viaSkip && tok.ms > 0) {
-        this.pauseTimer = tok.ms;
+        // `tok.ms` is the authored pause in milliseconds; pauseTimer counts down
+        // against the seconds-based dt, so convert.
+        this.pauseTimer = tok.ms / 1000;
         this.cursor = Math.min(this.cursor, tok.atChar);
         return; // hold here this frame; later tokens wait
       }

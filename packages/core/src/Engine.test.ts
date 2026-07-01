@@ -239,7 +239,7 @@ describe("Engine", () => {
     });
 
     it("calls component.fixedUpdate(dt) during FixedUpdate phase", async () => {
-      const engine = new Engine({ fixedTimestep: 16 });
+      const engine = new Engine({ fixedTimestep: 0.016 });
       await engine.start();
       const scene = new TestScene();
       await engine.scenes.push(scene);
@@ -247,8 +247,8 @@ describe("Engine", () => {
       const comp = new FixedUpdatingComponent();
       entity.add(comp);
 
-      engine.loop.tick(16);
-      expect(comp.calls).toContain(16);
+      engine.loop.tick(16); // 16ms → 0.016s, exactly one fixed step
+      expect(comp.calls).toContain(0.016);
       engine.destroy();
     });
 

@@ -3,7 +3,7 @@ import type { Container } from "pixi.js";
 import { getSceneContainer } from "./helpers.js";
 
 export interface CrossFadeOptions {
-  /** Duration in ms. Default: 400. */
+  /** Duration in seconds. Default: 0.4. */
   duration?: number;
 }
 
@@ -14,7 +14,7 @@ export interface CrossFadeOptions {
  * menu→game and level→level handoffs.
  */
 export function crossFade(opts: CrossFadeOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 400;
+  const duration = opts.duration ?? 0.4;
 
   let fromContainer: Container | undefined;
   let toContainer: Container | undefined;

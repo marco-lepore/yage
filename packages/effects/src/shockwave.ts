@@ -20,7 +20,7 @@ export interface ShockwaveOptions {
    * `-1` (default) keeps the ring expanding forever (no max-radius fade).
    */
   radius?: number;
-  /** Auto-trigger duration in ms — ramp `time` from 0 then idle. Default: 1000. */
+  /** Auto-trigger duration in seconds — ramp `time` from 0 then idle. Default: 1. */
   duration?: number;
 }
 
@@ -168,7 +168,7 @@ const PARKED_TIME = 1e6;
 export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
   name: "yage:shockwave",
   factory: (options) => {
-    const duration = options.duration ?? 1000;
+    const duration = options.duration ?? 1;
     const filter = new YageShockwaveFilter({
       // Constructor needs SOMETHING for these to satisfy upstream init,
       // but our apply() override rewrites all five each frame from the
@@ -236,7 +236,7 @@ export const shockwave = defineEffect<ShockwaveHandle, ShockwaveOptions>({
             new Process({
               duration,
               update: (dt) => {
-                filter.time += dt / 1000;
+                filter.time += dt;
               },
               onComplete: () => {
                 filter.time = PARKED_TIME;

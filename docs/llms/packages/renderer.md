@@ -272,10 +272,10 @@ title.chars;   // (Text | BitmapText)[] — one per glyph
 title.words;   // Container[] — word groups
 title.lines;   // Container[] — line groups
 
-// Typewriter: stagger each glyph's fade-in (50ms apart) via a ProcessComponent.
+// Typewriter: stagger each glyph's fade-in (0.05s apart) via a ProcessComponent.
 title.chars.forEach((c) => (c.alpha = 0));
 const pc = entity.add(new ProcessComponent());
-Tween.stagger(title.chars, (c) => Tween.to(c, "alpha", 1, 300), 50).forEach((p) => pc.run(p));
+Tween.stagger(title.chars, (c) => Tween.to(c, "alpha", 1, 0.3), 0.05).forEach((p) => pc.run(p));
 ```
 
 API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `tint` / `alpha`, `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/tint/alpha/visible; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
@@ -331,7 +331,7 @@ class HeroController extends Component {
 }
 ```
 
-`playOneShot(name, options?)` — `options.duration` overrides the auto-computed lock duration; the wall-clock fallback uses `(frames * 1000 / 60) / speed`. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
+`playOneShot(name, options?)` — `options.duration` (seconds) overrides the auto-computed lock duration; the wall-clock fallback uses `(frames * (1 / 60)) / speed`. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
 
 ### LayeredAnimationController
 
@@ -369,7 +369,7 @@ layered.playOneShot("attack", { onComplete: () => layered.play("idle") });
 
 ### Layered characters: one-shot lock drift (the underlying problem)
 
-`LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same insight can live as a one-line helper. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (rounded to whole frame-ms). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the tail of every attack animation.
+`LayeredAnimationController` is the recommended fix. If you'd rather not introduce a wrapper component — for prototypes, or when each layer already has a custom controller — the same insight can live as a one-line helper. The underlying issue: `AnimationController.playOneShot` computes its lock duration from `frames.length / speed` (in whole-frame increments). When layers have different frame counts or speeds (a 12-frame outfit at `speed: 0.2` and a 10-frame body at `speed: 0.18` round differently), the locks expire on different frames and one sprite snaps back to idle while the others are still mid-swing — a single layer flickering at the tail of every attack animation.
 
 Precompute the duration on a designated "lead" controller and broadcast it via `options.duration`:
 
@@ -445,8 +445,8 @@ const cam = this.spawn(CameraEntity, {
 
 cam.unfollow();
 
-cam.shake(10, 500, { decay: 0.02 });
-cam.zoomTo(2.0, 1000, easeOutQuad);
+cam.shake(10, 0.5, { decay: 0.02 }); // duration in seconds
+cam.zoomTo(2.0, 1, easeOutQuad); // duration in seconds
 
 cam.bounds = { minX: 0, minY: 0, maxX: 2000, maxY: 1000 };
 
@@ -727,17 +727,17 @@ Built-in visual transitions. Use with `SceneManager.push/pop/replace({ transitio
 ```ts
 import { crossFade, fade, flash } from "@yagejs/renderer";
 
-await engine.scenes.push(nextScene, { transition: fade({ duration: 400 }) });
-await engine.scenes.push(nextScene, { transition: crossFade({ duration: 500 }) });
-await engine.scenes.pop({ transition: flash({ duration: 200, color: 0xff0000 }) });
-await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 }) });
+await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
+await engine.scenes.push(nextScene, { transition: crossFade({ duration: 0.5 }) });
+await engine.scenes.pop({ transition: flash({ duration: 0.2, color: 0xff0000 }) });
+await engine.scenes.replace(newScene, { transition: crossFade({ duration: 0.5 }) });
 ```
 
 | Export | Signature | Description |
 |---|---|---|
-| `fade` | `(opts?: { duration?: number; color?: number }) => SceneTransition` | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 300ms, black. |
-| `flash` | `(opts?: { duration?: number; color?: number }) => SceneTransition` | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 200ms, white. |
-| `crossFade` | `(opts?: { duration?: number }) => SceneTransition` | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 400ms. |
+| `fade` | `(opts?: { duration?: number; color?: number }) => SceneTransition` | Fade to color and back (triangle alpha ramp). Incoming scene hidden until mid-point. Default: 0.3s, black. |
+| `flash` | `(opts?: { duration?: number; color?: number }) => SceneTransition` | Flash overlay decaying from full to zero alpha. Incoming scene revealed under the bright part of the flash. Default: 0.2s, white. |
+| `crossFade` | `(opts?: { duration?: number }) => SceneTransition` | Cross-dissolve between scenes (outgoing alpha 1→0 while incoming alpha 0→1). Default: 0.4s. |
 | `getSceneContainer` | `(ctx: SceneTransitionContext, scene: Scene \| undefined) => Container \| undefined` | Helper for custom transitions — resolves a scene's PIXI root container. |
 
 `fade` and `flash` add a stage-level `Graphics` overlay during the transition and clean up on `end()`. `crossFade` manipulates per-scene containers directly via `getSceneContainer`.

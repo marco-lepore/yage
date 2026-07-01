@@ -322,8 +322,8 @@ export class SceneManager {
   }
 
   /**
-   * Advance the active transition by `dt` ms. Called by Engine's earlyUpdate
-   * callback with raw (unscaled) wall-clock dt.
+   * Advance the active transition by `dt` seconds. Called by Engine's
+   * earlyUpdate callback with raw (unscaled) wall-clock dt.
    * @internal
    */
   _tickTransition(dt: number): void {

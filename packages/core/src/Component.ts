@@ -204,10 +204,16 @@ export abstract class Component {
   /** Called when the component is destroyed (entity destroyed or component removed). */
   onDestroy?(): void;
 
-  /** Called every frame by the built-in ComponentUpdateSystem. */
+  /**
+   * Called every frame by the built-in ComponentUpdateSystem.
+   * @param dt Frame delta in seconds, scaled by scene and entity `timeScale`.
+   */
   update?(dt: number): void;
 
-  /** Called every fixed timestep by the built-in ComponentUpdateSystem. */
+  /**
+   * Called every fixed timestep by the built-in ComponentUpdateSystem.
+   * @param dt Fixed timestep in seconds, scaled by scene and entity `timeScale`.
+   */
   fixedUpdate?(dt: number): void;
 
   /** Return a JSON-serializable snapshot of this component's state. Used by the save system. */

@@ -67,7 +67,7 @@ export class PhysicsSystem extends System {
     let steps = 0;
     while (ctx.accumulator >= dt && steps < maxSteps) {
       this.preStep(scene, ctx.world);
-      ctx.world.step(dt / 1000);
+      ctx.world.step(dt);
       this.postStep(scene, ctx.world);
       ctx.accumulator -= dt;
       steps++;

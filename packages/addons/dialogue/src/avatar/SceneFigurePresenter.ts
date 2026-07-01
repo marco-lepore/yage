@@ -79,7 +79,8 @@ export class SceneFigurePresenter implements AvatarPresenter {
 
   update(dt: number): void {
     if (!this.speaking || !this.transform || this.cfg.bob === false) return;
-    this.bobMs += dt;
+    // `dt` is seconds; `bobMs` feeds the millisecond-tuned bob sine.
+    this.bobMs += dt * 1000;
     const next = Math.sin(this.bobMs / 130) * 1.2;
     // Apply only the delta on top of wherever the figure is NOW, so movement
     // systems (walking NPCs, knockback…) keep full ownership of the position.

@@ -20,7 +20,7 @@ import { DebugPlugin } from "@yagejs/debug";
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
   private speed: number;
-  constructor(speed = 0.002) {
+  constructor(speed = 2) {
     super();
     this.speed = speed;
   }
@@ -83,7 +83,7 @@ import { DebugPlugin } from "@yagejs/debug";
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
   private speed: number;
-  constructor(speed = 0.002) {
+  constructor(speed = 2) {
     super();
     this.speed = speed;
   }
@@ -94,7 +94,7 @@ class Spin extends Component {
 ```
 
 `Spin` grabs its sibling `Transform` component and rotates it every frame.
-The `update(dt)` method receives the delta time in milliseconds so the rotation
+The `update(dt)` method receives the delta time in seconds so the rotation
 speed stays consistent regardless of frame rate.
 
 ### 3. Setting Up the Engine

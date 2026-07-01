@@ -95,14 +95,14 @@ the target can move without the camera responding.
 ### Zoom and Rotation
 
 ```typescript
-camera.zoomTo(2.0, 500, easeOutQuad); // zoom to 2x over 500ms
+camera.zoomTo(2.0, 0.5, easeOutQuad); // zoom to 2x over 0.5s
 camera.rotation = Math.PI / 12; // tilt the camera
 ```
 
 ### Screen Shake
 
 ```typescript
-camera.shake(8, 400, { decay: true });
+camera.shake(8, 0.4, { decay: true });
 ```
 
 `intensity` is the maximum pixel displacement per frame. When `decay` is true,

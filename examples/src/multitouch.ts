@@ -46,7 +46,7 @@ document.body.appendChild(orientationBadge);
 const WIDTH = 800;
 const HEIGHT = 600;
 const TRAIL_LENGTH = 24;
-const RIPPLE_DURATION = 600;        // ms
+const RIPPLE_DURATION = 0.6;        // seconds
 
 interface PointerTrail {
   /** Recent screen-space positions for this pointer, newest at the end. */

@@ -21,7 +21,7 @@ class PlayerController extends Component {
     const dir = this.input.getVector("left", "right", "up", "down");
     const speed = 200 / (this.camera?.zoom ?? 1);
     this.rb.setVelocity(dir.scale(speed));
-    // For non-physics entities, use: this.entity.get(Transform).translate(dir.scale(200 * dt / 1000));
+    // For non-physics entities, use: this.entity.get(Transform).translate(dir.scale(200 * dt)); // dt is seconds
   }
 }
 ```
@@ -182,7 +182,7 @@ class Weapon extends Component {
   private cooldown!: ProcessSlot;
 
   onAdd() {
-    this.cooldown = this.pc.slot({ duration: 500 });
+    this.cooldown = this.pc.slot({ duration: 0.5 });
   }
 
   fire() {
@@ -198,10 +198,10 @@ class Weapon extends Component {
 ```ts
 const seq = new Sequence()
   .call(() => ui.showDialogue("Watch out!"))
-  .wait(2000)
-  .then(Tween.to(boss, "y", 100, 800, easeOutQuad))
+  .wait(2)
+  .then(Tween.to(boss, "y", 100, 0.8, easeOutQuad))
   .call(() => ui.hideDialogue())
-  .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 500));
+  .then(Tween.custom((v) => (camera.zoom = v), 1, 1.5, 0.5));
 
 pc.run(seq.start());
 ```
@@ -230,7 +230,7 @@ pc.run(
 ### Process.delay for one-shots
 
 ```ts
-pc.run(Process.delay(1000, () => entity.destroy()));
+pc.run(Process.delay(1, () => entity.destroy()));
 ```
 
 ## Testing Patterns
@@ -257,7 +257,7 @@ import { createMockEntity, Transform, Vec2, Component } from "@yagejs/core";
 class Gravity extends Component {
   fixedUpdate(dt: number) {
     const t = this.entity.get(Transform);
-    t.translate(new Vec2(0, 9.8 * (dt / 1000)));
+    t.translate(new Vec2(0, 9.8 * dt)); // dt is seconds
   }
 }
 
@@ -384,12 +384,12 @@ import { Tween, Sequence, ProcessSlot, easeLinear } from "@yagejs/core";
 describe("Tween", () => {
   it("tweens a value over duration", () => {
     const obj = { x: 0 };
-    const proc = Tween.to(obj, "x", 100, 1000, easeLinear);
+    const proc = Tween.to(obj, "x", 100, 1, easeLinear);
 
-    proc._update(500);
+    proc._update(0.5);
     expect(obj.x).toBeCloseTo(50);
 
-    proc._update(500);
+    proc._update(0.5);
     expect(obj.x).toBeCloseTo(100);
     expect(proc.completed).toBe(true);
   });
@@ -397,19 +397,19 @@ describe("Tween", () => {
 
 describe("ProcessSlot", () => {
   it("acts as a cooldown timer", () => {
-    const slot = new ProcessSlot({ duration: 300 });
+    const slot = new ProcessSlot({ duration: 0.3 });
     expect(slot.completed).toBe(true); // starts completed (ready)
 
     slot.start();
     expect(slot.completed).toBe(false);
 
-    slot._tick(300);
+    slot._tick(0.3);
     expect(slot.completed).toBe(true); // cooldown done
   });
 
   it("calls cleanup on cancel and restart", () => {
     const cleanup = vi.fn();
-    const slot = new ProcessSlot({ duration: 100, cleanup });
+    const slot = new ProcessSlot({ duration: 0.1, cleanup });
     slot.start();
     slot.restart(); // cleanup called, then restarted
     expect(cleanup).toHaveBeenCalledOnce();

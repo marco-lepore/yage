@@ -27,7 +27,7 @@ regardless of frame rate:
 
 ```typescript
 const engine = new Engine({
-  fixedTimestep: 1000 / 60, // ~16.67 ms per tick (default)
+  fixedTimestep: 1 / 60, // ~0.0167 s per tick (default)
   maxFixedStepsPerFrame: 5, // cap to prevent spiral of death
 });
 ```
@@ -72,7 +72,7 @@ class CameraFollow extends Component {
 
 For gameplay that must be deterministic (physics, game state), use
 `fixedUpdate(dt)` instead where `dt` is always the constant `fixedTimestep`
-converted to seconds.
+(in seconds).
 
 ## Where Things Happen
 
@@ -91,9 +91,9 @@ A quick reference for where to put different kinds of logic:
 
 | Option | Default | Description |
 |---|---|---|
-| `fixedTimestep` | `1000 / 60` (~16.67 ms) | Milliseconds per fixed-update tick |
+| `fixedTimestep` | `1 / 60` (~0.0167 s) | Seconds per fixed-update tick |
 | `maxFixedStepsPerFrame` | `5` | Maximum fixed-update iterations per frame |
 
 These can be tuned at engine creation time. A lower `fixedTimestep` (e.g.
-`1000 / 120`) gives more precise physics at the cost of more CPU work. A
-higher value (e.g. `1000 / 30`) is cheaper but less accurate.
+`1 / 120`) gives more precise physics at the cost of more CPU work. A
+higher value (e.g. `1 / 30`) is cheaper but less accurate.

@@ -249,7 +249,7 @@ class MovingSpike extends Component {
 
   update(dt: number) {
     if (this.period <= 0) return;
-    this.elapsed += dt / 1000;
+    this.elapsed += dt;
     const frac = (this.elapsed / this.period) % 1;
     const t = frac < 0.5 ? frac * 2 : 2 - frac * 2;
     const x = this.startX + (this.endX - this.startX) * t;

@@ -20,7 +20,7 @@ export interface BloomOptions {
 /**
  * Soft glow bloom from `pixi-filters`' AdvancedBloomFilter. The configured
  * `bloomScale` becomes the "full" value at `setIntensity(1)` — so
- * `fadeIn(ms)` ramps from 0 to that value and `fadeOut(ms)` back to 0.
+ * `fadeIn(seconds)` ramps from 0 to that value and `fadeOut(seconds)` back to 0.
  * `setBloomScale(...)` rebases the full value while preserving the current
  * intensity ratio so an in-flight fade or rhythmic pulse keeps animating
  * against the new ceiling instead of snapping back to 1.

@@ -62,7 +62,7 @@ class FlashOnPlay extends Component {
   update(dt: number): void {
     if (this._timer > 0) {
       this._timer = Math.max(0, this._timer - dt);
-      const t = this._timer / 200;
+      const t = this._timer / 0.2;
       this._gfx.graphics.alpha = 0.3 + 0.7 * t;
       const s = 1 + 0.3 * t;
       this._transform.setScale(s, s);
@@ -70,7 +70,7 @@ class FlashOnPlay extends Component {
   }
 
   flash(): void {
-    this._timer = 200;
+    this._timer = 0.2;
   }
 }
 

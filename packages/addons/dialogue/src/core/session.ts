@@ -347,6 +347,9 @@ export class DialogueSession {
   private scriptId = "";
 
   private saying: SayStep | undefined;
+  /** Countdown to the next auto-advance, in seconds (it counts down against the
+   *  seconds-based `dt`). Armed from the millisecond `autoAdvanceMs` /
+   *  `autoAdvanceDefault`, converted at arming. `undefined` = disarmed. */
   private autoTimer: number | undefined;
   /** Default auto-advance delay (ms) applied to lines without their own
    *  `autoAdvanceMs`. `null` = off (manual advance). Set via {@link setAutoAdvance}. */
@@ -1052,7 +1055,9 @@ export class DialogueSession {
       this.saying?.autoAdvanceMs === undefined &&
       this.channels.text.isRevealComplete()
     ) {
-      this.autoTimer = ms ?? undefined;
+      // `autoTimer` counts down against the seconds-based dt; the public
+      // auto-advance API is in milliseconds, so convert at arming.
+      this.autoTimer = ms !== null ? ms / 1000 : undefined;
     }
   }
 
@@ -1277,8 +1282,9 @@ export class DialogueSession {
       }
     }
     // Per-line `autoAdvanceMs` wins; otherwise fall back to the session default.
+    // Both are milliseconds; `autoTimer` counts down in seconds.
     const auto = this.saying?.autoAdvanceMs ?? this.autoAdvanceDefault;
-    if (auto !== null) this.autoTimer = auto;
+    if (auto !== null) this.autoTimer = auto / 1000;
   }
 
   /**

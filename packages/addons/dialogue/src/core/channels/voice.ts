@@ -148,7 +148,8 @@ export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChan
       // budget. An `active === undefined` guard here would wrongly freeze the
       // timer if play() ever left `active` unset.
       if (done || !livenessMs) return;
-      elapsed += dt;
+      // `dt` is seconds; `livenessMs` is the public millisecond budget.
+      elapsed += dt * 1000;
       if (elapsed >= livenessMs) {
         // The host never reported the clip's end — release the gate so
         // auto-advance can't soft-lock. Leave the (wedged) handle in place: a

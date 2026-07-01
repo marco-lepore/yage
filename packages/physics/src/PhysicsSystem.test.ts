@@ -167,7 +167,7 @@ describe("PhysicsSystem", () => {
   });
 
   describe("update", () => {
-    it("calls physicsWorld.step with dt converted to seconds", async () => {
+    it("steps physicsWorld with the seconds dt directly", async () => {
       const { scene, physicsWorld, context } = await createPhysicsTestContext();
       const system = new PhysicsSystem();
       system._setContext(context);
@@ -179,10 +179,10 @@ describe("PhysicsSystem", () => {
       // Get underlying mock world
       const world = (physicsWorld as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
 
-      system.update(16.67); // ms
+      system.update(1 / 60); // seconds
 
       expect(world.stepSpy).toHaveBeenCalled();
-      expect(world.timestep).toBeCloseTo(16.67 / 1000);
+      expect(world.timestep).toBeCloseTo(1 / 60);
     });
 
     it("stores prev state before updating curr for dynamic bodies", async () => {

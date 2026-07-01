@@ -230,7 +230,12 @@ export class DebugPlugin implements Plugin {
     // with the same synthetic dt as gameplay state.
     const gameLoop = this.context.resolve(GameLoopKey);
     const app = this.renderer.application;
-    this.clock = new DebugClock(createPixiTickerHost(app, gameLoop.fixedTimestep));
+    // The clock drives `app.ticker` in milliseconds (Pixi's `deltaMS` unit),
+    // while `gameLoop.fixedTimestep` is in seconds — convert for the default
+    // per-step delta.
+    this.clock = new DebugClock(
+      createPixiTickerHost(app, gameLoop.fixedTimestep * 1000),
+    );
     inspector.attachTimeController(this.clock);
     inspector.setEventLogEnabled(true);
     this.attachToGlobal(this.clock);

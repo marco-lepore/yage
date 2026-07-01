@@ -43,7 +43,7 @@ export class Oscillate extends Component {
   }
 
   update(dt: number): void {
-    this.elapsed += dt / 1000;
+    this.elapsed += dt;
     const t = (this.elapsed * Math.PI * 2) / this.period + this.phase;
     const offset = Math.sin(t) * this.amplitude;
     if (this.axis === "x") {

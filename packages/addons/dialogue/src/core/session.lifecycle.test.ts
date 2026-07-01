@@ -223,13 +223,13 @@ describe("DialogueSession — setPaused (world pause)", () => {
 
     h.session.setPaused(true);
     const updatesBefore = h.text.updates;
-    h.session.update(10_000); // frozen: no channel tick, auto-timer doesn't run
+    h.session.update(10); // frozen: no channel tick, auto-timer doesn't run
     await flush();
     expect(h.text.updates).toBe(updatesBefore); // channel.update NOT pumped
     expect(h.text.presents).toBe(1); // did not auto-advance to "two"
 
     h.session.setPaused(false);
-    h.session.update(200); // resumes — the armed timer now fires
+    h.session.update(0.2); // resumes — the armed timer now fires
     await flush();
     expect(h.text.presents).toBe(2);
   });
@@ -317,13 +317,13 @@ describe("DialogueSession — setPaused (world pause)", () => {
     expect(h.text.presents).toBe(1);
 
     // The armed auto-timer stays frozen until unpause...
-    h.session.update(150);
+    h.session.update(0.15);
     await flush();
     expect(h.text.presents).toBe(1);
 
     // ...then resumes cleanly — the armed timer fires the auto-advance.
     h.session.setPaused(false);
-    h.session.update(150);
+    h.session.update(0.15);
     await flush();
     expect(h.text.presents).toBe(2);
   });
@@ -403,7 +403,7 @@ describe("DialogueSession — observation events (audio/FX hooks)", () => {
     h.session.play(autoScript);
     h.text.finishReveal();
     await flush();
-    h.session.update(150); // expire the 100ms timer
+    h.session.update(0.15); // expire the 100ms (0.1s) timer
     await flush();
     expect(onAutoAdvance).toHaveBeenCalledWith({ scriptId: "auto" });
   });

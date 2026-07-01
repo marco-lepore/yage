@@ -64,8 +64,8 @@ function makeCtx(opts: {
 }
 
 describe("iris", () => {
-  it("defaults to 600ms duration", () => {
-    expect(iris().duration).toBe(600);
+  it("defaults to 0.6s duration", () => {
+    expect(iris().duration).toBe(0.6);
   });
 
   it("accepts custom duration", () => {

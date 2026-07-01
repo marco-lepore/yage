@@ -7,7 +7,7 @@ export class FpsContributor implements DebugContributor {
 
   sample(stats: StatsApi, dt: number): void {
     this.stats = stats;
-    if (dt > 0) stats.push("fps", 1000 / dt);
+    if (dt > 0) stats.push("fps", 1 / dt);
   }
 
   drawHud(api: HudDebugApi): void {

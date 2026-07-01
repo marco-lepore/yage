@@ -32,7 +32,7 @@ Six phases per frame, with a fixed-timestep accumulator for physics:
 6. EndOfFrame     - deferred entity destruction flush
 ```
 
-Fixed timestep default: `1000/60` ms. Max steps per frame: 5 (prevents spiral of death).
+Fixed timestep default: `1/60` s. Max steps per frame: 5 (prevents spiral of death).
 
 ## Engine Setup
 
@@ -77,8 +77,8 @@ class MyComponent extends Component {
   private sprite = this.sibling(SpriteComponent);
 
   onAdd() {}          // added to entity
-  update(dt) {}       // every frame (variable dt in ms)
-  fixedUpdate(dt) {}  // every fixed step (fixed dt in ms)
+  update(dt) {}       // every frame (variable dt in seconds)
+  fixedUpdate(dt) {}  // every fixed step (fixed dt in seconds)
   onRemove() {}       // removed from entity
   onDestroy() {}      // entity destroyed or component removed
 }
@@ -261,12 +261,12 @@ Ongoing actions updated each frame, managed by `ProcessComponent`.
 // Add ProcessComponent to entity
 const pc = entity.add(new ProcessComponent());
 
-// One-off process
-pc.run(Process.delay(500, () => console.log("done")));
-pc.run(Tween.to(obj, "x", 100, 300, easeOutQuad));
+// One-off process (durations in seconds)
+pc.run(Process.delay(0.5, () => console.log("done")));
+pc.run(Tween.to(obj, "x", 100, 0.3, easeOutQuad));
 
 // Reusable slot (cooldowns, effects)
-const cd = pc.slot({ duration: 1000, onComplete: () => fire() });
+const cd = pc.slot({ duration: 1, onComplete: () => fire() });
 cd.start();          // activate
 cd.running;          // boolean
 cd.ratio;            // 0..1 progress
@@ -277,17 +277,17 @@ cd.cancel();
 ### Tween
 
 ```ts
-Tween.to(target, "property", toValue, durationMs, easing);
-Tween.custom(setter, from, to, durationMs, easing);
-Tween.vec2(setter, fromVec, toVec, durationMs, easing);
+Tween.to(target, "property", toValue, durationSeconds, easing);
+Tween.custom(setter, from, to, durationSeconds, easing);
+Tween.vec2(setter, fromVec, toVec, durationSeconds, easing);
 ```
 
 ### Sequence
 
 ```ts
 const seq = new Sequence()
-  .then(Tween.to(obj, "alpha", 0, 300))
-  .wait(200)
+  .then(Tween.to(obj, "alpha", 0, 0.3))
+  .wait(0.2)
   .call(() => console.log("fade done"))
   .parallel(tweenA, tweenB)
   .loop();
@@ -301,8 +301,8 @@ Pre-built entity with `ProcessComponent` API. No manual component wiring:
 
 ```ts
 const timers = scene.spawn(TimerEntity);
-timers.run(Process.delay(500, () => { /* ... */ }));
-const cd = timers.slot({ duration: 300 });
+timers.run(Process.delay(0.5, () => { /* ... */ }));
+const cd = timers.slot({ duration: 0.3 });
 ```
 
 ## Serialization

@@ -10,8 +10,8 @@ import type { Process } from "./Process.js";
  *
  * ```ts
  * const timers = this.spawn(TimerEntity);
- * timers.run(Process.delay(500, () => { ... }));
- * const cd = timers.slot({ duration: 300 });
+ * timers.run(Process.delay(0.5, () => { ... }));
+ * const cd = timers.slot({ duration: 0.3 });
  * ```
  */
 export class TimerEntity extends Entity {

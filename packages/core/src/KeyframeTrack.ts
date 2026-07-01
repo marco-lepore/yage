@@ -6,7 +6,7 @@ import type { EasingFunction } from "./types.js";
 
 /** A single keyframe in an animation track. */
 export interface Keyframe<T extends Interpolatable> {
-  /** Time in ms from the start of the track. */
+  /** Time in seconds from the start of the track. */
   time: number;
   /** Value at this keyframe. */
   data: T;
@@ -26,7 +26,7 @@ export interface KeyframeTrackOptions<T extends Interpolatable> {
    * side-effects with no per-frame value).
    */
   setter?: (value: T) => void;
-  /** Total duration in ms. Defaults to the last keyframe's time. */
+  /** Total duration in seconds. Defaults to the last keyframe's time. */
   duration?: number;
   /** Whether to loop the track. */
   loop?: boolean;
