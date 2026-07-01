@@ -60,8 +60,8 @@ const SCRIPT: DialogueScript = {
   id: "demo",
   start: "intro",
   speakers: {
-    narrator: { id: "narrator", name: "Narrator", color: 0xffd866 },
-    guide: { id: "guide", name: "Guide", color: 0x7ec8ff },
+    narrator: { name: "Narrator", color: 0xffd866 },
+    guide: { name: "Guide", color: 0x7ec8ff },
   },
   nodes: {
     intro: {

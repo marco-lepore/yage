@@ -287,8 +287,12 @@ export interface AvatarRef {
   readonly side?: "left" | "right";
 }
 
+/**
+ * An authored speaker. The speaker's id is its key in the {@link DialogueScript.speakers}
+ * map — the loader stamps it onto a {@link LoadedSpeaker} at load time, so authors
+ * never repeat it. A key/id mismatch is therefore impossible to write.
+ */
 export interface SpeakerDef {
-  readonly id: SpeakerId;
   /** Display name (literal). */
   readonly name: string;
   /** i18n key for the name. */
@@ -296,6 +300,15 @@ export interface SpeakerDef {
   /** Name-plate tint (0xRRGGBB). */
   readonly color?: number;
   readonly avatar?: AvatarRef;
+}
+
+/**
+ * A speaker as the runtime sees it: an authored {@link SpeakerDef} with its `id`
+ * stamped from the `speakers` map key by the loader. Presenters anchor actors by
+ * this `id`; it always equals the map key.
+ */
+export interface LoadedSpeaker extends SpeakerDef {
+  readonly id: SpeakerId;
 }
 
 export interface DialogueScript {
@@ -315,6 +328,16 @@ export interface DialogueScript {
    */
   readonly declare?: VarMap;
 }
+
+/**
+ * A {@link DialogueScript} after {@link loadScript}: structurally validated,
+ * frozen, and with each speaker's `id` stamped from its map key. The runner and
+ * session only ever see this shape, so every `speaker.id` they read equals the
+ * key.
+ */
+export type LoadedScript = Omit<DialogueScript, "speakers"> & {
+  readonly speakers?: Record<SpeakerId, LoadedSpeaker>;
+};
 
 // ── Parsed inline markup (produced by markup.ts) ───────────────────────────
 

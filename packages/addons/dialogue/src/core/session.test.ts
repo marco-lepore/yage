@@ -13,7 +13,13 @@ import type {
   PresentedLine,
   TextChannel,
 } from "./session.js";
-import type { Command, DialogueScript, MarkerToken, SpeakerDef } from "./types.js";
+import type {
+  Command,
+  DialogueScript,
+  LoadedSpeaker,
+  MarkerToken,
+  SpeakerDef,
+} from "./types.js";
 import type { RevealBeat } from "./LineReveal.js";
 
 /**
@@ -114,7 +120,7 @@ class StubChoices implements ChoiceChannel {
 }
 
 class StubAvatar implements AvatarChannel {
-  speakers: (SpeakerDef | undefined)[] = [];
+  speakers: (LoadedSpeaker | undefined)[] = [];
   expressions: (string | undefined)[] = [];
   speaking: boolean[] = [];
   visibles: boolean[] = [];
@@ -122,7 +128,7 @@ class StubAvatar implements AvatarChannel {
   presents: (PresentedLine | undefined)[] = [];
   /** Raw inline markers the Session fanned in (no name-matching by the Session). */
   markers: MarkerToken[] = [];
-  setSpeaker(speaker: SpeakerDef | undefined): void {
+  setSpeaker(speaker: LoadedSpeaker | undefined): void {
     this.speakers.push(speaker);
   }
   setExpression(expression: string | undefined): void {
@@ -396,7 +402,7 @@ describe("DialogueSession — i18n & interpolation", () => {
   it("interpolates variables into line text and speaker names", () => {
     const onLine = vi.fn();
     const h = makeHarness({ onLine });
-    const hero: SpeakerDef = { id: "hero", name: "{playerName}" };
+    const hero: SpeakerDef = { name: "{playerName}" };
     const script: DialogueScript = {
       id: "i18n",
       start: "a",
@@ -1158,7 +1164,7 @@ describe("DialogueSession — preview (side-effect-free lookahead)", () => {
     const script: DialogueScript = {
       id: "preview",
       start: "a",
-      speakers: { npc: { id: "npc", name: "Bee" } },
+      speakers: { npc: { name: "Bee" } },
       nodes: {
         a: {
           id: "a",
@@ -1213,7 +1219,7 @@ describe("DialogueSession — stop / restart", () => {
       id: "stop",
       start: "a",
       nodes: { a: { id: "a", steps: [{ kind: "say", speaker: "s", text: "x" }] } },
-      speakers: { s: { id: "s", name: "S" } },
+      speakers: { s: { name: "S" } },
     };
     h.session.play(script);
     h.session.stop();
@@ -1532,8 +1538,8 @@ describe("DialogueSession — avatar on choices (regression)", () => {
       id: "f46",
       start: "a",
       speakers: {
-        hero: { id: "hero", name: "Hero" },
-        gwen: { id: "gwen", name: "Gwen" },
+        hero: { name: "Hero" },
+        gwen: { name: "Gwen" },
       },
       nodes: {
         a: {
@@ -1562,7 +1568,7 @@ describe("DialogueSession — avatar on choices (regression)", () => {
     const script: DialogueScript = {
       id: "f46b",
       start: "a",
-      speakers: { hero: { id: "hero", name: "Hero" } },
+      speakers: { hero: { name: "Hero" } },
       nodes: {
         a: {
           id: "a",
@@ -2024,7 +2030,7 @@ describe("DialogueSession — line-driven avatar", () => {
         ],
       },
     },
-    speakers: { hero: { id: "hero", name: "Hero" } },
+    speakers: { hero: { name: "Hero" } },
   };
 
   it("calls avatar.present(line) with the line's meta on a say line", () => {

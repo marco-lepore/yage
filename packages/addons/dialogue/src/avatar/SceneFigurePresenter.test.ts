@@ -7,21 +7,21 @@ import {
   type Scene,
 } from "@yagejs/core";
 
-import type { SpeakerDef } from "../core/types.js";
+import type { LoadedSpeaker } from "../core/types.js";
 import { SceneFigurePresenter } from "./SceneFigurePresenter.js";
 
 function setup(): {
   scene: Scene;
   npc: Entity;
   presenter: SceneFigurePresenter;
-  speaker: SpeakerDef;
+  speaker: LoadedSpeaker;
 } {
   const { scene } = createMockScene();
   const npc = scene.spawn("npc");
   npc.add(new Transform({ position: new Vec2(100, 50) }));
   const presenter = new SceneFigurePresenter();
   presenter.mount(scene);
-  const speaker: SpeakerDef = {
+  const speaker: LoadedSpeaker = {
     id: "npc",
     name: "NPC",
     avatar: { kind: "scene", ref: "npc" },

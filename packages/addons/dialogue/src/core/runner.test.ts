@@ -9,8 +9,9 @@ import type {
   CommandContext,
   DialogueFunction,
   DialogueScript,
+  LoadedScript,
+  LoadedSpeaker,
   SayStep,
-  SpeakerDef,
   VariableStorage,
   VarMap,
 } from "./types.js";
@@ -36,10 +37,22 @@ function makeRunner(
     if (!storage.has(name)) storage.set(name, value);
   }
   return new DialogueRunner(
-    script,
+    asLoaded(script),
     { storage, functions: opts.functions ?? {}, onError: opts.onError },
     handlers,
   );
+}
+
+/** Stamp speaker ids from their map key — the loader normalization the runner
+ *  relies on, without the rest of `loadScript`'s validation (these tests feed
+ *  the runner hand-built scripts directly). */
+function asLoaded(script: DialogueScript): LoadedScript {
+  if (!script.speakers) return script as LoadedScript;
+  const speakers: Record<string, LoadedSpeaker> = {};
+  for (const [key, def] of Object.entries(script.speakers)) {
+    speakers[key] = { ...def, id: key };
+  }
+  return { ...script, speakers };
 }
 
 /**
@@ -980,8 +993,8 @@ describe("DialogueRunner — skip / fast-forward", () => {
 
 describe("DialogueRunner — speaker resolution", () => {
   it("resolves a say step's speaker from the script's speakers table", () => {
-    const npc: SpeakerDef = { id: "npc", name: "Witch", color: 0xff00ff };
-    const seen: (SpeakerDef | undefined)[] = [];
+    const npc = { name: "Witch", color: 0xff00ff };
+    const seen: (LoadedSpeaker | undefined)[] = [];
     const script: DialogueScript = {
       id: "speakers",
       start: "a",
@@ -1004,7 +1017,7 @@ describe("DialogueRunner — speaker resolution", () => {
     });
     runner.start();
     runner.advance();
-    expect(seen[0]).toBe(npc);
+    expect(seen[0]).toEqual({ id: "npc", name: "Witch", color: 0xff00ff });
     expect(seen[1]).toBeUndefined();
   });
 });

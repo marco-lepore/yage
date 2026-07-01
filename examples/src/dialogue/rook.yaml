@@ -5,7 +5,7 @@
 id: rook
 start: n
 speakers:
-  rook: { id: rook, name: Rook, color: 0xff6b6b }
+  rook: { name: Rook, color: 0xff6b6b }
 nodes:
   n:
     id: n

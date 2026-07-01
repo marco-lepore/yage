@@ -3,7 +3,7 @@ id: mira
 start: n
 declare: { timesTalked: 0 }
 speakers:
-  mira: { id: mira, name: Mira, color: 0xffd866 }
+  mira: { name: Mira, color: 0xffd866 }
 nodes:
   n:
     id: n

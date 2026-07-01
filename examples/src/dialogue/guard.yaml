@@ -4,7 +4,7 @@ id: guard
 start: n
 declare: { opened: false }
 speakers:
-  bron: { id: bron, name: Gate Guard Bron, color: 0xff9a6b }
+  bron: { name: Gate Guard Bron, color: 0xff9a6b }
 nodes:
   n:
     id: n

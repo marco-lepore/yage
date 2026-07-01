@@ -11,7 +11,7 @@
 import type { Scene } from "@yagejs/core";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { PresentedLine } from "../core/session.js";
-import type { MarkerToken, SpeakerDef } from "../core/types.js";
+import type { LoadedSpeaker, MarkerToken } from "../core/types.js";
 import { lineRoutesToBubble, type MountRoute } from "./route.js";
 
 export class CompositeAvatarPresenter implements AvatarPresenter {
@@ -27,7 +27,7 @@ export class CompositeAvatarPresenter implements AvatarPresenter {
     this.bubble.mount(scene);
   }
 
-  setSpeaker(speaker: SpeakerDef | undefined): void {
+  setSpeaker(speaker: LoadedSpeaker | undefined): void {
     this.box.setSpeaker(speaker);
     this.bubble.setSpeaker(speaker);
   }

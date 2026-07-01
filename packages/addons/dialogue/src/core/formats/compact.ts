@@ -83,11 +83,11 @@ export function parseCompact(text: string): DialogueScript {
   lines.forEach((raw, i) => {
     const line = raw.trim();
     if (!line.startsWith("@")) return;
-    const def = parseSpeaker(line, i + 1);
-    if (Object.hasOwn(speakers, def.id)) {
-      fail(i + 1, `duplicate speaker "${def.id}"`);
+    const { id, def } = parseSpeaker(line, i + 1);
+    if (Object.hasOwn(speakers, id)) {
+      fail(i + 1, `duplicate speaker "${id}"`);
     }
-    speakers[def.id] = def;
+    speakers[id] = def;
   });
 
   // Pass 2: the script id, nodes, and steps. The current choice run is buffered
@@ -196,7 +196,10 @@ export function loadCompact(text: string): DialogueScript {
 
 // ── Speakers (`@ id Name [#hex]`) ────────────────────────────────────────────
 
-function parseSpeaker(line: string, lineNo: number): SpeakerDef {
+function parseSpeaker(
+  line: string,
+  lineNo: number,
+): { id: string; def: SpeakerDef } {
   const tokens = line.slice(1).trim().split(/\s+/).filter(Boolean);
   const id = tokens[0];
   if (!id) fail(lineNo, "'@' speaker directive needs an id");
@@ -209,8 +212,10 @@ function parseSpeaker(line: string, lineNo: number): SpeakerDef {
   }
   return {
     id,
-    name: nameTokens.length > 0 ? nameTokens.join(" ") : id,
-    ...(color !== undefined ? { color } : {}),
+    def: {
+      name: nameTokens.length > 0 ? nameTokens.join(" ") : id,
+      ...(color !== undefined ? { color } : {}),
+    },
   };
 }
 

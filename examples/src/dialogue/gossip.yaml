@@ -2,8 +2,8 @@
 id: gossip
 start: a
 speakers:
-  ann: { id: ann, name: Ann, color: 0xf5a168 }
-  bert: { id: bert, name: Bert, color: 0xaaaaaa }
+  ann: { name: Ann, color: 0xf5a168 }
+  bert: { name: Bert, color: 0xaaaaaa }
 nodes:
   a:
     id: a

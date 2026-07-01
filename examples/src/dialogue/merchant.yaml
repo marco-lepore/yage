@@ -4,7 +4,7 @@
 id: merchant
 start: n
 speakers:
-  vex: { id: vex, name: Vex the Trader, color: 0xe6a3ff }
+  vex: { name: Vex the Trader, color: 0xe6a3ff }
 nodes:
   n:
     id: n

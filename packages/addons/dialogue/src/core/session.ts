@@ -37,11 +37,12 @@ import type {
   DialogueHandle,
   DialoguePlayOptions,
   DialogueScript,
+  LoadedScript,
+  LoadedSpeaker,
   MarkerToken,
   ParsedText,
   RunMode,
   SayStep,
-  SpeakerDef,
   VariableStorage,
   VarMap,
 } from "./types.js";
@@ -169,7 +170,7 @@ export interface ChoiceChannel {
 
 /** Avatar channel — who's talking + their expression + talk state. */
 export interface AvatarChannel {
-  setSpeaker(speaker: SpeakerDef | undefined): void;
+  setSpeaker(speaker: LoadedSpeaker | undefined): void;
   setExpression(expression: string | undefined): void;
   setSpeaking(speaking: boolean): void;
   /**
@@ -342,7 +343,7 @@ export class DialogueSession {
   // (e.g. `stop()` nulling the cursor) is legal under the repo's
   // `exactOptionalPropertyTypes`.
   private runner: DialogueRunner | undefined;
-  private script: DialogueScript | undefined;
+  private script: LoadedScript | undefined;
   private mode: Mode = "idle";
   private scriptId = "";
 
@@ -1058,7 +1059,7 @@ export class DialogueSession {
 
   // ── runner handlers ─────────────────────────────────────────────────────
 
-  private handleSay(step: SayStep, speaker: SpeakerDef | undefined): void {
+  private handleSay(step: SayStep, speaker: LoadedSpeaker | undefined): void {
     this.mode = "saying";
     this.saying = step;
     this.autoTimer = undefined;
@@ -1123,7 +1124,7 @@ export class DialogueSession {
   private handleChoice(
     step: ChoiceStep,
     choices: readonly ResolvedChoice[],
-    speaker: SpeakerDef | undefined,
+    speaker: LoadedSpeaker | undefined,
   ): void {
     this.mode = "choosing";
     this.resolved = choices;
@@ -1331,7 +1332,7 @@ export class DialogueSession {
   }
 
   private speakerName(
-    speaker: SpeakerDef | undefined,
+    speaker: LoadedSpeaker | undefined,
     view: VarMap,
   ): string | undefined {
     if (!speaker) return undefined;
@@ -1339,7 +1340,7 @@ export class DialogueSession {
   }
 
   private speakerView(
-    speaker: SpeakerDef | undefined,
+    speaker: LoadedSpeaker | undefined,
     view: VarMap,
   ): SpeakerView | undefined {
     if (!speaker) return undefined;

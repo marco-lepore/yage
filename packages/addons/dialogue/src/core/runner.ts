@@ -22,10 +22,10 @@ import type {
   CommandContext,
   Condition,
   DialogueFunction,
-  DialogueScript,
+  LoadedScript,
+  LoadedSpeaker,
   RunMode,
   SayStep,
-  SpeakerDef,
   Step,
   VariableStorage,
   VarMap,
@@ -62,12 +62,12 @@ export interface ResolvedChoice {
 
 export interface RunnerHandlers {
   /** A line is ready to display. Runner waits for `advance()`. */
-  onSay(step: SayStep, speaker: SpeakerDef | undefined): void;
+  onSay(step: SayStep, speaker: LoadedSpeaker | undefined): void;
   /** Choices are ready. Runner waits for `choose(index)`. `prompt` pre-resolved by host. */
   onChoice(
     step: ChoiceStep,
     choices: readonly ResolvedChoice[],
-    speaker: SpeakerDef | undefined,
+    speaker: LoadedSpeaker | undefined,
   ): void;
   /**
    * A non-built-in command fired (give-item, play-sfx, …). May return a promise;
@@ -99,7 +99,7 @@ export class DialogueRunner {
   private readonly onError: ((message: string, error: unknown) => void) | undefined;
 
   constructor(
-    private readonly script: DialogueScript,
+    private readonly script: LoadedScript,
     /** The variable storage + functions (built by the session per play()). */
     env: RunnerEnv,
     private readonly handlers: RunnerHandlers,
@@ -280,7 +280,7 @@ export class DialogueRunner {
     return this.script.nodes[this.nodeId]?.steps[this.stepIndex];
   }
 
-  private speaker(id: string | undefined): SpeakerDef | undefined {
+  private speaker(id: string | undefined): LoadedSpeaker | undefined {
     return id ? this.script.speakers?.[id] : undefined;
   }
 

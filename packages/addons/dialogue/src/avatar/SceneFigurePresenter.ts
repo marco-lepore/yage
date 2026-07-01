@@ -9,7 +9,7 @@
  */
 
 import { Transform, type Entity, type Scene } from "@yagejs/core";
-import type { MarkerToken, SpeakerDef } from "../core/types.js";
+import type { LoadedSpeaker, MarkerToken } from "../core/types.js";
 import { actorRegistryFor, type DialogueActor } from "../actor/index.js";
 import { applyExpressionMarker, type AvatarPresenter } from "./AvatarPresenter.js";
 
@@ -43,7 +43,7 @@ export class SceneFigurePresenter implements AvatarPresenter {
     this.scene = scene;
   }
 
-  setSpeaker(speaker: SpeakerDef | undefined): void {
+  setSpeaker(speaker: LoadedSpeaker | undefined): void {
     this.releaseBob();
     const av = speaker?.avatar;
     if (!av || av.kind !== "scene" || !this.scene) {
