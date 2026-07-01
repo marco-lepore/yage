@@ -117,7 +117,6 @@ class BouncingBall extends Component {
   }
 
   update(dt: number): void {
-    const dtSec = dt / 1000;
     const bounds = this.renderer.visibleCanvasRect;
     const minX = bounds.x + this.radius;
     const maxX = bounds.x + bounds.width - this.radius;
@@ -125,8 +124,8 @@ class BouncingBall extends Component {
     const maxY = bounds.y + bounds.height - this.radius;
 
     const p = this.transform.position;
-    let nx = p.x + this.velocity.x * dtSec;
-    let ny = p.y + this.velocity.y * dtSec;
+    let nx = p.x + this.velocity.x * dt;
+    let ny = p.y + this.velocity.y * dt;
     if (nx < minX || nx > maxX) {
       this.velocity = new Vec2(-this.velocity.x, this.velocity.y);
       nx = Math.min(Math.max(nx, minX), maxX);

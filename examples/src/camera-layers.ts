@@ -39,7 +39,7 @@ const WORLD_EXTENT = 3000;
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
-  private readonly speed = 0.3;
+  private readonly speed = 300;
 
   constructor(
     private readonly camera: CameraEntity,
@@ -69,7 +69,7 @@ class PlayerController extends Component {
     }
 
     if (this.input.isJustPressed("shake")) {
-      this.camera.shake(8, 400, { decay: 0.85 });
+      this.camera.shake(8, 0.4, { decay: 0.85 });
     }
     if (this.input.isJustPressed("pause")) {
       void engine.scenes.push(new PauseScene());

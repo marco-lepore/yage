@@ -15,9 +15,9 @@ export interface EffectHandle {
   setEnabled(on: boolean): void;
   /** Whether the effect is currently enabled. */
   readonly enabled: boolean;
-  /** Tween the effect's primary intensity 0 → 1 over `duration` ms. */
+  /** Tween the effect's primary intensity 0 → 1 over `duration` seconds. */
   fadeIn(duration: number): Process;
-  /** Tween the effect's primary intensity → 0 over `duration` ms. */
+  /** Tween the effect's primary intensity → 0 over `duration` seconds. */
   fadeOut(duration: number): Process;
   /**
    * Schedule a `Process` scoped to this effect's lifetime. The process is

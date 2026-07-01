@@ -75,15 +75,15 @@ describe("createVoiceChannel", () => {
     });
 
     voice.present?.(line("a"));
-    voice.update?.(400);
+    voice.update?.(0.4); // dt is seconds → 400ms
     expect(voice.isRevealComplete?.()).toBe(false); // under budget
     expect(errors).toHaveLength(0);
 
-    voice.update?.(200); // 600 > 500
+    voice.update?.(0.2); // 600ms > 500ms
     expect(voice.isRevealComplete?.()).toBe(true); // gate force-released
     expect(errors).toHaveLength(1);
 
-    voice.update?.(1000); // no re-fire once tripped
+    voice.update?.(1); // no re-fire once tripped
     expect(errors).toHaveLength(1);
   });
 

@@ -66,6 +66,7 @@ const v = input.getAxis("up", "down");
 
 // Or get both axes as a Vec2 in one call:
 const dir = input.getVector("left", "right", "up", "down");
+// `speed` is in pixels per second; `dt` is in seconds.
 entity.transform.translate(dir.x * speed * dt, dir.y * speed * dt);
 ```
 

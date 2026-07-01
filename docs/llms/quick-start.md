@@ -41,7 +41,7 @@ import { RendererPlugin } from "@yagejs/renderer";
 import { InputPlugin } from "@yagejs/input";
 import { PhysicsPlugin } from "@yagejs/physics";
 
-const engine = new Engine({ debug: true, fixedTimestep: 1000 / 60 });
+const engine = new Engine({ debug: true, fixedTimestep: 1 / 60 });
 engine.use(new RendererPlugin({ width: 800, height: 600, container: document.getElementById("game")! }));
 engine.use(new InputPlugin({ actions: { jump: ["Space", "KeyW"] } }));
 engine.use(new PhysicsPlugin({ gravity: { x: 0, y: 980 } }));

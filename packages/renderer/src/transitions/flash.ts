@@ -5,7 +5,7 @@ import { RendererKey } from "../types.js";
 import { getSceneContainer } from "./helpers.js";
 
 export interface FlashOptions {
-  /** Flash duration in ms. Default: 200. */
+  /** Flash duration in seconds. Default: 0.2. */
   duration?: number;
   /** Flash color as a hex number. Default: 0xffffff. */
   color?: number;
@@ -28,7 +28,7 @@ export interface FlashOptions {
  *   and the destination beneath shows through as the flash tapers.
  */
 export function flash(opts: FlashOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 200;
+  const duration = opts.duration ?? 0.2;
   const color = opts.color ?? 0xffffff;
   const coverScreen = opts.coverScreen ?? false;
 

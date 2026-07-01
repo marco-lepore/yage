@@ -134,9 +134,9 @@ class PaddleAI extends Component {
 
   // onAdd runs once when the component is attached to an entity
   onAdd() {
-    // ProcessSlot is a timer — fires onComplete every 350ms
+    // ProcessSlot is a timer — fires onComplete every 0.35s
     this.slot = this.proc.slot({
-      duration: 350,
+      duration: 0.35,
       onComplete: () => { this.react(); this.slot.restart(); },
     });
     this.slot.start();

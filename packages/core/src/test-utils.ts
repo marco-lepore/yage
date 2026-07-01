@@ -62,7 +62,14 @@ export function createMockEntity(name = "mock-entity"): {
   return { entity, scene, context };
 }
 
-/** Advance the game loop by N frames (manual tick). */
+/**
+ * Advance the game loop by N frames (manual tick).
+ *
+ * `dtMs` is the per-frame wall-clock delta in milliseconds, matching what a
+ * PixiJS ticker reports. The loop converts it to seconds internally, so a
+ * component's `update(dt)` sees `dtMs / 1000` seconds. The default `1000 / 60`
+ * is one 60fps frame (≈16.67ms → ≈0.0167s).
+ */
 export function advanceFrames(
   engine: Engine,
   n: number,

@@ -67,7 +67,7 @@ export class ProcessComponent extends Component {
   }
 
   /**
-   * Advance all processes and slots by dt milliseconds and remove completed one-offs.
+   * Advance all processes and slots by dt seconds and remove completed one-offs.
    * @internal — called by ProcessSystem
    */
   _tick(dt: number): void {

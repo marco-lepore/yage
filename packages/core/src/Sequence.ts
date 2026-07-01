@@ -25,14 +25,14 @@ export class Sequence {
     return this;
   }
 
-  /** Add a delay in ms. */
-  wait(ms: number): this {
+  /** Add a delay in seconds. */
+  wait(seconds: number): this {
     this.steps.push({
       type: "single",
       factories: [
         () =>
           new Process({
-            duration: ms,
+            duration: seconds,
             update: () => {},
           }),
       ],

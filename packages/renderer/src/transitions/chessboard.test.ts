@@ -71,8 +71,8 @@ function makeCtx(opts: {
 }
 
 describe("chessboard", () => {
-  it("defaults to 700ms duration", () => {
-    expect(chessboard().duration).toBe(700);
+  it("defaults to 0.7s duration", () => {
+    expect(chessboard().duration).toBe(0.7);
   });
 
   it("accepts custom duration", () => {

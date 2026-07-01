@@ -64,8 +64,8 @@ function makeCtx(opts: {
 }
 
 describe("slidePush", () => {
-  it("defaults to 500ms duration", () => {
-    expect(slidePush().duration).toBe(500);
+  it("defaults to 0.5s duration", () => {
+    expect(slidePush().duration).toBe(0.5);
   });
 
   it("accepts custom duration", () => {

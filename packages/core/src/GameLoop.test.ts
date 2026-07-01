@@ -14,9 +14,9 @@ function createCallbacks() {
 }
 
 describe("GameLoop", () => {
-  it("defaults to ~60fps fixed timestep", () => {
+  it("defaults to ~60fps fixed timestep in seconds", () => {
     const loop = new GameLoop();
-    expect(loop.fixedTimestep).toBeCloseTo(1000 / 60);
+    expect(loop.fixedTimestep).toBeCloseTo(1 / 60);
   });
 
   it("defaults maxFixedStepsPerFrame to 5", () => {
@@ -26,16 +26,16 @@ describe("GameLoop", () => {
 
   it("accepts custom config", () => {
     const loop = new GameLoop({
-      fixedTimestep: 20,
+      fixedTimestep: 0.02,
       maxFixedStepsPerFrame: 3,
     });
-    expect(loop.fixedTimestep).toBe(20);
+    expect(loop.fixedTimestep).toBe(0.02);
     expect(loop.maxFixedStepsPerFrame).toBe(3);
   });
 
   describe("tick()", () => {
     it("calls phases in correct order", () => {
-      const loop = new GameLoop({ fixedTimestep: 16 });
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
       const order: string[] = [];
       loop.setCallbacks({
         earlyUpdate: () => order.push("early"),
@@ -50,56 +50,56 @@ describe("GameLoop", () => {
       expect(order).toEqual(["early", "fixed", "update", "late", "render", "end"]);
     });
 
-    it("runs multiple fixed steps when dt > fixedTimestep", () => {
-      const loop = new GameLoop({ fixedTimestep: 10 });
+    it("converts the incoming ms delta to seconds for variable phases", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
-      loop.tick(25); // Should run 2 fixed steps (25 / 10 = 2, remainder 5)
+      loop.tick(20); // 20ms → 0.02s
+      expect(cbs.earlyUpdate).toHaveBeenCalledWith(0.02);
+      expect(cbs.update).toHaveBeenCalledWith(0.02);
+      expect(cbs.lateUpdate).toHaveBeenCalledWith(0.02);
+      expect(cbs.render).toHaveBeenCalledWith(0.02);
+      expect(cbs.endOfFrame).toHaveBeenCalledWith(0.02);
+    });
+
+    it("runs multiple fixed steps when dt > fixedTimestep", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
+      const cbs = createCallbacks();
+      loop.setCallbacks(cbs);
+      loop.start();
+      loop.tick(25); // 0.025s → 2 fixed steps, remainder 0.005s
       expect(cbs.fixedUpdate).toHaveBeenCalledTimes(2);
-      expect(cbs.fixedUpdate).toHaveBeenCalledWith(10);
+      expect(cbs.fixedUpdate).toHaveBeenCalledWith(0.01);
     });
 
     it("accumulates remainder across frames", () => {
-      const loop = new GameLoop({ fixedTimestep: 10 });
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
-      loop.tick(8); // accumulator = 8, no fixed step
+      loop.tick(8); // accumulator = 0.008s, no fixed step
       expect(cbs.fixedUpdate).toHaveBeenCalledTimes(0);
-      loop.tick(5); // accumulator = 13, one fixed step
+      loop.tick(5); // accumulator = 0.013s, one fixed step
       expect(cbs.fixedUpdate).toHaveBeenCalledTimes(1);
     });
 
     it("caps fixed steps at maxFixedStepsPerFrame", () => {
-      const loop = new GameLoop({ fixedTimestep: 10, maxFixedStepsPerFrame: 3 });
+      const loop = new GameLoop({ fixedTimestep: 0.01, maxFixedStepsPerFrame: 3 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
-      loop.tick(100); // Would be 10 steps, capped at 3
+      loop.tick(100); // 0.1s would be 10 steps, capped at 3
       expect(cbs.fixedUpdate).toHaveBeenCalledTimes(3);
     });
 
-    it("passes dt to non-fixed phases", () => {
-      const loop = new GameLoop({ fixedTimestep: 16 });
-      const cbs = createCallbacks();
-      loop.setCallbacks(cbs);
-      loop.start();
-      loop.tick(20);
-      expect(cbs.earlyUpdate).toHaveBeenCalledWith(20);
-      expect(cbs.update).toHaveBeenCalledWith(20);
-      expect(cbs.lateUpdate).toHaveBeenCalledWith(20);
-      expect(cbs.render).toHaveBeenCalledWith(20);
-      expect(cbs.endOfFrame).toHaveBeenCalledWith(20);
-    });
-
-    it("passes fixedTimestep to fixedUpdate", () => {
-      const loop = new GameLoop({ fixedTimestep: 16 });
+    it("passes fixedTimestep (seconds) to fixedUpdate", () => {
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
       loop.tick(16);
-      expect(cbs.fixedUpdate).toHaveBeenCalledWith(16);
+      expect(cbs.fixedUpdate).toHaveBeenCalledWith(0.016);
     });
 
     it("does nothing without callbacks", () => {
@@ -108,7 +108,7 @@ describe("GameLoop", () => {
     });
 
     it("ignores ticks before start", () => {
-      const loop = new GameLoop({ fixedTimestep: 16 });
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
 
@@ -134,6 +134,28 @@ describe("GameLoop", () => {
       expect(loop.frameCount).toBe(1);
       loop.tick(16);
       expect(loop.frameCount).toBe(2);
+    });
+
+    it("reaches a seconds-based timer threshold after the expected frame count", () => {
+      // Regression: a component doing `timer += dt` against a 0.28s threshold
+      // must take ~17 frames at 60fps, not a single frame (which is what
+      // happened when dt was delivered in milliseconds).
+      const loop = new GameLoop({ fixedTimestep: 1 / 60 });
+      let timer = 0;
+      let firedAtFrame = -1;
+      let frame = 0;
+      loop.setCallbacks({
+        ...createCallbacks(),
+        update: (dt) => {
+          timer += dt;
+          frame++;
+          if (firedAtFrame < 0 && timer >= 0.28) firedAtFrame = frame;
+        },
+      });
+      loop.start();
+      for (let i = 0; i < 30; i++) loop.tick(1000 / 60);
+      // 0.28 / (1/60) ≈ 16.8 → first crossed on frame 17.
+      expect(firedAtFrame).toBe(17);
     });
   });
 
@@ -194,7 +216,7 @@ describe("GameLoop", () => {
       }
 
       try {
-        const loop = new GameLoop({ fixedTimestep: 16 });
+        const loop = new GameLoop({ fixedTimestep: 0.016 });
         const cbs = createCallbacks();
         loop.setCallbacks(cbs);
         loop.start();
@@ -248,7 +270,7 @@ describe("GameLoop", () => {
       globalThis.cancelAnimationFrame = vi.fn();
 
       try {
-        const loop = new GameLoop({ fixedTimestep: 16 });
+        const loop = new GameLoop({ fixedTimestep: 0.016 });
         const cbs = createCallbacks();
         loop.setCallbacks(cbs);
         loop.start();
@@ -281,43 +303,43 @@ describe("GameLoop", () => {
 
   describe("interpolationAlpha", () => {
     it("is 0 initially", () => {
-      const loop = new GameLoop({ fixedTimestep: 10 });
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
       loop.start();
       expect(loop.interpolationAlpha).toBe(0);
       loop.stop();
     });
 
     it("returns correct ratio after partial tick", () => {
-      const loop = new GameLoop({ fixedTimestep: 10 });
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
-      loop.tick(7); // accumulator = 7, no fixed step → alpha = 7/10
+      loop.tick(7); // accumulator = 0.007s, no fixed step → alpha = 0.7
       expect(loop.interpolationAlpha).toBeCloseTo(0.7);
     });
 
     it("is 0 after exact fixed step", () => {
-      const loop = new GameLoop({ fixedTimestep: 10 });
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
-      loop.tick(10); // accumulator = 10, one fixed step, remainder = 0
+      loop.tick(10); // accumulator = 0.01s, one fixed step, remainder = 0
       expect(loop.interpolationAlpha).toBeCloseTo(0);
     });
 
     it("returns remainder ratio after overshoot", () => {
-      const loop = new GameLoop({ fixedTimestep: 10 });
+      const loop = new GameLoop({ fixedTimestep: 0.01 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
       loop.start();
-      loop.tick(13); // accumulator = 13, one fixed step, remainder = 3 → alpha = 3/10
+      loop.tick(13); // accumulator = 0.013s, one step, remainder 0.003s → alpha 0.3
       expect(loop.interpolationAlpha).toBeCloseTo(0.3);
     });
   });
 
   describe("attachTicker", () => {
     it("uses external ticker instead of rAF", () => {
-      const loop = new GameLoop({ fixedTimestep: 16 });
+      const loop = new GameLoop({ fixedTimestep: 0.016 });
       const cbs = createCallbacks();
       loop.setCallbacks(cbs);
 

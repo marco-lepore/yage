@@ -310,14 +310,14 @@ describe("DialogueSession — auto-advance clock", () => {
     };
     h.session.play(script);
     // Clock should not tick before reveal completes.
-    h.session.update(500);
+    h.session.update(0.5);
     expect(h.text.lastText).toBe("one");
 
     h.text.finishReveal(); // settles reveal; the auto-timer is armed async
     await flush(); // let handleRevealComplete arm the 100ms timer
-    h.session.update(60);
+    h.session.update(0.06);
     expect(h.text.lastText).toBe("one"); // not yet
-    h.session.update(60); // total 120 > 100 → advance
+    h.session.update(0.06); // total 0.12s > 0.1s → advance
     await flush();
     expect(h.text.lastText).toBe("two");
   });
@@ -342,9 +342,9 @@ describe("DialogueSession — auto-advance clock", () => {
     h.session.play(twoPlain);
     h.text.finishReveal();
     await flush();
-    h.session.update(60);
-    expect(h.text.lastText).toBe("one"); // 60 < 100, still waiting
-    h.session.update(60); // 120 > 100 → advance via the default
+    h.session.update(0.06);
+    expect(h.text.lastText).toBe("one"); // 0.06s < 0.1s, still waiting
+    h.session.update(0.06); // 0.12s > 0.1s → advance via the default
     await flush();
     expect(h.text.lastText).toBe("two");
   });
@@ -368,7 +368,7 @@ describe("DialogueSession — auto-advance clock", () => {
     h.session.play(script);
     h.text.finishReveal();
     await flush();
-    h.session.update(60); // 60 > the per-line 50 → advance
+    h.session.update(0.06); // 0.06s > the per-line 0.05s → advance
     await flush();
     expect(h.text.lastText).toBe("two");
   });
@@ -380,7 +380,7 @@ describe("DialogueSession — auto-advance clock", () => {
     h.session.play(twoPlain);
     h.text.finishReveal();
     await flush();
-    h.session.update(10_000);
+    h.session.update(10);
     expect(h.text.lastText).toBe("one"); // never auto-advances
   });
 
@@ -389,10 +389,10 @@ describe("DialogueSession — auto-advance clock", () => {
     h.session.play(twoPlain);
     h.text.finishReveal(); // line one sits revealed, no timer armed
     await flush();
-    h.session.update(10_000);
+    h.session.update(10);
     expect(h.text.lastText).toBe("one"); // still parked (auto off)
     h.session.setAutoAdvance(100); // arm now, mid-line
-    h.session.update(120);
+    h.session.update(0.12);
     await flush();
     expect(h.text.lastText).toBe("two");
   });
@@ -1350,13 +1350,13 @@ describe("DialogueSession — command-gate races (regressions)", () => {
     await flush();
     h.text.finishReveal(); // arms the 50ms auto-timer; show command still blocking
     await flush();
-    h.session.update(100); // timer expires while gated — must not be swallowed
+    h.session.update(0.1); // timer expires while gated — must not be swallowed
     await flush();
     expect(h.text.lastText).toBe("one");
     open();
     await gate;
     await flush();
-    h.session.update(1); // retried once unblocked — fires exactly once
+    h.session.update(0.02); // retried once unblocked — fires exactly once
     await flush();
     expect(h.text.lastText).toBe("two");
   });

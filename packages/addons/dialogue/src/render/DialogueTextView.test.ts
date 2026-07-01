@@ -20,7 +20,7 @@ const CFG: DialogueTextConfig = {
   textSize: 16,
   lineHeight: 20,
   textColor: 0xffffff,
-  charsPerSec: 1000,
+  charsPerSec: 1, // 1 grapheme/second, so update(n seconds) reveals n graphemes
   layer: "dialogue-text",
 };
 
@@ -29,13 +29,13 @@ describe("DialogueTextView — pause clamp", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
     view.setRevealListener(() => completed++);
-    // 20 chars at 1000 chars/s with a 400ms pause after char 10.
+    // 20 chars at 1 char/s with a 400ms (0.4s) pause after char 10.
     view.show(parseMarkup("0123456789[pause=400/]abcdefghij"));
 
     view.update(15); // one frame overshoots the pause (cursor would hit 15)
     view.update(400); // sit out the pause
-    // With the cursor clamped back to 10, ten characters (10ms) remain. An
-    // unclamped cursor (15) would have finished within the next 6ms.
+    // With the cursor clamped back to 10, ten characters (10s) remain. An
+    // unclamped cursor (15) would have finished within the next 6s.
     view.update(6);
     expect(completed).toBe(0);
     view.update(5);
@@ -48,7 +48,7 @@ describe("DialogueTextView — grapheme reveal units", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
     view.setRevealListener(() => completed++);
-    // 4 graphemes but 8 code units at 1000 graphemes/s → done in 4ms, not 8.
+    // 4 graphemes but 8 code units → done at 4 graphemes, not 8.
     view.show(parseMarkup("🔥🔥🔥🔥"));
 
     view.update(3);
@@ -66,7 +66,7 @@ describe("DialogueTextView — grapheme reveal units", () => {
 
     view.update(3); // overshoots the pause at 2; cursor clamps back to it
     view.update(400); // sit out the pause
-    // 2 graphemes (2ms) remain — code-unit bookkeeping would need 4 more ms.
+    // 2 graphemes (2s) remain — code-unit bookkeeping would need 4 more.
     view.update(1);
     expect(completed).toBe(0);
     view.update(1);
@@ -77,8 +77,8 @@ describe("DialogueTextView — grapheme reveal units", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
     view.setRevealListener(() => completed++);
-    // Run 1: 2 graphemes (4 code units) at 1x → 2ms. Run 2: 2 graphemes at
-    // 0.5x → 4ms. Code-unit bookkeeping would still be in run 1 (4 units) at
+    // Run 1: 2 graphemes (4 code units) at 1x → 2s. Run 2: 2 graphemes at
+    // 0.5x → 4s. Code-unit bookkeeping would still be in run 1 (4 units) at
     // cursor 2-4 and finish on a different clock.
     view.show(parseMarkup("🔥🔥[speed=0.5]ab[/speed]"));
 
@@ -155,7 +155,7 @@ describe("DialogueTextView — delta reveal", () => {
     const chars = Array.from({ length: 6 }, () => instrumentedChar(counter));
     internals.line = { entity: undefined, comp: undefined, chars, effectMetas: [] };
 
-    view.update(2); // 1000 graphemes/s → 2 shown; writes [0, 2)
+    view.update(2); // 1 grapheme/s → 2 shown; writes [0, 2)
     expect(chars.map((c) => c.visible)).toEqual([true, true, false, false, false, false]);
     expect(counter.writes).toBe(2);
 

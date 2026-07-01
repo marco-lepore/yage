@@ -16,16 +16,16 @@ import {
 } from "@yagejs/renderer";
 
 // Push with a fade
-await engine.scenes.push(nextScene, { transition: fade({ duration: 400 }) });
+await engine.scenes.push(nextScene, { transition: fade({ duration: 0.4 }) });
 
 // Pop with a flash
-await engine.scenes.pop({ transition: flash({ duration: 200, color: 0xff0000 }) });
+await engine.scenes.pop({ transition: flash({ duration: 0.2, color: 0xff0000 }) });
 
 // Replace with a cross-dissolve
-await engine.scenes.replace(newScene, { transition: crossFade({ duration: 500 }) });
+await engine.scenes.replace(newScene, { transition: crossFade({ duration: 0.5 }) });
 
 // Iris-out → swap → iris-in (Zelda-style)
-await engine.scenes.replace(nextScene, { transition: iris({ duration: 700 }) });
+await engine.scenes.replace(nextScene, { transition: iris({ duration: 0.7 }) });
 
 // Checkerboard wipe with a custom grid
 await engine.scenes.push(nextScene, { transition: chessboard({ rows: 4, cols: 6 }) });
@@ -36,7 +36,7 @@ await engine.scenes.push(nextScene, { transition: slidePush({ direction: "left" 
 // Per-scene default
 class MenuScene extends Scene {
   readonly name = "menu";
-  readonly defaultTransition = fade({ duration: 300 });
+  readonly defaultTransition = fade({ duration: 0.3 });
 }
 ```
 
@@ -44,14 +44,14 @@ class MenuScene extends Scene {
 
 ```ts
 interface SceneTransition {
-  readonly duration: number;           // Total wall-clock ms
+  readonly duration: number;           // Total wall-clock seconds
   begin?(ctx: SceneTransitionContext): void;
   tick(dt: number, ctx: SceneTransitionContext): void;
   end?(ctx: SceneTransitionContext): void;
 }
 
 interface SceneTransitionContext {
-  readonly elapsed: number;            // Wall-clock ms since begin()
+  readonly elapsed: number;            // Wall-clock seconds since begin()
   readonly kind: "push" | "pop" | "replace";
   readonly engineContext: EngineContext;
   readonly fromScene: Scene | undefined;
@@ -60,7 +60,7 @@ interface SceneTransitionContext {
 ```
 
 - `begin` — set up resources, paint start state
-- `tick` — called each frame with frame `dt` in ms; `ctx.elapsed` is clamped to `duration`
+- `tick` — called each frame with frame `dt` in seconds; `ctx.elapsed` is clamped to `duration`
 - `end` — tear down; called before the old scene is removed from the stack
 
 ## Built-ins
@@ -70,13 +70,13 @@ transitions. All built-ins live in `@yagejs/renderer` (PIXI-based).
 
 | Function | Description |
 |---|---|
-| `fade({ duration?, color?, coverScreen? })` | Triangle alpha ramp: fade out → fade in. Scene swap happens under the fully-opaque mid-point. Default 300ms, black, play-area-only. |
-| `flash({ duration?, color?, coverScreen? })` | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 200ms, white, play-area-only. |
-| `crossFade({ duration? })` | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 400ms. |
-| `iris({ duration?, color?, center?, coverScreen? })` | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. `center` is in virtual pixels. Default 600ms, black, virtual-center, play-area-only. |
-| `irisReveal({ duration?, center?, easing? })` | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 600ms, virtual-center, linear. |
-| `chessboard({ duration?, rows?, cols? })` | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even-parity cells grow over `[0, 0.7]`, odd-parity over `[0.3, 1]` (0.4-wide overlap, smoothstep-eased); the previous scene stays visible underneath until each cell covers it. Default 700ms, 6×10. |
-| `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 500ms, cubic ease-out. |
+| `fade({ duration?, color?, coverScreen? })` | Triangle alpha ramp: fade out → fade in. Scene swap happens under the fully-opaque mid-point. Default 0.3s, black, play-area-only. |
+| `flash({ duration?, color?, coverScreen? })` | Overlay decays from alpha 1→0. Scene swap happens under the opaque peak at begin. Default 0.2s, white, play-area-only. |
+| `crossFade({ duration? })` | Cross-dissolve: outgoing alpha 1→0 while incoming alpha 0→1. Both visible throughout. Default 0.4s. |
+| `iris({ duration?, color?, center?, coverScreen? })` | Circular cut-out shrinks to zero (closing iris) over the first half, then grows back (opening iris) to reveal the destination. Mask-based; redrawn each frame. `center` is in virtual pixels. Default 0.6s, black, virtual-center, play-area-only. |
+| `irisReveal({ duration?, center?, easing? })` | One-way variant of `iris` — the destination scene's container is masked by an expanding circle so the new scene "blooms" over the previous one. No color overlay, no mid-point swap. Default 0.6s, virtual-center, linear. |
+| `chessboard({ duration?, rows?, cols? })` | Reveals the destination through a staggered checkerboard mask painted onto the incoming scene's container. Even-parity cells grow over `[0, 0.7]`, odd-parity over `[0.3, 1]` (0.4-wide overlap, smoothstep-eased); the previous scene stays visible underneath until each cell covers it. Default 0.7s, 6×10. |
+| `slidePush({ duration?, direction?, reverseOnPop?, easing? })` | Both scenes translate in lockstep — the incoming scene pushes the outgoing one off the opposite edge. `direction` is the outgoing scene's exit direction (default `"left"`). `reverseOnPop` (default `true`) mirrors the motion on `pop`. Default 0.5s, cubic ease-out. |
 | `getSceneContainer(ctx, scene)` | Helper — resolves a scene's PIXI root container. Returns `undefined` if `scene` is undefined or its tree isn't materialized. |
 | `getVirtualBounds(ctx)` | Helper — `{ width, height }` of the scene-root coord space (= `renderer.virtualSize`). |
 
@@ -185,7 +185,7 @@ Notes:
 
 ```ts
 await engine.scenes.replace(new Boot(), {
-  transition: fade({ duration: 400 }),    // mount Boot with this fade
+  transition: fade({ duration: 0.4 }),    // mount Boot with this fade
 });
 // Boot.transition fires separately when Boot hands off to its target.
 ```

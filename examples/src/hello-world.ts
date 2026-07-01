@@ -11,7 +11,7 @@ injectStyles();
 class Spin extends Component {
   private readonly transform = this.sibling(Transform);
   private speed: number;
-  constructor(speed = 0.002) {
+  constructor(speed = 2) {
     super();
     this.speed = speed;
   }
@@ -56,7 +56,7 @@ class HelloWorldScene extends Scene {
         g.poly([0, -45, 40, 35, -40, 35]).stroke({ color: 0x16a34a, width: 2 });
       }),
     );
-    tri.add(new Spin(0.002));
+    tri.add(new Spin(2));
 
     // Small purple rotating diamond
     const diamond = this.spawn("diamond");
@@ -70,7 +70,7 @@ class HelloWorldScene extends Scene {
         });
       }),
     );
-    diamond.add(new Spin(-0.003));
+    diamond.add(new Spin(-3));
   }
 }
 

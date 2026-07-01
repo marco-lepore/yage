@@ -150,16 +150,15 @@ class MovingPlatform extends Component {
   }
 
   update(dt: number): void {
-    this.elapsed += dt / 1000;
+    this.elapsed += dt;
     const t = triangleWave(this.elapsed / this.period);
     const pos = this.startPos.lerp(this.endPos, t);
     this.transform.setPosition(pos.x, pos.y);
 
-    const dtSec = dt / 1000;
-    if (dtSec > 0) {
+    if (dt > 0) {
       this.velocity = new Vec2(
-        (pos.x - this.prevPos.x) / dtSec,
-        (pos.y - this.prevPos.y) / dtSec,
+        (pos.x - this.prevPos.x) / dt,
+        (pos.y - this.prevPos.y) / dt,
       );
     }
     this.prevPos = pos;
@@ -184,14 +183,14 @@ class PlayerController extends Component {
   }
 
   private grounded = false;
-  private coyoteTimer = 0; // ms remaining
-  private jumpBufferTimer = 0; // ms remaining
+  private coyoteTimer = 0; // seconds remaining
+  private jumpBufferTimer = 0; // seconds remaining
   private wasAirborne = false;
 
   private static readonly SPEED = 220;
   private static readonly JUMP_VELOCITY = 505;
-  private static readonly COYOTE_MS = 100;
-  private static readonly JUMP_BUFFER_MS = 120;
+  private static readonly COYOTE_SECONDS = 0.1;
+  private static readonly JUMP_BUFFER_SECONDS = 0.12;
   private static readonly GROUND_RAY_DIST = 22;
   private static readonly WALL_RAY_DIST = 16;
 
@@ -233,7 +232,7 @@ class PlayerController extends Component {
 
     if (onGround) {
       this.grounded = true;
-      this.coyoteTimer = PlayerController.COYOTE_MS;
+      this.coyoteTimer = PlayerController.COYOTE_SECONDS;
     } else {
       this.coyoteTimer -= dt;
       if (this.coyoteTimer <= 0) {
@@ -272,7 +271,7 @@ class PlayerController extends Component {
 
     // -- Jump buffering --
     if (this.input.isJustPressed("jump")) {
-      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_MS;
+      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_SECONDS;
     } else {
       this.jumpBufferTimer -= dt;
     }

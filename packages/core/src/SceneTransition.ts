@@ -6,7 +6,7 @@ export type SceneTransitionKind = "push" | "pop" | "replace";
 
 /** Context passed to a transition each frame. */
 export interface SceneTransitionContext {
-  /** Wall-clock ms elapsed since begin(). */
+  /** Wall-clock seconds elapsed since begin(). */
   readonly elapsed: number;
   readonly kind: SceneTransitionKind;
   readonly engineContext: EngineContext;
@@ -24,11 +24,11 @@ export interface SceneTransitionContext {
  * Transitions use raw wall-clock dt and ignore engine + scene `timeScale`.
  */
 export interface SceneTransition {
-  /** Total duration in wall-clock ms. */
+  /** Total duration in wall-clock seconds. */
   readonly duration: number;
   /** Called once when the transition starts. Set up resources here. */
   begin?(ctx: SceneTransitionContext): void;
-  /** Called each frame with frame dt in ms. `ctx.elapsed` is clamped to `duration`. */
+  /** Called each frame with frame dt in seconds. `ctx.elapsed` is clamped to `duration`. */
   tick(dt: number, ctx: SceneTransitionContext): void;
   /** Called when the transition ends. Tear down resources here. */
   end?(ctx: SceneTransitionContext): void;

@@ -64,7 +64,8 @@ export class CameraShake extends Component {
       );
     }
 
-    const phase = this.elapsed * 0.1;
+    // `elapsed` is in seconds; the multiplier sets the oscillation frequency.
+    const phase = this.elapsed * 100;
     this.offset = new Vec2(
       Math.sin(phase * 7.3) * currentIntensity,
       Math.cos(phase * 13.7) * currentIntensity,

@@ -16,7 +16,6 @@ export class ParticleSystem extends System {
   }
 
   update(dt: number): void {
-    const dtSec = dt / 1000;
     for (const entity of this.query) {
       const scene = entity.tryScene;
       if (scene?.isPaused) continue;
@@ -25,7 +24,7 @@ export class ParticleSystem extends System {
       if (!emitter.enabled) continue;
       const pos = entity.get(Transform).position;
       emitter._update(
-        dtSec * sceneTimeScale * entity.timeScale,
+        dt * sceneTimeScale * entity.timeScale,
         pos.x,
         pos.y,
       );

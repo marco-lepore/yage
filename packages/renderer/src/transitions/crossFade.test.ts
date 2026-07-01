@@ -42,8 +42,8 @@ function makeCtx(opts: {
 }
 
 describe("crossFade", () => {
-  it("defaults to 400ms duration", () => {
-    expect(crossFade().duration).toBe(400);
+  it("defaults to 0.4s duration", () => {
+    expect(crossFade().duration).toBe(0.4);
   });
 
   it("accepts custom duration", () => {

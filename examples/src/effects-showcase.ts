@@ -236,7 +236,7 @@ class HeroEntity extends Entity {
     const g = this.tryGet(GraphicsComponent);
     if (!g) return;
     this.flashHandle = g.fx.addEffect(
-      hitFlash({ color: 0xffffff, duration: 200 }),
+      hitFlash({ color: 0xffffff, duration: 0.2 }),
     );
   }
 
@@ -594,7 +594,7 @@ class ShowcaseScene extends Scene {
     );
     mkToggle(sceneSection, "shockwave (toggle, then trigger)", "shockwave", () =>
       tree.fx.addEffect(
-        shockwave({ amplitude: 30, wavelength: 120, duration: 900 }),
+        shockwave({ amplitude: 30, wavelength: 120, duration: 0.9 }),
       ),
     );
     mkAction(sceneSection, "Trigger shockwave on hero", () => {
@@ -620,7 +620,7 @@ class ShowcaseScene extends Scene {
 
     // ---- Fades — operate on whichever handle is currently attached. ----
     const fadesSection = section("Fades");
-    const fadeBtn = (key: string, label: string, ms: number, dir: "in" | "out"): void => {
+    const fadeBtn = (key: string, label: string, seconds: number, dir: "in" | "out"): void => {
       mkAction(
         fadesSection,
         label,
@@ -630,17 +630,17 @@ class ShowcaseScene extends Scene {
             showToast(`Toggle ${key} on first`);
             return;
           }
-          if (dir === "in") h.fadeIn(ms);
-          else h.fadeOut(ms);
+          if (dir === "in") h.fadeIn(seconds);
+          else h.fadeOut(seconds);
         },
         BTN_OFF,
         BTN_OFF_HOVER,
       );
     };
-    fadeBtn("bloom", "bloom: fade out 1s", 1000, "out");
-    fadeBtn("bloom", "bloom: fade in 1s", 1000, "in");
-    fadeBtn("vignette", "vignette: fade out 1s", 1000, "out");
-    fadeBtn("vignette", "vignette: fade in 1s", 1000, "in");
+    fadeBtn("bloom", "bloom: fade out 1s", 1, "out");
+    fadeBtn("bloom", "bloom: fade in 1s", 1, "in");
+    fadeBtn("vignette", "vignette: fade out 1s", 1, "out");
+    fadeBtn("vignette", "vignette: fade in 1s", 1, "in");
 
     // ---- Masks — exclusive setMask/clearMask, not addEffect. ----
     const masksSection = section("Masks");

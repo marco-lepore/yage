@@ -246,7 +246,8 @@ export class DialogueTextView implements TextPresenter {
 
   update(dt: number): void {
     if (!this.parsed) return;
-    this.elapsedMs += dt;
+    // `dt` is seconds; `elapsedMs` feeds millisecond-tuned text-effect math.
+    this.elapsedMs += dt * 1000;
     // Advance the reveal cursor (fires completion exactly once when it lands),
     // then map the new cursor onto glyph visibility. applyReveal is idempotent,
     // so calling it after the line is done costs nothing.

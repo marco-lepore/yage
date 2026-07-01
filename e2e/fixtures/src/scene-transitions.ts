@@ -42,7 +42,7 @@ class ColorScene extends Scene {
 /** Scene with a per-scene defaultTransition. */
 class DefaultTransitionScene extends Scene {
   readonly name = "default-scene";
-  override readonly defaultTransition = fade({ duration: 200 });
+  override readonly defaultTransition = fade({ duration: 0.2 });
 
   onEnter(): void {
     const marker = this.spawn("default-marker");

@@ -26,9 +26,9 @@ class ShapeSpawner extends Component {
   update(dt: number): void {
     const scene = this.scene;
 
-    // Auto-spawn a shape every 500ms (up to 50)
+    // Auto-spawn a shape every 0.5s (up to 50)
     this.spawnTimer += dt;
-    if (this.spawnTimer > 500 && this.shapeCount < 50) {
+    if (this.spawnTimer > 0.5 && this.shapeCount < 50) {
       this.spawnTimer = 0;
       this.spawnShape(scene);
     }

@@ -98,7 +98,7 @@ class ShootController extends Component {
         const pos = this.input.getPointerScreenPosition();
         this.scene.spawn(Particle, {
           position: pos,
-          lifetime: 600,
+          lifetime: 0.6,
           color: 0x38bdf8,
         });
       }),

@@ -14,12 +14,12 @@ import { fade } from "@yagejs/renderer";
 
 // Push with a fade to black
 await engine.scenes.push(new GameScene(), {
-  transition: fade({ duration: 400 }),
+  transition: fade({ duration: 0.4 }),
 });
 
 // Pop with a fade
 await engine.scenes.pop({
-  transition: fade({ duration: 300 }),
+  transition: fade({ duration: 0.3 }),
 });
 ```
 
@@ -28,39 +28,39 @@ await engine.scenes.pop({
 ### Renderer (visual)
 
 **`fade({ duration?, color?, coverScreen? })`** — Fades to a solid color and
-back. The first half fades out, the second half fades in. Defaults to 300ms,
+back. The first half fades out, the second half fades in. Defaults to 0.3s,
 black, play-area-only. Pass `coverScreen: true` to also obscure letterbox bars
 (see the caution block below).
 
 ```typescript
 import { fade } from "@yagejs/renderer";
 
-fade() // 300ms black
-fade({ duration: 500, color: 0x1a1a2e }) // 500ms dark blue
+fade() // 0.3s black
+fade({ duration: 0.5, color: 0x1a1a2e }) // 0.5s dark blue
 fade({ coverScreen: true }) // also obscure the letterbox bars
 ```
 
 **`flash({ duration?, color?, coverScreen? })`** — Flashes a solid color that
 decays from full opacity to zero. Great for impacts or screen-clearing
-effects. Defaults to 200ms, white, play-area-only.
+effects. Defaults to 0.2s, white, play-area-only.
 
 ```typescript
 import { flash } from "@yagejs/renderer";
 
-flash() // 200ms white
-flash({ duration: 150, color: 0xff0000 }) // quick red flash
+flash() // 0.2s white
+flash({ duration: 0.15, color: 0xff0000 }) // quick red flash
 flash({ coverScreen: true }) // also obscure the letterbox bars
 ```
 
 **`crossFade({ duration? })`** — Cross-dissolves between scenes. The
 outgoing scene fades 1→0 while the incoming scene fades 0→1. Both stay
-visible throughout — no blackout in the middle. Defaults to 400ms.
+visible throughout — no blackout in the middle. Defaults to 0.4s.
 
 ```typescript
 import { crossFade } from "@yagejs/renderer";
 
-crossFade() // 400ms
-crossFade({ duration: 600 })
+crossFade() // 0.4s
+crossFade({ duration: 0.6 })
 ```
 
 **`iris({ duration?, color?, center?, coverScreen? })`** — Closing iris →
@@ -68,14 +68,14 @@ swap → opening iris. A circular cut-out of the screen shrinks to zero
 over the first half (covering everything in `color`), then grows back
 over the second half to reveal the destination. Symmetric to `fade()`
 but with a circular shape — perfect for retro-style transitions like
-Zelda's overworld → cave or Mario's level intros. Defaults to 600ms,
+Zelda's overworld → cave or Mario's level intros. Defaults to 0.6s,
 black, virtual-center, play-area-only.
 
 ```typescript
 import { iris } from "@yagejs/renderer";
 
-iris() // 600ms black iris from the virtual-space center
-iris({ duration: 900, color: 0x111111, center: { x: 64, y: 64 } })
+iris() // 0.6s black iris from the virtual-space center
+iris({ duration: 0.9, color: 0x111111, center: { x: 64, y: 64 } })
 iris({ coverScreen: true }) // also obscure the letterbox bars
 ```
 
@@ -96,9 +96,9 @@ want the retro hard-cut feel.
 ```typescript
 import { irisReveal } from "@yagejs/renderer";
 
-irisReveal() // 600ms reveal from the center
+irisReveal() // 0.6s reveal from the center
 irisReveal({
-  duration: 800,
+  duration: 0.8,
   center: { x: 0, y: 0 },           // bloom from the top-left (virtual px)
   easing: (t) => 1 - Math.pow(1 - t, 3),
 })
@@ -109,13 +109,13 @@ mask painted directly onto the incoming scene's container. Even-parity
 cells grow over `[0, 0.7]` of the duration, odd-parity over `[0.3, 1]`
 (0.4-wide overlap, smoothstep-eased), so the new scene "paints in"
 cell-by-cell on top of the previous one — no blackout, no color overlay.
-Defaults to 700ms and a 6×10 grid.
+Defaults to 0.7s and a 6×10 grid.
 
 ```typescript
 import { chessboard } from "@yagejs/renderer";
 
-chessboard() // 700ms 6×10 grid
-chessboard({ rows: 4, cols: 6, duration: 900 })
+chessboard() // 0.7s 6×10 grid
+chessboard({ rows: 4, cols: 6, duration: 0.9 })
 ```
 
 **`slidePush({ duration?, direction?, reverseOnPop?, easing? })`** — Both
@@ -123,14 +123,14 @@ scenes translate in lockstep, so the incoming scene visually pushes the
 outgoing one off the opposite edge. `direction` is the outgoing scene's
 exit direction (`"left" | "right" | "up" | "down"`, default `"left"`).
 On `pop` the direction is mirrored automatically so back motion reverses
-forward motion — opt out with `reverseOnPop: false`. Defaults to 500ms,
+forward motion — opt out with `reverseOnPop: false`. Defaults to 0.5s,
 cubic ease-out.
 
 ```typescript
 import { slidePush } from "@yagejs/renderer";
 
-slidePush() // 500ms left push
-slidePush({ direction: "up", duration: 400 })
+slidePush() // 0.5s left push
+slidePush({ direction: "up", duration: 0.4 })
 slidePush({
   direction: "right",
   reverseOnPop: false, // pop also slides right
@@ -153,7 +153,7 @@ call-site transition is provided:
 ```typescript
 class MenuScene extends Scene {
   readonly name = "menu";
-  readonly defaultTransition = fade({ duration: 300 });
+  readonly defaultTransition = fade({ duration: 0.3 });
 
   onEnter() { /* ... */ }
 }
@@ -163,7 +163,7 @@ await engine.scenes.push(new MenuScene());
 
 // Override with a call-site transition
 await engine.scenes.push(new MenuScene(), {
-  transition: flash({ duration: 200 }),
+  transition: flash({ duration: 0.2 }),
 });
 ```
 
@@ -238,7 +238,7 @@ function slideIn(duration: number): SceneTransition {
 ```
 
 The `SceneTransitionContext` gives you:
-- `elapsed` — wall-clock ms since `begin()`
+- `elapsed` — wall-clock seconds since `begin()`
 - `kind` — `"push"`, `"pop"`, or `"replace"`
 - `engineContext` — DI container for resolving services
 - `fromScene` / `toScene` — the scenes involved
@@ -275,7 +275,7 @@ call-site transition passed to `push`/`replace`:
 
 ```typescript
 await engine.scenes.replace(new Boot(), {
-  transition: fade({ duration: 400 }),   // mount Boot with this fade
+  transition: fade({ duration: 0.4 }),   // mount Boot with this fade
 });
 // Boot.transition animates the handoff Boot → target separately.
 ```

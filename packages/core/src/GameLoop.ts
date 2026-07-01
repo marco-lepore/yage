@@ -10,7 +10,7 @@ export interface GameLoopCallbacks {
 
 /** Configuration for the game loop. */
 export interface GameLoopConfig {
-  /** Fixed timestep in ms. Default: 1000/60. */
+  /** Fixed timestep in seconds. Default: 1/60. */
   fixedTimestep?: number;
   /** Max fixed steps per frame to prevent spiral of death. Default: 5. */
   maxFixedStepsPerFrame?: number;
@@ -21,9 +21,13 @@ export interface GameLoopConfig {
  *
  * Driven by an external ticker (e.g., PixiJS Ticker) or manual `tick()` calls
  * for testing. Implements deterministic fixed updates with variable rendering.
+ *
+ * The incoming per-frame delta is wall-clock milliseconds (PixiJS tickers
+ * report `deltaMS`). `tick()` converts it to seconds once, so every callback
+ * downstream receives seconds.
  */
 export class GameLoop {
-  /** Fixed timestep in ms. */
+  /** Fixed timestep in seconds. */
   readonly fixedTimestep: number;
   /** Max fixed steps per frame. */
   readonly maxFixedStepsPerFrame: number;
@@ -37,7 +41,7 @@ export class GameLoop {
   private _frameCount = 0;
 
   constructor(config?: GameLoopConfig) {
-    this.fixedTimestep = config?.fixedTimestep ?? 1000 / 60;
+    this.fixedTimestep = config?.fixedTimestep ?? 1 / 60;
     this.maxFixedStepsPerFrame = config?.maxFixedStepsPerFrame ?? 5;
   }
 
@@ -63,8 +67,8 @@ export class GameLoop {
 
   /**
    * Attach an external ticker (e.g., PixiJS Ticker).
-   * The ticker calls `tick(dt)` every frame.
-   * If no ticker is attached, the loop uses requestAnimationFrame.
+   * The ticker calls `tick(dtMs)` every frame with the wall-clock delta in
+   * milliseconds. If no ticker is attached, the loop uses requestAnimationFrame.
    */
   attachTicker(
     subscribe: (callback: (dt: number) => void) => () => void,
@@ -106,17 +110,23 @@ export class GameLoop {
     }
   }
 
-  /** Process one frame with the given dt in milliseconds. */
+  /**
+   * Process one frame. `dtMs` is the wall-clock delta in milliseconds (the
+   * unit PixiJS tickers report). It is converted to seconds here, so every
+   * callback receives seconds.
+   */
   tick(dtMs: number): void {
     if (!this.running || !this.callbacks) return;
 
     this._frameCount++;
 
+    const dt = dtMs / 1000;
+
     // 1. Early Update
-    this.callbacks.earlyUpdate(dtMs);
+    this.callbacks.earlyUpdate(dt);
 
     // 2. Fixed Update (accumulator-based)
-    this.accumulator += dtMs;
+    this.accumulator += dt;
     let steps = 0;
     while (
       this.accumulator >= this.fixedTimestep &&
@@ -128,15 +138,15 @@ export class GameLoop {
     }
 
     // 3. Update
-    this.callbacks.update(dtMs);
+    this.callbacks.update(dt);
 
     // 4. Late Update
-    this.callbacks.lateUpdate(dtMs);
+    this.callbacks.lateUpdate(dt);
 
     // 5. Render
-    this.callbacks.render(dtMs);
+    this.callbacks.render(dt);
 
     // 6. End of Frame
-    this.callbacks.endOfFrame(dtMs);
+    this.callbacks.endOfFrame(dt);
   }
 }

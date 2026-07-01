@@ -370,18 +370,18 @@ class PlayerController extends Component {
   update(dt: number): void {
     const dir = this.input.getVector("left", "right", "up", "down");
     if (dir.x !== 0 || dir.y !== 0) {
-      const move = dir.normalize().scale(0.3 * dt);
+      const move = dir.normalize().scale(300 * dt);
       this.transform.translate(move.x, move.y);
     }
 
     if (this.input.isJustPressed("zoomIn")) {
-      this.camera.zoomTo(Math.min(this.camera.zoom + 0.3, 2.5), 300);
+      this.camera.zoomTo(Math.min(this.camera.zoom + 0.3, 2.5), 0.3);
     }
     if (this.input.isJustPressed("zoomOut")) {
-      this.camera.zoomTo(Math.max(this.camera.zoom - 0.3, 0.6), 300);
+      this.camera.zoomTo(Math.max(this.camera.zoom - 0.3, 0.6), 0.3);
     }
     if (this.input.isJustPressed("zoomReset")) {
-      this.camera.zoomTo(1, 300);
+      this.camera.zoomTo(1, 0.3);
     }
     if (this.input.isJustPressed("rotate")) {
       this.camera.rotation = this.camera.rotation + Math.PI / 8;

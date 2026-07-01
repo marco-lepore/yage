@@ -15,7 +15,7 @@ injectStyles();
 // PlayerController — moves with WASD, triggers shake/zoom
 // ---------------------------------------------------------------------------
 class PlayerController extends Component {
-  private speed = 0.25; // px per ms
+  private speed = 250; // px per second
   private readonly input = this.service(InputManagerKey);
   private readonly transform = this.sibling(Transform);
   private readonly camera: CameraEntity;
@@ -44,22 +44,22 @@ class PlayerController extends Component {
     }
 
     // Rotate the player slowly
-    t.rotate(0.002 * dt);
+    t.rotate(2 * dt);
 
     // Shake on space
     if (this.input.isJustPressed("shake")) {
-      this.camera.shake(6, 300, { decay: 0.8 });
+      this.camera.shake(6, 0.3, { decay: 0.8 });
     }
 
     // Zoom with Q / E
     if (this.input.isJustPressed("zoomIn")) {
-      this.camera.zoomTo(Math.min(this.camera.zoom + 0.5, 3), 400);
+      this.camera.zoomTo(Math.min(this.camera.zoom + 0.5, 3), 0.4);
     }
     if (this.input.isJustPressed("zoomOut")) {
-      this.camera.zoomTo(Math.max(this.camera.zoom - 0.5, 0.5), 400);
+      this.camera.zoomTo(Math.max(this.camera.zoom - 0.5, 0.5), 0.4);
     }
     if (this.input.isJustPressed("zoomReset")) {
-      this.camera.zoomTo(1, 600);
+      this.camera.zoomTo(1, 0.6);
     }
   }
 }

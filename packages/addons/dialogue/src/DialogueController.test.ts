@@ -178,16 +178,16 @@ describe("DialogueController — input focus + pause gating", () => {
     const controller = scene.spawn("dlg").add(makeController(binding));
     controller.play(SCRIPT);
 
-    controller.update(16);
+    controller.update(0.016);
     expect(binding.polls).toBe(1); // focused → polled
 
     controller.setInputEnabled(false);
-    controller.update(16);
+    controller.update(0.016);
     expect(binding.polls).toBe(1); // unfocused → NOT polled (no input consumed)
     expect(controller.isActive()).toBe(true); // ...but the conversation stays alive
 
     controller.setInputEnabled(true);
-    controller.update(16);
+    controller.update(0.016);
     expect(binding.polls).toBe(2); // refocused → polled again
   });
 
@@ -203,8 +203,8 @@ describe("DialogueController — input focus + pause gating", () => {
     // The game's one-liner: focus A, leave B ambient.
     a.setInputEnabled(true);
     b.setInputEnabled(false);
-    a.update(16);
-    b.update(16);
+    a.update(0.016);
+    b.update(0.016);
 
     expect(aBinding.polls).toBe(1); // Space reaches A
     expect(bBinding.polls).toBe(0); // ...but not ambient B
@@ -218,11 +218,11 @@ describe("DialogueController — input focus + pause gating", () => {
     controller.play(SCRIPT);
 
     controller.setPaused(true);
-    controller.update(16);
+    controller.update(0.016);
     expect(binding.polls).toBe(0); // paused → not polled
 
     controller.setPaused(false);
-    controller.update(16);
+    controller.update(0.016);
     expect(binding.polls).toBe(1); // resumed → polled
   });
 });
@@ -340,7 +340,7 @@ describe("DialogueController — observation events forwarded entity→scene", (
     });
     text.finish(); // arms the 100ms auto-timer
     await flush();
-    session.update(150); // expire it → auto-advance
+    session.update(0.15); // expire it → auto-advance
     await flush();
     expect(seen).toHaveBeenCalledWith({ scriptId: "auto" });
   });

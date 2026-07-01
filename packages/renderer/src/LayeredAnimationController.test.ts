@@ -174,8 +174,8 @@ describe("LayeredAnimationController", () => {
 
   it("playOneShot computes a single shared duration from the first controller and locks all layers in unison", () => {
     const { scene } = createRendererTestContext();
-    const short = makeLayer(scene, 5); // 5 frames * (1000/60) / 0.4 ≈ 208 ms
-    const long = makeLayer(scene, 10); // 10 frames * (1000/60) / 0.4 ≈ 417 ms
+    const short = makeLayer(scene, 5); // 5 frames * (1/60) / 0.4 ≈ 0.208 s
+    const long = makeLayer(scene, 10); // 10 frames * (1/60) / 0.4 ≈ 0.417 s
     const host = spawnEntityInScene(scene);
     const layered = host.add(
       new LayeredAnimationController<Anim>({ controllers: [short, long] }),
@@ -190,15 +190,15 @@ describe("LayeredAnimationController", () => {
 
     // Tick just past the shorter controller's "natural" lock — both layers
     // should still be locked because they share the master timer.
-    short.update!(100);
-    long.update!(100);
-    layered.update(100);
+    short.update!(0.1);
+    long.update!(0.1);
+    layered.update(0.1);
     expect(layered.locked).toBe(true);
     expect(short.locked).toBe(true);
     expect(long.locked).toBe(true);
 
     // Tick past the shared duration — all unlock together.
-    const dt = sharedDuration - 100 + 1;
+    const dt = sharedDuration - 0.1 + 0.001;
     short.update!(dt);
     long.update!(dt);
     layered.update(dt);
@@ -223,7 +223,7 @@ describe("LayeredAnimationController", () => {
 
     layered.playOneShot("attack", { duration: 100 });
     // Tick the children far past what would naturally expire their own locks
-    // (5 frames * (1000/60) / 0.4 ≈ 208 ms) without touching the master.
+    // (5 frames * (1/60) / 0.4 ≈ 0.208 s) without touching the master.
     a.update!(10_000);
     b.update!(10_000);
     expect(a.locked).toBe(true);

@@ -37,7 +37,7 @@ const DungeonMap = tiledMap("/assets/dungeon/dungeon-map.json");
 // ---------------------------------------------------------------------------
 const WIDTH = 800;
 const HEIGHT = 600;
-const PLAYER_SPEED = 0.18; // px per ms
+const PLAYER_SPEED = 180; // px per second
 const PLAYER_RADIUS = 6;
 const ENEMY_RADIUS = 5;
 const CAMERA_ZOOM = 1.75;

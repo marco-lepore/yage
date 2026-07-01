@@ -5,7 +5,7 @@ import { RendererKey } from "../types.js";
 import { getSceneContainer } from "./helpers.js";
 
 export interface FadeOptions {
-  /** Fade duration in ms. Default: 300. */
+  /** Fade duration in seconds. Default: 0.3. */
   duration?: number;
   /** Fill color as a hex number. Default: 0x000000. */
   color?: number;
@@ -30,7 +30,7 @@ export interface FadeOptions {
  * and "pop" suddenly to the destination once the stack is popped at end().
  */
 export function fade(opts: FadeOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 300;
+  const duration = opts.duration ?? 0.3;
   const color = opts.color ?? 0x000000;
   const coverScreen = opts.coverScreen ?? false;
 

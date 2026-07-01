@@ -54,12 +54,12 @@ export const godRay = defineEffect<GodRayHandle, GodRayOptions>({
         },
       }),
       onActivate: (base) => {
-        // Self-schedule the time animator (mirrors crt). YAGE dt is in ms;
-        // GodrayFilter.time advances in seconds.
+        // Self-schedule the time animator (mirrors crt). `dt` is in seconds,
+        // the unit GodrayFilter.time advances in.
         base.run(
           new Process({
             update: (dt) => {
-              filter.time += dt / 1000;
+              filter.time += dt;
             },
           }),
         );

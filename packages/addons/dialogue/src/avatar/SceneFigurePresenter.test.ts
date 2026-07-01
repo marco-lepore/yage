@@ -35,8 +35,8 @@ describe("SceneFigurePresenter — talk bob vs entity movement", () => {
     const t = npc.get(Transform);
     presenter.setSpeaker(speaker);
     presenter.setSpeaking(true);
-    presenter.update(40);
-    presenter.update(40);
+    presenter.update(0.04);
+    presenter.update(0.04);
     expect(t.position.y).not.toBeCloseTo(50); // bob is actually applied
     presenter.setSpeaking(false);
     expect(t.position.x).toBe(100);
@@ -48,11 +48,11 @@ describe("SceneFigurePresenter — talk bob vs entity movement", () => {
     const t = npc.get(Transform);
     presenter.setSpeaker(speaker);
     presenter.setSpeaking(true);
-    presenter.update(40);
+    presenter.update(0.04);
 
     // The NPC walks mid-line — the bob must ride on top, not pin it back.
     t.setPosition(140, 80);
-    presenter.update(40);
+    presenter.update(0.04);
     expect(t.position.x).toBe(140);
     expect(Math.abs(t.position.y - 80)).toBeLessThanOrEqual(2.5); // ≤ 2× amplitude
 
@@ -66,7 +66,7 @@ describe("SceneFigurePresenter — talk bob vs entity movement", () => {
     const t = npc.get(Transform);
     presenter.setSpeaker(speaker);
     presenter.setSpeaking(true);
-    presenter.update(40);
+    presenter.update(0.04);
     presenter.setSpeaking(false); // line ends; bob fully released
 
     t.setPosition(300, 200); // NPC repositioned between lines

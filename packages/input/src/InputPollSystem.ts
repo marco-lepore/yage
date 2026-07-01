@@ -16,7 +16,9 @@ export class InputPollSystem extends System {
   update(dt: number): void {
     const manager = this.use(InputManagerKey);
     manager._drainInputQueue();
-    manager._advanceTime(dt);
+    // `dt` is in seconds; the input clock and hold-duration API are in
+    // milliseconds, so convert at this boundary.
+    manager._advanceTime(dt * 1000);
     if (manager.isPollingEnabled()) {
       manager._pollGamepads();
     }

@@ -226,7 +226,7 @@ export const wave = defineEffect<WaveHandle, WaveOptions>({
         base.run(
           new Process({
             update: (dt) => {
-              filter.time += speed * 2 * Math.PI * (dt / 1000);
+              filter.time += speed * 2 * Math.PI * dt;
             },
           }),
         );

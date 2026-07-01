@@ -114,8 +114,8 @@ class GameScene extends Scene {
 class AutoBoot extends LoadingScene {
   override readonly name = "boot";
   readonly target = () => new GameScene();
-  override readonly minDuration = 500;
-  override readonly transition = fade({ duration: 300 });
+  override readonly minDuration = 0.5;
+  override readonly transition = fade({ duration: 0.3 });
 
   override onEnter(): void {
     this.spawn(LoadingSceneProgressBar, {
@@ -129,7 +129,7 @@ class PressAnyKeyBoot extends LoadingScene {
   override readonly name = "boot-pak";
   readonly target = () => new GameScene();
   override readonly autoContinue = false;
-  override readonly transition = fade({ duration: 300 });
+  override readonly transition = fade({ duration: 0.3 });
 
   override onEnter(): void {
     this.spawn(LoadingSceneProgressBar, {

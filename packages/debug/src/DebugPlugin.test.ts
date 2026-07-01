@@ -180,7 +180,9 @@ function createContext() {
     virtualSize: { width: 640, height: 360 },
   };
   const loop = {
-    fixedTimestep: 20,
+    // Seconds — the production GameLoop's unit. The DebugClock converts to the
+    // milliseconds it drives `app.ticker` with (0.02s → 20ms).
+    fixedTimestep: 0.02,
     tick: vi.fn(),
   };
 

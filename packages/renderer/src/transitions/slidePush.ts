@@ -6,7 +6,7 @@ import { getSceneContainer, getVirtualBounds } from "./helpers.js";
 export type SlideDirection = "left" | "right" | "up" | "down";
 
 export interface SlidePushOptions {
-  /** Total duration in ms. Default: 500. */
+  /** Total duration in seconds. Default: 0.5. */
   duration?: number;
   /**
    * Direction the OUTGOING scene exits in. The incoming scene enters from
@@ -39,7 +39,7 @@ export interface SlidePushOptions {
  * "forward" — opt out via `reverseOnPop: false` for explicit control.
  */
 export function slidePush(opts: SlidePushOptions = {}): SceneTransition {
-  const duration = opts.duration ?? 500;
+  const duration = opts.duration ?? 0.5;
   const direction = opts.direction ?? "left";
   const reverseOnPop = opts.reverseOnPop ?? true;
   const easing = opts.easing ?? ((t) => 1 - Math.pow(1 - t, 3));

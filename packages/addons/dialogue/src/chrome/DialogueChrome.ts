@@ -288,7 +288,8 @@ export class DialogueChrome implements ChromePresenter {
     // keep animating a caret that `setVisible(false)` hid).
     const gfx = this.indicator?.gfx.graphics;
     if (gfx?.visible) {
-      this.indicatorTime += dt;
+      // `dt` is seconds; `indicatorTime` feeds the millisecond `caretAlpha` blink.
+      this.indicatorTime += dt * 1000;
       gfx.alpha = caretAlpha(this.indicatorTime, this.cfg.caret?.blinkMs);
     }
   }

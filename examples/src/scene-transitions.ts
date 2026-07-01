@@ -140,7 +140,7 @@ class LevelScene extends LabeledScene {
   // Demonstrate per-scene defaultTransition — pushing without a call-site
   // option still animates using this transition.
   override readonly defaultTransition = fade({
-    duration: 400,
+    duration: 0.4,
     color: 0x000000,
   });
 
@@ -193,12 +193,12 @@ class LoadedLevel extends LabeledScene {
 class LoadThenShow extends LoadingScene {
   override readonly name = "loading";
   readonly target = () => new LoadedLevel();
-  override readonly minDuration = 400;
+  override readonly minDuration = 0.4;
   override readonly transition: SceneTransition;
 
-  constructor(handoffMs: number) {
+  constructor(handoffSeconds: number) {
     super();
-    this.transition = fade({ duration: handoffMs });
+    this.transition = fade({ duration: handoffSeconds });
   }
 
   override onEnter(): void {
@@ -231,14 +231,20 @@ const durationSlider = document.getElementById("duration") as HTMLInputElement;
 const durationLabel = document.getElementById("duration-label") as HTMLElement;
 const statusEl = document.getElementById("status") as HTMLElement;
 
-function currentDuration(): number {
+// The slider is labeled in milliseconds (human-friendly); the engine works in
+// seconds, so `currentDuration()` converts.
+function currentDurationMs(): number {
   return parseInt(durationSlider.value, 10);
 }
 
+function currentDuration(): number {
+  return currentDurationMs() / 1000;
+}
+
 durationSlider.addEventListener("input", () => {
-  durationLabel.textContent = `${currentDuration()}ms`;
+  durationLabel.textContent = `${currentDurationMs()}ms`;
 });
-durationLabel.textContent = `${currentDuration()}ms`;
+durationLabel.textContent = `${currentDurationMs()}ms`;
 
 function nextScene(): LabeledScene {
   const current = engine.scenes.active?.name;

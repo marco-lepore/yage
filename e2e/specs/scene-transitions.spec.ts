@@ -69,7 +69,7 @@ test.describe("Scene transitions", () => {
     expect(stack).toHaveLength(1);
     expect(stack[0]).toMatchObject({ name: "scene-a" });
 
-    await call(page, "pushWithTransition", "fade", 100);
+    await call(page, "pushWithTransition", "fade", 0.1);
 
     await stepFrames(page, 1);
     expect(await call(page, "getIsTransitioning")).toBe(true);
@@ -87,7 +87,7 @@ test.describe("Scene transitions", () => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
 
-    await call(page, "pushWithTransition", "fade", 300);
+    await call(page, "pushWithTransition", "fade", 0.3);
     await stepFrames(page, 1, 16);
     expect(await call(page, "getIsTransitioning")).toBe(true);
 
@@ -102,7 +102,7 @@ test.describe("Scene transitions", () => {
     await waitForTestApi(page);
     await call(page, "resetEvents");
 
-    await call(page, "pushWithTransition", "fade", 100);
+    await call(page, "pushWithTransition", "fade", 0.1);
     await stepFrames(page, 20, 16);
 
     const events = await call(page, "getTransitionEvents");
@@ -122,8 +122,8 @@ test.describe("Scene transitions", () => {
     // Fire two pushes without awaiting between them.
     await page.evaluate(() => {
       const api = (window as Win).__sceneTransitionTest__;
-      void api.pushWithTransition("fade", 100);
-      void api.pushWithTransition("fade", 100);
+      void api.pushWithTransition("fade", 0.1);
+      void api.pushWithTransition("fade", 0.1);
     });
 
     // Drive the first transition to completion, yield so the queued push's
@@ -160,8 +160,8 @@ test.describe("Scene transitions", () => {
     // Start a transition, queue another, then enqueue popAll.
     await page.evaluate(() => {
       const api = (window as Win).__sceneTransitionTest__;
-      void api.pushWithTransition("fade", 200);
-      void api.pushWithTransition("fade", 100);
+      void api.pushWithTransition("fade", 0.2);
+      void api.pushWithTransition("fade", 0.1);
     });
 
     await stepFrames(page, 1, 16);
@@ -178,8 +178,8 @@ test.describe("Scene transitions", () => {
     // its boundaries — the second push can't start ticking until the
     // first push's transition promise resolves and the _pendingChain
     // advances, which happens between evaluates.
-    await stepFrames(page, 15, 16); // drain 200ms fade
-    await stepFrames(page, 10, 16); // drain 100ms fade
+    await stepFrames(page, 15, 16); // drain 0.2s fade
+    await stepFrames(page, 10, 16); // drain 0.1s fade
     await stepFrames(page, 1, 16); // let popAll microtask run
 
     expect(await getSceneStack(page)).toHaveLength(0);
@@ -198,12 +198,12 @@ test.describe("Scene transitions", () => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
     // Push a second scene so we can replace the top.
-    await call(page, "pushWithTransition", "fade", 100);
+    await call(page, "pushWithTransition", "fade", 0.1);
     await stepFrames(page, 20, 16);
 
     await call(page, "resetEvents");
 
-    await call(page, "replaceWithTransition", 200);
+    await call(page, "replaceWithTransition", 0.2);
     await stepFrames(page, 1, 16);
 
     // Frame 1 of replace: both scenes on stack.
@@ -238,11 +238,11 @@ test.describe("Scene transitions", () => {
   }) => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
-    await call(page, "pushWithTransition", "fade", 100);
+    await call(page, "pushWithTransition", "fade", 0.1);
     await stepFrames(page, 20, 16);
     expect((await getSceneStack(page)).length).toBe(2);
 
-    await call(page, "popWithTransition", 300);
+    await call(page, "popWithTransition", 0.3);
 
     await stepFrames(page, 1, 16);
     // Still 2 scenes on stack while the transition runs.
@@ -260,10 +260,10 @@ test.describe("Scene transitions", () => {
 
     // Push scene-1 so we have two scenes to cross-dissolve between. Finish
     // this setup transition entirely so we only measure the next one.
-    await call(page, "pushWithTransition", "fade", 100);
+    await call(page, "pushWithTransition", "fade", 0.1);
     await stepFrames(page, 20, 16);
 
-    await call(page, "pushWithTransition", "crossFade", 400);
+    await call(page, "pushWithTransition", "crossFade", 0.4);
     // Step to ~half-way (≈200ms). crossFade clamps, so one frame past
     // midpoint is fine.
     await stepFrames(page, 13, 16);
@@ -288,7 +288,7 @@ test.describe("Scene transitions", () => {
     await gotoFixture(page, "/scene-transitions.html");
     await waitForTestApi(page);
 
-    await call(page, "pushWithTransition", "fade", 100);
+    await call(page, "pushWithTransition", "fade", 0.1);
     await stepFrames(page, 1);
     await call(page, "clearAll");
 

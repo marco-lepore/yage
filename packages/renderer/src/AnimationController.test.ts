@@ -201,12 +201,12 @@ describe("AnimationController", () => {
     expect(ctrl.current).toBe("shoot");
     expect(ctrl.locked).toBe(true);
 
-    const expectedDuration = (3 * (1000 / 60)) / 0.4;
+    const expectedDuration = (3 * (1 / 60)) / 0.4; // seconds
     // Just before expiry
-    ctrl.update!(expectedDuration - 1);
+    ctrl.update!(expectedDuration - 0.001);
     expect(ctrl.locked).toBe(true);
     // Past expiry
-    ctrl.update!(2);
+    ctrl.update!(0.002);
     expect(ctrl.locked).toBe(false);
   });
 
@@ -293,17 +293,17 @@ describe("AnimationController", () => {
     expect(ctrl.current).toBe("walk");
   });
 
-  it("calcDuration() computes wall-clock ms", () => {
+  it("calcDuration() computes wall-clock seconds", () => {
     const { ctrl } = setup();
     // shoot: 3 frames, speed 0.4, global speed 1
-    const expected = (3 * (1000 / 60)) / (0.4 * 1);
+    const expected = (3 * (1 / 60)) / (0.4 * 1);
     expect(ctrl.calcDuration("shoot")).toBeCloseTo(expected);
   });
 
   it("calcDuration() accounts for speed multiplier", () => {
     const { ctrl } = setup();
     ctrl.speed = 2;
-    const expected = (3 * (1000 / 60)) / (0.4 * 2);
+    const expected = (3 * (1 / 60)) / (0.4 * 2);
     expect(ctrl.calcDuration("shoot")).toBeCloseTo(expected);
   });
 

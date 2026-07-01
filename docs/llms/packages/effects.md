@@ -40,6 +40,8 @@ Each preset returns the same `EffectHandle` shape (`remove`, `setEnabled`, `enab
 | `wave` | `{ amplitude?, wavelength?, speed? }` | custom WebGL+WGSL | configured `amplitude` |
 | `colorize` | `{ color, strength? }` | custom WebGL+WGSL | `strength` (cross-fades back to source) |
 
+All `duration` options and `fadeIn`/`fadeOut` arguments are in seconds (`hitFlash` default 0.12, `shockwave` default 1).
+
 Color-grade presets: `"neutral"` (identity), `"sepia"`, `"grayscale"`, `"negative"`, `"night"`, `"warm"` (orange tint + brightness boost), `"cool"` (blue tint).
 
 `motionBlur.kernelSize` must be odd and ≥ 5. Invalid values are coerced up to the nearest valid kernel and a one-shot `console.warn` fires naming the requested + final value. `bulgePinch.strength` is signed: negative pinches, positive bulges; `setIntensity` scales magnitude while preserving the sign so a pinch fades flat → pinch (not flat → bulge → pinch). `bulgePinch.center` is normalized 0..1 screen coords (`{ x: 0.5, y: 0.5 }` is the host's middle).
@@ -150,7 +152,7 @@ wv.setSpeed(2);              // cycles/second; advances `uTime` from scene time
 const recolour = sprite.fx.addEffect(colorize({ color: 0xf2c14e }));
 recolour.setColor(0xd94a4a);  // accepts numbers or strings ("#d94a4a", "red")
 recolour.setStrength(0.6);    // rebases full ceiling; preserves intensity ratio
-recolour.fadeOut(200);        // strength → 0 cross-fades back to the source
+recolour.fadeOut(0.2);        // strength → 0 cross-fades back to the source (seconds)
 ```
 
 ## Fade behavior
@@ -163,7 +165,7 @@ If you need to drive a non-primary uniform (or any custom fade shape), schedule 
 import { Tween } from "@yagejs/core";
 
 const h = sprite.fx.addEffect(bloom({ bloomScale: 1.5 }));
-h.run(Tween.custom((v) => h.someExtra(v), 1, 0, 500));   // pauses with scene, dies with effect
+h.run(Tween.custom((v) => h.someExtra(v), 1, 0, 0.5));   // pauses with scene, dies with effect
 ```
 
 For work that should outlive a single effect (e.g. a global animator), schedule directly on the matching scope's queue and manage cancellation yourself:

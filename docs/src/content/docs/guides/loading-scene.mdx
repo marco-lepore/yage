@@ -25,8 +25,8 @@ import { LoadingSceneProgressBar } from "@yagejs/ui";
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
-  readonly minDuration = 500;
-  readonly transition = fade({ duration: 300 });
+  readonly minDuration = 0.5;
+  readonly transition = fade({ duration: 0.3 });
 
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
@@ -70,10 +70,10 @@ player feels the pop. Set `minDuration` to the shortest time you're
 willing to show the bar:
 
 ```typescript
-readonly minDuration = 500; // stays visible at least 500ms
+readonly minDuration = 0.5; // stays visible at least 0.5s
 ```
 
-Wall-clock ms. Ignores `timeScale`.
+Wall-clock seconds. Ignores `timeScale`.
 
 ## Transitions
 
@@ -84,7 +84,7 @@ import { crossFade } from "@yagejs/renderer";
 
 class Boot extends LoadingScene {
   readonly target = new GameScene();
-  readonly transition = crossFade({ duration: 400 });
+  readonly transition = crossFade({ duration: 0.4 });
   override onEnter() {
     this.spawn(LoadingSceneProgressBar);
     this.startLoading();

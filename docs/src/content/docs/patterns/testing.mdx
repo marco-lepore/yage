@@ -68,8 +68,8 @@ describe("GravitySystem", () => {
     const velocity = new VelocityComponent();
     entity.add(velocity);
 
-    // Run one fixed update at 16ms
-    system.fixedUpdate(16);
+    // Run one fixed update at 0.016s
+    system.fixedUpdate(0.016);
 
     expect(velocity.y).toBeCloseTo(980 * 0.016);
   });
@@ -110,8 +110,9 @@ describe("Player movement integration", () => {
 ```
 
 `advanceFrames` is synchronous — it calls the engine's update loop the
-specified number of times with a fixed 16ms delta. No `setTimeout` or
-`requestAnimationFrame` involved.
+specified number of times with a fixed ~16ms delta (which the loop converts
+to ~0.0167s for `update(dt)`). No `setTimeout` or `requestAnimationFrame`
+involved.
 
 ## Testing Processes and Tweens
 
@@ -129,14 +130,14 @@ describe("Process timing", () => {
     entity.add(pc);
 
     let fired = false;
-    pc.run(Process.delay(100, () => { fired = true; }));
+    pc.run(Process.delay(0.1, () => { fired = true; }));
 
-    // Advance 50ms — not enough
-    pc._update(50);
+    // Advance 0.05s — not enough
+    pc._update(0.05);
     expect(fired).toBe(false);
 
-    // Advance another 60ms — total 110ms, past the 100ms delay
-    pc._update(60);
+    // Advance another 0.06s — total 0.11s, past the 0.1s delay
+    pc._update(0.06);
     expect(fired).toBe(true);
   });
 });
@@ -152,12 +153,12 @@ it("should tween alpha to zero", () => {
   const pc = new ProcessComponent();
   createMockEntity().add(pc);
 
-  pc.run(Tween.to(obj, "alpha", 0, 200, easeLinear));
+  pc.run(Tween.to(obj, "alpha", 0, 0.2, easeLinear));
 
-  pc._update(100); // halfway
+  pc._update(0.1); // halfway
   expect(obj.alpha).toBeCloseTo(0.5);
 
-  pc._update(100); // complete
+  pc._update(0.1); // complete
   expect(obj.alpha).toBeCloseTo(0);
 });
 ```

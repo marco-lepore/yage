@@ -207,8 +207,7 @@ function spawnParticles(
       new Process({
         duration: lt,
         update: (dt, elapsed) => {
-          const dtSec = dt / 1000;
-          transform.translate(vel.x * dtSec, vel.y * dtSec);
+          transform.translate(vel.x * dt, vel.y * dt);
           gfx.graphics.alpha = 1 - elapsed / lt;
         },
         onComplete: () => {
@@ -235,8 +234,8 @@ function spawnBulletImpactParticles(
     normalAngle,
     80,
     150,
-    200,
-    350,
+    0.2,
+    0.35,
     2,
   );
 }
@@ -252,8 +251,8 @@ function spawnEnemyHitParticles(scene: Scene, x: number, y: number): void {
     Math.PI, // spread from left (arbitrary)
     60,
     120,
-    250,
-    400,
+    0.25,
+    0.4,
     2.5,
   );
 }
@@ -274,8 +273,8 @@ function spawnEnemyDeathParticles(
     0,
     50,
     200,
-    300,
-    500,
+    0.3,
+    0.5,
     3,
   );
 }
@@ -317,12 +316,12 @@ class PlayerController extends Component {
 
   private static readonly SPEED = 220;
   private static readonly JUMP_VELOCITY = 505;
-  private static readonly COYOTE_MS = 100;
-  private static readonly JUMP_BUFFER_MS = 120;
+  private static readonly COYOTE_SECONDS = 0.1;
+  private static readonly JUMP_BUFFER_SECONDS = 0.12;
   private static readonly GROUND_RAY_DIST = 22;
   private static readonly WALL_RAY_DIST = 16;
-  private static readonly SHOOT_COOLDOWN_MS = 200;
-  private static readonly STUN_MS = 300;
+  private static readonly SHOOT_COOLDOWN_SECONDS = 0.2;
+  private static readonly STUN_SECONDS = 0.3;
   private static readonly KNOCKBACK_X = 200;
   private static readonly KNOCKBACK_Y = -180;
 
@@ -330,9 +329,9 @@ class PlayerController extends Component {
     this.physicsWorld = this.use(PhysicsWorldKey);
 
     // Slots
-    this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_MS });
+    this.shootCd = this.pc.slot({ duration: PlayerController.SHOOT_COOLDOWN_SECONDS });
     this.invincibility = this.pc.slot({
-      duration: 500,
+      duration: 0.5,
       cleanup: () => {
         // Re-check: still touching an enemy?
         const enemies = this.collider.getOverlapping({ tags: ["enemy"] });
@@ -341,9 +340,9 @@ class PlayerController extends Component {
         }
       },
     });
-    this.stun = this.pc.slot({ duration: PlayerController.STUN_MS });
+    this.stun = this.pc.slot({ duration: PlayerController.STUN_SECONDS });
     this.flash = this.pc.slot({
-      duration: 100,
+      duration: 0.1,
       cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
     });
     this.squash = this.pc.slot({
@@ -398,7 +397,7 @@ class PlayerController extends Component {
 
     if (onGround) {
       this.grounded = true;
-      this.coyoteTimer = PlayerController.COYOTE_MS;
+      this.coyoteTimer = PlayerController.COYOTE_SECONDS;
     } else {
       this.coyoteTimer -= dt;
       if (this.coyoteTimer <= 0) this.grounded = false;
@@ -411,7 +410,7 @@ class PlayerController extends Component {
       const squashY = 1 - 0.3 * impact; // 1.0 – 0.7
       if (impact > 0.15) {
         this.startSquash(squashX, squashY);
-        this.anim.playOneShot("land", { duration: 120 });
+        this.anim.playOneShot("land", { duration: 0.12 });
       }
       this.audio.play(LandSfx.path, { channel: "sfx" });
     }
@@ -444,7 +443,7 @@ class PlayerController extends Component {
 
     // -- Jump buffering --
     if (this.input.isJustPressed("jump")) {
-      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_MS;
+      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_SECONDS;
     } else {
       this.jumpBufferTimer -= dt;
     }
@@ -465,9 +464,9 @@ class PlayerController extends Component {
     if (this.input.isJustPressed("shoot") && this.shootCd.completed) {
       this.shootCd.start();
       this.spawnBullet();
-      this.anim.playOneShot("shoot", { duration: PlayerController.SHOOT_COOLDOWN_MS });
+      this.anim.playOneShot("shoot", { duration: PlayerController.SHOOT_COOLDOWN_SECONDS });
       this.audio.play(ShootSfx.path, { channel: "sfx" });
-      this.camera.shake(2, 100, { decay: 0.8 });
+      this.camera.shake(2, 0.1, { decay: 0.8 });
     }
 
     // -- Animation state (when not locked by one-shot) --
@@ -492,9 +491,9 @@ class PlayerController extends Component {
   private startSquash(scaleX: number, scaleY: number): void {
     this.transform.setScale(scaleX, scaleY);
     this.squash.restart({
-      duration: 120,
+      duration: 0.12,
       update: (_dt, elapsed) => {
-        const t = Math.max(0, 1 - elapsed / 120);
+        const t = Math.max(0, 1 - elapsed / 0.12);
         const sx = 1 + (scaleX - 1) * t;
         const sy = 1 + (scaleY - 1) * t;
         this.transform.setScale(sx, sy);
@@ -520,13 +519,13 @@ class PlayerController extends Component {
     this.flash.restart();
 
     // Hurt animation + stun
-    this.anim.playOneShot("hurt", { duration: PlayerController.STUN_MS });
+    this.anim.playOneShot("hurt", { duration: PlayerController.STUN_SECONDS });
     this.stun.restart();
 
     // Invincibility (lasts longer than stun; cleanup re-checks overlap)
     this.invincibility.restart();
 
-    this.camera.shake(5, 200, { decay: 0.7 });
+    this.camera.shake(5, 0.2, { decay: 0.7 });
   }
 
   private tryDamageFrom(enemy: Entity): void {
@@ -587,11 +586,11 @@ class EnemyController extends Component {
   private static readonly CHARGE_SPEED = 350;
   private static readonly DETECT_RANGE = 120;
   private static readonly DETECT_Y = 60;
-  private static readonly REACT_DURATION = 200;
-  private static readonly ATTACK_MAX_DURATION = 1000;
+  private static readonly REACT_DURATION = 0.2;
+  private static readonly ATTACK_MAX_DURATION = 1;
   private static readonly SLASH_FRAME_START = 4;
   private static readonly SLASH_FRAME_END = 9;
-  private static readonly COOLDOWN_DURATION = 500;
+  private static readonly COOLDOWN_DURATION = 0.5;
 
   constructor(patrolLeft: number, patrolRight: number, camera: CameraEntity) {
     super();
@@ -605,11 +604,11 @@ class EnemyController extends Component {
 
     // Slots
     this.flashSlot = this.pc.slot({
-      duration: 80,
+      duration: 0.08,
       cleanup: () => { this.sprite.animatedSprite.tint = 0xffffff; },
     });
     this.shakeSlot = this.pc.slot({
-      duration: 150,
+      duration: 0.15,
       update: () => {
         const s = this.sprite.animatedSprite;
         s.position.set(
@@ -794,7 +793,7 @@ class EnemyController extends Component {
     this.shakeSlot.restart();
 
     // Play hit animation and return to patrol when done
-    const hitDuration = Math.min(this.anim.calcDuration("hit"), 400);
+    const hitDuration = Math.min(this.anim.calcDuration("hit"), 0.4);
     this.anim.playOneShot("hit", {
       duration: hitDuration,
       onComplete: () => {
@@ -805,7 +804,7 @@ class EnemyController extends Component {
     });
 
     // Camera shake
-    this.camera.shake(4, 150, { decay: 0.8 });
+    this.camera.shake(4, 0.15, { decay: 0.8 });
   }
 
   private die(): void {
@@ -828,7 +827,7 @@ class EnemyController extends Component {
     if (scene) {
       spawnEnemyDeathParticles(scene, pos.x, pos.y, ENEMY_COLOR);
     }
-    this.camera.shake(6, 250, { decay: 0.7 });
+    this.camera.shake(6, 0.25, { decay: 0.7 });
 
     // Play die animation, then destroy
     this.anim.forcePlay("die");
@@ -1003,10 +1002,10 @@ class BulletEntity extends Entity {
     });
     this.add(collider);
 
-    // Self-destruct after 1200ms
+    // Self-destruct after 1.2s
     const pc = this.add(new ProcessComponent());
     pc.run(
-      Process.delay(1200, () => {
+      Process.delay(1.2, () => {
         this.destroy();
       }),
     );
