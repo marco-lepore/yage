@@ -571,6 +571,101 @@ describe("createList", () => {
         /keyBy/,
       );
     });
+
+    it("add throws when a live item already holds the derived key", () => {
+      const inv = makeInventory();
+      const swordId = inv.add({ itemId: "sword", quantity: 1 });
+      expect(() => inv.add({ itemId: "sword", quantity: 9 })).toThrow(
+        /at most one item per key/,
+      );
+      // The rejected add left the list and index untouched.
+      expect(inv.size()).toBe(1);
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 1 });
+    });
+
+    it("update throws when the new key collides with another item", () => {
+      const inv = makeInventory();
+      const swordId = inv.add({ itemId: "sword", quantity: 1 });
+      const shieldId = inv.add({ itemId: "shield", quantity: 2 });
+      expect(() => inv.update(swordId, { itemId: "shield" })).toThrow(
+        /at most one item per key/,
+      );
+      // Both items keep their original keys.
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.findId("shield")).toBe(shieldId);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 1 });
+    });
+
+    it("update to a fresh key still reindexes", () => {
+      const inv = makeInventory();
+      const id = inv.add({ itemId: "old", quantity: 1 });
+      inv.add({ itemId: "shield", quantity: 2 });
+      inv.update(id, { itemId: "new" });
+      expect(inv.findId("old")).toBeUndefined();
+      expect(inv.findId("new")).toBe(id);
+      expect(inv.getByKey("new")).toEqual({ itemId: "new", quantity: 1 });
+    });
+
+    it("update keeping its own key is allowed", () => {
+      const inv = makeInventory();
+      const id = inv.add({ itemId: "sword", quantity: 1 });
+      expect(inv.update(id, { quantity: 5 })).toBe(true);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 5 });
+      expect(inv.findId("sword")).toBe(id);
+    });
+
+    it("upsert throws when the item's key does not match the lookup key", () => {
+      const inv = makeInventory();
+      expect(() =>
+        inv.upsert("sword", { itemId: "axe", quantity: 1 }),
+      ).toThrow(/keyBy\(item\) === key/);
+      // Nothing was inserted under either key.
+      expect(inv.size()).toBe(0);
+      expect(inv.findId("sword")).toBeUndefined();
+      expect(inv.findId("axe")).toBeUndefined();
+    });
+
+    it("upsert inserts a new key then replaces an existing one", () => {
+      const inv = makeInventory();
+      const swordId = inv.upsert("sword", { itemId: "sword", quantity: 1 });
+      const axeId = inv.upsert("axe", { itemId: "axe", quantity: 1 });
+      expect(inv.size()).toBe(2);
+      expect(swordId).not.toBe(axeId);
+      expect(inv.findId("sword")).toBe(swordId);
+      expect(inv.findId("axe")).toBe(axeId);
+
+      const again = inv.upsert("sword", { itemId: "sword", quantity: 7 });
+      expect(again).toBe(swordId);
+      expect(inv.size()).toBe(2);
+      expect(inv.getByKey("sword")).toEqual({ itemId: "sword", quantity: 7 });
+      expect(inv.getByKey("axe")).toEqual({ itemId: "axe", quantity: 1 });
+    });
+
+    it("hydrate rejects a payload with duplicate derived keys", () => {
+      const inv = makeInventory();
+      expect(() =>
+        inv.hydrate({
+          items: [
+            { id: 1, value: { itemId: "sword", quantity: 1 } },
+            { id: 2, value: { itemId: "sword", quantity: 2 } },
+          ],
+          nextId: 3,
+        }),
+      ).toThrow(/at most one item per key/);
+    });
+
+    it("createList throws when the default has duplicate keys", () => {
+      expect(() =>
+        createList<Slot>({
+          keyBy: (s) => s.itemId,
+          default: () => [
+            { itemId: "sword", quantity: 1 },
+            { itemId: "sword", quantity: 2 },
+          ],
+        }),
+      ).toThrow(/at most one item per key/);
+    });
   });
 });
 

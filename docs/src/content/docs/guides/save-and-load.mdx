@@ -109,7 +109,7 @@ Shape APIs (every value also exposes `subscribe(fn)`, `serialize()`,
 - `createCounter` / `s.counter`: `value()`, `set(n)`, `increment(by?)`, `decrement(by?)`, `clamp(value, min, max)`.
 - `createMap<K, V>` / `s.map`: `get(k)`, `set(k, v)`, `delete(k)`, `has(k)`, `entries()`, `size()`, `clear()`.
 - `createSet<K>` / `s.set`: `add(k)`, `delete(k)`, `has(k)`, `values()`, `size()`, `clear()`.
-- `createList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list()`, `size()`, `clear()`. With a `keyBy` option, also `findId(key)`, `getByKey(key)`, and `upsert(key, item): number` (merge if the key exists, else insert). Without `keyBy`, the keyed methods throw.
+- `createList<T>` / `s.list`: `add(item): number` (id), `remove(id): boolean`, `get(id)`, `update(id, partial)`, `list()`, `size()`, `clear()`. With a `keyBy` option, also `findId(key)`, `getByKey(key)`, and `upsert(key, item): number` (replace if the key exists, else insert). Without `keyBy`, the keyed methods throw. A keyed list holds at most one item per key: `add`, `update`, and `upsert` throw if the result would share a key with another item, and `upsert` requires the item's own key to match (`keyBy(item) === key`).
 
 #### Keyed lists (lookup by a domain field)
 
@@ -122,7 +122,7 @@ const inventory = createList<{ itemId: string; quantity: number }>({
 });
 
 inventory.upsert("sword", { itemId: "sword", quantity: 1 }); // insert
-inventory.upsert("sword", { itemId: "sword", quantity: 2 }); // merge in place
+inventory.upsert("sword", { itemId: "sword", quantity: 2 }); // replace in place
 
 inventory.findId("sword");   // -> the stable id
 inventory.getByKey("sword"); // -> { itemId: "sword", quantity: 2 }
@@ -130,8 +130,13 @@ inventory.getByKey("axe");   // -> undefined
 ```
 
 The index is derived, not stored — saves load unchanged and the index rebuilds
-on `hydrate`. Keys are last-writer-wins: if two items share a key, the index
-points at the most recently written one.
+on `hydrate`.
+
+Keys are unique: a keyed list holds at most one item per derived key. `add`,
+`update`, and `upsert` throw if the operation would leave two live items sharing
+a key. `upsert(key, item)` is the add-or-replace-by-key operation, so it also
+requires the item's own key to match the lookup key (`keyBy(item) === key`);
+a mismatch throws.
 
 Codecs are bundled for Set/Map/Counter/List — you only specify a custom
 `codec` on `createRecord<T>` / `createValue<T>` (or the matching leaves)

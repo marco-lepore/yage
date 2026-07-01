@@ -126,6 +126,10 @@ export type ListKey = string | number;
  * They derive a domain key from each item (e.g. an `itemId` for an inventory)
  * and maintain a key→id index for O(1) lookup. Calling them without `keyBy`
  * throws.
+ *
+ * A keyed list holds at most one item per derived key. `add`, `update`, and
+ * `upsert` throw if the operation would leave two live items sharing a key, so
+ * every key resolves to exactly one item.
  */
 export interface ReactiveList<T>
   extends Reactive,
@@ -154,9 +158,9 @@ export interface ReactiveList<T>
    */
   getByKey(key: ListKey): T | undefined;
   /**
-   * Update the item whose `keyBy` key equals `key` (shallow merge) if present,
-   * otherwise insert `item`. Returns the affected id. Requires the `keyBy`
-   * option.
+   * Add-or-replace by key. If `key` already exists, shallow-merge `item` over
+   * that slot; otherwise insert `item`. Returns the affected id. Requires the
+   * `keyBy` option, and requires `keyBy(item) === key` — a mismatch throws.
    */
   upsert(key: ListKey, item: T): number;
 }
