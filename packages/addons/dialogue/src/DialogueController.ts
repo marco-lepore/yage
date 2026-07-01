@@ -14,7 +14,7 @@
  *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, storage }));
  */
 
-import { Component, LoggerKey, type Logger } from "@yagejs/core";
+import { Component, LoggerKey, isDev, type Logger } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
@@ -36,7 +36,7 @@ import type {
   TextPresenter,
 } from "./chrome/DialogueUiAdapter.js";
 import type { AvatarPresenter } from "./avatar/AvatarPresenter.js";
-import { KeyboardInputBinding, type InputBinding } from "./input/index.js";
+import { fullControls, type InputBinding } from "./input/index.js";
 import {
   DialogueAutoAdvanceEvent,
   DialogueChoiceMadeEvent,
@@ -80,7 +80,14 @@ export interface DialogueControllerOptions<TStorage extends VariableStorage = Va
   readonly commands?: Readonly<Record<string, CommandHandler>> | undefined;
   /** Catch-all for command types with no explicit handler. */
   readonly fallbackCommand?: CommandHandler | undefined;
-  /** Device → session binding. Omit for the default keyboard binding. */
+  /**
+   * Device → session binding. Omit for the zero-config default,
+   * {@link fullControls} — keyboard/gamepad (over the `move-up`/`move-down`/
+   * `interact`/`attack`/`skip` action names) plus mouse/touch (tap to advance).
+   * The keyboard names must exist in the game's `InputManager` action map; an
+   * unmapped name silently never fires, so supply your own binding wired to the
+   * game's names when they differ. A full mismatch logs a dev-mode warning.
+   */
   readonly input?: InputBinding;
   /**
    * Extra channels registered on the session at mount (Voice / Shop /
@@ -133,7 +140,10 @@ export class DialogueController<
 
   constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
-    this.binding = opts.input ?? new KeyboardInputBinding();
+    // Zero-config: keyboard/gamepad + mouse/touch (tap to advance). No choice
+    // geometry is available at construction, so pointer hit-testing of rows is
+    // off; a game wires it by passing its own `fullControls(presenter)`.
+    this.binding = opts.input ?? fullControls();
   }
 
   onAdd(): void {
@@ -199,6 +209,7 @@ export class DialogueController<
       },
     );
     this.binding.bind(this.input, this.session);
+    this.warnIfActionsUnmapped(warn);
 
     // Re-apply any lifecycle lever a host set BEFORE the component was added:
     // setPaused/setHidden could only update the controller mirror back then (no
@@ -407,6 +418,26 @@ export class DialogueController<
     // backgrounded or frozen conversation consumes no device input.
     this.session?.update(dt);
     if (this.inputEnabled && !this.paused) this.binding.poll();
+  }
+
+  /**
+   * Warn (dev only) when NONE of the binding's polled action names exist in the
+   * live `InputManager` map — the silent-no-op trap: the default action names
+   * (kebab-case `move-up`/`interact`/…) don't match a game's custom map, so
+   * keyboard choice nav does nothing with no error anywhere. A partial mismatch
+   * is intentional (a game may bind only a subset), so only a *total* miss warns.
+   */
+  private warnIfActionsUnmapped(warn: (message: string) => void): void {
+    if (!isDev()) return;
+    const names = this.binding.actionNames?.() ?? [];
+    if (names.length === 0) return; // pointer-only binding — nothing to validate
+    const mapped = new Set(this.input.getActionNames());
+    if (names.some((a) => mapped.has(a))) return; // at least one is wired
+    warn(
+      `dialogue input binding references action names absent from the InputManager map ` +
+        `(${names.join(", ")}); keyboard/gamepad controls will do nothing. Pass an ` +
+        `\`input\` binding wired to your game's action names.`,
+    );
   }
 }
 

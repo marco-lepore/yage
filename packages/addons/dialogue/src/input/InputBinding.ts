@@ -46,6 +46,13 @@ export interface InputBinding {
   poll(): void;
   /** Optional teardown (e.g. unsubscribe pointer listeners). */
   dispose?(): void;
+  /**
+   * The `InputManager` action names this binding polls, if it polls any. The
+   * host reads these to validate them against the live action map — a binding
+   * whose names are all absent silently no-ops. Device bindings that poll no
+   * action map (e.g. a pure pointer binding) omit this.
+   */
+  actionNames?(): readonly string[];
 }
 
 /**
@@ -72,6 +79,14 @@ export class CompositeInputBinding implements InputBinding {
   dispose(): void {
     for (const b of this.bindings) b.dispose?.();
   }
+  /** Union of every child binding's polled action names (de-duplicated). */
+  actionNames(): readonly string[] {
+    const names = new Set<string>();
+    for (const b of this.bindings) {
+      for (const a of b.actionNames?.() ?? []) names.add(a);
+    }
+    return [...names];
+  }
 }
 
 /** Keyboard/gamepad action-map binding (the default). */
@@ -93,6 +108,12 @@ export class KeyboardInputBinding implements InputBinding {
   bind(input: InputManager, session: DialogueSession): void {
     this.input = input;
     this.session = session;
+  }
+
+  /** Every action name this binding polls, across all slots (de-duplicated). */
+  actionNames(): readonly string[] {
+    const { advance, speed, up, down, skip } = this.actions;
+    return [...new Set([...advance, ...speed, ...up, ...down, ...(skip ?? [])])];
   }
 
   poll(): void {

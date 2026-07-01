@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { InputManager } from "@yagejs/input";
 import type { DialogueSession } from "../core/session.js";
+import type { InputBinding } from "./InputBinding.js";
 import {
+  CompositeInputBinding,
+  DEFAULT_ACTIONS,
   FULL_ACTIONS,
   KeyboardInputBinding,
   PointerInputBinding,
+  fullControls,
 } from "./InputBinding.js";
 
 /** Minimal InputManager stub — only the methods the bindings touch. */
@@ -138,4 +142,50 @@ describe("PointerInputBinding", () => {
     expect(session.advanced).toBe(1);
   });
 
+});
+
+describe("action-name introspection", () => {
+  it("KeyboardInputBinding.actionNames() returns its configured names, de-duplicated", () => {
+    const b = new KeyboardInputBinding(DEFAULT_ACTIONS);
+    // DEFAULT_ACTIONS: advance=interact, speed=attack, up=move-up, down=move-down.
+    expect([...b.actionNames()].sort()).toEqual(
+      ["attack", "interact", "move-down", "move-up"].sort(),
+    );
+  });
+
+  it("KeyboardInputBinding.actionNames() includes the optional `skip` slot", () => {
+    const b = new KeyboardInputBinding(FULL_ACTIONS);
+    expect(b.actionNames()).toContain("skip");
+  });
+
+  it("KeyboardInputBinding.actionNames() de-duplicates a name shared across slots", () => {
+    const b = new KeyboardInputBinding({
+      advance: ["ok"],
+      speed: ["ok"],
+      up: ["u"],
+      down: ["d"],
+    });
+    expect([...b.actionNames()].sort()).toEqual(["d", "ok", "u"]);
+  });
+
+  it("CompositeInputBinding aggregates its keyboard child's names", () => {
+    const composite = new CompositeInputBinding([
+      new KeyboardInputBinding(DEFAULT_ACTIONS),
+      new PointerInputBinding(), // contributes no action names
+    ]);
+    expect([...composite.actionNames()].sort()).toEqual(
+      ["attack", "interact", "move-down", "move-up"].sort(),
+    );
+  });
+
+  it("PointerInputBinding has no actionNames (pure pointer, polls no action map)", () => {
+    const binding: InputBinding = new PointerInputBinding();
+    expect(binding.actionNames).toBeUndefined();
+  });
+
+  it("fullControls() surfaces the keyboard action names through the composite", () => {
+    const binding = fullControls();
+    expect(binding.actionNames?.()).toContain("interact");
+    expect(binding.actionNames?.()).toContain("move-up");
+  });
 });
