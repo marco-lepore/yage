@@ -120,6 +120,11 @@ future save cursor.) `play(script)` is **content-only**.
   (read-only), and `compose(cells(...), new MemoryVariableStorage())` to layer
   (writes to an unknown name land in the **last** storage — put a writable store
   last).
+- `createRecordStorage(record: Record<string, string | number | boolean>)` —
+  `VariableStorage` over a plain non-null record you own (a reactive store leaf, a
+  save blob). `get`/`has`/`entries` are own-property only; the record is mutated in
+  place. A `set(name, null)` from the runtime **deletes** the key (null = unset) so
+  the record stays typed non-null; any other value writes through.
 
 Conditions, `{token}` interpolation, and choice gates read the storage at
 **line-present time** (an earlier command's effect shows on a later line);

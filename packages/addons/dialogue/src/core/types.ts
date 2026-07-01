@@ -131,8 +131,17 @@ export type Expr =
 export interface VariableStorage {
   /** Read a variable, or `undefined` if absent. */
   get(name: string): VarValue | undefined;
-  /** Write a variable. A read-only accessor (a `cells` getter without a setter)
-   *  throws. */
+  /**
+   * Write a variable. A read-only accessor (a `cells` getter without a setter)
+   * throws.
+   *
+   * `value` can be `null` — the runtime writes it from a literal `null` in a
+   * `set` directive (`set x = null`) and from reading an absent variable (a
+   * `set a = undeclared` coerces the missing read to `null`). By convention
+   * `null` means **unset**, so a storage backed by a non-null record may
+   * delete the name rather than store `null` (see {@link createRecordStorage});
+   * a Map-backed store keeps the literal `null`.
+   */
   set(name: string, value: VarValue): void;
   /** Whether the storage currently holds `name` (drives seed-if-absent). */
   has(name: string): boolean;

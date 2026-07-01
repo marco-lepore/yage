@@ -11,6 +11,10 @@
  *   • {@link compose} — layer several storages into one (reads/writes route to
  *     the first that `has` the name; a brand-new name lands in the last —
  *     so put a writable store last to catch seeds + locals).
+ *   • {@link createRecordStorage} — a storage over a plain mutable
+ *     `Record<string, string | number | boolean>` you already own, with no
+ *     null guard to write by hand: a `set(name, null)` from the runtime
+ *     deletes the key so the record stays typed non-null.
  *
  * The interface lives in `types.ts`; this file is the concrete kit. Seed-if-
  * absent + persistence are policy of the *caller* (`session.play`), not the
@@ -95,6 +99,44 @@ export function cells(defs: Readonly<Record<string, Cell>>): VariableStorage {
     },
     *entries() {
       for (const name of Object.keys(defs)) yield [name, read(name)] as const;
+    },
+  };
+}
+
+/**
+ * A {@link VariableStorage} over a plain mutable record you already own — the
+ * zero-guard bridge for the common "back the dialogue namespace with a
+ * non-null `Record<string, string | number | boolean>`" case (a reactive game
+ * store's record leaf, a save-game blob, …). `get` returns the value or
+ * `undefined`; `has` is own-property only; `entries` yields the own entries.
+ *
+ * The runtime can call `set(name, null)` — from a literal `null` in a `set`
+ * directive and from reading an absent variable (`undefined` is coerced to
+ * `null`). This helper treats a `null` write as **unset**: it deletes the key
+ * rather than storing `null`, so the backing record stays typed non-null and
+ * the host's own reads never see a `null` member. Any other value writes
+ * through directly. The record is mutated in place — pass the same object the
+ * host reads from to keep them in sync.
+ */
+export function createRecordStorage(
+  record: Record<string, string | number | boolean>,
+): VariableStorage {
+  return {
+    get(name) {
+      return Object.hasOwn(record, name) ? record[name] : undefined;
+    },
+    set(name, value) {
+      if (value === null) {
+        Reflect.deleteProperty(record, name);
+        return;
+      }
+      record[name] = value;
+    },
+    has(name) {
+      return Object.hasOwn(record, name);
+    },
+    *entries() {
+      for (const [name, value] of Object.entries(record)) yield [name, value] as const;
     },
   };
 }

@@ -175,6 +175,27 @@ save cursor.) `play(script)` is content-only.
   );
   ```
 
+- To back the namespace with a plain record you already own — a reactive store's
+  record leaf, a save blob — use `createRecordStorage`. It mutates the record in
+  place, so the host reads the same object:
+
+  ```ts
+  import { createRecordStorage } from "@yagejs-addons/dialogue";
+
+  // record typed Record<string, string | number | boolean> — no null member
+  const storage = createRecordStorage(game.dialogueVars);
+  ```
+
+#### When the runtime writes `null`
+
+`VariableStorage.set` can receive `null`: a literal `null` in a `set` directive
+(`set x = null`), and reading an absent variable (`set a = undeclared` coerces
+the missing read to `null`). By convention `null` means **unset**.
+`createRecordStorage` honors that — a `null` write deletes the key, so the backing
+record stays typed `Record<string, string | number | boolean>` with no `null`
+member. `MemoryVariableStorage` keeps the literal `null`. A hand-written storage
+over a non-null record should drop or delete on `null` the same way.
+
 `{gold}` (and any condition on `gold`) resolves **when the line is presented**, so
 an earlier command's effect shows up on a later line. Already-shown lines never
 re-render, and a choice menu's conditions don't live-refresh while it's open.
