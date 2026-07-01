@@ -200,7 +200,18 @@ input.consumeWheel();              // suppress wheel action edges for this frame
 
 ```ts
 overlayEl.addEventListener("pointerdown", (e) => {
-  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...e, button: 0 }));
+  // Build the init explicitly — spreading `{ ...e }` drops pointerId/clientX/…
+  // because PointerEvent fields are not own-enumerable properties.
+  canvas.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
   input.consumePointer(e.pointerId); // underneath listeners still fire; no action edge
 });
 ```
@@ -418,7 +429,7 @@ input.fireActionUp("attack");        // real release: isJustReleased edge + onAc
 input.setActionHeld("attack", held); // mirror a pointer's held boolean onto down/up
 ```
 
-`fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: `setActionHeld("attack", pointerDown)` each frame, then read `getHoldDuration("attack")` to charge while held and `isJustReleased("attack")` to fire on release.
+`fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: each frame sample `const charge = getHoldDuration("attack")` **before** `setActionHeld("attack", pointerDown)`, then on `isJustReleased("attack")` fire with the captured `charge`. Sample first because `fireActionUp` (via `setActionHeld(..., false)`) resets `getHoldDuration` to 0 on the release frame.
 
 For deterministic inspector probes with a real controller plugged in, pair
 `new InputPlugin({ pollGamepads: false })` with

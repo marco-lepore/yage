@@ -947,6 +947,29 @@ describe("InputManager", () => {
       expect(released).toEqual([]);
     });
 
+    it("disabled group silences synthetic onAction / onActionReleased", () => {
+      const pressed: string[] = [];
+      const released: string[] = [];
+      input.onAction("jump", (n) => pressed.push(n));
+      input.onActionReleased("jump", (n) => released.push(n));
+      input.setGroups({ movement: ["jump"] });
+
+      input.disableGroup("movement");
+      input.fireActionDown("jump");
+      input._clearFrameState();
+      input.fireActionUp("jump");
+      expect(input.isPressed("jump")).toBe(false);
+      expect(pressed).toEqual([]);
+      expect(released).toEqual([]);
+
+      input.enableGroup("movement");
+      input.fireActionDown("jump");
+      input._clearFrameState();
+      input.fireActionUp("jump");
+      expect(pressed).toEqual(["jump"]);
+      expect(released).toEqual(["jump"]);
+    });
+
     it("snapshotState lists a held synthetic action under actions", () => {
       input.fireActionDown("jump");
       input._clearFrameState();

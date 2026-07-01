@@ -1282,7 +1282,11 @@ export class InputManager {
     if (!this.heldSyntheticActions.has(name)) {
       this.syntheticActionStarts.set(name, this.elapsedMs);
     }
-    this.notifyActionListeners(this.actionListeners, name);
+    // Match the physical path: a disabled action's state is already suppressed
+    // at query time, so its listeners must not fire either.
+    if (this.isActionEnabled(name)) {
+      this.notifyActionListeners(this.actionListeners, name);
+    }
   }
 
   /**
@@ -1305,7 +1309,11 @@ export class InputManager {
     this.pulsedSyntheticActions.add(name);
     this.justReleasedActions.delete(name);
     this.syntheticActionStarts.set(name, this.elapsedMs);
-    this.notifyActionListeners(this.actionListeners, name);
+    // Match the physical path: a disabled action's state is already suppressed
+    // at query time, so its press listeners must not fire either.
+    if (this.isActionEnabled(name)) {
+      this.notifyActionListeners(this.actionListeners, name);
+    }
   }
 
   /**
@@ -1322,7 +1330,11 @@ export class InputManager {
     this.pulsedSyntheticActions.delete(name);
     this.syntheticActionStarts.delete(name);
     this.justReleasedActions.add(name);
-    this.notifyActionListeners(this.actionReleasedListeners, name);
+    // Match the physical path: a disabled action's release listeners must not
+    // fire, mirroring how its press was suppressed.
+    if (this.isActionEnabled(name)) {
+      this.notifyActionListeners(this.actionReleasedListeners, name);
+    }
   }
 
   /**

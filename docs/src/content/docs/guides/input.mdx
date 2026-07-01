@@ -248,8 +248,19 @@ fires whatever gameplay action is bound there:
 
 ```ts
 overlayEl.addEventListener("pointerdown", (e) => {
-  // Forward to the canvas so UI listeners underneath still see the tap.
-  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...e, button: 0 }));
+  // Forward to the canvas so UI listeners underneath still see the tap. Build
+  // the init explicitly — spreading `{ ...e }` drops pointerId/clientX/… since
+  // PointerEvent fields are not own-enumerable properties.
+  canvas.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      button: 0,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
   // ...but keep it out of gameplay actions.
   input.consumePointer(e.pointerId);
 });
@@ -492,11 +503,13 @@ neither resets the hold start nor re-fires the press edge.
 A hold-to-charge attack driven by a touch button, with zero keymap knowledge:
 
 ```typescript
-// Each frame, mirror the button's held state onto the action.
+// Sample the hold BEFORE mirroring the button: fireActionUp (via
+// setActionHeld(..., false)) resets getHoldDuration to 0 on the release frame.
+const charge = input.getHoldDuration("attack");
 input.setActionHeld("attack", chargeButton.isHeld);
 
 if (input.isJustReleased("attack")) {
-  const power = Math.min(input.getHoldDuration("attack") / 1000, 1); // 0..1 over 1s
+  const power = Math.min(charge / 1000, 1); // 0..1 over 1s
   fireChargedAttack(power);
 }
 ```
