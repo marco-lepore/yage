@@ -335,12 +335,12 @@ export class DialogueController<
   }
 
   /**
-   * Auto-advance lines after they finish revealing (`ms`), or `null` to disable
-   * (manual advance). A per-line `autoAdvanceMs` still overrides this. Toggle it
-   * live for a VN-style "auto" control.
+   * Auto-advance lines this many seconds after they finish revealing, or `null`
+   * to disable (manual advance). A per-line `autoAdvance` still overrides this.
+   * Toggle it live for a VN-style "auto" control.
    */
-  setAutoAdvance(ms: number | null): void {
-    this.session?.setAutoAdvance(ms);
+  setAutoAdvance(seconds: number | null): void {
+    this.session?.setAutoAdvance(seconds);
   }
 
   /**

@@ -121,7 +121,7 @@ describe("DialogueSession — extra channels", () => {
         },
       }),
     );
-    session.setAutoAdvance(100); // auto-advance 100ms after a line reveals
+    session.setAutoAdvance(0.1); // auto-advance 0.1s after a line reveals
 
     session.play({
       id: "v",
@@ -159,11 +159,11 @@ describe("DialogueSession — extra channels", () => {
     session.addChannel(
       createVoiceChannel({
         play: () => ({ stop: () => {} }), // wedged: onEnded is NEVER called
-        livenessMs: 200,
+        liveness: 0.2,
         onError: (message) => errors.push(message),
       }),
     );
-    session.setAutoAdvance(50);
+    session.setAutoAdvance(0.05);
 
     session.play({
       id: "v",
@@ -181,11 +181,11 @@ describe("DialogueSession — extra channels", () => {
 
     text.finishReveal(); // arms the auto-timer on the text reveal
     await flush();
-    session.update(0.1); // 100ms, under the 200ms budget → the wedged voice still gates
+    session.update(0.1); // 0.1s, under the 0.2s budget → the wedged voice still gates
     expect(autoAdvances).toBe(0);
     expect(errors).toHaveLength(0);
 
-    session.update(0.15); // 250ms total > budget → liveness trips through the session
+    session.update(0.15); // 0.25s total > budget → liveness trips through the session
     expect(errors).toHaveLength(1); // reported once
     expect(autoAdvances).toBe(1); // …and auto-advance proceeds (no soft-lock)
   });
@@ -199,7 +199,7 @@ describe("DialogueSession — extra channels", () => {
     );
     const seen: string[] = [];
     session.addChannel({ present: (line) => seen.push(lastText(line)) });
-    session.setAutoAdvance(50);
+    session.setAutoAdvance(0.05);
 
     session.play({
       id: "o",

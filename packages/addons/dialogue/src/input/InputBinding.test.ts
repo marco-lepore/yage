@@ -78,7 +78,7 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
   it("fires skip once held past the threshold, then re-arms after release", () => {
     const input = new FakeInput();
     const session = new FakeSession();
-    const b = new KeyboardInputBinding(FULL_ACTIONS, 600);
+    const b = new KeyboardInputBinding(FULL_ACTIONS, 0.6);
     b.bind(input.asManager(), session.asSession());
 
     input.pressed.add("skip");
@@ -101,7 +101,7 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
     expect(session.skipped).toBe(2);
   });
 
-  it("with skipHoldMs 0, skip fires on press (no hold required)", () => {
+  it("with skipHold 0, skip fires on press (no hold required)", () => {
     const input = new FakeInput();
     const session = new FakeSession();
     const b = new KeyboardInputBinding(FULL_ACTIONS, 0);

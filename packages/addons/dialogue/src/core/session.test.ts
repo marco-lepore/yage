@@ -293,7 +293,7 @@ describe("DialogueSession — line sequencing & reveal gating", () => {
 });
 
 describe("DialogueSession — auto-advance clock", () => {
-  it("auto-advances after autoAdvanceMs once the line is fully revealed", async () => {
+  it("auto-advances after autoAdvance once the line is fully revealed", async () => {
     const h = makeHarness();
     const script: DialogueScript = {
       id: "auto",
@@ -302,7 +302,7 @@ describe("DialogueSession — auto-advance clock", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "one", autoAdvanceMs: 100 },
+            { kind: "say", text: "one", autoAdvance: 0.1 },
             { kind: "say", text: "two" },
           ],
         },
@@ -314,7 +314,7 @@ describe("DialogueSession — auto-advance clock", () => {
     expect(h.text.lastText).toBe("one");
 
     h.text.finishReveal(); // settles reveal; the auto-timer is armed async
-    await flush(); // let handleRevealComplete arm the 100ms timer
+    await flush(); // let handleRevealComplete arm the 0.1s timer
     h.session.update(0.06);
     expect(h.text.lastText).toBe("one"); // not yet
     h.session.update(0.06); // total 0.12s > 0.1s → advance
@@ -336,9 +336,9 @@ describe("DialogueSession — auto-advance clock", () => {
     },
   };
 
-  it("setAutoAdvance default advances lines that lack their own autoAdvanceMs", async () => {
+  it("setAutoAdvance default advances lines that lack their own autoAdvance", async () => {
     const h = makeHarness();
-    h.session.setAutoAdvance(100);
+    h.session.setAutoAdvance(0.1);
     h.session.play(twoPlain);
     h.text.finishReveal();
     await flush();
@@ -349,7 +349,7 @@ describe("DialogueSession — auto-advance clock", () => {
     expect(h.text.lastText).toBe("two");
   });
 
-  it("a per-line autoAdvanceMs overrides the setAutoAdvance default", async () => {
+  it("a per-line autoAdvance overrides the setAutoAdvance default", async () => {
     const h = makeHarness();
     const script: DialogueScript = {
       id: "override",
@@ -358,13 +358,13 @@ describe("DialogueSession — auto-advance clock", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "one", autoAdvanceMs: 50 },
+            { kind: "say", text: "one", autoAdvance: 0.05 },
             { kind: "say", text: "two" },
           ],
         },
       },
     };
-    h.session.setAutoAdvance(5000); // long default, should be ignored on line one
+    h.session.setAutoAdvance(5); // long default, should be ignored on line one
     h.session.play(script);
     h.text.finishReveal();
     await flush();
@@ -375,7 +375,7 @@ describe("DialogueSession — auto-advance clock", () => {
 
   it("setAutoAdvance(null) leaves lines waiting for a manual advance", async () => {
     const h = makeHarness();
-    h.session.setAutoAdvance(100);
+    h.session.setAutoAdvance(0.1);
     h.session.setAutoAdvance(null); // turned back off
     h.session.play(twoPlain);
     h.text.finishReveal();
@@ -391,7 +391,7 @@ describe("DialogueSession — auto-advance clock", () => {
     await flush();
     h.session.update(10);
     expect(h.text.lastText).toBe("one"); // still parked (auto off)
-    h.session.setAutoAdvance(100); // arm now, mid-line
+    h.session.setAutoAdvance(0.1); // arm now, mid-line
     h.session.update(0.12);
     await flush();
     expect(h.text.lastText).toBe("two");
@@ -731,13 +731,13 @@ describe("DialogueSession — timed-choice recipe", () => {
   /**
    * A faithful host-side implementation of the timed-choice recipe, running on a
    * manual clock (the host's own clock — pause is the game's policy). A
-   * `choice-timer` command before the choice step stashes `{ ms, default }`; the
+   * `choice-timer` command before the choice step stashes `{ seconds, default }`; the
    * timer arms when the menu is shown and commits the default via `choose` on
    * expiry. Re-arm/cancel on EVERY choice-shown is the dangling-timer guard.
    */
   class ChoiceTimer {
     private remaining = -1;
-    private pending: { ms: number; def: number } | undefined;
+    private pending: { seconds: number; def: number } | undefined;
     private def = 0;
     private session: DialogueSession | undefined;
     /** When false, choice-made does NOT cancel — used to isolate the
@@ -748,13 +748,13 @@ describe("DialogueSession — timed-choice recipe", () => {
       this.session = session;
     }
     /** The `choice-timer` command handler stashes its params here. */
-    arm(ms: number, def: number): void {
-      this.pending = { ms, def };
+    arm(seconds: number, def: number): void {
+      this.pending = { seconds, def };
     }
     onChoiceShown(): void {
       this.remaining = -1; // guard: drop any prior running timer first…
       if (this.pending) {
-        this.remaining = this.pending.ms; // …then re-arm only if THIS menu is timed
+        this.remaining = this.pending.seconds; // …then re-arm only if THIS menu is timed
         this.def = this.pending.def;
         this.pending = undefined; // consume — a later untimed menu won't re-arm
       }
@@ -784,7 +784,7 @@ describe("DialogueSession — timed-choice recipe", () => {
     }
   }
 
-  const TIMEOUT = 5000;
+  const TIMEOUT = 5;
   const timedScript: DialogueScript = {
     id: "timed",
     start: "a",
@@ -792,11 +792,11 @@ describe("DialogueSession — timed-choice recipe", () => {
       a: {
         id: "a",
         steps: [
-          { kind: "command", commands: [{ type: "choice-timer", ms: TIMEOUT, default: 1 }] },
+          { kind: "command", commands: [{ type: "choice-timer", seconds: TIMEOUT, default: 1 }] },
           {
             kind: "choice",
             text: "Quick — what do you do?",
-            meta: { timeoutMs: TIMEOUT },
+            meta: { timeout: TIMEOUT },
             options: [
               { text: "Fight", target: "fight" },
               { text: "Hesitate", target: "hesitate" }, // index 1 = the default
@@ -809,10 +809,10 @@ describe("DialogueSession — timed-choice recipe", () => {
     },
   };
 
-  it("commits the default option on expiry and passes meta.timeoutMs to the presenter", async () => {
+  it("commits the default option on expiry and passes meta.timeout to the presenter", async () => {
     const timer = new ChoiceTimer();
     const h = makeHarness({
-      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.ms), Number(cmd.default)) },
+      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)) },
       onChoiceShown: () => timer.onChoiceShown(),
       onChoiceMade: () => timer.onChoiceMade(),
       onEnded: () => timer.onEnded(),
@@ -823,7 +823,7 @@ describe("DialogueSession — timed-choice recipe", () => {
 
     expect(h.session.isChoosing()).toBe(true);
     // The step's meta rides through to the presenter for a countdown.
-    expect(h.choices.presented.at(-1)?.context?.meta).toEqual({ timeoutMs: TIMEOUT });
+    expect(h.choices.presented.at(-1)?.context?.meta).toEqual({ timeout: TIMEOUT });
     expect(timer.armed).toBe(true);
 
     // No player input: the timer expires and fires the default (index 1).
@@ -835,7 +835,7 @@ describe("DialogueSession — timed-choice recipe", () => {
   it("a manual pick before expiry cancels the timer (default never fires)", async () => {
     const timer = new ChoiceTimer();
     const h = makeHarness({
-      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.ms), Number(cmd.default)) },
+      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)) },
       onChoiceShown: () => timer.onChoiceShown(),
       onChoiceMade: () => timer.onChoiceMade(),
       onEnded: () => timer.onEnded(),
@@ -863,7 +863,7 @@ describe("DialogueSession — timed-choice recipe", () => {
         a: {
           id: "a",
           steps: [
-            { kind: "command", commands: [{ type: "choice-timer", ms: 100, default: 1 }] },
+            { kind: "command", commands: [{ type: "choice-timer", seconds: 0.1, default: 1 }] },
             {
               kind: "choice",
               text: "A (timed)",
@@ -893,7 +893,7 @@ describe("DialogueSession — timed-choice recipe", () => {
     };
     const timer = new ChoiceTimer(false); // deliberately NO onChoiceMade cancel
     const h = makeHarness({
-      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.ms), Number(cmd.default)) },
+      commands: { "choice-timer": (cmd) => timer.arm(Number(cmd.seconds), Number(cmd.default)) },
       onChoiceShown: () => timer.onChoiceShown(),
       onEnded: () => timer.onEnded(),
     });
@@ -909,7 +909,7 @@ describe("DialogueSession — timed-choice recipe", () => {
     // untimed). Without the guard it would still be armed for A's default.
     expect(timer.armed).toBe(false);
 
-    timer.tick(1000); // long past A's 100ms timeout
+    timer.tick(10); // long past A's 0.1s timeout
     await flush();
     // No stray default fired into B; we're still choosing on B.
     expect(h.session.isChoosing()).toBe(true);
@@ -1338,7 +1338,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
             {
               kind: "say",
               text: "one",
-              autoAdvanceMs: 50,
+              autoAdvance: 0.05,
               commands: [{ type: "long", at: "show", blocking: true }],
             },
             { kind: "say", text: "two" },
@@ -1348,7 +1348,7 @@ describe("DialogueSession — command-gate races (regressions)", () => {
     };
     h.session.play(script, { fallbackCommand: onCommand });
     await flush();
-    h.text.finishReveal(); // arms the 50ms auto-timer; show command still blocking
+    h.text.finishReveal(); // arms the 0.05s auto-timer; show command still blocking
     await flush();
     h.session.update(0.1); // timer expires while gated — must not be swallowed
     await flush();

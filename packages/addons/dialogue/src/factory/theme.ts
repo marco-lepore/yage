@@ -42,13 +42,13 @@ export interface BoxBounds {
 
 /** Continue-caret styling. The caret is the blinking "press to advance"
  *  triangle every chrome draws at its bottom-right; both fields are optional —
- *  omit them for the built-in defaults ({@link DEFAULT_CARET_BLINK_MS} /
+ *  omit them for the built-in defaults ({@link DEFAULT_CARET_BLINK} /
  *  {@link DEFAULT_CARET_SIZE}). The nested-group shape is the convention the
  *  (cut) glossary `term` styling returns into. */
 export interface CaretTheme {
-  /** Blink time constant (ms) in `0.35 + 0.65·(0.5 + 0.5·sin(t/blinkMs))`.
-   *  Larger = slower pulse. Default {@link DEFAULT_CARET_BLINK_MS}. */
-  readonly blinkMs?: number;
+  /** Blink time constant (seconds) in `0.35 + 0.65·(0.5 + 0.5·sin(t/blink))`.
+   *  Larger = slower pulse. Default {@link DEFAULT_CARET_BLINK}. */
+  readonly blink?: number;
   /** Triangle size (px). Default {@link DEFAULT_CARET_SIZE} (7×5, pointing down). */
   readonly size?: { readonly width: number; readonly height: number };
 }
@@ -183,8 +183,8 @@ export interface ChromeStyle {
   readonly bubble?: NineSliceFrame;
 }
 
-/** Default continue-caret blink time constant (ms). */
-export const DEFAULT_CARET_BLINK_MS = 260;
+/** Default continue-caret blink time constant (seconds). */
+export const DEFAULT_CARET_BLINK = 0.26;
 /** Default continue-caret triangle size (px), pointing down. */
 export const DEFAULT_CARET_SIZE: { readonly width: number; readonly height: number } = {
   width: 7,

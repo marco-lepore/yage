@@ -204,8 +204,8 @@ export interface SayStep {
   readonly expression?: string;
   /** Reveal-speed multiplier for this whole line (1 = base). */
   readonly speed?: number;
-  /** If set, the line auto-advances after this many ms once fully revealed. */
-  readonly autoAdvanceMs?: number;
+  /** If set, the line auto-advances this many seconds after it fully reveals. */
+  readonly autoAdvance?: number;
   readonly commands?: readonly Command[];
   /** Opaque preset name for per-line layout/variant (presenter interprets). */
   readonly view?: string;
@@ -387,7 +387,7 @@ export interface TextRun {
 }
 
 /**
- * A self-closing `[pause=600/]` token — a zero-width timing hold the reveal
+ * A self-closing `[pause=0.6/]` token — a zero-width timing hold the reveal
  * arms when the cursor reaches its offset. One member of the unified
  * {@link RevealToken} stream; `kind` discriminates it from a {@link MarkerToken}.
  */
@@ -395,8 +395,8 @@ export interface PauseToken {
   readonly kind: "pause";
   /** Grapheme index into the flattened text where the pause occurs. */
   readonly atChar: number;
-  /** Hold duration in ms (always > 0; a non-positive `[pause=0/]` emits no token). */
-  readonly ms: number;
+  /** Hold duration in seconds (always > 0; a non-positive `[pause=0/]` emits no token). */
+  readonly seconds: number;
 }
 
 /**
@@ -424,7 +424,7 @@ export interface MarkerToken {
  * One inline control token interleaved between text runs during reveal — a
  * timing {@link PauseToken} or a fire-and-forget {@link MarkerToken}. They share
  * one ordered stream on {@link ParsedText.tokens}, so **source order is drain
- * order**: `[pause=600/][shake/]` holds then fires; `[shake/][pause=600/]` fires
+ * order**: `[pause=0.6/][shake/]` holds then fires; `[shake/][pause=0.6/]` fires
  * then holds.
  */
 export type RevealToken = PauseToken | MarkerToken;

@@ -106,10 +106,10 @@ describe("parseMarkup — speed", () => {
 
 describe("parseMarkup — pauses (self-closing [pause=N/])", () => {
   it("emits a zero-width pause token at the right character index", () => {
-    const r = parseMarkup("ab[pause=400/]cd");
+    const r = parseMarkup("ab[pause=0.4/]cd");
     expect(r.runs).toEqual([run("abcd")]);
     expect(r.length).toBe(4);
-    expect(r.tokens).toEqual([{ kind: "pause", atChar: 2, ms: 400 }]);
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 2, seconds: 0.4 }]);
   });
 
   it("ignores a pause with a non-positive or absent duration", () => {
@@ -118,7 +118,7 @@ describe("parseMarkup — pauses (self-closing [pause=N/])", () => {
   });
 
   it("a bare [pause=N] without the slash is NOT a pause hold", () => {
-    // Only the self-closing `[pause=400/]` is a timing hold. A bare `[pause=400]`
+    // Only the self-closing `[pause=0.4/]` is a timing hold. A bare `[pause=400]`
     // is an ordinary (paired) tag, so it opens an effect span named "pause" — no
     // token — and is not flagged as a typo.
     const r = parseMarkup("a[pause=400]b");
@@ -157,19 +157,19 @@ describe("parseMarkup — grapheme counting", () => {
   });
 
   it("places pause atChar at a grapheme index, not a code-unit index", () => {
-    const r = parseMarkup("🔥🔥[pause=300/]ab"); // 4 code units but 2 graphemes before
-    expect(r.tokens).toEqual([{ kind: "pause", atChar: 2, ms: 300 }]);
+    const r = parseMarkup("🔥🔥[pause=0.3/]ab"); // 4 code units but 2 graphemes before
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 2, seconds: 0.3 }]);
     expect(r.length).toBe(4);
   });
 
   it("keeps counts aligned across styled runs and pauses", () => {
-    const r = parseMarkup("[b]🔥a[/b]e\u0301[pause=100/]👩‍🚀");
+    const r = parseMarkup("[b]🔥a[/b]e\u0301[pause=0.1/]👩‍🚀");
     expect(r.runs).toEqual([
       { text: "🔥a", style: { bold: true }, graphemeCount: 2 },
       // The pause flushes, then the two same-style runs re-merge (counts sum).
       { text: "e\u0301👩‍🚀", style: {}, graphemeCount: 2 },
     ]);
-    expect(r.tokens).toEqual([{ kind: "pause", atChar: 3, ms: 100 }]);
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 3, seconds: 0.1 }]);
     expect(r.length).toBe(4);
   });
 
@@ -209,13 +209,13 @@ describe("parseMarkup — self-closing markers", () => {
   });
 
   it("records markers at grapheme offsets, alongside pauses, in order", () => {
-    const r = parseMarkup("🔥[sfx=a/]ab[pause=100/][expression=sad/]z");
+    const r = parseMarkup("🔥[sfx=a/]ab[pause=0.1/][expression=sad/]z");
     expect(r.length).toBe(4); // 🔥 a b z
     // One ordered stream: source order is drain order (sfx @1, then pause then
     // expression both @3).
     expect(r.tokens).toEqual([
       { kind: "marker", atChar: 1, name: "sfx", props: { sfx: "a" } },
-      { kind: "pause", atChar: 3, ms: 100 },
+      { kind: "pause", atChar: 3, seconds: 0.1 },
       { kind: "marker", atChar: 3, name: "expression", props: { expression: "sad" } },
     ]);
   });
@@ -243,8 +243,8 @@ describe("parseMarkup — self-closing markers", () => {
   });
 
   it("leaves styling / pause tags untouched (no marker emitted)", () => {
-    const r = parseMarkup("[b]x[/b][pause=50/]y[color=red]z[/color]");
-    expect(r.tokens).toEqual([{ kind: "pause", atChar: 1, ms: 50 }]);
+    const r = parseMarkup("[b]x[/b][pause=0.05/]y[color=red]z[/color]");
+    expect(r.tokens).toEqual([{ kind: "pause", atChar: 1, seconds: 0.05 }]);
   });
 
   it("firstUnknownTag does NOT flag a self-closing marker (markup consumes it)", () => {
@@ -352,14 +352,14 @@ describe("stripMarkup", () => {
   });
 
   it("strips pause tokens entirely", () => {
-    expect(stripMarkup("a[pause=200/]b")).toBe("ab");
+    expect(stripMarkup("a[pause=0.2/]b")).toBe("ab");
   });
 });
 
 describe("firstUnknownTag", () => {
   it("returns null when every tag is meaningful markup", () => {
     expect(firstUnknownTag("plain text")).toBeNull();
-    expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=100/][speed=2]w[/speed]")).toBeNull();
+    expect(firstUnknownTag("[b]x[/b] [color=#f00]y[/color] [wave]z[/wave] [pause=0.1/][speed=2]w[/speed]")).toBeNull();
   });
 
   it("does NOT flag an unknown effect span — the vocabulary is open", () => {

@@ -198,10 +198,8 @@ export class LineReveal {
       this.tokenIdx++;
       if (tok.kind === "marker") {
         this.onBeat?.({ kind: "marker", marker: tok, viaSkip });
-      } else if (!viaSkip && tok.ms > 0) {
-        // `tok.ms` is the authored pause in milliseconds; pauseTimer counts down
-        // against the seconds-based dt, so convert.
-        this.pauseTimer = tok.ms / 1000;
+      } else if (!viaSkip && tok.seconds > 0) {
+        this.pauseTimer = tok.seconds;
         this.cursor = Math.min(this.cursor, tok.atChar);
         return; // hold here this frame; later tokens wait
       }

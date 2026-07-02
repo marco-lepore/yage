@@ -32,7 +32,7 @@ interface HostHandle {
   advance(): void;
   choose(n: number): void;
   moveSelection(delta: number): void;
-  setAutoAdvance(ms: number | null): void;
+  setAutoAdvance(seconds: number | null): void;
   setHidden(hidden: boolean): void;
   play(script: unknown): void;
 }
@@ -205,11 +205,11 @@ test.describe("@yagejs-addons/dialogue addon", () => {
     // Turn on a short auto-advance, then never call advance(): the three intro
     // lines should reveal and step themselves, parking at the choice.
     await page.evaluate(
-      (ms) =>
+      (seconds) =>
         (
           window as unknown as { __dialogue__: HostHandle }
-        ).__dialogue__.setAutoAdvance(ms),
-      200,
+        ).__dialogue__.setAutoAdvance(seconds),
+      0.2,
     );
 
     for (let i = 0; i < 150; i++) {

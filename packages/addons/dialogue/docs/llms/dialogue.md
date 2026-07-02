@@ -95,7 +95,7 @@ actors by it; the loader stamps it on, so never write `id` inside the entry.
 
 Step kinds: `say` | `choice` | `command` | `goto` | `end`.
 - `SayStep`: `text` (+ optional i18n `key`), `speaker?`, `expression?`, `speed?`,
-  `autoAdvanceMs?`, `commands?`, `view?`, `meta?`, `voice?`.
+  `autoAdvance?` (seconds), `commands?`, `view?`, `meta?`, `voice?`.
 - `ChoiceOption`: `text`, `target?`, `condition?`, `once?`, `presentation?`
   (`"hidden"` default | `"disabled"`), `disabledReason?`, `commands?`, `meta?`.
 - `CommandStep`: `commands` (+ optional `condition`/`target` conditional jump).
@@ -336,19 +336,19 @@ markup were removed — they now parse as ordinary effect spans the bundled pres
 renders as plain text, so old scripts still parse.)
 
 **Self-closing tokens** (a trailing `/`) are the reveal-timeline controls — a
-`[pause=600/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
+`[pause=0.6/]` hold and a `[name k=v/]` marker. They share **one ordered stream**
 (`ParsedText.tokens: RevealToken[]`, each `{ kind: "pause" | "marker", atChar, … }`),
 so **source order is drain order**:
-- `[pause=600/]` holds the typewriter 600ms at its offset (the only pause spelling
-  now — a bare `[pause=600]` without the slash opens an effect span named `pause`,
+- `[pause=0.6/]` holds the typewriter 0.6s at its offset (the only pause spelling
+  now — a bare `[pause=0.6]` without the slash opens an effect span named `pause`,
   not a hold).
 - `[sfx=ding/]`, `[expression=happy/]`, `[shake amount=3/]` fire as **reveal events**.
   The self-named shortcut `[name=val/]` ≡ `[name name=val/]` (Yarn), so it composes
   with explicit props: `[shake=500 amount=3/]` → `{ shake: "500", amount: "3" }`.
   Values/props can't contain whitespace or `/`.
-- `[pause=600/][shake/]` holds **then** fires; `[shake/][pause=600/]` fires **then**
-  holds. The "effect + hold" idiom is just `[shake=500/][pause=500/]` — fire a marker
-  (host plays a 500ms shake), then a 500ms pause holds while it plays. Markers are
+- `[pause=0.6/][shake/]` holds **then** fires; `[shake/][pause=0.6/]` fires **then**
+  holds. The "effect + hold" idiom is just `[shake=500/][pause=0.5/]` — fire a marker
+  (host plays a shake), then a 0.5s pause holds while it plays. Markers are
   non-blocking; the pause is the only timing primitive (no combined `[shake hold/]`).
 
 Translators **must keep the trailing `/`** so a token survives a re-order. A
@@ -443,7 +443,7 @@ new DialogueController({
 future storage-aware checking; `play()` is typed by the script's declared vars).
 Methods: `play(script, overrides?): DialogueHandle | undefined` (undefined if the
 component was removed), `isActive()`, `stop()`, `skip()`,
-`setAutoAdvance(ms | null)`, `preview(nodeId): PreviewedLine[]`, plus the three
+`setAutoAdvance(seconds | null)`, `preview(nodeId): PreviewedLine[]`, plus the three
 lifecycle levers below. It is multi-instance friendly — several ambient
 conversations can run at once; "which is interactive" and "does the world pause"
 are the game's policy (no global singleton).
@@ -519,27 +519,27 @@ a game can clobber).
 
 ## Timed choices — a recipe, not a feature
 
-There is no `timeoutMs` in the model. Express a timed choice with a non-blocking
+There is no `timeout` in the model. Express a timed choice with a non-blocking
 `choice-timer` command before the choice step: the host arms a timer **on its own
 clock** and commits a default with `controller.choose(default)` on expiry. The
 one addon hook is `ChoiceContext.meta` — the choice step's `meta` passes through,
-so a custom choice presenter can render a countdown from `meta.timeoutMs`.
+so a custom choice presenter can render a countdown from `meta.timeout`.
 
 ```ts
 // script: a non-blocking timer command, then the choice (meta carries the budget)
-{ kind: "command", commands: [{ type: "choice-timer", ms: 5000, default: 1 }] },
-{ kind: "choice", text: "Quick!", meta: { timeoutMs: 5000 }, options: [
+{ kind: "command", commands: [{ type: "choice-timer", seconds: 5, default: 1 }] },
+{ kind: "choice", text: "Quick!", meta: { timeout: 5 }, options: [
   { text: "Fight", target: "fight" },
   { text: "Hesitate", target: "hesitate" }, // index 1 = the default on timeout
 ] },
 
 // host: the timer rides YOUR clock; arm/cancel off the dialogue events.
-let pending: { ms: number; def: number } | undefined;
+let pending: { seconds: number; def: number } | undefined;
 let remaining = -1, def = 0;
-const commands = { "choice-timer": (c) => { pending = { ms: Number(c.ms), def: Number(c.default) }; } };
+const commands = { "choice-timer": (c) => { pending = { seconds: Number(c.seconds), def: Number(c.default) }; } };
 host.on(DialogueChoiceShownEvent, () => {   // dangling-timer guard — re-arm/cancel here
   remaining = -1;                            // drop any prior timer FIRST…
-  if (pending) { remaining = pending.ms; def = pending.def; pending = undefined; } // …then re-arm if timed
+  if (pending) { remaining = pending.seconds; def = pending.def; pending = undefined; } // …then re-arm if timed
 });
 host.on(DialogueChoiceMadeEvent, () => { remaining = -1; pending = undefined; });
 host.on(DialogueEndedEvent,      () => { remaining = -1; pending = undefined; });
@@ -713,18 +713,18 @@ const voice = createVoiceChannel({
   },
   onSkip: "cut",                  // "cut" (default) stops + releases on skip; "ring" plays out
   pauseWithConversation: true,    // default: pause the clip when the conversation pauses
-  livenessMs: 30_000,             // optional safety cap: force-release if onEnded never arrives
+  liveness: 30,                   // optional safety cap (seconds): force-release if onEnded never arrives
   onError: (m, e) => log.warn(m), // liveness diagnostics
 });
 controller.addChannel(voice);
 // script: { kind: "say", text: "...", voice: "vo_intro_01" }
 ```
 
-`createVoiceChannel({ play, onSkip?, pauseWithConversation?, livenessMs?, onError? })`
+`createVoiceChannel({ play, onSkip?, pauseWithConversation?, liveness?, onError? })`
 → a `DialogueExtraChannel`. `play(id, onEnded) => { stop; pause?; resume? }`. It reads
 `PresentedLine.voice` in `present`, gates `isRevealComplete()` on the clip, and is
 hardened: a late `onEnded` from a superseded clip can't ungate the next line
-(generation guard); the optional `livenessMs` cap stops a wedged host soft-locking
+(generation guard); the optional `liveness` cap (seconds) stops a wedged host soft-locking
 auto-advance.
 
 ### Worked: a Shop channel (rules in, consequences out)
@@ -793,8 +793,8 @@ hints within a variant.
 
 ## Input (root entry, `@yagejs/input` — not pixi)
 
-`KeyboardInputBinding(actions?, skipHoldMs?)`, `PointerInputBinding(choiceTarget?)`,
-`CompositeInputBinding`, `fullControls(choiceTarget?, { actions?, skipHoldMs? })`.
+`KeyboardInputBinding(actions?, skipHold?)`, `PointerInputBinding(choiceTarget?)`,
+`CompositeInputBinding`, `fullControls(choiceTarget?, { actions?, skipHold? })`.
 Zero-config default (no `input` option) is `fullControls()` — keyboard + pointer
 (tap-to-advance), `FULL_ACTIONS`, no choice geometry (can't hit-test rows). Actions:
 `DEFAULT_ACTIONS` (advance/speed/up/down), `FULL_ACTIONS` (+ skip). Default keyboard
@@ -802,7 +802,7 @@ action names are kebab-case (`interact`/`attack`/`move-up`/`move-down`/`skip`) �
 unmapped name silently never fires; a FULL mismatch with the live `InputManager` map
 logs a dev-mode warning at startup. Wire a custom map by passing
 `input: fullControls(choices, { actions })`. `KeyboardInputBinding.actionNames()` and
-`CompositeInputBinding.actionNames()` expose the polled names. `skipHoldMs > 0` is the
+`CompositeInputBinding.actionNames()` expose the polled names. `skipHold > 0` (seconds) is the
 classic hold-to-confirm skip (default `0` = fire on press); fast-forward is the
 `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test choice
 rows without owning geometry. There is no binding-free path; an
@@ -816,7 +816,7 @@ omitting the binding.
 renderer's design size at mount, so the default works at ANY resolution with no
 override; `meta.position` reuses the margins), `padding`, frame colours
 (`frameColor/frameAlpha/borderColor/cornerRadius`), `nameColor/Size`,
-`indicatorColor`, `caret?` (`{ blinkMs?, size? }`),
+`indicatorColor`, `caret?` (`{ blink?, size? }`),
 `textSize/lineHeight/textColor/charsPerSec`, choice colours, `choiceGap?`,
 `tailLean?` (bubble tail tip), fonts (`bitmapFont/fontFamily/resolution` — the
 shared `FontConfig` triplet every presenter config extends), `layerFrame/layerText`,

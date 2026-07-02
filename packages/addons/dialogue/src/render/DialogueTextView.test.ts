@@ -29,11 +29,11 @@ describe("DialogueTextView — pause clamp", () => {
     const view = new DialogueTextView(CFG);
     let completed = 0;
     view.setRevealListener(() => completed++);
-    // 20 chars at 1 char/s with a 400ms (0.4s) pause after char 10.
-    view.show(parseMarkup("0123456789[pause=400/]abcdefghij"));
+    // 20 chars at 1 char/s with a 0.4s pause after char 10.
+    view.show(parseMarkup("0123456789[pause=0.4/]abcdefghij"));
 
     view.update(15); // one frame overshoots the pause (cursor would hit 15)
-    view.update(400); // sit out the pause
+    view.update(0.4); // sit out the pause
     // With the cursor clamped back to 10, ten characters (10s) remain. An
     // unclamped cursor (15) would have finished within the next 6s.
     view.update(6);
@@ -62,10 +62,10 @@ describe("DialogueTextView — grapheme reveal units", () => {
     let completed = 0;
     view.setRevealListener(() => completed++);
     // Pause sits after 2 graphemes (4 code units); 2 graphemes follow.
-    view.show(parseMarkup("🔥🔥[pause=400/]ab"));
+    view.show(parseMarkup("🔥🔥[pause=0.4/]ab"));
 
     view.update(3); // overshoots the pause at 2; cursor clamps back to it
-    view.update(400); // sit out the pause
+    view.update(0.4); // sit out the pause
     // 2 graphemes (2s) remain — code-unit bookkeeping would need 4 more.
     view.update(1);
     expect(completed).toBe(0);

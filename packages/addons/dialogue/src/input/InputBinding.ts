@@ -97,12 +97,12 @@ export class KeyboardInputBinding implements InputBinding {
   private skipFired = false;
 
   /**
-   * @param skipHoldMs Hold the `skip` action this long before it fires (the
-   *   classic "hold to skip" confirm). `0` (default) fires on press.
+   * @param skipHold Hold the `skip` action this many seconds before it fires
+   *   (the classic "hold to skip" confirm). `0` (default) fires on press.
    */
   constructor(
     private readonly actions: DialogueActions = DEFAULT_ACTIONS,
-    private readonly skipHoldMs = 0,
+    private readonly skipHold = 0,
   ) {}
 
   bind(input: InputManager, session: DialogueSession): void {
@@ -126,13 +126,14 @@ export class KeyboardInputBinding implements InputBinding {
     else if (justPressed(input, this.actions.down)) session.moveSelection(1);
   }
 
-  /** Fire skip once the action has been held `skipHoldMs` (hold-to-confirm),
-   *  re-arming only after it's released. */
+  /** Fire skip once the action has been held `skipHold` seconds
+   *  (hold-to-confirm), re-arming only after it's released. */
   private pollSkip(input: InputManager, session: DialogueSession): void {
     const skip = this.actions.skip;
     if (!skip) return;
+    // `isHeldFor` takes milliseconds.
     const ready = skip.some(
-      (a) => input.isPressed(a) && input.isHeldFor(a, this.skipHoldMs),
+      (a) => input.isPressed(a) && input.isHeldFor(a, this.skipHold * 1000),
     );
     if (ready) {
       if (!this.skipFired) {
@@ -247,15 +248,15 @@ export class PointerInputBinding implements InputBinding {
  * The full control set in one binding: keyboard/gamepad (advance / fast-forward
  * hold / choice nav / skip) **and** mouse/touch (tap to advance, tap/hover
  * choices). Pass a scene's choice presenter so the pointer can hit-test rows;
- * `skipHoldMs` adds the classic "hold to skip" confirm.
+ * `skipHold` (seconds) adds the classic "hold to skip" confirm.
  */
 export function fullControls(
   choices?: PointerChoiceTarget,
-  options: { actions?: DialogueActions; skipHoldMs?: number } = {},
+  options: { actions?: DialogueActions; skipHold?: number } = {},
 ): InputBinding {
-  const { actions = FULL_ACTIONS, skipHoldMs = 0 } = options;
+  const { actions = FULL_ACTIONS, skipHold = 0 } = options;
   return new CompositeInputBinding([
-    new KeyboardInputBinding(actions, skipHoldMs),
+    new KeyboardInputBinding(actions, skipHold),
     new PointerInputBinding(choices),
   ]);
 }

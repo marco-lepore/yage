@@ -55,7 +55,7 @@ function sentinelTheme(): DialogueTheme {
     nameColor: n(),
     nameSize: n(),
     indicatorColor: n(),
-    caret: { blinkMs: n(), size: { width: n(), height: n() } },
+    caret: { blink: n(), size: { width: n(), height: n() } },
     textSize: n(),
     lineHeight: n(),
     textColor: n(),

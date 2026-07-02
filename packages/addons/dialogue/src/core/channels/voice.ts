@@ -56,12 +56,12 @@ export interface VoiceChannelOptions {
    */
   pauseWithConversation?: boolean;
   /**
-   * Safety budget (ms). If a clip's `onEnded` never arrives within this many ms
-   * of starting, the gate is force-released and {@link onError} is called — so a
-   * wedged host (a clip that silently fails to report its end) can't soft-lock
-   * auto-advance. Omit (or `0`) to disable the cap.
+   * Safety budget (seconds). If a clip's `onEnded` never arrives within this
+   * many seconds of starting, the gate is force-released and {@link onError} is
+   * called — so a wedged host (a clip that silently fails to report its end)
+   * can't soft-lock auto-advance. Omit (or `0`) to disable the cap.
    */
-  livenessMs?: number;
+  liveness?: number;
   /** Diagnostics sink for the liveness cap — route it to the engine logger, the
    *  same seam as the session's `onError`. */
   onError?: (message: string, error: unknown) => void;
@@ -84,7 +84,7 @@ export interface VoiceChannelOptions {
  * line's clip cleanly (the restore-safety property).
  */
 export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChannel {
-  const { play, onSkip = "cut", livenessMs, onError } = opts;
+  const { play, onSkip = "cut", liveness, onError } = opts;
   const pauseClip = opts.pauseWithConversation ?? true;
 
   let active: VoiceHandle | undefined;
@@ -95,8 +95,8 @@ export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChan
   // and no-ops if it no longer matches — a superseded clip can't ungate the line
   // that replaced it.
   let startToken = 0;
-  // ms the current clip has been playing (liveness cap only). Frozen while
-  // paused for free: the session fans `update(dt)` only when not paused.
+  // Seconds the current clip has been playing (liveness cap only). Frozen while
+  // paused automatically: the session fans `update(dt)` only when not paused.
   let elapsed = 0;
 
   const stop = (): void => {
@@ -147,17 +147,16 @@ export function createVoiceChannel(opts: VoiceChannelOptions): DialogueExtraChan
       // clear, a throwing play()); only an in-flight clip (done=false) ticks the
       // budget. An `active === undefined` guard here would wrongly freeze the
       // timer if play() ever left `active` unset.
-      if (done || !livenessMs) return;
-      // `dt` is seconds; `livenessMs` is the public millisecond budget.
-      elapsed += dt * 1000;
-      if (elapsed >= livenessMs) {
+      if (done || !liveness) return;
+      elapsed += dt;
+      if (elapsed >= liveness) {
         // The host never reported the clip's end — release the gate so
         // auto-advance can't soft-lock. Leave the (wedged) handle in place: a
         // later present()/clear() still stops it, and its late onEnded is
         // token-guarded.
         done = true;
         onError?.(
-          `voice clip exceeded the ${livenessMs}ms liveness budget without ` +
+          `voice clip exceeded the ${liveness}s liveness budget without ` +
             `reporting its end; releasing the auto-advance gate`,
           new Error("voice clip liveness cap"),
         );
