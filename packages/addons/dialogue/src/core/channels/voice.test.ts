@@ -70,16 +70,16 @@ describe("createVoiceChannel", () => {
     const errors: string[] = [];
     const voice = createVoiceChannel({
       play: () => ({ stop: () => {} }), // never calls onEnded → wedged host
-      livenessMs: 500,
+      liveness: 0.5,
       onError: (message) => errors.push(message),
     });
 
     voice.present?.(line("a"));
-    voice.update?.(0.4); // dt is seconds → 400ms
+    voice.update?.(0.4); // under the 0.5s budget
     expect(voice.isRevealComplete?.()).toBe(false); // under budget
     expect(errors).toHaveLength(0);
 
-    voice.update?.(0.2); // 600ms > 500ms
+    voice.update?.(0.2); // 0.6s total > 0.5s
     expect(voice.isRevealComplete?.()).toBe(true); // gate force-released
     expect(errors).toHaveLength(1);
 
@@ -96,13 +96,13 @@ describe("createVoiceChannel", () => {
     // The host error surfaces (the session's present fan-out routes it to onError)…
     expect(() => voice.present?.(line("a"))).toThrow("decode failed");
     // …but the gate is released at once, not stuck waiting on a clip that never
-    // started (no livenessMs needed — the throw is handled at the boundary).
+    // started (no liveness cap needed — the throw is handled at the boundary).
     expect(voice.isRevealComplete?.()).toBe(true);
   });
 
   it("no liveness cap by default — a slow clip keeps gating", () => {
     const { play } = scriptedPlay();
-    const voice = createVoiceChannel({ play }); // no livenessMs
+    const voice = createVoiceChannel({ play }); // no liveness cap
     voice.present?.(line("a"));
     voice.update?.(100_000);
     expect(voice.isRevealComplete?.()).toBe(false); // still waiting on onEnded

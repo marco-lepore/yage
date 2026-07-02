@@ -7,14 +7,14 @@
  */
 
 import type { GraphicsContext } from "@yagejs/renderer";
-import { DEFAULT_CARET_BLINK_MS, DEFAULT_CARET_SIZE, type CaretTheme } from "../factory/theme.js";
+import { DEFAULT_CARET_BLINK, DEFAULT_CARET_SIZE, type CaretTheme } from "../factory/theme.js";
 
 /**
- * Blink alpha for the continue caret, `timeMs` since it was (re)shown.
- * `blinkMs` is the time constant in `0.35 + 0.65·(0.5 + 0.5·sin(t/blinkMs))`.
+ * Blink alpha for the continue caret, `time` seconds since it was (re)shown.
+ * `blink` is the time constant in `0.35 + 0.65·(0.5 + 0.5·sin(t/blink))`.
  */
-export function caretAlpha(timeMs: number, blinkMs: number = DEFAULT_CARET_BLINK_MS): number {
-  return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(timeMs / blinkMs));
+export function caretAlpha(time: number, blink: number = DEFAULT_CARET_BLINK): number {
+  return 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time / blink));
 }
 
 /** The continue-caret triangle (pointing down) at the local origin, sized by

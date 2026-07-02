@@ -29,7 +29,7 @@
  *                         positional `[sfx=…/]` cues and a `[screenShake/]` marker
  *                         (`DialogueRevealMarkerEvent` — the host plays a tone /
  *                         shakes the camera; the addon name-matches nothing), and
- *                         the effect+hold idiom `[sfx=chime/][pause=500/]` (fire,
+ *                         the effect+hold idiom `[sfx=chime/][pause=0.5/]` (fire,
  *                         then hold while it plays — source order is the timing).
  *                         Plus a **cycling counter** (`timesTalked` persists, so
  *                         she greets you differently each visit).
@@ -172,11 +172,11 @@ const WIDTH = 800;
 const HEIGHT = 600;
 const WORLD_WIDTH = 1600; // wider than the canvas → the camera scrolls
 
-const SKIP_HOLD_MS = 600; // hold X this long to confirm a skip
-const AUTO_ADVANCE_MS = 1500; // delay between lines when auto-advance is on
+const SKIP_HOLD = 0.6; // hold X this many seconds to confirm a skip
+const AUTO_ADVANCE = 1.5; // seconds between lines when auto-advance is on
 const PLAYER_SPEED = 165; // px/sec
 
-// The key price (50) and Rook's timeout (5000ms) now live in the dialogue data
+// The key price (50) and Rook's timeout (5s) now live in the dialogue data
 // files (`merchant.yaml` / `rook.yaml`).
 const GATE_X = 1410; // the locked gate; blocks progress until unlocked
 
@@ -243,7 +243,7 @@ const GUARD = loadYaml(guardYaml);
 /** Rook — a TIMED choice (a recipe, not an engine feature): a non-blocking
  *  `choice-timer` command arms a host-owned countdown on the game clock; stall too
  *  long and {@link ChoiceTimer} commits the default ("Freeze up", index 1).
- *  `meta.timeoutMs` rides through to the presenter for a custom countdown. */
+ *  `meta.timeout` rides through to the presenter for a custom countdown. */
 const ROOK = loadYaml(rookYaml);
 /** Sage — NO `view` hint on his lines: the default route floats him in a bubble
  *  anyway because he has a registered {@link DialogueActor} (speaker-aware). His
@@ -512,7 +512,8 @@ class Hud extends Component {
     // Bottom-centre meter: fast-forward glyph while J held; skip ring while X held.
     const ff = this.input.isPressed("attack");
     const skipHeld = this.input.isPressed("skip");
-    const skipT = MathUtils.clamp(this.input.getHoldDuration("skip") / SKIP_HOLD_MS, 0, 1);
+    // `getHoldDuration` reports milliseconds; SKIP_HOLD is seconds.
+    const skipT = MathUtils.clamp(this.input.getHoldDuration("skip") / 1000 / SKIP_HOLD, 0, 1);
     if (ff === this.meterFf && skipHeld === this.meterSkipHeld && skipT === this.meterSkipT) {
       return;
     }
@@ -655,7 +656,7 @@ class LifecycleControls extends Component {
 
 /**
  * Timed choices aren't an engine feature — they're this recipe. A non-blocking
- * `choice-timer` command stashes `{ ms, default }`; the timer arms when the menu
+ * `choice-timer` command stashes `{ seconds, default }`; the timer arms when the menu
  * is shown and commits the default option via `controller.choose` on expiry.
  * Two rules keep it honest:
  *
@@ -697,11 +698,9 @@ class ChoiceTimer extends Component {
     this.entity.on(DialogueEndedEvent, () => this.cancel());
   }
 
-  /** The `choice-timer` command handler stashes its params here. The dialogue
-   *  command authors the timeout in milliseconds; convert to the engine's
-   *  seconds once on the way in. */
-  arm(ms: number, def: number): void {
-    this.pending = { seconds: ms / 1000, def };
+  /** The `choice-timer` command handler stashes its params here. */
+  arm(seconds: number, def: number): void {
+    this.pending = { seconds, def };
   }
 
   private onShown(): void {
@@ -992,7 +991,7 @@ const THEME_PRESETS: readonly ThemePreset[] = [
       choiceColor: 0xcdba97,
       choiceSelectedColor: 0xffd98a,
       highlightColor: 0x7a5a2a,
-      caret: { blinkMs: 200, size: { width: 9, height: 6 } },
+      caret: { blink: 0.2, size: { width: 9, height: 6 } },
       choiceGap: 8,
     }),
   },
@@ -1116,7 +1115,7 @@ class RoomScene extends Scene {
       },
       "open-gate": () => gate.open(),
       // Timed-choice recipe: just stash the params; ChoiceTimer arms on show.
-      "choice-timer": (cmd) => choiceTimer?.arm(Number(cmd.ms), Number(cmd.default)),
+      "choice-timer": (cmd) => choiceTimer?.arm(Number(cmd.seconds), Number(cmd.default)),
     };
 
     const bitmapFont = this.bitmapFont;
@@ -1207,7 +1206,7 @@ class RoomScene extends Scene {
         storage,
         functions,
         commands,
-        input: fullControls(bundle.choices, { skipHoldMs: SKIP_HOLD_MS }),
+        input: fullControls(bundle.choices, { skipHold: SKIP_HOLD }),
         channels: [voice, transcript],
         // A typewriter click per revealed glyph — `index` is a raw grapheme index
         // (whitespace included), so we look it up and skip spaces.
@@ -1217,7 +1216,7 @@ class RoomScene extends Scene {
         },
       }),
     );
-    hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE_MS : null);
+    hud.onAutoToggle = (on) => interactive.setAutoAdvance(on ? AUTO_ADVANCE : null);
     host.on(DialogueLineEvent, (e) => {
       probe.onLine(e.text);
       // `onRevealTick` indexes the parsed line in graphemes; the event's plain

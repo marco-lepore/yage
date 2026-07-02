@@ -12,15 +12,15 @@ nodes:
         speaker: ann
         view: bubble
         text: "…and then the goblin tripped over its own feet!"
-        autoAdvanceMs: 1600
+        autoAdvance: 1.6
       - kind: say
         speaker: bert
         view: bubble
         text: "No! In front of the whole guild?"
-        autoAdvanceMs: 1500
+        autoAdvance: 1.5
       - kind: say
         speaker: ann
         view: bubble
         text: "Face first. I nearly dropped my mug."
-        autoAdvanceMs: 1600
+        autoAdvance: 1.6
       - { kind: goto, target: a }

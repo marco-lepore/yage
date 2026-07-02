@@ -206,14 +206,14 @@ describe("parseCompact — say lines", () => {
   });
 
   it("first-class hints view/voice/speed/auto map to SayStep fields", () => {
-    const say = firstSay("hero: Whispered… speed=0.5 voice=vo_42 view=bubble auto=2000", "@ hero Hero\n");
+    const say = firstSay("hero: Whispered… speed=0.5 voice=vo_42 view=bubble auto=2", "@ hero Hero\n");
     expect(say).toMatchObject({
       speaker: "hero",
       text: "Whispered…",
       speed: 0.5,
       voice: "vo_42",
       view: "bubble",
-      autoAdvanceMs: 2000,
+      autoAdvance: 2,
     });
   });
 

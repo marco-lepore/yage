@@ -332,13 +332,13 @@ describe("DialogueController — observation events forwarded entity→scene", (
         a: {
           id: "a",
           steps: [
-            { kind: "say", text: "one", autoAdvanceMs: 100 },
+            { kind: "say", text: "one", autoAdvance: 0.1 },
             { kind: "say", text: "two" },
           ],
         },
       },
     });
-    text.finish(); // arms the 100ms auto-timer
+    text.finish(); // arms the 0.1s auto-timer
     await flush();
     session.update(0.15); // expire it → auto-advance
     await flush();

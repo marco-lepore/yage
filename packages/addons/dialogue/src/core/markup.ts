@@ -9,7 +9,7 @@
  *   [wave]animated[/wave]      (effect span — OPEN vocabulary: any [name]..[/name];
  *                               the bundled view animates wave/shake/pulse/rainbow)
  *   [speed=2]faster[/speed]  [speed=0.5]slower[/speed]
- *   [pause=400/]               (self-closing reveal PAUSE — holds at its offset, in ms)
+ *   [pause=0.4/]               (self-closing reveal PAUSE — holds at its offset, in seconds)
  *   [sfx=ding/]                (self-closing reveal MARKER — fires at its offset)
  *   [expression=happy/]        (self-named shortcut → props { expression: happy })
  *   [shake amount=3/]          (marker with explicit key=value props)
@@ -18,10 +18,10 @@
  *
  * Tags nest; styles inherit down the stack (so [b][color=red]X[/color][/b]
  * is bold+red). A trailing `/` makes a tag **self-closing** — a zero-width
- * {@link RevealToken} (a `[pause=600/]` hold or a `[name k=v/]` marker) that the
+ * {@link RevealToken} (a `[pause=0.6/]` hold or a `[name k=v/]` marker) that the
  * reveal drains at its char offset, distinct from the styling tags (which never
  * end in `/`). Pause + markers share one ordered stream, so **source order is
- * drain order**: `[pause=600/][shake/]` holds then fires; `[shake/][pause=600/]`
+ * drain order**: `[pause=0.6/][shake/]` holds then fires; `[shake/][pause=0.6/]`
  * fires then holds. A non-self-closing tag that isn't a built-in text attribute
  * opens an EFFECT span named after the tag (an open vocabulary the presenter
  * interprets); translators MUST keep a marker/pause's self-closing `/` so the
@@ -219,9 +219,9 @@ export function parseMarkup(input: string): ParsedText {
     if (selfClosing) {
       flush();
       if (name === "pause") {
-        const ms = Number(arg ?? "0");
-        if (Number.isFinite(ms) && ms > 0) {
-          tokens.push({ kind: "pause", atChar: charCount, ms });
+        const seconds = Number(arg ?? "0");
+        if (Number.isFinite(seconds) && seconds > 0) {
+          tokens.push({ kind: "pause", atChar: charCount, seconds });
         }
       } else {
         tokens.push({

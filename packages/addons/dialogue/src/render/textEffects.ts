@@ -25,7 +25,7 @@ export interface EffectOutput {
 
 /**
  * @param effect    which effect by name (undefined or an unrecognized name → no motion)
- * @param timeMs    elapsed time the run has been on screen
+ * @param time      elapsed time the run has been on screen, in seconds
  * @param phase     a per-run phase seed (use the run's resting x) so adjacent
  *                  runs animate out of sync instead of in lockstep
  * @param out       optional scratch object, reset and returned — pass one per
@@ -33,7 +33,7 @@ export interface EffectOutput {
  */
 export function evaluateEffect(
   effect: string | undefined,
-  timeMs: number,
+  time: number,
   phase: number,
   out: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined },
 ): EffectOutput {
@@ -43,18 +43,18 @@ export function evaluateEffect(
   out.tint = undefined;
   switch (effect) {
     case "wave":
-      out.dy = Math.sin(timeMs / 260 + phase / 14) * 1.6;
+      out.dy = Math.sin(time / 0.26 + phase / 14) * 1.6;
       break;
     case "shake":
       // Time-quantised jitter so it reads as a buzz, not per-frame noise.
-      out.dx = pseudoNoise(timeMs, phase) * 1.3;
-      out.dy = pseudoNoise(timeMs, phase + 99) * 1.3;
+      out.dx = pseudoNoise(time, phase) * 1.3;
+      out.dy = pseudoNoise(time, phase + 99) * 1.3;
       break;
     case "pulse":
-      out.scale = 1 + 0.09 * Math.sin(timeMs / 220 + phase / 18);
+      out.scale = 1 + 0.09 * Math.sin(time / 0.22 + phase / 18);
       break;
     case "rainbow":
-      out.tint = hsv((timeMs / 18 + phase * 4) % 360, 0.55, 1);
+      out.tint = hsv((time / 0.018 + phase * 4) % 360, 0.55, 1);
       break;
   }
   return out;
@@ -67,8 +67,8 @@ export function effectDrivesTint(effect: string | undefined): boolean {
 }
 
 /** Cheap deterministic [-0.5, 0.5] noise quantised to ~30 Hz. */
-function pseudoNoise(timeMs: number, seed: number): number {
-  const t = Math.floor(timeMs / 33);
+function pseudoNoise(time: number, seed: number): number {
+  const t = Math.floor(time * 30);
   const x = Math.sin(t * 12.9898 + seed * 78.233) * 43758.5453;
   return (x - Math.floor(x)) - 0.5;
 }

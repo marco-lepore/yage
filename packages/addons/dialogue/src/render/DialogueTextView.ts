@@ -4,7 +4,7 @@
  * layer, revealing it glyph-by-glyph (typewriter), honouring per-run colour/
  * bold/italic, and driving animated effects.
  *
- * Reveal *timing* — the grapheme cursor, inline `[pause=ms/]`, per-run/line
+ * Reveal *timing* — the grapheme cursor, inline `[pause=seconds/]`, per-run/line
  * `[speed]`, the hold multiplier, and fired-once completion — is owned by the
  * headless {@link LineReveal} clock (pixi-free, reusable by a DOM presenter).
  * This view keeps only the pixi-`SplitText` concerns: mapping the clock's
@@ -121,9 +121,9 @@ export class DialogueTextView implements TextPresenter {
    *  only the pixi-`SplitText` concerns (glyph prefix mapping + per-glyph style
    *  fan-out) and maps the clock's grapheme cursor onto them. */
   private readonly reveal: LineReveal;
-  /** Elapsed ms for animated per-glyph EFFECTS (wave/shake/…) — distinct from
-   *  the reveal cursor, which LineReveal owns. */
-  private elapsedMs = 0;
+  /** Elapsed seconds for animated per-glyph EFFECTS (wave/shake/…) — distinct
+   *  from the reveal cursor, which LineReveal owns. */
+  private elapsed = 0;
   /** Scratch for {@link evaluateEffect} — one object reused across all glyphs. */
   private readonly effectScratch: EffectOutput = { dx: 0, dy: 0, scale: 1, tint: undefined };
 
@@ -219,7 +219,7 @@ export class DialogueTextView implements TextPresenter {
   show(parsed: ParsedText, lineSpeed = 1): void {
     this.clearLine();
     this.parsed = parsed;
-    this.elapsedMs = 0;
+    this.elapsed = 0;
     this.shownCount = -1;
     if (parsed.length > 0) this.buildLine(parsed);
     // Start the reveal clock — an empty line completes (and fires the
@@ -246,8 +246,7 @@ export class DialogueTextView implements TextPresenter {
 
   update(dt: number): void {
     if (!this.parsed) return;
-    // `dt` is seconds; `elapsedMs` feeds millisecond-tuned text-effect math.
-    this.elapsedMs += dt * 1000;
+    this.elapsed += dt;
     // Advance the reveal cursor (fires completion exactly once when it lands),
     // then map the new cursor onto glyph visibility. applyReveal is idempotent,
     // so calling it after the line is done costs nothing.
@@ -418,7 +417,7 @@ export class DialogueTextView implements TextPresenter {
     }
     for (const m of line.effectMetas) {
       if (!m.node.visible) continue;
-      const out = evaluateEffect(m.effect, this.elapsedMs, m.splitX, this.effectScratch);
+      const out = evaluateEffect(m.effect, this.elapsed, m.splitX, this.effectScratch);
       m.node.position.set(m.baseX + out.dx, m.baseY + out.dy);
       if (out.scale !== 1) m.node.scale.set(out.scale, out.scale);
       if (effectDrivesTint(m.effect) && out.tint !== undefined) m.node.tint = out.tint;

@@ -145,7 +145,7 @@ export interface ChoiceContext {
   readonly prompt?: ParsedText | undefined;
   /** The choice step's opaque `meta` bag, passed straight through. A custom
    *  presenter reads it to render extras the model doesn't own — e.g. the
-   *  timed-choice recipe's `{ timeoutMs }` for a countdown. */
+   *  timed-choice recipe's `{ timeout }` for a countdown. */
   readonly meta?: Readonly<Record<string, unknown>> | undefined;
 }
 
@@ -348,12 +348,10 @@ export class DialogueSession {
   private scriptId = "";
 
   private saying: SayStep | undefined;
-  /** Countdown to the next auto-advance, in seconds (it counts down against the
-   *  seconds-based `dt`). Armed from the millisecond `autoAdvanceMs` /
-   *  `autoAdvanceDefault`, converted at arming. `undefined` = disarmed. */
+  /** Countdown to the next auto-advance, in seconds. `undefined` = disarmed. */
   private autoTimer: number | undefined;
-  /** Default auto-advance delay (ms) applied to lines without their own
-   *  `autoAdvanceMs`. `null` = off (manual advance). Set via {@link setAutoAdvance}. */
+  /** Default auto-advance delay (seconds) applied to lines without their own
+   *  `autoAdvance`. `null` = off (manual advance). Set via {@link setAutoAdvance}. */
   private autoAdvanceDefault: number | null = null;
   private resolved: readonly ResolvedChoice[] = [];
   private selected = 0;
@@ -1044,21 +1042,19 @@ export class DialogueSession {
   }
 
   /**
-   * Default auto-advance: lines without their own `autoAdvanceMs` advance `ms`
-   * after they finish revealing; `null` turns it off (manual advance). A
-   * per-line `autoAdvanceMs` always overrides this. Toggling it while a line is
-   * already sitting revealed arms/clears its timer immediately.
+   * Default auto-advance: lines without their own `autoAdvance` advance
+   * `seconds` after they finish revealing; `null` turns it off (manual
+   * advance). A per-line `autoAdvance` always overrides this. Toggling it while
+   * a line is already sitting revealed arms/clears its timer immediately.
    */
-  setAutoAdvance(ms: number | null): void {
-    this.autoAdvanceDefault = ms;
+  setAutoAdvance(seconds: number | null): void {
+    this.autoAdvanceDefault = seconds;
     if (
       this.mode === "saying" &&
-      this.saying?.autoAdvanceMs === undefined &&
+      this.saying?.autoAdvance === undefined &&
       this.channels.text.isRevealComplete()
     ) {
-      // `autoTimer` counts down against the seconds-based dt; the public
-      // auto-advance API is in milliseconds, so convert at arming.
-      this.autoTimer = ms !== null ? ms / 1000 : undefined;
+      this.autoTimer = seconds ?? undefined;
     }
   }
 
@@ -1282,10 +1278,9 @@ export class DialogueSession {
         }
       }
     }
-    // Per-line `autoAdvanceMs` wins; otherwise fall back to the session default.
-    // Both are milliseconds; `autoTimer` counts down in seconds.
-    const auto = this.saying?.autoAdvanceMs ?? this.autoAdvanceDefault;
-    if (auto !== null) this.autoTimer = auto / 1000;
+    // Per-line `autoAdvance` wins; otherwise fall back to the session default.
+    const auto = this.saying?.autoAdvance ?? this.autoAdvanceDefault;
+    if (auto !== null) this.autoTimer = auto;
   }
 
   /**

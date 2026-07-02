@@ -202,9 +202,8 @@ export class BubbleChrome implements ChromePresenter {
     // keep animating a caret that `setVisible(false)` hid).
     const gfx = this.caret?.graphics;
     if (gfx?.visible) {
-      // `dt` is seconds; `caretTime` feeds the millisecond `caretAlpha` blink.
-      this.caretTime += dt * 1000;
-      gfx.alpha = caretAlpha(this.caretTime, this.cfg.caret?.blinkMs);
+      this.caretTime += dt;
+      gfx.alpha = caretAlpha(this.caretTime, this.cfg.caret?.blink);
     }
   }
 

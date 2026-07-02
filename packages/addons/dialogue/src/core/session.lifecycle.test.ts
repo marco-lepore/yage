@@ -155,7 +155,7 @@ const autoScript: DialogueScript = {
     a: {
       id: "a",
       steps: [
-        { kind: "say", text: "one", autoAdvanceMs: 100 },
+        { kind: "say", text: "one", autoAdvance: 0.1 },
         { kind: "say", text: "two" },
       ],
     },
@@ -290,7 +290,7 @@ describe("DialogueSession — setPaused (world pause)", () => {
             {
               kind: "say",
               text: "one",
-              autoAdvanceMs: 100,
+              autoAdvance: 0.1,
               commands: [{ type: "wait", at: "afterReveal", blocking: true }],
             },
             { kind: "say", text: "two" },

@@ -352,7 +352,7 @@ interface SayFields {
   view?: string;
   voice?: string;
   speed?: number;
-  autoAdvanceMs?: number;
+  autoAdvance?: number;
   /** i18n key from a `#line:id` hashtag (Yarn's localization tag). */
   key?: string;
 }
@@ -402,7 +402,7 @@ function applySayField(fields: SayFields, key: string, value: string, lineNo: nu
       fields.speed = numberHint(value, lineNo, "speed");
       return;
     case "auto":
-      fields.autoAdvanceMs = numberHint(value, lineNo, "auto");
+      fields.autoAdvance = numberHint(value, lineNo, "auto");
       return;
   }
 }
