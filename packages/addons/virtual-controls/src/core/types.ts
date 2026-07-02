@@ -1,6 +1,7 @@
 /**
  * Headless configuration + geometry types for the virtual-controls model —
- * no renderer, no DOM (the core layer's only engine import is `Vec2`, in
+ * no renderer, no DOM (the core layer's only engine imports are pixi-free:
+ * `Vec2`/`MathUtils` from core and `applyRadialDeadzone` from input, in
  * stick.ts). All lengths are virtual-space pixels; all pointer coordinates
  * are virtual-space (what `PointerInfo.screenPos` reports).
  */
@@ -48,6 +49,13 @@ export interface ControlZone {
   readonly height: number;
 }
 
+/** Auto-cluster corner, keeping the size-derived inset. */
+export type ClusterCorner =
+  | "bottom-right"
+  | "bottom-left"
+  | "top-right"
+  | "top-left";
+
 /**
  * - `"fixed"` — the base never moves; a touch must start near it and deflects
  *   the knob immediately (grab radius = 1.5 × radius unless `zone` is set).
@@ -72,6 +80,18 @@ export interface StickActions {
   readonly up?: string;
   readonly down?: string;
 }
+
+/**
+ * Tuple shorthand for {@link StickActions}, fixed left/right/up/down order:
+ * `actions: ["left", "right", "up", "down"]`. Skip a direction with `null`
+ * (or omit trailing entries).
+ */
+export type StickActionsTuple = readonly [
+  left?: string | null,
+  right?: string | null,
+  up?: string | null,
+  down?: string | null,
+];
 
 export interface VirtualStickConfig {
   /**
@@ -100,8 +120,19 @@ export interface VirtualStickConfig {
    * physical pad hardware. Default 0.1.
    */
   readonly deadZone?: number;
-  /** Digital 4-way mirroring onto the action map. */
-  readonly actions?: StickActions;
+  /**
+   * Digital 4-way mirroring onto the action map — the object form, or the
+   * {@link StickActionsTuple} shorthand (`["left", "right", "up", "down"]`).
+   */
+  readonly actions?: StickActions | StickActionsTuple;
+  /**
+   * Which side of the screen the defaults lean on: the resting placement
+   * corner, the engagement zone half, the `axes` preference, and the default
+   * id. Defaults from `axes` when set, else by position (first stick left,
+   * others right). Set it to flip a stick without hand-writing `placement`
+   * and `zone`.
+   */
+  readonly side?: "left" | "right";
   /**
    * Deflection (0..1) at which a digital direction actuates. Releases at
    * 0.75 × threshold (hysteresis, so a held diagonal doesn't chatter).
@@ -111,9 +142,10 @@ export interface VirtualStickConfig {
   /**
    * Mirror the raw deflection onto the synthetic gamepad axes
    * (`InputManager.fireGamepadAxis`), so `input.getStick(side)` reads the
-   * virtual stick when no physical pad is active — and a physical pad wins
-   * when one is. Defaults to `"left"` for the first stick, `"right"` for the
-   * second, `false` for any further stick. Pass `false` to opt out.
+   * virtual stick. A physical pad deflected past its deadzone wins; an
+   * idle plugged-in pad does not mask the virtual stick. Defaults to
+   * `"left"` for the first stick, `"right"` for the second, `false` for any
+   * further stick. Pass `false` to opt out.
    */
   readonly axes?: "left" | "right" | false;
   /**
@@ -157,10 +189,14 @@ export interface VirtualControlsConfig {
    * Anchor of the auto-placed button cluster (buttons without an explicit
    * `placement`). 1 button sits on the anchor; 2 form a diagonal pair; 3 a
    * corner-hugging arc; 4 an A/B/X/Y diamond (bottom/right/left/top, in
-   * config order); other counts fan out in a ring. Default: bottom-right
-   * corner. Point it bottom-left for a left-handed layout.
+   * config order); other counts fan out in a ring. Default: the
+   * bottom-right corner with an inset derived from button size and count.
+   * A {@link ClusterCorner} keyword (`cluster: "bottom-left"` for a
+   * left-handed layout) keeps that derived inset; a {@link ControlPlacement}
+   * pins the anchor exactly. Either way the arrangement mirrors toward the
+   * anchoring edges, so the primary button hugs its corner.
    */
-  readonly cluster?: ControlPlacement;
+  readonly cluster?: ControlPlacement | ClusterCorner;
 }
 
 /** Stick config with identity/behavior defaults applied (geometry still lazy). */

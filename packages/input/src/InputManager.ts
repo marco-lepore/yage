@@ -1,5 +1,6 @@
 import { Vec2 } from "@yagejs/core";
 import type { RendererAdapter } from "@yagejs/core";
+import { applyRadialDeadzone } from "./deadzone.js";
 import type {
   ActionMapDefinition,
   CameraLike,
@@ -850,8 +851,10 @@ export class InputManager {
 
   /**
    * Inject a synthetic gamepad axis value. Stored separately from real-pad
-   * axis state and consulted by `getStick` / `getTrigger` only when no real
-   * pad is active — matching how a test fixture would use the API.
+   * axis state and consulted by `getStick` / `getTrigger` when no real pad
+   * is active, or when the active pad's own input rests inside the deadzone
+   * — so test fixtures and virtual sticks read back even while an idle
+   * controller sits plugged in; a pad deflected past the deadzone wins.
    *
    * Trigger axes additionally emit `GamepadLT`/`GamepadRT` button edges when
    * crossing `triggerThreshold`, mirroring real-pad polling so synthetic
@@ -878,44 +881,42 @@ export class InputManager {
    * where each player's controller is addressed explicitly.
    *
    * Falls back to synthetic injection (`fireGamepadAxis`) when no pad is
-   * active — that's the test/probe path.
+   * active — the test/probe/virtual-controls path — AND when the pad's own
+   * stick rests inside the deadzone: a controller merely sitting plugged in
+   * (its resting noise stays inside the deadzone) must not mask a virtual
+   * stick that is actively deflected. A pad deflected past the deadzone
+   * always wins.
    */
   getStick(side: "left" | "right", opts?: { pad?: number }): Vec2 {
     const { x: xKey, y: yKey } = STICK_AXIS_KEYS[side];
     const padIdx = opts?.pad !== undefined ? opts.pad : this.activePadIndex;
-    let x: number;
-    let y: number;
+    let x = 0;
+    let y = 0;
     if (padIdx !== null) {
       x = this.gamepadAxisState.get(`${padIdx}:${xKey}`) ?? 0;
       y = this.gamepadAxisState.get(`${padIdx}:${yKey}`) ?? 0;
-    } else {
+    }
+    if (padIdx === null || Math.hypot(x, y) < this.stickDeadzone) {
       x = this.syntheticAxisState.get(xKey) ?? 0;
       y = this.syntheticAxisState.get(yKey) ?? 0;
     }
-    const mag = Math.hypot(x, y);
-    if (mag < this.stickDeadzone) return Vec2.ZERO;
-    // Guards the deadzone:0 case — `mag === 0` slips past the deadzone check
-    // when the deadzone is disabled, and dividing by zero would yield NaN.
-    if (mag === 0) return Vec2.ZERO;
-    const adjustedMag = Math.min(
-      1,
-      (mag - this.stickDeadzone) / (1 - this.stickDeadzone),
-    );
-    return new Vec2((x / mag) * adjustedMag, (y / mag) * adjustedMag);
+    return applyRadialDeadzone(x, y, this.stickDeadzone);
   }
 
   /**
    * Returns the deadzoned trigger value (0..1) for the given side.
    * Reads from the active pad by default; use `{ pad: index }` for explicit
-   * per-pad reads. Falls back to synthetic state when no pad is active.
+   * per-pad reads. Falls back to synthetic state when no pad is active or
+   * the pad's trigger rests inside the deadzone (mirrors {@link getStick}).
    */
   getTrigger(side: "left" | "right", opts?: { pad?: number }): number {
     const key = TRIGGER_AXIS_KEYS[side];
     const padIdx = opts?.pad !== undefined ? opts.pad : this.activePadIndex;
-    const v =
-      padIdx !== null
-        ? (this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0)
-        : (this.syntheticAxisState.get(key) ?? 0);
+    let v =
+      padIdx !== null ? (this.gamepadAxisState.get(`${padIdx}:${key}`) ?? 0) : 0;
+    if (padIdx === null || v < this.triggerDeadzone) {
+      v = this.syntheticAxisState.get(key) ?? 0;
+    }
     if (v < this.triggerDeadzone) return 0;
     return Math.min(1, (v - this.triggerDeadzone) / (1 - this.triggerDeadzone));
   }

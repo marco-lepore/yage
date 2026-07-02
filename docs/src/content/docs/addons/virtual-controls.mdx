@@ -68,7 +68,7 @@ class GameScene extends Scene {
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({
-        stick: { actions: { left: "left", right: "right", up: "up", down: "down" } },
+        stick: { actions: ["left", "right", "up", "down"] }, // L/R/U/D order
         buttons: [
           { id: "a", action: "jump" },
           { id: "b", action: "dash" },
@@ -80,6 +80,10 @@ class GameScene extends Scene {
 }
 ```
 
+The tuple binds the four directions in left/right/up/down order (`null`
+skips one); the object form `{ left: "moveLeft", … }` works too when the
+names differ.
+
 That's a floating joystick on the left half of the screen and two buttons in
 the bottom-right corner. Every default is derived, not hardcoded:
 
@@ -88,9 +92,10 @@ the bottom-right corner. Every default is derived, not hardcoded:
   1920×1080 one.
 - **Button clusters** auto-arrange by count: 1 sits in the corner, 2 form a
   diagonal pair, 3 a corner-hugging arc, 4 an A/B/X/Y diamond, and other
-  counts fan out in a ring. Point `cluster: { left: …, bottom: … }` at the
-  other corner for a left-handed layout, or give any button an explicit
-  `placement`.
+  counts fan out in a ring. A left-handed layout is one keyword each:
+  `cluster: "bottom-left"` moves the cluster (the size-derived inset stays),
+  `stick: { side: "right" }` flips the stick — or give any button an
+  explicit `placement` to pin it.
 - **The layer** (`"virtual-controls"`, screen-space, order 1050) is
   auto-provisioned — no `Scene.layers` declaration needed.
 - **The presenter** is zero-asset Graphics + canvas labels; pass a partial
@@ -141,12 +146,13 @@ The stick mirrors three ways at once:
   holds the four bound actions, so `getVector("left", "right", "up", "down")`
   works.
 - **Analog via `getStick()`** — the raw deflection feeds the synthetic
-  gamepad axes, so `input.getStick("left")` returns the virtual stick when no
-  physical pad is active (a real pad wins, even an idle one). A second stick
-  defaults to the right side — twin-stick works out of the box. Note that
-  `getStick()` applies the input system's own stick deadzone here, exactly
-  as it does for physical pads — the stick's `deadZone` option shapes only
-  the digital mirror and `value`.
+  gamepad axes, so `input.getStick("left")` returns the virtual stick. A
+  physical pad deflected past its deadzone wins; a controller merely
+  sitting plugged in doesn't mask the stick. A second stick defaults to the
+  right side — twin-stick works out of the box. `getStick()` applies the
+  input system's own stick deadzone here, exactly as it does for physical
+  pads — the stick's `deadZone` option shapes only the digital mirror and
+  `value` (both use the same exported `applyRadialDeadzone` curve).
 - **Direct** — `controls.stick().value` is the dead-zoned vector,
   `.rawValue` the unfiltered one.
 

@@ -92,6 +92,35 @@ describe("normalizeControlsConfig", () => {
     expect(buttons[0]?.pressOnEnter).toBe(false);
     expect(buttons[0]?.releaseOnLeave).toBe(true);
   });
+
+  it("folds the actions tuple into the object form, null skipping", () => {
+    const { sticks } = normalizeControlsConfig({
+      stick: { actions: ["l", "r", null, "d"] },
+    });
+    expect(sticks[0]?.actions).toEqual({ left: "l", right: "r", down: "d" });
+    const objForm = normalizeControlsConfig({
+      stick: { actions: { left: "l" } },
+    });
+    expect(objForm.sticks[0]?.actions).toEqual({ left: "l" });
+  });
+
+  it("side flips the defaults without geometry config", () => {
+    const { sticks } = normalizeControlsConfig({ stick: { side: "right" } });
+    expect(sticks[0]?.side).toBe("right");
+    expect(sticks[0]?.axes).toBe("right");
+    expect(sticks[0]?.id).toBe("right");
+    const layout = resolveStickLayout(sticks[0]!, VP);
+    expect(layout.center.x).toBeGreaterThan(400);
+    expect(layout.zone?.x).toBe(400);
+  });
+
+  it("explicit axes wins over side for the mirror, not the geometry", () => {
+    const { sticks } = normalizeControlsConfig({
+      stick: { side: "right", axes: "left" },
+    });
+    expect(sticks[0]?.axes).toBe("left");
+    expect(sticks[0]?.side).toBe("right");
+  });
 });
 
 describe("resolvePlacement", () => {
@@ -251,5 +280,19 @@ describe("resolveButtonLayouts", () => {
       expect(l.center.x).toBeLessThan(250);
       expect(l.center.y).toBeGreaterThan(350);
     }
+  });
+
+  it("corner keywords mirror the default anchor, keeping the derived inset", () => {
+    const base = resolveButtonLayouts(buttons(2), undefined, VP);
+    const explicit = resolveButtonLayouts(buttons(2), "bottom-right", VP);
+    expect(explicit).toEqual(base);
+
+    const left = resolveButtonLayouts(buttons(2), "bottom-left", VP);
+    expect(left[0]!.center.x).toBeCloseTo(800 - base[0]!.center.x);
+    expect(left[0]!.center.y).toBeCloseTo(base[0]!.center.y);
+
+    const top = resolveButtonLayouts(buttons(2), "top-right", VP);
+    expect(top[0]!.center.x).toBeCloseTo(base[0]!.center.x);
+    expect(top[0]!.center.y).toBeCloseTo(600 - base[0]!.center.y);
   });
 });

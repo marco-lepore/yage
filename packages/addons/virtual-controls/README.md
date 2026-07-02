@@ -51,7 +51,7 @@ class GameScene extends Scene {
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({
-        stick: { actions: { left: "left", right: "right", up: "up", down: "down" } },
+        stick: { actions: ["left", "right", "up", "down"] }, // L/R/U/D order
         buttons: [
           { id: "a", action: "jump" },
           { id: "b", action: "dash" },

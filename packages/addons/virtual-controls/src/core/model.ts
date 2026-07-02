@@ -6,6 +6,7 @@ import {
 } from "./layout.js";
 import { VirtualStick } from "./stick.js";
 import type {
+  ClusterCorner,
   ControlPlacement,
   Point,
   ViewportRect,
@@ -48,7 +49,7 @@ export class VirtualControlsModel {
   readonly sticks: readonly VirtualStick[];
   readonly buttons: readonly VirtualButton[];
 
-  private readonly cluster: ControlPlacement | undefined;
+  private readonly cluster: ControlPlacement | ClusterCorner | undefined;
   private readonly cb: VirtualControlsModelCallbacks;
   private readonly owners = new Map<number, VirtualStick | VirtualButton>();
   private readonly strays = new Set<number>();

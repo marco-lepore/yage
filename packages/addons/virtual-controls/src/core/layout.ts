@@ -7,11 +7,14 @@
 
 import type {
   ButtonLayout,
+  ClusterCorner,
   ControlPlacement,
   ControlZone,
   Point,
   ResolvedButtonConfig,
   ResolvedStickConfig,
+  StickActions,
+  StickActionsTuple,
   StickLayout,
   ViewportRect,
   VirtualControlsConfig,
@@ -37,7 +40,7 @@ const DEFAULT_STICK_ZONE: Record<"left" | "right", ControlZone> = {
 export interface NormalizedControlsConfig {
   readonly sticks: readonly ResolvedStickConfig[];
   readonly buttons: readonly ResolvedButtonConfig[];
-  readonly cluster: ControlPlacement | undefined;
+  readonly cluster: ControlPlacement | ClusterCorner | undefined;
 }
 
 /**
@@ -67,8 +70,10 @@ export function normalizeControlsConfig(
     if (s.axes !== undefined) {
       axes = s.axes;
     } else {
-      // Prefer the conventional side for the index, else the free one.
-      const preferred: "left" | "right" = index === 0 ? "left" : "right";
+      // Prefer the declared side, else the conventional side for the
+      // index, else whichever is free.
+      const preferred: "left" | "right" =
+        s.side ?? (index === 0 ? "left" : "right");
       const other: "left" | "right" = preferred === "left" ? "right" : "left";
       axes = !takenAxes.has(preferred)
         ? preferred
@@ -78,8 +83,11 @@ export function normalizeControlsConfig(
       if (axes) takenAxes.add(axes);
     }
     const side: "left" | "right" =
-      axes !== false ? axes : index === 0 ? "left" : "right";
-    const id = s.id ?? (index === 0 ? "left" : index === 1 ? "right" : `stick-${index}`);
+      s.side ?? (axes !== false ? axes : index === 0 ? "left" : "right");
+    const id =
+      s.id ??
+      s.side ??
+      (index === 0 ? "left" : index === 1 ? "right" : `stick-${index}`);
     if (stickIds.has(id)) {
       throw new Error(`VirtualControls: duplicate stick id "${id}".`);
     }
@@ -106,7 +114,7 @@ export function normalizeControlsConfig(
       placement: s.placement,
       radius: s.radius,
       deadZone,
-      actions: s.actions ?? {},
+      actions: normalizeStickActions(s.actions),
       threshold,
       axes,
       zone: s.zone,
@@ -151,9 +159,26 @@ export function normalizeControlsConfig(
     });
   }
 
-  if (config.cluster) validatePlacement(config.cluster, "cluster");
+  if (config.cluster && typeof config.cluster !== "string") {
+    validatePlacement(config.cluster, "cluster");
+  }
 
   return { sticks, buttons, cluster: config.cluster };
+}
+
+/** Fold the tuple shorthand into the object form (fixed L/R/U/D order). */
+function normalizeStickActions(
+  actions: StickActions | StickActionsTuple | undefined,
+): StickActions {
+  if (!actions) return {};
+  if (!Array.isArray(actions)) return actions as StickActions;
+  const [left, right, up, down] = actions as StickActionsTuple;
+  const out: { left?: string; right?: string; up?: string; down?: string } = {};
+  if (left != null) out.left = left;
+  if (right != null) out.right = right;
+  if (up != null) out.up = up;
+  if (down != null) out.down = down;
+  return out;
 }
 
 function validatePlacement(p: ControlPlacement, what: string): void {
@@ -255,7 +280,7 @@ function clusterSlots(count: number): readonly (readonly [number, number])[] {
  */
 export function resolveButtonLayouts(
   buttons: readonly ResolvedButtonConfig[],
-  cluster: ControlPlacement | undefined,
+  cluster: ControlPlacement | ClusterCorner | undefined,
   vp: ViewportRect,
 ): ButtonLayout[] {
   const minSide = Math.min(vp.width, vp.height);
@@ -276,10 +301,13 @@ export function resolveButtonLayouts(
     maxExtent = Math.max(maxExtent, Math.abs(sx), Math.abs(sy));
   }
   const clusterInset = maxAutoRadius * CLUSTER_BASE_INSET + spacing * maxExtent;
-  const anchor = resolvePlacement(
-    cluster ?? { right: clusterInset, bottom: clusterInset },
-    vp,
-  );
+  const anchorPlacement = clusterAnchorPlacement(cluster, clusterInset);
+  const anchor = resolvePlacement(anchorPlacement, vp);
+  // Slot offsets are authored for the bottom-right corner; mirror them
+  // toward whichever edges anchor the cluster so the primary button always
+  // hugs its corner (a bottom-left pair leans left-down, not right-down).
+  const flipX = anchorPlacement.left !== undefined ? -1 : 1;
+  const flipY = anchorPlacement.top !== undefined ? -1 : 1;
 
   let autoIndex = 0;
   return buttons.map((b) => {
@@ -290,10 +318,29 @@ export function resolveButtonLayouts(
     const slot = slots[autoIndex++] ?? [0, 0];
     return {
       center: {
-        x: anchor.x + slot[0] * spacing,
-        y: anchor.y + slot[1] * spacing,
+        x: anchor.x + slot[0] * spacing * flipX,
+        y: anchor.y + slot[1] * spacing * flipY,
       },
       radius,
     };
   });
+}
+
+/**
+ * The cluster anchor as a placement: a corner keyword keeps the
+ * size-derived inset on its chosen edges, an explicit placement is used
+ * as-is, and the default is the bottom-right corner.
+ */
+function clusterAnchorPlacement(
+  cluster: ControlPlacement | ClusterCorner | undefined,
+  inset: number,
+): ControlPlacement {
+  if (cluster === undefined) return { right: inset, bottom: inset };
+  if (typeof cluster === "string") {
+    return {
+      ...(cluster.endsWith("left") ? { left: inset } : { right: inset }),
+      ...(cluster.startsWith("top") ? { top: inset } : { bottom: inset }),
+    };
+  }
+  return cluster;
 }

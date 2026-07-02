@@ -1,5 +1,6 @@
 export { InputPlugin } from "./InputPlugin.js";
 export { InputManager } from "./InputManager.js";
+export { applyRadialDeadzone } from "./deadzone.js";
 export { getKeyDisplayName } from "./keyDisplayNames.js";
 export { InputManagerKey } from "./types.js";
 export type {

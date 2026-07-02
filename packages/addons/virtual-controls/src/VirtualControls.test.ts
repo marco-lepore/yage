@@ -34,7 +34,7 @@ function setup(options?: Partial<VirtualControlsOptions>) {
   const controls = new VirtualControls({
     viewport: VIEWPORT,
     visible: true,
-    stick: { actions: { left: "left", right: "right", up: "up", down: "down" } },
+    stick: { actions: ["left", "right", "up", "down"] },
     buttons: [{ id: "a", action: "jump" }],
     ...options,
   });

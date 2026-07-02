@@ -404,7 +404,7 @@ new InputPlugin({
 });
 ```
 
-### Synthetic injection (testing)
+### Synthetic injection (testing + virtual controls)
 
 ```ts
 input.fireGamepadButton("GamepadA", true);   // routes through real path
@@ -416,6 +416,13 @@ input.firePointerDown(0);
 input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
 input.firePointerUp(0, { id: 5 });
 ```
+
+`getStick`/`getTrigger` read synthetic axes when no pad is active OR when the
+active pad's own input rests inside its deadzone — an idle plugged-in
+controller doesn't mask an actively-deflected virtual stick; a pad past the
+deadzone always wins. `applyRadialDeadzone(x, y, deadzone): Vec2` (exported)
+is the exact dead-zone + rescale curve `getStick` applies — synthetic stick
+sources use it to shape their own values with the same response.
 
 ### Synthetic action injection (by action name)
 

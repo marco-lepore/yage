@@ -273,9 +273,8 @@ class ControlsDemoScene extends Scene {
       new VirtualControls({
         // Forced on for this demo page; the default is "auto" (mobile only).
         visible: true,
-        stick: {
-          actions: { left: "left", right: "right", up: "up", down: "down" },
-        },
+        // Tuple shorthand: left/right/up/down order.
+        stick: { actions: ["left", "right", "up", "down"] },
         buttons,
         presenter: createControlsPresenter({
           stickKnobColor: 0x38bdf8,

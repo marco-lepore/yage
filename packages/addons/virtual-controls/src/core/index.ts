@@ -4,12 +4,14 @@ export { VirtualControlsModel } from "./model.js";
 export type { VirtualControlsModelCallbacks } from "./model.js";
 export type {
   ButtonLayout,
+  ClusterCorner,
   ControlPlacement,
   ControlZone,
   Point,
   ResolvedButtonConfig,
   ResolvedStickConfig,
   StickActions,
+  StickActionsTuple,
   StickDigitalState,
   StickLayout,
   StickMode,

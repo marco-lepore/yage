@@ -1,4 +1,5 @@
 import { MathUtils, Vec2 } from "@yagejs/core";
+import { applyRadialDeadzone } from "@yagejs/input";
 import type {
   Point,
   ResolvedStickConfig,
@@ -173,16 +174,9 @@ export class VirtualStick {
     }
     this._raw = new Vec2(rx, ry);
 
-    const dz = this.config.deadZone;
-    const clampedMag = Math.min(mag, 1);
-    if (clampedMag <= dz) {
-      this._value = Vec2.ZERO;
-    } else {
-      // (rx, ry) has magnitude clampedMag (> dz ≥ 0 here); rescale it so the
-      // magnitude ramps 0→1 across the dead-zone edge → full travel.
-      const scale = (clampedMag - dz) / (1 - dz) / clampedMag;
-      this._value = new Vec2(rx * scale, ry * scale);
-    }
+    // The same response curve getStick applies to pad hardware, so `value`
+    // and a pad-driven read feel identical for the same gesture.
+    this._value = applyRadialDeadzone(rx, ry, this.config.deadZone);
 
     const t = this.config.threshold;
     const release = t * RELEASE_HYSTERESIS;

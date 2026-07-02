@@ -57,7 +57,7 @@ class GameScene extends Scene {
   onEnter() {
     this.spawn("touch-controls").add(
       new VirtualControls({
-        stick: { actions: { left: "left", right: "right", up: "up", down: "down" } },
+        stick: { actions: ["left", "right", "up", "down"] }, // L/R/U/D order
         buttons: [
           { id: "a", action: "jump" },
           { id: "b", action: "dash" },
@@ -73,11 +73,14 @@ Defaults: floating stick bottom-left (engagement zone = bottom 70% of the left
 half), buttons auto-clustered bottom-right (1 = single, 2 = diagonal pair,
 3 = corner arc, 4 = A/B/X/Y diamond, other counts = ring), sizes relative to
 the viewport (stick 11% / button 6.5% of min(w, h)), overlay
-`visible: "auto"`. The presenter auto-provisions its screen-space layer
-(`"virtual-controls"`, order 1050) — no `Scene.layers` declaration needed;
-declare `...VIRTUAL_CONTROLS_LAYERS` only to pin ordering. The control set is
-fixed at construction — reconfigure by destroying the host entity and adding
-a fresh component.
+`visible: "auto"`. Left-handed flips are one keyword each:
+`cluster: "bottom-left"` moves the button cluster (inset stays derived),
+`stick: { side: "right" }` flips the stick's placement/zone/axes defaults.
+The presenter auto-provisions its screen-space layer (`"virtual-controls"`,
+order 1050) — no `Scene.layers` declaration needed; declare
+`...VIRTUAL_CONTROLS_LAYERS` only to pin ordering. The control set is fixed
+at construction — reconfigure by destroying the host entity and adding a
+fresh component.
 
 ## Visibility — `visible: "auto"` (the mobile default)
 
@@ -110,14 +113,16 @@ Mirroring (all idempotent, per pointer event):
   `threshold` (0.5, releases at 0.75× — hysteresis); reads back through
   `getVector`/`getAxis`.
 - Stick → `fireGamepadAxis(leftX/leftY …)` (raw, PRE-deadZone), so
-  `input.getStick("left")` returns the virtual stick when no physical pad is
-  active — a real pad wins, even an idle one. First stick defaults
-  `axes: "left"`, second `"right"`; pass `axes: false` to opt out.
+  `input.getStick("left")` returns the virtual stick. A physical pad
+  deflected past its deadzone wins; an idle plugged-in pad does NOT mask
+  the virtual stick. First stick defaults `axes: "left"`, second `"right"`;
+  pass `axes: false` to opt out.
 - Analog escape hatch: `controls.stick().value` (dead-zoned, -1..1, +y down)
-  and `.rawValue`. NOTE: the stick's `deadZone` option shapes `value` and
-  the digital mirror ONLY — `getStick()` applies the InputManager's own
-  stick deadzone (`InputConfig.deadzones.stick`) instead, same as for
-  physical pads.
+  and `.rawValue`. `value` and `getStick()` use the SAME response curve
+  (input's exported `applyRadialDeadzone`), but each applies its own
+  deadzone number: the stick's `deadZone` option shapes `value` and the
+  digital mirror; `getStick()` applies `InputConfig.deadzones.stick`, same
+  as for physical pads.
 
 Action names are re-validated LIVE on every mirror (`InputManager.hasAction`
 — the action map can be swapped at runtime): unknown names warn once and are
@@ -129,11 +134,15 @@ exist.
 ```ts
 new VirtualControls({
   stick:  { // or sticks: [ … ] for twin-stick
-    id: "left",                    // default by position: "left", "right"
+    id: "left",                    // default: side, else by position
     mode: "floating",              // "fixed" | "floating" | "follow"
-    actions: { left: "left", right: "right", up: "up", down: "down" },  // each optional
+    actions: ["left", "right", "up", "down"],  // L/R/U/D tuple (null skips a
+                                   //   direction); object form also accepted:
+                                   //   { left: "left", right: "right", … }
+    side: "left",                  // or "right": flips placement/zone/axes/id
+                                   //   defaults without hand-written geometry
     threshold: 0.5, deadZone: 0.1,
-    axes: "left",                  // or "right" | false; defaults by position
+    axes: "left",                  // or "right" | false; defaults from side/position
     radius: 66,                    // virtual px; default 11% of min(vw, vh)
     placement: { left: 106, bottom: 106 },  // center, from edges (one h + one v)
     zone: { x: 0, y: 0.3, width: 0.5, height: 0.7 },  // viewport FRACTIONS
@@ -144,7 +153,9 @@ new VirtualControls({
     pressOnEnter: false,           // arcade thumb-roll: press on slide-in
     releaseOnLeave: true,          // release past 1.15 × radius
   }],
-  cluster: { right: 140, bottom: 140 },  // auto-cluster anchor (left-handed: use left:)
+  cluster: "bottom-left",          // corner keyword keeps the size-derived inset
+                                   //   (left-handed layouts); or pin exactly:
+                                   //   { right: 140, bottom: 140 }
   visible: "auto",
   presenter: createControlsPresenter({ buttonPressedColor: 0xf472b6 }),  // Partial<ControlsTheme>; null = intentionally invisible (omitting warns)
   viewport: { x: 0, y: 0, width: 800, height: 600 },  // override; default = the adapter's visibleVirtualRect, tracked per frame
