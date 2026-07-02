@@ -1,0 +1,366 @@
+---
+title: Inventory
+description: Slot-based inventory with stacking, item actions, sorting, and swappable grid/list presenters — headless model included
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+`@yagejs-addons/inventory` is a slot-based inventory system: a **headless
+model** that owns the fiddly logic every game rewrites (stack merging, partial
+pickups, move/merge/swap, consolidate-and-sort, cross-inventory transfers,
+save round-trips) plus a **swappable presentation layer** — a grid panel or a
+name list, themeable, zero-asset by default. The model is plain live state, so
+your game logic reads and mutates it whether or not any panel is open.
+
+## Install
+
+```bash
+npm install @yagejs-addons/inventory
+```
+
+The addon declares the engine packages as **peer dependencies**, so it reuses
+your single engine install rather than duplicating it:
+
+```bash
+npm install @yagejs/core @yagejs/input @yagejs/renderer
+```
+
+- `@yagejs/core` and `@yagejs/input` are **required** peers.
+- `@yagejs/renderer` is the **optional** peer — only the `./presenters`
+  subpath needs it (and it brings `pixi.js` transitively). Using your own UI?
+  Skip it.
+
+## Two entry points
+
+The package is split so the headless path never pulls a renderer:
+
+```ts
+// Headless + input only — no pixi, fully unit-testable.
+import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
+
+// Pixi presentation — grid/list views, themes, factories.
+import { createGridInventory, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
+```
+
+| Entry          | Imports                         | Contains |
+| -------------- | ------------------------------- | -------- |
+| `.`            | `@yagejs/core`, `@yagejs/input` | catalog + `Inventory` model, sort comparators, `InventorySession` + channel contracts, `InventoryController`, engine events, input bindings |
+| `./presenters` | + `@yagejs/renderer` (brings pixi) | `GridSlotsView` / `ListSlotsView` / `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`, `defaultInventoryTheme()`, the `createGridInventory` / `createListInventory` factories, `INVENTORY_LAYERS` |
+
+## Quick start
+
+The default presenters are **zero-asset**: Graphics for the panel and cells,
+canvas text for labels. Items without an `icon` render as a colored tile with
+the item's initial, so a working inventory needs no art at all.
+
+<Steps>
+
+1. **Declare the inventory layers on your scene.** They are screen-space, and
+   sit below the dialogue addon's layers so a conversation can play over an
+   open inventory.
+
+   ```ts
+   import { Scene } from "@yagejs/core";
+   import { INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+
+   class MyScene extends Scene {
+     readonly layers = [...INVENTORY_LAYERS];
+     // ...
+   }
+   ```
+
+2. **Define the catalog and the inventory.** Item ids are the map keys and
+   flow through the types — `inventory.add("potino")` is a compile error.
+
+   ```ts
+   import { defineItems, Inventory } from "@yagejs-addons/inventory";
+
+   const catalog = defineItems({
+     potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP.", category: "consumable" },
+     sword: { name: "Iron Sword", category: "gear" },
+   });
+
+   const inventory = new Inventory({
+     catalog,
+     capacity: 15, // slots; omit for an unbounded inventory
+     actions: [
+       { id: "use", label: "Use", consumes: true },
+       { id: "drop", label: "Drop" },
+     ],
+   });
+   ```
+
+3. **Spawn a host entity and add the controller.** Spread a factory bundle in
+   — the default input binding (keyboard/gamepad **and** mouse/touch, pointer
+   hit-testing included) wires itself to the bundle's presenters.
+
+   ```ts
+   import { InventoryController } from "@yagejs-addons/inventory";
+   import { createGridInventory } from "@yagejs-addons/inventory/presenters";
+
+   onEnter() {
+     const bundle = createGridInventory();
+     const host = this.spawn("inventory");
+     host.add(new InventoryController({ ...bundle, inventory }));
+   }
+   ```
+
+4. **Apply consequences in one event handler.** The addon knows *when* "Use"
+   happens; what it *means* is yours.
+
+   ```ts
+   import { InventoryActionEvent } from "@yagejs-addons/inventory";
+
+   host.on(InventoryActionEvent, (e) => {
+     if (e.actionId === "use" && e.itemId === "potion") player.heal(25);
+     if (e.actionId === "drop") world.spawnPickup(e.itemId, player.position);
+   });
+   ```
+
+</Steps>
+
+Press the `inventory` action (bind a key to it in your `InputPlugin` map) or
+call `controller.toggle()` — the panel opens with cursor navigation, an action
+menu per item, a detail pane, and mouse/touch support already wired. To rename
+the action names, construct the binding yourself:
+`input: fullControls(bundle, { actions: { ...DEFAULT_ACTIONS, toggle: ["bag"] } })`.
+
+<Aside type="caution">
+Running the [dialogue addon](/addons/dialogue/) too? Both bind `interact` by
+default (and both addons export `fullControls`/`DEFAULT_ACTIONS` — alias at
+import). YAGE input is non-consuming, so while both are active one press
+reaches both: give one focus with `setInputEnabled(false)` on the other, or
+remap one addon's actions.
+</Aside>
+
+## The model is always live
+
+The panel is an *observer* of the `Inventory`; game logic goes straight to the
+model. The classic locked-door interaction never touches the UI:
+
+```ts
+// On interacting with the door:
+if (keyItems.has("goldKey")) {
+  keyItems.remove("goldKey", 1);
+  door.open();
+} else {
+  hud.toast("Locked. It wants a gold key.");
+}
+```
+
+Pickups are the same — and **partial acceptance is a first-class result**, not
+an error:
+
+```ts
+const res = inventory.add("arrows", 20); // { added, rejected, reason?, slots }
+if (res.added > 0) pickup.quantity -= res.added; // what didn't fit stays on the floor
+```
+
+The controller mirrors every model event onto the entity bus (open **or**
+closed): `InventoryItemAddedEvent`, `InventoryItemRemovedEvent`,
+`InventoryChangedEvent`, and `InventoryRejectedEvent` — the last one is your
+"Inventory full!" toast hook.
+
+## Stacking
+
+Two stacking behaviors cover the common cases, chosen per item:
+
+- **`"multi"`** (default) — a full stack overflows into a new slot, `maxStack`
+  units per stack. Twelve potions at `maxStack: 5` land as 5 / 5 / 2.
+- **`"single"`** — at most one stack of the item exists and `maxStack` is the
+  item's **total cap**; anything beyond it is rejected with reason
+  `"stack-cap"`. The Zelda-arrows model.
+
+```ts
+arrows: { name: "Arrows", maxStack: 30, stacking: "single" },
+```
+
+<Aside type="note">
+The default `maxStack` is **1** — items don't stack unless their def says so.
+Set the inventory's `defaultMaxStack` to change the baseline.
+</Aside>
+
+Stacks can carry a per-stack `data` payload (durability, rolled stats). Data
+stacks never auto-merge, and anonymous `remove`/`transfer` skip them — move
+instance items explicitly with `removeAt` / `transferSlot`. Plain
+`count`/`has` include them, so guard a removal with the matching filter:
+`inventory.has("sword", 1, { dataless: true })` says yes only to units
+`remove` can actually take.
+
+## Arranging: move, split, sort
+
+`move(from, to)` implements the familiar slot interaction in one call: onto an
+empty slot it moves, onto the same dataless item it merges up to `maxStack`
+(leftover stays behind), onto anything else it swaps. `split(from, qty, to?)`
+carves a stack apart.
+
+`sort()` is the Sort-button behavior games expect: it compacts, **consolidates**
+partial stacks of the same item into full ones, and orders by a comparator —
+`byCatalogOrder` (your `defineItems` declaration order) by default, with
+`byName` / `byCategory` / `byQuantity` shipped and custom comparators taking a
+`SortEntry { stack, def, order }`.
+
+## Rules in: filters and constraints
+
+What an inventory *accepts* is injected policy, not subclassing:
+
+```ts
+const keyItems = new Inventory({
+  catalog,
+  autoCompact: true,                        // list-style: removals close gaps
+  accepts: (def) => def.category === "key", // anything else → rejected ("filtered")
+});
+```
+
+Slot capacity is built in; other limits (weight, currency caps) plug in as
+`InventoryConstraint`s answering one question — *how many more units of this
+item may enter right now*. A constraint's `id` rides rejections as
+`constraintId`, so the weight toast and the quest-gate toast can differ:
+
+```ts
+const weightLimit = (max: number): InventoryConstraint => ({
+  id: "weight",
+  maxAcceptable: (def, inv) => {
+    const per = (def.data?.weight as number) ?? 0;
+    if (per <= 0) return Infinity;
+    const current = inv.slots.reduce(
+      (sum, s) => (s ? sum + ((catalog.get(s.itemId).data?.weight as number) ?? 0) * s.quantity : sum),
+      0,
+    );
+    return Math.floor((max - current) / per);
+  },
+});
+```
+
+## Item actions
+
+Actions are data plus policy: the inventory declares what exists, each item
+narrows what applies, and `available` decides per stack at menu time.
+
+```ts
+const actions: ItemActionDef[] = [
+  { id: "use", label: "Use", consumes: true },
+  { id: "equip", label: "Equip", available: (ctx) => equipped !== ctx.stack.itemId },
+  { id: "unequip", label: "Unequip", available: (ctx) => equipped === ctx.stack.itemId },
+  { id: "drop", label: "Drop", consumes: true },
+  { id: "examine", label: "Examine" },
+];
+
+// Per item, in the catalog:
+potion: { name: "Potion", actions: ["use", "drop", "examine"] },
+```
+
+Confirming a slot opens the action menu with exactly the actions that resolve
+for that stack; committing one emits `InventoryActionEvent` and — when the
+action declares `consumes: true` — removes one unit afterwards, which covers
+the use-a-consumable case with no handler mutation at all. The event's
+`consumes` flag tells your handler the model is doing that removal, so a
+handler never removes the unit twice. `closes: true` additionally closes the
+panel (menus that return to gameplay).
+
+One note on typing: engine-bus payloads carry `string` item ids (event tokens
+can't be generic). `catalog.has(e.itemId)` is a type predicate that narrows
+them back to your catalog's id union — or subscribe on `inventory.on(...)`,
+which is typed end to end.
+
+## The panel: grid, list, themes
+
+Two factories assemble a wired presenter bundle from one flat theme object:
+
+```ts
+createGridInventory(theme?, { columns: 5, visibleRows: 4, wrap, chrome, detail, actionMenu, bounds });
+createListInventory(theme?, { visibleRows, wrap, chrome, detail, actionMenu, bounds });
+```
+
+- **Grid** — windowed icon cells with quantity badges, a cursor outline, and
+  integer-row scrolling (▲/▼ hints when rows are out of view). The panel
+  **sizes itself from the grid** (`columns` × cell size + bands), so cells
+  never stretch.
+- **List** — classic `Name ×qty` rows with a highlight bar; pairs naturally
+  with an `autoCompact` inventory. Takes its size from `theme.panel`.
+
+Both include the header chrome (title + `used/capacity` counter), the
+selected-item detail pane, and the action-menu popup anchored beside the
+selected cell — each omittable. When `bounds` pins the panel, `visibleRows`
+defaults to what fits the given height (and a grid that can't fit logs a
+dev-mode warning instead of silently clipping).
+
+`defaultInventoryTheme()` matches the dialogue addon's palette;
+spread-and-tweak (`{ ...defaultInventoryTheme(), highlightColor: 0xff5555 }`)
+or restyle wholesale. The theme carries every color, the type sizes, and the
+layer names the default presenters read (a drift-guard test keeps the mapping
+honest); fine spacing inside the views — cell insets, menu padding — is theirs,
+and swapping a presenter is the escape hatch when the theme isn't enough.
+
+## Standalone or embedded — one API
+
+The default configuration is a self-sufficient panel: it centers itself, draws
+its own chrome, toggles on the `inventory` action, and Esc closes it. Living
+inside an existing menu is **subtraction, not a different API**:
+
+```ts
+const bundle = createGridInventory(theme, {
+  chrome: false,                                        // the host menu draws the frame
+  bounds: { x: 320, y: 96, width: 344, height: 300 },   // sit inside the host's layout
+});
+const ctrl = host.add(new InventoryController({
+  ...bundle,
+  inventory,
+  input: null,             // no device binding — the host menu owns input
+  closeOnCancel: false,    // cancel returns to the host, not "close the panel"
+  onCancel: () => menu.focusTabs(),
+}));
+
+// The host's focus handling drives the panel through the same seam the
+// default bindings use:
+menu.onTabFocus("items", () => ctrl.open());
+menu.onKey("down", () => ctrl.move("down"));
+menu.onKey("confirm", () => ctrl.confirm());
+```
+
+<Aside type="tip">
+Going further, the presenter contracts themselves are the escape hatch: the
+session drives plain interfaces (`SlotsPresenter` is the only required one),
+so a DOM panel or a `ui-react` tree can replace the pixi views entirely while
+keeping the model, session, actions, and events.
+</Aside>
+
+## Multiple inventories
+
+Sections (Items / Key Items / Materials) are separate `Inventory` instances —
+each with its own capacity, filter, and actions. Present them with separate
+controllers, or reuse one panel and swap the model per tab:
+
+```ts
+tabBar.onSelect((tab) => {
+  ctrl.setInventory(tab === "key" ? keyItems : backpack, { title: tab === "key" ? "Key Items" : "Backpack" });
+});
+```
+
+For chest/transfer screens, show two controllers side by side (position via
+`bounds`), give ONE of them focus with `setInputEnabled`, and move stacks with
+`transfer(target, itemId, qty)` — only what the target accepts leaves the
+source, so a full chest can't destroy items.
+
+## Saving
+
+`snapshot()` / `restore()` round-trip the whole state as plain JSON, so wiring
+the save system is three lines with `@yagejs/save`:
+
+```ts
+snapshotService.registerSnapshotExtra("inventory", {
+  serialize: () => inventory.snapshot(),
+  restore: (data) => inventory.restore(data as InventorySnapshot),
+});
+```
+
+`restore` drops entries the current catalog doesn't declare (returned in
+`{ dropped }`) instead of resurrecting unknown ids after a content update.
+
+## Try it
+
+The [inventory example](https://github.com/marco-lepore/yage/blob/main/examples/src/inventory-addon.ts)
+is a small scavenging room exercising most of the above: grid backpack +
+key-items list, partial pickups, the arrows cap, equip/drop/examine actions,
+sorting, rejection toasts, and a vault door that consumes the gold key while
+the panels are closed.
