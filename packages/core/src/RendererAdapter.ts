@@ -31,6 +31,22 @@ export interface RendererAdapter {
    * requiring per-component handler boilerplate.
    */
   hitTestUI?(x: number, y: number): boolean;
+  /**
+   * The on-screen region of virtual space, CLAMPED to the declared virtual
+   * rect — the area a screen-space overlay may lay out in and expect to be
+   * both visible and reachable. Distinct from mapping the canvas corners
+   * through {@link canvasToVirtual}: under letterbox fit the corners map
+   * into the masked bars, where drawn content is clipped but pointer input
+   * still lands. Must return a fresh object per access (consumers diff and
+   * store it). Optional — when absent, consumers fall back to corner
+   * mapping, which is correct only for fit modes without masked bars.
+   */
+  readonly visibleVirtualRect?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
 }
 
 /**

@@ -1272,6 +1272,17 @@ export class InputManager {
     }
   }
 
+  /**
+   * Whether `name` is defined in the current action map. Synthetic injection
+   * ({@link fireAction} / {@link fireActionDown} / {@link setActionHeld})
+   * throws on unknown actions; callers that bind action names from config
+   * (virtual controls, rebind UIs) can validate up front instead of catching
+   * mid-gesture.
+   */
+  hasAction(name: string): boolean {
+    return this.actionMap.has(name);
+  }
+
   /** Inject a one-frame synthetic action pulse. */
   fireAction(name: string): void {
     if (!this.actionMap.has(name)) {

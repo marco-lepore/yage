@@ -1,0 +1,12 @@
+---
+"@yagejs-addons/virtual-controls": minor
+---
+
+Add `@yagejs-addons/virtual-controls` — a mobile touch overlay addon: virtual joystick(s) + on-screen action buttons that drive the game through `InputManager`, so gameplay code reads ordinary actions and `getStick()` and never knows the overlay exists.
+
+- **Headless core** (root entry `.`): `VirtualStick` (fixed / floating / follow modes, dead-zone rescale, magnitude clamp, digital 4-way with hysteresis), `VirtualButton` (slide-off release, opt-in slide-in press), `VirtualControlsModel` (multi-touch routing — one pointer owns one control, buttons claim before sticks), pure layout resolution (edge-relative placements, viewport-fraction zones, viewport-relative size defaults), entity events, `prefersTouchControls()`, and the presenter contracts. The root entry never transitively imports `pixi.js` or `@yagejs/renderer`.
+- **`VirtualControls` component**: mirrors buttons onto actions via the synthetic hold API (`setActionHeld` — real press/release edges, `getHoldDuration`, group gating), the stick onto four digital actions plus the synthetic gamepad axes (`fireGamepadAxis`, so `getStick("left")` reads the virtual stick when no physical pad is active), and `consumePointer`s every claimed touch **before** the frame's drain — a joystick drag or button tap never leaks a `MouseLeft` action edge into gameplay. Pointers on `@yagejs/ui` surfaces are skipped (`hitTestUI` wins); paused scenes take no new claims; action names are validated at mount (`hasAction`) and unknown ones warn instead of throwing mid-gesture.
+- **Smart defaults**: `visible: "auto"` shows the overlay only when the device's primary pointer is coarse; buttons without placements auto-cluster (1 corner button, 2 diagonal pair, 3 corner arc, 4 A/B/X/Y diamond, N ring) around a repositionable `cluster` anchor; sizes derive from the viewport; layout re-resolves on resize/orientation/fit changes — mid-gesture too, replaying each engaged control against its new geometry; the presenter auto-provisions its screen-space layer.
+- **Presenters** (`./presenters` subpath): zero-asset Graphics presenter (`createControlsPresenter(theme?)`) with a flat `ControlsTheme`, knob return animation and idle/active fades; swap the whole look via the two pixi-free `ControlsPresenter` / `ControlView` interfaces — or omit the presenter and run the controls invisibly.
+
+Independently versioned (not part of the `@yagejs/*` fixed group). Ships ESM + CJS with type declarations for both entry points.

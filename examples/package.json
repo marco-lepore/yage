@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@yagejs-addons/dialogue": "^0.2.0",
+    "@yagejs-addons/virtual-controls": "^0.1.0",
     "@yagejs/audio": "^0.8.0",
     "@yagejs/core": "^0.8.0",
     "@yagejs/debug": "^0.8.0",

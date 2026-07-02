@@ -429,6 +429,10 @@ input.fireActionDown("attack");      // sustained: isPressed stays true across f
 input.fireActionUp("attack");        // real release: isJustReleased edge + onActionReleased
 
 input.setActionHeld("attack", held); // mirror a pointer's held boolean onto down/up
+
+input.hasAction("attack");           // is the name in the action map? Validate
+                                     //   config-sourced names up front instead of
+                                     //   catching the throw mid-gesture
 ```
 
 `fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: each frame sample `const charge = getHoldDuration("attack")` **before** `setActionHeld("attack", pointerDown)`, then on `isJustReleased("attack")` fire with the captured `charge`. Sample first because `fireActionUp` (via `setActionHeld(..., false)`) resets `getHoldDuration` to 0 on the release frame.

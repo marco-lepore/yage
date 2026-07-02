@@ -1,0 +1,209 @@
+---
+title: Virtual Controls
+description: Mobile touch overlay — a virtual joystick and on-screen action buttons that drive the action map, with smart defaults and swappable presenters
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs-addons/virtual-controls` puts touch controls on screen — a virtual
+joystick and clustered action buttons — and feeds them into the **input
+system**, not into your gameplay code. Your game keeps reading ordinary
+actions (`isPressed("jump")`, `getVector(…)`, `getHoldDuration("jump")`) and
+`getStick("left")`; whether they came from a keyboard, a gamepad, or a thumb
+on glass is invisible to it.
+
+## Install
+
+```bash
+npm install @yagejs-addons/virtual-controls
+```
+
+The addon declares the engine packages as **peer dependencies**, so it reuses
+your single engine install:
+
+```bash
+npm install @yagejs/core @yagejs/input @yagejs/renderer
+```
+
+- `@yagejs/core` and `@yagejs/input` are **required** peers.
+- `@yagejs/renderer` is the **optional** peer — only the `./presenters`
+  subpath needs it (and it brings `pixi.js` transitively). The headless model
+  and component work without it.
+
+## Two entry points
+
+```ts
+// Headless — model, component, events, presenter contracts. No pixi.
+import { VirtualControls, prefersTouchControls } from "@yagejs-addons/virtual-controls";
+
+// Pixi presentation — the built-in Graphics look + theme.
+import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
+```
+
+## Quick start
+
+The overlay drives actions that already exist — define them in your
+`InputPlugin` action map first (an unknown name warns and is skipped until it
+exists, so a typo can't crash a gesture):
+
+```ts
+engine.use(
+  new InputPlugin({
+    actions: {
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      up: ["KeyW", "ArrowUp"],
+      down: ["KeyS", "ArrowDown"],
+      jump: ["Space"],
+      dash: ["ShiftLeft"],
+    },
+  }),
+);
+```
+
+Then spawn the controls in the scenes that want them:
+
+```ts
+class GameScene extends Scene {
+  onEnter() {
+    this.spawn("touch-controls").add(
+      new VirtualControls({
+        stick: { actions: { left: "left", right: "right", up: "up", down: "down" } },
+        buttons: [
+          { id: "a", action: "jump" },
+          { id: "b", action: "dash" },
+        ],
+        presenter: createControlsPresenter(),
+      }),
+    );
+  }
+}
+```
+
+That's a floating joystick on the left half of the screen and two buttons in
+the bottom-right corner. Every default is derived, not hardcoded:
+
+- **Sizes** scale with the viewport (stick radius 11%, buttons 6.5% of the
+  smaller side), so one config works for a 320×180 pixel-art game and a
+  1920×1080 one.
+- **Button clusters** auto-arrange by count: 1 sits in the corner, 2 form a
+  diagonal pair, 3 a corner-hugging arc, 4 an A/B/X/Y diamond, and other
+  counts fan out in a ring. Point `cluster: { left: …, bottom: … }` at the
+  other corner for a left-handed layout, or give any button an explicit
+  `placement`.
+- **The layer** (`"virtual-controls"`, screen-space, order 1050) is
+  auto-provisioned — no `Scene.layers` declaration needed.
+- **The presenter** is zero-asset Graphics + canvas labels; pass a partial
+  theme (`createControlsPresenter({ buttonPressedColor: 0xf472b6 })`) to
+  restyle it.
+
+## Showing it only on mobile
+
+The overlay defaults to `visible: "auto"`: shown when the device's **primary
+pointer is coarse** (a finger), hidden otherwise — so phones and tablets get
+controls and desktops don't, including touch-screen laptops whose primary
+pointer is still the mouse.
+
+You stay in charge:
+
+```ts
+new VirtualControls({ visible: true, … });       // always (e.g. this demo page)
+new VirtualControls({ visible: settings.touch ?? "auto", … });
+
+controls.setVisible(false);                      // runtime lever (settings toggle, cutscene)
+prefersTouchControls();                          // the raw detection, for your own policy
+```
+
+Hiding releases every engaged control — mirrored actions get a real release
+edge and the synthetic stick axes reset — so nothing sticks when the overlay
+disappears mid-hold.
+
+## Touches never leak into gameplay
+
+A classic virtual-joystick bug: the thumb that drives the stick *also* counts
+as a click, firing tap-to-move or `MouseLeft`-bound actions underneath. The
+addon closes this at the input-system level: every pointer a control claims
+is [consumed](/guides/input/) before that frame's action edges apply, so a
+claimed touch never reaches gameplay actions — while unclaimed touches pass
+through untouched. Touches that land on `@yagejs/ui` surfaces are left alone
+entirely (explicit UI wins over the stick's engagement zone).
+
+## Real action semantics
+
+Buttons mirror through the synthetic action API (`setActionHeld`), so they
+behave exactly like held keys: press/release edges, `onAction` /
+`onActionReleased` listeners, group enable/disable, and `getHoldDuration` for
+charge mechanics all work unchanged.
+
+The stick mirrors three ways at once:
+
+- **Digital** — deflection past `threshold` (default 0.5, with hysteresis)
+  holds the four bound actions, so `getVector("left", "right", "up", "down")`
+  works.
+- **Analog via `getStick()`** — the raw deflection feeds the synthetic
+  gamepad axes, so `input.getStick("left")` returns the virtual stick when no
+  physical pad is active (a real pad wins, even an idle one). A second stick
+  defaults to the right side — twin-stick works out of the box. Note that
+  `getStick()` applies the input system's own stick deadzone here, exactly
+  as it does for physical pads — the stick's `deadZone` option shapes only
+  the digital mirror and `value`.
+- **Direct** — `controls.stick().value` is the dead-zoned vector,
+  `.rawValue` the unfiltered one.
+
+## Stick modes
+
+- `"floating"` *(default)* — touching anywhere in the engagement zone (the
+  bottom 70% of the stick's half of the screen) re-centers the base under
+  your finger; it returns to its anchor on release.
+- `"fixed"` — the base never moves; grabbing within 1.5× its radius deflects
+  the knob immediately.
+- `"follow"` — floating, plus the base gets dragged along when the finger
+  travels past full deflection, so deflection holds while the hand drifts.
+
+## Observing the controls
+
+The component emits entity events (they bubble to the scene):
+`VirtualButtonPressEvent` / `VirtualButtonReleaseEvent` (`{ id, action }`) and
+`VirtualStickEngageEvent` / `VirtualStickReleaseEvent` (`{ id }`). They're the
+hook for haptics, UI sounds, tutorials — or buttons that deliberately have no
+`action` and exist only as events.
+
+## Custom presenters
+
+The model owns hit-testing, routing, and layout; a presenter only draws. Two
+pixi-free interfaces from the root entry:
+
+```ts
+interface ControlsPresenter {
+  mount(scene: Scene): void;
+  createStickView(stick: VirtualStick): ControlView;
+  createButtonView(button: VirtualButton): ControlView;
+  dispose(): void;
+}
+interface ControlView {
+  update(dt: number): void;   // poll stick.basePos / knobPos / active, button.pressed / layout
+  setVisible(visible: boolean): void;
+  dispose(): void;
+}
+```
+
+Pass `presenter: null` and the controls still function invisibly — useful
+when a DOM overlay or a fully custom render path draws them. (Omitting the
+option entirely warns once: an active-but-invisible overlay is usually a
+forgotten import, not a choice.)
+
+The control set is fixed at construction. To change buttons or bindings at
+runtime — a layout editor, a mode switch — destroy the host entity and spawn
+a fresh component; teardown releases all mirrored input state cleanly.
+
+<Aside type="tip">
+Set `touch-action: none` on the canvas container, or the browser will hijack
+the second finger for scrolling and pinch-zoom before YAGE sees it.
+</Aside>
+
+## Try it
+
+The repo's `examples/virtual-controls.html` is a playable side-view demo:
+keyboard and overlay drive the same actions, a tap-ripple backdrop proves
+claimed touches never leak, and buttons switch between 1/2/4-button layouts
+live.

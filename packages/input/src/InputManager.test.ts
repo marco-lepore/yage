@@ -864,6 +864,11 @@ describe("InputManager", () => {
       expect(() => input.fireAction("unknown")).toThrow('unknown action "unknown"');
     });
 
+    it("hasAction reflects the current action map", () => {
+      expect(input.hasAction("jump")).toBe(true);
+      expect(input.hasAction("unknown")).toBe(false);
+    });
+
     it("fireActionDown sustains isPressed across frames", () => {
       input.fireActionDown("jump");
       expect(input.isPressed("jump")).toBe(true);
