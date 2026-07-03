@@ -17,6 +17,7 @@ import type {
   EventBus,
   Plugin,
   ProcessSystem,
+  RendererAdapter,
   ServiceKey,
   SystemScheduler,
 } from "@yagejs/core";
@@ -54,7 +55,7 @@ interface SnapshotServiceLike {
 }
 
 /** RendererPlugin wraps PixiJS v8 behind the YAGE plugin interface. */
-export class RendererPlugin implements Plugin {
+export class RendererPlugin implements Plugin, RendererAdapter {
   readonly name = "renderer";
   readonly version = "4.0.0";
 

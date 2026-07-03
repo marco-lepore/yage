@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>YAGE — Virtual Controls Addon</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Virtual Controls Addon</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span>
+        On-screen controls from <code>@yagejs-addons/virtual-controls</code>:
+        a floating stick (left half) plus action buttons that drive the same
+        actions as the keyboard (A/D or arrows, Space jump — hold it for a
+        higher arc, Shift dash). The overlay defaults to
+        <code>visible: "auto"</code> (mobile only); this page forces it on so
+        you can drive it with the mouse. Tap the backdrop to ripple — touches
+        on the controls are consumed and never ripple.
+      </span>
+      <span id="layout-buttons">
+        Buttons:
+        <button data-count="1">1</button>
+        <button data-count="2">2</button>
+        <button data-count="4">4</button>
+        <button id="toggle-visible">Show / hide</button>
+      </span>
+    </div>
+    <script type="module" src="/src/virtual-controls.ts"></script>
+  </body>
+</html>

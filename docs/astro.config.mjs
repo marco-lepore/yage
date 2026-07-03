@@ -153,6 +153,7 @@ export default defineConfig({
           items: [
             { label: "Overview", slug: "addons" },
             { label: "Dialogue", slug: "addons/dialogue" },
+            { label: "Virtual Controls", slug: "addons/virtual-controls" },
           ],
         },
         {

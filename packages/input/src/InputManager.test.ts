@@ -864,6 +864,11 @@ describe("InputManager", () => {
       expect(() => input.fireAction("unknown")).toThrow('unknown action "unknown"');
     });
 
+    it("hasAction reflects the current action map", () => {
+      expect(input.hasAction("jump")).toBe(true);
+      expect(input.hasAction("unknown")).toBe(false);
+    });
+
     it("fireActionDown sustains isPressed across frames", () => {
       input.fireActionDown("jump");
       expect(input.isPressed("jump")).toBe(true);
@@ -1190,6 +1195,26 @@ describe("InputManager", () => {
 
       input.fireGamepadAxis("leftX", 0.6);
       expect(input.getStick("left").x).toBeGreaterThan(0);
+    });
+
+    it("an idle active pad does not mask synthetic stick injection", () => {
+      // Resting-noise axes stay inside the deadzone → synthetic reads back.
+      setPads([makePad({ axes: [0.02, -0.01, 0, 0] })]);
+      input._pollGamepads();
+      input.fireGamepadAxis("leftX", 1);
+      expect(input.getStick("left").x).toBeCloseTo(1, 5);
+
+      // A pad deflected past the deadzone wins over the synthetic value.
+      setPads([makePad({ axes: [-0.8, 0, 0, 0] })]);
+      input._pollGamepads();
+      expect(input.getStick("left").x).toBeLessThan(0);
+    });
+
+    it("an idle active pad does not mask synthetic trigger injection", () => {
+      setPads([makePad({ axes: [0, 0, 0, 0] })]);
+      input._pollGamepads();
+      input.fireGamepadAxis("leftTrigger", 1);
+      expect(input.getTrigger("left")).toBeCloseTo(1, 5);
     });
 
     it("polling emits key-down/up edges through the action map", () => {

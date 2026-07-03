@@ -404,7 +404,7 @@ new InputPlugin({
 });
 ```
 
-### Synthetic injection (testing)
+### Synthetic injection (testing + virtual controls)
 
 ```ts
 input.fireGamepadButton("GamepadA", true);   // routes through real path
@@ -416,6 +416,13 @@ input.firePointerDown(0);
 input.firePointerDown(0, { id: 5, type: "touch", isPrimary: false });
 input.firePointerUp(0, { id: 5 });
 ```
+
+`getStick`/`getTrigger` read synthetic axes when no pad is active OR when the
+active pad's own input rests inside its deadzone — an idle plugged-in
+controller doesn't mask an actively-deflected virtual stick; a pad past the
+deadzone always wins. `applyRadialDeadzone(x, y, deadzone): Vec2` (exported)
+is the exact dead-zone + rescale curve `getStick` applies — synthetic stick
+sources use it to shape their own values with the same response.
 
 ### Synthetic action injection (by action name)
 
@@ -429,6 +436,10 @@ input.fireActionDown("attack");      // sustained: isPressed stays true across f
 input.fireActionUp("attack");        // real release: isJustReleased edge + onActionReleased
 
 input.setActionHeld("attack", held); // mirror a pointer's held boolean onto down/up
+
+input.hasAction("attack");           // is the name in the action map? Validate
+                                     //   config-sourced names up front instead of
+                                     //   catching the throw mid-gesture
 ```
 
 `fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: each frame sample `const charge = getHoldDuration("attack")` **before** `setActionHeld("attack", pointerDown)`, then on `isJustReleased("attack")` fire with the captured `charge`. Sample first because `fireActionUp` (via `setActionHeld(..., false)`) resets `getHoldDuration` to 0 on the release frame.
