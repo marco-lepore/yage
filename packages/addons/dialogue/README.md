@@ -40,19 +40,19 @@ The package is split so the headless path never pulls a renderer:
 import { DialogueRunner, DialogueController } from "@yagejs-addons/dialogue";
 
 // Pixi presentation — Graphics chrome + canvas text, themes, factories.
-import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 ```
 
 | Entry          | Imports                          | Contains                                                                 |
 | -------------- | -------------------------------- | ----------------------------------------------------------------------- |
 | `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical format, events, `DialogueController`, input bindings |
-| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultTheme()`, textured nine-slice variants, radial (experimental) |
+| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultDialogueTheme()`, textured nine-slice variants, radial (experimental) |
 
 ## Defaults & opt-ins
 
 - **Default presenters are zero-asset**: Graphics objects for chrome plus canvas
   `SplitText`/`Text` for the typewriter, with native bold/italic and per-glyph
-  effects. `defaultTheme()` gives you a working look with no bundled files.
+  effects. `defaultDialogueTheme()` gives you a working look with no bundled files.
 - **Bitmap fonts** (baked variant atlases via `bakeBitmapFont`) are an **opt-in**
   theme path, not the default.
 - **Textured chrome/bubble** (nine-slice from your own textures) is an **opt-in**

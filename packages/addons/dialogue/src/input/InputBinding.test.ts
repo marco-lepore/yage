@@ -4,11 +4,11 @@ import type { DialogueSession } from "../core/session.js";
 import type { InputBinding } from "./InputBinding.js";
 import {
   CompositeInputBinding,
-  DEFAULT_ACTIONS,
-  FULL_ACTIONS,
+  DEFAULT_DIALOGUE_ACTIONS,
+  FULL_DIALOGUE_ACTIONS,
   KeyboardInputBinding,
   PointerInputBinding,
-  fullControls,
+  dialogueControls,
 } from "./InputBinding.js";
 
 /** Minimal InputManager stub — only the methods the bindings touch. */
@@ -78,7 +78,7 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
   it("fires skip once held past the threshold, then re-arms after release", () => {
     const input = new FakeInput();
     const session = new FakeSession();
-    const b = new KeyboardInputBinding(FULL_ACTIONS, 0.6);
+    const b = new KeyboardInputBinding(FULL_DIALOGUE_ACTIONS, 0.6);
     b.bind(input.asManager(), session.asSession());
 
     input.pressed.add("skip");
@@ -104,7 +104,7 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
   it("with skipHold 0, skip fires on press (no hold required)", () => {
     const input = new FakeInput();
     const session = new FakeSession();
-    const b = new KeyboardInputBinding(FULL_ACTIONS, 0);
+    const b = new KeyboardInputBinding(FULL_DIALOGUE_ACTIONS, 0);
     b.bind(input.asManager(), session.asSession());
     input.pressed.add("skip");
     input.hold.set("skip", 0);
@@ -146,15 +146,15 @@ describe("PointerInputBinding", () => {
 
 describe("action-name introspection", () => {
   it("KeyboardInputBinding.actionNames() returns its configured names, de-duplicated", () => {
-    const b = new KeyboardInputBinding(DEFAULT_ACTIONS);
-    // DEFAULT_ACTIONS: advance=interact, speed=attack, up=move-up, down=move-down.
+    const b = new KeyboardInputBinding(DEFAULT_DIALOGUE_ACTIONS);
+    // DEFAULT_DIALOGUE_ACTIONS: advance=interact, speed=attack, up=move-up, down=move-down.
     expect([...b.actionNames()].sort()).toEqual(
       ["attack", "interact", "move-down", "move-up"].sort(),
     );
   });
 
   it("KeyboardInputBinding.actionNames() includes the optional `skip` slot", () => {
-    const b = new KeyboardInputBinding(FULL_ACTIONS);
+    const b = new KeyboardInputBinding(FULL_DIALOGUE_ACTIONS);
     expect(b.actionNames()).toContain("skip");
   });
 
@@ -170,7 +170,7 @@ describe("action-name introspection", () => {
 
   it("CompositeInputBinding aggregates its keyboard child's names", () => {
     const composite = new CompositeInputBinding([
-      new KeyboardInputBinding(DEFAULT_ACTIONS),
+      new KeyboardInputBinding(DEFAULT_DIALOGUE_ACTIONS),
       new PointerInputBinding(), // contributes no action names
     ]);
     expect([...composite.actionNames()].sort()).toEqual(
@@ -183,8 +183,8 @@ describe("action-name introspection", () => {
     expect(binding.actionNames).toBeUndefined();
   });
 
-  it("fullControls() surfaces the keyboard action names through the composite", () => {
-    const binding = fullControls();
+  it("dialogueControls() surfaces the keyboard action names through the composite", () => {
+    const binding = dialogueControls();
     expect(binding.actionNames?.()).toContain("interact");
     expect(binding.actionNames?.()).toContain("move-up");
   });

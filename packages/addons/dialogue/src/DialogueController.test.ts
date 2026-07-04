@@ -494,7 +494,7 @@ describe("DialogueController — default action names validated against the live
         chrome: new StubChrome(),
         text: new StubText(),
         choices: new StubChoices(),
-        // zero-config → fullControls() over move-up/move-down/interact/attack/skip
+        // zero-config → dialogueControls() over move-up/move-down/interact/attack/skip
       }),
     );
   }

@@ -3,11 +3,11 @@
  *
  * Everything that imports `@yagejs/renderer` / `pixi.js` lives here: chrome
  * (box / bubble / choice list / choice bubble), text views, composites,
- * avatars, factories, the zero-asset `defaultTheme()`, and the opt-in
+ * avatars, factories, the zero-asset `defaultDialogueTheme()`, and the opt-in
  * @experimental radial choice presenter.
  *
  * Consumers reach this via the `./presenters` subpath
- * (`import { defaultTheme } from "@yagejs-addons/dialogue/presenters"`), which
+ * (`import { defaultDialogueTheme } from "@yagejs-addons/dialogue/presenters"`), which
  * keeps the headless root entry pixi-free.
  */
 
@@ -91,7 +91,7 @@ export * from "./actor/index.js";
 
 // ── factories + themes ──────────────────────────────────────────────────────
 // The factory barrel owns: the bundle factories (createBox/Bubble/Mixed), the
-// zero-asset `defaultTheme()`, the flat `DialogueTheme` (+ `BoxBounds`,
+// zero-asset `defaultDialogueTheme()`, the flat `DialogueTheme` (+ `BoxBounds`,
 // `CaretTheme`, the textured `ChromeStyle`/`NineSliceFrame`/`NineSliceInsets`
 // tokens, reserved chrome-style keys + theme-default consts), and bubble
 // geometry (`DEFAULT_BUBBLE`, `BubbleGeometry`, `BubbleDialogueOptions`).

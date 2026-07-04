@@ -1,7 +1,7 @@
 /**
  * Deterministic e2e fixture for @yagejs-addons/dialogue.
  *
- * Boots a tiny scene with `createMixedDialogue(defaultTheme())` (zero assets),
+ * Boots a tiny scene with `createMixedDialogue(defaultDialogueTheme())` (zero assets),
  * freezes the clock, and exposes the controller on `window.__dialogue__` so the
  * spec can drive it (`advance()` / `choose()`) deterministically. All assertions
  * go through a `DialogueProbe` component read via the Inspector API
@@ -38,7 +38,7 @@ import {
   type DialogueScript,
 } from "@yagejs-addons/dialogue";
 import {
-  defaultTheme,
+  defaultDialogueTheme,
   createMixedDialogue,
   DialogueActor,
   InBoxAvatarPresenter,
@@ -421,7 +421,7 @@ class DialogueScene extends Scene {
       new URLSearchParams(location.search).get("theme") === "textured";
     const theme = fullyTextured
       ? {
-          ...defaultTheme(),
+          ...defaultDialogueTheme(),
           textured: {
             default: {
               frame: { texture: makeFrameTexture(), insets },
@@ -430,7 +430,7 @@ class DialogueScene extends Scene {
           },
         }
       : {
-          ...defaultTheme(),
+          ...defaultDialogueTheme(),
           textured: { parchment: { frame: { texture: makeFrameTexture(), insets } } },
         };
     const bundle = createMixedDialogue(theme, {

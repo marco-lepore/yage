@@ -36,7 +36,7 @@ import type {
   TextPresenter,
 } from "./chrome/DialogueUiAdapter.js";
 import type { AvatarPresenter } from "./avatar/AvatarPresenter.js";
-import { fullControls, type InputBinding } from "./input/index.js";
+import { dialogueControls, type InputBinding } from "./input/index.js";
 import {
   DialogueAutoAdvanceEvent,
   DialogueChoiceMadeEvent,
@@ -82,7 +82,7 @@ export interface DialogueControllerOptions<TStorage extends VariableStorage = Va
   readonly fallbackCommand?: CommandHandler | undefined;
   /**
    * Device → session binding. Omit for the zero-config default,
-   * {@link fullControls} — keyboard/gamepad (over the `move-up`/`move-down`/
+   * {@link dialogueControls} — keyboard/gamepad (over the `move-up`/`move-down`/
    * `interact`/`attack`/`skip` action names) plus mouse/touch (tap to advance).
    * The keyboard names must exist in the game's `InputManager` action map; an
    * unmapped name silently never fires, so supply your own binding wired to the
@@ -142,8 +142,8 @@ export class DialogueController<
     super();
     // Zero-config: keyboard/gamepad + mouse/touch (tap to advance). No choice
     // geometry is available at construction, so pointer hit-testing of rows is
-    // off; a game wires it by passing its own `fullControls(presenter)`.
-    this.binding = opts.input ?? fullControls();
+    // off; a game wires it by passing its own `dialogueControls(presenter)`.
+    this.binding = opts.input ?? dialogueControls();
   }
 
   onAdd(): void {

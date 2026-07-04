@@ -24,7 +24,7 @@ addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
   Component), `@yagejs/input` bindings. **MUST NOT transitively import pixi /
   renderer / `yaml`.**
 - **`./presenters`** — everything pixi. Chrome, text views, composites, avatars,
-  factories, `defaultTheme()`, textured nine-slice variants, experimental radial.
+  factories, `defaultDialogueTheme()`, textured nine-slice variants, experimental radial.
 - **`./yaml`** — the YAML-literal loader (`loadYaml`). The ONLY entry that pulls
   `yaml`. Kept off the root so JSON / TypeScript / expression authors never bundle
   the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be
@@ -32,13 +32,13 @@ addon's one bundled runtime dep, pulled ONLY by the `./yaml` subpath.
 
 ```ts
 import { DialogueController, parseExpr, loadCompact } from "@yagejs-addons/dialogue";
-import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 ```
 
 ## 5-minute setup (zero assets)
 
-`defaultTheme()` = Graphics chrome + canvas SplitText/Text, native bold/italic,
+`defaultDialogueTheme()` = Graphics chrome + canvas SplitText/Text, native bold/italic,
 per-glyph effects. No bundled files. The scene must declare the dialogue layers.
 
 ```ts
@@ -59,7 +59,7 @@ class TalkScene extends Scene {
 ```
 
 `createBoxDialogue(theme?)` — bottom-of-screen box; theme defaults to
-`defaultTheme()`. `createBubbleDialogue(theme?, { worldLayer })` — diegetic
+`defaultDialogueTheme()`. `createBubbleDialogue(theme?, { worldLayer })` — diegetic
 speech bubble following a `DialogueActor`. `createMixedDialogue(theme?, opts)` —
 routes each line/choice to box or bubble by its `view` hint.
 
@@ -434,7 +434,7 @@ new DialogueController({
   avatar,                          // optional AvatarPresenter override
   i18n,                            // optional I18nAdapter
   storage, functions, commands, fallbackCommand,  // installed once (see Game state)
-  input,                           // optional InputBinding (default: fullControls() — keyboard + pointer)
+  input,                           // optional InputBinding (default: dialogueControls() — keyboard + pointer)
   onEnded: () => {},
 });
 ```
@@ -794,14 +794,14 @@ hints within a variant.
 ## Input (root entry, `@yagejs/input` — not pixi)
 
 `KeyboardInputBinding(actions?, skipHold?)`, `PointerInputBinding(choiceTarget?)`,
-`CompositeInputBinding`, `fullControls(choiceTarget?, { actions?, skipHold? })`.
-Zero-config default (no `input` option) is `fullControls()` — keyboard + pointer
-(tap-to-advance), `FULL_ACTIONS`, no choice geometry (can't hit-test rows). Actions:
-`DEFAULT_ACTIONS` (advance/speed/up/down), `FULL_ACTIONS` (+ skip). Default keyboard
+`CompositeInputBinding`, `dialogueControls(choiceTarget?, { actions?, skipHold? })`.
+Zero-config default (no `input` option) is `dialogueControls()` — keyboard + pointer
+(tap-to-advance), `FULL_DIALOGUE_ACTIONS`, no choice geometry (can't hit-test rows). Actions:
+`DEFAULT_DIALOGUE_ACTIONS` (advance/speed/up/down), `FULL_DIALOGUE_ACTIONS` (+ skip). Default keyboard
 action names are kebab-case (`interact`/`attack`/`move-up`/`move-down`/`skip`) — an
 unmapped name silently never fires; a FULL mismatch with the live `InputManager` map
 logs a dev-mode warning at startup. Wire a custom map by passing
-`input: fullControls(choices, { actions })`. `KeyboardInputBinding.actionNames()` and
+`input: dialogueControls(choices, { actions })`. `KeyboardInputBinding.actionNames()` and
 `CompositeInputBinding.actionNames()` expose the polled names. `skipHold > 0` (seconds) is the
 classic hold-to-confirm skip (default `0` = fire on press); fast-forward is the
 `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test choice
@@ -820,8 +820,8 @@ override; `meta.position` reuses the margins), `padding`, frame colours
 `textSize/lineHeight/textColor/charsPerSec`, choice colours, `choiceGap?`,
 `tailLean?` (bubble tail tip), fonts (`bitmapFont/fontFamily/resolution` — the
 shared `FontConfig` triplet every presenter config extends), `layerFrame/layerText`,
-`skipMultiplier?`, `textured?`. `defaultTheme()` returns a fresh zero-asset
-instance — spread to tweak: `{ ...defaultTheme(), textColor: 0xff0000 }`.
+`skipMultiplier?`, `textured?`. `defaultDialogueTheme()` returns a fresh zero-asset
+instance — spread to tweak: `{ ...defaultDialogueTheme(), textColor: 0xff0000 }`.
 Presenter-config field names match theme field names exactly (theme `frameColor`
 → config `frameColor`), so the mapping is mechanical; a test asserts every theme
 field reaches a presenter.
@@ -842,7 +842,7 @@ field reaches a presenter.
 
 ```ts
 const theme = {
-  ...defaultTheme(),
+  ...defaultDialogueTheme(),
   textured: {
     default: {
       frame: { texture: "ui/box", insets: { left: 16, top: 16, right: 16, bottom: 16 } },

@@ -13,7 +13,7 @@
  * speaker independently, so two actors sharing an id would let them track
  * different entities and the text would drift off the bubble.
  *
- * `theme` defaults to {@link defaultTheme} so a zero-config call works out of
+ * `theme` defaults to {@link defaultDialogueTheme} so a zero-config call works out of
  * the box (Graphics chrome + canvas text, no bundled assets).
  */
 
@@ -24,7 +24,7 @@ import { BubbleLayout } from "../render/BubbleLayout.js";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
 import { defaultBubbleFrame, type DialogueTheme } from "./theme.js";
-import { defaultTheme } from "./defaultTheme.js";
+import { defaultDialogueTheme } from "./defaultTheme.js";
 import { themeFonts } from "./themeFonts.js";
 
 export interface BubbleGeometry {
@@ -69,7 +69,7 @@ export interface BubbleDialogueOptions {
 }
 
 export function createBubbleDialogue(
-  theme: DialogueTheme = defaultTheme(),
+  theme: DialogueTheme = defaultDialogueTheme(),
   opts: BubbleDialogueOptions,
 ): DialogueBundle {
   const geo: BubbleGeometry = { ...DEFAULT_BUBBLE, ...opts.bubble };

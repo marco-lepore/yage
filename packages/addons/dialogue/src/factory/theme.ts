@@ -10,7 +10,7 @@
  * config `frameColor`), so drift is visible and a `dialogue.exhaustiveness`
  * test asserts every field reaches a presenter.
  *
- * {@link defaultTheme} returns a zero-asset instance (Graphics chrome + canvas
+ * {@link defaultDialogueTheme} returns a zero-asset instance (Graphics chrome + canvas
  * text, no `bitmapFont`/`textured`), so the factories work with no
  * caller-supplied theme.
  *

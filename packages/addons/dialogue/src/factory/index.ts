@@ -18,7 +18,7 @@ export {
 } from "./theme.js";
 
 // Zero-config, zero-asset default theme.
-export { defaultTheme } from "./defaultTheme.js";
+export { defaultDialogueTheme } from "./defaultTheme.js";
 
 // Bundle factories.
 export { createBoxDialogue } from "./createBoxDialogue.js";

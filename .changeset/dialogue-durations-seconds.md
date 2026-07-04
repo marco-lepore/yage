@@ -8,7 +8,7 @@ All author-facing durations are now **seconds**, matching the engine's time unit
 - `setAutoAdvance(seconds | null)` on the controller and session.
 - `[pause=N/]` markup holds N **seconds** (`[pause=0.4/]`); `PauseToken.ms` → `PauseToken.seconds`.
 - `createVoiceChannel`: `livenessMs` → `liveness` (seconds).
-- `KeyboardInputBinding` / `fullControls`: `skipHoldMs` → `skipHold` (seconds).
+- `KeyboardInputBinding` / `dialogueControls`: `skipHoldMs` → `skipHold` (seconds).
 - `CaretTheme.blinkMs` → `blink` (seconds); `DEFAULT_CARET_BLINK_MS` → `DEFAULT_CARET_BLINK` (`0.26`).
 - `evaluateEffect` / `caretAlpha` take elapsed **seconds** (same visual output).
 - Engine peerDependencies move to `>=0.9.0 <0.10.0` — the addon requires the seconds-based engine and does not work on the millisecond-`dt` 0.8 line.

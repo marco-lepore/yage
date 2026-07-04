@@ -5,7 +5,7 @@
  * chrome, choices, and the avatar all route the same way, so a box choice keeps
  * the framed bottom list while a bubble choice gets its own panel over the actor.
  *
- * `theme` defaults to {@link defaultTheme} so a zero-config call works out of
+ * `theme` defaults to {@link defaultDialogueTheme} so a zero-config call works out of
  * the box (Graphics chrome + canvas text, no bundled assets).
  */
 
@@ -19,7 +19,7 @@ import type { DialogueBundle } from "../DialogueController.js";
 import { createBoxDialogue, type BoxDialogueOptions } from "./createBoxDialogue.js";
 import { createBubbleDialogue, type BubbleDialogueOptions } from "./createBubbleDialogue.js";
 import type { DialogueTheme } from "./theme.js";
-import { defaultTheme } from "./defaultTheme.js";
+import { defaultDialogueTheme } from "./defaultTheme.js";
 
 export interface MixedDialogueOptions extends Omit<BubbleDialogueOptions, "avatar"> {
   /**
@@ -44,7 +44,7 @@ export interface MixedDialogueOptions extends Omit<BubbleDialogueOptions, "avata
 }
 
 export function createMixedDialogue(
-  theme: DialogueTheme = defaultTheme(),
+  theme: DialogueTheme = defaultDialogueTheme(),
   opts: MixedDialogueOptions,
 ): DialogueBundle {
   const box = createBoxDialogue(theme, opts.avatar?.box ? { avatar: opts.avatar.box } : {});

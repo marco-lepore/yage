@@ -41,7 +41,7 @@ JSON / TypeScript / expression authors never pull the YAML parser:
 import { DialogueController, parseExpr, loadCompact } from "@yagejs-addons/dialogue";
 
 // Pixi presentation — Graphics chrome + canvas text, themes, factories.
-import { defaultTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
+import { defaultDialogueTheme, createBoxDialogue } from "@yagejs-addons/dialogue/presenters";
 
 // YAML-literal authoring — the only entry that pulls `yaml`.
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
@@ -50,14 +50,14 @@ import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 | Entry          | Imports                          | Contains |
 | -------------- | -------------------------------- | -------- |
 | `.`            | `@yagejs/core`, `@yagejs/input`  | runner, session, types, markup, i18n, canonical (JSON) format, the `parseExpr` string→expression parser, the `parseCompact` / `loadCompact` compact DSL, events, `DialogueController`, input bindings |
-| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultTheme()`, textured nine-slice variants, radial (experimental) |
+| `./presenters` | + `@yagejs/renderer` (brings pixi)  | chrome, text views, composites, avatars, factories, `defaultDialogueTheme()`, textured nine-slice variants, radial (experimental) |
 | `./yaml`       | + `yaml`                         | `loadYaml` — kept off the root so non-YAML authors never bundle the parser (`yaml@2` isn't side-effect-free, so a root re-export couldn't be tree-shaken) |
 
 ## Quick start
 
 The default presenters are **zero-asset**: Graphics objects for the box frame
 plus canvas `SplitText`/`Text` for the typewriter, with native bold/italic and
-per-glyph effects. `defaultTheme()` gives you a working look with no bundled
+per-glyph effects. `defaultDialogueTheme()` gives you a working look with no bundled
 files.
 
 <Steps>
@@ -95,7 +95,7 @@ files.
 </Steps>
 
 <Aside type="tip">
-`createBoxDialogue()` defaults its theme to `defaultTheme()`. Pass a theme to
+`createBoxDialogue()` defaults its theme to `defaultDialogueTheme()`. Pass a theme to
 restyle: `createBoxDialogue(myTheme)`. For a diegetic look, use
 `createBubbleDialogue(theme?, { worldLayer })`; to mix both per line, use
 `createMixedDialogue(theme?, opts)`. Speech bubbles size to their text — they grow
@@ -1021,26 +1021,26 @@ deferred to v1.1 — nothing to build for it now.)
 
 ## Input
 
-With no `input` option the controller attaches `fullControls()` — keyboard/gamepad
+With no `input` option the controller attaches `dialogueControls()` — keyboard/gamepad
 **and** mouse/touch (tap to advance). The keyboard side polls the action names in
-`FULL_ACTIONS` (`interact`, `attack`, `move-up`, `move-down`, `skip`), so those
+`FULL_DIALOGUE_ACTIONS` (`interact`, `attack`, `move-up`, `move-down`, `skip`), so those
 names must exist in your game's `InputManager` action map. An unmapped action name
 silently never fires; if **none** of the default names are mapped, keyboard/gamepad
 nav does nothing and the controller logs a dev-mode warning at startup. The
 zero-config pointer binding has no choice geometry, so it can tap-to-advance but
-can't hit-test choice rows — pass your own `fullControls(choices)` for that.
+can't hit-test choice rows — pass your own `dialogueControls(choices)` for that.
 
 When your action map uses different names (e.g. camelCase `moveUp`/`moveDown`),
 supply an `input` binding wired to them:
 
 ```ts
-import { fullControls } from "@yagejs-addons/dialogue";
+import { dialogueControls } from "@yagejs-addons/dialogue";
 
 new DialogueController({
   ...createBoxDialogue(),
   // choice presenter for pointer hit-testing; hold X ~0.6s to skip;
   // remap the action names to match the game's InputManager map
-  input: fullControls(bundle.choices, {
+  input: dialogueControls(bundle.choices, {
     actions: {
       advance: ["interact"],
       speed: ["attack"],
@@ -1055,11 +1055,11 @@ new DialogueController({
 
 - `KeyboardInputBinding(actions?, skipHold?)` — advance / hold-to-fast-forward
   / choice nav / skip. `skipHold > 0` (seconds) gives the classic **hold-to-confirm skip**
-  (default `0` = fire on press). `actions` defaults to `DEFAULT_ACTIONS`.
+  (default `0` = fire on press). `actions` defaults to `DEFAULT_DIALOGUE_ACTIONS`.
 - `PointerInputBinding(choiceTarget?)` — tap to advance; tap/hover choice rows.
-- `CompositeInputBinding` / `fullControls(choiceTarget?, { actions?, skipHold? })`
-  — both at once (the zero-config default; `actions` defaults to `FULL_ACTIONS`).
-- `DEFAULT_ACTIONS` / `FULL_ACTIONS` — action-map presets.
+- `CompositeInputBinding` / `dialogueControls(choiceTarget?, { actions?, skipHold? })`
+  — both at once (the zero-config default; `actions` defaults to `FULL_DIALOGUE_ACTIONS`).
+- `DEFAULT_DIALOGUE_ACTIONS` / `FULL_DIALOGUE_ACTIONS` — action-map presets.
 
 For a VN-style **auto-advance** toggle, call `controller.setAutoAdvance(seconds)` (and
 `setAutoAdvance(null)` to turn it off); a per-line `autoAdvance` still overrides
@@ -1068,11 +1068,11 @@ it. An ambient (always auto-advancing) conversation simply attaches no binding.
 ## Theming
 
 A `DialogueTheme` is one flat data object (geometry, colours, fonts, layers,
-reveal rate, and the opt-in textured styles). `defaultTheme()` returns a fresh
+reveal rate, and the opt-in textured styles). `defaultDialogueTheme()` returns a fresh
 zero-asset instance each call, so spread-and-tweak is safe:
 
 ```ts
-const theme = { ...defaultTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
+const theme = { ...defaultDialogueTheme(), textColor: 0xffe0c0, charsPerSec: 60 };
 createBoxDialogue(theme);
 ```
 
@@ -1119,7 +1119,7 @@ hides the box frame for a single line.
 
 ```ts
 const theme = {
-  ...defaultTheme(),
+  ...defaultDialogueTheme(),
   textured: {
     default: {
       frame: { texture: "ui/box", insets: { left: 16, top: 16, right: 16, bottom: 16 } },

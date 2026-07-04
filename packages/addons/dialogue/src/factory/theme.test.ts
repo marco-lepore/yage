@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createBoxDialogue } from "./createBoxDialogue.js";
 import { createBubbleDialogue } from "./createBubbleDialogue.js";
 import { createMixedDialogue } from "./createMixedDialogue.js";
-import { defaultTheme } from "./defaultTheme.js";
+import { defaultDialogueTheme } from "./defaultTheme.js";
 import {
   boxFrameStyles,
   defaultBubbleFrame,
@@ -138,7 +138,7 @@ describe("textured chrome-style wiring", () => {
   });
 
   it("the default (zero-asset) theme wires no textured chrome", () => {
-    const theme = defaultTheme();
+    const theme = defaultDialogueTheme();
     expect(theme.textured).toBeUndefined();
     expect(boxFrameStyles(theme.textured)).toBeUndefined();
     expect(defaultBubbleFrame(theme.textured)).toBeUndefined();
