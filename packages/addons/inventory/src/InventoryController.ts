@@ -25,7 +25,7 @@ import type { Inventory } from "./core/Inventory.js";
 import { InventorySession, type NavDirection } from "./core/session.js";
 import type { StackComparator } from "./core/comparators.js";
 import type { InventoryBundle } from "./adapter.js";
-import { fullControls, type InputBinding } from "./input/index.js";
+import { inventoryControls, type InputBinding } from "./input/index.js";
 import {
   InventoryActionEvent,
   InventoryChangedEvent,
@@ -57,11 +57,11 @@ export interface InventoryControllerOptions<TId extends string = string>
   readonly sortComparator?: StackComparator<TId> | undefined;
   /**
    * Device → session binding. Three modes:
-   * - omit: the zero-config default, {@link fullControls} wired to this
+   * - omit: the zero-config default, {@link inventoryControls} wired to this
    *   controller's own presenters — keyboard/gamepad over the `move-up`/
    *   `move-down`/`move-left`/`move-right`/`interact`/`cancel`/`sort`/
    *   `inventory` action names PLUS mouse/touch with cell and menu-row
-   *   hit-testing. Construct `fullControls(bundle, { actions })` yourself only
+   *   hit-testing. Construct `inventoryControls(bundle, { actions })` yourself only
    *   to rename the actions.
    * - an {@link InputBinding}: your own device mapping.
    * - `null`: NO device input — the embedded mode, where the host menu calls
@@ -105,7 +105,7 @@ export class InventoryController<TId extends string = string> extends Component 
     this.binding =
       opts.input === null
         ? undefined
-        : (opts.input ?? fullControls({ slots: opts.slots, actionMenu: opts.actionMenu }));
+        : (opts.input ?? inventoryControls({ slots: opts.slots, actionMenu: opts.actionMenu }));
   }
 
   onAdd(): void {

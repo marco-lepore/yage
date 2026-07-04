@@ -31,7 +31,7 @@ export interface InventoryActions {
   readonly toggle?: readonly string[];
 }
 
-export const DEFAULT_ACTIONS: InventoryActions = {
+export const INVENTORY_ACTIONS: InventoryActions = {
   up: ["move-up"],
   down: ["move-down"],
   left: ["move-left"],
@@ -79,7 +79,7 @@ export interface PointerActionTarget {
 }
 
 /** The hit-test seams a pointer binding reads. An `InventoryBundle` satisfies
- *  this shape directly: `fullControls(bundle)`. */
+ *  this shape directly: `inventoryControls(bundle)`. */
 export interface PointerTargets {
   readonly slots?: PointerSlotTarget | undefined;
   readonly actionMenu?: PointerActionTarget | undefined;
@@ -112,7 +112,7 @@ export class KeyboardInputBinding implements InputBinding {
   private input?: InputManager;
   private session?: InventorySessionDriver;
 
-  constructor(private readonly actions: InventoryActions = DEFAULT_ACTIONS) {}
+  constructor(private readonly actions: InventoryActions = INVENTORY_ACTIONS) {}
 
   bind(input: InputManager, session: InventorySessionDriver): void {
     this.input = input;
@@ -263,15 +263,15 @@ export class PointerInputBinding implements InputBinding {
  * new InventoryController({
  *   ...bundle,
  *   inventory,
- *   input: fullControls(bundle, { actions: { ...DEFAULT_ACTIONS, toggle: ["bag"] } }),
+ *   input: inventoryControls(bundle, { actions: { ...INVENTORY_ACTIONS, toggle: ["bag"] } }),
  * });
  * ```
  */
-export function fullControls(
+export function inventoryControls(
   targets?: PointerTargets,
   options: { actions?: InventoryActions } = {},
 ): InputBinding {
-  const { actions = DEFAULT_ACTIONS } = options;
+  const { actions = INVENTORY_ACTIONS } = options;
   return new CompositeInputBinding([
     new KeyboardInputBinding(actions),
     new PointerInputBinding(targets),

@@ -82,8 +82,8 @@ export {
 // --- Input bindings (over @yagejs/input — pixi-free, root entry on purpose) ---
 export {
   CompositeInputBinding,
-  DEFAULT_ACTIONS,
-  fullControls,
+  INVENTORY_ACTIONS,
+  inventoryControls,
   KeyboardInputBinding,
   PointerInputBinding,
   type InputBinding,

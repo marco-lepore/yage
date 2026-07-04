@@ -1,7 +1,7 @@
 export {
   CompositeInputBinding,
-  DEFAULT_ACTIONS,
-  fullControls,
+  INVENTORY_ACTIONS,
+  inventoryControls,
   KeyboardInputBinding,
   PointerInputBinding,
   type InputBinding,

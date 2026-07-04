@@ -37,9 +37,9 @@ import {
 } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
-  DEFAULT_ACTIONS,
+  INVENTORY_ACTIONS,
   defineItems,
-  fullControls,
+  inventoryControls,
   Inventory,
   InventoryActionEvent,
   InventoryController,
@@ -457,8 +457,8 @@ class InventoryRoomScene extends Scene {
         inventory: keyItems,
         title: "Key Items",
         // Custom binding only to RENAME an action: this panel toggles on K.
-        input: fullControls(pouchBundle, {
-          actions: { ...DEFAULT_ACTIONS, toggle: ["key-items"] },
+        input: inventoryControls(pouchBundle, {
+          actions: { ...INVENTORY_ACTIONS, toggle: ["key-items"] },
         }),
       }),
     );

@@ -3,8 +3,8 @@ import type { InputManager } from "@yagejs/input";
 import type { InventorySessionDriver, NavDirection } from "../core/session.js";
 import {
   CompositeInputBinding,
-  DEFAULT_ACTIONS,
-  fullControls,
+  INVENTORY_ACTIONS,
+  inventoryControls,
   KeyboardInputBinding,
   PointerInputBinding,
 } from "./InputBinding.js";
@@ -122,7 +122,7 @@ describe("KeyboardInputBinding", () => {
   });
 
   it("exposes its polled action names for host validation", () => {
-    const binding = new KeyboardInputBinding(DEFAULT_ACTIONS);
+    const binding = new KeyboardInputBinding(INVENTORY_ACTIONS);
     expect(binding.actionNames()).toEqual(
       expect.arrayContaining(["move-up", "interact", "cancel", "sort", "inventory"]),
     );
@@ -234,11 +234,11 @@ describe("PointerInputBinding", () => {
   });
 });
 
-describe("fullControls / CompositeInputBinding", () => {
+describe("inventoryControls / CompositeInputBinding", () => {
   it("fans keyboard and pointer onto one session and unions action names", () => {
     const input = new FakeInput();
     const session = new FakeSession();
-    const binding = fullControls({
+    const binding = inventoryControls({
       slots: { slotAtPoint: () => 3 },
     });
     binding.bind(input.asManager(), session.asSession());

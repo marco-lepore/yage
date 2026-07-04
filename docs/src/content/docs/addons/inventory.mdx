@@ -123,14 +123,14 @@ Press the `inventory` action (bind a key to it in your `InputPlugin` map) or
 call `controller.toggle()` — the panel opens with cursor navigation, an action
 menu per item, a detail pane, and mouse/touch support already wired. To rename
 the action names, construct the binding yourself:
-`input: fullControls(bundle, { actions: { ...DEFAULT_ACTIONS, toggle: ["bag"] } })`.
+`input: inventoryControls(bundle, { actions: { ...INVENTORY_ACTIONS, toggle: ["bag"] } })`.
 
 <Aside type="caution">
 Running the [dialogue addon](/addons/dialogue/) too? Both bind `interact` by
-default (and both addons export `fullControls`/`DEFAULT_ACTIONS` — alias at
-import). YAGE input is non-consuming, so while both are active one press
-reaches both: give one focus with `setInputEnabled(false)` on the other, or
-remap one addon's actions.
+default (and both export the input-binding classes — `KeyboardInputBinding` etc. —
+under the same names, so alias at import if you use both). YAGE input is
+non-consuming, so while both are active one press reaches both: give one focus with
+`setInputEnabled(false)` on the other, or remap one addon's actions.
 </Aside>
 
 ## The model is always live

@@ -32,10 +32,13 @@ import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inve
 import { createGridInventory, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
 ```
 
-Both addons (dialogue + inventory) export `fullControls`, `DEFAULT_ACTIONS`,
-and the input-binding classes under the SAME names with different shapes — in
-a game using both, alias at import (`fullControls as inventoryControls`) and
-never mix one addon's binding pieces into the other's controller.
+Both addons (dialogue + inventory) export the input-binding classes
+(`KeyboardInputBinding`, `PointerInputBinding`, `CompositeInputBinding`) and the
+`InputBinding` type under the SAME names with different `bind()` shapes — in a game
+using both, alias at import and never mix one addon's binding pieces into the other's
+controller. The bundle factory and action preset are domain-named
+(`inventoryControls`, `INVENTORY_ACTIONS`; dialogue's are `dialogueControls`,
+`DEFAULT_DIALOGUE_ACTIONS`), so those don't collide.
 
 ## 5-minute setup (zero assets)
 
@@ -46,7 +49,7 @@ layers.
 ```ts
 import { Scene } from "@yagejs/core";
 import {
-  defineItems, Inventory, InventoryController, fullControls, InventoryActionEvent,
+  defineItems, Inventory, InventoryController, inventoryControls, InventoryActionEvent,
 } from "@yagejs-addons/inventory";
 import { createGridInventory, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
 
@@ -78,7 +81,7 @@ polling `move-up/-down/-left/-right`, `interact` (confirm), `cancel`, `sort`,
 and `inventory` (toggle — the ONE action polled while closed), PLUS
 mouse/touch hover + click wired to the bundle's own hit-testing. Unmapped
 action names silently never fire (a total miss logs a dev-mode warning);
-construct `fullControls(bundle, { actions })` yourself only to rename them.
+construct `inventoryControls(bundle, { actions })` yourself only to rename them.
 
 ## The model is always live
 
@@ -237,7 +240,7 @@ host.add(new InventoryController({
   sortComparator: byCategory,   // default byCatalogOrder
   // omit `input` = full default (keyboard/gamepad + pointer, hit-testing
   // wired to THIS bundle); null = NO device input (host drives); or pass
-  // fullControls(bundle, { actions }) to rename the action names.
+  // inventoryControls(bundle, { actions }) to rename the action names.
   openOnAdd: false,
   onConfirm: (e) => {},         // browse-level confirm (picker flows)
   onCancel: () => {},           // browse-level cancel (embedded host returns to its menu)

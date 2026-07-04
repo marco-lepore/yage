@@ -142,6 +142,16 @@ reuse, to avoid sprawl.
 - **Scope:** `@yagejs-addons` (own npm org, separate from engine `@yagejs`).
   Domain-only package names, **no tier suffixes** — the scope is the only
   category marker. `@yagejs-addons/dialogue`, `/inventory`, `/combat`.
+- **Export-symbol naming (cross-addon).** Value exports a consumer types into game
+  code — bundle factories, action-map presets, default themes — are
+  **domain-prefixed** so two addons never collide on an auto-import:
+  `dialogueControls`/`inventoryControls`, `DEFAULT_DIALOGUE_ACTIONS`,
+  `defaultInventoryTheme`. Interface and class contracts (`InputBinding`,
+  `KeyboardInputBinding`, `ChromePresenter`) may stay generic — a wrong import is a
+  compile error, not a silent hazard, and identical shapes are harmless. Event
+  tokens are always domain-prefixed (`DialogueFooEvent`, `InventoryFooEvent`). This
+  is why virtual-controls (`defaultControlsTheme`, `VIRTUAL_CONTROLS_LAYERS`) has
+  zero collisions where dialogue's original generic names did not.
 - **Granularity:** one package per addon, each with its own curated dependency
   closure. (A single `@yagejs/addons` package with subpath exports was rejected:
   subpath exports split *code*, not *dependencies* or *versions*.)
