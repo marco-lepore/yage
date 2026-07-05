@@ -664,17 +664,73 @@ describe("snapshot / restore", () => {
     expect(snap.slots[0]?.quantity).toBe(2);
   });
 
-  it("drops unknown ids, invalid quantities, and beyond-capacity entries", () => {
+  it("drops unknown ids and invalid quantities", () => {
+    const inv = make({ capacity: 3 });
+    const { dropped } = inv.restore({
+      slots: [
+        { itemId: "potion", quantity: 2 },
+        { itemId: "ghost", quantity: 1 }, // unknown id
+        { itemId: "gem", quantity: 0 }, // non-positive quantity
+      ],
+    });
+    expect(inv.slots).toEqual([{ itemId: "potion", quantity: 2 }, null, null]);
+    expect(dropped.map((d) => d.itemId)).toEqual(["ghost", "gem"]);
+  });
+
+  it("re-flows entries beyond a shrunk capacity into the earliest free slots", () => {
+    // A save from a larger bag: items sit in high slots, low ones are empty —
+    // all still fit the smaller bag, so nothing is lost.
+    const inv = make({ capacity: 3 });
+    const { dropped } = inv.restore({
+      slots: [null, null, null, { itemId: "sword", quantity: 1 }, { itemId: "gem", quantity: 4 }],
+    });
+    expect(dropped).toEqual([]);
+    // Overflow lands in slot order: first overflow entry → first free slot.
+    expect(inv.slots).toEqual([
+      { itemId: "sword", quantity: 1 },
+      { itemId: "gem", quantity: 4 },
+      null,
+    ]);
+  });
+
+  it("keeps in-range entries put; overflow only fills the holes", () => {
+    const inv = make({ capacity: 3 });
+    const { dropped } = inv.restore({
+      slots: [
+        { itemId: "potion", quantity: 2 }, // in-range → stays at slot 0
+        null, // in-range hole
+        { itemId: "sword", quantity: 1 }, // in-range → stays at slot 2
+        { itemId: "gem", quantity: 4 }, // overflow → the slot-1 hole
+      ],
+    });
+    expect(dropped).toEqual([]);
+    expect(inv.slots).toEqual([
+      { itemId: "potion", quantity: 2 },
+      { itemId: "gem", quantity: 4 },
+      { itemId: "sword", quantity: 1 },
+    ]);
+  });
+
+  it("drops overflow only when the bag has no free slot left", () => {
     const inv = make({ capacity: 2 });
     const { dropped } = inv.restore({
       slots: [
         { itemId: "potion", quantity: 2 },
-        { itemId: "ghost", quantity: 1 },
-        { itemId: "gem", quantity: 3 }, // index 2 >= capacity 2
+        { itemId: "gem", quantity: 4 },
+        { itemId: "sword", quantity: 1 }, // no room → dropped
       ],
     });
-    expect(inv.slots).toEqual([{ itemId: "potion", quantity: 2 }, null]);
-    expect(dropped.map((d) => d.itemId)).toEqual(["ghost", "gem"]);
+    expect(inv.slots).toEqual([
+      { itemId: "potion", quantity: 2 },
+      { itemId: "gem", quantity: 4 },
+    ]);
+    expect(dropped.map((d) => d.itemId)).toEqual(["sword"]);
+  });
+
+  it("restores an in-range oversized quantity verbatim (same trust as setSlot)", () => {
+    const inv = make({ capacity: 2 }); // potion maxStack 5
+    inv.restore({ slots: [{ itemId: "potion", quantity: 99 }] });
+    expect(inv.slots[0]).toEqual({ itemId: "potion", quantity: 99 });
   });
 
   it("trims trailing empties on unbounded inventories", () => {

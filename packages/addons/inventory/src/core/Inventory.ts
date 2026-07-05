@@ -734,40 +734,58 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
 
   /**
    * Replace the state with `snapshot`. Entries the current catalog doesn't
-   * declare, with invalid quantities, or beyond a bounded capacity are
-   * DROPPED and returned — surface them however fits (log, "lost items"
-   * mail); the model won't resurrect unknown ids.
+   * declare or with invalid quantities are DROPPED and returned. When capacity
+   * shrank since the snapshot, in-range entries keep their slot and entries
+   * past the new capacity re-flow into the earliest free slots (their original
+   * arrangement is not preserved); an entry is dropped only when no free slot
+   * remains. Surface the dropped list however fits (log, "lost items" mail);
+   * the model won't resurrect unknown ids. Valid entries are transplanted
+   * verbatim — `maxStack`/`accepts`/constraints are NOT re-applied (same trust
+   * level as {@link setSlot}), so an oversized in-range stack survives as-is.
    */
   restore(snapshot: InventorySnapshot): { readonly dropped: readonly ItemStackSnapshot[] } {
     const dropped: ItemStackSnapshot[] = [];
-    const next: (ItemStack<TId> | null)[] = [];
-    snapshot.slots.forEach((entry, i) => {
-      if (!entry) {
-        next.push(null);
-        return;
-      }
-      const valid =
-        this.catalog.has(entry.itemId) &&
-        Number.isInteger(entry.quantity) &&
-        entry.quantity >= 1 &&
-        (this.capacity === undefined || i < this.capacity);
-      if (!valid) {
-        dropped.push(entry);
-        next.push(null);
-        return;
-      }
-      next.push({
-        itemId: entry.itemId as TId,
-        quantity: entry.quantity,
-        ...(entry.data ? { data: { ...entry.data } } : {}),
-      });
+    const contentValid = (entry: ItemStackSnapshot): boolean =>
+      this.catalog.has(entry.itemId) && Number.isInteger(entry.quantity) && entry.quantity >= 1;
+    const copy = (entry: ItemStackSnapshot): ItemStack<TId> => ({
+      itemId: entry.itemId as TId,
+      quantity: entry.quantity,
+      ...(entry.data ? { data: { ...entry.data } } : {}),
     });
 
     const affected = new Set<number>(this.allIndices());
-    if (this.capacity !== undefined) {
+    const cap = this.capacity;
+    if (cap !== undefined) {
+      // Bounded: in-range entries keep their slot; catalog/quantity-valid
+      // entries past the new capacity re-flow into the earliest free slots and
+      // drop only when the bag has no room left.
+      const next = new Array<ItemStack<TId> | null>(cap).fill(null);
+      const overflow: ItemStackSnapshot[] = [];
+      snapshot.slots.forEach((entry, i) => {
+        if (!entry) return;
+        if (!contentValid(entry)) dropped.push(entry);
+        else if (i < cap) next[i] = copy(entry);
+        else overflow.push(entry);
+      });
+      let scan = 0;
+      for (const entry of overflow) {
+        while (scan < cap && next[scan] !== null) scan++;
+        if (scan >= cap) dropped.push(entry);
+        else next[scan++] = copy(entry);
+      }
       this._slots.fill(null);
-      next.slice(0, this.capacity).forEach((s, i) => (this._slots[i] = s));
+      next.forEach((s, i) => (this._slots[i] = s));
     } else {
+      // Unbounded: place valid entries at their index, drop invalid.
+      const next: (ItemStack<TId> | null)[] = [];
+      snapshot.slots.forEach((entry) => {
+        if (!entry) next.push(null);
+        else if (contentValid(entry)) next.push(copy(entry));
+        else {
+          dropped.push(entry);
+          next.push(null);
+        }
+      });
       this._slots.length = 0;
       this._slots.push(...next);
       // Trailing empties carry no state in an unbounded inventory.

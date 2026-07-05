@@ -383,8 +383,11 @@ snapshotService.registerSnapshotExtra("inventory", {
 });
 ```
 
-`restore` drops entries the current catalog doesn't declare (returned in
-`{ dropped }`) instead of resurrecting unknown ids after a content update.
+`restore` drops entries the current catalog doesn't declare or with invalid
+quantities (returned in `{ dropped }`) instead of resurrecting unknown ids after
+a content update. If the bag's capacity shrank since the snapshot, entries past
+the new capacity re-flow into the earliest free slots and are dropped only when
+no slot is left — so shrinking a bag never loses items that still fit.
 
 ## Try it
 

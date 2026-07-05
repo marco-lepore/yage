@@ -162,7 +162,7 @@ find(itemId, where?) / findAll(itemId, where?)         // LocatedStack { slot, s
 get(slot) / firstSlot(itemId) / stacks()
 slots / capacity / used / isFull                   // readonly state
 snapshot(): InventorySnapshot                      // JSON-able whole state
-restore(snapshot): { dropped }                     // unknown ids / bad quantities dropped + returned
+restore(snapshot): { dropped }                     // unknown ids/bad qty dropped; capacity-shrink overflow re-flows into free slots, drops only when full
 on(event, fn): () => void                          // model events (below)
 ```
 
@@ -353,8 +353,12 @@ snapshotService.registerSnapshotExtra("inventory", {
 });
 ```
 
-`restore` drops entries the catalog no longer declares (returned in
-`{ dropped }`) rather than resurrecting unknown ids.
+`restore` drops entries the catalog no longer declares or with bad quantities
+(returned in `{ dropped }`); it never resurrects unknown ids. If capacity shrank
+since the snapshot, entries past the new capacity re-flow into the earliest free
+slots and are dropped only when no slot is left — so shrinking a bag never loses
+items that still fit. Valid entries transplant verbatim (no `maxStack`/`accepts`
+re-check), same trust level as `setSlot`.
 
 ## Gotchas
 
