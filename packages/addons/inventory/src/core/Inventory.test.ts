@@ -87,6 +87,17 @@ describe("add — single stacking (total cap)", () => {
     const res = inv.add("arrows", 1);
     expect(res).toMatchObject({ added: 0, rejected: 1, reason: "stack-cap" });
   });
+
+  it("refuses a dataless top-up when the single stack carries data", () => {
+    const inv = make({ capacity: 4 });
+    inv.add("arrows", 5, { data: { enchant: "fire" } });
+    const res = inv.add("arrows", 3);
+    // Rejected, not folded into the instance stack — otherwise remove() (which
+    // skips data stacks) could never take the anonymous units back out.
+    expect(res).toMatchObject({ added: 0, rejected: 3, reason: "stack-cap" });
+    expect(inv.slots[0]).toEqual({ itemId: "arrows", quantity: 5, data: { enchant: "fire" } });
+    expect(inv.used).toBe(1);
+  });
 });
 
 describe("add — data stacks", () => {
@@ -104,6 +115,19 @@ describe("add — data stacks", () => {
     expect(inv.used).toBe(2);
     expect(inv.slots[0]?.data).toEqual({ durability: 80 });
     expect(inv.slots[1]?.data).toBeUndefined();
+  });
+
+  it("gives each chunked stack its own data object (no shared reference)", () => {
+    const inv = make({ capacity: 6 });
+    inv.add("potion", 12, { data: { charge: 1 } }); // 5 / 5 / 2, all data stacks
+    const first = inv.slots[0]?.data;
+    const second = inv.slots[1]?.data;
+    const third = inv.slots[2]?.data;
+    expect(first).toEqual({ charge: 1 });
+    // Distinct instances — a runtime mutation of one payload can't leak into
+    // its siblings.
+    expect(first).not.toBe(second);
+    expect(second).not.toBe(third);
   });
 });
 
@@ -232,6 +256,24 @@ describe("remove", () => {
     inv.move(1, 3);
     expect(inv.slots[1]).toBeNull(); // arrangement is preserved
     expect(inv.slots[3]).toEqual({ itemId: "gem", quantity: 2 });
+  });
+
+  it("autoCompact reports slots shifted below the removal point", () => {
+    const inv = make({ capacity: 5, autoCompact: true });
+    inv.add("potion"); // slot 0
+    inv.add("sword"); // slot 1
+    inv.add("gem"); // slot 2
+    // A move leaves a hole at slot 0, BELOW any later removal's start index —
+    // move never compacts.
+    inv.move(0, 4); // [null, sword, gem, null, potion]
+    const changed: number[][] = [];
+    inv.on("changed", (e) => changed.push([...e.slots]));
+    inv.removeAt(1); // sword out -> gem 2->0, potion 4->1
+    expect(inv.slots[0]).toEqual({ itemId: "gem", quantity: 1 });
+    expect(inv.slots[1]).toEqual({ itemId: "potion", quantity: 1 });
+    // Slot 0 shifted even though it sits below the removed slot 1 — the change
+    // set must include it so a presenter re-renders it.
+    expect(changed[0]).toContain(0);
   });
 });
 

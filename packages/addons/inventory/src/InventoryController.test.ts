@@ -34,8 +34,16 @@ class StubSlots implements SlotsPresenter<Id> {
   presented: SlotView<Id>[][] = [];
   onSlotChosen?: (slot: number) => void;
   slotAtPoint?: (x: number, y: number) => number | undefined;
+  /** Was the diagnostics sink wired before mount() ran? (mount-time warnings
+   *  need it in place — see the setDiagnostics-before-mount ordering). */
+  diagnosticsBeforeMount = false;
+  private warn?: (message: string) => void;
   mount(): void {
     this.mounted++;
+    this.diagnosticsBeforeMount = this.warn !== undefined;
+  }
+  setDiagnostics(warn: (message: string) => void): void {
+    this.warn = warn;
   }
   dispose(): void {
     this.disposed++;
@@ -128,6 +136,41 @@ describe("lifecycle guards", () => {
     controller.open(); // stale reference
     expect(controller.isOpen()).toBe(false);
   });
+
+  it("wires the diagnostics sink before mounting so mount-time warnings can fire", () => {
+    const { scene } = createMockScene();
+    const { controller, slots } = makeController();
+    scene.spawn("inv").add(controller);
+    expect(slots.diagnosticsBeforeMount).toBe(true);
+  });
+
+  it("post-destroy public methods no-op instead of driving the disposed session", () => {
+    const { scene } = createMockScene();
+    const inventory = makeInventory();
+    const { controller } = makeController(inventory);
+    const host = scene.spawn("inv");
+    host.add(controller);
+    inventory.add("sword"); // slot 0
+    inventory.add("potion"); // slot 1
+
+    host.remove(InventoryController);
+
+    // Every convenience method drives `session?.x()`; with the session cleared
+    // they must no-op, not run into torn-down presenters.
+    expect(() => {
+      controller.close();
+      controller.move("down");
+      controller.select(1);
+      controller.confirm();
+      controller.cancel();
+      controller.setInputEnabled(false);
+      controller.sort();
+    }).not.toThrow();
+    expect(controller.selection()).toBe(0);
+    // sort() must NOT reorder the model after teardown (catalog order would put
+    // potion in slot 0).
+    expect(inventory.slots[0]?.itemId).toBe("sword");
+  });
 });
 
 describe("engine events", () => {
@@ -182,7 +225,16 @@ describe("engine events", () => {
     const host = scene.spawn("inv");
     host.add(controller);
 
-    const actions: { actionId: string; slot: number; itemId: string; quantity: number }[] = [];
+    // `consumes` typed here on purpose: the mirror forwards it at runtime, so
+    // it must be on InventoryActionEvent's payload type too — this push fails
+    // to compile if the field is dropped from the event.
+    const actions: {
+      actionId: string;
+      slot: number;
+      itemId: string;
+      quantity: number;
+      consumes: boolean;
+    }[] = [];
     host.on(InventoryActionEvent, (e) => actions.push(e));
 
     inventory.add("potion", 2);

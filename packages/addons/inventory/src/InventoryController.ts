@@ -85,7 +85,9 @@ export interface InventoryControllerOptions<TId extends string = string>
 export class InventoryController<TId extends string = string> extends Component {
   private readonly inputManager = this.service(InputManagerKey);
   private readonly binding: InputBinding | undefined;
-  private session!: InventorySession<TId>;
+  /** Live between onAdd and onDestroy; cleared on destroy so post-teardown
+   *  calls no-op instead of driving disposed presenters. */
+  private session: InventorySession<TId> | undefined;
   /** Captured at onAdd (the scene is gone by the time a stale open() arrives). */
   private logger: Logger | undefined;
   /** Set by onDestroy — the presenters are disposed, so open() must refuse. */
@@ -114,15 +116,18 @@ export class InventoryController<TId extends string = string> extends Component 
     // the engine Logger, never console.warn.
     const warn = (message: string): void => this.logger?.warn("inventory", message);
 
-    this.opts.slots.mount(this.scene);
-    this.opts.chrome?.mount(this.scene);
-    this.opts.detail?.mount(this.scene);
-    this.opts.actionMenu?.mount(this.scene);
-
+    // Wire diagnostics BEFORE mounting: a presenter may run a mount-time check
+    // (the grid warns when its window overflows the panel), which needs the
+    // sink already in place or the warning silently no-ops.
     this.opts.slots.setDiagnostics?.(warn);
     this.opts.chrome?.setDiagnostics?.(warn);
     this.opts.detail?.setDiagnostics?.(warn);
     this.opts.actionMenu?.setDiagnostics?.(warn);
+
+    this.opts.slots.mount(this.scene);
+    this.opts.chrome?.mount(this.scene);
+    this.opts.detail?.mount(this.scene);
+    this.opts.actionMenu?.mount(this.scene);
 
     this.session = new InventorySession<TId>(
       this.opts.inventory,
@@ -154,6 +159,10 @@ export class InventoryController<TId extends string = string> extends Component 
     for (const unsub of this.modelUnsubs) unsub();
     this.modelUnsubs.length = 0;
     this.session?.dispose();
+    // Clear it: the convenience methods (close/move/confirm/…) drive
+    // `this.session?.x()`, so a stale reference calling them after removal must
+    // no-op, not reach into torn-down presenters or re-sort the model.
+    this.session = undefined;
     this.binding?.dispose?.();
     this.opts.slots.dispose();
     this.opts.chrome?.dispose();
@@ -173,8 +182,9 @@ export class InventoryController<TId extends string = string> extends Component 
 
   /** Show the panel. Refuses after removal (warns); throws before `onAdd`. */
   open(): void {
-    if (!this.guard("open")) return;
-    this.session.open();
+    const session = this.guard("open");
+    if (!session) return;
+    session.open();
   }
 
   close(): void {
@@ -182,8 +192,9 @@ export class InventoryController<TId extends string = string> extends Component 
   }
 
   toggle(): void {
-    if (!this.guard("toggle")) return;
-    this.session.toggle();
+    const session = this.guard("toggle");
+    if (!session) return;
+    session.toggle();
   }
 
   isOpen(): boolean {
@@ -200,8 +211,9 @@ export class InventoryController<TId extends string = string> extends Component 
    * panel). Re-mirrors model events onto the entity and re-presents when open.
    */
   setInventory(inventory: Inventory<TId>, opts: { readonly title?: string } = {}): void {
-    if (!this.guard("setInventory")) return;
-    this.session.setInventory(inventory, opts);
+    const session = this.guard("setInventory");
+    if (!session) return;
+    session.setInventory(inventory, opts);
     this.mirrorModel(inventory);
   }
 
@@ -228,7 +240,7 @@ export class InventoryController<TId extends string = string> extends Component 
     this.inputEnabled = enabled;
     // cancel() with the menu open closes ONLY the menu — exactly the scoped
     // dismissal wanted when focus leaves.
-    if (!enabled && this.session?.isMenuOpen()) this.session.cancel();
+    if (!enabled && this.session?.isMenuOpen()) this.session?.cancel();
   }
 
   // ------------------------------------------- input-agnostic driving seam
@@ -281,23 +293,24 @@ export class InventoryController<TId extends string = string> extends Component 
     );
   }
 
-  /** Shared refuse/throw policy for state-changing calls: a removed component
-   *  warns and no-ops (stale references happen); a not-yet-added one throws
-   *  (that's a wiring bug at the call site). */
-  private guard(method: string): boolean {
+  /** Shared refuse/throw policy for state-changing calls: returns the live
+   *  session, or `undefined` when the component has been removed (warns — stale
+   *  references happen). Throws when called before `onAdd` (a wiring bug at the
+   *  call site). */
+  private guard(method: string): InventorySession<TId> | undefined {
     if (this.destroyed) {
       this.logger?.warn(
         "inventory",
         `InventoryController.${method}() ignored: the component has been removed/destroyed.`,
       );
-      return false;
+      return undefined;
     }
     if (!this.session) {
       throw new Error(
         `InventoryController.${method}() called before the component was added to an entity (onAdd has not run yet).`,
       );
     }
-    return true;
+    return this.session;
   }
 
   /**

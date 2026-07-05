@@ -255,15 +255,20 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
         return { added: amount - remaining, slots, reason: "capacity" };
       }
       const take = Math.min(remaining, maxStack);
-      this._slots[slot] = { itemId, quantity: take, ...(data ? { data } : {}) };
+      // Clone per stack: chunking one data-bearing add across slots must not
+      // alias one payload object into every sibling (mutating one would leak).
+      this._slots[slot] = { itemId, quantity: take, ...(data ? { data: { ...data } } : {}) };
       remaining -= take;
       slots.push(slot);
     }
     return { added: amount, slots };
   }
 
-  /** "single": one stack total, `maxStack` is the item's cap. A data payload
-   *  can't merge, so it only lands when the item isn't held at all. */
+  /** "single": one stack total, `maxStack` is the item's cap. Data and
+   *  anonymous units never share a stack — a data payload only lands when the
+   *  item isn't held at all, and a dataless top-up is refused when the sole
+   *  stack carries data (folding anonymous units in would make `remove()` skip
+   *  them forever). */
   private placeSingle(
     itemId: TId,
     amount: number,
@@ -280,12 +285,15 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     const existing = this.firstSlot(itemId);
     if (existing !== undefined) {
       const s = this._slots[existing]!;
+      // The lone stack carries data — a dataless add mustn't fold into it
+      // (`remove()` skips data stacks, so those units would be trapped).
+      if (s.data) return { added: 0, slots: [], reason: "stack-cap" };
       this._slots[existing] = { ...s, quantity: s.quantity + take };
       return { added: take, slots: [existing], ...(reason ? { reason } : {}) };
     }
     const slot = this.openSlot();
     if (slot === undefined) return { added: 0, slots: [], reason: "capacity" };
-    this._slots[slot] = { itemId, quantity: take, ...(data ? { data } : {}) };
+    this._slots[slot] = { itemId, quantity: take, ...(data ? { data: { ...data } } : {}) };
     return { added: take, slots: [slot], ...(reason ? { reason } : {}) };
   }
 
@@ -443,6 +451,15 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
 
   /** Close the gaps, preserving stack order. A no-op emits nothing. */
   compact(): void {
+    const affected = this.repackAndDiff();
+    if (affected.length > 0) this.emitChanged(affected);
+  }
+
+  /** Close gaps in place, returning the indices whose contents changed. The
+   *  before/after diff is exact — every slot a stack shifted out of or into is
+   *  reported, wherever it sits. Shared by {@link compact} and the autoCompact
+   *  path so both report the same set. */
+  private repackAndDiff(): number[] {
     const before = [...this._slots];
     const packed = this._slots.filter((s): s is ItemStack<TId> => s !== null);
     if (this.capacity !== undefined) {
@@ -456,7 +473,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     for (let i = 0; i < before.length; i++) {
       if (before[i] !== (this._slots[i] ?? null)) affected.push(i);
     }
-    if (affected.length > 0) this.emitChanged(affected);
+    return affected;
   }
 
   /**
@@ -665,22 +682,13 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     return this._slots.map((_, i) => i);
   }
 
-  /** After removals: honor `autoCompact`, returning the final affected set. */
+  /** After removals: honor `autoCompact`, returning the final affected set.
+   *  The removed slots (`touched`) plus every slot the repack shifted — a hole
+   *  can pre-exist below the lowest removed index (move/split never compact),
+   *  so the shift reaches slots the removal never touched. */
   private maybeCompact(touched: number[]): number[] {
     if (!this.autoCompact || !touched.some((i) => this._slots[i] === null)) return touched;
-    const from = Math.min(...touched);
-    const affected = new Set(touched);
-    const packed = this._slots.filter((s): s is ItemStack<TId> => s !== null);
-    if (this.capacity !== undefined) {
-      this._slots.fill(null);
-      packed.forEach((s, i) => (this._slots[i] = s));
-      for (let i = from; i < this.capacity; i++) affected.add(i);
-    } else {
-      this._slots.length = 0;
-      this._slots.push(...packed);
-      for (let i = from; i <= packed.length; i++) affected.add(i);
-    }
-    return [...affected];
+    return [...touched, ...this.repackAndDiff()];
   }
 
   private emitChanged(slots: readonly number[]): void {

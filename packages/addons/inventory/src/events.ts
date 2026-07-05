@@ -32,12 +32,13 @@ export const InventorySelectionChangedEvent = defineEvent<{
 
 /** An item action was invoked ("Use", "Drop", …) — apply its consequence
  *  here. `quantity` is the stack size at invocation (before any `consumes`
- *  removal). */
+ *  removal); `consumes` is whether the model removed one unit after emitting. */
 export const InventoryActionEvent = defineEvent<{
   actionId: string;
   slot: number;
   itemId: string;
   quantity: number;
+  consumes: boolean;
 }>("inventory:action");
 
 /** Units entered the inventory (pickup feedback, quest counters). */
