@@ -63,12 +63,14 @@ export function createGridInventory(
   const fonts = themeFonts(theme);
   const headerHeight = withChrome ? theme.titleSize + 6 : 0;
   const detailHeight = withDetail ? theme.detailHeight : 0;
+  const headerGap = theme.headerGap ?? HEADER_GAP;
+  const detailGap = theme.detailGap ?? DETAIL_GAP;
   // Explicit bounds size the window; otherwise the window sizes the panel.
   const visibleRows =
     opts.visibleRows ??
     (opts.bounds
       ? fitRows(
-          contentHeight(opts.bounds.height, theme.padding, headerHeight, detailHeight, HEADER_GAP, DETAIL_GAP),
+          contentHeight(opts.bounds.height, theme.padding, headerHeight, detailHeight, headerGap, detailGap),
           theme.cellSize + theme.cellGap,
           theme.cellGap,
         )
@@ -87,11 +89,13 @@ export function createGridInventory(
     height:
       grid.height +
       2 * theme.padding +
-      (headerHeight > 0 ? headerHeight + HEADER_GAP : 0) +
-      (detailHeight > 0 ? detailHeight + DETAIL_GAP : 0),
+      (headerHeight > 0 ? headerHeight + headerGap : 0) +
+      (detailHeight > 0 ? detailHeight + detailGap : 0),
     padding: theme.padding,
     headerHeight,
     detailHeight,
+    headerGap,
+    detailGap,
     bounds: opts.bounds,
   });
 

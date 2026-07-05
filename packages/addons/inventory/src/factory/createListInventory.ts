@@ -40,10 +40,12 @@ export function createListInventory(
   const rowHeight = theme.textSize + 12;
   const headerHeight = withChrome ? theme.titleSize + 6 : 0;
   const detailHeight = withDetail ? theme.detailHeight : 0;
+  const headerGap = theme.headerGap ?? HEADER_GAP;
+  const detailGap = theme.detailGap ?? DETAIL_GAP;
 
   const panelW = opts.bounds?.width ?? theme.panel.width;
   const panelH = opts.bounds?.height ?? theme.panel.height;
-  const contentH = contentHeight(panelH, theme.padding, headerHeight, detailHeight, HEADER_GAP, DETAIL_GAP);
+  const contentH = contentHeight(panelH, theme.padding, headerHeight, detailHeight, headerGap, detailGap);
   const visibleRows = opts.visibleRows ?? fitRows(contentH, rowHeight, 0);
 
   const layout = new PanelLayout({
@@ -52,6 +54,8 @@ export function createListInventory(
     padding: theme.padding,
     headerHeight,
     detailHeight,
+    headerGap,
+    detailGap,
     bounds: opts.bounds,
   });
 

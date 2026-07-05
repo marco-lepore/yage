@@ -288,7 +288,10 @@ open inventory.
 cornerRadius, title, cell size/gap/colors + `highlightColor` (cursor),
 text/quantity/description colors, action-menu colors, `detailHeight`,
 `tileColors` palette, `fontFamily` / opt-in `bitmapFont` / `resolution`, and
-the three layer names. Spread-and-tweak the default:
+the three layer names. `frameAlpha` applies to both the panel chrome and the
+action-menu popup. A few spacing/size fields are optional and derive a default
+when omitted: `descriptionSize` (`textSize - 2`), `menu.padding` / `menu.rowGap`
+(10 / 6), and `headerGap` / `detailGap` (10 / 10). Spread-and-tweak the default:
 
 ```ts
 import { createGridInventory, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";

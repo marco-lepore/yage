@@ -289,8 +289,11 @@ dev-mode warning instead of silently clipping).
 spread-and-tweak (`{ ...defaultInventoryTheme(), highlightColor: 0xff5555 }`)
 or restyle wholesale. The theme carries every color, the type sizes, and the
 layer names the default presenters read (a drift-guard test keeps the mapping
-honest); fine spacing inside the views — cell insets, menu padding — is theirs,
-and swapping a presenter is the escape hatch when the theme isn't enough.
+honest). A few spacing knobs are optional theme fields that derive a default
+when omitted — `descriptionSize`, `menu.padding` / `menu.rowGap`, and
+`headerGap` / `detailGap`. Presenter-internal geometry — cell insets, alignment
+nudges, scroll-hint shapes — stays the views' own, and swapping a presenter is
+the escape hatch when the theme isn't enough.
 
 ## Standalone or embedded — one API
 

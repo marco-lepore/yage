@@ -20,8 +20,13 @@ export interface ActionMenuConfig extends FontConfig {
   readonly actionSelectedColor: number;
   readonly actionHighlightColor: number;
   readonly frameColor: number;
+  readonly frameAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
+  /** Inner margin between the menu frame and its rows. */
+  readonly padding: number;
+  /** Vertical gap between menu rows. */
+  readonly rowGap: number;
   /** Everything menu (frame, bar, labels) — one overlay layer above the panel. */
   readonly layerOverlay: string;
 }
@@ -39,9 +44,6 @@ interface MenuRow {
   readonly comp: TextComponent;
   readonly rect: Rect;
 }
-
-const PAD = 10;
-const ROW_GAP = 6;
 
 export class ActionMenuView implements ActionMenuPresenter {
   private scene?: Scene | undefined;
@@ -84,6 +86,8 @@ export class ActionMenuView implements ActionMenuPresenter {
     const scene = this.scene;
     if (!scene || actions.length === 0) return;
 
+    const PAD = this.cfg.padding;
+    const ROW_GAP = this.cfg.rowGap;
     const rowHeight = this.cfg.textSize + ROW_GAP;
     const font = this.cfg.bitmapFont ?? this.cfg.fontFamily;
     const widths = actions.map(
@@ -100,7 +104,10 @@ export class ActionMenuView implements ActionMenuPresenter {
 
     this.frame?.gfx.draw((g) => {
       g.clear();
-      g.roundRect(x, y, menuW, menuH, this.cfg.cornerRadius).fill({ color: this.cfg.frameColor, alpha: 0.97 });
+      g.roundRect(x, y, menuW, menuH, this.cfg.cornerRadius).fill({
+        color: this.cfg.frameColor,
+        alpha: this.cfg.frameAlpha,
+      });
       g.roundRect(x, y, menuW, menuH, this.cfg.cornerRadius).stroke({ color: this.cfg.borderColor, width: 1 });
     });
 

@@ -50,15 +50,23 @@ export interface InventoryTheme {
   readonly quantityColor: number;
   /** Detail-pane description (dimmer than the body text). */
   readonly descriptionColor: number;
+  /** Detail-pane description font size. Omit to derive `textSize - 2`. */
+  readonly descriptionSize?: number;
 
   // --- Action menu ---
   readonly actionColor: number;
   readonly actionSelectedColor: number;
   readonly actionHighlightColor: number;
+  /** Action-menu inner spacing. Omit either to derive: `padding` 10, `rowGap` 6. */
+  readonly menu?: { readonly padding?: number; readonly rowGap?: number };
 
   // --- Detail band ---
   /** Height of the selected-item pane at the panel bottom. */
   readonly detailHeight: number;
+  /** Gap between the header band and the content window. Omit to derive 10. */
+  readonly headerGap?: number;
+  /** Gap between the content window and the detail band. Omit to derive 10. */
+  readonly detailGap?: number;
 
   /** Fallback tile palette for icon-less items — a stable color is picked per
    *  item id. An item pins its own via `ItemDef.color`. */

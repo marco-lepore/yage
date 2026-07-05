@@ -12,6 +12,10 @@ import type { Rect } from "../render/gridGeometry.js";
 import type { FontConfig } from "../render/textOptions.js";
 import type { InventoryTheme } from "./theme.js";
 
+/** Action-menu spacing used when the theme omits `menu.*`. */
+const DEFAULT_MENU_PADDING = 10;
+const DEFAULT_MENU_ROW_GAP = 6;
+
 /** The font triplet shared by every presenter config. */
 export function themeFonts(theme: InventoryTheme): FontConfig {
   return {
@@ -50,6 +54,7 @@ export function detailFor(theme: InventoryTheme, layout: PanelLayout, fonts: Fon
       textSize: theme.textSize,
       textColor: theme.textColor,
       descriptionColor: theme.descriptionColor,
+      descriptionSize: theme.descriptionSize ?? theme.textSize - 2,
       layerContent: theme.layerContent,
       ...fonts,
     },
@@ -70,8 +75,11 @@ export function menuFor(
       actionSelectedColor: theme.actionSelectedColor,
       actionHighlightColor: theme.actionHighlightColor,
       frameColor: theme.frameColor,
+      frameAlpha: theme.frameAlpha,
       borderColor: theme.borderColor,
       cornerRadius: theme.cornerRadius,
+      padding: theme.menu?.padding ?? DEFAULT_MENU_PADDING,
+      rowGap: theme.menu?.rowGap ?? DEFAULT_MENU_ROW_GAP,
       layerOverlay: theme.layerOverlay,
       ...fonts,
     },

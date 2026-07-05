@@ -25,6 +25,10 @@ export interface PanelLayoutConfig {
   readonly headerHeight: number;
   /** Detail band height at the panel bottom. 0 = no band (no detail pane). */
   readonly detailHeight: number;
+  /** Gap below the header band. Omit to use {@link HEADER_GAP}. */
+  readonly headerGap?: number | undefined;
+  /** Gap above the detail band. Omit to use {@link DETAIL_GAP}. */
+  readonly detailGap?: number | undefined;
   /** Pin the panel to this rect (embedded mode). Omit to centre. */
   readonly bounds?: Rect | undefined;
 }
@@ -112,12 +116,12 @@ export class PanelLayout {
 
   /** Header band height + its bottom gap (0 without a header). */
   headerOffset(): number {
-    return this.cfg.headerHeight > 0 ? this.cfg.headerHeight + HEADER_GAP : 0;
+    return this.cfg.headerHeight > 0 ? this.cfg.headerHeight + (this.cfg.headerGap ?? HEADER_GAP) : 0;
   }
 
   /** Detail band height + its top gap (0 without a detail pane). */
   detailOffset(): number {
-    return this.cfg.detailHeight > 0 ? this.cfg.detailHeight + DETAIL_GAP : 0;
+    return this.cfg.detailHeight > 0 ? this.cfg.detailHeight + (this.cfg.detailGap ?? DETAIL_GAP) : 0;
   }
 }
 

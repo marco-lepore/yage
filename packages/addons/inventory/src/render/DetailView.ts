@@ -15,6 +15,7 @@ export interface DetailConfig extends FontConfig {
   readonly textSize: number;
   readonly textColor: number;
   readonly descriptionColor: number;
+  readonly descriptionSize: number;
   readonly layerContent: string;
 }
 
@@ -45,7 +46,7 @@ export class DetailView implements DetailPresenter {
     description.add(new Transform());
     this.description = description.add(
       new TextComponent(
-        makeTextOptions(this.cfg, "", this.cfg.textSize - 2, this.cfg.descriptionColor, this.cfg.layerContent),
+        makeTextOptions(this.cfg, "", this.cfg.descriptionSize, this.cfg.descriptionColor, this.cfg.layerContent),
       ),
     );
     this.place();
