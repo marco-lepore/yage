@@ -122,6 +122,19 @@ describe("BoxLayout — inset registry (text reflow)", () => {
     owner.setInset("a", { side: "left", width: 50 }); // identical → no fire
     expect(changes).toBe(2);
   });
+
+  it("onChange returns an unsubscribe that stops further notifications", () => {
+    const owner = atViewport(800, 600);
+    let changes = 0;
+    const unsub = owner.onChange(() => changes++);
+    owner.setViewport(1024, 768); // the frame resizes with the viewport → notify
+    expect(changes).toBe(1);
+    owner.setViewport(1024, 768); // unchanged → no notify
+    expect(changes).toBe(1);
+    unsub();
+    owner.setViewport(640, 480); // would notify, but the listener is released
+    expect(changes).toBe(1); // a disposed presenter is never re-placed
+  });
 });
 
 describe("BoxLayout — unified panel grow", () => {
