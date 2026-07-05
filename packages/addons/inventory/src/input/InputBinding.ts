@@ -70,7 +70,7 @@ export interface InputBinding {
  */
 export interface PointerSlotTarget {
   slotAtPoint?(x: number, y: number): number | undefined;
-  readonly pointerSpace?: "screen" | "world";
+  readonly pointerSpace?: "screen" | "world" | undefined;
 }
 
 /** A presenter that can resolve a pointer point to an action-menu row. */

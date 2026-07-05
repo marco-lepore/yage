@@ -46,6 +46,10 @@ export class PanelLayout {
   /** Bind the design viewport, read at mount by whichever presenter mounts
    *  first (idempotent). Recentres the panel; explicit `bounds` don't move. */
   setViewport(width: number, height: number): void {
+    // Embedded panels are pinned to `bounds`; the viewport never moves them, so
+    // skip the listener notification — otherwise every resize triggers a
+    // redundant rebuild that produces the same rect.
+    if (this.cfg.bounds) return;
     if (this.viewW === width && this.viewH === height) return;
     this.viewW = width;
     this.viewH = height;

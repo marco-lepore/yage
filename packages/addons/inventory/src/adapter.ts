@@ -40,7 +40,7 @@ export interface SlotsPresenter<TId extends string = string>
   /** Slot index under this point, or undefined. Omit for no pointer support. */
   slotAtPoint?(x: number, y: number): number | undefined;
   /** Coordinate space `slotAtPoint` expects. Default "screen". */
-  readonly pointerSpace?: "screen" | "world";
+  readonly pointerSpace?: "screen" | "world" | undefined;
 }
 
 /** The selected-item pane. */

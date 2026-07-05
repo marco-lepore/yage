@@ -46,7 +46,7 @@ class MyScene extends Scene {
     const bundle = createGridInventory(); // zero-asset default theme
     const host = this.spawn("inventory");
     // Default input = keyboard/gamepad + mouse/touch, already wired.
-    host.add(new InventoryController({ ...bundle, inventory }));
+    const controller = host.add(new InventoryController({ ...bundle, inventory }));
     host.on(InventoryActionEvent, (e) => {
       if (e.actionId === "use" && e.itemId === "potion") healPlayer(20);
     });

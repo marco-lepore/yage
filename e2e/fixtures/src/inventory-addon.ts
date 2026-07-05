@@ -26,6 +26,7 @@ import {
   InventoryOpenedEvent,
   InventoryRejectedEvent,
   type ItemActionDef,
+  type RejectReason,
 } from "@yagejs-addons/inventory";
 import {
   createGridInventory,
@@ -120,7 +121,7 @@ class InventoryScene extends Scene {
         toast(`Equipped ${def.name}`);
       }
     });
-    const rejectionToast = (e: { itemId: string; quantity: number; reason: string }): void => {
+    const rejectionToast = (e: { itemId: string; quantity: number; reason: RejectReason }): void => {
       if (!CATALOG.has(e.itemId)) return;
       const def = CATALOG.get(e.itemId);
       toast(

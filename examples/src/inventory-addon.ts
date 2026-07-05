@@ -48,6 +48,7 @@ import {
   InventoryOpenedEvent,
   InventoryRejectedEvent,
   type ItemActionDef,
+  type RejectReason,
 } from "@yagejs-addons/inventory";
 import {
   createGridInventory,
@@ -178,6 +179,10 @@ class PlayerMover extends Component {
  *  Partial acceptance is the point — only what fits leaves the floor. */
 class Pickup extends Component {
   private label?: TextComponent | undefined;
+  /** True once a collect attempt was fully rejected this visit — stops the
+   *  every-frame retry (and its repeating "bag full" toast) until the player
+   *  steps out of range and back in. */
+  private lingering = false;
 
   constructor(
     private readonly cfg: {
@@ -213,9 +218,16 @@ class Pickup extends Component {
   update(): void {
     const me = this.entity.get(Transform).position;
     const pp = this.cfg.playerPos();
-    if (Math.hypot(me.x - pp.x, me.y - pp.y) > 26) return;
+    if (Math.hypot(me.x - pp.x, me.y - pp.y) > 26) {
+      this.lingering = false; // left range — a fresh approach may fit now
+      return;
+    }
+    if (this.lingering) return; // already refused this visit; don't re-toast every frame
     const accepted = this.cfg.collect(this.cfg.itemId, this.cfg.quantity);
-    if (accepted <= 0) return; // stays on the floor (bag full / capped)
+    if (accepted <= 0) {
+      this.lingering = true; // stays on the floor (bag full / capped)
+      return;
+    }
     this.cfg.quantity -= accepted;
     if (this.cfg.quantity <= 0) this.entity.destroy();
     else if (this.label) this.label.text.text = this.labelText();
@@ -518,7 +530,7 @@ class InventoryRoomScene extends Scene {
     });
 
     // Rejections + live counters — model events fire with the UI closed too.
-    const rejectionToast = (e: { itemId: string; quantity: number; reason: string }): void => {
+    const rejectionToast = (e: { itemId: string; quantity: number; reason: RejectReason }): void => {
       if (!CATALOG.has(e.itemId)) return;
       const def = CATALOG.get(e.itemId);
       hud.toast(

@@ -101,7 +101,7 @@ the item's initial, so a working inventory needs no art at all.
    onEnter() {
      const bundle = createGridInventory();
      const host = this.spawn("inventory");
-     host.add(new InventoryController({ ...bundle, inventory }));
+     const controller = host.add(new InventoryController({ ...bundle, inventory }));
    }
    ```
 
