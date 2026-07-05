@@ -18,6 +18,12 @@ function make(opts: Partial<ConstructorParameters<typeof Inventory<Id>>[0]> = {}
   return new Inventory<Id>({ catalog, ...opts });
 }
 
+/** Narrow a lookup the test knows succeeds, keeping tests non-null-assertion-free. */
+function found<T>(v: T | undefined): T {
+  if (v === undefined) throw new Error("expected a located stack");
+  return v;
+}
+
 describe("add — multi stacking", () => {
   it("fills existing stacks before opening new slots", () => {
     const inv = make({ capacity: 6 });
@@ -212,28 +218,30 @@ describe("remove", () => {
     expect(inv.count("potion")).toBe(0);
   });
 
-  it("skips data stacks", () => {
+  it("takes anonymous units before touching a data stack", () => {
     const inv = make({ capacity: 4, defaultMaxStack: 99 });
-    inv.add("sword", 1, { data: { durability: 80 } });
-    inv.add("sword", 2);
-    expect(inv.remove("sword", 3).removed).toBe(2);
+    inv.add("sword", 1, { data: { durability: 80 } }); // slot 0 — instance
+    inv.add("sword", 2); // slot 1 — anonymous
+    const res = inv.remove("sword", 2);
+    expect(res.removed).toBe(2);
+    expect(res.stacks).toEqual([{ itemId: "sword", quantity: 2 }]);
+    // The instance sword is left alone while fungible units cover the ask.
     expect(inv.slots[0]?.data).toEqual({ durability: 80 });
   });
 
-  it("count/has with { dataless } match what remove() can take", () => {
+  it("dips into a data stack once anonymous units run out, returning its payload", () => {
     const inv = make({ capacity: 4, defaultMaxStack: 99 });
     inv.add("sword", 1, { data: { durability: 80 } });
-    // Plain has() says yes, but the only sword is an instance stack…
-    expect(inv.has("sword")).toBe(true);
-    expect(inv.count("sword")).toBe(1);
-    // …which anonymous remove() won't touch — the dataless filter agrees.
-    expect(inv.has("sword", 1, { dataless: true })).toBe(false);
-    expect(inv.count("sword", { dataless: true })).toBe(0);
-    expect(inv.remove("sword").removed).toBe(0);
-
     inv.add("sword", 2);
-    expect(inv.count("sword", { dataless: true })).toBe(2);
-    expect(inv.has("sword", 2, { dataless: true })).toBe(true);
+    const res = inv.remove("sword", 3);
+    expect(res.removed).toBe(3);
+    // Anonymous 2 first, then the instance sword — its data rides out in `stacks`
+    // rather than being silently destroyed.
+    expect(res.stacks).toEqual([
+      { itemId: "sword", quantity: 2 },
+      { itemId: "sword", quantity: 1, data: { durability: 80 } },
+    ]);
+    expect(inv.used).toBe(0);
   });
 
   it("removeAt takes part or all of one stack", () => {
@@ -274,6 +282,72 @@ describe("remove", () => {
     // Slot 0 shifted even though it sits below the removed slot 1 — the change
     // set must include it so a presenter re-renders it.
     expect(changed[0]).toContain(0);
+  });
+});
+
+describe("data stacks — predicate queries + find/remove by ref", () => {
+  const make99 = () => make({ capacity: 6, defaultMaxStack: 99 });
+
+  it("count/has take a data predicate; anonymous stacks never match one", () => {
+    const inv = make99();
+    inv.add("gem", 5, { data: { quality: 90 } });
+    inv.add("gem", 8, { data: { quality: 40 } });
+    inv.add("gem", 3); // anonymous
+    expect(inv.count("gem")).toBe(16); // no predicate → everything
+    expect(inv.count("gem", (d) => (d.quality as number) > 80)).toBe(5);
+    expect(inv.has("gem", (d) => (d.quality as number) > 80)).toBe(true);
+    expect(inv.has("gem", 6, (d) => (d.quality as number) > 80)).toBe(false); // only 5 good
+    // A predicate is a question about instances — the anonymous 3 are excluded.
+    expect(inv.count("gem", () => true)).toBe(13);
+  });
+
+  it("find returns a located ref; remove(ref) takes exactly it, data and all", () => {
+    const inv = make99();
+    inv.add("goldKey", 1, { data: { opens: "boss-lair" } });
+    inv.add("goldKey", 1, { data: { opens: "cellar" } });
+    const boss = inv.find("goldKey", (d) => d.opens === "boss-lair");
+    expect(boss?.slot).toBe(0);
+    const res = inv.remove(found(boss));
+    expect(res.removed).toBe(1);
+    expect(res.stacks).toEqual([{ itemId: "goldKey", quantity: 1, data: { opens: "boss-lair" } }]);
+    // The other key is untouched.
+    expect(inv.count("goldKey")).toBe(1);
+    expect(inv.find("goldKey", (d) => d.opens === "cellar")).toBeDefined();
+  });
+
+  it("findAll lists every match; predicate remove drains only matching data stacks", () => {
+    const inv = make99();
+    inv.add("gem", 5, { data: { quality: 90 } });
+    inv.add("gem", 8, { data: { quality: 40 } });
+    inv.add("gem", 3); // anonymous
+    expect(inv.findAll("gem")).toHaveLength(3);
+    expect(inv.findAll("gem", (d) => (d.quality as number) < 50)).toHaveLength(1);
+    const res = inv.remove("gem", 99, (d) => (d.quality as number) < 50);
+    expect(res.removed).toBe(8);
+    expect(res.stacks).toEqual([{ itemId: "gem", quantity: 8, data: { quality: 40 } }]);
+    // The good gems and the anonymous stack survive.
+    expect(inv.count("gem")).toBe(8);
+  });
+
+  it("a stale ref (its stack replaced) is a safe no-op", () => {
+    const inv = make99();
+    inv.add("gem", 2, { data: { quality: 90 } });
+    const ref = found(inv.find("gem"));
+    inv.removeAt(ref.slot); // stack removed out from under the ref
+    expect(inv.remove(ref)).toEqual({ removed: 0, stacks: [] });
+  });
+
+  it("remove(ref) follows a stack that autoCompact shifted", () => {
+    const inv = make({ capacity: 4, autoCompact: true, defaultMaxStack: 99 });
+    inv.add("potion", 3); // slot 0 — anonymous
+    inv.add("gem", 1, { data: { quality: 90 } }); // slot 1 — instance
+    const gem = found(inv.find("gem"));
+    expect(gem.slot).toBe(1);
+    inv.remove("potion", 3); // slot 0 empties; autoCompact shifts gem to slot 0
+    const res = inv.remove(gem); // resolves by identity despite the moved index
+    expect(res.removed).toBe(1);
+    expect(res.stacks).toEqual([{ itemId: "gem", quantity: 1, data: { quality: 90 } }]);
+    expect(inv.used).toBe(0);
   });
 });
 
@@ -440,15 +514,48 @@ describe("transfer", () => {
     expect(src.count("potion")).toBe(2);
   });
 
-  it("ignores data stacks; transferSlot carries them", () => {
+  it("carries data stacks, payload intact", () => {
     const src = make({ capacity: 4, defaultMaxStack: 99 });
     const dst = make({ capacity: 4, defaultMaxStack: 99 });
     src.add("sword", 1, { data: { durability: 42 } });
-    expect(src.transfer(dst, "sword", 1).transferred).toBe(0);
-    const res = src.transferSlot(dst, 0);
+    const res = src.transfer(dst, "sword", 1);
     expect(res.transferred).toBe(1);
     expect(dst.slots[0]?.data).toEqual({ durability: 42 });
     expect(src.used).toBe(0);
+  });
+
+  it("prefers anonymous stacks, then data — each moved with its own payload", () => {
+    const src = make({ capacity: 4, defaultMaxStack: 99 });
+    const dst = make({ capacity: 4, defaultMaxStack: 99 });
+    src.add("gem", 1, { data: { quality: 90 } }); // slot 0 — instance
+    src.add("gem", 2); // slot 1 — anonymous
+    expect(src.transfer(dst, "gem", 3).transferred).toBe(3);
+    expect(src.used).toBe(0);
+    expect(dst.count("gem")).toBe(3);
+    // The instance kept its own slot and payload on the target.
+    expect(dst.find("gem", (d) => (d.quality as number) === 90)).toBeDefined();
+  });
+
+  it("transfer(ref) moves exactly one located stack", () => {
+    const src = make({ capacity: 4, defaultMaxStack: 99 });
+    const dst = make({ capacity: 4, defaultMaxStack: 99 });
+    src.add("goldKey", 1, { data: { opens: "boss-lair" } });
+    src.add("goldKey", 1, { data: { opens: "cellar" } });
+    const boss = found(src.find("goldKey", (d) => d.opens === "boss-lair"));
+    expect(src.transfer(dst, boss).transferred).toBe(1);
+    expect(dst.slots[0]?.data).toEqual({ opens: "boss-lair" });
+    expect(src.count("goldKey")).toBe(1);
+  });
+
+  it("transfer with a predicate moves only matching data stacks", () => {
+    const src = make({ capacity: 4, defaultMaxStack: 99 });
+    const dst = make({ capacity: 4, defaultMaxStack: 99 });
+    src.add("gem", 5, { data: { quality: 90 } });
+    src.add("gem", 8, { data: { quality: 40 } });
+    const res = src.transfer(dst, "gem", 99, (d) => (d.quality as number) > 80);
+    expect(res.transferred).toBe(5);
+    expect(dst.count("gem")).toBe(5);
+    expect(src.count("gem")).toBe(8); // the poor gems stayed
   });
 
   it("self-transfer is a no-op", () => {

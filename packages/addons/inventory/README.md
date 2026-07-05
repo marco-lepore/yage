@@ -56,6 +56,15 @@ class MyScene extends Scene {
 // Anywhere in game logic — UI open or not:
 inventory.add("potion", 3);
 if (inventory.has("sword")) equip();
+
+// Per-instance items (durability, rolled stats) carry a `data` payload.
+// Query or grab them by a data predicate, then act on the exact stack:
+inventory.add("key", 1, { data: { opens: "boss-lair" } });
+const bossKey = inventory.find("key", (d) => d.opens === "boss-lair");
+if (bossKey) {
+  inventory.remove(bossKey); // returns { removed, stacks } — the payload comes back
+  openDoor();
+}
 ```
 
 Press the `inventory` action (or call `controller.toggle()`) to open the panel.

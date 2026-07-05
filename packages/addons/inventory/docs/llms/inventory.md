@@ -131,26 +131,34 @@ new Inventory({
 - `"single"`: at most ONE stack of the item; `maxStack` is the item's TOTAL
   cap; the excess is rejected (`"stack-cap"`). Zelda-arrows semantics.
 - Stacks carrying `data` (instance payloads: durability, rolled stats) NEVER
-  auto-merge; they open fresh slots and are skipped by anonymous `remove` /
-  `transfer` (use `removeAt` / `transferSlot`). Plain `count`/`has` include
-  them — guard a removal with `has(id, n, { dataless: true })` so the check
-  matches what `remove` can actually take.
+  auto-merge; they open fresh slots. Anonymous `remove` / `transfer` drain
+  fungible stacks first, then dip into data stacks — what leaves comes back in
+  the result (`RemoveResult.stacks`, data intact), so nothing is silently
+  destroyed. Target instances with a data predicate
+  (`(data, stack) => boolean`): `count(id, (d) => d.quality > 80)`,
+  `has(id, (d) => d.opens === "boss-lair")`, `remove(id, qty, where)`. Or grab a
+  handle — `find(id, where?)` / `findAll(id, where?)` return a `LocatedStack`
+  `{ slot, stack }` you pass to `remove(ref)` / `transfer(target, ref)`; a stale
+  ref (its stack removed or shifted) is a safe no-op.
 
 ## Operations (all emit model events)
 
 ```ts
 add(itemId, qty = 1, { data? }): AddResult        // { added, rejected, reason?, constraintId?, slots }
-remove(itemId, qty = 1): RemoveResult             // drains from the LAST slot back; skips data stacks
-removeAt(slot, qty?): RemoveResult                // whole stack when qty omitted
+remove(itemId, qty = 1, where?): RemoveResult     // { removed, stacks }; drains anon first, then data
+remove(ref): RemoveResult                         // removes exactly find()'s stack (stale ref = no-op)
+removeAt(slot, qty?): RemoveResult                // whole stack when qty omitted; result carries `stacks`
 setSlot(slot, stack | null)                       // raw escape hatch (validates id + quantity only)
 move(from, to): "moved" | "merged" | "swapped" | "none"  // player slot interaction
 split(from, qty, to?): boolean                    // to defaults to the first empty slot
 sort(comparator?, { consolidate? })               // compacts + consolidates + orders (see below)
 compact()                                          // close gaps, keep order
 clear()                                            // bulk reset (only `changed` fires)
-transfer(target, itemId, qty = 1): TransferResult  // only what the target accepts leaves the source
+transfer(target, itemId, qty = 1, where?): TransferResult  // moves anon then data, payload intact
+transfer(target, ref): TransferResult              // moves exactly one located stack
 transferSlot(target, slot, qty?): TransferResult   // carries the data payload
-count(itemId, { dataless? }?) / has(itemId, qty = 1, { dataless? }?)
+count(itemId, where?) / has(itemId, qty = 1, where?)   // where = (data, stack) => boolean; data stacks only
+find(itemId, where?) / findAll(itemId, where?)         // LocatedStack { slot, stack } — the ref remove/transfer take
 get(slot) / firstSlot(itemId) / stacks()
 slots / capacity / used / isFull                   // readonly state
 snapshot(): InventorySnapshot                      // JSON-able whole state
@@ -366,5 +374,7 @@ snapshotService.registerSnapshotExtra("inventory", {
   (`setInputEnabled(false)` on the other) or remap one addon's actions.
 - `consumes: true` removes the unit itself — the action event's `consumes`
   flag says so; don't also remove in the handler.
-- Plain `has()`/`count()` include data-carrying stacks that anonymous
-  `remove()` skips — guard removals with `{ dataless: true }`.
+- Anonymous `remove()`/`transfer()` drain fungible stacks first, then data
+  stacks; what leaves rides out in `RemoveResult.stacks` (data intact) rather
+  than being destroyed. To target a specific instance, pass a data predicate
+  (`remove(id, qty, (d) => …)`) or a `find()` handle (`remove(ref)`).

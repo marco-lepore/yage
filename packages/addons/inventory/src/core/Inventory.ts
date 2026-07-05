@@ -32,9 +32,11 @@ import type {
   ItemDef,
   ItemStack,
   ItemStackSnapshot,
+  LocatedStack,
   MoveKind,
   RejectReason,
   RemoveResult,
+  StackPredicate,
   TransferResult,
 } from "./types.js";
 
@@ -116,22 +118,38 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   }
 
   /**
-   * Total units of `itemId`. Counts data-carrying stacks too — pass
-   * `{ dataless: true }` to count only what anonymous {@link remove} /
-   * {@link transfer} can take, so a `has → remove` guard matches the removal.
+   * Total units of `itemId`. Without a predicate every stack counts; with a
+   * {@link StackPredicate}, only data-carrying stacks whose `data` matches —
+   * anonymous stacks are excluded, since a data predicate is a question about
+   * instances.
    */
-  count(itemId: TId, opts: { readonly dataless?: boolean } = {}): number {
+  count(itemId: TId, where?: StackPredicate<TId>): number {
     let n = 0;
     for (const s of this._slots) {
-      if (s && s.itemId === itemId && !(opts.dataless && s.data)) n += s.quantity;
+      if (s && s.itemId === itemId && this.matches(s, where)) n += s.quantity;
     }
     return n;
   }
 
-  /** Whether at least `quantity` units of `itemId` are held. Same
-   *  `{ dataless: true }` filter as {@link count}. */
-  has(itemId: TId, quantity = 1, opts: { readonly dataless?: boolean } = {}): boolean {
-    return this.count(itemId, opts) >= quantity;
+  /**
+   * Whether at least `quantity` (default 1) matching units of `itemId` are held.
+   * A {@link StackPredicate} restricts the tally to matching data stacks, so
+   * `has("key", (d) => d.opens === "boss-lair")` asks about a specific instance.
+   */
+  has(
+    itemId: TId,
+    quantityOrWhere?: number | StackPredicate<TId>,
+    where?: StackPredicate<TId>,
+  ): boolean {
+    const quantity = typeof quantityOrWhere === "number" ? quantityOrWhere : 1;
+    const pred = typeof quantityOrWhere === "function" ? quantityOrWhere : where;
+    return (pred ? this.count(itemId, pred) : this.count(itemId)) >= quantity;
+  }
+
+  /** Whether `stack` satisfies an optional data predicate. No predicate → any
+   *  stack; predicate → only data-bearing stacks whose `data` matches. */
+  private matches(stack: ItemStack<TId>, where: StackPredicate<TId> | undefined): boolean {
+    return where === undefined ? true : stack.data !== undefined && where(stack.data, stack);
   }
 
   /** Index of the first stack of `itemId`, or `undefined`. */
@@ -141,10 +159,30 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   }
 
   /** Every occupied slot, in slot order. */
-  stacks(): ReadonlyArray<{ readonly slot: number; readonly stack: ItemStack<TId> }> {
-    const out: { slot: number; stack: ItemStack<TId> }[] = [];
+  stacks(): ReadonlyArray<LocatedStack<TId>> {
+    const out: LocatedStack<TId>[] = [];
     this._slots.forEach((stack, slot) => {
       if (stack) out.push({ slot, stack });
+    });
+    return out;
+  }
+
+  /** First stack of `itemId` matching the optional predicate, paired with its
+   *  slot — the located handle {@link remove} / {@link transfer} accept. The
+   *  ref is a positional snapshot, valid until the next mutation. */
+  find(itemId: TId, where?: StackPredicate<TId>): LocatedStack<TId> | undefined {
+    for (let i = 0; i < this._slots.length; i++) {
+      const s = this._slots[i];
+      if (s && s.itemId === itemId && this.matches(s, where)) return { slot: i, stack: s };
+    }
+    return undefined;
+  }
+
+  /** Every stack of `itemId` matching the optional predicate, in slot order. */
+  findAll(itemId: TId, where?: StackPredicate<TId>): LocatedStack<TId>[] {
+    const out: LocatedStack<TId>[] = [];
+    this._slots.forEach((s, slot) => {
+      if (s && s.itemId === itemId && this.matches(s, where)) out.push({ slot, stack: s });
     });
     return out;
   }
@@ -267,8 +305,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   /** "single": one stack total, `maxStack` is the item's cap. Data and
    *  anonymous units never share a stack — a data payload only lands when the
    *  item isn't held at all, and a dataless top-up is refused when the sole
-   *  stack carries data (folding anonymous units in would make `remove()` skip
-   *  them forever). */
+   *  stack carries data (data stacks never merge). */
   private placeSingle(
     itemId: TId,
     amount: number,
@@ -285,8 +322,9 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     const existing = this.firstSlot(itemId);
     if (existing !== undefined) {
       const s = this._slots[existing]!;
-      // The lone stack carries data — a dataless add mustn't fold into it
-      // (`remove()` skips data stacks, so those units would be trapped).
+      // The lone stack carries data — a dataless add mustn't fold into it:
+      // mixing anonymous units into a payload stack is exactly the merge the
+      // "data stacks never merge" invariant forbids.
       if (s.data) return { added: 0, slots: [], reason: "stack-cap" };
       this._slots[existing] = { ...s, quantity: s.quantity + take };
       return { added: take, slots: [existing], ...(reason ? { reason } : {}) };
@@ -319,43 +357,76 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   // -------------------------------------------------------------- removing
 
   /**
-   * Remove up to `quantity` units of `itemId`, draining stacks from the LAST
-   * slot backwards (tail piles empty first; organized early stacks survive).
-   * Skips data-carrying stacks — instance stacks are removed explicitly via
-   * {@link removeAt}, never as anonymous units. Guard with
-   * `has(id, n, { dataless: true })` (plain `has` counts data stacks too, so
-   * it can say yes to units this method won't take).
+   * Remove up to `quantity` units of `itemId`. Without a predicate, drains
+   * anonymous stacks first (from the LAST slot back, so organized early stacks
+   * survive), then data-carrying stacks — nothing is skipped. With a
+   * {@link StackPredicate}, only matching data stacks are drained. The result's
+   * `stacks` carry what left with `data` intact, so an instance payload is
+   * returned rather than silently destroyed. The `remove(ref)` overload removes
+   * exactly the stack a {@link find} returned (a stale ref is a safe no-op).
    */
-  remove(itemId: TId, quantity = 1): RemoveResult {
+  remove(ref: LocatedStack<TId>): RemoveResult<TId>;
+  remove(itemId: TId, quantity?: number, where?: StackPredicate<TId>): RemoveResult<TId>;
+  remove(target: TId | LocatedStack<TId>, quantity = 1, where?: StackPredicate<TId>): RemoveResult<TId> {
+    if (typeof target !== "string") return this.removeRef(target);
     assertPositiveInt(quantity, "quantity");
+    const itemId = target;
+    const stacks: ItemStack<TId>[] = [];
     const touched: number[] = [];
     let remaining = quantity;
-    for (let i = this._slots.length - 1; i >= 0 && remaining > 0; i--) {
-      const s = this._slots[i];
-      if (!s || s.itemId !== itemId || s.data) continue;
-      const take = Math.min(remaining, s.quantity);
-      this._slots[i] = take === s.quantity ? null : { ...s, quantity: s.quantity - take };
-      remaining -= take;
-      touched.push(i);
+    const drain = (eligible: (s: ItemStack<TId>) => boolean): void => {
+      for (let i = this._slots.length - 1; i >= 0 && remaining > 0; i--) {
+        const s = this._slots[i];
+        if (!s || s.itemId !== itemId || !eligible(s)) continue;
+        const take = Math.min(remaining, s.quantity);
+        this._slots[i] = take === s.quantity ? null : { ...s, quantity: s.quantity - take };
+        stacks.push({ itemId, quantity: take, ...(s.data ? { data: s.data } : {}) });
+        remaining -= take;
+        touched.push(i);
+      }
+    };
+    if (where) {
+      drain((s) => this.matches(s, where));
+    } else {
+      // Anonymous first (leave instance stacks alone when fungible units
+      // suffice), then dip into data stacks — their payloads ride out in `stacks`.
+      drain((s) => !s.data);
+      drain((s) => s.data !== undefined);
     }
     const removed = quantity - remaining;
     if (removed > 0) {
       this.emitter.emit("itemRemoved", { itemId, quantity: removed });
       this.emitChanged(this.maybeCompact(touched));
     }
-    return { removed };
+    return { removed, stacks };
+  }
+
+  /** Resolve a located ref to its current slot by object identity — follows a
+   *  stack a compaction shifted; `undefined` once it's replaced or gone. */
+  private resolveRef(ref: LocatedStack<TId>): number | undefined {
+    if (this._slots[ref.slot] === ref.stack) return ref.slot;
+    const i = this._slots.indexOf(ref.stack);
+    return i === -1 ? undefined : i;
+  }
+
+  private removeRef(ref: LocatedStack<TId>): RemoveResult<TId> {
+    const slot = this.resolveRef(ref);
+    return slot === undefined ? { removed: 0, stacks: [] } : this.removeAt(slot);
   }
 
   /** Remove `quantity` units (default: the whole stack) from one slot. */
-  removeAt(slot: number, quantity?: number): RemoveResult {
+  removeAt(slot: number, quantity?: number): RemoveResult<TId> {
     const s = this._slots[slot];
-    if (!s) return { removed: 0 };
+    if (!s) return { removed: 0, stacks: [] };
     if (quantity !== undefined) assertPositiveInt(quantity, "quantity");
     const take = Math.min(quantity ?? s.quantity, s.quantity);
     this._slots[slot] = take === s.quantity ? null : { ...s, quantity: s.quantity - take };
     this.emitter.emit("itemRemoved", { itemId: s.itemId, quantity: take });
     this.emitChanged(this.maybeCompact([slot]));
-    return { removed: take };
+    return {
+      removed: take,
+      stacks: [{ itemId: s.itemId, quantity: take, ...(s.data ? { data: s.data } : {}) }],
+    };
   }
 
   /**
@@ -537,27 +608,65 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   // ------------------------------------------------------------ transfers
 
   /**
-   * Move up to `quantity` dataless units of `itemId` into `target` (chest ↔
-   * player). Only what the target accepts leaves the source, so a full or
-   * filtering target can't destroy items. Data stacks don't move this way —
-   * use {@link transferSlot}.
+   * Move up to `quantity` units of `itemId` into `target` (chest ↔ player),
+   * preferring anonymous stacks then data-carrying ones, each moved WITH its
+   * `data` so instance payloads survive the hop. Only what the target accepts
+   * leaves the source, so a full or filtering target can't destroy items. A
+   * {@link StackPredicate} restricts the move to matching data stacks; the
+   * `transfer(target, ref)` overload moves exactly the stack a {@link find}
+   * returned.
    */
-  transfer(target: Inventory<TId>, itemId: TId, quantity = 1): TransferResult {
-    assertPositiveInt(quantity, "quantity");
+  transfer(target: Inventory<TId>, ref: LocatedStack<TId>): TransferResult;
+  transfer(target: Inventory<TId>, itemId: TId, quantity?: number, where?: StackPredicate<TId>): TransferResult;
+  transfer(
+    target: Inventory<TId>,
+    itemIdOrRef: TId | LocatedStack<TId>,
+    quantity = 1,
+    where?: StackPredicate<TId>,
+  ): TransferResult {
     if (target === (this as Inventory<TId>)) return { transferred: 0, rejected: 0 };
-    let available = 0;
-    for (const s of this._slots) {
-      if (s && s.itemId === itemId && !s.data) available += s.quantity;
+    if (typeof itemIdOrRef !== "string") {
+      const slot = this.resolveRef(itemIdOrRef);
+      return slot === undefined ? { transferred: 0, rejected: 0 } : this.transferSlot(target, slot);
     }
-    const ask = Math.min(quantity, available);
-    if (ask === 0) return { transferred: 0, rejected: 0 };
-    const res = target.add(itemId, ask);
-    if (res.added > 0) this.remove(itemId, res.added);
-    return {
-      transferred: res.added,
-      rejected: res.rejected,
-      ...(res.reason ? { reason: res.reason } : {}),
-    };
+    assertPositiveInt(quantity, "quantity");
+    const itemId = itemIdOrRef;
+    let remaining = quantity;
+    let transferred = 0;
+    let reason: RejectReason | undefined;
+    // Move stack-by-stack, re-resolving each pass: our own removeAt may
+    // autoCompact and shift indices, so a cached list would go stale.
+    while (remaining > 0) {
+      const next = this.nextTransferable(itemId, where);
+      if (!next) break;
+      const ask = Math.min(remaining, next.stack.quantity);
+      const res = target.add(itemId, ask, next.stack.data ? { data: next.stack.data } : {});
+      if (res.reason) reason = res.reason;
+      if (res.added <= 0) break; // target refuses this item — nothing more fits
+      this.removeAt(next.slot, res.added);
+      transferred += res.added;
+      remaining -= res.added;
+      if (res.added < ask) break; // target filled mid-stack
+    }
+    const rejected = quantity - transferred;
+    return { transferred, rejected, ...(reason && rejected > 0 ? { reason } : {}) };
+  }
+
+  /** Next source stack to pull for a `transfer`: anonymous first, then
+   *  data-carrying; or the first predicate match when a predicate is given. */
+  private nextTransferable(
+    itemId: TId,
+    where: StackPredicate<TId> | undefined,
+  ): LocatedStack<TId> | undefined {
+    if (where) return this.find(itemId, where);
+    let dataHit: LocatedStack<TId> | undefined;
+    for (let i = 0; i < this._slots.length; i++) {
+      const s = this._slots[i];
+      if (!s || s.itemId !== itemId) continue;
+      if (!s.data) return { slot: i, stack: s };
+      dataHit ??= { slot: i, stack: s };
+    }
+    return dataHit;
   }
 
   /** Move (part of) one specific stack — data payload included — into `target`. */

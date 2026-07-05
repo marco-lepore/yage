@@ -92,9 +92,13 @@ export interface AddResult {
 }
 
 /** Result of {@link Inventory.remove} / {@link Inventory.removeAt}: `removed`
- *  may be less than requested when the inventory held fewer units. */
-export interface RemoveResult {
+ *  may be less than requested when the inventory held fewer units. `stacks` are
+ *  the portions taken (in drain order), each carrying its `data` — so an
+ *  instance payload can be re-homed (dropped, banked, undone) instead of lost.
+ *  Empty when `removed` is 0. */
+export interface RemoveResult<TId extends string = string> {
   readonly removed: number;
+  readonly stacks: ReadonlyArray<ItemStack<TId>>;
 }
 
 /** What {@link Inventory.move} did: `"merged"` folds `from` into a same-item
@@ -111,6 +115,25 @@ export interface TransferResult {
   readonly reason?: RejectReason;
 }
 
+/** A stack paired with the slot it occupies — returned by {@link Inventory.find}
+ *  / {@link Inventory.findAll} and accepted by {@link Inventory.remove} /
+ *  {@link Inventory.transfer}. A positional snapshot: valid until the next
+ *  mutation, exactly like a slot index (the model resolves it by identity, so a
+ *  stale ref is a safe no-op rather than a wrong removal). */
+export interface LocatedStack<TId extends string = string> {
+  readonly slot: number;
+  readonly stack: ItemStack<TId>;
+}
+
+/** Selects stacks by their per-instance `data`. Stacks with NO `data` are
+ *  excluded before it runs, so `data` is always defined here — a data predicate
+ *  is a question about instances (durability, rolled stats). `stack` is the full
+ *  stack for the rare quantity check. */
+export type StackPredicate<TId extends string = string> = (
+  data: Readonly<Record<string, unknown>>,
+  stack: ItemStack<TId>,
+) => boolean;
+
 /**
  * Read-only view of an inventory — what policy hooks ({@link InventoryConstraint},
  * {@link ItemActionDef.available}) receive, so a policy can inspect state but
@@ -124,11 +147,17 @@ export interface InventoryReader<TId extends string = string> {
   readonly capacity: number | undefined;
   /** Occupied slot count. */
   readonly used: number;
-  /** Total units of `itemId` across all stacks (data-carrying included;
-   *  `{ dataless: true }` counts only what anonymous `remove` can take). */
-  count(itemId: TId, opts?: { readonly dataless?: boolean }): number;
-  /** Whether at least `quantity` (default 1) units of `itemId` are held. */
-  has(itemId: TId, quantity?: number, opts?: { readonly dataless?: boolean }): boolean;
+  /** Total units of `itemId`. Without a predicate every stack counts; with a
+   *  {@link StackPredicate}, only data-bearing stacks whose `data` matches. */
+  count(itemId: TId, where?: StackPredicate<TId>): number;
+  /** Whether at least `quantity` (default 1) matching units of `itemId` are
+   *  held. A {@link StackPredicate} (in place of, or after, `quantity`) restricts
+   *  the tally to matching data stacks. */
+  has(itemId: TId, quantityOrWhere?: number | StackPredicate<TId>, where?: StackPredicate<TId>): boolean;
+  /** First stack of `itemId` matching the optional predicate, with its slot. */
+  find(itemId: TId, where?: StackPredicate<TId>): LocatedStack<TId> | undefined;
+  /** Every stack of `itemId` matching the optional predicate, in slot order. */
+  findAll(itemId: TId, where?: StackPredicate<TId>): readonly LocatedStack<TId>[];
 }
 
 /**

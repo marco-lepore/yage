@@ -181,11 +181,37 @@ Set the inventory's `defaultMaxStack` to change the baseline.
 </Aside>
 
 Stacks can carry a per-stack `data` payload (durability, rolled stats). Data
-stacks never auto-merge, and anonymous `remove`/`transfer` skip them — move
-instance items explicitly with `removeAt` / `transferSlot`. Plain
-`count`/`has` include them, so guard a removal with the matching filter:
-`inventory.has("sword", 1, { dataless: true })` says yes only to units
-`remove` can actually take.
+stacks never auto-merge — they open their own slot. Anonymous `remove`/`transfer`
+drain fungible stacks first, then dip into data stacks; whatever leaves comes
+back in the result (`RemoveResult.stacks`, data intact), so an instance payload
+is never silently destroyed — you can drop it on the ground or bank it.
+
+To act on a **specific** instance, select it by a data predicate
+`(data, stack) => boolean`, or grab a handle:
+
+```ts
+// Query by data condition:
+inventory.count("herb", (d) => d.quality > 80); // how many good herbs
+inventory.has("key", (d) => d.opens === "boss-lair"); // do I hold THE key
+
+// find → handle → act (no has/remove mismatch — the handle IS the guard):
+const bossKey = inventory.find("key", (d) => d.opens === "boss-lair");
+if (bossKey) {
+  inventory.remove(bossKey); // takes exactly that stack, returns its data
+  openDoor();
+}
+
+// findAll + predicate remove for bulk instance work:
+for (const ref of inventory.findAll("herb", (d) => d.quality < 50)) {
+  const { stacks } = inventory.remove(ref);
+  dropOnGround(stacks); // the poor herbs, payload intact
+}
+```
+
+A handle (`LocatedStack { slot, stack }`) is a positional snapshot: valid until
+the next mutation. The model resolves it by identity, so a stale ref (its stack
+removed or shifted by a compaction) is a safe no-op, never a wrong removal.
+`transfer(target, ref)` moves one located stack the same way.
 
 ## Arranging: move, split, sort
 
