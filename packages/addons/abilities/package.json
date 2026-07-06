@@ -1,0 +1,73 @@
+{
+  "name": "@yagejs-addons/abilities",
+  "version": "0.0.0",
+  "description": "Timeline abilities and a concrete hit contract for YAGE — activatable abilities with cooldowns, timelines, and cancel rules, plus hitboxes, projectiles, health, and hit reactions",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "abilities",
+    "combat",
+    "hitbox",
+    "projectile",
+    "health",
+    "damage"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/abilities"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/core": ">=0.9.0 <0.10.0",
+    "@yagejs/physics": ">=0.9.0 <0.10.0",
+    "@yagejs/renderer": ">=0.9.0 <0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/renderer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/core": "^0.8.0",
+    "@yagejs/physics": "^0.8.0",
+    "@yagejs/renderer": "^0.8.0",
+    "pixi.js": "^8.5.0"
+  }
+}
