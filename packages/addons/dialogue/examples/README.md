@@ -2,7 +2,7 @@
 
 `box-and-bubble.ts` is the canonical, copy-pasteable example: a small scene that
 shows **box dialogue + bubble dialogue + a branching choice +
-`[wave]`/`[shake]` per-glyph effects**, all from `defaultTheme()` with **zero
+`[wave]`/`[shake]` per-glyph effects**, all from `defaultDialogueTheme()` with **zero
 bundled assets**.
 
 It is intentionally framework-agnostic: `start(container)` boots an `Engine`
@@ -32,7 +32,7 @@ See `examples/src/dialogue-addon.ts` (a thin wrapper that calls this example's
 | Bubble dialogue      | the `guide` line with `view: "bubble"` over a `DialogueActor` |
 | Branching choice     | the `choice` step with `target` jumps + a `goto`            |
 | `[wave]` / `[shake]` | per-glyph animated effects on narrator lines                |
-| Zero assets          | `defaultTheme()` (Graphics chrome + canvas SplitText/Text)  |
+| Zero assets          | `defaultDialogueTheme()` (Graphics chrome + canvas SplitText/Text)  |
 
 The scene also adds a `DialogueProbe` component whose `serialize()` exposes the
 last line / choice / term and an `ended` flag, which the Playwright e2e

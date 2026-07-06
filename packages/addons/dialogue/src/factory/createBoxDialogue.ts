@@ -11,7 +11,7 @@
  * {@link BoxLayout} so the frame, nameplate, body text, and choice rows move and
  * grow as one panel (per-line `meta.position`, choice-grow, avatar reflow).
  *
- * `theme` defaults to {@link defaultTheme} so a zero-config call works out of
+ * `theme` defaults to {@link defaultDialogueTheme} so a zero-config call works out of
  * the box (Graphics chrome + canvas text, no bundled assets).
  */
 
@@ -22,7 +22,7 @@ import { BoxLayout } from "../render/BoxLayout.js";
 import type { AvatarPresenter } from "../avatar/AvatarPresenter.js";
 import type { DialogueBundle } from "../DialogueController.js";
 import { boxFrameStyles, DEFAULT_CHOICE_GAP, type DialogueTheme } from "./theme.js";
-import { defaultTheme } from "./defaultTheme.js";
+import { defaultDialogueTheme } from "./defaultTheme.js";
 import { themeFonts } from "./themeFonts.js";
 
 export interface BoxDialogueOptions {
@@ -41,7 +41,7 @@ export interface BoxDialogueOptions {
 }
 
 export function createBoxDialogue(
-  theme: DialogueTheme = defaultTheme(),
+  theme: DialogueTheme = defaultDialogueTheme(),
   opts: BoxDialogueOptions = {},
 ): DialogueBundle {
   const fonts = themeFonts(theme);

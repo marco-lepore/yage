@@ -1,7 +1,7 @@
 /**
  * Canonical, copy-pasteable example for @yagejs-addons/dialogue.
  *
- * Zero bundled assets: it uses `defaultTheme()` (Graphics chrome + canvas text)
+ * Zero bundled assets: it uses `defaultDialogueTheme()` (Graphics chrome + canvas text)
  * and `createMixedDialogue`, which routes each line/choice to either the bottom
  * box (`view: "box"`, the default) or a world-space speech bubble over the
  * speaking actor (`view: "bubble"`). One short script shows, in order:
@@ -39,11 +39,11 @@ import {
   DialogueLineEvent,
   DialogueChoiceMadeEvent,
   DialogueEndedEvent,
-  fullControls,
+  dialogueControls,
   type DialogueScript,
 } from "@yagejs-addons/dialogue";
 import {
-  defaultTheme,
+  defaultDialogueTheme,
   createMixedDialogue,
   DialogueActor,
   DIALOGUE_LAYERS,
@@ -196,7 +196,7 @@ class DialogueScene extends Scene {
 
     // Build the presenter bundle from the zero-asset default theme. `mixed`
     // gives both a bottom box AND a world bubble, routed per-line by `view`.
-    const bundle = createMixedDialogue(defaultTheme(), {
+    const bundle = createMixedDialogue(defaultDialogueTheme(), {
       worldLayer: "bubble-world",
     });
 
@@ -204,13 +204,13 @@ class DialogueScene extends Scene {
     const host: Entity = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
 
-    // The controller is a Component. `fullControls(bundle.choices)` adds pointer
+    // The controller is a Component. `dialogueControls(bundle.choices)` adds pointer
     // hover/tap on top of the keyboard binding; passing the choices presenter
     // lets it hit-test rows.
     this.controller = host.add(
       new DialogueController({
         ...bundle,
-        input: fullControls(bundle.choices),
+        input: dialogueControls(bundle.choices),
       }),
     );
 

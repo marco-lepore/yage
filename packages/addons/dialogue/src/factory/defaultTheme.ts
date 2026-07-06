@@ -2,7 +2,7 @@ import type { DialogueTheme } from "./theme.js";
 import { DIALOGUE_LAYER_FRAME, DIALOGUE_LAYER_TEXT } from "../render/layers.js";
 
 /**
- * defaultTheme — a zero-config, zero-asset {@link DialogueTheme}.
+ * defaultDialogueTheme — a zero-config, zero-asset {@link DialogueTheme}.
  *
  * Renders entirely with Graphics chrome (rounded rectangles + strokes) and
  * canvas text (SplitText/Text). No bitmap fonts, no textures, no bundled
@@ -13,7 +13,7 @@ import { DIALOGUE_LAYER_FRAME, DIALOGUE_LAYER_TEXT } from "../render/layers.js";
  * mutating a shared singleton:
  *
  * ```ts
- * const theme = { ...defaultTheme(), textColor: 0xff0000 };
+ * const theme = { ...defaultDialogueTheme(), textColor: 0xff0000 };
  * ```
  *
  * The `box` is viewport-relative (margins + height), so it's a full-width bottom
@@ -21,7 +21,7 @@ import { DIALOGUE_LAYER_FRAME, DIALOGUE_LAYER_TEXT } from "../render/layers.js";
  * textured nine-slice chrome (the `textured` field) are OPT-IN re-theming paths,
  * intentionally absent here.
  */
-export function defaultTheme(): DialogueTheme {
+export function defaultDialogueTheme(): DialogueTheme {
   return {
     // Viewport-relative: a full-width bottom bar resolved against the renderer's
     // design size at mount, so this works at any resolution with no override.

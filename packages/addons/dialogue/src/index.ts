@@ -50,9 +50,9 @@ export {
   KeyboardInputBinding,
   PointerInputBinding,
   CompositeInputBinding,
-  fullControls,
-  DEFAULT_ACTIONS,
-  FULL_ACTIONS,
+  dialogueControls,
+  DEFAULT_DIALOGUE_ACTIONS,
+  FULL_DIALOGUE_ACTIONS,
 } from "./input/index.js";
 export type {
   InputBinding,

@@ -2,7 +2,7 @@
  * @yagejs-addons/dialogue — a walkable town that drives the game-state model.
  *
  * Zero bundled ART assets: the town, the player, and the NPCs are all Graphics;
- * the dialogue presenters are `defaultTheme()` (Graphics chrome + canvas text).
+ * the dialogue presenters are `defaultDialogueTheme()` (Graphics chrome + canvas text).
  * The one bundled asset is Sage's voice-over — real synthesized speech under
  * `public/assets/voice/` (see the voice channel below). The level is wider than
  * the canvas, so a **follow camera** scrolls as you walk.
@@ -126,7 +126,7 @@ import {
   DialogueRevealMarkerEvent,
   cells,
   compose,
-  fullControls,
+  dialogueControls,
   loadCompact,
   splitGraphemes,
   MemoryVariableStorage,
@@ -155,7 +155,7 @@ import gossipYaml from "./dialogue/gossip.yaml?raw";
 // `loadCompact` from the root entry (no `yaml` dep), same validated/frozen IR.
 import locksmithCompact from "./dialogue/locksmith.dlg?raw";
 import {
-  defaultTheme,
+  defaultDialogueTheme,
   createMixedDialogue,
   createBubbleDialogue,
   DialogueActor,
@@ -979,11 +979,11 @@ interface ThemePreset {
  *  the theme (no presenter subclassed); "Textured" swaps the box + bubble chrome
  *  to a nine-slice via `theme.textured`. */
 const THEME_PRESETS: readonly ThemePreset[] = [
-  { label: "Default", build: () => defaultTheme() },
+  { label: "Default", build: () => defaultDialogueTheme() },
   {
     label: "Warm",
     build: () => ({
-      ...defaultTheme(),
+      ...defaultDialogueTheme(),
       frameColor: 0x2b1d12,
       borderColor: 0xb8894e,
       nameColor: 0xffcf8a,
@@ -1001,7 +1001,7 @@ const THEME_PRESETS: readonly ThemePreset[] = [
       frameTex ??= makeFrameTexture(0x8a6d3b, 0x2b2417, FRAME_BORDER);
       bubbleTex ??= makeFrameTexture(0x8a6d3b, 0x241d12, BUBBLE_BORDER);
       return {
-        ...defaultTheme(),
+        ...defaultDialogueTheme(),
         nameColor: 0xffcf8a,
         textColor: 0xf3e6cf,
         textured: {
@@ -1026,7 +1026,7 @@ class RoomScene extends Scene {
   /** `themeBuild` picks the look (cycled by the Theme button); `bitmapFont` (the
    *  Font button) layers a baked atlas on top. Both rebuild the scene. */
   constructor(
-    private readonly themeBuild: () => DialogueTheme = defaultTheme,
+    private readonly themeBuild: () => DialogueTheme = defaultDialogueTheme,
     private readonly bitmapFont?: string,
   ) {
     super();
@@ -1206,7 +1206,7 @@ class RoomScene extends Scene {
         storage,
         functions,
         commands,
-        input: fullControls(bundle.choices, { skipHold: SKIP_HOLD }),
+        input: dialogueControls(bundle.choices, { skipHold: SKIP_HOLD }),
         channels: [voice, transcript],
         // A typewriter click per revealed glyph — `index` is a raw grapheme index
         // (whitespace included), so we look it up and skip spaces.
@@ -1251,7 +1251,7 @@ class RoomScene extends Scene {
     const ambient = this.spawn("ambient-host").add(
       new DialogueController({
         ...ambientBundle,
-        input: fullControls(ambientBundle.choices),
+        input: dialogueControls(ambientBundle.choices),
       }),
     );
     ambient.setInputEnabled(false);
@@ -1381,8 +1381,8 @@ async function main(): Promise<void> {
         "move-down": ["ArrowDown", "KeyS"],
         "move-left": ["ArrowLeft", "KeyA"],
         "move-right": ["ArrowRight", "KeyD"],
-        attack: ["KeyJ"], // hold to fast-forward (FULL_ACTIONS.speed)
-        skip: ["KeyX"], // hold to skip (FULL_ACTIONS.skip)
+        attack: ["KeyJ"], // hold to fast-forward (FULL_DIALOGUE_ACTIONS.speed)
+        skip: ["KeyX"], // hold to skip (FULL_DIALOGUE_ACTIONS.skip)
         auto: ["KeyV"], // toggle auto-advance
         pause: ["KeyP"], // setPaused — freeze the conversation + world
         hide: ["KeyH"], // setHidden — hide the dialogue UI mid-line
@@ -1418,7 +1418,7 @@ function wireControls(engine: Engine): void {
   let bitmap = false;
   let fontName: string | undefined;
   let themeIndex = 0;
-  let themeBuild: () => DialogueTheme = THEME_PRESETS[0]?.build ?? defaultTheme;
+  let themeBuild: () => DialogueTheme = THEME_PRESETS[0]?.build ?? defaultDialogueTheme;
   const rebuild = (): Promise<void> =>
     engine.scenes.replace(new RoomScene(themeBuild, bitmap ? fontName : undefined));
 

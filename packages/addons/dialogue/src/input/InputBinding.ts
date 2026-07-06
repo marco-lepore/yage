@@ -21,7 +21,7 @@ export interface DialogueActions {
   readonly skip?: readonly string[];
 }
 
-export const DEFAULT_ACTIONS: DialogueActions = {
+export const DEFAULT_DIALOGUE_ACTIONS: DialogueActions = {
   advance: ["interact"],
   speed: ["attack"],
   up: ["move-up"],
@@ -29,8 +29,8 @@ export const DEFAULT_ACTIONS: DialogueActions = {
 };
 
 /** Keyboard actions with skip bound (the game maps `skip` → KeyX in main.ts). */
-export const FULL_ACTIONS: DialogueActions = {
-  ...DEFAULT_ACTIONS,
+export const FULL_DIALOGUE_ACTIONS: DialogueActions = {
+  ...DEFAULT_DIALOGUE_ACTIONS,
   skip: ["skip"],
 };
 
@@ -101,7 +101,7 @@ export class KeyboardInputBinding implements InputBinding {
    *   (the classic "hold to skip" confirm). `0` (default) fires on press.
    */
   constructor(
-    private readonly actions: DialogueActions = DEFAULT_ACTIONS,
+    private readonly actions: DialogueActions = DEFAULT_DIALOGUE_ACTIONS,
     private readonly skipHold = 0,
   ) {}
 
@@ -250,11 +250,11 @@ export class PointerInputBinding implements InputBinding {
  * choices). Pass a scene's choice presenter so the pointer can hit-test rows;
  * `skipHold` (seconds) adds the classic "hold to skip" confirm.
  */
-export function fullControls(
+export function dialogueControls(
   choices?: PointerChoiceTarget,
   options: { actions?: DialogueActions; skipHold?: number } = {},
 ): InputBinding {
-  const { actions = FULL_ACTIONS, skipHold = 0 } = options;
+  const { actions = FULL_DIALOGUE_ACTIONS, skipHold = 0 } = options;
   return new CompositeInputBinding([
     new KeyboardInputBinding(actions, skipHold),
     new PointerInputBinding(choices),
