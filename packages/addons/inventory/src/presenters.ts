@@ -11,6 +11,8 @@
 export { SlotsView, type SlotsViewConfig } from "./render/SlotsView.js";
 export { iconCell } from "./render/iconCell.js";
 export { rowCell } from "./render/rowCell.js";
+export { menuSkin } from "./render/menuSkin.js";
+export { hints } from "./render/hints.js";
 export { DetailView, type DetailConfig } from "./render/DetailView.js";
 export { ActionMenuView, type ActionMenuConfig, type ActionMenuViewOptions } from "./render/ActionMenuView.js";
 export { InventoryChrome, type InventoryChromeConfig } from "./render/InventoryChrome.js";
@@ -24,6 +26,7 @@ export {
   cellWindowSize,
   type CellGridSpec,
 } from "./render/cellGeometry.js";
+export { layoutActionMenu, type MenuLayout, type MenuLayoutInput } from "./render/menuLayout.js";
 export { makeTextOptions, type FontConfig } from "./render/textOptions.js";
 export {
   INVENTORY_LAYERS,
@@ -34,7 +37,14 @@ export {
 export {
   createInventoryPanel,
   type CellPresenterFactory,
+  type HintsFactory,
   type InventoryPanelOptions,
+  type MenuSkinFactory,
 } from "./factory/createInventoryPanel.js";
 export { defaultInventoryTheme } from "./factory/defaultTheme.js";
-export { DEFAULT_TILE_COLORS, type InventoryTheme } from "./factory/theme.js";
+export {
+  DEFAULT_TILE_COLORS,
+  type InventoryTheme,
+  type NineSliceFrame,
+  type NineSliceInsets,
+} from "./factory/theme.js";

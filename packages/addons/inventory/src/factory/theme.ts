@@ -21,6 +21,30 @@
  * is reproduced with zero configuration.
  */
 
+import type { TextureInput } from "@yagejs/renderer";
+
+/**
+ * The four immutable border widths (source-texture px) of a nine-slice frame:
+ * the corners stay fixed while the edges and center stretch. Matches Pixi's
+ * `NineSliceSprite` `leftWidth`/`topHeight`/etc.
+ */
+export interface NineSliceInsets {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/**
+ * A nine-slice texture frame: the source texture plus its border insets. The
+ * texture is a {@link TextureInput} (string asset key or a resolved Texture) so
+ * the theme stays serializable.
+ */
+export interface NineSliceFrame {
+  readonly texture: TextureInput;
+  readonly insets: NineSliceInsets;
+}
+
 export interface InventoryTheme {
   /** Inner padding between the frame and its contents. */
   readonly padding: number;
@@ -96,6 +120,17 @@ export interface InventoryTheme {
    *  on the tinted tile. Omit to derive the default `0x1a1a2e`. */
   readonly tileLetterColor?: number;
 
+  // --- Textured chrome (OPT-IN nine-slice; omit for the Graphics default) ---
+  /** Nine-slice frames keyed by surface. A present key replaces that surface's
+   *  drawn Graphics frame with a stretched texture; omit the field (or a key)
+   *  to keep the Graphics default. */
+  readonly textured?: {
+    /** The panel frame ({@link InventoryChrome}). */
+    readonly panel?: NineSliceFrame;
+    /** The action-menu frame (the default `menuSkin`). */
+    readonly menu?: NineSliceFrame;
+  };
+
   // --- Fonts (omit the bitmap field for canvas text) ---
   /** Baked bitmap-font name (OPT-IN). Omit for canvas text. */
   readonly bitmapFont?: string;
@@ -117,3 +152,15 @@ export interface InventoryTheme {
 export const DEFAULT_TILE_COLORS: readonly number[] = [
   0x7ec8ff, 0xffa07a, 0x98e698, 0xd8a0ff, 0xffd866, 0xff8899, 0x88ddd0, 0xc9c9de,
 ];
+
+/** Cell background + tile corner radius: `cellRadius`, else `cornerRadius / 2`. */
+export function resolveCellRadius(theme: InventoryTheme): number {
+  return theme.cellRadius ?? theme.cornerRadius / 2;
+}
+
+/** Row-bar + menu-bar highlight radius: `highlightRadius`, else one less than the
+ *  cell radius (floored at 0) so the bar sits just inside a cell. Shared so the
+ *  two bars can't drift apart when the default look is retuned. */
+export function resolveHighlightRadius(theme: InventoryTheme): number {
+  return theme.highlightRadius ?? Math.max(resolveCellRadius(theme) - 1, 0);
+}

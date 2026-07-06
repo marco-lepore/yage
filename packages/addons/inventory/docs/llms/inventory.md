@@ -317,9 +317,32 @@ alpha → `0.6`), `menu.highlightAlpha` (menu bar fill alpha → `0.45`),
 `descriptionSize` (`textSize - 2`), `menu.padding` / `menu.rowGap` (10 / 6),
 `headerGap` / `detailGap` (10 / 10), `tileLetterColor` (`0x1a1a2e`).
 `frameAlpha` applies to both the panel chrome and the action-menu popup.
-Swap a cell preset to change how cells draw beyond the theme's dials. Replace a
-view (`SlotsPresenter`, `ActionMenuPresenter`) to change behavior.
-Spread-and-tweak the default:
+
+`textured?: { panel?, menu? }` opts into nine-slice frames per surface. A
+present key replaces that surface's drawn Graphics frame with a stretched
+texture (`{ texture, insets: { left, top, right, bottom } }`, insets in
+source-texture px); the panel keeps its divider lines, the menu keeps its bar +
+labels. Omit the field (or a key) for the Graphics default. Textures are
+`TextureInput` (asset key or `Texture`), so the theme stays serializable:
+
+```ts
+createInventoryPanel({
+  ...defaultInventoryTheme(),
+  textured: { panel: { texture: "ui/panel.png", insets: { left: 12, top: 12, right: 12, bottom: 12 } } },
+});
+```
+
+Beyond theme dials, drawing is swappable via three render-delegate presets on
+the factory options — the view computes rects, placement, and hit-tests; the
+preset only draws, so hit-targets never desync from a custom look:
+`{ cell }` (a cell — `iconCell`/`rowCell`), `{ menuSkin }` (the action-menu
+frame/rows/highlight bar), `{ hints }` (the ▲/▼ scroll affordance). Pass them
+UNCALLED (`{ menuSkin: myMenuSkin }`); the factory calls each with the theme.
+`layoutActionMenu(...)` is exported for a wholesale menu replacement (the
+`cellGeometry` role for the popup: menu size, anchored/flipped/clamped
+placement, row rects). Changing placement, windowing, or navigation means
+replacing the whole view (`SlotsPresenter`, `ActionMenuPresenter`).
+Spread-and-tweak the default theme:
 
 ```ts
 import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";

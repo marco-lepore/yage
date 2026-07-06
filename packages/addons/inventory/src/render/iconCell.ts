@@ -21,7 +21,7 @@ import {
 import type { CellDefaults, CellHandle, CellPresenter, DiagnosticSink, Rect } from "../adapter.js";
 import type { SlotView } from "../core/session.js";
 import type { InventoryTheme } from "../factory/theme.js";
-import { DEFAULT_TILE_COLORS } from "../factory/theme.js";
+import { DEFAULT_TILE_COLORS, resolveCellRadius } from "../factory/theme.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
 /** Default cell letter color when the theme omits `tileLetterColor`. */
@@ -65,7 +65,7 @@ class IconCellPresenter implements CellPresenter {
     this.cfg = {
       cellColor: theme.cellColor,
       cellBorderColor: theme.cellBorderColor,
-      cellRadius: theme.cellRadius ?? theme.cornerRadius / 2,
+      cellRadius: resolveCellRadius(theme),
       highlightColor: theme.highlightColor,
       quantitySize: theme.quantitySize,
       quantityColor: theme.quantityColor,

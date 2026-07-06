@@ -4,8 +4,10 @@ vi.mock("@yagejs/renderer", () => import("./rendererTestStubs.js"));
 
 import { createMockScene } from "@yagejs/core";
 import { SlotsView, type SlotsViewConfig } from "./SlotsView.js";
+import { hints } from "./hints.js";
 import { PanelLayout } from "./PanelLayout.js";
 import { GraphicsComponent } from "./rendererTestStubs.js";
+import { defaultInventoryTheme } from "../factory/defaultTheme.js";
 import type { CellDefaults, CellHandle, CellPresenter, DiagnosticSink, Rect } from "../adapter.js";
 import type { SlotView } from "../core/session.js";
 
@@ -79,12 +81,10 @@ function makeView(cfgOverride: Partial<SlotsViewConfig> = {}): {
     cellHeight: 40,
     gapX: 4,
     gapY: 4,
-    hintColor: 0xffff00,
-    hintAlpha: 0.6,
     layerContent: "content",
     ...cfgOverride,
   };
-  return { view: new SlotsView(cfg, cell, layout), cell, layout };
+  return { view: new SlotsView(cfg, cell, hints(defaultInventoryTheme()), layout), cell, layout };
 }
 
 describe("SlotsView present / rebuild", () => {

@@ -102,6 +102,63 @@ export interface CellPresenter<TId extends string = string> {
   dispose?(): void;
 }
 
+/** One row an action-menu skin draws: its rect (which the view also
+ *  hit-tests) and the label to render inside it. */
+export interface MenuSkinRow {
+  readonly rect: Rect;
+  readonly label: string;
+}
+
+/** One live rendered action menu. The view measured labels, placed the menu
+ *  (flip/clamp into the panel), and computed the row rects; the skin drew
+ *  them. The view drives the highlight and visibility through this handle,
+ *  which never respawns — mirrors {@link CellHandle}. */
+export interface MenuSkinHandle {
+  /** Retint the labels and move the bar to row `position`. */
+  highlight(position: number): void;
+  setVisible(visible: boolean): void;
+  dispose(): void;
+}
+
+/**
+ * The swappable action-menu renderer. The view owns label measurement,
+ * placement, row-rect computation, and pointer hit-testing; the skin owns the
+ * frame / label / highlight-bar drawing. Swapping it restyles the menu without
+ * reimplementing placement — the {@link CellPresenter} pattern for the popup.
+ */
+export interface MenuSkinPresenter {
+  /** Draw the menu frame and its rows. `menu` is the outer frame rect; each
+   *  `rows[i].rect` is the same rect the view hit-tests. */
+  renderMenu(scene: Scene, menu: Rect, rows: readonly MenuSkinRow[]): MenuSkinHandle;
+}
+
+/** Which scroll directions have rows past the window, plus the cell-window
+ *  rect the hints sit against. */
+export interface HintsState {
+  /** Rows are scrolled off the top. */
+  readonly up: boolean;
+  /** Rows are scrolled off the bottom. */
+  readonly down: boolean;
+  readonly window: Rect;
+}
+
+/** One live rendered scroll-hint set — the view redraws it through the handle
+ *  as the window scrolls. */
+export interface HintsHandle {
+  update(state: HintsState): void;
+  setVisible(visible: boolean): void;
+  dispose(): void;
+}
+
+/**
+ * The swappable scroll-hint renderer. The view computes what is scrolled out
+ * of view; the preset draws the affordance (the default ▲/▼ triangles, or
+ * dots, a scrollbar, …). Swap it via `createInventoryPanel(theme, { hints })`.
+ */
+export interface HintsPresenter {
+  render(scene: Scene, state: HintsState): HintsHandle;
+}
+
 /** The selected-item pane. */
 export interface DetailPresenter<TId extends string = string>
   extends DetailChannel<TId>,

@@ -48,8 +48,18 @@ export class RecordingContext {
   }
 }
 
+/** A minimal Pixi-Container stand-in: records added children (nine-slice
+ *  sprites) so tests can assert a textured frame was parented. */
+export class StubContainer {
+  visible = true;
+  readonly children: unknown[] = [];
+  addChild(child: unknown): void {
+    this.children.push(child);
+  }
+}
+
 export class GraphicsComponent extends Component {
-  readonly graphics = { visible: true };
+  readonly graphics = new StubContainer();
   /** Every `draw()` call's recorded ops, latest last. */
   readonly draws: RecordingContext[] = [];
   constructor(readonly options: { readonly layer: string }) {
@@ -111,4 +121,33 @@ export function resetTextures(): void {
 export function resolveTextureInput(input: string): { width: number; height: number } {
   if (!seededTextures.has(input)) throw new Error(`stub: no texture seeded for "${input}"`);
   return { width: 32, height: 32 };
+}
+
+/** A stand-in nine-slice sprite: a plain display object with mutable
+ *  position/size, enough for the textured-frame views to place and stretch it. */
+export class NineSliceSprite {
+  visible = true;
+  x = 0;
+  y = 0;
+  width: number;
+  height: number;
+  constructor(readonly options: { readonly texture: string; readonly width: number; readonly height: number }) {
+    this.width = options.width;
+    this.height = options.height;
+  }
+}
+
+/** Mirrors the real `createNineSlice`: resolves (throws on an unseeded key)
+ *  then builds a sprite sized to `width`/`height`. */
+export function createNineSlice(options: {
+  readonly texture: string;
+  readonly leftWidth: number;
+  readonly topHeight: number;
+  readonly rightWidth: number;
+  readonly bottomHeight: number;
+  readonly width: number;
+  readonly height: number;
+}): NineSliceSprite {
+  resolveTextureInput(options.texture);
+  return new NineSliceSprite({ texture: options.texture, width: options.width, height: options.height });
 }

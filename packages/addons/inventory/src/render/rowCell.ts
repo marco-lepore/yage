@@ -15,6 +15,7 @@ import { GraphicsComponent, TextComponent } from "@yagejs/renderer";
 import type { CellDefaults, CellHandle, CellPresenter, Rect } from "../adapter.js";
 import type { SlotView } from "../core/session.js";
 import type { InventoryTheme } from "../factory/theme.js";
+import { resolveHighlightRadius } from "../factory/theme.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
 /** Intrinsic width of a default row (the old list panel width). Cell width is
@@ -59,7 +60,7 @@ class RowCellPresenter implements CellPresenter {
       quantitySize: theme.quantitySize,
       quantityColor: theme.quantityColor,
       highlightColor: theme.highlightColor,
-      highlightRadius: theme.highlightRadius ?? Math.max((theme.cellRadius ?? theme.cornerRadius / 2) - 1, 0),
+      highlightRadius: resolveHighlightRadius(theme),
       rowHighlightAlpha: theme.rowHighlightAlpha ?? 0.22,
       layerContent: theme.layerContent,
       bitmapFont: theme.bitmapFont,

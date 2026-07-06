@@ -11,10 +11,19 @@
  * the window only redraws the two affected cells.
  */
 
-import { Transform, type Entity, type Scene } from "@yagejs/core";
-import { GraphicsComponent, RendererKey } from "@yagejs/renderer";
+import type { Scene } from "@yagejs/core";
+import { RendererKey } from "@yagejs/renderer";
 import type { SlotView } from "../core/session.js";
-import type { CellHandle, CellPresenter, DiagnosticSink, SlotsPresenter, Rect } from "../adapter.js";
+import type {
+  CellHandle,
+  CellPresenter,
+  DiagnosticSink,
+  HintsHandle,
+  HintsPresenter,
+  HintsState,
+  SlotsPresenter,
+  Rect,
+} from "../adapter.js";
 import type { PanelLayout } from "./PanelLayout.js";
 import {
   cellAtPoint,
@@ -35,10 +44,6 @@ export interface SlotsViewConfig {
   readonly gapY: number;
   /** Wrap cursor navigation at edges. Default false (clamp). */
   readonly wrap?: boolean | undefined;
-  /** Scroll-hint (▲/▼) color. */
-  readonly hintColor: number;
-  /** Scroll-hint fill alpha. */
-  readonly hintAlpha: number;
   /** Everything the view and its cells draw sit on ONE layer, stacked by
    *  spawn order. The chrome frame lives on the lower panel layer. */
   readonly layerContent: string;
@@ -55,7 +60,7 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
   private scrollRow = 0;
   private hidden = true;
 
-  private hints?: { entity: Entity; gfx: GraphicsComponent } | undefined;
+  private hintsHandle?: HintsHandle | undefined;
   /** slot index → its live cell. */
   private readonly handles = new Map<number, CellHandle>();
   private layoutUnsub: (() => void) | undefined;
@@ -65,6 +70,7 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
   constructor(
     private readonly cfg: SlotsViewConfig,
     private readonly cell: CellPresenter<TId>,
+    private readonly hints: HintsPresenter,
     private readonly layout: PanelLayout,
   ) {}
 
@@ -77,14 +83,9 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
     this.scene = scene;
     const renderer = scene.context.tryResolve(RendererKey);
     if (renderer) this.layout.setViewport(renderer.virtualSize.width, renderer.virtualSize.height);
-    // Scroll hints sit outside the window rect, so their spawn-first paint
-    // order never fights the cells.
-    const hints = scene.spawn("inv-slots-hints");
-    hints.add(new Transform());
-    this.hints = {
-      entity: hints,
-      gfx: hints.add(new GraphicsComponent({ layer: this.cfg.layerContent })),
-    };
+    // Scroll hints sit outside the window rect; the preset spawns first so it
+    // paints under the cells.
+    this.hintsHandle = this.hints.render(scene, this.hintsState());
     this.layoutUnsub = this.layout.onChange(() => this.rebuild());
     for (const message of this.cfg.mountWarnings ?? []) this.warn?.(message);
     this.warnIfOverflowing();
@@ -142,13 +143,13 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
     this.slots = [];
     for (const h of this.handles.values()) h.dispose();
     this.handles.clear();
-    this.hints?.gfx.draw((g) => g.clear());
+    this.hintsHandle?.update(this.hintsState());
   }
 
   dispose(): void {
     this.clear();
-    this.hints?.entity.destroy();
-    this.hints = undefined;
+    this.hintsHandle?.dispose();
+    this.hintsHandle = undefined;
     this.cell.dispose?.();
     this.layoutUnsub?.();
     this.layoutUnsub = undefined;
@@ -191,38 +192,26 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
       if (!r) continue;
       this.handles.set(view.slot, this.cell.renderCell(scene, view, r, view.slot === this.selected));
     }
-    this.drawHints(origin);
+    this.hintsHandle?.update(this.hintsState());
     this.applyHidden();
   }
 
-  /** Small ▲/▼ hints at the window's right edge when rows are scrolled out. */
-  private drawHints(origin: { x: number; y: number }): void {
+  /** What the hints preset needs: which directions have rows past the window,
+   *  and the window rect they sit against. */
+  private hintsState(): HintsState {
+    const origin = this.origin();
     const size = cellWindowSize(this.spec());
     const totalRows = cellRowCount(this.slots.length, this.cfg.columns);
-    const x = origin.x + size.width + 6;
-    this.hints?.gfx.draw((g) => {
-      g.clear();
-      if (this.scrollRow > 0) {
-        g.moveTo(x, origin.y + 6)
-          .lineTo(x + 8, origin.y + 6)
-          .lineTo(x + 4, origin.y)
-          .closePath()
-          .fill({ color: this.cfg.hintColor, alpha: this.cfg.hintAlpha });
-      }
-      if (this.scrollRow + this.cfg.visibleRows < totalRows) {
-        const y = origin.y + size.height;
-        g.moveTo(x, y - 6)
-          .lineTo(x + 8, y - 6)
-          .lineTo(x + 4, y)
-          .closePath()
-          .fill({ color: this.cfg.hintColor, alpha: this.cfg.hintAlpha });
-      }
-    });
+    return {
+      up: this.scrollRow > 0,
+      down: this.scrollRow + this.cfg.visibleRows < totalRows,
+      window: { x: origin.x, y: origin.y, width: size.width, height: size.height },
+    };
   }
 
   private applyHidden(): void {
     const visible = !this.hidden;
-    if (this.hints) this.hints.gfx.graphics.visible = visible;
+    this.hintsHandle?.setVisible(visible);
     for (const h of this.handles.values()) h.setVisible(visible);
   }
 

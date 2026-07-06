@@ -23,9 +23,11 @@
  * a host menu's layout, and the controller's `input: null` hands driving over.
  */
 
-import type { CellPresenter, InventoryBundle, Rect } from "../adapter.js";
+import type { CellPresenter, HintsPresenter, InventoryBundle, MenuSkinPresenter, Rect } from "../adapter.js";
 import { SlotsView } from "../render/SlotsView.js";
 import { iconCell } from "../render/iconCell.js";
+import { hints as defaultHints } from "../render/hints.js";
+import { menuSkin as defaultMenuSkin } from "../render/menuSkin.js";
 import { cellWindowSize } from "../render/cellGeometry.js";
 import { DETAIL_GAP, HEADER_GAP, PanelLayout } from "../render/PanelLayout.js";
 import type { InventoryTheme } from "./theme.js";
@@ -37,10 +39,22 @@ import { normalizeGap, solveAxis } from "./solvePanelGeometry.js";
  *  the factory calls it with the resolved theme. */
 export type CellPresenterFactory = (theme: InventoryTheme) => CellPresenter;
 
+/** Builds an action-menu skin from a theme (assign uncalled: `{ menuSkin }`). */
+export type MenuSkinFactory = (theme: InventoryTheme) => MenuSkinPresenter;
+
+/** Builds a scroll-hint preset from a theme (assign uncalled: `{ hints }`). */
+export type HintsFactory = (theme: InventoryTheme) => HintsPresenter;
+
 export interface InventoryPanelOptions {
   /** Cell look. Default {@link iconCell} (an icon grid). {@link rowCell} draws
    *  text rows (a list at `columns: 1`). */
   readonly cell?: CellPresenterFactory;
+  /** Action-menu drawing. Default the built-in framed list. The view keeps
+   *  placement + hit-testing; the skin only draws. */
+  readonly menuSkin?: MenuSkinFactory;
+  /** Scroll-hint drawing. Default the ▲/▼ triangles. The view computes what is
+   *  scrolled out; the preset only draws. */
+  readonly hints?: HintsFactory;
   /** Cells per row. Default: the preset's (5 for icons, 1 for rows). With
    *  `bounds` and no `cellWidth`, derived to fit. */
   readonly columns?: number;
@@ -84,6 +98,7 @@ export function createInventoryPanel(
   const detailGap = theme.detailGap ?? DETAIL_GAP;
 
   const cell = (opts.cell ?? iconCell)(theme);
+  const hintsPreset = (opts.hints ?? defaultHints)(theme);
   const gap = normalizeGap(opts.gap, cell.defaults);
 
   // `bounds` pins the panel and adds a per-axis size constraint; the solver
@@ -165,12 +180,11 @@ export function createInventoryPanel(
       gapX: gap.x,
       gapY: gap.y,
       wrap: opts.wrap,
-      hintColor: theme.highlightColor,
-      hintAlpha: theme.hintAlpha ?? 0.6,
       layerContent: theme.layerContent,
       mountWarnings,
     },
     cell,
+    hintsPreset,
     layout,
   );
 
@@ -179,7 +193,11 @@ export function createInventoryPanel(
     ...(withChrome ? { chrome: chromeFor(theme, layout, fonts) } : {}),
     ...(withDetail ? { detail: detailFor(theme, layout, fonts) } : {}),
     ...((opts.actionMenu ?? true)
-      ? { actionMenu: menuFor(theme, layout, fonts, () => slots.selectionAnchor()) }
+      ? {
+          actionMenu: menuFor(theme, layout, fonts, (opts.menuSkin ?? defaultMenuSkin)(theme), () =>
+            slots.selectionAnchor(),
+          ),
+        }
       : {}),
   };
 }

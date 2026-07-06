@@ -346,9 +346,47 @@ sensible default when omitted:
 | `headerGap` / `detailGap` | `10` / `10` |
 | `tileLetterColor` | `0x1a1a2e` |
 
-A drift-guard test keeps the theme-to-config mapping honest. To change how a
-cell looks beyond the theme, swap the cell preset. To change placement,
-windowing, or navigation behavior, replace the view.
+A drift-guard test keeps the theme-to-config mapping honest.
+
+**Textured chrome** is opt-in per surface via `textured?: { panel?, menu? }`.
+A present key swaps that surface's drawn frame for a stretched nine-slice
+texture — the panel keeps its divider lines, the menu keeps its highlight bar
+and labels:
+
+```ts
+const bundle = createInventoryPanel({
+  ...defaultInventoryTheme(),
+  textured: {
+    panel: { texture: "ui/panel.png", insets: { left: 12, top: 12, right: 12, bottom: 12 } },
+    menu: { texture: "ui/menu.png", insets: { left: 8, top: 8, right: 8, bottom: 8 } },
+  },
+});
+```
+
+Insets are the fixed corner sizes in source-texture pixels; the edges and
+center stretch to the frame. Textures are `TextureInput` (an asset key or a
+resolved `Texture`), so the theme stays serializable. Omit the field — or a
+single key — to keep the drawn Graphics frame.
+
+Beyond the theme dials, three **render-delegate presets** on the factory
+options own the drawing while the view keeps placement and hit-testing — so a
+restyle can never desync its hit-targets from what it draws:
+
+```ts
+const bundle = createInventoryPanel(theme, {
+  cell: rowCell,        // a cell's look (iconCell / rowCell built-in)
+  menuSkin: myMenuSkin, // the action-menu frame, rows, and highlight bar
+  hints: myHints,       // the scroll affordance (default ▲/▼ triangles)
+});
+```
+
+Each is a `(theme) => Presenter` passed **uncalled**; the factory calls it with
+the resolved theme, and the preset reads the shared tokens (palette, fonts,
+layers) so one theme keeps every surface consistent. `layoutActionMenu(...)` is
+exported for a wholesale menu replacement — it computes the menu size, the
+anchored/flipped/clamped placement, and the row rects, the way `cellGeometry`
+serves the grid. Changing placement, windowing, or navigation behavior means
+replacing the whole view.
 
 ## Standalone or embedded — one API
 
