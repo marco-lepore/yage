@@ -28,7 +28,7 @@ export class Process {
   /** Tags for filtering/grouping. */
   readonly tags: readonly string[];
 
-  private elapsed = 0;
+  private _elapsed = 0;
   private _completed = false;
   private _paused = false;
   private _cancelled = false;
@@ -58,6 +58,22 @@ export class Process {
   /** Whether the process is paused. */
   get paused(): boolean {
     return this._paused;
+  }
+
+  /**
+   * Seconds accumulated from the dt passed to `_update`, so it reflects any
+   * time scaling the caller applies (e.g. ProcessSystem's global, per-scene,
+   * and per-entity timeScale stacking). Does not advance while paused.
+   *
+   * On loop, resets to the remainder past `duration` for duration-based
+   * completion, or to 0 when the `update` callback returns `true`;
+   * otherwise holds its final value once the process completes.
+   *
+   * This is process time only — unaffected by a keyframe track's `speed`
+   * multiplier.
+   */
+  get elapsed(): number {
+    return this._elapsed;
   }
 
   /** Pause the process. */
@@ -92,13 +108,13 @@ export class Process {
   _update(dt: number): void {
     if (this._completed || this._paused || this._cancelled) return;
 
-    this.elapsed += dt;
+    this._elapsed += dt;
 
     // Check duration-based completion
-    if (this.duration !== undefined && this.elapsed >= this.duration) {
-      const result = this.updateFn(dt, this.elapsed);
+    if (this.duration !== undefined && this._elapsed >= this.duration) {
+      const result = this.updateFn(dt, this._elapsed);
       if (this.loop && result !== true) {
-        this.elapsed = this.elapsed % this.duration;
+        this._elapsed = this._elapsed % this.duration;
         return;
       }
       this.complete();
@@ -106,10 +122,10 @@ export class Process {
     }
 
     // Check callback-based completion
-    const result = this.updateFn(dt, this.elapsed);
+    const result = this.updateFn(dt, this._elapsed);
     if (result === true) {
       if (this.loop) {
-        this.elapsed = 0;
+        this._elapsed = 0;
         return;
       }
       this.complete();
@@ -121,7 +137,7 @@ export class Process {
    * @internal Used by Sequence for loop/repeat with direct instances.
    */
   _reset(): void {
-    this.elapsed = 0;
+    this._elapsed = 0;
     this._completed = false;
     this._paused = false;
     this._cancelled = false;
