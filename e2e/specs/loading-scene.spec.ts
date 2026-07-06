@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { getSceneStack, gotoFixture } from "./helpers";
+import { getSceneStack, gotoFixture, waitForSceneStackLength } from "./helpers";
 
 type LoadingTestHooks = {
   resolveAsset(path: string): boolean;
@@ -55,6 +55,9 @@ test.describe("LoadingScene fixture", () => {
     page,
   }) => {
     await gotoFixture(page, "/loading-scene.html");
+    // The fixture pushes boot-scene after engine.start() resolves; wait for it
+    // before reading the stack rather than racing the push.
+    await waitForSceneStackLength(page, 1);
 
     let stack = await getSceneStack(page);
     expect(stack).toHaveLength(1);

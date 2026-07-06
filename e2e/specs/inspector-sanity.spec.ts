@@ -6,12 +6,16 @@ import {
   gotoFixture,
   stepFrames,
   waitForClock,
+  waitForSceneStackLength,
 } from "./helpers";
 
 test.describe("Inspector scene sanity", () => {
   test("inspector sees initial scene and delayed push", async ({ page }) => {
     await gotoFixture(page, "/inspector-scene.html");
     await waitForClock(page);
+    // The fixture pushes base-scene after engine.start() resolves; wait for it
+    // before reading the stack rather than relying on waitForClock's slack.
+    await waitForSceneStackLength(page, 1);
 
     const initialStack = await getSceneStack(page);
     expect(initialStack).toHaveLength(1);

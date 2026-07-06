@@ -1,9 +1,18 @@
 import { expect, test } from "@playwright/test";
-import { getEntityByName, getSceneStack, gotoFixture } from "./helpers";
+import {
+  getEntityByName,
+  getSceneStack,
+  gotoFixture,
+  waitForSceneStackLength,
+  waitForTopScene,
+} from "./helpers";
 
 test.describe("Scene stack fixture", () => {
   test("pushes, pops, and replaces scenes deterministically", async ({ page }) => {
     await gotoFixture(page, "/scene-stack.html");
+    // The fixture pushes base-scene after engine.start() resolves; gotoFixture
+    // only waits for the inspector to exist, so gate on the scene being present.
+    await waitForSceneStackLength(page, 1);
 
     let stack = await getSceneStack(page);
     expect(stack).toHaveLength(1);
@@ -19,6 +28,7 @@ test.describe("Scene stack fixture", () => {
       }).__sceneStackTest__.pushOverlay();
     });
 
+    await waitForTopScene(page, "overlay-scene");
     stack = await getSceneStack(page);
     expect(stack).toHaveLength(2);
     expect(stack[0]).toMatchObject({
@@ -39,6 +49,7 @@ test.describe("Scene stack fixture", () => {
       ).__sceneStackTest__.popTop();
     });
 
+    await waitForTopScene(page, "base-scene");
     stack = await getSceneStack(page);
     expect(stack).toHaveLength(1);
     expect(stack[0]).toMatchObject({
@@ -56,6 +67,7 @@ test.describe("Scene stack fixture", () => {
       ).__sceneStackTest__.replaceWithReplacement();
     });
 
+    await waitForTopScene(page, "replacement-scene");
     stack = await getSceneStack(page);
     expect(stack).toHaveLength(1);
     expect(stack[0]).toMatchObject({

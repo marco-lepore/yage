@@ -39,14 +39,17 @@ export async function waitForInspector(page: Page): Promise<void> {
 }
 
 export async function waitForClock(page: Page): Promise<void> {
-  await page.waitForFunction(() => window.__yage__?.inspector?.time !== undefined);
-  await page.evaluate(() => {
-    const inspector = window.__yage__?.inspector;
-    if (!inspector) {
-      throw new Error("__yage__.inspector is not available.");
-    }
-    if (!inspector.time.isFrozen()) {
-      inspector.time.freeze();
+  // `inspector.time` exists the instant the Inspector is exposed, but freeze()
+  // throws until DebugPlugin attaches its clock during onStart — a window wide
+  // enough to race under parallel workers. Poll until freeze() stops throwing.
+  await page.waitForFunction(() => {
+    const time = window.__yage__?.inspector?.time;
+    if (!time) return false;
+    try {
+      if (!time.isFrozen()) time.freeze();
+      return true;
+    } catch {
+      return false;
     }
   });
 }
@@ -92,6 +95,21 @@ export async function waitForSceneStackLength(
   await page.waitForFunction(
     (len) => window.__yage__?.inspector.getSceneStack().length === len,
     expectedLength,
+    { timeout },
+  );
+}
+
+// Async scene ops (push/pop/replace) can resolve while the stack is mid-swap —
+// replace() briefly empties it. Gate on the expected top scene by name, which
+// length can't distinguish when two states share a count (base vs replacement).
+export async function waitForTopScene(
+  page: Page,
+  name: string,
+  timeout = 5_000,
+): Promise<void> {
+  await page.waitForFunction(
+    (n) => window.__yage__?.inspector.getSceneStack().at(-1)?.name === n,
+    name,
     { timeout },
   );
 }
