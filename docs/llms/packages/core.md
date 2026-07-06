@@ -167,7 +167,7 @@ Negative scale on a child still composes — a child with `setScale(-1, 1)` unde
 
 | Export | Purpose |
 |---|---|
-| `Process` | Frame-updated action; `Process.delay(seconds, cb)` |
+| `Process` | Frame-updated action; `Process.delay(seconds, cb)`; `.elapsed` — seconds ticked so far, scaled by the caller's timeScale |
 | `ProcessComponent` | Entity component managing processes and slots |
 | `ProcessSlot` | Reusable restartable handle (cooldowns, effects) |
 | `Tween` | Static factory: `to`, `custom`, `vec2`, `stagger` |

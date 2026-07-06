@@ -187,6 +187,37 @@ describe("Process", () => {
     expect(update).toHaveBeenCalled();
   });
 
+  it("elapsed starts at 0", () => {
+    const proc = new Process({ update: () => {} });
+    expect(proc.elapsed).toBe(0);
+  });
+
+  it("elapsed advances by ticked dt", () => {
+    const proc = new Process({ update: () => {} });
+    proc._update(16);
+    expect(proc.elapsed).toBe(16);
+    proc._update(10);
+    expect(proc.elapsed).toBe(26);
+  });
+
+  it("elapsed does not advance while paused", () => {
+    const proc = new Process({ update: () => {} });
+    proc._update(16);
+    proc.pause();
+    proc._update(16);
+    expect(proc.elapsed).toBe(16);
+  });
+
+  it("elapsed holds its final value once completed", () => {
+    const proc = new Process({ duration: 100, update: () => {} });
+    proc._update(60);
+    proc._update(60); // overshoots and completes
+    expect(proc.completed).toBe(true);
+    expect(proc.elapsed).toBe(120);
+    proc._update(16); // no further ticking once completed
+    expect(proc.elapsed).toBe(120);
+  });
+
   it("stores tags", () => {
     const proc = new Process({
       update: () => {},
