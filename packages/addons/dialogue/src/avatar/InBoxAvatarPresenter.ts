@@ -76,6 +76,8 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   /** Host-hidden gate (a cutscene hides the avatar with the rest of the UI). */
   private hidden = false;
   private readonly handles = new Map<string, TextureHandle>();
+  /** Unsubscribe for the layout `onChange` listener, released in `dispose()`. */
+  private layoutUnsub: (() => void) | undefined;
 
   constructor(
     private readonly layout: BoxLayout,
@@ -85,7 +87,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
     // avatar.present() BEFORE the chrome commits this line's frame (and a choice
     // grows it later still), so place() in present() alone would read a stale
     // rect — this follows every commit, like DialogueChrome's applyGeometry.
-    this.layout.onChange(() => this.place());
+    this.layoutUnsub = this.layout.onChange(() => this.place());
   }
 
   mount(scene: Scene): void {
@@ -137,6 +139,8 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
   update(): void {}
 
   dispose(): void {
+    this.layoutUnsub?.();
+    this.layoutUnsub = undefined;
     this.layout.setInset(this.insetKey, undefined);
     this.entity?.destroy();
     this.bgEntity?.destroy();
@@ -146,6 +150,7 @@ export class InBoxAvatarPresenter implements AvatarPresenter {
     this.bg = undefined;
     this.transform = undefined;
     this.bgTransform = undefined;
+    this.scene = undefined;
   }
 
   /** Centre the portrait (+ its panel) in its reserved column, inset by the box

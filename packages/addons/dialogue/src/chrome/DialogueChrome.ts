@@ -106,6 +106,9 @@ export class DialogueChrome implements ChromePresenter {
   private visible = false;
   private nameShown = false;
   private caretShown = false;
+  /** Unsubscribe for the layout `onChange` listener, released in `dispose()` so
+   *  a re-added chrome doesn't stack listeners over a stale entity graph. */
+  private layoutUnsub: (() => void) | undefined;
 
   constructor(
     private readonly cfg: DialogueChromeConfig,
@@ -113,7 +116,7 @@ export class DialogueChrome implements ChromePresenter {
   ) {
     // A choice grows the frame AFTER this chrome presented its prompt line — so
     // re-place the frame + nameplate + caret when the owner's geometry changes.
-    this.layout.onChange(() => this.applyGeometry());
+    this.layoutUnsub = this.layout.onChange(() => this.applyGeometry());
   }
 
   /** Route the unknown-`meta.chrome` warning to the engine Logger. */
@@ -294,6 +297,8 @@ export class DialogueChrome implements ChromePresenter {
   }
 
   dispose(): void {
+    this.layoutUnsub?.();
+    this.layoutUnsub = undefined;
     this.frame?.destroy();
     this.frameTex?.destroy();
     this.name?.entity.destroy();

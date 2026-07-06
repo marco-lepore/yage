@@ -85,9 +85,14 @@ export class BubbleLayout {
 
   /** Register a callback fired when the active bubble content size changes (a
    *  say line sizes its bubble, or a choice commits its panel) — the in-bubble
-   *  avatar re-places. */
-  onChange(listener: () => void): void {
+   *  avatar re-places. Returns an unsubscribe; presenters call it in `dispose()`
+   *  so a disposed presenter can't be re-placed against a retained layout. */
+  onChange(listener: () => void): () => void {
     this.listeners.push(listener);
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i !== -1) this.listeners.splice(i, 1);
+    };
   }
 
   /** The current bubble content size the avatar centres in (say bubble or choice

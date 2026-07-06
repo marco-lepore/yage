@@ -57,6 +57,8 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   private shown = false;
   private hidden = false;
   private readonly handles = new Map<string, TextureHandle>();
+  /** Unsubscribe for the layout `onChange` listener, released in `dispose()`. */
+  private layoutUnsub: (() => void) | undefined;
 
   constructor(
     private readonly layout: BubbleLayout,
@@ -64,7 +66,7 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   ) {
     // Follow the active bubble content rect — a say bubble (sized after this
     // avatar presents) or a choice panel (committed later still). Both notify.
-    this.layout.onChange(() => this.follow());
+    this.layoutUnsub = this.layout.onChange(() => this.follow());
   }
 
   mount(scene: Scene): void {
@@ -114,6 +116,8 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
   }
 
   dispose(): void {
+    this.layoutUnsub?.();
+    this.layoutUnsub = undefined;
     this.entity?.destroy();
     this.bgEntity?.destroy();
     this.entity = undefined;
@@ -122,6 +126,7 @@ export class BubbleAvatarPresenter implements AvatarPresenter {
     this.bg = undefined;
     this.transform = undefined;
     this.bgTransform = undefined;
+    this.scene = undefined;
   }
 
   /** Place the portrait in its reserved column INSIDE the active bubble (say

@@ -127,9 +127,15 @@ export class BoxLayout {
   }
 
   /** Register a callback fired when the committed frame changes (a choice grows
-   *  it, or an inset reflows the text) — the chrome redraws, the text re-places. */
-  onChange(listener: () => void): void {
+   *  it, or an inset reflows the text) — the chrome redraws, the text re-places.
+   *  Returns an unsubscribe; presenters call it in `dispose()` so a disposed
+   *  presenter can't be re-placed against a retained layout. */
+  onChange(listener: () => void): () => void {
     this.listeners.push(listener);
+    return () => {
+      const i = this.listeners.indexOf(listener);
+      if (i !== -1) this.listeners.splice(i, 1);
+    };
   }
 
   /** The frame rect for the current line (read by the chrome to draw + place). */
