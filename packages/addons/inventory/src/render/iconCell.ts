@@ -30,6 +30,7 @@ const DEFAULT_TILE_LETTER_COLOR = 0x1a1a2e;
 interface IconCellConfig extends FontConfig {
   readonly cellColor: number;
   readonly cellBorderColor: number;
+  readonly cellRadius: number;
   readonly highlightColor: number;
   readonly quantitySize: number;
   readonly quantityColor: number;
@@ -64,6 +65,7 @@ class IconCellPresenter implements CellPresenter {
     this.cfg = {
       cellColor: theme.cellColor,
       cellBorderColor: theme.cellBorderColor,
+      cellRadius: theme.cellRadius ?? theme.cornerRadius / 2,
       highlightColor: theme.highlightColor,
       quantitySize: theme.quantitySize,
       quantityColor: theme.quantityColor,
@@ -95,18 +97,18 @@ class IconCellPresenter implements CellPresenter {
     const draw = (sel: boolean): void => {
       bg.draw((g) => {
         g.clear();
-        g.roundRect(r.x, r.y, r.width, r.height, 4)
+        g.roundRect(r.x, r.y, r.width, r.height, this.cfg.cellRadius)
           .fill({ color: this.cfg.cellColor })
           .stroke({ color: this.cfg.cellBorderColor, width: 1 });
         if (tile !== undefined) {
           const inset = 8;
-          g.roundRect(r.x + inset, r.y + inset, r.width - 2 * inset, r.height - 2 * inset, 4).fill({
+          g.roundRect(r.x + inset, r.y + inset, r.width - 2 * inset, r.height - 2 * inset, this.cfg.cellRadius).fill({
             color: tile,
             alpha: 0.9,
           });
         }
         if (sel) {
-          g.roundRect(r.x - 1, r.y - 1, r.width + 2, r.height + 2, 5).stroke({
+          g.roundRect(r.x - 1, r.y - 1, r.width + 2, r.height + 2, this.cfg.cellRadius + 1).stroke({
             color: this.cfg.highlightColor,
             width: 2,
           });

@@ -29,6 +29,8 @@ interface RowCellConfig extends FontConfig {
   readonly quantitySize: number;
   readonly quantityColor: number;
   readonly highlightColor: number;
+  readonly highlightRadius: number;
+  readonly rowHighlightAlpha: number;
   readonly layerContent: string;
 }
 
@@ -57,6 +59,8 @@ class RowCellPresenter implements CellPresenter {
       quantitySize: theme.quantitySize,
       quantityColor: theme.quantityColor,
       highlightColor: theme.highlightColor,
+      highlightRadius: theme.highlightRadius ?? Math.max((theme.cellRadius ?? theme.cornerRadius / 2) - 1, 0),
+      rowHighlightAlpha: theme.rowHighlightAlpha ?? 0.22,
       layerContent: theme.layerContent,
       bitmapFont: theme.bitmapFont,
       fontFamily: theme.fontFamily,
@@ -74,9 +78,9 @@ class RowCellPresenter implements CellPresenter {
       bar.draw((g) => {
         g.clear();
         if (sel) {
-          g.roundRect(r.x, r.y, r.width, r.height - 1, 3).fill({
+          g.roundRect(r.x, r.y, r.width, r.height - 1, this.cfg.highlightRadius).fill({
             color: this.cfg.highlightColor,
-            alpha: 0.22,
+            alpha: this.cfg.rowHighlightAlpha,
           });
         }
       });

@@ -166,6 +166,7 @@ export function createInventoryPanel(
       gapY: gap.y,
       wrap: opts.wrap,
       hintColor: theme.highlightColor,
+      hintAlpha: theme.hintAlpha ?? 0.6,
       layerContent: theme.layerContent,
       mountWarnings,
     },

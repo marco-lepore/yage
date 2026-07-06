@@ -328,13 +328,27 @@ selected cell — each omittable.
 
 `defaultInventoryTheme()` matches the dialogue addon's palette;
 spread-and-tweak (`{ ...defaultInventoryTheme(), highlightColor: 0xff5555 }`)
-or restyle wholesale. The theme carries palette and text only — every color,
-the type sizes, the `tileColors` palette + `tileLetterColor`, and the layer
-names (a drift-guard test keeps the mapping honest). A few spacing knobs are
-optional theme fields that derive a default when omitted — `descriptionSize`,
-`menu.padding` / `menu.rowGap`, `headerGap` / `detailGap`, and `tileLetterColor`.
-Writing a custom cell preset is the escape hatch when the built-ins aren't
-enough.
+or restyle wholesale. The theme is a flat data object that covers any pure data
+the built-in renderers consume: colors, sizes, alphas, radii, layer names, and
+(optionally) texture keys for nine-slice chrome. Optional fields derive a
+sensible default when omitted:
+
+| Field | Derives |
+|---|---|
+| `borderWidth` | `1.5` (panel stroke only) |
+| `cellRadius` | `cornerRadius / 2` |
+| `highlightRadius` | `max(cellRadius − 1, 0)` |
+| `rowHighlightAlpha` | `0.22` |
+| `hintAlpha` | `0.6` |
+| `menu.highlightAlpha` | `0.45` |
+| `descriptionSize` | `textSize - 2` |
+| `menu.padding` / `menu.rowGap` | `10` / `6` |
+| `headerGap` / `detailGap` | `10` / `10` |
+| `tileLetterColor` | `0x1a1a2e` |
+
+A drift-guard test keeps the theme-to-config mapping honest. To change how a
+cell looks beyond the theme, swap the cell preset. To change placement,
+windowing, or navigation behavior, replace the view.
 
 ## Standalone or embedded — one API
 

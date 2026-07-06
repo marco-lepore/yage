@@ -17,6 +17,8 @@ export interface InventoryChromeConfig extends FontConfig {
   readonly frameAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
+  /** Panel-frame stroke width. */
+  readonly borderWidth: number;
   readonly titleSize: number;
   readonly titleColor: number;
   readonly quantitySize: number;
@@ -113,7 +115,7 @@ export class InventoryChrome implements ChromePresenter {
       });
       g.roundRect(panel.x, panel.y, panel.width, panel.height, this.cfg.cornerRadius).stroke({
         color: this.cfg.borderColor,
-        width: 1.5,
+        width: this.cfg.borderWidth,
       });
       if (header.height > 0) {
         const y = header.y + header.height + 4;

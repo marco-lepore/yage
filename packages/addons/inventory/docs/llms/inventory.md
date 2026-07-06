@@ -306,15 +306,20 @@ anchors beside the selected cell. `INVENTORY_LAYERS` (screen-space, orders
 1050–1070) sit BELOW the dialogue addon's 1100+ so a conversation plays over an
 open inventory.
 
-`InventoryTheme` is one flat data object of PALETTE + text, no layout: padding,
-frame colors + cornerRadius, title, cell colors + `highlightColor` (cursor),
-text/quantity/description colors, action-menu colors, `detailHeight`,
-`tileColors` palette + `tileLetterColor`, `fontFamily` / opt-in `bitmapFont` /
-`resolution`, and the three layer names. `frameAlpha` applies to both the panel
-chrome and the action-menu popup. A few spacing/size fields are optional and
-derive a default when omitted: `descriptionSize` (`textSize - 2`), `menu.padding`
-/ `menu.rowGap` (10 / 6), `headerGap` / `detailGap` (10 / 10), and
-`tileLetterColor` (`0x1a1a2e`). Spread-and-tweak the default:
+`InventoryTheme` is a flat data object: every field a built-in renderer reads.
+It covers colors, sizes, alphas, radii, layer names, and texture keys/insets.
+Cell geometry (columns, cell size, gaps) is NOT here — it lives on the factory
+options. Optional fields derive a default when omitted: `borderWidth` (panel
+stroke → `1.5`), `cellRadius` (cell bg + tile radius → `cornerRadius / 2`),
+`highlightRadius` (row/menu bar radius → `max(cellRadius − 1, 0)`),
+`rowHighlightAlpha` (row bar fill alpha → `0.22`), `hintAlpha` (scroll-hint
+alpha → `0.6`), `menu.highlightAlpha` (menu bar fill alpha → `0.45`),
+`descriptionSize` (`textSize - 2`), `menu.padding` / `menu.rowGap` (10 / 6),
+`headerGap` / `detailGap` (10 / 10), `tileLetterColor` (`0x1a1a2e`).
+`frameAlpha` applies to both the panel chrome and the action-menu popup.
+Swap a cell preset to change how cells draw beyond the theme's dials. Replace a
+view (`SlotsPresenter`, `ActionMenuPresenter`) to change behavior.
+Spread-and-tweak the default:
 
 ```ts
 import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";

@@ -12,9 +12,10 @@ import type { Rect } from "../adapter.js";
 import type { FontConfig } from "../render/textOptions.js";
 import type { InventoryTheme } from "./theme.js";
 
-/** Action-menu spacing used when the theme omits `menu.*`. */
+/** Action-menu spacing and style used when the theme omits `menu.*`. */
 const DEFAULT_MENU_PADDING = 10;
 const DEFAULT_MENU_ROW_GAP = 6;
+const DEFAULT_MENU_HIGHLIGHT_ALPHA = 0.45;
 
 /** The font triplet shared by every presenter config. */
 export function themeFonts(theme: InventoryTheme): FontConfig {
@@ -36,6 +37,7 @@ export function chromeFor(
       frameAlpha: theme.frameAlpha,
       borderColor: theme.borderColor,
       cornerRadius: theme.cornerRadius,
+      borderWidth: theme.borderWidth ?? 1.5,
       titleSize: theme.titleSize,
       titleColor: theme.titleColor,
       quantitySize: theme.quantitySize,
@@ -80,6 +82,8 @@ export function menuFor(
       cornerRadius: theme.cornerRadius,
       padding: theme.menu?.padding ?? DEFAULT_MENU_PADDING,
       rowGap: theme.menu?.rowGap ?? DEFAULT_MENU_ROW_GAP,
+      highlightRadius: theme.highlightRadius ?? Math.max((theme.cellRadius ?? theme.cornerRadius / 2) - 1, 0),
+      highlightAlpha: theme.menu?.highlightAlpha ?? DEFAULT_MENU_HIGHLIGHT_ALPHA,
       layerOverlay: theme.layerOverlay,
       ...fonts,
     },

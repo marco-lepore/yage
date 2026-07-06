@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createInventoryPanel } from "./createInventoryPanel.js";
 import { rowCell } from "../render/rowCell.js";
 import { defaultInventoryTheme } from "./defaultTheme.js";
+import type { InventoryBundle } from "../adapter.js";
 import type { InventoryTheme } from "./theme.js";
 import type { InventoryPanelOptions } from "./createInventoryPanel.js";
 
@@ -47,11 +48,16 @@ function sentinelTheme(): InventoryTheme {
     frameAlpha: n(),
     borderColor: n(),
     cornerRadius: n(),
+    borderWidth: n(),
     titleSize: n(),
     titleColor: n(),
     cellColor: n(),
     cellBorderColor: n(),
+    cellRadius: n(),
     highlightColor: n(),
+    highlightRadius: n(),
+    rowHighlightAlpha: n(),
+    hintAlpha: n(),
     textSize: n(),
     textColor: n(),
     quantitySize: n(),
@@ -61,7 +67,7 @@ function sentinelTheme(): InventoryTheme {
     actionColor: n(),
     actionSelectedColor: n(),
     actionHighlightColor: n(),
-    menu: { padding: n(), rowGap: n() },
+    menu: { padding: n(), rowGap: n(), highlightAlpha: n() },
     detailHeight: n(),
     headerGap: n(),
     detailGap: n(),
@@ -123,5 +129,56 @@ describe("defaultInventoryTheme", () => {
     const b = defaultInventoryTheme();
     expect(a).not.toBe(b);
     expect(a).toEqual(b);
+  });
+});
+
+// Access private class config objects via runtime reflection. TypeScript's
+// `private` is compile-time only — the fields are plain enumerable own properties.
+function cfg(obj: unknown): Record<string, unknown> {
+  return (obj as Record<string, unknown>)["cfg"] as Record<string, unknown>;
+}
+
+describe("optional-derived field defaults", () => {
+  // Use cornerRadius: 22 → cellRadius derives to 11, highlightRadius to 10.
+  // These values are unlikely to appear elsewhere in the config.
+  const baseWith22 = { ...defaultInventoryTheme(), cornerRadius: 22 };
+
+  it("cellRadius derives from cornerRadius / 2", () => {
+    const bundle = createInventoryPanel(baseWith22);
+    // iconCell (default) stores cellRadius in its cfg
+    const slots = bundle.slots as unknown as Record<string, unknown>;
+    expect(cfg(slots["cell"]).cellRadius).toBe(11);
+  });
+
+  it("highlightRadius derives from max(cellRadius − 1, 0) (menu bar)", () => {
+    const bundle = createInventoryPanel(baseWith22);
+    expect(cfg(bundle.actionMenu as InventoryBundle["actionMenu"]).highlightRadius).toBe(10);
+  });
+
+  it("highlightRadius derives from max(cellRadius − 1, 0) (row bar)", () => {
+    const bundle = createInventoryPanel(baseWith22, { cell: rowCell });
+    const slots = bundle.slots as unknown as Record<string, unknown>;
+    expect(cfg(slots["cell"]).highlightRadius).toBe(10);
+  });
+
+  it("rowHighlightAlpha defaults to 0.22", () => {
+    const bundle = createInventoryPanel(defaultInventoryTheme(), { cell: rowCell });
+    const slots = bundle.slots as unknown as Record<string, unknown>;
+    expect(cfg(slots["cell"]).rowHighlightAlpha).toBe(0.22);
+  });
+
+  it("menu.highlightAlpha defaults to 0.45", () => {
+    const bundle = createInventoryPanel(defaultInventoryTheme());
+    expect(cfg(bundle.actionMenu as InventoryBundle["actionMenu"]).highlightAlpha).toBe(0.45);
+  });
+
+  it("hintAlpha defaults to 0.6", () => {
+    const bundle = createInventoryPanel(defaultInventoryTheme());
+    expect(cfg(bundle.slots).hintAlpha).toBe(0.6);
+  });
+
+  it("borderWidth defaults to 1.5", () => {
+    const bundle = createInventoryPanel(defaultInventoryTheme());
+    expect(cfg(bundle.chrome as InventoryBundle["chrome"]).borderWidth).toBe(1.5);
   });
 });

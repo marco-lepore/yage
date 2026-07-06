@@ -27,6 +27,10 @@ export interface ActionMenuConfig extends FontConfig {
   readonly padding: number;
   /** Vertical gap between menu rows. */
   readonly rowGap: number;
+  /** Corner radius for the action-menu highlight bar. */
+  readonly highlightRadius: number;
+  /** Fill alpha for the action-menu highlight bar. */
+  readonly highlightAlpha: number;
   /** Everything menu (frame, bar, labels) — one overlay layer above the panel. */
   readonly layerOverlay: string;
 }
@@ -141,9 +145,9 @@ export class ActionMenuView implements ActionMenuPresenter {
     this.bar?.gfx.draw((g) => {
       g.clear();
       if (!r) return;
-      g.roundRect(r.x, r.y, r.width, r.height - 2, 3).fill({
+      g.roundRect(r.x, r.y, r.width, r.height - 2, this.cfg.highlightRadius).fill({
         color: this.cfg.actionHighlightColor,
-        alpha: 0.45,
+        alpha: this.cfg.highlightAlpha,
       });
     });
   }

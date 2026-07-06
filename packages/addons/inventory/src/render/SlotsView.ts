@@ -37,6 +37,8 @@ export interface SlotsViewConfig {
   readonly wrap?: boolean | undefined;
   /** Scroll-hint (▲/▼) color. */
   readonly hintColor: number;
+  /** Scroll-hint fill alpha. */
+  readonly hintAlpha: number;
   /** Everything the view and its cells draw sit on ONE layer, stacked by
    *  spawn order. The chrome frame lives on the lower panel layer. */
   readonly layerContent: string;
@@ -205,7 +207,7 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
           .lineTo(x + 8, origin.y + 6)
           .lineTo(x + 4, origin.y)
           .closePath()
-          .fill({ color: this.cfg.hintColor, alpha: 0.6 });
+          .fill({ color: this.cfg.hintColor, alpha: this.cfg.hintAlpha });
       }
       if (this.scrollRow + this.cfg.visibleRows < totalRows) {
         const y = origin.y + size.height;
@@ -213,7 +215,7 @@ export class SlotsView<TId extends string = string> implements SlotsPresenter<TI
           .lineTo(x + 8, y - 6)
           .lineTo(x + 4, y)
           .closePath()
-          .fill({ color: this.cfg.hintColor, alpha: 0.6 });
+          .fill({ color: this.cfg.hintColor, alpha: this.cfg.hintAlpha });
       }
     });
   }

@@ -13,6 +13,12 @@
  * chrome + canvas text, colored-tile icons), so the factories work with no
  * caller-supplied theme. Bitmap fonts (`bitmapFont`) are an OPT-IN
  * crisp-pixel path; item icons are opt-in per item via `ItemDef.icon`.
+ *
+ * **Theme = data, presets = code.** Any pure data a built-in renderer consumes
+ * (colors, sizes, alphas, radii, texture keys/insets) is a theme field.
+ * Drawing code goes in swappable cell presets; behavior stays in views.
+ * Optional fields derive a sensible default when omitted so the built-in look
+ * is reproduced with zero configuration.
  */
 
 export interface InventoryTheme {
@@ -24,6 +30,9 @@ export interface InventoryTheme {
   readonly frameAlpha: number;
   readonly borderColor: number;
   readonly cornerRadius: number;
+  /** Panel-frame stroke width. Omit to derive `1.5`. Menu-frame, cell-border,
+   *  and cursor stroke widths are presenter-internal. */
+  readonly borderWidth?: number;
 
   // --- Header (title + slot counter) ---
   readonly titleSize: number;
@@ -32,8 +41,21 @@ export interface InventoryTheme {
   // --- Slot cells ---
   readonly cellColor: number;
   readonly cellBorderColor: number;
-  /** Selection cursor (cell outline / row bar). */
+  /** Corner radius for the cell background and fallback tile. Omit to derive
+   *  `cornerRadius / 2`. The selection cursor radius is `cellRadius + 1`
+   *  (presenter-internal). */
+  readonly cellRadius?: number;
+
+  // --- Selection / highlights ---
+  /** Selection cursor color (cell outline / row bar / menu highlight bar). */
   readonly highlightColor: number;
+  /** Corner radius for the row-bar and menu-bar highlights. Omit to derive
+   *  `max(cellRadius − 1, 0)`. */
+  readonly highlightRadius?: number;
+  /** Fill alpha for the row-bar selection highlight. Omit to derive `0.22`. */
+  readonly rowHighlightAlpha?: number;
+  /** Fill alpha for the scroll-hint triangles (▲/▼). Omit to derive `0.6`. */
+  readonly hintAlpha?: number;
 
   // --- Content text ---
   readonly textSize: number;
@@ -49,8 +71,14 @@ export interface InventoryTheme {
   readonly actionColor: number;
   readonly actionSelectedColor: number;
   readonly actionHighlightColor: number;
-  /** Action-menu inner spacing. Omit either to derive: `padding` 10, `rowGap` 6. */
-  readonly menu?: { readonly padding?: number; readonly rowGap?: number };
+  /** Action-menu inner spacing and overlay style. Omit fields to derive:
+   *  `padding` 10, `rowGap` 6, `highlightAlpha` 0.45. */
+  readonly menu?: {
+    readonly padding?: number;
+    readonly rowGap?: number;
+    /** Fill alpha for the action-menu highlight bar. Omit to derive `0.45`. */
+    readonly highlightAlpha?: number;
+  };
 
   // --- Detail band ---
   /** Height of the selected-item pane at the panel bottom. */
@@ -60,6 +88,7 @@ export interface InventoryTheme {
   /** Gap between the content window and the detail band. Omit to derive 10. */
   readonly detailGap?: number;
 
+  // --- Tile fallback ---
   /** Fallback tile palette for icon-less items — a stable color is picked per
    *  item id. An item pins its own via `ItemDef.color`. */
   readonly tileColors?: readonly number[];

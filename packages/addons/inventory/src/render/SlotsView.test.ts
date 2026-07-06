@@ -80,6 +80,7 @@ function makeView(cfgOverride: Partial<SlotsViewConfig> = {}): {
     gapX: 4,
     gapY: 4,
     hintColor: 0xffff00,
+    hintAlpha: 0.6,
     layerContent: "content",
     ...cfgOverride,
   };
