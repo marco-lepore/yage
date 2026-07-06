@@ -11,7 +11,7 @@ import { GraphicsComponent, measureWrappedText, RendererKey, TextComponent } fro
 import type { PresentedAction } from "../core/session.js";
 import type { ActionMenuPresenter } from "../adapter.js";
 import type { PanelLayout } from "./PanelLayout.js";
-import type { Rect } from "./gridGeometry.js";
+import type { Rect } from "../adapter.js";
 import { makeTextOptions, type FontConfig } from "./textOptions.js";
 
 export interface ActionMenuConfig extends FontConfig {

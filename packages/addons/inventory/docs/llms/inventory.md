@@ -22,14 +22,14 @@ optional peer (only the `./presenters` subpath needs it). No runtime deps.
   `Inventory` (the model), comparators, `InventorySession` + channel contracts,
   `InventoryController` (a `@yagejs/core` Component), engine events,
   `@yagejs/input` bindings. **MUST NOT transitively import pixi / renderer.**
-- **`./presenters`** — everything pixi. `GridSlotsView` / `ListSlotsView` /
-  `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`,
-  `defaultInventoryTheme()`, the `createGridInventory` / `createListInventory`
-  factories, `INVENTORY_LAYERS`.
+- **`./presenters`** — everything pixi. `SlotsView` + the `iconCell` / `rowCell`
+  presets, `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`,
+  `defaultInventoryTheme()`, the `createInventoryPanel` factory,
+  `INVENTORY_LAYERS`.
 
 ```ts
 import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
-import { createGridInventory, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
 ```
 
 Both addons (dialogue + inventory) export the input-binding classes
@@ -51,7 +51,7 @@ import { Scene } from "@yagejs/core";
 import {
   defineItems, Inventory, InventoryController, inventoryControls, InventoryActionEvent,
 } from "@yagejs-addons/inventory";
-import { createGridInventory, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 25 HP." },
@@ -66,7 +66,7 @@ const inventory = new Inventory({
 class MyScene extends Scene {
   readonly layers = [...INVENTORY_LAYERS]; // inventory-panel / -content / -overlay (screen-space)
   onEnter() {
-    const bundle = createGridInventory(); // theme defaults to defaultInventoryTheme()
+    const bundle = createInventoryPanel(); // theme defaults to defaultInventoryTheme()
     const host = this.spawn("inventory");
     host.add(new InventoryController({ ...bundle, inventory }));
     host.on(InventoryActionEvent, (e) => {
@@ -267,43 +267,58 @@ while closed too (the model is live; the panel picks the order up on open).
 Guards: methods refuse (dev-warn) after the component is removed; `open()`
 before `onAdd` throws.
 
-## Presenters, factories, themes (`./presenters`)
+## Presenters, factory, themes (`./presenters`)
+
+ONE factory, ONE view. The `cell` preset decides what a cell looks like; flat
+geometry options decide the layout. A "list" is `columns: 1` with `rowCell`; a
+text menu is `columns: 2`; the default is a 5-column `iconCell` grid.
 
 ```ts
-createGridInventory(theme?, {
-  columns: 5, visibleRows: 4,   // panel SIZES ITSELF from the grid (theme.panel is the list's)
+createInventoryPanel(theme?, {
+  cell: iconCell,               // or rowCell (text rows). Default iconCell.
+  columns: 5, visibleRows: 4,   // cells per row / scroll-window rows
+  cellWidth: 56, cellHeight: 56,// cell extents (per axis; need not be square)
+  gap: 6,                       // number (both axes) or { x, y }
   wrap: false,                  // cursor wrap at edges
   chrome: true, detail: true, actionMenu: true,   // subtract pieces for embedding
-  bounds: { x, y, width, height },                // pin the panel; visibleRows derives from the height
+  bounds: { x, y, width, height },                // pin the panel; missing knobs derive from it
 }): InventoryBundle
-createListInventory(theme?, { visibleRows?, wrap?, chrome?, detail?, actionMenu?, bounds? })
 ```
 
-With `bounds`, `visibleRows` defaults to as many rows as the bounds hold (a
-grid still wider/taller than its bounds logs a dev-mode warning instead of
-silently clipping).
+Cell geometry is NOT in the theme — it is per-instance layout. Each option's
+default comes from the chosen preset (`iconCell`: 5×4 of 56×56, gap 6;
+`rowCell`: 1 column of wide short rows). Pass presets UNCALLED: `{ cell: rowCell }`.
+
+Geometry solves per axis: whatever you leave unset the preset fills; an explicit
+`bounds` pins the panel and derives the missing count or extent to fit. Giving
+BOTH a count and an extent on an axis alongside `bounds` is overdetermined — the
+declared values win, the window centers, and it logs a dev-mode warning. A window
+still larger than the bounds logs the overflow warning instead of silently
+clipping.
 
 A bundle is `{ slots, chrome?, detail?, actionMenu? }` — spread it into the
 controller and override any piece. All presenters share ONE `PanelLayout`
-(panel/header/content/detail rects). Grid: windowed cells + icon (`ItemDef.icon`
-texture key) or colored-tile fallback + quantity badges + integer-row scrolling
-with ▲/▼ hints. List: `Name ×qty` rows (pairs with `autoCompact`). The action
-menu anchors beside the selected cell. `INVENTORY_LAYERS` (screen-space, orders
+(panel/header/content/detail rects). `iconCell`: windowed cells + icon
+(`ItemDef.icon` texture key) or colored-tile fallback with the item's initial +
+quantity badges. `rowCell`: `Name ×qty` rows + a highlight bar (pairs with
+`autoCompact`). Both scroll by integer rows with ▲/▼ hints; the action menu
+anchors beside the selected cell. `INVENTORY_LAYERS` (screen-space, orders
 1050–1070) sit BELOW the dialogue addon's 1100+ so a conversation plays over an
 open inventory.
 
-`InventoryTheme` is one flat data object: panel/padding, frame colors +
-cornerRadius, title, cell size/gap/colors + `highlightColor` (cursor),
+`InventoryTheme` is one flat data object of PALETTE + text, no layout: padding,
+frame colors + cornerRadius, title, cell colors + `highlightColor` (cursor),
 text/quantity/description colors, action-menu colors, `detailHeight`,
-`tileColors` palette, `fontFamily` / opt-in `bitmapFont` / `resolution`, and
-the three layer names. `frameAlpha` applies to both the panel chrome and the
-action-menu popup. A few spacing/size fields are optional and derive a default
-when omitted: `descriptionSize` (`textSize - 2`), `menu.padding` / `menu.rowGap`
-(10 / 6), and `headerGap` / `detailGap` (10 / 10). Spread-and-tweak the default:
+`tileColors` palette + `tileLetterColor`, `fontFamily` / opt-in `bitmapFont` /
+`resolution`, and the three layer names. `frameAlpha` applies to both the panel
+chrome and the action-menu popup. A few spacing/size fields are optional and
+derive a default when omitted: `descriptionSize` (`textSize - 2`), `menu.padding`
+/ `menu.rowGap` (10 / 6), `headerGap` / `detailGap` (10 / 10), and
+`tileLetterColor` (`0x1a1a2e`). Spread-and-tweak the default:
 
 ```ts
-import { createGridInventory, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
-const bundle = createGridInventory({ ...defaultInventoryTheme(), highlightColor: 0xff5555 });
+import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
+const bundle = createInventoryPanel({ ...defaultInventoryTheme(), highlightColor: 0xff5555 });
 ```
 
 ## Embedded in an existing menu (no separate API)
@@ -311,7 +326,7 @@ const bundle = createGridInventory({ ...defaultInventoryTheme(), highlightColor:
 Standalone vs embedded is configuration:
 
 ```ts
-const bundle = createGridInventory(theme, {
+const bundle = createInventoryPanel(theme, {
   chrome: false,                        // the host menu draws its own frame
   bounds: { x: 320, y: 96, width: 344, height: 300 },  // sit inside the host layout
 });

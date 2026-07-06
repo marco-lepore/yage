@@ -3,10 +3,11 @@
  * factories consume. A theme is a plain data object (no behaviour) so it can
  * be authored inline, imported from a preset module, or serialized.
  *
- * The factories ({@link createGridInventory}, {@link createListInventory})
- * map every field onto the chrome / slots / detail / menu presenter configs;
- * a presenter-config field has the SAME name as the theme field it comes
- * from, so drift is visible.
+ * The factory ({@link createInventoryPanel}) maps every field onto the
+ * chrome / slots / detail / menu presenter configs; a presenter-config field
+ * has the SAME name as the theme field it comes from, so drift is visible.
+ * Cell geometry (columns, cell size, gaps) is NOT here — it is per-instance
+ * layout, set on the factory options.
  *
  * {@link defaultInventoryTheme} returns a zero-asset instance (Graphics
  * chrome + canvas text, colored-tile icons), so the factories work with no
@@ -15,13 +16,6 @@
  */
 
 export interface InventoryTheme {
-  /**
-   * Panel size (virtual px), centered in the viewport. The LIST panel uses it
-   * verbatim; the GRID panel derives its size from the grid instead
-   * (columns × cell size + bands) so cells never stretch — grid callers size
-   * via `columns`/`visibleRows` on the factory options.
-   */
-  readonly panel: { readonly width: number; readonly height: number };
   /** Inner padding between the frame and its contents. */
   readonly padding: number;
 
@@ -35,9 +29,7 @@ export interface InventoryTheme {
   readonly titleSize: number;
   readonly titleColor: number;
 
-  // --- Slot cells (grid) / rows (list) ---
-  readonly cellSize: number;
-  readonly cellGap: number;
+  // --- Slot cells ---
   readonly cellColor: number;
   readonly cellBorderColor: number;
   /** Selection cursor (cell outline / row bar). */
@@ -71,6 +63,9 @@ export interface InventoryTheme {
   /** Fallback tile palette for icon-less items — a stable color is picked per
    *  item id. An item pins its own via `ItemDef.color`. */
   readonly tileColors?: readonly number[];
+  /** Letter drawn on an icon-less tile (the item's initial), dark so it reads
+   *  on the tinted tile. Omit to derive the default `0x1a1a2e`. */
+  readonly tileLetterColor?: number;
 
   // --- Fonts (omit the bitmap field for canvas text) ---
   /** Baked bitmap-font name (OPT-IN). Omit for canvas text. */

@@ -58,11 +58,15 @@ export {
 // --- Presenter contracts (pixi-free adapter) ---
 export type {
   ActionMenuPresenter,
+  CellDefaults,
+  CellHandle,
+  CellPresenter,
   ChromePresenter,
   DetailPresenter,
   DiagnosticSink,
   InventoryBundle,
   Mountable,
+  Rect,
   SlotsPresenter,
 } from "./adapter.js";
 

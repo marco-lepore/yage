@@ -51,8 +51,8 @@ import {
   type RejectReason,
 } from "@yagejs-addons/inventory";
 import {
-  createGridInventory,
-  createListInventory,
+  createInventoryPanel,
+  rowCell,
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 import { Assets, Texture } from "pixi.js";
@@ -448,8 +448,8 @@ class InventoryRoomScene extends Scene {
 
     this.spawn(CameraEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2) });
 
-    // ── the two panels: grid for the backpack, list for the pouch ─────────────
-    const backpackBundle = createGridInventory(undefined, { columns: 5, visibleRows: 3 });
+    // ── the two panels: icon grid for the backpack, text rows for the pouch ───
+    const backpackBundle = createInventoryPanel(undefined, { columns: 5, visibleRows: 3 });
     const backpackHost = this.spawn("backpack-ui");
     const backpackCtrl = backpackHost.add(
       new InventoryController({
@@ -461,7 +461,7 @@ class InventoryRoomScene extends Scene {
       }),
     );
 
-    const pouchBundle = createListInventory(undefined, { visibleRows: 6 });
+    const pouchBundle = createInventoryPanel(undefined, { cell: rowCell, visibleRows: 6 });
     const pouchHost = this.spawn("pouch-ui");
     const pouchCtrl = pouchHost.add(
       new InventoryController({
@@ -475,7 +475,30 @@ class InventoryRoomScene extends Scene {
       }),
     );
 
-    // One panel at a time — host policy, two lines of it.
+    // Embedded, always-on: the SAME backpack model in a chrome-less one-row
+    // strip pinned by `bounds` (a hotbar). No columns given, so the panel
+    // derives how many cells fit the bounds width; `input: null` +
+    // `closeOnCancel: false` + `openOnAdd` hand all driving to the host — it
+    // just mirrors the model and never opens/closes on its own.
+    const hotbarBundle = createInventoryPanel(undefined, {
+      bounds: { x: 16, y: HEIGHT - 80, width: 344, height: 64 },
+      chrome: false,
+      detail: false,
+      actionMenu: false,
+      visibleRows: 1,
+    });
+    this.spawn("hotbar-ui").add(
+      new InventoryController({
+        ...hotbarBundle,
+        inventory: backpack,
+        input: null,
+        closeOnCancel: false,
+        openOnAdd: true,
+      }),
+    );
+
+    // One panel at a time — host policy, two lines of it. (The hotbar is
+    // always-on and outside this policy.)
     backpackHost.on(InventoryOpenedEvent, () => pouchCtrl.close());
     pouchHost.on(InventoryOpenedEvent, () => backpackCtrl.close());
     const anyPanelOpen = (): boolean => backpackCtrl.isOpen() || pouchCtrl.isOpen();

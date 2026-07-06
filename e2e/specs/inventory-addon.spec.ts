@@ -31,8 +31,13 @@ interface Handle {
     sort(): void;
   };
   pouchCtrl: { open(): void; isOpen(): boolean };
+  hotbarCtrl: { isOpen(): boolean; cancel(): void };
+  hotbarCancels: () => number;
   state: { hp: number; potions: number; lastToast: string };
 }
+
+/** The embedded hotbar's pinned rect (fixture: bottom-left, chrome-less). */
+const HOTBAR_BOUNDS = { x: 16, y: 600 - 80, width: 344, height: 64 };
 
 interface ProbeData {
   potions: number;
@@ -261,5 +266,59 @@ test.describe("@yagejs-addons/inventory addon", () => {
       { itemId: "sword", quantity: 1 },
       null,
     ]);
+  });
+
+  test("embedded hotbar opens at boot and survives cancel (closeOnCancel:false + onCancel)", async ({
+    page,
+  }) => {
+    await boot(page);
+
+    const openAtBoot = await page.evaluate(
+      () => (window as unknown as { __inventory__: Handle }).__inventory__.hotbarCtrl.isOpen(),
+    );
+    expect(openAtBoot).toBe(true); // openOnAdd, no toggle needed
+
+    await page.evaluate(() =>
+      (window as unknown as { __inventory__: Handle }).__inventory__.hotbarCtrl.cancel(),
+    );
+    const after = await page.evaluate(() => {
+      const h = (window as unknown as { __inventory__: Handle }).__inventory__;
+      return { open: h.hotbarCtrl.isOpen(), cancels: h.hotbarCancels() };
+    });
+    expect(after.open).toBe(true); // closeOnCancel:false — the host owns the escape route
+    expect(after.cancels).toBe(1); // onCancel still fired
+  });
+
+  test("embedded hotbar derives cells from its bounds and renders them in the strip", async ({
+    page,
+  }) => {
+    await boot(page);
+    // Three distinct items -> three filled slots in row 0 of the hotbar.
+    await add(page, "potion", 3);
+    await add(page, "gem", 4);
+    await add(page, "sword", 1);
+    await stepFrames(page, 2);
+
+    const inStrip = await page.evaluate((b) => {
+      const ents = (
+        window as unknown as {
+          __yage__: { inspector: { getEntities(): { name: string; position?: { x: number; y: number } }[] } };
+        }
+      ).__yage__.inspector.getEntities();
+      // Cell content entities carry a Transform position; backgrounds sit at
+      // the origin. The centered main grid is far above this bottom strip, so a
+      // position inside the strip belongs to the hotbar.
+      return ents.filter(
+        (e) =>
+          e.name.startsWith("inv-") &&
+          e.position !== undefined &&
+          e.position.x >= b.x &&
+          e.position.x <= b.x + b.width &&
+          e.position.y >= b.y &&
+          e.position.y <= b.y + b.height,
+      ).length;
+    }, HOTBAR_BOUNDS);
+    // Derived 5×1 layout placed the three item cells inside the pinned rect.
+    expect(inStrip).toBeGreaterThanOrEqual(3);
   });
 });

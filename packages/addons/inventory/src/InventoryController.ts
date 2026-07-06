@@ -7,10 +7,10 @@
  *   • attaches an {@link InputBinding} (keyboard + pointer by default) and pumps it,
  *   • pumps `session.update(dt)` each frame.
  *
- * The presenter bundle usually comes from a factory (`createGridInventory(theme)`
+ * The presenter bundle usually comes from a factory (`createInventoryPanel(theme)`
  * on the `/presenters` entry), spread-and-overridden as needed:
  *
- *   host.add(new InventoryController({ ...createGridInventory(theme), inventory }));
+ *   host.add(new InventoryController({ ...createInventoryPanel(theme), inventory }));
  *
  * Standalone vs embedded is a configuration choice, not a different API:
  * the default is a self-sufficient panel (chrome + toggle key + Escape to
@@ -117,8 +117,8 @@ export class InventoryController<TId extends string = string> extends Component 
     const warn = (message: string): void => this.logger?.warn("inventory", message);
 
     // Wire diagnostics BEFORE mounting: a presenter may run a mount-time check
-    // (the grid warns when its window overflows the panel), which needs the
-    // sink already in place or the warning silently no-ops.
+    // (the slot view warns when its window overflows the panel), which needs
+    // the sink already in place or the warning silently no-ops.
     this.opts.slots.setDiagnostics?.(warn);
     this.opts.chrome?.setDiagnostics?.(warn);
     this.opts.detail?.setDiagnostics?.(warn);

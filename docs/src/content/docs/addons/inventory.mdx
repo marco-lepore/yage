@@ -38,14 +38,14 @@ The package is split so the headless path never pulls a renderer:
 // Headless + input only — no pixi, fully unit-testable.
 import { defineItems, Inventory, InventoryController } from "@yagejs-addons/inventory";
 
-// Pixi presentation — grid/list views, themes, factories.
-import { createGridInventory, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
+// Pixi presentation — the slot view, cell presets, themes, factory.
+import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inventory/presenters";
 ```
 
 | Entry          | Imports                         | Contains |
 | -------------- | ------------------------------- | -------- |
 | `.`            | `@yagejs/core`, `@yagejs/input` | catalog + `Inventory` model, sort comparators, `InventorySession` + channel contracts, `InventoryController`, engine events, input bindings |
-| `./presenters` | + `@yagejs/renderer` (brings pixi) | `GridSlotsView` / `ListSlotsView` / `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`, `defaultInventoryTheme()`, the `createGridInventory` / `createListInventory` factories, `INVENTORY_LAYERS` |
+| `./presenters` | + `@yagejs/renderer` (brings pixi) | `SlotsView` + the `iconCell` / `rowCell` presets, `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`, `defaultInventoryTheme()`, the `createInventoryPanel` factory, `INVENTORY_LAYERS` |
 
 ## Quick start
 
@@ -96,10 +96,10 @@ the item's initial, so a working inventory needs no art at all.
 
    ```ts
    import { InventoryController } from "@yagejs-addons/inventory";
-   import { createGridInventory } from "@yagejs-addons/inventory/presenters";
+   import { createInventoryPanel } from "@yagejs-addons/inventory/presenters";
 
    onEnter() {
-     const bundle = createGridInventory();
+     const bundle = createInventoryPanel();
      const host = this.spawn("inventory");
      const controller = host.add(new InventoryController({ ...bundle, inventory }));
    }
@@ -289,37 +289,52 @@ can't be generic). `catalog.has(e.itemId)` is a type predicate that narrows
 them back to your catalog's id union — or subscribe on `inventory.on(...)`,
 which is typed end to end.
 
-## The panel: grid, list, themes
+## The panel: one view, swappable cells
 
-Two factories assemble a wired presenter bundle from one flat theme object:
+One factory assembles a wired presenter bundle. There is no grid-vs-list split:
+`SlotsView` is a windowed `columns × visibleRows` layout, and a **cell preset**
+decides what each cell looks like. A "list" is simply `columns: 1` with a
+row-drawing cell; a two-column text menu is `columns: 2`.
 
 ```ts
-createGridInventory(theme?, { columns: 5, visibleRows: 4, wrap, chrome, detail, actionMenu, bounds });
-createListInventory(theme?, { visibleRows, wrap, chrome, detail, actionMenu, bounds });
+createInventoryPanel(theme?, {
+  cell: iconCell,               // or rowCell. Default iconCell.
+  columns: 5, visibleRows: 4,   // cells per row / scroll-window rows
+  cellWidth: 56, cellHeight: 56,// cell extents — need not be square
+  gap: 6,                       // number (both axes) or { x, y }
+  wrap, chrome, detail, actionMenu, bounds,
+});
 ```
 
-- **Grid** — windowed icon cells with quantity badges, a cursor outline, and
-  integer-row scrolling (▲/▼ hints when rows are out of view). The panel
-  **sizes itself from the grid** (`columns` × cell size + bands), so cells
-  never stretch.
-- **List** — classic `Name ×qty` rows with a highlight bar; pairs naturally
-  with an `autoCompact` inventory. Takes its size from `theme.panel`.
+- **`iconCell`** (default) — icon cells (`ItemDef.icon` texture, or a colored
+  tile with the item's initial) + quantity badges + a cursor outline.
+- **`rowCell`** — classic `Name ×qty` rows with a highlight bar; pairs naturally
+  with an `autoCompact` inventory at `columns: 1`.
 
-Both include the header chrome (title + `used/capacity` counter), the
+Cell geometry lives on the factory options, not the theme (a grid's 48×48 and a
+list row's 320×28 can't share a themed value). Each option's default comes from
+the chosen preset. Both cell styles scroll by integer rows with ▲/▼ hints.
+
+Geometry solves per axis: whatever you leave unset the preset fills, and an
+explicit `bounds` derives the missing count or extent to fit — so an embedded
+panel can pin the box and give only `columns`, letting the cell width follow. A
+window still larger than its bounds logs a dev-mode warning instead of clipping;
+giving both a count and an extent on an axis alongside `bounds` is overdetermined
+(the declared values win and center, with a warning).
+
+The bundle includes the header chrome (title + `used/capacity` counter), the
 selected-item detail pane, and the action-menu popup anchored beside the
-selected cell — each omittable. When `bounds` pins the panel, `visibleRows`
-defaults to what fits the given height (and a grid that can't fit logs a
-dev-mode warning instead of silently clipping).
+selected cell — each omittable.
 
 `defaultInventoryTheme()` matches the dialogue addon's palette;
 spread-and-tweak (`{ ...defaultInventoryTheme(), highlightColor: 0xff5555 }`)
-or restyle wholesale. The theme carries every color, the type sizes, and the
-layer names the default presenters read (a drift-guard test keeps the mapping
-honest). A few spacing knobs are optional theme fields that derive a default
-when omitted — `descriptionSize`, `menu.padding` / `menu.rowGap`, and
-`headerGap` / `detailGap`. Presenter-internal geometry — cell insets, alignment
-nudges, scroll-hint shapes — stays the views' own, and swapping a presenter is
-the escape hatch when the theme isn't enough.
+or restyle wholesale. The theme carries palette and text only — every color,
+the type sizes, the `tileColors` palette + `tileLetterColor`, and the layer
+names (a drift-guard test keeps the mapping honest). A few spacing knobs are
+optional theme fields that derive a default when omitted — `descriptionSize`,
+`menu.padding` / `menu.rowGap`, `headerGap` / `detailGap`, and `tileLetterColor`.
+Writing a custom cell preset is the escape hatch when the built-ins aren't
+enough.
 
 ## Standalone or embedded — one API
 
@@ -328,7 +343,7 @@ its own chrome, toggles on the `inventory` action, and Esc closes it. Living
 inside an existing menu is **subtraction, not a different API**:
 
 ```ts
-const bundle = createGridInventory(theme, {
+const bundle = createInventoryPanel(theme, {
   chrome: false,                                        // the host menu draws the frame
   bounds: { x: 320, y: 96, width: 344, height: 300 },   // sit inside the host's layout
 });

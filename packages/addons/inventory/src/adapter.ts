@@ -2,9 +2,9 @@
  * Adapter-level presenter contracts. The headless channels (core/session)
  * describe *what* a slots / detail / menu presenter does; these add the YAGE
  * lifecycle (`mount(scene)` / `dispose()`) the host drives, plus the pointer
- * hit-test seams a pointer binding needs. Concrete renderer presenters
- * (`GridSlotsView`, `ListSlotsView`, …) implement these; a DOM or ui-react
- * panel implements the same shape.
+ * hit-test seams a pointer binding needs. The built-in renderer presenter
+ * (`SlotsView`, driven by a swappable `CellPresenter`) implements these; a DOM
+ * or ui-react panel implements the same shape.
  *
  * This module is pixi-free on purpose: the root entry reaches presenter
  * CONTRACTS through it without transitively importing `@yagejs/renderer`.
@@ -16,7 +16,17 @@ import type {
   DetailChannel,
   InventoryChromeChannel,
   SlotsChannel,
+  SlotView,
 } from "./core/session.js";
+
+/** A laid-out rectangle (screen px) — the shared currency between the panel
+ *  layout, the cells it places, and the pointer hit-tests. */
+export interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
 
 /** A dev-facing diagnostics sink — the controller wires this to the engine
  *  Logger, so a presenter-level warning (e.g. an unresolvable icon) routes
@@ -32,8 +42,9 @@ export interface Mountable {
   setDiagnostics?(warn: DiagnosticSink): void;
 }
 
-/** The slot surface (grid / list). Optionally hit-tests pointer coords so a
- *  pointer binding can hover/click cells without owning their geometry. */
+/** The slot surface — a windowed grid of cells (a list is one column of wide
+ *  cells). Optionally hit-tests pointer coords so a pointer binding can
+ *  hover/click cells without owning their geometry. */
 export interface SlotsPresenter<TId extends string = string>
   extends SlotsChannel<TId>,
     Mountable {
@@ -41,6 +52,54 @@ export interface SlotsPresenter<TId extends string = string>
   slotAtPoint?(x: number, y: number): number | undefined;
   /** Coordinate space `slotAtPoint` expects. Default "screen". */
   readonly pointerSpace?: "screen" | "world" | undefined;
+  /** The selected cell's screen rect (the action menu anchors to it), or
+   *  undefined when the selection is scrolled out. Omit for no anchoring. */
+  selectionAnchor?(): Rect | undefined;
+}
+
+/** Cell geometry a {@link CellPresenter} supplies when the factory options
+ *  leave a knob unset. Pure defaults — the panel's constraint solver may
+ *  override any of them (deriving a count from `bounds`, say). */
+export interface CellDefaults {
+  readonly columns: number;
+  readonly visibleRows: number;
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+  readonly gapX: number;
+  readonly gapY: number;
+}
+
+/** One live rendered cell. The view drives selection and visibility through
+ *  the handle so neither respawns the cell's content. */
+export interface CellHandle {
+  /** Redraw the selection visual (outline / bar) — cheap, no content respawn. */
+  setSelected(selected: boolean): void;
+  /** Show or hide every display object this cell spawned. */
+  setVisible(visible: boolean): void;
+  /** Destroy every entity this cell spawned. */
+  dispose(): void;
+}
+
+/**
+ * The swappable per-cell renderer. It owns the cell's background, content, and
+ * selection visual; the view owns placement, windowing, scroll hints, and
+ * lifecycle. Swapping the presenter is what turns a grid of icon tiles into a
+ * list of text rows — no branching in the view.
+ */
+export interface CellPresenter<TId extends string = string> {
+  /** Cell geometry used for any axis the factory options leave unset. */
+  readonly defaults: CellDefaults;
+  /**
+   * Spawn one cell's visuals into `rect`. Called for EVERY windowed slot,
+   * including empty ones (`view.stack === null`) — an empty cell still shows
+   * its background and can be selected. Spawn order inside the handle is paint
+   * order: background/selection graphics first, content on top.
+   */
+  renderCell(scene: Scene, view: SlotView<TId>, rect: Rect, selected: boolean): CellHandle;
+  /** Optional diagnostics sink pass-through (e.g. an unresolvable icon key). */
+  setDiagnostics?(warn: DiagnosticSink): void;
+  /** Optional preset-level teardown (a texture cache, say). */
+  dispose?(): void;
 }
 
 /** The selected-item pane. */
@@ -58,10 +117,10 @@ export interface ActionMenuPresenter extends ActionMenuChannel, Mountable {
 export interface ChromePresenter extends InventoryChromeChannel, Mountable {}
 
 /**
- * The presenter set a factory assembles (see `createGridInventory` /
- * `createListInventory` on the `/presenters` entry). Only `slots` is
- * required: an embedded integration renders cells inside its own menu and
- * omits the chrome (and whatever else its host UI already provides).
+ * The presenter set a factory assembles (see `createInventoryPanel` on the
+ * `/presenters` entry). Only `slots` is required: an embedded integration
+ * renders cells inside its own menu and omits the chrome (and whatever else
+ * its host UI already provides).
  *
  * Optional fields are `T | undefined` so factories and games can assign
  * possibly-undefined values directly (exactOptionalPropertyTypes).

@@ -1,14 +1,14 @@
 /**
- * Pieces shared by the bundle factories: theme → presenter-config mapping for
- * the chrome / detail / action-menu trio (identical across grid and list) and
- * the bounds-fitting math. Internal — the factories are the public surface.
+ * Pieces shared across the panel factory's presenter configs: the theme →
+ * chrome / detail / action-menu config mapping and the content-height math.
+ * Internal — `createInventoryPanel` is the public surface.
  */
 
 import { ActionMenuView } from "../render/ActionMenuView.js";
 import { DetailView } from "../render/DetailView.js";
 import { InventoryChrome } from "../render/InventoryChrome.js";
 import type { PanelLayout } from "../render/PanelLayout.js";
-import type { Rect } from "../render/gridGeometry.js";
+import type { Rect } from "../adapter.js";
 import type { FontConfig } from "../render/textOptions.js";
 import type { InventoryTheme } from "./theme.js";
 
@@ -86,15 +86,6 @@ export function menuFor(
     layout,
     { anchor },
   );
-}
-
-/**
- * Rows of `step`-sized cells (last one gapless) that fit in `available`
- * vertical px — how a `bounds`-pinned panel derives its scroll window instead
- * of making the caller hand-compute grid math. Never below 1.
- */
-export function fitRows(available: number, step: number, gap: number): number {
-  return Math.max(1, Math.floor((available + gap) / step));
 }
 
 /** The vertical px left for slot content inside a panel of `height`. */

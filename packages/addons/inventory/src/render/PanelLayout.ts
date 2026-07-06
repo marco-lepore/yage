@@ -13,7 +13,7 @@
  *    inside a host menu's own layout.
  */
 
-import type { Rect } from "./gridGeometry.js";
+import type { Rect } from "../adapter.js";
 
 export interface PanelLayoutConfig {
   /** Panel size (virtual px) when centered; ignored when `bounds` is set. */

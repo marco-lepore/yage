@@ -29,8 +29,8 @@ import {
   type RejectReason,
 } from "@yagejs-addons/inventory";
 import {
-  createGridInventory,
-  createListInventory,
+  createInventoryPanel,
+  rowCell,
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 import { injectStyles, setupContainer } from "./shared.js";
@@ -81,7 +81,7 @@ class InventoryScene extends Scene {
 
     this.spawn(CameraEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2) });
 
-    const backpackBundle = createGridInventory(undefined, { columns: 5, visibleRows: 3 });
+    const backpackBundle = createInventoryPanel(undefined, { columns: 5, visibleRows: 3 });
     const backpackHost = this.spawn("backpack-ui");
     const backpackCtrl = backpackHost.add(
       new InventoryController({
@@ -92,7 +92,7 @@ class InventoryScene extends Scene {
       }),
     );
 
-    const pouchBundle = createListInventory(undefined, { visibleRows: 6 });
+    const pouchBundle = createInventoryPanel(undefined, { cell: rowCell, visibleRows: 6 });
     const pouchHost = this.spawn("pouch-ui");
     const pouchCtrl = pouchHost.add(
       new InventoryController({
@@ -103,7 +103,32 @@ class InventoryScene extends Scene {
       }),
     );
 
-    // One panel at a time — the host-policy line the spec asserts.
+    // Embedded, always-on: the SAME backpack model in a chrome-less one-row
+    // strip pinned by `bounds` (columns derived from the width). `input: null`
+    // + `closeOnCancel: false` + `openOnAdd` hand all driving to the host.
+    let hotbarCancels = 0;
+    const hotbarBundle = createInventoryPanel(undefined, {
+      bounds: { x: 16, y: HEIGHT - 80, width: 344, height: 64 },
+      chrome: false,
+      detail: false,
+      actionMenu: false,
+      visibleRows: 1,
+    });
+    const hotbarCtrl = this.spawn("hotbar-ui").add(
+      new InventoryController({
+        ...hotbarBundle,
+        inventory: backpack,
+        input: null,
+        closeOnCancel: false,
+        openOnAdd: true,
+        onCancel: () => {
+          hotbarCancels++;
+        },
+      }),
+    );
+
+    // One panel at a time — the host-policy line the spec asserts. (The hotbar
+    // is always-on and outside this policy.)
     backpackHost.on(InventoryOpenedEvent, () => pouchCtrl.close());
     pouchHost.on(InventoryOpenedEvent, () => backpackCtrl.close());
 
@@ -145,6 +170,8 @@ class InventoryScene extends Scene {
       keyItems,
       backpackCtrl,
       pouchCtrl,
+      hotbarCtrl,
+      hotbarCancels: () => hotbarCancels,
       state,
     };
   }

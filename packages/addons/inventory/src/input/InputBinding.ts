@@ -259,7 +259,7 @@ export class PointerInputBinding implements InputBinding {
  * customize, e.g. rename the actions:
  *
  * ```ts
- * const bundle = createGridInventory(theme);
+ * const bundle = createInventoryPanel(theme);
  * new InventoryController({
  *   ...bundle,
  *   inventory,

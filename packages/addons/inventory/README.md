@@ -2,7 +2,8 @@
 
 Slot-based inventory for [YAGE](https://yage.dev): a headless model (stacking,
 partial acceptance, move/merge/split, sorting, transfers, snapshots, item
-actions) plus swappable grid/list presenters with a zero-asset default theme.
+actions) plus one windowed slot view with swappable icon/row cell presets and a
+zero-asset default theme.
 
 ## Install
 
@@ -19,15 +20,15 @@ reused.
 - `@yagejs-addons/inventory` — headless: catalog + `Inventory` model,
   `InventorySession`, `InventoryController`, engine events, input bindings.
   Never pulls pixi.
-- `@yagejs-addons/inventory/presenters` — the renderer views: `createGridInventory`
-  / `createListInventory` factories, `GridSlotsView`/`ListSlotsView`,
+- `@yagejs-addons/inventory/presenters` — the renderer views: the
+  `createInventoryPanel` factory, `SlotsView` + `iconCell`/`rowCell` cell presets,
   `defaultInventoryTheme`, `INVENTORY_LAYERS`.
 
 ## Quick start
 
 ```ts
 import { defineItems, Inventory, InventoryController, InventoryActionEvent } from "@yagejs-addons/inventory";
-import { createGridInventory, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
+import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
@@ -43,7 +44,7 @@ const inventory = new Inventory({
 class MyScene extends Scene {
   readonly layers = [...INVENTORY_LAYERS];
   onEnter() {
-    const bundle = createGridInventory(); // zero-asset default theme
+    const bundle = createInventoryPanel(); // zero-asset default theme
     const host = this.spawn("inventory");
     // Default input = keyboard/gamepad + mouse/touch, already wired.
     const controller = host.add(new InventoryController({ ...bundle, inventory }));

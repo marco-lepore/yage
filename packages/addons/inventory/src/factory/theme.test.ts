@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createGridInventory } from "./createGridInventory.js";
-import { createListInventory } from "./createListInventory.js";
+import { createInventoryPanel } from "./createInventoryPanel.js";
+import { rowCell } from "../render/rowCell.js";
 import { defaultInventoryTheme } from "./defaultTheme.js";
 import type { InventoryTheme } from "./theme.js";
+import type { InventoryPanelOptions } from "./createInventoryPanel.js";
 
 /**
  * Collect every number/string leaf reachable from a value (own enumerable
  * properties, depth-first, cycle-safe). Functions/booleans/undefined are
- * skipped. Used to prove a fully-populated theme reaches the presenter
- * configs (private class fields are plain enumerable properties at runtime,
- * so the walk sees view configs and the shared PanelLayout config).
+ * skipped. Used to prove a fully-populated theme (and the geometry options)
+ * reach the presenter configs (private class fields are plain enumerable
+ * properties at runtime, so the walk sees view configs, the cell preset config,
+ * and the shared PanelLayout config).
  */
 function collectLeaves(
   value: unknown,
@@ -28,11 +30,11 @@ function collectLeaves(
 }
 
 /** Mint distinct sentinel numbers (≥ 100000, step 1000) so no arithmetic combo
- *  of theme values (a sum is ≥ 200000; a difference is small/negative) can
- *  collide with a single sentinel — a transformed config value never looks
- *  like an un-wired field's sentinel. */
-function makeMinter(): () => number {
-  let n = 100000;
+ *  of values (a sum is ≥ 200000; a difference is small/negative) can collide
+ *  with a single sentinel — a transformed config value never looks like an
+ *  un-wired field's sentinel. */
+function makeMinter(start = 100000): () => number {
+  let n = start;
   return () => (n += 1000);
 }
 
@@ -40,7 +42,6 @@ function makeMinter(): () => number {
 function sentinelTheme(): InventoryTheme {
   const n = makeMinter();
   return {
-    panel: { width: n(), height: n() },
     padding: n(),
     frameColor: n(),
     frameAlpha: n(),
@@ -48,8 +49,6 @@ function sentinelTheme(): InventoryTheme {
     cornerRadius: n(),
     titleSize: n(),
     titleColor: n(),
-    cellSize: n(),
-    cellGap: n(),
     cellColor: n(),
     cellBorderColor: n(),
     highlightColor: n(),
@@ -67,6 +66,7 @@ function sentinelTheme(): InventoryTheme {
     headerGap: n(),
     detailGap: n(),
     tileColors: [n(), n()],
+    tileLetterColor: n(),
     bitmapFont: "sentinel-bitmapFont",
     fontFamily: "sentinel-fontFamily",
     resolution: n(),
@@ -77,17 +77,42 @@ function sentinelTheme(): InventoryTheme {
 }
 
 describe("theme exhaustiveness (drift-guard)", () => {
-  it("every theme field reaches a presenter config across both factories", () => {
+  it("every theme field reaches a presenter config across both cell presets", () => {
     const theme = sentinelTheme();
     const themeLeaves = collectLeaves(theme);
 
-    const bundles = [createGridInventory(theme), createListInventory(theme)];
+    // Both presets: iconCell carries cellColor/cellBorderColor/tileColors/
+    // tileLetterColor; rowCell carries textColor. Chrome/detail/menu carry the
+    // rest and exist in both bundles.
+    const bundles = [createInventoryPanel(theme), createInventoryPanel(theme, { cell: rowCell })];
     const configLeaves = collectLeaves(bundles);
 
     const missing = [...themeLeaves].filter((leaf) => !configLeaves.has(leaf));
     // If this fails, a theme field was added without mapping it into a
-    // presenter config — wire it in a factory (and match the config field
-    // name to the theme field name).
+    // presenter config — wire it in the factory/shared helpers (and match the
+    // config field name to the theme field name).
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("geometry-option exhaustiveness (drift-guard)", () => {
+  it("every geometry option reaches the slots-view config", () => {
+    // Cell geometry left the theme; this is the parallel guard for it. No
+    // bounds, so the solver passes the values through untransformed.
+    const g = makeMinter(500000);
+    const geom: InventoryPanelOptions = {
+      columns: g(),
+      visibleRows: g(),
+      cellWidth: g(),
+      cellHeight: g(),
+      gap: { x: g(), y: g() },
+    };
+    const geomLeaves = collectLeaves(geom);
+    const configLeaves = collectLeaves(createInventoryPanel(defaultInventoryTheme(), geom));
+
+    const missing = [...geomLeaves].filter((leaf) => !configLeaves.has(leaf));
+    // If this fails, a geometry option was added without threading it into the
+    // SlotsView config (or the solver dropped it).
     expect(missing).toEqual([]);
   });
 });

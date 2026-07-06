@@ -22,8 +22,6 @@ import {
  */
 export function defaultInventoryTheme(): InventoryTheme {
   return {
-    // The LIST panel size; the grid derives its own from columns × cells.
-    panel: { width: 420, height: 380 },
     padding: 16,
 
     frameColor: 0x1a1a2e,
@@ -36,8 +34,6 @@ export function defaultInventoryTheme(): InventoryTheme {
     titleSize: 16,
     titleColor: 0xffd866,
 
-    cellSize: 56,
-    cellGap: 6,
     cellColor: 0x262643,
     cellBorderColor: 0x42426b,
     highlightColor: 0xffd866,
