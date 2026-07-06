@@ -23,8 +23,13 @@
  *  • **Icons** — the potion declares an `icon` texture (drawn on a canvas at
  *    startup, zero assets); everything else uses the colored-tile fallback.
  *
+ *  • **Interactive hotbar** — a chrome-less always-on strip mirrors the first
+ *    HOTBAR_SLOTS backpack cells; number keys 1–5 `use` the matching cell (a
+ *    non-usable cell no-ops), driven by a host component, not a panel binding.
+ *
  * Controls: WASD/arrows walk · E interact · I backpack · K key items ·
- * arrows/mouse navigate · E/Enter/click confirm · Esc close · R sort.
+ * arrows/mouse navigate · E/Enter/click confirm · Esc close · R sort ·
+ * 1–5 hotbar quick-use.
  */
 
 import { Component, Engine, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
@@ -52,6 +57,7 @@ import {
 } from "@yagejs-addons/inventory";
 import {
   createInventoryPanel,
+  defaultInventoryTheme,
   rowCell,
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
@@ -61,6 +67,11 @@ import { setupGameContainer } from "./shared.js";
 const WIDTH = 800;
 const HEIGHT = 600;
 const PLAYER_SPEED = 175;
+const HOTBAR_SLOTS = 5;
+/** Centered along the bottom, clear of the controls line beneath it. Sized so
+ *  five ~52px cells show their icons unsquashed — paired with the reduced
+ *  padding below (a chrome-less strip needs far less inset than a framed panel). */
+const HOTBAR_BOUNDS = { x: (WIDTH - 300) / 2, y: HEIGHT - 90, width: 300, height: 66 };
 
 const ROOM_LAYER = "room";
 const HUD_LAYER = "hud";
@@ -340,13 +351,15 @@ class Hud extends Component {
     };
     this.potionText = text(WIDTH - 16, 14, 13, 0xf0f0f0, { x: 1, y: 0 });
     this.equippedText = text(WIDTH - 16, 34, 13, 0xc9c9de, { x: 1, y: 0 });
-    this.toastText = text(WIDTH / 2, HEIGHT - 24, 14, 0xffd866, { x: 0.5, y: 0.5 });
+    // Toast at top-center (below the title): the bottom apron belongs to the hotbar.
+    this.toastText = text(WIDTH / 2, 80, 14, 0xffd866, { x: 0.5, y: 0.5 });
+    // Controls at the very bottom, below the hotbar strip.
     text(
-      16,
-      HEIGHT - 36,
-      12,
+      WIDTH / 2,
+      HEIGHT - 14,
+      11,
       0x8888aa,
-      { x: 0, y: 0 },
+      { x: 0.5, y: 0.5 },
       "WASD move · E interact · I backpack · K key items · R sort (open) · Esc close",
     );
   }
@@ -376,6 +389,32 @@ class Hud extends Component {
       }
       g.roundRect(16, 14, 160, 14, 4).stroke({ color: 0x4a4a8a, width: 1 });
     });
+  }
+}
+
+/** Quick-use belt: number keys 1–N fire the "use" action on the matching
+ *  hotbar cell (backpack slots 0..N-1, the strip the hotbar mirrors).
+ *  `invokeAction` no-ops for an empty or non-usable slot, so only
+ *  potions/elixirs react — pressing a key over a sword does nothing. Frozen
+ *  while a panel is open (those keys drive the open panel then). */
+class HotbarQuickUse extends Component {
+  private readonly input = this.service(InputManagerKey);
+
+  constructor(
+    private readonly cfg: {
+      readonly inventory: Inventory<ItemId>;
+      readonly slots: number;
+      readonly isBusy: () => boolean;
+    },
+  ) {
+    super();
+  }
+
+  update(): void {
+    if (this.cfg.isBusy()) return;
+    for (let i = 0; i < this.cfg.slots; i++) {
+      if (this.input.isJustPressed(`quick-${i + 1}`)) this.cfg.inventory.invokeAction("use", i);
+    }
   }
 }
 
@@ -475,25 +514,47 @@ class InventoryRoomScene extends Scene {
       }),
     );
 
-    // Embedded, always-on: the SAME backpack model in a chrome-less one-row
-    // strip pinned by `bounds` (a hotbar). No columns given, so the panel
-    // derives how many cells fit the bounds width; `input: null` +
-    // `closeOnCancel: false` + `openOnAdd` hand all driving to the host — it
-    // just mirrors the model and never opens/closes on its own.
-    const hotbarBundle = createInventoryPanel(undefined, {
-      bounds: { x: 16, y: HEIGHT - 80, width: 344, height: 64 },
-      chrome: false,
-      detail: false,
-      actionMenu: false,
-      visibleRows: 1,
-    });
-    this.spawn("hotbar-ui").add(
+    // Embedded quick-use belt: the SAME backpack model in a chrome-less one-row
+    // strip pinned by `bounds`, centered along the bottom. `input: null` +
+    // `closeOnCancel: false` + `openOnAdd` keep the controller a passive live
+    // mirror — it never opens/closes or consumes device input on its own; the
+    // host drives it. Number keys 1–HOTBAR_SLOTS use the matching cell
+    // (HotbarQuickUse below), so the strip is interactive without a binding.
+    const hotbarBundle = createInventoryPanel(
+      // A chrome-less strip needs far less inset than the framed panels; the
+      // default 16px padding would crush a one-row cell to ~20px tall.
+      { ...defaultInventoryTheme(), padding: 8 },
+      {
+        bounds: HOTBAR_BOUNDS,
+        columns: HOTBAR_SLOTS,
+        chrome: false,
+        detail: false,
+        actionMenu: false,
+        visibleRows: 1,
+      },
+    );
+    let hotbarCancels = 0;
+    const hotbarCtrl = this.spawn("hotbar-ui").add(
       new InventoryController({
         ...hotbarBundle,
         inventory: backpack,
         input: null,
         closeOnCancel: false,
         openOnAdd: true,
+        onCancel: () => {
+          hotbarCancels += 1;
+        },
+      }),
+    );
+    // Label the strip as an interactive belt so its number-key controls read.
+    const caption = this.spawn("hotbar-caption");
+    caption.add(new Transform({ position: new Vec2(WIDTH / 2, HOTBAR_BOUNDS.y - 10) }));
+    caption.add(
+      new TextComponent({
+        text: `Quick-use · 1–${HOTBAR_SLOTS}`,
+        style: { fontSize: 11, fill: 0x8888aa, fontFamily: "sans-serif" },
+        layer: HUD_LAYER,
+        anchor: { x: 0.5, y: 0.5 },
       }),
     );
 
@@ -502,6 +563,11 @@ class InventoryRoomScene extends Scene {
     backpackHost.on(InventoryOpenedEvent, () => pouchCtrl.close());
     pouchHost.on(InventoryOpenedEvent, () => backpackCtrl.close());
     const anyPanelOpen = (): boolean => backpackCtrl.isOpen() || pouchCtrl.isOpen();
+
+    // Number keys 1–HOTBAR_SLOTS use the matching hotbar cell (backpack slots 0..N-1).
+    this.spawn("hotbar-input").add(
+      new HotbarQuickUse({ inventory: backpack, slots: HOTBAR_SLOTS, isBusy: anyPanelOpen }),
+    );
 
     // HUD + toasts.
     const hud = this.spawn("hud").add(new Hud(state));
@@ -615,7 +681,15 @@ class InventoryRoomScene extends Scene {
     player.add(new PlayerMover(anyPanelOpen));
 
     // E2E / console handle.
-    exposeProbe({ backpack, keyItems, backpackCtrl, pouchCtrl, state });
+    exposeProbe({
+      backpack,
+      keyItems,
+      backpackCtrl,
+      pouchCtrl,
+      hotbarCtrl,
+      hotbarCancels: () => hotbarCancels,
+      state,
+    });
   }
 
   private spawnPickup(
@@ -697,6 +771,8 @@ interface InventoryProbeHandle {
   readonly keyItems: Inventory<ItemId>;
   readonly backpackCtrl: InventoryController<ItemId>;
   readonly pouchCtrl: InventoryController<ItemId>;
+  readonly hotbarCtrl: InventoryController<ItemId>;
+  readonly hotbarCancels: () => number;
   readonly state: DemoState;
 }
 
@@ -728,6 +804,11 @@ async function main(): Promise<void> {
         sort: ["KeyR"],
         inventory: ["KeyI"],
         "key-items": ["KeyK"],
+        "quick-1": ["Digit1"],
+        "quick-2": ["Digit2"],
+        "quick-3": ["Digit3"],
+        "quick-4": ["Digit4"],
+        "quick-5": ["Digit5"],
       },
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),

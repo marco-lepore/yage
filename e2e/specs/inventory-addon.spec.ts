@@ -36,8 +36,8 @@ interface Handle {
   state: { hp: number; potions: number; lastToast: string };
 }
 
-/** The embedded hotbar's pinned rect (fixture: bottom-left, chrome-less). */
-const HOTBAR_BOUNDS = { x: 16, y: 600 - 80, width: 344, height: 64 };
+/** The embedded hotbar's pinned rect (fixture: bottom-center, chrome-less). */
+const HOTBAR_BOUNDS = { x: (800 - 300) / 2, y: 600 - 90, width: 300, height: 66 };
 
 interface ProbeData {
   potions: number;

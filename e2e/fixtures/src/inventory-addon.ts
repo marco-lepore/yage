@@ -108,7 +108,7 @@ class InventoryScene extends Scene {
     // + `closeOnCancel: false` + `openOnAdd` hand all driving to the host.
     let hotbarCancels = 0;
     const hotbarBundle = createInventoryPanel(undefined, {
-      bounds: { x: 16, y: HEIGHT - 80, width: 344, height: 64 },
+      bounds: { x: (WIDTH - 300) / 2, y: HEIGHT - 90, width: 300, height: 66 },
       chrome: false,
       detail: false,
       actionMenu: false,
