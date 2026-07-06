@@ -92,6 +92,9 @@ test.describe("LoadingScene fixture", () => {
     page,
   }) => {
     await gotoFixture(page, "/loading-scene.html");
+    // State the boot-scene precondition explicitly rather than leaning on
+    // settleAsset's ordering to imply the fixture's post-start push landed.
+    await waitForSceneStackLength(page, 1);
 
     await settleAsset(page, "failAsset", "a", "disk went fishing");
 
