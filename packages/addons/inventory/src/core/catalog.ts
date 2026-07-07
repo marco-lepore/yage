@@ -5,14 +5,56 @@
  * `inv.add("potino")` is a compile error, not a runtime surprise.
  */
 
-import type { ItemDef, ItemDefInput } from "./types.js";
+import type {
+  InstanceDataMap,
+  InstanceToken,
+  ItemDef,
+  ItemDefInput,
+  LooseDataMap,
+} from "./types.js";
+
+/**
+ * Declare an item's per-stack instance-data type — used in a {@link defineItems}
+ * def's `instance` field. Carries `T` at compile time only and returns no usable
+ * runtime value (the model never reads `instance`); {@link defineItems} captures
+ * `T` into the inventory's data map so `add`/predicate/`find` narrow per item.
+ *
+ * ```ts
+ * defineItems({
+ *   herb:  { name: "Herb", instance: instanceData<{ quality: number }>() },
+ *   sword: { name: "Sword", instance: instanceData<{ durability: number }>() },
+ *   potion: { name: "Potion" }, // no instance → its `data` is `never`
+ * });
+ * ```
+ */
+export function instanceData<T extends Readonly<Record<string, unknown>>>(): InstanceToken<T> {
+  return undefined as unknown as InstanceToken<T>;
+}
+
+/** The instance-data type a def declares via {@link instanceData}, or `never`
+ *  when it declares none. */
+type InstanceDataOf<D> = D extends { readonly instance: InstanceToken<infer T> } ? T : never;
+
+/** The per-item data map {@link defineItems} derives from a def map — each id
+ *  mapped to its declared instance-data type. Threads into `Inventory` as its
+ *  second generic. */
+export type DataMapOf<TDefs> = {
+  [K in Extract<keyof TDefs, string>]: InstanceDataOf<TDefs[K]>;
+};
 
 /**
  * Validated, frozen item definitions plus their authoring order (the default
  * sort key — "the order you declared them" is the pokédex-style order games
  * sort by). Create one with {@link defineItems}.
  */
-export class ItemCatalog<TId extends string = string> {
+export class ItemCatalog<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  /** @internal Phantom — never present at runtime; carries the per-item
+   *  instance-data map so `Inventory` infers it from a catalog value (the
+   *  `declare readonly` brand pattern). */
+  declare readonly __dataMap?: TData;
   private readonly byId: ReadonlyMap<TId, ItemDef<TId>>;
   /** Ids in authoring order. */
   readonly ids: readonly TId[];
@@ -71,7 +113,7 @@ export class ItemCatalog<TId extends string = string> {
  */
 export function defineItems<const TDefs extends Record<string, ItemDefInput>>(
   defs: TDefs,
-): ItemCatalog<Extract<keyof TDefs, string>> {
+): ItemCatalog<Extract<keyof TDefs, string>, DataMapOf<TDefs>> {
   type TId = Extract<keyof TDefs, string>;
   const out = new Map<TId, ItemDef<TId>>();
   for (const [id, input] of Object.entries(defs) as [TId, ItemDefInput][]) {
@@ -85,5 +127,5 @@ export function defineItems<const TDefs extends Record<string, ItemDefInput>>(
     }
     out.set(id, Object.freeze({ ...input, id }));
   }
-  return new ItemCatalog(out);
+  return new ItemCatalog<TId, DataMapOf<TDefs>>(out);
 }

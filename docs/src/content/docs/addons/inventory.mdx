@@ -213,6 +213,39 @@ the next mutation. The model resolves it by identity, so a stale ref (its stack
 removed or shifted by a compaction) is a safe no-op, never a wrong removal.
 `transfer(target, ref)` moves one located stack the same way.
 
+### Typed per-stack data
+
+Those predicates read `d.quality` with no cast because each item declares its
+stack-data shape. Add an `instance` field to the def with the `instanceData<T>()`
+helper. It carries the type only — the model stores no runtime value for it —
+and `defineItems` captures each item's shape. Construct the inventory with no
+explicit type argument, and it infers both the id union and the per-item data
+map from the catalog:
+
+```ts
+import { defineItems, instanceData, Inventory } from "@yagejs-addons/inventory";
+
+const catalog = defineItems({
+  potion: { name: "Potion", maxStack: 5 }, // no instance → its data is `never`
+  herb: { name: "Herb", instance: instanceData<{ quality: number }>() },
+  sword: { name: "Iron Sword", instance: instanceData<{ durability: number }>() },
+});
+
+const inv = new Inventory({ catalog }); // infers ids + typed data map
+
+inv.add("herb", 1, { data: { quality: 90 } }); // data checked against the item
+inv.count("herb", (d) => d.quality > 80); // `d` is { quality: number }
+inv.find("herb", (d) => d.durability); // compile error: herb has no `durability`
+inv.add("potion", 1, { data: {} }); // compile error: potion carries no data
+```
+
+The `data` argument and the predicate narrow by the item id you pass to `add`,
+`count`, `has`, `find`, `findAll`, `remove`, and `transfer`. An id-only type
+(`new Inventory<ItemId>(...)`) or an untyped catalog keeps the permissive
+`Record<string, unknown>`, so code that doesn't declare `instance` types is
+unaffected. Metadata `data` on the def (weight, base value) stays an opaque
+object; only the per-stack `instance` data is typed.
+
 ## Arranging: move, split, sort
 
 `move(from, to)` implements the familiar slot interaction in one call: onto an

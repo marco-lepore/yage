@@ -6,20 +6,23 @@
  * the sort itself is stable, so equal entries keep their relative placement.
  */
 
-import type { ItemDef, ItemStack } from "./types.js";
+import type { InstanceDataMap, ItemDef, ItemStack, LooseDataMap } from "./types.js";
 
 /** What a {@link StackComparator} compares. */
-export interface SortEntry<TId extends string = string> {
-  readonly stack: ItemStack<TId>;
+export interface SortEntry<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  readonly stack: ItemStack<TId, TData>;
   readonly def: ItemDef<TId>;
   /** The def's authoring position in the catalog. */
   readonly order: number;
 }
 
-export type StackComparator<TId extends string = string> = (
-  a: SortEntry<TId>,
-  b: SortEntry<TId>,
-) => number;
+export type StackComparator<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> = (a: SortEntry<TId, TData>, b: SortEntry<TId, TData>) => number;
 
 /** Catalog authoring order — the default (`defineItems` declaration order). */
 export const byCatalogOrder: StackComparator = (a, b) => a.order - b.order;

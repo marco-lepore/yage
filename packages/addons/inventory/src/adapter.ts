@@ -18,6 +18,7 @@ import type {
   SlotsChannel,
   SlotView,
 } from "./core/session.js";
+import type { InstanceDataMap, LooseDataMap } from "./core/types.js";
 
 /** A laid-out rectangle (screen px) — the shared currency between the panel
  *  layout, the cells it places, and the pointer hit-tests. */
@@ -45,8 +46,10 @@ export interface Mountable {
 /** The slot surface — a windowed grid of cells (a list is one column of wide
  *  cells). Optionally hit-tests pointer coords so a pointer binding can
  *  hover/click cells without owning their geometry. */
-export interface SlotsPresenter<TId extends string = string>
-  extends SlotsChannel<TId>,
+export interface SlotsPresenter<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> extends SlotsChannel<TId, TData>,
     Mountable {
   /** Slot index under this point, or undefined. Omit for no pointer support. */
   slotAtPoint?(x: number, y: number): number | undefined;
@@ -86,7 +89,10 @@ export interface CellHandle {
  * lifecycle. Swapping the presenter is what turns a grid of icon tiles into a
  * list of text rows — no branching in the view.
  */
-export interface CellPresenter<TId extends string = string> {
+export interface CellPresenter<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   /** Cell geometry used for any axis the factory options leave unset. */
   readonly defaults: CellDefaults;
   /**
@@ -95,7 +101,7 @@ export interface CellPresenter<TId extends string = string> {
    * its background and can be selected. Spawn order inside the handle is paint
    * order: background/selection graphics first, content on top.
    */
-  renderCell(scene: Scene, view: SlotView<TId>, rect: Rect, selected: boolean): CellHandle;
+  renderCell(scene: Scene, view: SlotView<TId, TData>, rect: Rect, selected: boolean): CellHandle;
   /** Optional diagnostics sink pass-through (e.g. an unresolvable icon key). */
   setDiagnostics?(warn: DiagnosticSink): void;
   /** Optional preset-level teardown (a texture cache, say). */
@@ -160,8 +166,10 @@ export interface HintsPresenter {
 }
 
 /** The selected-item pane. */
-export interface DetailPresenter<TId extends string = string>
-  extends DetailChannel<TId>,
+export interface DetailPresenter<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> extends DetailChannel<TId, TData>,
     Mountable {}
 
 /** The per-item action popup, with the pointer hit-test seam for its rows. */
@@ -182,9 +190,12 @@ export interface ChromePresenter extends InventoryChromeChannel, Mountable {}
  * Optional fields are `T | undefined` so factories and games can assign
  * possibly-undefined values directly (exactOptionalPropertyTypes).
  */
-export interface InventoryBundle<TId extends string = string> {
-  readonly slots: SlotsPresenter<TId>;
+export interface InventoryBundle<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  readonly slots: SlotsPresenter<TId, TData>;
   readonly chrome?: ChromePresenter | undefined;
-  readonly detail?: DetailPresenter<TId> | undefined;
+  readonly detail?: DetailPresenter<TId, TData> | undefined;
   readonly actionMenu?: ActionMenuPresenter | undefined;
 }

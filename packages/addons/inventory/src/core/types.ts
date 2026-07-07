@@ -15,6 +15,34 @@
  *    cap and anything beyond it is rejected — Zelda-arrows-style. */
 export type StackingMode = "multi" | "single";
 
+declare const INSTANCE_BRAND: unique symbol;
+
+/**
+ * Phantom carrier of an item's per-stack {@link ItemStack.data} type, produced
+ * by {@link instanceData}. Exists only at compile time — a def's `instance`
+ * field declares the shape without any runtime value, and {@link defineItems}
+ * captures it into the inventory's data map.
+ */
+export interface InstanceToken<T extends Readonly<Record<string, unknown>>> {
+  readonly [INSTANCE_BRAND]: T;
+}
+
+/** The per-item instance-data map: each item id → the shape of that item's
+ *  stack `data` (`never` when the item declares no {@link instanceData}). It is
+ *  the second generic every stack-bearing type threads, indexed by the stack's
+ *  own id so `data` narrows per item. Instance data is always an object bag, so
+ *  the values are constrained to {@link Record}s. */
+export type InstanceDataMap<TId extends string = string> = Record<
+  TId,
+  Readonly<Record<string, unknown>>
+>;
+
+/** The permissive default map — every id carries an open `data` bag. In force
+ *  when an inventory is typed by id only (`Inventory<ItemId>`) or left untyped,
+ *  so hand-written and pre-existing code keeps the loose `data` it had. Same
+ *  shape as the {@link InstanceDataMap} constraint (its most permissive member). */
+export type LooseDataMap<TId extends string = string> = InstanceDataMap<TId>;
+
 /** An item definition as authored in {@link defineItems} — the `id` is derived
  *  from the map key, mirroring how dialogue speakers are declared. */
 export interface ItemDefInput {
@@ -44,8 +72,16 @@ export interface ItemDefInput {
   /** Ids of the inventory-level {@link ItemActionDef}s that apply to this item.
    *  Omitted: every inventory action applies (subject to its `available`). */
   readonly actions?: readonly string[];
-  /** Game-owned payload (stats, effects, …). The model carries it opaquely. */
+  /** Game-owned payload (stats, effects, …). The model carries it opaquely.
+   *  Shared per item type (weight, base value) — distinct from a stack's
+   *  per-instance {@link instance} data. */
   readonly data?: Readonly<Record<string, unknown>>;
+  /** Declares the item's per-stack {@link ItemStack.data} type via a phantom
+   *  {@link instanceData} token, captured by {@link defineItems} into the
+   *  inventory's data map. Omitted: the item carries no instance data — its
+   *  `data` is `never` and `add(id, n, { data })` is a compile error. Distinct
+   *  from {@link data} (shared metadata). */
+  readonly instance?: InstanceToken<Readonly<Record<string, unknown>>>;
 }
 
 /** A loaded item definition: the authored fields plus the id derived from the
@@ -63,11 +99,16 @@ export interface ItemDef<TId extends string = string> extends ItemDefInput {
  * carrying `data` NEVER auto-merges with another stack — merge would have to
  * invent a policy for reconciling two payloads.
  */
-export interface ItemStack<TId extends string = string> {
+export interface ItemStack<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   readonly itemId: TId;
   /** Units in this stack (integer ≥ 1 — a zero-quantity stack becomes `null`). */
   readonly quantity: number;
-  readonly data?: Readonly<Record<string, unknown>>;
+  /** Per-instance state, typed to this item via the inventory's data map
+   *  ({@link ItemDefInput.instance}). `never` for an item that declares none. */
+  readonly data?: TData[TId];
 }
 
 /** Why a mutation was (partly) refused. The `add`/`transfer` family emits the
@@ -124,9 +165,12 @@ export interface AddResult {
  *  the portions taken (in drain order), each carrying its `data` — so an
  *  instance payload can be re-homed (dropped, banked, undone) instead of lost.
  *  Empty when `removed` is 0. */
-export interface RemoveResult<TId extends string = string> {
+export interface RemoveResult<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   readonly removed: number;
-  readonly stacks: ReadonlyArray<ItemStack<TId>>;
+  readonly stacks: ReadonlyArray<ItemStack<TId, TData>>;
 }
 
 /** What a successful {@link Inventory.move} did: `"moved"` fills an empty
@@ -155,44 +199,54 @@ export interface TransferResult {
  *  {@link Inventory.transfer}. A positional snapshot: valid until the next
  *  mutation, exactly like a slot index (the model resolves it by identity, so a
  *  stale ref is a safe no-op rather than a wrong removal). */
-export interface LocatedStack<TId extends string = string> {
+export interface LocatedStack<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   readonly slot: number;
-  readonly stack: ItemStack<TId>;
+  readonly stack: ItemStack<TId, TData>;
 }
 
 /** Selects stacks by their per-instance `data`. Stacks with NO `data` are
  *  excluded before it runs, so `data` is always defined here — a data predicate
  *  is a question about instances (durability, rolled stats). `stack` is the full
  *  stack for the rare quantity check. */
-export type StackPredicate<TId extends string = string> = (
-  data: Readonly<Record<string, unknown>>,
-  stack: ItemStack<TId>,
-) => boolean;
+export type StackPredicate<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> = (data: TData[TId], stack: ItemStack<TId, TData>) => boolean;
 
 /**
  * Read-only view of an inventory — what policy hooks ({@link InventoryConstraint},
  * {@link ItemActionDef.available}) receive, so a policy can inspect state but
  * not recurse into mutations mid-operation. `Inventory` implements it.
  */
-export interface InventoryReader<TId extends string = string> {
+export interface InventoryReader<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   /** Slot array, `null` for empty slots. Bounded inventories always have
    *  `capacity` entries; unbounded ones grow as stacks land. */
-  readonly slots: ReadonlyArray<ItemStack<TId> | null>;
+  readonly slots: ReadonlyArray<ItemStack<TId, TData> | null>;
   /** Max slot count, or `undefined` for an unbounded inventory. */
   readonly capacity: number | undefined;
   /** Occupied slot count. */
   readonly used: number;
   /** Total units of `itemId`. Without a predicate every stack counts; with a
    *  {@link StackPredicate}, only data-bearing stacks whose `data` matches. */
-  count(itemId: TId, where?: StackPredicate<TId>): number;
+  count<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): number;
   /** Whether at least `quantity` (default 1) matching units of `itemId` are
    *  held. A {@link StackPredicate} (in place of, or after, `quantity`) restricts
    *  the tally to matching data stacks. */
-  has(itemId: TId, quantityOrWhere?: number | StackPredicate<TId>, where?: StackPredicate<TId>): boolean;
+  has<K extends TId>(
+    itemId: K,
+    quantityOrWhere?: number | StackPredicate<K, TData>,
+    where?: StackPredicate<K, TData>,
+  ): boolean;
   /** First stack of `itemId` matching the optional predicate, with its slot. */
-  find(itemId: TId, where?: StackPredicate<TId>): LocatedStack<TId> | undefined;
+  find<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData> | undefined;
   /** Every stack of `itemId` matching the optional predicate, in slot order. */
-  findAll(itemId: TId, where?: StackPredicate<TId>): readonly LocatedStack<TId>[];
+  findAll<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): readonly LocatedStack<K, TData>[];
 }
 
 /**
@@ -214,20 +268,26 @@ export interface InventoryReader<TId extends string = string> {
  * });
  * ```
  */
-export interface InventoryConstraint<TId extends string = string> {
+export interface InventoryConstraint<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   /** Diagnostic label (not used by the model logic). */
   readonly id?: string;
   /** Max additional units of `def` the inventory may accept (≥ 0; `Infinity`
    *  for "no limit from this constraint"). */
-  maxAcceptable(def: ItemDef<TId>, inventory: InventoryReader<TId>): number;
+  maxAcceptable(def: ItemDef<TId>, inventory: InventoryReader<TId, TData>): number;
 }
 
 /** Context handed to {@link ItemActionDef.available}. */
-export interface ItemActionContext<TId extends string = string> {
+export interface ItemActionContext<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   readonly slot: number;
-  readonly stack: ItemStack<TId>;
+  readonly stack: ItemStack<TId, TData>;
   readonly def: ItemDef<TId>;
-  readonly inventory: InventoryReader<TId>;
+  readonly inventory: InventoryReader<TId, TData>;
 }
 
 /**
@@ -240,13 +300,16 @@ export interface ItemActionContext<TId extends string = string> {
  * is the one built-in convenience: the model removes one unit after emitting,
  * covering the use-a-consumable case without a handler having to mutate.
  */
-export interface ItemActionDef<TId extends string = string> {
+export interface ItemActionDef<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   readonly id: string;
   /** Menu label. */
   readonly label: string;
   /** Per-stack availability (a gate on top of `ItemDef.actions`). Omitted:
    *  always available. */
-  available?(ctx: ItemActionContext<TId>): boolean;
+  available?(ctx: ItemActionContext<TId, TData>): boolean;
   /** Remove one unit from the stack after the action event. Don't ALSO remove
    *  it in your handler — that would consume two. */
   readonly consumes?: boolean;

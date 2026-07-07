@@ -27,15 +27,18 @@ import { byCatalogOrder, type SortEntry, type StackComparator } from "./comparat
 import type {
   ActionResult,
   AddResult,
+  InstanceDataMap,
   InventoryConstraint,
   InventoryEvents,
   InventoryReader,
   InventorySnapshot,
+  ItemActionContext,
   ItemActionDef,
   ItemDef,
   ItemStack,
   ItemStackSnapshot,
   LocatedStack,
+  LooseDataMap,
   MoveResult,
   RejectReason,
   RemoveResult,
@@ -44,8 +47,11 @@ import type {
   TransferResult,
 } from "./types.js";
 
-export interface InventoryOptions<TId extends string = string> {
-  readonly catalog: ItemCatalog<TId>;
+export interface InventoryOptions<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  readonly catalog: ItemCatalog<TId, TData>;
   /** Max slot count. Omit for an unbounded inventory (key items, quest logs) —
    *  the slot array grows as stacks land. */
   readonly capacity?: number;
@@ -65,25 +71,33 @@ export interface InventoryOptions<TId extends string = string> {
   readonly accepts?: (def: ItemDef<TId>) => boolean;
   /** Additional acceptance limits (weight, currency caps) — see
    *  {@link InventoryConstraint}. Slot capacity needs no constraint. */
-  readonly constraints?: readonly InventoryConstraint<TId>[];
+  readonly constraints?: readonly InventoryConstraint<TId, TData>[];
   /** The actions items can offer ("Use", "Drop", …). Per-item applicability
    *  via `ItemDef.actions` + each action's `available`. */
-  readonly actions?: readonly ItemActionDef<TId>[];
+  readonly actions?: readonly ItemActionDef<TId, TData>[];
 }
 
-export class Inventory<TId extends string = string> implements InventoryReader<TId> {
-  readonly catalog: ItemCatalog<TId>;
+export class Inventory<
+    TId extends string = string,
+    TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+  >
+  implements InventoryReader<TId, TData>
+{
+  readonly catalog: ItemCatalog<TId, TData>;
   readonly capacity: number | undefined;
 
   private readonly autoCompact: boolean;
   private readonly defaultMaxStack: number;
   private readonly acceptsFn: ((def: ItemDef<TId>) => boolean) | undefined;
-  private readonly constraints: readonly InventoryConstraint<TId>[];
-  private readonly actions: readonly ItemActionDef<TId>[];
+  private readonly constraints: readonly InventoryConstraint<TId, TData>[];
+  private readonly actions: readonly ItemActionDef<TId, TData>[];
   private readonly emitter = new Emitter<InventoryEvents<TId>>();
+  // Stored with the permissive `data` type; the precise per-item `data` lives
+  // on the public method signatures, cast at that read boundary. Keeps the
+  // mutation logic identical to the id-only model.
   private readonly _slots: (ItemStack<TId> | null)[];
 
-  constructor(opts: InventoryOptions<TId>) {
+  constructor(opts: InventoryOptions<TId, TData>) {
     if (opts.capacity !== undefined && (!Number.isInteger(opts.capacity) || opts.capacity < 1)) {
       throw new Error(`capacity must be an integer ≥ 1 (got ${opts.capacity})`);
     }
@@ -101,8 +115,8 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
 
   // ---------------------------------------------------------------- reading
 
-  get slots(): ReadonlyArray<ItemStack<TId> | null> {
-    return this._slots;
+  get slots(): ReadonlyArray<ItemStack<TId, TData> | null> {
+    return this._slots as ReadonlyArray<ItemStack<TId, TData> | null>;
   }
 
   get used(): number {
@@ -117,8 +131,8 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   }
 
   /** The stack at `slot`, or `null` (empty or out of range). */
-  get(slot: number): ItemStack<TId> | null {
-    return this._slots[slot] ?? null;
+  get(slot: number): ItemStack<TId, TData> | null {
+    return (this._slots[slot] ?? null) as ItemStack<TId, TData> | null;
   }
 
   /**
@@ -127,10 +141,11 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * anonymous stacks are excluded, since a data predicate is a question about
    * instances.
    */
-  count(itemId: TId, where?: StackPredicate<TId>): number {
+  count<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): number {
+    const pred = where as StackPredicate<TId> | undefined;
     let n = 0;
     for (const s of this._slots) {
-      if (s && s.itemId === itemId && this.matches(s, where)) n += s.quantity;
+      if (s && s.itemId === itemId && this.matches(s, pred)) n += s.quantity;
     }
     return n;
   }
@@ -140,10 +155,10 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * A {@link StackPredicate} restricts the tally to matching data stacks, so
    * `has("key", (d) => d.opens === "boss-lair")` asks about a specific instance.
    */
-  has(
-    itemId: TId,
-    quantityOrWhere?: number | StackPredicate<TId>,
-    where?: StackPredicate<TId>,
+  has<K extends TId>(
+    itemId: K,
+    quantityOrWhere?: number | StackPredicate<K, TData>,
+    where?: StackPredicate<K, TData>,
   ): boolean {
     const quantity = typeof quantityOrWhere === "number" ? quantityOrWhere : 1;
     const pred = typeof quantityOrWhere === "function" ? quantityOrWhere : where;
@@ -163,32 +178,36 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   }
 
   /** Every occupied slot, in slot order. */
-  stacks(): ReadonlyArray<LocatedStack<TId>> {
+  stacks(): ReadonlyArray<LocatedStack<TId, TData>> {
     const out: LocatedStack<TId>[] = [];
     this._slots.forEach((stack, slot) => {
       if (stack) out.push({ slot, stack });
     });
-    return out;
+    return out as unknown as ReadonlyArray<LocatedStack<TId, TData>>;
   }
 
   /** First stack of `itemId` matching the optional predicate, paired with its
    *  slot — the located handle {@link remove} / {@link transfer} accept. The
    *  ref is a positional snapshot, valid until the next mutation. */
-  find(itemId: TId, where?: StackPredicate<TId>): LocatedStack<TId> | undefined {
+  find<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData> | undefined {
+    const pred = where as StackPredicate<TId> | undefined;
     for (let i = 0; i < this._slots.length; i++) {
       const s = this._slots[i];
-      if (s && s.itemId === itemId && this.matches(s, where)) return { slot: i, stack: s };
+      if (s && s.itemId === itemId && this.matches(s, pred)) {
+        return { slot: i, stack: s } as LocatedStack<K, TData>;
+      }
     }
     return undefined;
   }
 
   /** Every stack of `itemId` matching the optional predicate, in slot order. */
-  findAll(itemId: TId, where?: StackPredicate<TId>): LocatedStack<TId>[] {
+  findAll<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData>[] {
+    const pred = where as StackPredicate<TId> | undefined;
     const out: LocatedStack<TId>[] = [];
     this._slots.forEach((s, slot) => {
-      if (s && s.itemId === itemId && this.matches(s, where)) out.push({ slot, stack: s });
+      if (s && s.itemId === itemId && this.matches(s, pred)) out.push({ slot, stack: s });
     });
-    return out;
+    return out as unknown as LocatedStack<K, TData>[];
   }
 
   /** Subscribe to a model event; returns an unsubscribe. */
@@ -207,10 +226,10 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * result says how much landed, what was refused and why. Pass `data` for a
    * per-stack payload — data stacks never merge, they open fresh slots.
    */
-  add(
-    itemId: TId,
+  add<K extends TId>(
+    itemId: K,
     quantity = 1,
-    opts: { readonly data?: Readonly<Record<string, unknown>> } = {},
+    opts: { readonly data?: TData[K] } = {},
   ): AddResult {
     assertPositiveInt(quantity, "quantity");
     const def = this.catalog.get(itemId);
@@ -369,12 +388,17 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * returned rather than silently destroyed. The `remove(ref)` overload removes
    * exactly the stack a {@link find} returned (a stale ref is a safe no-op).
    */
-  remove(ref: LocatedStack<TId>): RemoveResult<TId>;
-  remove(itemId: TId, quantity?: number, where?: StackPredicate<TId>): RemoveResult<TId>;
-  remove(target: TId | LocatedStack<TId>, quantity = 1, where?: StackPredicate<TId>): RemoveResult<TId> {
+  remove(ref: LocatedStack<TId, TData>): RemoveResult<TId, TData>;
+  remove<K extends TId>(itemId: K, quantity?: number, where?: StackPredicate<K, TData>): RemoveResult<K, TData>;
+  remove(
+    target: TId | LocatedStack<TId, TData>,
+    quantity = 1,
+    where?: StackPredicate<TId, TData>,
+  ): RemoveResult<TId, TData> {
     if (typeof target !== "string") return this.removeRef(target);
     assertPositiveInt(quantity, "quantity");
     const itemId = target;
+    const pred = where as StackPredicate<TId> | undefined;
     const stacks: ItemStack<TId>[] = [];
     const touched: number[] = [];
     let remaining = quantity;
@@ -389,8 +413,8 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
         touched.push(i);
       }
     };
-    if (where) {
-      drain((s) => this.matches(s, where));
+    if (pred) {
+      drain((s) => this.matches(s, pred));
     } else {
       // Anonymous first (leave instance stacks alone when fungible units
       // suffice), then dip into data stacks — their payloads ride out in `stacks`.
@@ -402,7 +426,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
       this.emitter.emit("itemRemoved", { itemId, quantity: removed });
       this.emitChanged(this.maybeCompact(touched));
     }
-    return { removed, stacks };
+    return { removed, stacks } as unknown as RemoveResult<TId, TData>;
   }
 
   /** Resolve a located ref to its current slot by object identity — follows a
@@ -413,13 +437,13 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     return i === -1 ? undefined : i;
   }
 
-  private removeRef(ref: LocatedStack<TId>): RemoveResult<TId> {
+  private removeRef(ref: LocatedStack<TId>): RemoveResult<TId, TData> {
     const slot = this.resolveRef(ref);
     return slot === undefined ? { removed: 0, stacks: [] } : this.removeAt(slot);
   }
 
   /** Remove `quantity` units (default: the whole stack) from one slot. */
-  removeAt(slot: number, quantity?: number): RemoveResult<TId> {
+  removeAt(slot: number, quantity?: number): RemoveResult<TId, TData> {
     const s = this._slots[slot];
     if (!s) return { removed: 0, stacks: [] };
     if (quantity !== undefined) assertPositiveInt(quantity, "quantity");
@@ -430,7 +454,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     return {
       removed: take,
       stacks: [{ itemId: s.itemId, quantity: take, ...(s.data ? { data: s.data } : {}) }],
-    };
+    } as unknown as RemoveResult<TId, TData>;
   }
 
   /**
@@ -438,7 +462,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * item id and quantity, then places the stack verbatim (no merging, no
    * capacity/constraint checks, no `itemAdded`/`itemRemoved` — just `changed`).
    */
-  setSlot(slot: number, stack: ItemStack<TId> | null): void {
+  setSlot(slot: number, stack: ItemStack<TId, TData> | null): void {
     if (slot < 0 || (this.capacity !== undefined && slot >= this.capacity)) {
       throw new Error(`slot ${slot} out of range`);
     }
@@ -566,11 +590,14 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * ones — the tidy-up players expect from a Sort button. Data stacks are
    * never consolidated; `comparator` defaults to {@link byCatalogOrder}.
    */
-  sort(comparator: StackComparator<TId> = byCatalogOrder, opts: { readonly consolidate?: boolean } = {}): void {
+  sort(
+    comparator: StackComparator<TId, TData> = byCatalogOrder,
+    opts: { readonly consolidate?: boolean } = {},
+  ): void {
     const affected = this.allIndices();
     let entries = this.sortEntries();
     if (opts.consolidate ?? true) entries = this.consolidate(entries);
-    entries.sort(comparator);
+    entries.sort(comparator as StackComparator<TId>);
 
     if (this.capacity !== undefined) {
       this._slots.fill(null);
@@ -629,15 +656,20 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * `transfer(target, ref)` overload moves exactly the stack a {@link find}
    * returned.
    */
-  transfer(target: Inventory<TId>, ref: LocatedStack<TId>): TransferResult;
-  transfer(target: Inventory<TId>, itemId: TId, quantity?: number, where?: StackPredicate<TId>): TransferResult;
+  transfer(target: Inventory<TId, TData>, ref: LocatedStack<TId, TData>): TransferResult;
+  transfer<K extends TId>(
+    target: Inventory<TId, TData>,
+    itemId: K,
+    quantity?: number,
+    where?: StackPredicate<K, TData>,
+  ): TransferResult;
   transfer(
-    target: Inventory<TId>,
-    itemIdOrRef: TId | LocatedStack<TId>,
+    target: Inventory<TId, TData>,
+    itemIdOrRef: TId | LocatedStack<TId, TData>,
     quantity = 1,
-    where?: StackPredicate<TId>,
+    where?: StackPredicate<TId, TData>,
   ): TransferResult {
-    if (target === (this as Inventory<TId>)) return { transferred: 0, rejected: 0 };
+    if (target === (this as Inventory<TId, TData>)) return { transferred: 0, rejected: 0 };
     if (typeof itemIdOrRef !== "string") {
       const slot = this.resolveRef(itemIdOrRef);
       return slot === undefined ? { transferred: 0, rejected: 0 } : this.transferSlot(target, slot);
@@ -650,10 +682,10 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     // Move stack-by-stack, re-resolving each pass: our own removeAt may
     // autoCompact and shift indices, so a cached list would go stale.
     while (remaining > 0) {
-      const next = this.nextTransferable(itemId, where);
+      const next = this.nextTransferable(itemId, where as StackPredicate<TId> | undefined);
       if (!next) break;
       const ask = Math.min(remaining, next.stack.quantity);
-      const res = target.add(itemId, ask, next.stack.data ? { data: next.stack.data } : {});
+      const res = target.add(itemId, ask, next.stack.data ? { data: next.stack.data as TData[TId] } : {});
       if (res.reason) reason = res.reason;
       if (res.added <= 0) break; // target refuses this item — nothing more fits
       this.removeAt(next.slot, res.added);
@@ -683,12 +715,12 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   }
 
   /** Move (part of) one specific stack — data payload included — into `target`. */
-  transferSlot(target: Inventory<TId>, slot: number, quantity?: number): TransferResult {
+  transferSlot(target: Inventory<TId, TData>, slot: number, quantity?: number): TransferResult {
     const s = this._slots[slot];
-    if (!s || target === (this as Inventory<TId>)) return { transferred: 0, rejected: 0 };
+    if (!s || target === (this as Inventory<TId, TData>)) return { transferred: 0, rejected: 0 };
     if (quantity !== undefined) assertPositiveInt(quantity, "quantity");
     const ask = Math.min(quantity ?? s.quantity, s.quantity);
-    const res = target.add(s.itemId, ask, s.data ? { data: s.data } : {});
+    const res = target.add(s.itemId, ask, s.data ? { data: s.data as TData[TId] } : {});
     if (res.added > 0) this.removeAt(slot, res.added);
     return {
       transferred: res.added,
@@ -702,11 +734,16 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   /** The actions currently offered for the stack at `slot` (empty for an
    *  empty slot): inventory actions, narrowed by `ItemDef.actions`, gated by
    *  each action's `available`. */
-  getActions(slot: number): readonly ItemActionDef<TId>[] {
+  getActions(slot: number): readonly ItemActionDef<TId, TData>[] {
     const stack = this._slots[slot];
     if (!stack) return [];
     const def = this.catalog.get(stack.itemId);
-    const ctx = { slot, stack, def, inventory: this as InventoryReader<TId> };
+    const ctx: ItemActionContext<TId, TData> = {
+      slot,
+      stack: stack as ItemStack<TId, TData>,
+      def,
+      inventory: this,
+    };
     return this.actions.filter(
       (a) => (def.actions ? def.actions.includes(a.id) : true) && (a.available?.(ctx) ?? true),
     );

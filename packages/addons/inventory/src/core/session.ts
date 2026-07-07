@@ -16,16 +16,25 @@
 
 import type { Inventory } from "./Inventory.js";
 import { byCatalogOrder, type StackComparator } from "./comparators.js";
-import type { ItemActionDef, ItemDef, ItemStack } from "./types.js";
+import type {
+  InstanceDataMap,
+  ItemActionDef,
+  ItemDef,
+  ItemStack,
+  LooseDataMap,
+} from "./types.js";
 
 /** Cursor directions the session routes — device-agnostic (dpad, keys, …). */
 export type NavDirection = "up" | "down" | "left" | "right";
 
 /** What a slots/detail channel renders for one slot: the stack (or null for
  *  an empty cell) plus its resolved def, so views never touch the catalog. */
-export interface SlotView<TId extends string = string> {
+export interface SlotView<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   readonly slot: number;
-  readonly stack: ItemStack<TId> | null;
+  readonly stack: ItemStack<TId, TData> | null;
   readonly def: ItemDef<TId> | null;
 }
 
@@ -35,8 +44,11 @@ export interface SlotView<TId extends string = string> {
  * `setVisible` before the first `present` (the session hides everything at
  * construction; a closed inventory shows nothing).
  */
-export interface SlotsChannel<TId extends string = string> {
-  present(slots: readonly SlotView<TId>[]): void;
+export interface SlotsChannel<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  present(slots: readonly SlotView<TId, TData>[]): void;
   setSelected(slot: number): void;
   /** The slot the cursor lands on moving `dir` from `from` — the view owns
    *  its geometry (grid columns, list rows, wrapping). Return `from` for "no
@@ -51,8 +63,11 @@ export interface SlotsChannel<TId extends string = string> {
 }
 
 /** The selected-item pane (name, description, quantity). `null` = empty slot. */
-export interface DetailChannel<TId extends string = string> {
-  present(view: SlotView<TId> | null): void;
+export interface DetailChannel<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  present(view: SlotView<TId, TData> | null): void;
   setVisible(visible: boolean): void;
   clear(): void;
   update?(dt: number): void;
@@ -96,10 +111,13 @@ export interface InventoryChromeChannel {
 
 /** The channel set a session drives. Only `slots` is required — an embedded
  *  integration renders slots inside its own menu chrome and skips the rest. */
-export interface InventoryChannels<TId extends string = string> {
-  readonly slots: SlotsChannel<TId>;
+export interface InventoryChannels<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
+  readonly slots: SlotsChannel<TId, TData>;
   readonly chrome?: InventoryChromeChannel | undefined;
-  readonly detail?: DetailChannel<TId> | undefined;
+  readonly detail?: DetailChannel<TId, TData> | undefined;
   readonly actionMenu?: ActionMenuChannel | undefined;
 }
 
@@ -122,7 +140,10 @@ export interface InventorySessionDriver {
   sort(): void;
 }
 
-export interface InventorySessionOptions<TId extends string = string> {
+export interface InventorySessionOptions<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> {
   /** Header title the chrome shows. */
   readonly title?: string | undefined;
   /**
@@ -133,7 +154,7 @@ export interface InventorySessionOptions<TId extends string = string> {
    */
   readonly closeOnCancel?: boolean | undefined;
   /** Comparator for {@link InventorySession.sort}. Default {@link byCatalogOrder}. */
-  readonly sortComparator?: StackComparator<TId> | undefined;
+  readonly sortComparator?: StackComparator<TId, TData> | undefined;
   readonly onOpened?: (() => void) | undefined;
   readonly onClosed?: (() => void) | undefined;
   /** The cursor moved to another slot (keyboard nav or pointer hover). */
@@ -153,22 +174,27 @@ export interface InventorySessionOptions<TId extends string = string> {
   readonly onCancel?: (() => void) | undefined;
 }
 
-export class InventorySession<TId extends string = string> implements InventorySessionDriver {
-  private inventory: Inventory<TId>;
-  private readonly channels: InventoryChannels<TId>;
-  private readonly opts: InventorySessionOptions<TId>;
+export class InventorySession<
+    TId extends string = string,
+    TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+  >
+  implements InventorySessionDriver
+{
+  private inventory: Inventory<TId, TData>;
+  private readonly channels: InventoryChannels<TId, TData>;
+  private readonly opts: InventorySessionOptions<TId, TData>;
   private title: string | undefined;
 
   private opened = false;
   private selected = 0;
-  private menuActions: readonly ItemActionDef<TId>[] = [];
+  private menuActions: readonly ItemActionDef<TId, TData>[] = [];
   private menuIndex = 0;
   private unsubscribe: (() => void) | undefined;
 
   constructor(
-    inventory: Inventory<TId>,
-    channels: InventoryChannels<TId>,
-    opts: InventorySessionOptions<TId> = {},
+    inventory: Inventory<TId, TData>,
+    channels: InventoryChannels<TId, TData>,
+    opts: InventorySessionOptions<TId, TData> = {},
   ) {
     this.inventory = inventory;
     this.channels = channels;
@@ -230,7 +256,7 @@ export class InventorySession<TId extends string = string> implements InventoryS
    * panel). Resets the cursor, re-subscribes model events, and re-presents
    * when open. Pass `title` to relabel the chrome in the same step.
    */
-  setInventory(inventory: Inventory<TId>, opts: { readonly title?: string } = {}): void {
+  setInventory(inventory: Inventory<TId, TData>, opts: { readonly title?: string } = {}): void {
     this.unsubscribe?.();
     this.inventory = inventory;
     if (opts.title !== undefined) this.title = opts.title;
@@ -248,7 +274,7 @@ export class InventorySession<TId extends string = string> implements InventoryS
   }
 
   /** The model currently presented — the escape hatch to everything else. */
-  getInventory(): Inventory<TId> {
+  getInventory(): Inventory<TId, TData> {
     return this.inventory;
   }
 
@@ -429,14 +455,14 @@ export class InventorySession<TId extends string = string> implements InventoryS
     });
   }
 
-  private slotViews(): SlotView<TId>[] {
+  private slotViews(): SlotView<TId, TData>[] {
     const total = this.inventory.capacity ?? this.inventory.slots.length;
-    const views: SlotView<TId>[] = [];
+    const views: SlotView<TId, TData>[] = [];
     for (let i = 0; i < total; i++) views.push(this.viewOf(i));
     return views;
   }
 
-  private viewOf(slot: number): SlotView<TId> {
+  private viewOf(slot: number): SlotView<TId, TData> {
     const stack = this.stackAt(slot);
     return {
       slot,
@@ -445,7 +471,7 @@ export class InventorySession<TId extends string = string> implements InventoryS
     };
   }
 
-  private stackAt(slot: number): ItemStack<TId> | null {
+  private stackAt(slot: number): ItemStack<TId, TData> | null {
     return this.inventory.slots[slot] ?? null;
   }
 

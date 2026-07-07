@@ -24,6 +24,7 @@ import { InputManagerKey } from "@yagejs/input";
 import type { Inventory } from "./core/Inventory.js";
 import { InventorySession, type NavDirection } from "./core/session.js";
 import type { StackComparator } from "./core/comparators.js";
+import type { InstanceDataMap, LooseDataMap } from "./core/types.js";
 import type { InventoryBundle } from "./adapter.js";
 import { inventoryControls, type InputBinding } from "./input/index.js";
 import {
@@ -41,10 +42,12 @@ import {
 // id-agnostic views, and keeping `TId` out of the presenter fields lets the
 // compiler infer `TId` from `inventory` alone — `new InventoryController({
 // ...bundle, inventory })` stays fully typed with no explicit type argument.
-export interface InventoryControllerOptions<TId extends string = string>
-  extends InventoryBundle {
+export interface InventoryControllerOptions<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> extends InventoryBundle {
   /** The model to present. Swap it live with {@link InventoryController.setInventory}. */
-  readonly inventory: Inventory<TId>;
+  readonly inventory: Inventory<TId, TData>;
   /** Header title the chrome shows. */
   readonly title?: string | undefined;
   /**
@@ -54,7 +57,7 @@ export interface InventoryControllerOptions<TId extends string = string>
    */
   readonly closeOnCancel?: boolean | undefined;
   /** Comparator behind the sort control. Default catalog authoring order. */
-  readonly sortComparator?: StackComparator<TId> | undefined;
+  readonly sortComparator?: StackComparator<TId, TData> | undefined;
   /**
    * Device → session binding. Three modes:
    * - omit: the zero-config default, {@link inventoryControls} wired to this
@@ -82,12 +85,15 @@ export interface InventoryControllerOptions<TId extends string = string>
   readonly onCancel?: (() => void) | undefined;
 }
 
-export class InventoryController<TId extends string = string> extends Component {
+export class InventoryController<
+  TId extends string = string,
+  TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
+> extends Component {
   private readonly inputManager = this.service(InputManagerKey);
   private readonly binding: InputBinding | undefined;
   /** Live between onAdd and onDestroy; cleared on destroy so post-teardown
    *  calls no-op instead of driving disposed presenters. */
-  private session: InventorySession<TId> | undefined;
+  private session: InventorySession<TId, TData> | undefined;
   /** Captured at onAdd (the scene is gone by the time a stale open() arrives). */
   private logger: Logger | undefined;
   /** Set by onDestroy — the presenters are disposed, so open() must refuse. */
@@ -99,7 +105,7 @@ export class InventoryController<TId extends string = string> extends Component 
   /** Disposers for the model→engine event mirror (rewired by setInventory). */
   private readonly modelUnsubs: (() => void)[] = [];
 
-  constructor(private readonly opts: InventoryControllerOptions<TId>) {
+  constructor(private readonly opts: InventoryControllerOptions<TId, TData>) {
     super();
     // Zero-config: keyboard/gamepad + mouse/touch, with pointer hit-testing
     // wired to the presenters this controller already holds. `input: null` =
@@ -129,7 +135,7 @@ export class InventoryController<TId extends string = string> extends Component 
     this.opts.detail?.mount(this.scene);
     this.opts.actionMenu?.mount(this.scene);
 
-    this.session = new InventorySession<TId>(
+    this.session = new InventorySession<TId, TData>(
       this.opts.inventory,
       {
         slots: this.opts.slots,
@@ -210,7 +216,7 @@ export class InventoryController<TId extends string = string> extends Component 
    * Swap the presented inventory (tabbed menus: Items ↔ Key Items in one
    * panel). Re-mirrors model events onto the entity and re-presents when open.
    */
-  setInventory(inventory: Inventory<TId>, opts: { readonly title?: string } = {}): void {
+  setInventory(inventory: Inventory<TId, TData>, opts: { readonly title?: string } = {}): void {
     const session = this.guard("setInventory");
     if (!session) return;
     session.setInventory(inventory, opts);
@@ -223,7 +229,7 @@ export class InventoryController<TId extends string = string> extends Component 
 
   /** The model currently presented — game logic reads and mutates it directly
    *  (`controller.inventory.has("goldKey")`), UI open or not. */
-  get inventory(): Inventory<TId> {
+  get inventory(): Inventory<TId, TData> {
     return this.session ? this.session.getInventory() : this.opts.inventory;
   }
 
@@ -281,7 +287,7 @@ export class InventoryController<TId extends string = string> extends Component 
 
   /** Mirror the model's events onto the entity bus — the one canonical
    *  observation path (fires whether or not the panel is open). */
-  private mirrorModel(inventory: Inventory<TId>): void {
+  private mirrorModel(inventory: Inventory<TId, TData>): void {
     for (const unsub of this.modelUnsubs) unsub();
     this.modelUnsubs.length = 0;
     this.modelUnsubs.push(
@@ -297,7 +303,7 @@ export class InventoryController<TId extends string = string> extends Component 
    *  session, or `undefined` when the component has been removed (warns — stale
    *  references happen). Throws when called before `onAdd` (a wiring bug at the
    *  call site). */
-  private guard(method: string): InventorySession<TId> | undefined {
+  private guard(method: string): InventorySession<TId, TData> | undefined {
     if (this.destroyed) {
       this.logger?.warn(
         "inventory",

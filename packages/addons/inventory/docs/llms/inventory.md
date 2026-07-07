@@ -107,7 +107,37 @@ presenter hint), `color?` (fallback tile tint), `category?`, `tags?`,
 `maxStack?` (integer ≥ 1; default = the inventory's `defaultMaxStack`, which
 defaults to **1** — unstackable unless declared), `stacking?`
 (`"multi"` default | `"single"`), `actions?` (ids that apply to this item),
-`data?` (opaque game payload).
+`data?` (opaque per-item metadata — weight, base value), `instance?`
+(declares the per-STACK data type, see below).
+
+### Typed per-stack `data`
+
+A stack's `data` (durability, rolled stats) is typed per item via `instance`.
+Declare the shape with the phantom `instanceData<T>()` helper; `defineItems`
+captures each item's type, and `new Inventory({ catalog })` (no explicit type
+argument) infers both the id union AND the data map:
+
+```ts
+import { defineItems, instanceData, Inventory } from "@yagejs-addons/inventory";
+
+const catalog = defineItems({
+  potion: { name: "Potion", maxStack: 5 },                                   // no instance → data is `never`
+  herb:   { name: "Herb", instance: instanceData<{ quality: number }>() },
+  sword:  { name: "Iron Sword", instance: instanceData<{ durability: number }>() },
+});
+
+const inv = new Inventory({ catalog });          // infers ids + typed data map
+inv.add("herb", 1, { data: { quality: 90 } });   // data checked against the item
+inv.count("herb", (d) => d.quality > 80);         // `d` typed — no cast
+inv.find("herb", (d) => d.durability);            // ✗ compile error: no such field
+inv.add("potion", 1, { data: { quality: 1 } });   // ✗ compile error: potion carries no data
+```
+
+`data`/predicate narrow by the item id passed to `add`/`count`/`has`/`find`/
+`findAll`/`remove`/`transfer`. An explicit id-only type (`Inventory<ItemId>`) or
+an untyped catalog keeps the permissive `Record<string, unknown>`, so existing
+code is unaffected. Metadata `data` (on the def) stays opaque; only the per-stack
+`instance` data is typed.
 
 ## Inventory — options
 

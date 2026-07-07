@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { defineItems } from "./catalog.js";
+import { defineItems, instanceData } from "./catalog.js";
 import { Inventory } from "./Inventory.js";
 import { byName, byQuantity } from "./comparators.js";
 import type { InventoryConstraint, ItemActionDef } from "./types.js";
@@ -589,7 +589,10 @@ describe("actions", () => {
       potion: { name: "Potion", category: "consumable" },
       sword: { name: "Sword", actions: ["drop"] },
     });
-    const inv = new Inventory({ catalog: narrowCatalog, actions: [use, drop, inspect] });
+    const inv = new Inventory<"potion" | "sword">({
+      catalog: narrowCatalog,
+      actions: [use, drop, inspect],
+    });
     inv.add("potion");
     inv.add("sword");
     expect(inv.getActions(0).map((a) => a.id)).toEqual(["use", "drop", "inspect"]);
@@ -745,5 +748,45 @@ describe("snapshot / restore", () => {
     const inv = make();
     inv.restore({ slots: [{ itemId: "potion", quantity: 1 }, null, null] });
     expect(inv.slots.length).toBe(1);
+  });
+});
+
+describe("typed per-item data (instanceData inference)", () => {
+  // No explicit type argument: both the id union AND the per-item data map are
+  // inferred from the catalog, so `data` narrows per item at the call site.
+  const typedCatalog = defineItems({
+    potion: { name: "Potion", maxStack: 5 }, // no instance → `data` is never
+    herb: { name: "Herb", maxStack: 20, instance: instanceData<{ quality: number }>() },
+    sword: { name: "Iron Sword", instance: instanceData<{ durability: number }>() },
+  });
+
+  it("carries typed instance data through add, predicates, find, and remove", () => {
+    const inv = new Inventory({ catalog: typedCatalog, capacity: 10 });
+    inv.add("herb", 3, { data: { quality: 90 } });
+    inv.add("herb", 5, { data: { quality: 40 } });
+    inv.add("sword", 1, { data: { durability: 80 } });
+
+    // `d` is typed to the item's data — arithmetic reads need no cast.
+    expect(inv.count("herb", (d) => d.quality > 80)).toBe(3);
+    const strong = inv.find("herb", (d) => d.quality > 80);
+    expect(strong?.stack.data?.quality).toBe(90);
+    expect(inv.findAll("herb", (d) => d.quality < 50)).toHaveLength(1);
+
+    const removed = inv.remove("herb", 99, (d) => d.quality < 50);
+    expect(removed.stacks[0]?.data?.quality).toBe(40);
+    // `find(id)` narrows the stack to that item, so its `data` is the item's shape.
+    expect(inv.find("sword")?.stack.data?.durability).toBe(80);
+  });
+
+  it("rejects wrong-shaped and no-data payloads at compile time", () => {
+    const inv = new Inventory({ catalog: typedCatalog, capacity: 5 });
+    // @ts-expect-error potion declares no instance data — its `data` is never
+    inv.add("potion", 1, { data: { quality: 1 } });
+    // @ts-expect-error herb data must be { quality: number }, not { durability }
+    inv.add("herb", 1, { data: { durability: 5 } });
+    // @ts-expect-error sword data has no `quality` field
+    inv.findAll("sword", (d) => d.quality > 0);
+    // The rejected lines still run — the model accepts data without validating.
+    expect(inv.count("potion")).toBe(1);
   });
 });

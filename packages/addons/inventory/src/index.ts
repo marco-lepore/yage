@@ -10,7 +10,7 @@
  */
 
 // --- Headless model (L1) ---
-export { defineItems, ItemCatalog } from "./core/catalog.js";
+export { defineItems, instanceData, ItemCatalog, type DataMapOf } from "./core/catalog.js";
 export { Inventory, type InventoryOptions } from "./core/Inventory.js";
 export {
   byCatalogOrder,
@@ -23,6 +23,8 @@ export {
 export type {
   ActionResult,
   AddResult,
+  InstanceDataMap,
+  InstanceToken,
   InventoryConstraint,
   InventoryEvents,
   InventoryReader,
@@ -39,6 +41,7 @@ export type {
   RejectReason,
   RemoveResult,
   SplitResult,
+  StackPredicate,
   StackingMode,
   TransferResult,
 } from "./core/types.js";

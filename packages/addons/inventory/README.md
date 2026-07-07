@@ -68,6 +68,13 @@ if (bossKey) {
 }
 ```
 
+Declare a stack's `data` shape per item to type the payload and the predicates.
+Add `instance: instanceData<{ opens: string }>()` to the `key` def, build the
+inventory with no explicit type argument, and `d` in `find("key", (d) => …)` is
+typed `{ opens: string }` — a wrong field or a `data` payload on an item that
+declares none is a compile error. Without an `instance` declaration the payload
+stays an open `Record<string, unknown>`.
+
 Press the `inventory` action (or call `controller.toggle()`) to open the panel.
 
 The model is always live — pickups, quest checks (`inventory.has("goldKey")`),
