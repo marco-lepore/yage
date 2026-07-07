@@ -149,8 +149,8 @@ remove(itemId, qty = 1, where?): RemoveResult     // { removed, stacks }; drains
 remove(ref): RemoveResult                         // removes exactly find()'s stack (stale ref = no-op)
 removeAt(slot, qty?): RemoveResult                // whole stack when qty omitted; result carries `stacks`
 setSlot(slot, stack | null)                       // raw escape hatch (validates id + quantity only)
-move(from, to): "moved" | "merged" | "swapped" | "none"  // player slot interaction
-split(from, qty, to?): boolean                    // to defaults to the first empty slot
+move(from, to): MoveResult                        // { ok, reason?, effect? }; player slot interaction
+split(from, qty, to?): SplitResult                // { ok, reason? }; to defaults to the first empty slot
 sort(comparator?, { consolidate? })               // compacts + consolidates + orders (see below)
 compact()                                          // close gaps, keep order
 clear()                                            // bulk reset (only `changed` fires)
@@ -166,14 +166,27 @@ restore(snapshot): { dropped }                     // unknown ids/bad qty droppe
 on(event, fn): () => void                          // model events (below)
 ```
 
-Failure conventions: interaction ops REPORT (result object / kind / boolean —
-a refused gesture is a normal outcome); only the `setSlot` escape hatch and
-invalid arguments (non-positive quantities) THROW.
+Failure conventions: interaction ops REPORT (a refused gesture is a normal
+outcome, not a throw). `add`/`remove`/`transfer` return count objects
+(`{ added, rejected, reason? }` and similar); `move`/`split`/`invokeAction`
+return an `Outcome` (`{ ok, reason? }` — always truthy, so a caller reads
+`.ok` rather than the return value itself; `move` also carries `effect`).
+Only the `setSlot` escape hatch and invalid arguments (non-positive
+quantities) THROW.
 
-Reject reasons: `"filtered"` (accepts), `"capacity"` (no slot),
-`"stack-cap"` (single-stacking total), `"constraint"` — the last one also
-carries `constraintId` (the most limiting constraint's `id`), so a weight
-toast and a quest-gate toast can differ.
+Reject reasons: `add`/`transfer` return `"filtered"` (`accepts` predicate),
+`"capacity"` (no slot), `"stack-cap"` (single-stacking total), or `"constraint"`
+(the last one also carries `constraintId`, the most limiting constraint's
+`id`, so a weight toast and a quest-gate toast can differ); from `add`/`transfer`
+these fire the `rejected` model event. `move`/`split`/`invokeAction` return
+`"empty"` (source/slot holds nothing), `"same-slot"` (source and target are
+the same), `"out-of-range"` (target outside `capacity`), `"occupied"`
+(`split` target already holds a stack), `"indivisible"` (`split` quantity
+would take the whole stack or more), or `"no-action"` (`invokeAction` id
+isn't currently offered for that slot); `split` also returns `"capacity"` when
+an auto target finds no empty slot. These gesture returns fire no model event.
+All ten reasons share one `RejectReason` union; each method only ever emits its
+own subset.
 
 Sorting: `sort()` defaults to `byCatalogOrder` and `consolidate: true`
 (re-packs partial dataless multi-stacks into full ones — the Sort-button
@@ -211,10 +224,10 @@ interface ItemActionDef {
 Declared per-inventory (`actions: [...]`); `ItemDef.actions` narrows which
 apply to an item; `available` gates per-stack at menu time
 (`available: (ctx) => state.equipped !== ctx.stack.itemId`). Resolution:
-`inventory.getActions(slot)`; invocation: `inventory.invokeAction(id, slot)` →
-emits the `"action"` model event / `InventoryActionEvent` — the game applies
-what the action MEANS in that handler. The action menu UI drives this
-automatically.
+`inventory.getActions(slot)`; invocation: `inventory.invokeAction(id, slot):
+ActionResult` emits the `"action"` model event / `InventoryActionEvent` — the
+game applies what the action MEANS in that handler. The action menu UI drives
+this automatically.
 
 ## Model events / engine events
 

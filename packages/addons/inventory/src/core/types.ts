@@ -70,12 +70,40 @@ export interface ItemStack<TId extends string = string> {
   readonly data?: Readonly<Record<string, unknown>>;
 }
 
-/** Why (part of) an `add` was refused.
+/** Why a mutation was (partly) refused. The `add`/`transfer` family emits the
+ *  first four; `move`/`split`/`invokeAction` emit the last six. `"capacity"` is
+ *  the one overlap — `split` also returns it when an auto target finds no empty
+ *  slot. See each method's JSDoc for the subset it actually returns.
  *  - `"filtered"` — the inventory's `accepts` predicate refused the item.
  *  - `"capacity"` — no free slot for a new stack.
  *  - `"stack-cap"` — `"single"`-stacking item already at its total cap.
- *  - `"constraint"` — an {@link InventoryConstraint} clipped the quantity. */
-export type RejectReason = "filtered" | "capacity" | "stack-cap" | "constraint";
+ *  - `"constraint"` — an {@link InventoryConstraint} clipped the quantity.
+ *  - `"empty"` — the source slot holds nothing.
+ *  - `"same-slot"` — source and target are the same slot.
+ *  - `"out-of-range"` — the target slot is outside `capacity`.
+ *  - `"occupied"` — the target slot already holds a stack.
+ *  - `"indivisible"` — `split` was asked to take the whole stack or more.
+ *  - `"no-action"` — the action id isn't currently offered for that slot. */
+export type RejectReason =
+  | "filtered"
+  | "capacity"
+  | "stack-cap"
+  | "constraint"
+  | "empty"
+  | "same-slot"
+  | "out-of-range"
+  | "occupied"
+  | "indivisible"
+  | "no-action";
+
+/** Outcome of a pass/fail gesture (`move`/`split`/`invokeAction`): always
+ *  truthy, so a caller must read `.ok` rather than treating the return value
+ *  itself as a boolean. `reason` is set on failure; `Extra` carries fields a
+ *  success needs (e.g. `move`'s `effect`). */
+export type Outcome<Extra = unknown> = {
+  readonly ok: boolean;
+  readonly reason?: RejectReason;
+} & Extra;
 
 /** Result of {@link Inventory.add}: partial adds are normal (a nearly-full
  *  inventory takes what fits). `reason` is set when `rejected > 0` and names
@@ -101,11 +129,18 @@ export interface RemoveResult<TId extends string = string> {
   readonly stacks: ReadonlyArray<ItemStack<TId>>;
 }
 
-/** What {@link Inventory.move} did: `"merged"` folds `from` into a same-item
- *  stack at `to` (leftover stays at `from`), `"swapped"` exchanges two stacks,
- *  `"moved"` fills an empty target, `"none"` is a no-op (empty source, same
- *  slot, or an out-of-range target). */
-export type MoveKind = "moved" | "merged" | "swapped" | "none";
+/** What a successful {@link Inventory.move} did: `"moved"` fills an empty
+ *  target, `"merged"` folds `from` into a same-item stack at `to` (leftover
+ *  stays at `from`), `"swapped"` exchanges two stacks. */
+export type MoveEffect = "moved" | "merged" | "swapped";
+
+/** Result of {@link Inventory.split} / {@link Inventory.invokeAction}: a
+ *  pass/fail gesture with a reason on failure (see {@link Outcome}). */
+export type SplitResult = Outcome;
+export type ActionResult = Outcome;
+
+/** Result of {@link Inventory.move}: `effect` is present iff `ok`. */
+export type MoveResult = Outcome<{ readonly effect?: MoveEffect }>;
 
 /** Result of {@link Inventory.transfer} / {@link Inventory.transferSlot}. */
 export interface TransferResult {

@@ -261,7 +261,7 @@ describe("remove", () => {
     inv.add("gem", 2);
     inv.removeAt(1); // sword out -> gem shifts up
     expect(inv.slots[1]).toEqual({ itemId: "gem", quantity: 2 });
-    inv.move(1, 3);
+    expect(inv.move(1, 3)).toEqual({ ok: true, effect: "moved" });
     expect(inv.slots[1]).toBeNull(); // arrangement is preserved
     expect(inv.slots[3]).toEqual({ itemId: "gem", quantity: 2 });
   });
@@ -273,7 +273,7 @@ describe("remove", () => {
     inv.add("gem"); // slot 2
     // A move leaves a hole at slot 0, BELOW any later removal's start index —
     // move never compacts.
-    inv.move(0, 4); // [null, sword, gem, null, potion]
+    expect(inv.move(0, 4)).toEqual({ ok: true, effect: "moved" }); // [null, sword, gem, null, potion]
     const changed: number[][] = [];
     inv.on("changed", (e) => changed.push([...e.slots]));
     inv.removeAt(1); // sword out -> gem 2->0, potion 4->1
@@ -379,7 +379,7 @@ describe("move / split", () => {
   it("moves onto an empty slot", () => {
     const inv = make({ capacity: 4 });
     inv.add("potion", 2);
-    expect(inv.move(0, 3)).toBe("moved");
+    expect(inv.move(0, 3)).toEqual({ ok: true, effect: "moved" });
     expect(inv.slots[0]).toBeNull();
     expect(inv.slots[3]?.quantity).toBe(2);
   });
@@ -388,7 +388,7 @@ describe("move / split", () => {
     const inv = make({ capacity: 4 });
     inv.setSlot(0, { itemId: "potion", quantity: 4 });
     inv.setSlot(1, { itemId: "potion", quantity: 3 });
-    expect(inv.move(1, 0)).toBe("merged");
+    expect(inv.move(1, 0)).toEqual({ ok: true, effect: "merged" });
     expect(inv.slots[0]?.quantity).toBe(5);
     expect(inv.slots[1]?.quantity).toBe(2);
   });
@@ -397,7 +397,7 @@ describe("move / split", () => {
     const inv = make({ capacity: 4 });
     inv.setSlot(0, { itemId: "potion", quantity: 5 });
     inv.setSlot(1, { itemId: "potion", quantity: 2 });
-    expect(inv.move(1, 0)).toBe("swapped");
+    expect(inv.move(1, 0)).toEqual({ ok: true, effect: "swapped" });
     expect(inv.slots[0]?.quantity).toBe(2);
     expect(inv.slots[1]?.quantity).toBe(5);
   });
@@ -406,22 +406,22 @@ describe("move / split", () => {
     const inv = make({ capacity: 4, defaultMaxStack: 99 });
     inv.add("sword", 1, { data: { durability: 10 } });
     inv.add("sword", 1);
-    expect(inv.move(0, 1)).toBe("swapped");
+    expect(inv.move(0, 1)).toEqual({ ok: true, effect: "swapped" });
     expect(inv.slots[1]?.data).toEqual({ durability: 10 });
   });
 
-  it("refuses out-of-range targets on bounded inventories", () => {
+  it("refuses a same-slot or out-of-range target on bounded inventories", () => {
     const inv = make({ capacity: 2 });
     inv.add("potion");
-    expect(inv.move(0, 2)).toBe("none");
-    expect(inv.move(0, 0)).toBe("none");
-    expect(inv.move(1, 0)).toBe("none"); // empty source
+    expect(inv.move(0, 2)).toEqual({ ok: false, reason: "out-of-range" });
+    expect(inv.move(0, 0)).toEqual({ ok: false, reason: "same-slot" });
+    expect(inv.move(1, 0)).toEqual({ ok: false, reason: "empty" }); // empty source
   });
 
   it("grows an unbounded inventory to reach the target slot", () => {
     const inv = make();
     inv.add("potion");
-    expect(inv.move(0, 4)).toBe("moved");
+    expect(inv.move(0, 4)).toEqual({ ok: true, effect: "moved" });
     expect(inv.slots.length).toBe(5);
     expect(inv.slots[4]?.itemId).toBe("potion");
   });
@@ -429,20 +429,28 @@ describe("move / split", () => {
   it("split moves part of a stack to the first empty (or given) slot", () => {
     const inv = make({ capacity: 4 });
     inv.add("potion", 5);
-    expect(inv.split(0, 2)).toBe(true);
+    expect(inv.split(0, 2)).toEqual({ ok: true });
     expect(inv.slots[0]?.quantity).toBe(3);
     expect(inv.slots[1]?.quantity).toBe(2);
-    expect(inv.split(0, 1, 3)).toBe(true);
+    expect(inv.split(0, 1, 3)).toEqual({ ok: true });
     expect(inv.slots[3]?.quantity).toBe(1);
   });
 
-  it("split refuses whole-stack amounts and occupied targets", () => {
+  it("split refuses whole-stack amounts and occupied or out-of-range targets", () => {
     const inv = make({ capacity: 4 });
     inv.add("potion", 5);
     inv.add("sword");
-    expect(inv.split(0, 5)).toBe(false); // whole stack -> use move
-    expect(inv.split(0, 2, 1)).toBe(false); // occupied
-    expect(inv.split(0, 2, 4)).toBe(false); // out of range
+    expect(inv.split(0, 5)).toEqual({ ok: false, reason: "indivisible" }); // whole stack -> use move
+    expect(inv.split(0, 2, 1)).toEqual({ ok: false, reason: "occupied" });
+    expect(inv.split(0, 2, 4)).toEqual({ ok: false, reason: "out-of-range" });
+    expect(inv.split(0, 2, 0)).toEqual({ ok: false, reason: "same-slot" });
+  });
+
+  it("split with no explicit target refuses when the inventory has no free slot", () => {
+    const inv = make({ capacity: 2 });
+    inv.add("potion", 5);
+    inv.add("sword");
+    expect(inv.split(0, 2)).toEqual({ ok: false, reason: "capacity" });
   });
 });
 
@@ -594,7 +602,7 @@ describe("actions", () => {
     inv.add("potion", 3);
     const seen: unknown[] = [];
     inv.on("action", (e) => seen.push({ ...e, countAtEmit: inv.count("potion") }));
-    expect(inv.invokeAction("use", 0)).toBe(true);
+    expect(inv.invokeAction("use", 0)).toEqual({ ok: true });
     // The event fires BEFORE the consume removal (quantity is pre-consume).
     expect(seen).toEqual([
       { actionId: "use", slot: 0, itemId: "potion", quantity: 3, consumes: true, countAtEmit: 3 },
@@ -602,11 +610,11 @@ describe("actions", () => {
     expect(inv.count("potion")).toBe(2);
   });
 
-  it("refuses actions that aren't currently offered", () => {
+  it("refuses actions that aren't currently offered, and empty slots", () => {
     const inv = make({ actions: [use] });
     inv.add("sword"); // not a consumable -> use unavailable
-    expect(inv.invokeAction("use", 0)).toBe(false);
-    expect(inv.invokeAction("use", 3)).toBe(false);
+    expect(inv.invokeAction("use", 0)).toEqual({ ok: false, reason: "no-action" });
+    expect(inv.invokeAction("use", 3)).toEqual({ ok: false, reason: "empty" });
   });
 });
 

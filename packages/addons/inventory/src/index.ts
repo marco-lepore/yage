@@ -21,6 +21,7 @@ export {
   type StackComparator,
 } from "./core/comparators.js";
 export type {
+  ActionResult,
   AddResult,
   InventoryConstraint,
   InventoryEvents,
@@ -32,9 +33,12 @@ export type {
   ItemDefInput,
   ItemStack,
   ItemStackSnapshot,
-  MoveKind,
+  MoveEffect,
+  MoveResult,
+  Outcome,
   RejectReason,
   RemoveResult,
+  SplitResult,
   StackingMode,
   TransferResult,
 } from "./core/types.js";

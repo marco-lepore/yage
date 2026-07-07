@@ -13,16 +13,19 @@
  * game's, reached through the `"action"` event. The model never interprets
  * game meaning.
  *
- * Failure conventions: interaction operations REPORT (`add`/`transfer` return
- * result objects, `move` a kind, `split`/`invokeAction` a boolean — a refused
- * player gesture is a normal outcome); only the raw escape hatch `setSlot`
- * and invalid arguments (non-positive quantities) THROW.
+ * Failure conventions: interaction operations REPORT (a refused player gesture
+ * is a normal outcome, not a throw). `add`/`transfer`/`remove` return count
+ * objects (`{ added, rejected, reason? }` and similar); `move`/`split`/
+ * `invokeAction` return `{ ok, reason? }` ({@link MoveResult} also carries
+ * `effect`). Only the raw escape hatch `setSlot` and invalid arguments
+ * (non-positive quantities) THROW.
  */
 
 import { Emitter } from "./emitter.js";
 import type { ItemCatalog } from "./catalog.js";
 import { byCatalogOrder, type SortEntry, type StackComparator } from "./comparators.js";
 import type {
+  ActionResult,
   AddResult,
   InventoryConstraint,
   InventoryEvents,
@@ -33,9 +36,10 @@ import type {
   ItemStack,
   ItemStackSnapshot,
   LocatedStack,
-  MoveKind,
+  MoveResult,
   RejectReason,
   RemoveResult,
+  SplitResult,
   StackPredicate,
   TransferResult,
 } from "./types.js";
@@ -462,12 +466,16 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
    * Player-style slot interaction: onto an empty slot → move; onto the same
    * dataless item → merge up to `maxStack` (leftover stays at `from`); onto
    * anything else (or a full same-item stack) → swap. Never auto-compacts —
-   * this IS the player arranging things.
+   * this IS the player arranging things. `reason` on failure is `"empty"` (no
+   * source stack), `"same-slot"`, or `"out-of-range"` (bounded inventory,
+   * target ≥ `capacity`).
    */
-  move(from: number, to: number): MoveKind {
+  move(from: number, to: number): MoveResult {
     const src = this._slots[from];
-    if (!src || from === to || to < 0) return "none";
-    if (this.capacity !== undefined && to >= this.capacity) return "none";
+    if (!src) return { ok: false, reason: "empty" };
+    if (from === to) return { ok: false, reason: "same-slot" };
+    if (to < 0) return { ok: false, reason: "out-of-range" };
+    if (this.capacity !== undefined && to >= this.capacity) return { ok: false, reason: "out-of-range" };
     this.growTo(to);
     const dst = this._slots[to];
 
@@ -475,7 +483,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
       this._slots[to] = src;
       this._slots[from] = null;
       this.emitChanged([from, to]);
-      return "moved";
+      return { ok: true, effect: "moved" };
     }
 
     const mergeable = dst.itemId === src.itemId && !dst.data && !src.data;
@@ -487,7 +495,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
         this._slots[to] = { ...dst, quantity: dst.quantity + take };
         this._slots[from] = take === src.quantity ? null : { ...src, quantity: src.quantity - take };
         this.emitChanged([from, to]);
-        return "merged";
+        return { ok: true, effect: "merged" };
       }
       // Full target: fall through to a swap (the familiar chest-UI behavior).
     }
@@ -495,29 +503,34 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
     this._slots[to] = src;
     this._slots[from] = dst;
     this.emitChanged([from, to]);
-    return "swapped";
+    return { ok: true, effect: "swapped" };
   }
 
   /**
    * Split `quantity` units off the stack at `from` into `to` (default: the
    * first empty slot). `quantity` must leave at least one unit behind (use
    * {@link move} to relocate a whole stack) and the target must be empty.
-   * Returns false when any of that doesn't hold.
+   * `reason` on failure is `"empty"` (no source stack), `"indivisible"`
+   * (`quantity` would take the whole stack or more), `"capacity"` (no empty
+   * slot for an auto target), `"out-of-range"`, `"same-slot"`, or `"occupied"`.
    */
-  split(from: number, quantity: number, to?: number): boolean {
+  split(from: number, quantity: number, to?: number): SplitResult {
     assertPositiveInt(quantity, "quantity");
     const src = this._slots[from];
-    if (!src || quantity >= src.quantity) return false;
+    if (!src) return { ok: false, reason: "empty" };
+    if (quantity >= src.quantity) return { ok: false, reason: "indivisible" };
     const target = to ?? this.openSlot();
-    if (target === undefined || target < 0 || target === from) return false;
-    if (this.capacity !== undefined && target >= this.capacity) return false;
+    if (target === undefined) return { ok: false, reason: "capacity" };
+    if (target < 0) return { ok: false, reason: "out-of-range" };
+    if (target === from) return { ok: false, reason: "same-slot" };
+    if (this.capacity !== undefined && target >= this.capacity) return { ok: false, reason: "out-of-range" };
     this.growTo(target);
-    if (this._slots[target] !== null && this._slots[target] !== undefined) return false;
+    if (this._slots[target] !== null && this._slots[target] !== undefined) return { ok: false, reason: "occupied" };
 
     this._slots[from] = { ...src, quantity: src.quantity - quantity };
     this._slots[target] = { ...src, quantity };
     this.emitChanged([from, target]);
-    return true;
+    return { ok: true };
   }
 
   /** Close the gaps, preserving stack order. A no-op emits nothing. */
@@ -702,13 +715,15 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
   /**
    * Invoke an action on the stack at `slot`. Emits the `"action"` event (the
    * game applies the consequence there), then removes one unit if the action
-   * `consumes`. Returns false when the action isn't currently offered for
-   * that slot.
+   * `consumes`. `reason` on failure is `"empty"` (the slot holds nothing) or
+   * `"no-action"` (the slot is occupied but the action isn't currently offered
+   * for it).
    */
-  invokeAction(actionId: string, slot: number): boolean {
-    const action = this.getActions(slot).find((a) => a.id === actionId);
+  invokeAction(actionId: string, slot: number): ActionResult {
     const stack = this._slots[slot];
-    if (!action || !stack) return false;
+    if (!stack) return { ok: false, reason: "empty" };
+    const action = this.getActions(slot).find((a) => a.id === actionId);
+    if (!action) return { ok: false, reason: "no-action" };
     this.emitter.emit("action", {
       actionId,
       slot,
@@ -717,7 +732,7 @@ export class Inventory<TId extends string = string> implements InventoryReader<T
       consumes: action.consumes ?? false,
     });
     if (action.consumes) this.removeAt(slot, 1);
-    return true;
+    return { ok: true };
   }
 
   // ------------------------------------------------------------- snapshot

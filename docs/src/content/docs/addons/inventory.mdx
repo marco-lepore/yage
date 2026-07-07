@@ -220,6 +220,20 @@ empty slot it moves, onto the same dataless item it merges up to `maxStack`
 (leftover stays behind), onto anything else it swaps. `split(from, qty, to?)`
 carves a stack apart.
 
+Both are pass/fail gestures, so both return an `Outcome`
+(`{ ok: boolean, reason? }`) instead of a bare boolean — an object is always
+truthy, so a caller has to read `.ok` rather than treating the return value
+itself as success. `move` also reports what happened on success, in
+`effect: "moved" | "merged" | "swapped"`. A refused `invokeAction` reports the
+same way (`"empty"` for an empty slot, `"no-action"` when the action isn't
+currently offered).
+
+```ts
+const result = inventory.move(0, 3);
+if (!result.ok) showToast(result.reason); // "empty" | "same-slot" | "out-of-range"
+else if (result.effect === "merged") playMergeSound();
+```
+
 `sort()` is the Sort-button behavior games expect: it compacts, **consolidates**
 partial stacks of the same item into full ones, and orders by a comparator —
 `byCatalogOrder` (your `defineItems` declaration order) by default, with
