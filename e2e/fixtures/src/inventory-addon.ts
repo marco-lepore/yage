@@ -18,6 +18,7 @@ import { InputPlugin } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
 import {
   defineItems,
+  filteredView,
   Inventory,
   InventoryActionEvent,
   InventoryController,
@@ -103,10 +104,13 @@ class InventoryScene extends Scene {
       }),
     );
 
-    // Embedded, always-on: the SAME backpack model in a chrome-less one-row
-    // strip pinned by `bounds` (columns derived from the width). `input: null`
-    // + `closeOnCancel: false` + `openOnAdd` hand all driving to the host.
+    // Embedded, always-on: a `filteredView` of the same backpack model (only
+    // items offering "use" — potion here), so the strip has no dead cells, in
+    // a chrome-less one-row strip pinned by `bounds` (columns derived from
+    // the width). `input: null` + `closeOnCancel: false` + `openOnAdd` hand
+    // all driving to the host.
     let hotbarCancels = 0;
+    const usableItems = filteredView(backpack, (_stack, def) => def.actions?.includes("use") ?? false);
     const hotbarBundle = createInventoryPanel(undefined, {
       bounds: { x: (WIDTH - 300) / 2, y: HEIGHT - 90, width: 300, height: 66 },
       chrome: false,
@@ -117,7 +121,7 @@ class InventoryScene extends Scene {
     const hotbarCtrl = this.spawn("hotbar-ui").add(
       new InventoryController({
         ...hotbarBundle,
-        inventory: backpack,
+        inventory: usableItems,
         input: null,
         closeOnCancel: false,
         openOnAdd: true,

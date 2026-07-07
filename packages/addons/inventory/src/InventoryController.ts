@@ -21,7 +21,7 @@
 
 import { Component, LoggerKey, isDev, type Logger } from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
-import type { Inventory } from "./core/Inventory.js";
+import type { InventorySource } from "./core/InventorySource.js";
 import { InventorySession, type NavDirection } from "./core/session.js";
 import type { StackComparator } from "./core/comparators.js";
 import type { InstanceDataMap, LooseDataMap } from "./core/types.js";
@@ -46,8 +46,10 @@ export interface InventoryControllerOptions<
   TId extends string = string,
   TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
 > extends InventoryBundle {
-  /** The model to present. Swap it live with {@link InventoryController.setInventory}. */
-  readonly inventory: Inventory<TId, TData>;
+  /** The source to present — an {@link Inventory} (the identity source, "all
+   *  items") or a {@link filteredView} of one. Swap it live with
+   *  {@link InventoryController.setSource}. */
+  readonly inventory: InventorySource<TId, TData>;
   /** Header title the chrome shows. */
   readonly title?: string | undefined;
   /**
@@ -102,7 +104,7 @@ export class InventoryController<
    *  consumes no device input — the seam for two panels side by side (player
    *  chest transfer screens) or an embedded host that forwards input itself. */
   private inputEnabled = true;
-  /** Disposers for the model→engine event mirror (rewired by setInventory). */
+  /** Disposers for the model→engine event mirror (rewired by setSource). */
   private readonly modelUnsubs: (() => void)[] = [];
 
   constructor(private readonly opts: InventoryControllerOptions<TId, TData>) {
@@ -213,24 +215,28 @@ export class InventoryController<
   }
 
   /**
-   * Swap the presented inventory (tabbed menus: Items ↔ Key Items in one
-   * panel). Re-mirrors model events onto the entity and re-presents when open.
+   * Swap the presented source (tabbed menus: Items ↔ Key Items in one panel;
+   * a category tab swaps in a {@link filteredView} of the same model).
+   * Re-mirrors source events onto the entity and re-presents when open.
    */
-  setInventory(inventory: Inventory<TId, TData>, opts: { readonly title?: string } = {}): void {
-    const session = this.guard("setInventory");
+  setSource(source: InventorySource<TId, TData>, opts: { readonly title?: string } = {}): void {
+    const session = this.guard("setSource");
     if (!session) return;
-    session.setInventory(inventory, opts);
-    this.mirrorModel(inventory);
+    session.setSource(source, opts);
+    this.mirrorModel(source);
   }
 
   setTitle(title: string | undefined): void {
     this.session?.setTitle(title);
   }
 
-  /** The model currently presented — game logic reads and mutates it directly
-   *  (`controller.inventory.has("goldKey")`), UI open or not. */
-  get inventory(): Inventory<TId, TData> {
-    return this.session ? this.session.getInventory() : this.opts.inventory;
+  /** The source currently presented — the raw {@link Inventory} when passed
+   *  directly, or a {@link filteredView}'s projection otherwise. Game logic
+   *  reads and mutates the underlying model directly (it's live whether or
+   *  not this panel is open); this is the escape hatch to whatever surface is
+   *  currently on screen. */
+  get inventory(): InventorySource<TId, TData> {
+    return this.session ? this.session.getSource() : this.opts.inventory;
   }
 
   /**
@@ -285,17 +291,19 @@ export class InventoryController<
 
   // ------------------------------------------------------------- internals
 
-  /** Mirror the model's events onto the entity bus — the one canonical
-   *  observation path (fires whether or not the panel is open). */
-  private mirrorModel(inventory: Inventory<TId, TData>): void {
+  /** Mirror the source's events onto the entity bus — the one canonical
+   *  observation path (fires whether or not the panel is open). A
+   *  {@link filteredView} forwards everything but `"changed"` straight from
+   *  its underlying model, so these still carry real item ids/quantities. */
+  private mirrorModel(source: InventorySource<TId, TData>): void {
     for (const unsub of this.modelUnsubs) unsub();
     this.modelUnsubs.length = 0;
     this.modelUnsubs.push(
-      inventory.on("action", (e) => this.entity.emit(InventoryActionEvent, e)),
-      inventory.on("itemAdded", (e) => this.entity.emit(InventoryItemAddedEvent, e)),
-      inventory.on("itemRemoved", (e) => this.entity.emit(InventoryItemRemovedEvent, e)),
-      inventory.on("rejected", (e) => this.entity.emit(InventoryRejectedEvent, e)),
-      inventory.on("changed", (e) => this.entity.emit(InventoryChangedEvent, e)),
+      source.on("action", (e) => this.entity.emit(InventoryActionEvent, e)),
+      source.on("itemAdded", (e) => this.entity.emit(InventoryItemAddedEvent, e)),
+      source.on("itemRemoved", (e) => this.entity.emit(InventoryItemRemovedEvent, e)),
+      source.on("rejected", (e) => this.entity.emit(InventoryRejectedEvent, e)),
+      source.on("changed", (e) => this.entity.emit(InventoryChangedEvent, e)),
     );
   }
 

@@ -1,6 +1,6 @@
 /**
  * InventorySession — the headless UI orchestrator between one (swappable)
- * {@link Inventory} and the presentation channels. It owns everything about
+ * {@link InventorySource} and the presentation channels. It owns everything about
  * *browsing* — the cursor, the open/closed state, the action-menu sub-state —
  * and nothing about *pixels*: channels are interfaces, so the same session
  * drives the default renderer views, a DOM panel, or a test double.
@@ -14,8 +14,8 @@
  * +1 (a list) or +columns (a grid), or how scrolling windows the cells.
  */
 
-import type { Inventory } from "./Inventory.js";
 import { byCatalogOrder, type StackComparator } from "./comparators.js";
+import type { InventorySource } from "./InventorySource.js";
 import type {
   InstanceDataMap,
   ItemActionDef,
@@ -180,7 +180,7 @@ export class InventorySession<
   >
   implements InventorySessionDriver
 {
-  private inventory: Inventory<TId, TData>;
+  private source: InventorySource<TId, TData>;
   private readonly channels: InventoryChannels<TId, TData>;
   private readonly opts: InventorySessionOptions<TId, TData>;
   private title: string | undefined;
@@ -192,11 +192,11 @@ export class InventorySession<
   private unsubscribe: (() => void) | undefined;
 
   constructor(
-    inventory: Inventory<TId, TData>,
+    source: InventorySource<TId, TData>,
     channels: InventoryChannels<TId, TData>,
     opts: InventorySessionOptions<TId, TData> = {},
   ) {
-    this.inventory = inventory;
+    this.source = source;
     this.channels = channels;
     this.opts = opts;
     this.title = opts.title;
@@ -252,13 +252,14 @@ export class InventorySession<
   }
 
   /**
-   * Swap the presented inventory (tabbed menus: Items ↔ Key Items reuse one
-   * panel). Resets the cursor, re-subscribes model events, and re-presents
-   * when open. Pass `title` to relabel the chrome in the same step.
+   * Swap the presented source (tabbed menus: Items ↔ Key Items reuse one
+   * panel; a category tab swaps in a {@link filteredView} of the same model).
+   * Resets the cursor, re-subscribes source events, and re-presents when
+   * open. Pass `title` to relabel the chrome in the same step.
    */
-  setInventory(inventory: Inventory<TId, TData>, opts: { readonly title?: string } = {}): void {
+  setSource(source: InventorySource<TId, TData>, opts: { readonly title?: string } = {}): void {
     this.unsubscribe?.();
-    this.inventory = inventory;
+    this.source = source;
     if (opts.title !== undefined) this.title = opts.title;
     this.selected = 0;
     this.subscribe();
@@ -273,9 +274,9 @@ export class InventorySession<
     if (this.opened) this.presentChrome();
   }
 
-  /** The model currently presented — the escape hatch to everything else. */
-  getInventory(): Inventory<TId, TData> {
-    return this.inventory;
+  /** The source currently presented — the escape hatch to everything else. */
+  getSource(): InventorySource<TId, TData> {
+    return this.source;
   }
 
   /** Forward the frame tick to channels that animate. */
@@ -368,13 +369,13 @@ export class InventorySession<
    *  closed panel picks the new order up on the next open. (Device bindings
    *  only reach this while open; the gate is theirs, not the model's.) */
   sort(): void {
-    this.inventory.sort(this.opts.sortComparator ?? byCatalogOrder);
+    this.source.sort(this.opts.sortComparator ?? byCatalogOrder);
   }
 
   // ------------------------------------------------------------- internals
 
   private subscribe(): void {
-    this.unsubscribe = this.inventory.on("changed", () => this.onModelChanged());
+    this.unsubscribe = this.source.on("changed", () => this.onModelChanged());
   }
 
   /** Release the model subscription — the host calls this on teardown. */
@@ -390,7 +391,7 @@ export class InventorySession<
     if (!this.isMenuOpen()) return;
     // The stack under the menu may have changed (consumed, moved, shrunk):
     // re-resolve; an emptied action set closes the menu.
-    const actions = this.inventory.getActions(this.selected);
+    const actions = this.source.getActions(this.selected);
     if (actions.length === 0) {
       this.closeMenu();
       return;
@@ -401,7 +402,7 @@ export class InventorySession<
   }
 
   private openMenu(): void {
-    const actions = this.inventory.getActions(this.selected);
+    const actions = this.source.getActions(this.selected);
     if (actions.length === 0 || !this.channels.actionMenu) return;
     this.menuActions = actions;
     this.menuIndex = 0;
@@ -413,7 +414,7 @@ export class InventorySession<
     if (!action) return;
     const slot = this.selected;
     this.closeMenu();
-    this.inventory.invokeAction(action.id, slot);
+    this.source.invokeAction(action.id, slot);
     if (action.closes) this.close();
   }
 
@@ -450,13 +451,13 @@ export class InventorySession<
   private presentChrome(): void {
     this.channels.chrome?.present({
       title: this.title,
-      used: this.inventory.used,
-      capacity: this.inventory.capacity,
+      used: this.source.used,
+      capacity: this.source.capacity,
     });
   }
 
   private slotViews(): SlotView<TId, TData>[] {
-    const total = this.inventory.capacity ?? this.inventory.slots.length;
+    const total = this.source.capacity ?? this.source.slots.length;
     const views: SlotView<TId, TData>[] = [];
     for (let i = 0; i < total; i++) views.push(this.viewOf(i));
     return views;
@@ -467,16 +468,16 @@ export class InventorySession<
     return {
       slot,
       stack,
-      def: stack ? this.inventory.catalog.get(stack.itemId) : null,
+      def: stack ? this.source.catalog.get(stack.itemId) : null,
     };
   }
 
   private stackAt(slot: number): ItemStack<TId, TData> | null {
-    return this.inventory.slots[slot] ?? null;
+    return this.source.slots[slot] ?? null;
   }
 
   private clampSlot(slot: number): number {
-    const max = (this.inventory.capacity ?? this.inventory.slots.length) - 1;
+    const max = (this.source.capacity ?? this.source.slots.length) - 1;
     return Math.max(0, Math.min(slot, Math.max(0, max)));
   }
 

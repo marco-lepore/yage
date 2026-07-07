@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { defineItems } from "./catalog.js";
+import { filteredView } from "./filteredView.js";
 import { Inventory } from "./Inventory.js";
 import {
   InventorySession,
@@ -398,7 +399,7 @@ describe("model sync", () => {
     ]);
   });
 
-  it("setInventory swaps the model, retitles, resets the cursor, rewires events", () => {
+  it("setSource swaps the model, retitles, resets the cursor, rewires events", () => {
     const { session, inventory, slots, chrome } = setup({ session: { title: "Items" } });
     const pouch = new Inventory<Id>({ catalog, capacity: 3 });
     pouch.add("gem", 9);
@@ -407,7 +408,7 @@ describe("model sync", () => {
     session.move("down");
     expect(session.selection()).toBe(1);
 
-    session.setInventory(pouch, { title: "Pouch" });
+    session.setSource(pouch, { title: "Pouch" });
     expect(session.selection()).toBe(0);
     expect(chrome.infos.at(-1)).toMatchObject({ title: "Pouch", capacity: 3 });
     expect(slots.lastPresented).toHaveLength(3);
@@ -451,5 +452,66 @@ describe("model sync", () => {
     session.dispose();
     inventory.add("potion");
     expect(slots.presented.length).toBe(count);
+  });
+});
+
+describe("driven by a filteredView (InventorySource projection)", () => {
+  /** Only "potion" declares `category: "consumable"` in the shared catalog. */
+  const consumableOnly = (
+    _stack: unknown,
+    def: { category?: string | undefined },
+  ): boolean => def.category === "consumable";
+
+  it("presents a compacted, hole-free subset; confirm/invokeAction map back to the model slot", () => {
+    const inventory = new Inventory<Id>({
+      catalog,
+      capacity: 6,
+      actions: [{ id: "use", label: "Use", consumes: true }],
+    });
+    inventory.add("sword"); // slot 0 — filtered out
+    inventory.add("potion", 3); // slot 1 — the only match
+    inventory.add("gem", 5); // slot 2 — filtered out
+
+    const view = filteredView(inventory, consumableOnly);
+    const slots = new MockSlots();
+    const menu = new MockMenu();
+    const session = new InventorySession<Id>(view, { slots, actionMenu: menu });
+    session.open();
+
+    expect(slots.lastPresented).toHaveLength(1); // compacted: only the match
+    expect(slots.lastPresented[0]?.stack?.itemId).toBe("potion");
+    expect(view.modelSlot(0)).toBe(1); // the real backpack slot
+
+    session.confirm(); // opens the menu on presented slot 0 -> model slot 1
+    expect(menu.presented.at(-1)?.slot).toBe(0); // the menu itself stays in presented space
+    session.confirm(); // invokes "use" — consumes 1 unit from the REAL model
+    expect(inventory.slots[1]?.quantity).toBe(2);
+  });
+
+  it("re-presents a compacted view as the underlying model changes", () => {
+    const inventory = new Inventory<Id>({ catalog, capacity: 4 });
+    const view = filteredView(inventory, consumableOnly);
+    const slots = new MockSlots();
+    const session = new InventorySession<Id>(view, { slots });
+    session.open();
+    expect(slots.lastPresented).toHaveLength(0);
+
+    inventory.add("potion", 2);
+    expect(slots.lastPresented).toHaveLength(1);
+
+    inventory.add("sword"); // not a match — the view stays at 1
+    expect(slots.lastPresented).toHaveLength(1);
+  });
+
+  it("stops watching the model once the last listener detaches (refcounted)", () => {
+    const inventory = new Inventory<Id>({ catalog, capacity: 4 });
+    const view = filteredView(inventory, consumableOnly);
+    const seen: unknown[] = [];
+    const unsub = view.on("changed", (e) => seen.push(e));
+    inventory.add("potion");
+    expect(seen).toHaveLength(1);
+    unsub();
+    inventory.add("potion");
+    expect(seen).toHaveLength(1); // no longer watching
   });
 });

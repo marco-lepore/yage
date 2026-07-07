@@ -18,8 +18,8 @@ reused.
 ## Entry points
 
 - `@yagejs-addons/inventory` — headless: catalog + `Inventory` model,
-  `InventorySession`, `InventoryController`, engine events, input bindings.
-  Never pulls pixi.
+  `filteredView` (a subset projection of one model), `InventorySession`,
+  `InventoryController`, engine events, input bindings. Never pulls pixi.
 - `@yagejs-addons/inventory/presenters` — the renderer views: the
   `createInventoryPanel` factory, `SlotsView` + `iconCell`/`rowCell` cell presets,
   `defaultInventoryTheme`, `INVENTORY_LAYERS`.

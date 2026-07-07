@@ -12,6 +12,8 @@
 // --- Headless model (L1) ---
 export { defineItems, instanceData, ItemCatalog, type DataMapOf } from "./core/catalog.js";
 export { Inventory, type InventoryOptions } from "./core/Inventory.js";
+export { filteredView, type FilteredInventoryView, type SourceFilter } from "./core/filteredView.js";
+export type { InventorySource } from "./core/InventorySource.js";
 export {
   byCatalogOrder,
   byCategory,

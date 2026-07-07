@@ -23,9 +23,12 @@
  *  • **Icons** — the potion declares an `icon` texture (drawn on a canvas at
  *    startup, zero assets); everything else uses the colored-tile fallback.
  *
- *  • **Interactive hotbar** — a chrome-less always-on strip mirrors the first
- *    HOTBAR_SLOTS backpack cells; number keys 1–5 `use` the matching cell (a
- *    non-usable cell no-ops), driven by a host component, not a panel binding.
+ *  • **Interactive hotbar** — a chrome-less always-on strip shows a
+ *    `filteredView` of the backpack: only items offering "use" (potions,
+ *    elixirs), compacted, so the strip has no dead cells. Number keys 1–5
+ *    `use` the matching cell, driven by a host component (not a panel
+ *    binding) — the SAME mutation a click in the backpack panel makes, since
+ *    it's one shared model underneath.
  *
  * Controls: WASD/arrows walk · E interact · I backpack · K key items ·
  * arrows/mouse navigate · E/Enter/click confirm · Esc close · R sort ·
@@ -44,6 +47,7 @@ import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
   INVENTORY_ACTIONS,
   defineItems,
+  filteredView,
   inventoryControls,
   Inventory,
   InventoryActionEvent,
@@ -52,7 +56,9 @@ import {
   InventoryItemRemovedEvent,
   InventoryOpenedEvent,
   InventoryRejectedEvent,
+  type InventorySource,
   type ItemActionDef,
+  type ItemDef,
   type RejectReason,
 } from "@yagejs-addons/inventory";
 import {
@@ -393,16 +399,16 @@ class Hud extends Component {
 }
 
 /** Quick-use belt: number keys 1–N fire the "use" action on the matching
- *  hotbar cell (backpack slots 0..N-1, the strip the hotbar mirrors).
- *  `invokeAction` no-ops for an empty or non-usable slot, so only
- *  potions/elixirs react — pressing a key over a sword does nothing. Frozen
- *  while a panel is open (those keys drive the open panel then). */
+ *  hotbar cell — a PRESENTED index into `inventory`, the same filtered
+ *  view the hotbar panel shows, so key 1 always hits whatever the strip's
+ *  first cell displays. Frozen while a panel is open (those keys drive the
+ *  open panel then). */
 class HotbarQuickUse extends Component {
   private readonly input = this.service(InputManagerKey);
 
   constructor(
     private readonly cfg: {
-      readonly inventory: Inventory<ItemId>;
+      readonly inventory: InventorySource<ItemId>;
       readonly slots: number;
       readonly isBusy: () => boolean;
     },
@@ -416,6 +422,13 @@ class HotbarQuickUse extends Component {
       if (this.input.isJustPressed(`quick-${i + 1}`)) this.cfg.inventory.invokeAction("use", i);
     }
   }
+}
+
+/** Whether an item offers the "use" action — the hotbar's filter (only
+ *  potions/elixirs are usable; gear, treasure, and key items are excluded
+ *  from the strip entirely rather than shown inert). */
+function isUsable(_stack: unknown, def: ItemDef<ItemId>): boolean {
+  return def.actions?.includes("use") ?? false;
 }
 
 // ── item actions: labels + availability injected as policy ───────────────────
@@ -514,12 +527,16 @@ class InventoryRoomScene extends Scene {
       }),
     );
 
-    // Embedded quick-use belt: the SAME backpack model in a chrome-less one-row
-    // strip pinned by `bounds`, centered along the bottom. `input: null` +
-    // `closeOnCancel: false` + `openOnAdd` keep the controller a passive live
-    // mirror — it never opens/closes or consumes device input on its own; the
-    // host drives it. Number keys 1–HOTBAR_SLOTS use the matching cell
-    // (HotbarQuickUse below), so the strip is interactive without a binding.
+    // Embedded quick-use belt: a FILTERED VIEW of the same backpack model
+    // (only items offering "use" — potions/elixirs) in a chrome-less one-row
+    // strip pinned by `bounds`, centered along the bottom. Because it's a
+    // view over the shared model, using an item here or in the backpack
+    // panel is one mutation either way. `input: null` + `closeOnCancel: false`
+    // + `openOnAdd` keep the controller a passive live mirror — it never
+    // opens/closes or consumes device input on its own; the host drives it.
+    // Number keys 1–HOTBAR_SLOTS use the matching cell (HotbarQuickUse
+    // below), so the strip is interactive without a binding.
+    const usableItems = filteredView(backpack, isUsable);
     const hotbarBundle = createInventoryPanel(
       // A chrome-less strip needs far less inset than the framed panels; the
       // default 16px padding would crush a one-row cell to ~20px tall.
@@ -537,7 +554,7 @@ class InventoryRoomScene extends Scene {
     const hotbarCtrl = this.spawn("hotbar-ui").add(
       new InventoryController({
         ...hotbarBundle,
-        inventory: backpack,
+        inventory: usableItems,
         input: null,
         closeOnCancel: false,
         openOnAdd: true,
@@ -566,7 +583,7 @@ class InventoryRoomScene extends Scene {
 
     // Number keys 1–HOTBAR_SLOTS use the matching hotbar cell (backpack slots 0..N-1).
     this.spawn("hotbar-input").add(
-      new HotbarQuickUse({ inventory: backpack, slots: HOTBAR_SLOTS, isBusy: anyPanelOpen }),
+      new HotbarQuickUse({ inventory: usableItems, slots: HOTBAR_SLOTS, isBusy: anyPanelOpen }),
     );
 
     // HUD + toasts.

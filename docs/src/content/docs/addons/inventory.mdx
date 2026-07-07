@@ -44,7 +44,7 @@ import { createInventoryPanel, defaultInventoryTheme } from "@yagejs-addons/inve
 
 | Entry          | Imports                         | Contains |
 | -------------- | ------------------------------- | -------- |
-| `.`            | `@yagejs/core`, `@yagejs/input` | catalog + `Inventory` model, sort comparators, `InventorySession` + channel contracts, `InventoryController`, engine events, input bindings |
+| `.`            | `@yagejs/core`, `@yagejs/input` | catalog + `Inventory` model, `filteredView` (a subset projection of one model), sort comparators, `InventorySession` + channel contracts, `InventoryController`, engine events, input bindings |
 | `./presenters` | + `@yagejs/renderer` (brings pixi) | `SlotsView` + the `iconCell` / `rowCell` presets, `DetailView` / `ActionMenuView` / `InventoryChrome`, `PanelLayout`, `defaultInventoryTheme()`, the `createInventoryPanel` factory, `INVENTORY_LAYERS` |
 
 ## Quick start
@@ -476,7 +476,7 @@ controllers, or reuse one panel and swap the model per tab:
 
 ```ts
 tabBar.onSelect((tab) => {
-  ctrl.setInventory(tab === "key" ? keyItems : backpack, { title: tab === "key" ? "Key Items" : "Backpack" });
+  ctrl.setSource(tab === "key" ? keyItems : backpack, { title: tab === "key" ? "Key Items" : "Backpack" });
 });
 ```
 
@@ -484,6 +484,42 @@ For chest/transfer screens, show two controllers side by side (position via
 `bounds`), give ONE of them focus with `setInputEnabled`, and move stacks with
 `transfer(target, itemId, qty)` — only what the target accepts leaves the
 source, so a full chest can't destroy items.
+
+## Filtered views
+
+A separate `Inventory` with `accepts` is a separate container — items move
+between it and the main bag by an explicit transfer. Sometimes the goal is
+different: show a SUBSET of the SAME bag, so using an item in either surface
+is one mutation. `filteredView` builds that subset:
+
+```ts
+const usable = filteredView(backpack, (stack, def) => def.actions?.includes("use") ?? false);
+
+// Present it exactly like an Inventory — pass it to `inventory`, or swap it
+// into an existing panel with setSource:
+host.add(new InventoryController({ ...hotbarBundle, inventory: usable }));
+
+usable.invokeAction("use", 0);   // presented index 0, remapped to the real slot underneath
+usable.modelSlot(0);             // the real backpack slot, if you need it directly
+usable.source;                  // the underlying Inventory
+```
+
+The view is hole-free and compacted: only matching stacks appear, packed from
+index 0, so a hotbar preset never renders empty gaps for filtered-out items.
+`capacity` reads as `undefined` (the view has no size of its own — the model
+does) and `used` is the filtered count. `sort()` reorders the whole
+underlying model, since a projection can't reorder only part of a shared
+array. The view's `changed` event is a plain re-render trigger: its `slots`
+payload is always empty (a compacted projection has no stable slot diff to
+report), so `InventoryChangedEvent.slots` is `[]` when a controller's source
+is a filtered view.
+
+Both `Inventory` and a `filteredView`'s return value satisfy `InventorySource`,
+the surface `InventoryController` and `InventorySession` actually depend on —
+so a category-tab panel can pre-build one `filteredView` per category plus the
+raw model for an "All items" tab, and swap between them with `setSource`. A
+view that isn't the active tab costs nothing: it only subscribes to the
+model's change events while something is watching it.
 
 ## Saving
 

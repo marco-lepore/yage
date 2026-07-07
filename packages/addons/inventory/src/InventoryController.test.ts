@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createMockScene } from "@yagejs/core";
 import { InputManagerKey, type InputManager } from "@yagejs/input";
 import { defineItems } from "./core/catalog.js";
+import { filteredView } from "./core/filteredView.js";
 import { Inventory } from "./core/Inventory.js";
+import type { InventorySource } from "./core/InventorySource.js";
 import { InventoryController } from "./InventoryController.js";
 import type { InputBinding } from "./input/index.js";
 import type {
@@ -247,7 +249,7 @@ describe("engine events", () => {
     ]);
   });
 
-  it("setInventory re-mirrors events onto the new model only", () => {
+  it("setSource re-mirrors events onto the new model only", () => {
     const { scene } = createMockScene();
     const first = makeInventory();
     const second = makeInventory();
@@ -258,7 +260,7 @@ describe("engine events", () => {
     const changed = vi.fn();
     host.on(InventoryChangedEvent, changed);
 
-    controller.setInventory(second);
+    controller.setSource(second);
     expect(controller.inventory).toBe(second);
     first.add("potion");
     expect(changed).not.toHaveBeenCalled();
@@ -379,9 +381,48 @@ describe("zero-config input", () => {
       input: null,
     });
     scene.spawn("inv").add(controller);
-    // Compile-time assertion: TId flowed from the inventory, not the bundle.
-    const typed: Inventory<Id> = controller.inventory;
-    expect(typed.count("potion")).toBe(0);
+    // Compile-time assertion: TId flowed from the inventory, not the bundle —
+    // `controller.inventory` is `InventorySource<Id>`; the local `inventory`
+    // passed in stays the concrete `Inventory<Id>`.
+    const source: InventorySource<Id> = controller.inventory;
+    expect(source.used).toBe(0);
+    expect(inventory.count("potion")).toBe(0);
+  });
+});
+
+describe("filtered source (a filteredView passed as `inventory`)", () => {
+  it("presents only the matching, compacted stacks and invokes actions on the real model slot", () => {
+    const { scene } = createMockScene();
+    const inventory = makeInventory(); // actions: [{ id: "drop", label: "Drop" }]
+    inventory.add("sword"); // slot 0 — excluded from the view
+    inventory.add("potion", 2); // slot 1 — the only match
+    const usableOnly = filteredView(inventory, (_stack, def) => def.name === "Potion");
+
+    const slots = new StubSlots();
+    const controller = new InventoryController({
+      slots,
+      actionMenu: new StubMenu(),
+      inventory: usableOnly,
+      input: null,
+    });
+    const host = scene.spawn("inv");
+    host.add(controller);
+    // Compile-time assertion: TId flows from the filtered view with no
+    // explicit type argument, same as from a plain Inventory.
+    const source: InventorySource<Id> = controller.inventory;
+    expect(source.used).toBe(1);
+
+    const actions: { actionId: string; slot: number; itemId: string }[] = [];
+    host.on(InventoryActionEvent, (e) => actions.push(e));
+
+    controller.open();
+    expect(slots.presented.at(-1)).toHaveLength(1); // compacted: sword excluded
+    expect(slots.presented.at(-1)?.[0]?.stack?.itemId).toBe("potion");
+
+    controller.confirm(); // opens the menu on presented slot 0 -> model slot 1
+    controller.confirm(); // invokes "drop"
+    // The mirrored engine event carries the REAL model slot, not the presented one.
+    expect(actions).toEqual([expect.objectContaining({ actionId: "drop", slot: 1, itemId: "potion" })]);
   });
 });
 

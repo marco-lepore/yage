@@ -19,11 +19,16 @@
  * `invokeAction` return `{ ok, reason? }` ({@link MoveResult} also carries
  * `effect`). Only the raw escape hatch `setSlot` and invalid arguments
  * (non-positive quantities) THROW.
+ *
+ * Also an {@link InventorySource} — the identity projection an
+ * {@link InventorySession} can present directly ("all items"), alongside a
+ * {@link filteredView} of the same model showing a subset.
  */
 
 import { Emitter } from "./emitter.js";
 import type { ItemCatalog } from "./catalog.js";
 import { byCatalogOrder, type SortEntry, type StackComparator } from "./comparators.js";
+import type { InventorySource } from "./InventorySource.js";
 import type {
   ActionResult,
   AddResult,
@@ -81,7 +86,7 @@ export class Inventory<
     TId extends string = string,
     TData extends InstanceDataMap<TId> = LooseDataMap<TId>,
   >
-  implements InventoryReader<TId, TData>
+  implements InventoryReader<TId, TData>, InventorySource<TId, TData>
 {
   readonly catalog: ItemCatalog<TId, TData>;
   readonly capacity: number | undefined;

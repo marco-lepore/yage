@@ -19,7 +19,8 @@ optional peer (only the `./presenters` subpath needs it). No runtime deps.
 ## Two entry points (export split — load-bearing)
 
 - **`.`** (root) — headless + non-pixi. `defineItems` / `ItemCatalog`,
-  `Inventory` (the model), comparators, `InventorySession` + channel contracts,
+  `Inventory` (the model), `filteredView` (a subset projection of one model),
+  comparators, `InventorySession` + channel contracts,
   `InventoryController` (a `@yagejs/core` Component), engine events,
   `@yagejs/input` bindings. **MUST NOT transitively import pixi / renderer.**
 - **`./presenters`** — everything pixi. `SlotsView` + the `iconCell` / `rowCell`
@@ -299,8 +300,9 @@ host.add(new InventoryController({
 ```
 
 API: `open() / close() / toggle() / isOpen() / isMenuOpen()` ·
-`setInventory(inv, { title? })` (tabbed menus swap the model in place) ·
-`setTitle` · `inventory` getter (the current model) · `setInputEnabled(bool)`
+`setSource(source, { title? })` (tabbed menus swap the source in place —
+a plain `Inventory` or a `filteredView` of one) ·
+`setTitle` · `inventory` getter (the source currently presented) · `setInputEnabled(bool)`
 (focus seam: an unfocused panel stays visible + live but polls no input, and
 an open action menu closes when focus leaves) · the input-agnostic driving
 seam `move(dir) / select(slot) / selection() / confirm() / cancel() / sort()`
@@ -423,9 +425,43 @@ either way.
 
 Each `Inventory` is independent — sections are separate models
 (`accepts` filters what each takes), presented by separate controllers or one
-controller swapping via `setInventory`. Two visible panels at once (transfer
+controller swapping via `setSource`. Two visible panels at once (transfer
 screens): give ONE input focus via `setInputEnabled`, move stacks with
 `transfer` / `transferSlot`.
+
+## Filtered views (`filteredView`)
+
+A `filteredView` shows a SUBSET of one `Inventory`'s stacks — a hotbar that
+shows only usable items while staying a live mirror of the same backpack, or a
+tabbed menu showing one category at a time. Unlike a second `Inventory` with
+`accepts`, it's not a separate container: an add or a `use` on either surface
+is the same mutation, because it's one shared model.
+
+```ts
+const usable = filteredView(backpack, (stack, def) => def.actions?.includes("use") ?? false);
+host.add(new InventoryController({ ...bundle, inventory: usable })); // or ctrl.setSource(usable)
+usable.invokeAction("use", 0);        // presented index 0 -> whatever model slot it maps to
+usable.modelSlot(0);                  // the escape hatch back to the real slot
+usable.source;                        // the underlying Inventory
+```
+
+Both `Inventory` and `filteredView`'s return value implement `InventorySource`
+— the surface `InventorySession`/`InventoryController` consume (`slots`,
+`capacity`, `used`, `catalog`, `on`, `getActions`, `invokeAction`, `sort`).
+`InventoryController.inventory`'s type is `InventorySource`, so pass either a
+plain `Inventory` or a `filteredView` to the `inventory` option.
+
+Projection semantics: `slots` is hole-free and compacted (only matching
+stacks, in slot order); `capacity` is always `undefined` (the view has no size
+of its own); `used` is the filtered count; `getActions`/`invokeAction` take
+PRESENTED indices, remapped to the model slot underneath; `sort` forwards to
+the whole model (one shared array — a projection can't reorder only its
+subset). Every event but `"changed"` forwards straight from the model (real
+item ids/quantities); the view's own `"changed"` is a pure re-render signal —
+its `slots` payload is always `[]` (a compacted projection has no stable slot
+diff), so a controller backed by a filtered view emits `InventoryChangedEvent`
+with empty `slots`. The view only subscribes to the model while at least one
+listener is attached, so pre-built, currently-inactive tab views cost nothing.
 
 ## Save seam
 

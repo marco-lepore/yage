@@ -289,25 +289,17 @@ test.describe("@yagejs-addons/inventory addon", () => {
     expect(after.cancels).toBe(1); // onCancel still fired
   });
 
-  test("embedded hotbar derives cells from its bounds and renders them in the strip", async ({
-    page,
-  }) => {
-    await boot(page);
-    // Three distinct items -> three filled slots in row 0 of the hotbar.
-    await add(page, "potion", 3);
-    await add(page, "gem", 4);
-    await add(page, "sword", 1);
-    await stepFrames(page, 2);
-
-    const inStrip = await page.evaluate((b) => {
+  /** Content entities (icon/letter/quantity badge) carry a Transform
+   *  position; the cell background doesn't (it draws at absolute rect
+   *  coordinates, not through its own Transform), so counting `inv-` entities
+   *  inside the strip's rect counts rendered CONTENT, not background tiles. */
+  function contentEntitiesInStrip(page: Page): Promise<number> {
+    return page.evaluate((b) => {
       const ents = (
         window as unknown as {
           __yage__: { inspector: { getEntities(): { name: string; position?: { x: number; y: number } }[] } };
         }
       ).__yage__.inspector.getEntities();
-      // Cell content entities carry a Transform position; backgrounds sit at
-      // the origin. The centered main grid is far above this bottom strip, so a
-      // position inside the strip belongs to the hotbar.
       return ents.filter(
         (e) =>
           e.name.startsWith("inv-") &&
@@ -318,7 +310,37 @@ test.describe("@yagejs-addons/inventory addon", () => {
           e.position.y <= b.y + b.height,
       ).length;
     }, HOTBAR_BOUNDS);
-    // Derived 5×1 layout placed the three item cells inside the pinned rect.
-    expect(inStrip).toBeGreaterThanOrEqual(3);
+  }
+
+  test("embedded hotbar derives cells from its bounds and renders them in the strip", async ({
+    page,
+  }) => {
+    await boot(page);
+    // Of these three, only potion offers "use" — the hotbar's filteredView
+    // shows just the one matching cell (gem/sword are excluded, not inert).
+    await add(page, "potion", 3);
+    await add(page, "gem", 4);
+    await add(page, "sword", 1);
+    await stepFrames(page, 2);
+
+    // The one usable stack's cell: a tile-letter fallback (no icon texture in
+    // this fixture's catalog) plus a quantity badge (3 > 1).
+    expect(await contentEntitiesInStrip(page)).toBe(2);
+  });
+
+  test("embedded hotbar's filteredView excludes non-usable stacks entirely", async ({ page }) => {
+    await boot(page);
+
+    // Gear and treasure don't offer "use" — the strip renders no cell at all
+    // (a full-mirror hotbar would instead show two inert cells here).
+    await add(page, "sword", 1);
+    await add(page, "gem", 3);
+    await stepFrames(page, 2);
+    expect(await contentEntitiesInStrip(page)).toBe(0);
+
+    // A usable item lands the strip's one (and only) cell.
+    await add(page, "potion", 1);
+    await stepFrames(page, 2);
+    expect(await contentEntitiesInStrip(page)).toBe(1);
   });
 });
