@@ -160,6 +160,8 @@ export class Inventory<
    * A {@link StackPredicate} restricts the tally to matching data stacks, so
    * `has("key", (d) => d.opens === "boss-lair")` asks about a specific instance.
    */
+  has<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): boolean;
+  has<K extends TId>(itemId: K, quantity: number, where?: StackPredicate<K, TData>): boolean;
   has<K extends TId>(
     itemId: K,
     quantityOrWhere?: number | StackPredicate<K, TData>,

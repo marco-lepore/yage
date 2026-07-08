@@ -238,11 +238,8 @@ export interface InventoryReader<
   /** Whether at least `quantity` (default 1) matching units of `itemId` are
    *  held. A {@link StackPredicate} (in place of, or after, `quantity`) restricts
    *  the tally to matching data stacks. */
-  has<K extends TId>(
-    itemId: K,
-    quantityOrWhere?: number | StackPredicate<K, TData>,
-    where?: StackPredicate<K, TData>,
-  ): boolean;
+  has<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): boolean;
+  has<K extends TId>(itemId: K, quantity: number, where?: StackPredicate<K, TData>): boolean;
   /** First stack of `itemId` matching the optional predicate, with its slot. */
   find<K extends TId>(itemId: K, where?: StackPredicate<K, TData>): LocatedStack<K, TData> | undefined;
   /** Every stack of `itemId` matching the optional predicate, in slot order. */
