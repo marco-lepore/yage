@@ -123,6 +123,16 @@ only" actually hold.
    or game-specific (item balance, what a custom command does). This decides the
    surface area and dodges both failure modes.
 
+## Theme authoring
+
+A theme is a plain data object (no behavior), serializable, authored inline or spread-and-tweaked. The rule for what belongs in it is **data vs code**:
+
+- **Theme field (data):** any pure value a built-in renderer consumes — a color, size, gap, radius, alpha, texture key, or nine-slice insets. Declare it as an optional-derived field (`field?`) that falls back to a sensible default when omitted, and name the default in the JSDoc (`Omit to derive X`). Keep the interface flat with surface-grouped ordering and section comments. Nested objects require a deep-partial resolver to spread-and-tweak, which callers don't have.
+- **Render-delegate preset (code):** any new drawing code. Mirror the `CellPresenter`/`CellHandle` shape — the view computes rects, placement, and hit-tests; the preset only draws. Custom presets carry their own config by closure. They should still read the shared palette, font, and layer tokens so a single theme change keeps all surfaces consistent. Never add preset-specific tokens to the shared theme.
+- **View (behavior):** placement, windowing, navigation, hit-tests. These stay hardcoded in the view. To change them, replace the entire view. ±1px alignment nudges, shape-geometry constants, and contrast floors are also view-internal — they have no meaning outside the specific view that uses them.
+
+**Drift-guard:** every addon with a theme factory must have a test that walks the fully-populated theme to the presenter configs and fails if any field is unthreaded. See `packages/addons/inventory/src/factory/theme.test.ts` for the sentinel-walk pattern.
+
 ## Design archetypes (guidance, NOT encoded in the name)
 
 - **Collection** — many interchangeable pieces/variants/assets (prototype,
@@ -142,6 +152,16 @@ reuse, to avoid sprawl.
 - **Scope:** `@yagejs-addons` (own npm org, separate from engine `@yagejs`).
   Domain-only package names, **no tier suffixes** — the scope is the only
   category marker. `@yagejs-addons/dialogue`, `/inventory`, `/combat`.
+- **Export-symbol naming (cross-addon).** Value exports a consumer types into game
+  code — bundle factories, action-map presets, default themes — are
+  **domain-prefixed** so two addons never collide on an auto-import:
+  `dialogueControls`/`inventoryControls`, `DEFAULT_DIALOGUE_ACTIONS`,
+  `defaultInventoryTheme`. Interface and class contracts (`InputBinding`,
+  `KeyboardInputBinding`, `ChromePresenter`) may stay generic — a wrong import is a
+  compile error, not a silent hazard, and identical shapes are harmless. Event
+  tokens are always domain-prefixed (`DialogueFooEvent`, `InventoryFooEvent`). This
+  is why virtual-controls (`defaultControlsTheme`, `VIRTUAL_CONTROLS_LAYERS`) has
+  zero collisions where dialogue's original generic names did not.
 - **Granularity:** one package per addon, each with its own curated dependency
   closure. (A single `@yagejs/addons` package with subpath exports was rejected:
   subpath exports split *code*, not *dependencies* or *versions*.)

@@ -1,0 +1,80 @@
+{
+  "name": "@yagejs-addons/inventory",
+  "version": "0.1.0",
+  "description": "Slot-based inventory model with stacking, item actions, and a themeable slot view with swappable cell presets for YAGE",
+  "keywords": [
+    "yage",
+    "yage-addon",
+    "game-engine",
+    "2d",
+    "typescript",
+    "inventory",
+    "items",
+    "rpg"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/addons/inventory"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./presenters": {
+      "import": {
+        "types": "./dist/presenters.d.ts",
+        "default": "./dist/presenters.js"
+      },
+      "require": {
+        "types": "./dist/presenters.d.cts",
+        "default": "./dist/presenters.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@yagejs/core": ">=0.9.0 <0.10.0",
+    "@yagejs/input": ">=0.9.0 <0.10.0",
+    "@yagejs/renderer": ">=0.9.0 <0.10.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/renderer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.18",
+    "@yagejs/core": ">=0.8.0",
+    "@yagejs/input": ">=0.8.0",
+    "@yagejs/renderer": ">=0.8.0",
+    "pixi.js": "^8.5.0"
+  }
+}
