@@ -54,11 +54,15 @@ export const InventoryItemRemovedEvent = defineEvent<{
   quantity: number;
 }>("inventory:item-removed");
 
-/** An add was (partly) refused — the "inventory full!" toast hook. */
+/** An add was (partly) refused — the "inventory full!" toast hook.
+ *  `constraintId` is set only when `reason` is `"constraint"`: the id of the
+ *  most limiting {@link InventoryConstraint}, so a weight-limit toast and a
+ *  quest-gate toast can differ. */
 export const InventoryRejectedEvent = defineEvent<{
   itemId: string;
   quantity: number;
   reason: RejectReason;
+  constraintId?: string;
 }>("inventory:rejected");
 
 /** Any mutation, with the affected slot indices — the coarse observation
