@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: Slot-based inventory with stacking, item actions, sorting, and swappable grid/list presenters — headless model included
+description: Slot-based inventory with stacking, item actions, sorting, and a themeable slot view with swappable cell presets — headless model included
 ---
 
 import { Aside, Steps } from "@astrojs/starlight/components";
@@ -8,9 +8,10 @@ import { Aside, Steps } from "@astrojs/starlight/components";
 `@yagejs-addons/inventory` is a slot-based inventory system: a **headless
 model** that owns the fiddly logic every game rewrites (stack merging, partial
 pickups, move/merge/swap, consolidate-and-sort, cross-inventory transfers,
-save round-trips) plus a **swappable presentation layer** — a grid panel or a
-name list, themeable, zero-asset by default. The model is plain live state, so
-your game logic reads and mutates it whether or not any panel is open.
+save round-trips) plus a **themeable presentation layer** — one windowed slot
+view whose cell preset draws it as an icon grid or a name list, zero-asset by
+default. The model is plain live state, so your game logic reads and mutates it
+whether or not any panel is open.
 
 ## Install
 
@@ -148,7 +149,7 @@ if (keyItems.has("goldKey")) {
 }
 ```
 
-Pickups are the same — and **partial acceptance is a first-class result**, not
+Pickups are the same — and **partial acceptance is a normal result**, not
 an error:
 
 ```ts
@@ -204,7 +205,7 @@ if (bossKey) {
 // findAll + predicate remove for bulk instance work:
 for (const ref of inventory.findAll("herb", (d) => d.quality < 50)) {
   const { stacks } = inventory.remove(ref);
-  dropOnGround(stacks); // the poor herbs, payload intact
+  dropOnGround(stacks); // payload intact
 }
 ```
 

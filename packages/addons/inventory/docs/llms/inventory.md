@@ -2,8 +2,8 @@
 
 Slot-based inventory for YAGE (`@yagejs-addons` scope, independently versioned,
 NOT in the engine `fixed` group). Headless model (stacking, actions, transfers,
-snapshots) + a `@yagejs/core` Component host + swappable pixi presenters
-(grid / list) with a zero-asset default theme.
+snapshots) + a `@yagejs/core` Component host + one pixi slot view with swappable
+icon/row cell presets and a zero-asset default theme.
 
 ## Install
 

@@ -27,12 +27,13 @@ reused.
 ## Quick start
 
 ```ts
-import { defineItems, Inventory, InventoryController, InventoryActionEvent } from "@yagejs-addons/inventory";
+import { defineItems, instanceData, Inventory, InventoryController, InventoryActionEvent } from "@yagejs-addons/inventory";
 import { createInventoryPanel, INVENTORY_LAYERS } from "@yagejs-addons/inventory/presenters";
 
 const catalog = defineItems({
   potion: { name: "Potion", maxStack: 5, description: "Heals 20 HP." },
   sword: { name: "Iron Sword" },
+  key: { name: "Gold Key", instance: instanceData<{ opens: string }>() },
 });
 
 const inventory = new Inventory({
@@ -68,12 +69,13 @@ if (bossKey) {
 }
 ```
 
-Declare a stack's `data` shape per item to type the payload and the predicates.
-Add `instance: instanceData<{ opens: string }>()` to the `key` def, build the
-inventory with no explicit type argument, and `d` in `find("key", (d) => …)` is
-typed `{ opens: string }` — a wrong field or a `data` payload on an item that
-declares none is a compile error. Without an `instance` declaration the payload
-stays an open `Record<string, unknown>`.
+The `key` def declares its per-stack `data` shape with
+`instance: instanceData<{ opens: string }>()`, so `d` in `find("key", (d) => …)`
+is typed `{ opens: string }` and a wrong field is a compile error. An item that
+declares no `instance` carries no per-stack `data`, so passing a `data` payload
+to `add` on it is a compile error too. To keep the permissive
+`Record<string, unknown>` instead, type the inventory by id only
+(`new Inventory<ItemId>(…)`) or leave the catalog untyped.
 
 Press the `inventory` action (or call `controller.toggle()`) to open the panel.
 

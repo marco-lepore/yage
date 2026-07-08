@@ -31,7 +31,7 @@
 Installable, opinionated gameplay patterns (`@yagejs-addons` scope), independently versioned. Each addon's doc is sourced from its co-located `packages/addons/<name>/docs/llms/`.
 
 - [dialogue](llms/addons/dialogue.md): Branching runner, typewriter box & bubbles, markup, themeable presenters
-- [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, grid/list presenters
+- [inventory](llms/addons/inventory.md): Slot inventory — stacking, item actions, sorting, one slot view with swappable cell presets
 
 ## Optional
 
