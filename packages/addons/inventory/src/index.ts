@@ -37,6 +37,7 @@ export type {
   ItemDefInput,
   ItemStack,
   ItemStackSnapshot,
+  LocatedStack,
   MoveEffect,
   MoveResult,
   Outcome,
