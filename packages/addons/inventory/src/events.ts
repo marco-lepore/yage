@@ -66,7 +66,9 @@ export const InventoryRejectedEvent = defineEvent<{
 }>("inventory:rejected");
 
 /** Any mutation, with the affected slot indices — the coarse observation
- *  signal (HUD counters, autosave triggers). */
+ *  signal (HUD counters, autosave triggers). When the controller's source is
+ *  a filtered view, `slots` is always empty — a compacted projection has no
+ *  stable slot indices to report. */
 export const InventoryChangedEvent = defineEvent<{
   slots: readonly number[];
 }>("inventory:changed");

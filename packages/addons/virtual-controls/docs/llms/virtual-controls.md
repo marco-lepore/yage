@@ -77,7 +77,7 @@ the viewport (stick 11% / button 6.5% of min(w, h)), overlay
 `cluster: "bottom-left"` moves the button cluster (inset stays derived),
 `stick: { side: "right" }` flips the stick's placement/zone/axes defaults.
 The presenter auto-provisions its screen-space layer (`"virtual-controls"`,
-order 1050) — no `Scene.layers` declaration needed; declare
+order 1080) — no `Scene.layers` declaration needed; declare
 `...VIRTUAL_CONTROLS_LAYERS` only to pin ordering. The control set is fixed
 at construction — reconfigure by destroying the host entity and adding a
 fresh component.

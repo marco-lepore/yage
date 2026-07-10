@@ -136,6 +136,21 @@ describe("filteredView — sort and events forward to the whole model", () => {
     inventory.add("potion");
     expect(b).toHaveBeenCalledTimes(2); // both detached — no longer watching
   });
+
+  it("a double unsubscribe is a no-op — the refcount stays correct", () => {
+    const { inventory } = setup();
+    const view = filteredView(inventory, isConsumable);
+    const a = vi.fn();
+    const unsubA = view.on("changed", a);
+    unsubA();
+    unsubA(); // must not decrement again
+
+    const b = vi.fn();
+    view.on("changed", b);
+    inventory.add("potion");
+    expect(b).toHaveBeenCalledTimes(1); // model forwarding still works
+    expect(a).not.toHaveBeenCalled();
+  });
 });
 
 describe("filteredView — the escape hatch to the underlying model", () => {

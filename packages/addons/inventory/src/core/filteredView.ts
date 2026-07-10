@@ -137,7 +137,13 @@ class FilteredView<TId extends string, TData extends InstanceDataMap<TId>>
     // The view's own "changed" carries no payload sessions read (they only
     // use it as a re-render signal) — cast at this one boundary.
     const unsub = this.emitter.on("changed", fn as (payload: InventoryEvents<TId>["changed"]) => void);
+    // Unsubscribes are idempotent (see Emitter.on) — guard so a repeat call
+    // can't drive the refcount negative and permanently detach model
+    // forwarding for later subscribers.
+    let disposed = false;
     return () => {
+      if (disposed) return;
+      disposed = true;
       unsub();
       if (--this.listenerCount === 0) {
         this.modelUnsub?.();

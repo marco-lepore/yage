@@ -165,8 +165,9 @@ export class PointerInputBinding implements InputBinding {
   private session?: DialogueSession;
   // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
   private unsub: (() => void) | undefined;
-  /** A primary-button press happened since the last poll (consumed in poll). */
-  private clicked = false;
+  /** Pointer ids of the primary-button presses since the last poll. poll()
+   *  clears the list and registers one tap unless every press was consumed. */
+  private readonly clickedPointers: number[] = [];
 
   // Explicit `| undefined` (not `?:`) so the ctor can assign the possibly-
   // undefined argument under `exactOptionalPropertyTypes`.
@@ -192,7 +193,7 @@ export class PointerInputBinding implements InputBinding {
     this.input = input;
     this.session = session;
     this.unsub = input.onPointerDown((info) => {
-      if (info.button === 0) this.clicked = true; // primary button / touch only
+      if (info.button === 0) this.clickedPointers.push(info.id); // primary button / touch only
     });
   }
 
@@ -222,8 +223,14 @@ export class PointerInputBinding implements InputBinding {
     }
     this.wasChoosing = choosing;
 
-    const clicked = this.clicked;
-    this.clicked = false;
+    // A pointer claimed elsewhere (`consumePointer` — e.g. a touch overlay
+    // that owns the tap) must not also advance the conversation. The consume
+    // mark persists until the pointer releases, so reading it at poll time
+    // is safe whatever order the down-listeners ran in. Presses are checked
+    // individually: a claimed tap must not shadow an unclaimed one landing
+    // the same frame.
+    const clicked = this.clickedPointers.some((id) => !input.isPointerConsumed(id));
+    this.clickedPointers.length = 0;
     if (!clicked) return;
     if (choosing) {
       const p = this.pointer(input);

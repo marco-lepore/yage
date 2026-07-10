@@ -11,6 +11,8 @@
  * YAGE input is non-consuming by design, so a click handled here still fires
  * any gameplay action bound to the same button — claiming pointers
  * (`InputManager.consumePointer`) is the game's policy, not the binding's.
+ * The binding does honor claims made elsewhere: a click on a consumed pointer
+ * (e.g. a tap owned by a touch overlay) is skipped.
  */
 
 import type { InputManager } from "@yagejs/input";
@@ -167,8 +169,9 @@ export class PointerInputBinding implements InputBinding {
   private session?: InventorySessionDriver;
   // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
   private unsub: (() => void) | undefined;
-  /** A primary-button press happened since the last poll (consumed in poll). */
-  private clicked = false;
+  /** Pointer ids of the primary-button presses since the last poll. poll()
+   *  clears the list and registers one click unless every press was consumed. */
+  private readonly clickedPointers: number[] = [];
 
   // Explicit `| undefined` (not `?:`) so the ctor can assign the possibly-
   // undefined argument under `exactOptionalPropertyTypes`.
@@ -193,7 +196,7 @@ export class PointerInputBinding implements InputBinding {
     this.input = input;
     this.session = session;
     this.unsub = input.onPointerDown((info) => {
-      if (info.button === 0) this.clicked = true; // primary button / touch only
+      if (info.button === 0) this.clickedPointers.push(info.id); // primary button / touch only
     });
   }
 
@@ -208,7 +211,7 @@ export class PointerInputBinding implements InputBinding {
     const { input, session } = this;
     if (!input || !session) return;
     if (!session.isOpen()) {
-      this.clicked = false;
+      this.clickedPointers.length = 0;
       this.wasMenuOpen = false;
       return;
     }
@@ -231,8 +234,14 @@ export class PointerInputBinding implements InputBinding {
     }
     this.wasMenuOpen = menuOpen;
 
-    const clicked = this.clicked;
-    this.clicked = false;
+    // A pointer claimed elsewhere (`consumePointer` — e.g. a touch overlay
+    // that owns the tap) must not also click the panel. The consume mark
+    // persists until the pointer releases, so reading it at poll time is
+    // safe whatever order the down-listeners ran in. Presses are checked
+    // individually: a claimed tap must not shadow an unclaimed one landing
+    // the same frame.
+    const clicked = this.clickedPointers.some((id) => !input.isPointerConsumed(id));
+    this.clickedPointers.length = 0;
     if (!clicked) return;
     if (menuOpen) {
       const row = this.targets?.actionMenu?.actionAtPoint?.(p.x, p.y);
