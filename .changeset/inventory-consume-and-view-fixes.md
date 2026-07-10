@@ -1,5 +1,5 @@
 ---
-"@yagejs-addons/inventory": minor
+"@yagejs-addons/inventory": patch
 ---
 
 Three fixes to the inventory addon:
