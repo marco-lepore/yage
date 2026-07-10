@@ -169,9 +169,9 @@ export class PointerInputBinding implements InputBinding {
   private session?: InventorySessionDriver;
   // Explicit `| undefined` so `dispose()` can null it (exactOptionalPropertyTypes).
   private unsub: (() => void) | undefined;
-  /** Pointer id of the primary-button press since the last poll, if any.
-   *  Cleared by poll(), which drops it when the pointer is marked consumed. */
-  private clickedPointer: number | undefined;
+  /** Pointer ids of the primary-button presses since the last poll. poll()
+   *  clears the list and registers one click unless every press was consumed. */
+  private readonly clickedPointers: number[] = [];
 
   // Explicit `| undefined` (not `?:`) so the ctor can assign the possibly-
   // undefined argument under `exactOptionalPropertyTypes`.
@@ -196,7 +196,7 @@ export class PointerInputBinding implements InputBinding {
     this.input = input;
     this.session = session;
     this.unsub = input.onPointerDown((info) => {
-      if (info.button === 0) this.clickedPointer = info.id; // primary button / touch only
+      if (info.button === 0) this.clickedPointers.push(info.id); // primary button / touch only
     });
   }
 
@@ -211,7 +211,7 @@ export class PointerInputBinding implements InputBinding {
     const { input, session } = this;
     if (!input || !session) return;
     if (!session.isOpen()) {
-      this.clickedPointer = undefined;
+      this.clickedPointers.length = 0;
       this.wasMenuOpen = false;
       return;
     }
@@ -234,14 +234,15 @@ export class PointerInputBinding implements InputBinding {
     }
     this.wasMenuOpen = menuOpen;
 
-    const clicked = this.clickedPointer;
-    this.clickedPointer = undefined;
-    if (clicked === undefined) return;
     // A pointer claimed elsewhere (`consumePointer` — e.g. a touch overlay
     // that owns the tap) must not also click the panel. The consume mark
     // persists until the pointer releases, so reading it at poll time is
-    // safe whatever order the down-listeners ran in.
-    if (input.isPointerConsumed(clicked)) return;
+    // safe whatever order the down-listeners ran in. Presses are checked
+    // individually: a claimed tap must not shadow an unclaimed one landing
+    // the same frame.
+    const clicked = this.clickedPointers.some((id) => !input.isPointerConsumed(id));
+    this.clickedPointers.length = 0;
+    if (!clicked) return;
     if (menuOpen) {
       const row = this.targets?.actionMenu?.actionAtPoint?.(p.x, p.y);
       if (row !== undefined) session.confirmAction(row);

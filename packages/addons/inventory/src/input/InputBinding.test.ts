@@ -214,6 +214,21 @@ describe("PointerInputBinding", () => {
     expect(session.calls).toEqual(["select:1", "confirmSlot:1"]);
   });
 
+  it("a consumed tap does not shadow an unclaimed tap in the same frame", () => {
+    const input = new FakeInput();
+    const session = new FakeSession();
+    const binding = new PointerInputBinding(targets);
+    binding.bind(input.asManager(), session.asSession());
+    input.pointer = { x: 160, y: 10 };
+    binding.poll();
+
+    input.consumed.add(7);
+    input.click(8); // unclaimed panel tap...
+    input.click(7); // ...then a consumed overlay tap before the next poll
+    binding.poll();
+    expect(session.calls).toEqual(["select:1", "confirmSlot:1"]);
+  });
+
   it("does nothing while closed and drops stale clicks", () => {
     const input = new FakeInput();
     const session = new FakeSession();

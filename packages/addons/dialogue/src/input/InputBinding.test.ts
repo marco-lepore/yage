@@ -145,6 +145,19 @@ describe("PointerInputBinding", () => {
     expect(session.advanced).toBe(1);
   });
 
+  it("a consumed tap does not shadow an unclaimed tap in the same frame", () => {
+    const input = new FakeInput();
+    const session = new FakeSession();
+    const b = new PointerInputBinding();
+    b.bind(input.asManager(), session.asSession());
+
+    input.consumed.add(3);
+    input.click(0, 4); // unclaimed tap...
+    input.click(0, 3); // ...then a consumed overlay tap before the next poll
+    b.poll();
+    expect(session.advanced).toBe(1);
+  });
+
   it("re-binding releases the previous pointer subscription (no leak)", () => {
     const first = new FakeInput();
     const second = new FakeInput();
