@@ -61,6 +61,7 @@ const { mocks } = vi.hoisted(() => {
   }
 
   class MockColliderDesc {
+    _sensor = false;
     static cuboid() { return new MockColliderDesc(); }
     static ball() { return new MockColliderDesc(); }
     static capsule() { return new MockColliderDesc(); }
@@ -69,7 +70,7 @@ const { mocks } = vi.hoisted(() => {
     setRestitution() { return this; }
     setFriction() { return this; }
     setDensity() { return this; }
-    setSensor() { return this; }
+    setSensor(s: boolean) { this._sensor = s; return this; }
     setCollisionGroups() { return this; }
     setActiveEvents() { return this; }
     setActiveCollisionTypes() { return this; }
@@ -98,8 +99,9 @@ const { mocks } = vi.hoisted(() => {
       return body;
     }
 
-    createCollider(_desc: MockColliderDesc, parent: MockRigidBody): MockCollider {
+    createCollider(desc: MockColliderDesc, parent: MockRigidBody): MockCollider {
       const collider = new MockCollider();
+      collider._sensor = desc._sensor;
       parent._colliders.push(collider);
       this._colliders.set(collider.handle, collider);
       return collider;
@@ -418,6 +420,24 @@ describe("ColliderComponent", () => {
 
       col.setSensor(false);
       expect(col.config.sensor).toBe(false);
+    });
+
+    it("buffers a pre-add toggle in config and applies it at collider creation", async () => {
+      const { scene, physicsWorld } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const col = new ColliderComponent({
+        shape: { type: "box", width: 10, height: 10 },
+      });
+      expect(() => col.setSensor(true)).not.toThrow();
+      expect(col.config.sensor).toBe(true);
+
+      entity.add(col);
+
+      const rapierCollider = physicsWorld.getCollider(col._colliderHandle) as unknown as InstanceType<typeof mocks.MockCollider>;
+      expect(rapierCollider?.isSensor()).toBe(true);
     });
   });
 
