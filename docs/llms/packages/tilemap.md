@@ -4,7 +4,7 @@ Depends on `@yagejs/core`, `@yagejs/renderer`. Tiled map loader and renderer.
 
 ## Capabilities & Limits
 
-Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction (raw `rect` / `polygon` / `polyline` / `circle` (Tiled ellipse) / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets.
+Supported: orthogonal Tiled JSON (tilesets must be exported as JSON, not TSX), multiple tile layers, object layers + custom properties, object-reference resolution, collision-shape extraction from rectangle / ellipse / polygon / polyline objects (raw `rect` / `circle` / `polygon` / `polyline` / `capsule` shapes), `toPhysicsColliders()` adapter to Rapier collider configs, tileset-image and collection-of-images tilesets.
 
 Tilesets MUST be exported as JSON (`.tsj` / `.json`). Tiled's default XML `.tsx` format is not supported — in Tiled, *Edit Tileset → File → Export As → JSON*.
 
@@ -134,7 +134,7 @@ interface ObjectLayerData {
 }
 ```
 
-`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
+`MapObject` carries `id`, `name`, optional `class`, `x`/`y`/`width`/`height`/`rotation`, optional `point` / `ellipse` / `capsule` flags, an optional `polygon`, an optional `polyline`, and an optional `properties: MapObjectProperty[]` array of Tiled custom properties.
 
 ## Object Layers
 
@@ -154,7 +154,7 @@ const all = tilemap.getAllObjects();
 tilemap.findObject(42);            // by Tiled id
 tilemap.findObjectByName("Player"); // first match across all layers
 
-// MapObject: { id, name, class?, x, y, width, height, rotation, visible, point?, polygon?, properties? }
+// MapObject: { id, name, class?, x, y, width, height, rotation, visible, point?, polygon?, polyline?, properties? }
 ```
 
 ## Spawning Entities from Tiled Objects (auto-keys)
@@ -220,9 +220,10 @@ const shapes = tilemap.getCollisionShapes("walls");
 Mapping from Tiled object → emitted shape:
 - Rectangle → `rect`.
 - Ellipse (w === h) → `circle`.
-- Ellipse (w !== h) → `circle` with `radius = max(w, h) / 2` and a dev-warning (Rapier has no real ellipse primitive — author it as a capsule for a true non-circular round shape).
+- Ellipse (w !== h) → `polygon` sampling the ellipse outline (24 vertices; Rapier has no ellipse primitive, and the sampled ring is convex so the physics-side convex hull matches it exactly).
 - Capsule → `capsule` with `halfHeight = (max(w,h) - min(w,h)) / 2`, `radius = min(w,h) / 2`, `axis = "y"` if taller than wide else `"x"`.
-- Polygon → `polyline` (Tiled polygons are outlines, not solid hulls).
+- Polygon → `polyline` with the first vertex appended at the end (Tiled polygons are closed outlines; the appended vertex gives the chain its closing edge).
+- Polyline → `polyline` verbatim (open chain).
 - Point → skipped.
 
 Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.

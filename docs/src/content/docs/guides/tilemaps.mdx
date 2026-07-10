@@ -18,7 +18,7 @@ Worth knowing up front so you don't reach for something that isn't there.
 | Object layers (spawns, triggers, collision shapes) | Supported   |
 | Custom properties on objects                       | Supported   |
 | Object-reference resolution (Tiled object refs)    | Supported   |
-| Collision-shape extraction (rect / ellipse / capsule / polygon → polyline) | Supported   |
+| Collision-shape extraction (rect / ellipse / capsule / polygon / polyline) | Supported   |
 | `toPhysicsColliders()` adapter for Rapier          | Supported   |
 | Tileset-image and collection-of-images tilesets    | Supported   |
 | Animated tiles                                     | Not yet     |
@@ -277,8 +277,9 @@ for (const gid of walls.data) {
 
 `MapObject` (the element type in `objectLayers[i].objects`) carries `id`,
 `name`, optional `class`, position and size, rotation, an optional `point`
-flag, an optional `polygon`, and an optional `properties: MapObjectProperty[]`
-array of Tiled custom properties — covered in detail below.
+flag, an optional `polygon`, an optional `polyline`, and an optional
+`properties: MapObjectProperty[]` array of Tiled custom properties — covered
+in detail below.
 
 ## Tile Queries
 
@@ -319,6 +320,7 @@ interface MapObject {
   visible: boolean;
   point?: boolean;
   polygon?: { x: number; y: number }[];
+  polyline?: { x: number; y: number }[];
   properties?: MapObjectProperty[];
 }
 ```
@@ -401,9 +403,10 @@ Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Rectangle                     | `{ type: "rect", x, y, width, height }`                                                              |
 | Ellipse (`width === height`)  | `{ type: "circle", x, y, width, height, radius }`                                                    |
-| Ellipse (`width !== height`)  | `{ type: "circle", ..., radius: max(w, h) / 2 }` + dev warning (Rapier has no real ellipse — author it as a capsule for a true non-circular round shape) |
+| Ellipse (`width !== height`)  | `{ type: "polygon", x, y, vertices }` — 24 vertices sampled on the ellipse outline (Rapier has no ellipse primitive; the ring is convex, so the physics-side convex hull matches it exactly) |
 | Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis }` (oriented along the longer axis)|
-| Polygon                       | `{ type: "polyline", x, y, vertices }` (Tiled polygons are outlines; may be concave)                 |
+| Polygon                       | `{ type: "polyline", x, y, vertices }` with the first vertex appended at the end, closing the loop (Tiled polygons are closed outlines; may be concave) |
+| Polyline                      | `{ type: "polyline", x, y, vertices }` verbatim (open chain)                                         |
 | Point                         | Skipped                                                                                              |
 
 Because Tiled polygons are emitted as **polylines** (chain of line

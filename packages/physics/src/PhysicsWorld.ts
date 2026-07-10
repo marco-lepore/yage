@@ -318,16 +318,25 @@ export class PhysicsWorld {
     }
   }
 
-  /** Cast a ray and return the first hit. All values in pixels. */
+  /**
+   * Cast a ray and return the first hit. All values in pixels.
+   *
+   * The direction is normalized internally, so any non-zero vector works —
+   * e.g. `target.sub(origin)`. Throws on a zero-length direction.
+   */
   raycast(
     origin: Vec2Like,
     direction: Vec2Like,
     maxDistance: number,
     options?: { filterGroups?: number },
   ): RaycastHit | null {
+    const length = Math.hypot(direction.x, direction.y);
+    if (length === 0) {
+      throw new Error("raycast direction must be a non-zero vector");
+    }
     const ray = new RAPIER.Ray(
       { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
-      { x: direction.x, y: direction.y },
+      { x: direction.x / length, y: direction.y / length },
     );
 
     const maxToi = this.toMeters(maxDistance);

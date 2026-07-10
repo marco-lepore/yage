@@ -35,6 +35,7 @@ export interface MapObject {
   visible: boolean;
   point?: boolean;
   polygon?: { x: number; y: number }[];
+  polyline?: { x: number; y: number }[];
   ellipse?: boolean;
   capsule?: boolean;
   properties?: MapObjectProperty[];

@@ -232,7 +232,7 @@ const world = this.use(PhysicsWorldKey);
 
 const hit = world.raycast(
   origin,                  // Vec2Like — start position in pixels
-  { x: 0, y: 1 },         // direction (normalized)
+  { x: 0, y: 1 },         // direction — any non-zero vector (normalized internally)
   100,                     // max distance in pixels
   { filterGroups: CollisionLayers.interactionGroups(LAYER_PLAYER, LAYER_WALL) },
 );

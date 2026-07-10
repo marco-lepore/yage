@@ -68,6 +68,7 @@ function tiledObjectToMapObject(obj: TileObject): MapObject {
   if (cls) result.class = cls;
   if (obj.point === true) result.point = true;
   if (obj.polygon) result.polygon = obj.polygon;
+  if (obj.polyline) result.polyline = obj.polyline;
   if (obj.ellipse === true) result.ellipse = true;
   if (obj.capsule === true) result.capsule = true;
   if (obj.properties) {

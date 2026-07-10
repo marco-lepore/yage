@@ -592,6 +592,61 @@ describe("PhysicsWorld", () => {
     });
   });
 
+  describe("raycast", () => {
+    function setupRaycastHit(pw: PhysicsWorld) {
+      const entity = new Entity("target");
+      const bodyHandle = pw.createBody(entity, { type: "static" });
+      const comp = createMockColliderComponent();
+      const colHandle = pw.createCollider(entity, bodyHandle, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp);
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const capturedRays: InstanceType<typeof mocks.MockRay>[] = [];
+      world.castRayAndGetNormal = ((ray: InstanceType<typeof mocks.MockRay>) => {
+        capturedRays.push(ray);
+        return {
+          collider: { handle: colHandle },
+          timeOfImpact: 2, // meters
+          normal: { x: 0, y: -1 },
+        };
+      }) as unknown as typeof world.castRayAndGetNormal;
+
+      return { entity, capturedRays };
+    }
+
+    it("normalizes the direction before casting", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { capturedRays } = setupRaycastHit(pw);
+
+      // A pixel-space delta like target.sub(origin): length 500.
+      pw.raycast(new Vec2(0, 0), new Vec2(300, 400), 100);
+
+      expect(capturedRays).toHaveLength(1);
+      expect(capturedRays[0]!.dir.x).toBeCloseTo(0.6);
+      expect(capturedRays[0]!.dir.y).toBeCloseTo(0.8);
+    });
+
+    it("reports hit distance in pixels independent of direction length", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { entity } = setupRaycastHit(pw);
+
+      const hitShort = pw.raycast(new Vec2(0, 0), new Vec2(1, 0), 300);
+      const hitLong = pw.raycast(new Vec2(0, 0), new Vec2(250, 0), 300);
+
+      expect(hitShort?.entity).toBe(entity);
+      expect(hitShort?.distance).toBeCloseTo(100); // 2m * 50px/m
+      expect(hitLong?.distance).toBeCloseTo(100);
+    });
+
+    it("throws on a zero-length direction", () => {
+      const pw = new PhysicsWorld();
+      expect(() => pw.raycast(new Vec2(0, 0), new Vec2(0, 0), 100)).toThrow(
+        "non-zero",
+      );
+    });
+  });
+
   describe("removeBody", () => {
     it("removes body and collider mappings", () => {
       const pw = new PhysicsWorld();

@@ -110,6 +110,9 @@ export class ColliderComponent extends Component {
 
   /** Set whether this collider is a sensor. */
   setSensor(sensor: boolean): void {
+    // Event routing, the sensor-mismatch warning, and serialize() all read
+    // config.sensor, so it must track the live collider.
+    this.config.sensor = sensor;
     const collider = this.physicsWorld.getCollider(this._colliderHandle);
     if (collider) {
       collider.setSensor(sensor);

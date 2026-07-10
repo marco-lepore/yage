@@ -5,6 +5,7 @@ import type {
   RectColliderConfig,
   CircleColliderConfig,
   CapsuleColliderConfig,
+  PolygonColliderConfig,
   PolylineColliderConfig,
 } from "./types.js";
 
@@ -13,11 +14,13 @@ import type {
  *
  * - Rectangle objects -> RectColliderConfig
  * - Ellipse objects (width === height) -> CircleColliderConfig
- * - Ellipse objects (width !== height) -> CircleColliderConfig with the wider
- *   radius (Rapier has no real ellipse primitive), with a dev warning
+ * - Ellipse objects (width !== height) -> PolygonColliderConfig sampling the
+ *   ellipse outline (Rapier has no ellipse primitive; the ring is convex, so
+ *   the physics-side convex hull reproduces it exactly)
  * - Capsule objects -> CapsuleColliderConfig oriented along the longer axis
- * - Polygon objects -> PolylineColliderConfig (Tiled polygons are authored as
- *   outlines and may be concave; static-only)
+ * - Polygon objects -> PolylineColliderConfig with the closing edge appended
+ *   (Tiled polygons are closed outlines and may be concave; static-only)
+ * - Polyline objects -> PolylineColliderConfig verbatim (open chain)
  * - Point objects -> skipped (not collision shapes)
  *
  * @param map - Generic TilemapData.
@@ -44,6 +47,13 @@ export function extractCollisionShapes(
 }
 
 /**
+ * Vertex count for the polygonal approximation of a non-circular ellipse.
+ * At 24 segments the outline deviates from the true ellipse by under a pixel
+ * for radii up to ~130px.
+ */
+const ELLIPSE_SEGMENTS = 24;
+
+/**
  * Convert a single MapObject to a TilemapColliderConfig.
  * Returns null for point objects (not collision shapes).
  */
@@ -52,33 +62,62 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
   if (obj.point) return null;
 
   if (obj.polygon) {
+    // Tiled polygons are closed shapes with the closing edge implicit;
+    // append the first vertex so the polyline chain closes the loop.
+    const vertices = obj.polygon.map((v) => ({ x: v.x, y: v.y }));
+    const first = vertices[0];
+    if (first && vertices.length > 2) {
+      vertices.push({ ...first });
+    }
     const config: PolylineColliderConfig = {
       type: "polyline",
       x: obj.x,
       y: obj.y,
-      vertices: obj.polygon.map((v) => ({ x: v.x, y: v.y })),
+      vertices,
+    };
+    return config;
+  }
+
+  if (obj.polyline) {
+    const config: PolylineColliderConfig = {
+      type: "polyline",
+      x: obj.x,
+      y: obj.y,
+      vertices: obj.polyline.map((v) => ({ x: v.x, y: v.y })),
     };
     return config;
   }
 
   if (obj.ellipse) {
-    // Rapier 2D doesn't support real ellipses; collapse to a circle.
-    if (obj.width !== obj.height) {
-      console.warn(
-        `[@yagejs/tilemap] Ellipse object ${obj.id} ("${obj.name}") is ` +
-          `${obj.width}x${obj.height}; Rapier has no ellipse primitive. ` +
-          `Falling back to a circle with the wider radius. Author it as a ` +
-          `capsule (set the "capsule" flag) for a true non-circular round shape.`,
-      );
+    if (obj.width === obj.height) {
+      const config: CircleColliderConfig = {
+        type: "circle",
+        x: obj.x,
+        y: obj.y,
+        width: obj.width,
+        height: obj.height,
+        radius: obj.width / 2,
+      };
+      return config;
     }
-    const radius = Math.max(obj.width, obj.height) / 2;
-    const config: CircleColliderConfig = {
-      type: "circle",
+    // Rapier has no ellipse primitive: sample the outline as a convex
+    // polygon. Vertices are relative to the object's top-left, matching
+    // Tiled polygon convention.
+    const rx = obj.width / 2;
+    const ry = obj.height / 2;
+    const vertices: { x: number; y: number }[] = [];
+    for (let i = 0; i < ELLIPSE_SEGMENTS; i++) {
+      const angle = (i / ELLIPSE_SEGMENTS) * Math.PI * 2;
+      vertices.push({
+        x: rx + rx * Math.cos(angle),
+        y: ry + ry * Math.sin(angle),
+      });
+    }
+    const config: PolygonColliderConfig = {
+      type: "polygon",
       x: obj.x,
       y: obj.y,
-      width: obj.width,
-      height: obj.height,
-      radius,
+      vertices,
     };
     return config;
   }

@@ -9,9 +9,9 @@ export class DebugRegistryImpl implements DebugRegistry {
   register(contributor: DebugContributor): void {
     if (this.contributors.has(contributor.name)) return;
     this.contributors.set(contributor.name, contributor);
-    for (const flag of contributor.flags) {
-      this.flags.set(`${contributor.name}.${flag}`, true);
-    }
+    // Flags default to true on read (`?? true`), so registration must not
+    // write them — contributors register after install applies the user's
+    // DebugConfig.flags overrides, and a write here would clobber them.
   }
 
   isEnabled(): boolean {

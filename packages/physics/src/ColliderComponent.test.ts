@@ -400,6 +400,25 @@ describe("ColliderComponent", () => {
       const rapierCollider = physicsWorld.getCollider(col._colliderHandle) as unknown as InstanceType<typeof mocks.MockCollider>;
       expect(rapierCollider?.setSensorSpy).toHaveBeenCalledWith(true);
     });
+
+    it("keeps config.sensor in sync so event routing and saves see the toggle", async () => {
+      const { scene } = await createPhysicsTestContext();
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+      const col = entity.add(
+        new ColliderComponent({
+          shape: { type: "box", width: 10, height: 10 },
+        }),
+      );
+
+      col.setSensor(true);
+      expect(col.config.sensor).toBe(true);
+      expect(col.serialize().config.sensor).toBe(true);
+
+      col.setSensor(false);
+      expect(col.config.sensor).toBe(false);
+    });
   });
 
   describe("sensor/callback mismatch dev warning", () => {
