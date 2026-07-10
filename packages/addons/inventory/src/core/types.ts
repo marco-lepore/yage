@@ -334,7 +334,8 @@ export interface InventorySnapshot {
 export interface InventoryEvents<TId extends string = string> {
   /** Any mutation, with every affected slot index — the coarse "re-render"
    *  signal presenters subscribe to. Fires once per operation, after the
-   *  fine-grained event for that operation. */
+   *  fine-grained event for that operation. A filtered view emits `slots: []`
+   *  — a compacted projection has no stable slot indices to report. */
   changed: { readonly slots: readonly number[] };
   /** Units entered the inventory (`add`/`transfer`), after partial clipping. */
   itemAdded: {

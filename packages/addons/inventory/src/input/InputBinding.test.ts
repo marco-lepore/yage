@@ -13,17 +13,21 @@ import {
 class FakeInput {
   pressed = new Set<string>();
   pointer = { x: 0, y: 0 };
-  downHandlers: ((info: { button: number }) => void)[] = [];
+  consumed = new Set<number>();
+  downHandlers: ((info: { button: number; id: number }) => void)[] = [];
   unsubs = 0;
 
   isJustPressed(action: string): boolean {
     return this.pressed.has(action);
   }
-  onPointerDown(fn: (info: { button: number }) => void): () => void {
+  onPointerDown(fn: (info: { button: number; id: number }) => void): () => void {
     this.downHandlers.push(fn);
     return () => {
       this.unsubs++;
     };
+  }
+  isPointerConsumed(id: number): boolean {
+    return this.consumed.has(id);
   }
   getPointerScreenPosition(): { x: number; y: number } {
     return this.pointer;
@@ -35,8 +39,8 @@ class FakeInput {
   asManager(): InputManager {
     return this as unknown as InputManager;
   }
-  click(): void {
-    for (const fn of this.downHandlers) fn({ button: 0 });
+  click(id = 1): void {
+    for (const fn of this.downHandlers) fn({ button: 0, id });
   }
 }
 
@@ -189,6 +193,25 @@ describe("PointerInputBinding", () => {
     session.menuOpen = true;
     binding.poll(); // menu just opened — same point now hits row 0
     expect(session.calls).toEqual(["highlightMenu:0"]);
+  });
+
+  it("ignores a click whose pointer was consumed elsewhere", () => {
+    const input = new FakeInput();
+    const session = new FakeSession();
+    const binding = new PointerInputBinding(targets);
+    binding.bind(input.asManager(), session.asSession());
+    input.pointer = { x: 160, y: 10 };
+    binding.poll();
+    expect(session.calls).toEqual(["select:1"]);
+
+    input.consumed.add(7); // e.g. a touch overlay claimed this pointer
+    input.click(7);
+    binding.poll();
+    expect(session.calls).toEqual(["select:1"]); // no confirmSlot
+
+    input.click(8); // an unclaimed pointer still clicks
+    binding.poll();
+    expect(session.calls).toEqual(["select:1", "confirmSlot:1"]);
   });
 
   it("does nothing while closed and drops stale clicks", () => {

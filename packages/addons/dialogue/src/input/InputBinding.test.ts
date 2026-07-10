@@ -18,7 +18,8 @@ class FakeInput {
   readonly justPressed = new Set<string>();
   screen = { x: 0, y: 0 };
   world = { x: 0, y: 0 };
-  private downCb: ((i: { button: number }) => void) | undefined;
+  readonly consumed = new Set<number>();
+  private downCb: ((i: { button: number; id: number }) => void) | undefined;
 
   isPressed(a: string): boolean {
     return this.pressed.has(a);
@@ -38,13 +39,16 @@ class FakeInput {
   getPointerScreenPosition(): { x: number; y: number } {
     return this.screen;
   }
-  onPointerDown(cb: (i: { button: number }) => void): () => void {
+  onPointerDown(cb: (i: { button: number; id: number }) => void): () => void {
     this.downCb = cb;
     return () => (this.downCb = undefined);
   }
+  isPointerConsumed(id: number): boolean {
+    return this.consumed.has(id);
+  }
   /** Simulate a primary pointer press the binding latches in poll(). */
-  click(button = 0): void {
-    this.downCb?.({ button });
+  click(button = 0, id = 1): void {
+    this.downCb?.({ button, id });
   }
   asManager(): InputManager {
     return this as unknown as InputManager;
@@ -121,6 +125,22 @@ describe("PointerInputBinding", () => {
     b.bind(input.asManager(), session.asSession());
 
     input.click(0);
+    b.poll();
+    expect(session.advanced).toBe(1);
+  });
+
+  it("a tap on a consumed pointer does not advance", () => {
+    const input = new FakeInput();
+    const session = new FakeSession();
+    const b = new PointerInputBinding();
+    b.bind(input.asManager(), session.asSession());
+
+    input.consumed.add(3); // e.g. a touch overlay claimed this pointer
+    input.click(0, 3);
+    b.poll();
+    expect(session.advanced).toBe(0);
+
+    input.click(0, 4); // an unclaimed pointer still advances
     b.poll();
     expect(session.advanced).toBe(1);
   });

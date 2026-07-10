@@ -319,14 +319,15 @@ describe("zero-config input", () => {
   function fakeInput() {
     const pressed = new Set<string>();
     let pointer = { x: -1, y: -1 };
-    const downHandlers: ((info: { button: number }) => void)[] = [];
+    const downHandlers: ((info: { button: number; id: number }) => void)[] = [];
     const fake = {
       isJustPressed: (a: string) => pressed.has(a),
       isPressed: () => false,
-      onPointerDown: (fn: (info: { button: number }) => void) => {
+      onPointerDown: (fn: (info: { button: number; id: number }) => void) => {
         downHandlers.push(fn);
         return () => {};
       },
+      isPointerConsumed: () => false,
       getPointerScreenPosition: () => pointer,
       getPointerPosition: () => pointer,
       getActionNames: () => ["interact", "inventory", "cancel"],
@@ -337,7 +338,7 @@ describe("zero-config input", () => {
       release: () => pressed.clear(),
       click: (x: number, y: number) => {
         pointer = { x, y };
-        for (const fn of downHandlers) fn({ button: 0 });
+        for (const fn of downHandlers) fn({ button: 0, id: 1 });
       },
     };
   }
