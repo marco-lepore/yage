@@ -64,4 +64,13 @@ describe("DebugRegistryImpl", () => {
     reg.setFlag("test", "a", true);
     expect(reg.isFlagEnabled("test", "a")).toBe(true);
   });
+
+  it("preserves flags set before the contributor registers", () => {
+    // DebugConfig.flags overrides are applied at install, before the
+    // built-in contributors register in onStart.
+    const reg = new DebugRegistryImpl();
+    reg.setFlag("timing", "breakdown", false);
+    reg.register(makeContributor("timing", ["breakdown"]));
+    expect(reg.isFlagEnabled("timing", "breakdown")).toBe(false);
+  });
 });

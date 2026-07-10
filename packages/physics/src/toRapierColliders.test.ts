@@ -77,6 +77,47 @@ describe("toRapierColliders", () => {
     expect(result[0]!.setRotation).toHaveBeenCalledWith(Math.PI / 2);
   });
 
+  it("applies config rotation", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      {
+        shape: { type: "box", width: 100, height: 50 },
+        rotation: Math.PI / 6,
+      },
+    ];
+
+    const result = toRapierColliders(rapier, configs, PPM);
+
+    expect(result[0]!.setRotation).toHaveBeenCalledWith(Math.PI / 6);
+  });
+
+  it("adds config rotation on top of the horizontal-capsule axis rotation", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      {
+        shape: { type: "capsule", halfHeight: 50, radius: 25, axis: "x" },
+        rotation: Math.PI / 6,
+      },
+    ];
+
+    const result = toRapierColliders(rapier, configs, PPM);
+
+    expect(result[0]!.setRotation).toHaveBeenCalledWith(
+      Math.PI / 2 + Math.PI / 6,
+    );
+  });
+
+  it("does not call setRotation for rotation 0", () => {
+    const rapier = mockRapier();
+    const configs: ColliderConfig[] = [
+      { shape: { type: "box", width: 100, height: 50 }, rotation: 0 },
+    ];
+
+    const result = toRapierColliders(rapier, configs, PPM);
+
+    expect(result[0]!.setRotation).not.toHaveBeenCalled();
+  });
+
   it("converts polygon config to convex hull with offset", () => {
     const rapier = mockRapier();
     const configs: ColliderConfig[] = [

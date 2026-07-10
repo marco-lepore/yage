@@ -364,6 +364,37 @@ describe("toTilemapData", () => {
     expect(slope.polygon).toEqual([{ x: 0, y: 0 }, { x: 32, y: 0 }, { x: 32, y: 32 }]);
   });
 
+  it("maps polyline objects", () => {
+    const map: TiledMapData = {
+      width: 10,
+      height: 10,
+      tilewidth: 16,
+      tileheight: 16,
+      layers: [
+        {
+          type: "objectgroup",
+          id: 1,
+          name: "collisions",
+          opacity: 1,
+          visible: true,
+          x: 0,
+          y: 0,
+          objects: [
+            {
+              id: 1, name: "ledge", x: 10, y: 20, width: 0, height: 0, rotation: 0, visible: true,
+              polyline: [{ x: 0, y: 0 }, { x: 48, y: 16 }],
+            },
+          ],
+        } as ObjectGroup,
+      ],
+      tilesets: [],
+    };
+
+    const result = toTilemapData(map);
+    const ledge = result.objectLayers[0]!.objects[0]!;
+    expect(ledge.polyline).toEqual([{ x: 0, y: 0 }, { x: 48, y: 16 }]);
+  });
+
   it("maps properties", () => {
     const map: TiledMapData = {
       width: 10,

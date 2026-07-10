@@ -55,6 +55,7 @@ export interface RectangleObject {
   visible: boolean;
   point?: undefined | false;
   polygon?: undefined;
+  polyline?: undefined;
   ellipse?: undefined | false;
   capsule?: undefined | false;
   properties?: TileObjectProperty[];
@@ -73,6 +74,26 @@ export interface PolygonObject {
   visible: boolean;
   point?: undefined | false;
   polygon: { x: number; y: number }[];
+  polyline?: undefined;
+  ellipse?: undefined | false;
+  capsule?: undefined | false;
+  properties?: TileObjectProperty[];
+}
+
+export interface PolylineObject {
+  id: number;
+  name: string;
+  class?: string;
+  type?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  visible: boolean;
+  point?: undefined | false;
+  polygon?: undefined;
+  polyline: { x: number; y: number }[];
   ellipse?: undefined | false;
   capsule?: undefined | false;
   properties?: TileObjectProperty[];
@@ -91,6 +112,7 @@ export interface PointObject {
   visible: boolean;
   point: true;
   polygon?: undefined;
+  polyline?: undefined;
   ellipse?: undefined | false;
   capsule?: undefined | false;
   properties?: TileObjectProperty[];
@@ -110,6 +132,7 @@ export interface EllipseObject {
   ellipse: true;
   point?: undefined | false;
   polygon?: undefined;
+  polyline?: undefined;
   capsule?: undefined | false;
   properties?: TileObjectProperty[];
 }
@@ -128,6 +151,7 @@ export interface CapsuleObject {
   capsule: true;
   point?: undefined | false;
   polygon?: undefined;
+  polyline?: undefined;
   ellipse?: undefined | false;
   properties?: TileObjectProperty[];
 }
@@ -136,6 +160,7 @@ export type TileObject =
   | RectangleObject
   | PointObject
   | PolygonObject
+  | PolylineObject
   | EllipseObject
   | CapsuleObject;
 

@@ -108,8 +108,15 @@ export class ColliderComponent extends Component {
     return result;
   }
 
-  /** Set whether this collider is a sensor. */
+  /** Set whether this collider is a sensor. Callable before the component
+   * is added — the updated config is applied at collider creation. */
   setSensor(sensor: boolean): void {
+    // Event routing, the sensor-mismatch warning, and serialize() all read
+    // config.sensor, so it must track the live collider.
+    this.config.sensor = sensor;
+    // Before onAdd there is no physics world or collider yet; the config
+    // write above is all that's needed.
+    if (this._colliderHandle === -1) return;
     const collider = this.physicsWorld.getCollider(this._colliderHandle);
     if (collider) {
       collider.setSensor(sensor);

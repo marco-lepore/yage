@@ -2,6 +2,7 @@ import RAPIER from "@dimforge/rapier2d";
 import { devWarn, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import { CollisionLayers } from "./CollisionLayers.js";
+import { colliderRotation } from "./toRapierColliders.js";
 import type {
   PhysicsConfig,
   RigidBodyConfig,
@@ -182,6 +183,10 @@ export class PhysicsWorld {
         this.toMeters(config.offset.y),
       );
     }
+    const rotation = colliderRotation(config);
+    if (rotation !== 0) {
+      desc.setRotation(rotation);
+    }
     if (config.restitution !== undefined) {
       desc.setRestitution(config.restitution);
     }
@@ -318,16 +323,25 @@ export class PhysicsWorld {
     }
   }
 
-  /** Cast a ray and return the first hit. All values in pixels. */
+  /**
+   * Cast a ray and return the first hit. All values in pixels.
+   *
+   * The direction is normalized internally, so any non-zero vector works —
+   * e.g. `target.sub(origin)`. Throws on a zero-length direction.
+   */
   raycast(
     origin: Vec2Like,
     direction: Vec2Like,
     maxDistance: number,
     options?: { filterGroups?: number },
   ): RaycastHit | null {
+    const length = Math.hypot(direction.x, direction.y);
+    if (length === 0) {
+      throw new Error("raycast direction must be a non-zero vector");
+    }
     const ray = new RAPIER.Ray(
       { x: this.toMeters(origin.x), y: this.toMeters(origin.y) },
-      { x: direction.x, y: direction.y },
+      { x: direction.x / length, y: direction.y / length },
     );
 
     const maxToi = this.toMeters(maxDistance);
@@ -476,16 +490,12 @@ export class PhysicsWorld {
         );
       case "circle":
         return RAPIER.ColliderDesc.ball(this.toMeters(shape.radius));
-      case "capsule": {
-        const desc = RAPIER.ColliderDesc.capsule(
+      case "capsule":
+        // The axis:"x" rotation is applied by createCollider via colliderRotation.
+        return RAPIER.ColliderDesc.capsule(
           this.toMeters(shape.halfHeight),
           this.toMeters(shape.radius),
         );
-        if (shape.axis === "x") {
-          desc.setRotation(Math.PI / 2);
-        }
-        return desc;
-      }
       case "polygon": {
         const flat = flattenVertices(shape.vertices, (v) => this.toMeters(v));
         const desc = RAPIER.ColliderDesc.convexHull(flat);

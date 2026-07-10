@@ -78,6 +78,7 @@ entity.add(new ColliderComponent({
   density: 1,
   sensor: false,       // true = trigger (no physical response)
   offset: { x: 0, y: 0 },
+  rotation: 0,         // radians, relative to the body, about the offset point (axis:"x" capsules: adds to the 90° axis rotation)
   layers: LAYER_PLAYER,  // bitmask
   mask: LAYER_WALL,      // which layers to interact with
 }));
@@ -122,7 +123,8 @@ const world = this.use(PhysicsWorldKey);
 // Gravity
 world.setGravity(0, -980);
 
-// Raycast
+// Raycast — direction can be any non-zero vector (normalized internally,
+// e.g. target.sub(origin) works); a zero-length direction throws.
 const hit = world.raycast(origin, direction, maxDistance, { filterGroups });
 // hit: { entity, point: Vec2, normal: Vec2, distance } | null
 

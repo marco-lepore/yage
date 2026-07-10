@@ -95,6 +95,11 @@ export interface ColliderConfig {
   shape: ColliderShape;
   /** Offset from body center in pixels. */
   offset?: { x: number; y: number };
+  /**
+   * Rotation relative to the body in radians, about the collider's offset
+   * point. For `axis: "x"` capsules it adds on top of the 90° axis rotation.
+   */
+  rotation?: number;
   /** Coefficient of restitution (bounciness). */
   restitution?: number;
   /** Friction coefficient. */
