@@ -401,13 +401,21 @@ Tiled objects map to physics-agnostic `TilemapColliderConfig` variants:
 
 | Tiled object                  | Emitted shape                                                                                        |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Rectangle                     | `{ type: "rect", x, y, width, height }`                                                              |
+| Rectangle                     | `{ type: "rect", x, y, width, height, rotation? }`                                                   |
 | Ellipse (`width === height`)  | `{ type: "circle", x, y, width, height, radius }`                                                    |
 | Ellipse (`width !== height`)  | `{ type: "polygon", x, y, vertices }` — 24 vertices sampled on the ellipse outline (Rapier has no ellipse primitive; the ring is convex, so the physics-side convex hull matches it exactly) |
-| Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis }` (oriented along the longer axis)|
+| Capsule                       | `{ type: "capsule", x, y, width, height, halfHeight, radius, axis, rotation? }` (oriented along the longer axis)|
 | Polygon                       | `{ type: "polyline", x, y, vertices }` with the first vertex appended at the end, closing the loop (Tiled polygons are closed outlines; may be concave) |
 | Polyline                      | `{ type: "polyline", x, y, vertices }` verbatim (open chain)                                         |
 | Point                         | Skipped                                                                                              |
+
+Object rotation is honored for every shape. Tiled stores it in degrees,
+pivoting on the object's position: polygon, polyline, and sampled-ellipse
+vertices come out already rotated; a rotated circle has the position shift
+baked into its `x`/`y`; rectangles and capsules carry a `rotation` field in
+radians, which `toPhysicsColliders()` forwards to the physics collider. A
+rectangle rotated in the Tiled editor — the natural way to author a ramp —
+collides exactly as drawn.
 
 Because Tiled polygons are emitted as **polylines** (chain of line
 segments), they support concave outlines such as a winding water edge

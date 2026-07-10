@@ -139,6 +139,60 @@ describe("toPhysicsColliders", () => {
     });
   });
 
+  it("rotates a rect's center offset about the top-left pivot and forwards rotation", () => {
+    const shapes: TilemapColliderConfig[] = [
+      {
+        type: "rect",
+        x: 32,
+        y: 48,
+        width: 64,
+        height: 16,
+        rotation: Math.PI / 2,
+      },
+    ];
+
+    const result = toPhysicsColliders(shapes);
+
+    expect(result[0]!.shape).toEqual({ type: "box", width: 64, height: 16 });
+    // Center (32, 8) relative to the pivot swings 90° to (-8, 32).
+    expect(result[0]!.offset!.x).toBeCloseTo(24);
+    expect(result[0]!.offset!.y).toBeCloseTo(80);
+    expect(result[0]!.rotation).toBe(Math.PI / 2);
+  });
+
+  it("rotates a capsule's center offset and forwards rotation", () => {
+    const shapes: TilemapColliderConfig[] = [
+      {
+        type: "capsule",
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 60,
+        halfHeight: 20,
+        radius: 10,
+        axis: "y",
+        rotation: Math.PI / 2,
+      },
+    ];
+
+    const result = toPhysicsColliders(shapes);
+
+    // Center (10, 30) relative to the pivot swings 90° to (-30, 10).
+    expect(result[0]!.offset!.x).toBeCloseTo(-30);
+    expect(result[0]!.offset!.y).toBeCloseTo(10);
+    expect(result[0]!.rotation).toBe(Math.PI / 2);
+  });
+
+  it("omits rotation on the physics config when the shape has none", () => {
+    const shapes: TilemapColliderConfig[] = [
+      { type: "rect", x: 0, y: 0, width: 16, height: 16 },
+    ];
+
+    const result = toPhysicsColliders(shapes);
+
+    expect("rotation" in result[0]!).toBe(false);
+  });
+
   it("returns empty array for empty input", () => {
     expect(toPhysicsColliders([])).toEqual([]);
   });

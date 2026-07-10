@@ -210,9 +210,9 @@ The component-method variants of `resolveRef` / `resolveRefArray` walk every obj
 ```ts
 const shapes = tilemap.getCollisionShapes("walls");
 // TilemapColliderConfig[]:
-//   { type: "rect",     x, y, width, height }
+//   { type: "rect",     x, y, width, height, rotation? }              // rotation: radians about (x, y)
 //   { type: "circle",   x, y, width, height, radius }                 // Tiled ellipse
-//   { type: "capsule",  x, y, width, height, halfHeight, radius, axis }
+//   { type: "capsule",  x, y, width, height, halfHeight, radius, axis, rotation? }
 //   { type: "polygon",  x, y, vertices }                              // closed convex
 //   { type: "polyline", x, y, vertices }                              // chain; may be non-convex (emitted from Tiled polygons)
 ```
@@ -225,6 +225,7 @@ Mapping from Tiled object → emitted shape:
 - Polygon → `polyline` with the first vertex appended at the end (Tiled polygons are closed outlines; the appended vertex gives the chain its closing edge).
 - Polyline → `polyline` verbatim (open chain).
 - Point → skipped.
+- Object rotation (degrees in Tiled, pivoting on the object's position) is honored for every shape: polygon/polyline/sampled-ellipse vertices are rotated at extraction, a rotated circle gets its position shifted, and rect/capsule configs carry `rotation` in radians.
 
 Standalone functions: `extractCollisionShapes()`, `toPhysicsColliders()`.
 
@@ -246,7 +247,7 @@ for (const cfg of configs) {
 }
 ```
 
-`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. The offset is baked in so the Rapier collider sits at the Tiled object's bounding-box center.
+`toPhysicsColliders` handles every emitted shape: rects → `box`, circles → `circle`, capsules → `capsule` (with `axis` preserved — `"x"` rotates the capsule 90°), polygons → `polygon`, polylines → `polyline`. The offset is baked in so the Rapier collider sits at the Tiled object's bounding-box center; rect/capsule `rotation` is forwarded to the physics config with the offset rotated about the Tiled pivot.
 
 Polylines are static-only (no inertia is computed). Attach them to a `RigidBodyComponent({ type: "static" })`.
 

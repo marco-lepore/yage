@@ -503,6 +503,34 @@ describe("PhysicsWorld", () => {
       expect(pw.colliderMap.has(colliderHandle)).toBe(true);
     });
 
+    it("applies config rotation to the collider desc", () => {
+      const spy = vi.spyOn(mocks.MockColliderDesc.prototype, "setRotation");
+      const pw = new PhysicsWorld();
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      pw.createCollider(entity, bodyHandle, {
+        shape: { type: "box", width: 10, height: 10 },
+        rotation: Math.PI / 4,
+      }, comp);
+      expect(spy).toHaveBeenCalledWith(Math.PI / 4);
+      spy.mockRestore();
+    });
+
+    it("adds config rotation on top of the horizontal-capsule axis rotation", () => {
+      const spy = vi.spyOn(mocks.MockColliderDesc.prototype, "setRotation");
+      const pw = new PhysicsWorld();
+      const entity = new Entity("test");
+      const bodyHandle = pw.createBody(entity, { type: "dynamic" });
+      const comp = createMockColliderComponent();
+      pw.createCollider(entity, bodyHandle, {
+        shape: { type: "capsule", halfHeight: 20, radius: 10, axis: "x" },
+        rotation: Math.PI / 6,
+      }, comp);
+      expect(spy).toHaveBeenCalledWith(Math.PI / 2 + Math.PI / 6);
+      spy.mockRestore();
+    });
+
     it("applies collision groups from layers and mask", () => {
       const pw = new PhysicsWorld();
       const entity = new Entity("test");

@@ -2,6 +2,7 @@ import RAPIER from "@dimforge/rapier2d";
 import { devWarn, Vec2 } from "@yagejs/core";
 import type { Entity, Vec2Like } from "@yagejs/core";
 import { CollisionLayers } from "./CollisionLayers.js";
+import { colliderRotation } from "./toRapierColliders.js";
 import type {
   PhysicsConfig,
   RigidBodyConfig,
@@ -181,6 +182,10 @@ export class PhysicsWorld {
         this.toMeters(config.offset.x),
         this.toMeters(config.offset.y),
       );
+    }
+    const rotation = colliderRotation(config);
+    if (rotation !== 0) {
+      desc.setRotation(rotation);
     }
     if (config.restitution !== undefined) {
       desc.setRestitution(config.restitution);
@@ -485,16 +490,12 @@ export class PhysicsWorld {
         );
       case "circle":
         return RAPIER.ColliderDesc.ball(this.toMeters(shape.radius));
-      case "capsule": {
-        const desc = RAPIER.ColliderDesc.capsule(
+      case "capsule":
+        // The axis:"x" rotation is applied by createCollider via colliderRotation.
+        return RAPIER.ColliderDesc.capsule(
           this.toMeters(shape.halfHeight),
           this.toMeters(shape.radius),
         );
-        if (shape.axis === "x") {
-          desc.setRotation(Math.PI / 2);
-        }
-        return desc;
-      }
       case "polygon": {
         const flat = flattenVertices(shape.vertices, (v) => this.toMeters(v));
         const desc = RAPIER.ColliderDesc.convexHull(flat);

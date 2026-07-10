@@ -23,6 +23,10 @@ import type {
  * - Polyline objects -> PolylineColliderConfig verbatim (open chain)
  * - Point objects -> skipped (not collision shapes)
  *
+ * Object rotation (degrees in Tiled, pivoting on the object's position) is
+ * honored for every shape: vertex-based shapes are rotated here, circles get
+ * their center shifted, and rect/capsule configs carry `rotation` in radians.
+ *
  * @param map - Generic TilemapData.
  * @param objectLayerName - Optional: only extract from this layer.
  */
@@ -61,6 +65,9 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
   // Skip point objects
   if (obj.point) return null;
 
+  // Tiled stores rotation in degrees, pivoting on the object's position.
+  const rotation = obj.rotation ? (obj.rotation * Math.PI) / 180 : 0;
+
   if (obj.polygon) {
     // Tiled polygons are closed shapes with the closing edge implicit;
     // append the first vertex so the polyline chain closes the loop.
@@ -73,7 +80,7 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
       type: "polyline",
       x: obj.x,
       y: obj.y,
-      vertices,
+      vertices: rotateVertices(vertices, rotation),
     };
     return config;
   }
@@ -83,7 +90,10 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
       type: "polyline",
       x: obj.x,
       y: obj.y,
-      vertices: obj.polyline.map((v) => ({ x: v.x, y: v.y })),
+      vertices: rotateVertices(
+        obj.polyline.map((v) => ({ x: v.x, y: v.y })),
+        rotation,
+      ),
     };
     return config;
   }
@@ -98,6 +108,14 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
         height: obj.height,
         radius: obj.width / 2,
       };
+      if (rotation !== 0) {
+        // A rotated circle is still a circle; rotation only swings its
+        // center around the top-left pivot. Bake the shift into x/y.
+        const r = obj.width / 2;
+        const center = rotatePoint(r, r, rotation);
+        config.x = obj.x + center.x - r;
+        config.y = obj.y + center.y - r;
+      }
       return config;
     }
     // Rapier has no ellipse primitive: sample the outline as a convex
@@ -117,7 +135,7 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
       type: "polygon",
       x: obj.x,
       y: obj.y,
-      vertices,
+      vertices: rotateVertices(vertices, rotation),
     };
     return config;
   }
@@ -135,6 +153,9 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
       radius: shorter / 2,
       axis: obj.height >= obj.width ? "y" : "x",
     };
+    if (rotation !== 0) {
+      config.rotation = rotation;
+    }
     return config;
   }
 
@@ -146,5 +167,27 @@ function objectToColliderConfig(obj: MapObject): TilemapColliderConfig | null {
     width: obj.width,
     height: obj.height,
   };
+  if (rotation !== 0) {
+    config.rotation = rotation;
+  }
   return config;
+}
+
+function rotatePoint(
+  x: number,
+  y: number,
+  angle: number,
+): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
+/** Rotate vertices about the origin. Returns the input array when angle is 0. */
+function rotateVertices(
+  vertices: { x: number; y: number }[],
+  angle: number,
+): { x: number; y: number }[] {
+  if (angle === 0) return vertices;
+  return vertices.map((v) => rotatePoint(v.x, v.y, angle));
 }

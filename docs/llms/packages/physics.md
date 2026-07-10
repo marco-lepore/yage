@@ -78,6 +78,7 @@ entity.add(new ColliderComponent({
   density: 1,
   sensor: false,       // true = trigger (no physical response)
   offset: { x: 0, y: 0 },
+  rotation: 0,         // radians, relative to the body, about the offset point (axis:"x" capsules: adds to the 90° axis rotation)
   layers: LAYER_PLAYER,  // bitmask
   mask: LAYER_WALL,      // which layers to interact with
 }));

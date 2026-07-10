@@ -101,9 +101,19 @@ entity.add(new ColliderComponent({
     ],
   },
 }));
+
+// Offset and rotation position the collider relative to its body — here a
+// tilted attack hitbox in front of the entity. Rotation is in radians,
+// about the offset point.
+entity.add(new ColliderComponent({
+  shape: { type: "box", width: 60, height: 10 },
+  offset: { x: 20, y: 0 },
+  rotation: Math.PI / 4,
+  sensor: true,
+}));
 ```
 
-All dimensions are in pixels.
+All dimensions are in pixels; rotation is in radians.
 
 ## Collision Layers
 

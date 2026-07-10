@@ -38,9 +38,25 @@ export function toRapierColliders(
     if (config.offset) {
       desc.setTranslation(toMeters(config.offset.x), toMeters(config.offset.y));
     }
+    const rotation = colliderRotation(config);
+    if (rotation !== 0) {
+      desc.setRotation(rotation);
+    }
 
     return desc;
   });
+}
+
+/**
+ * Total rotation for a collider desc: the shape's base rotation (a horizontal
+ * capsule is a vertical capsule rotated 90°) plus the configured rotation.
+ */
+export function colliderRotation(config: ColliderConfig): number {
+  const base =
+    config.shape.type === "capsule" && config.shape.axis === "x"
+      ? Math.PI / 2
+      : 0;
+  return base + (config.rotation ?? 0);
 }
 
 function buildDesc(
@@ -56,16 +72,12 @@ function buildDesc(
       );
     case "circle":
       return rapier.ColliderDesc.ball(toMeters(shape.radius));
-    case "capsule": {
-      const desc = rapier.ColliderDesc.capsule(
+    case "capsule":
+      // The axis:"x" rotation is applied by the caller via colliderRotation.
+      return rapier.ColliderDesc.capsule(
         toMeters(shape.halfHeight),
         toMeters(shape.radius),
       );
-      if (shape.axis === "x") {
-        desc.setRotation(Math.PI / 2);
-      }
-      return desc;
-    }
     case "polygon": {
       const verts = shape.vertices.flatMap((v) => [toMeters(v.x), toMeters(v.y)]);
       const result = rapier.ColliderDesc.convexHull(new Float32Array(verts));

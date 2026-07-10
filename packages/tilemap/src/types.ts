@@ -56,7 +56,9 @@ export interface HasProperties {
 
 /**
  * All shape configs store `x`/`y` as the top-left corner of the object's
- * bounding box (matching Tiled's coordinate convention). `toPhysicsColliders`
+ * bounding box (matching Tiled's coordinate convention). Rect and capsule
+ * configs may carry a `rotation` about that corner; vertex-based shapes and
+ * circles have rotation already applied at extraction. `toPhysicsColliders`
  * converts to the center-origin offsets that Rapier expects.
  */
 
@@ -66,6 +68,8 @@ export interface RectColliderConfig {
   y: number;
   width: number;
   height: number;
+  /** Rotation in radians about the `(x, y)` pivot. Absent when 0. */
+  rotation?: number;
 }
 
 export interface CircleColliderConfig {
@@ -87,6 +91,8 @@ export interface CapsuleColliderConfig {
   radius: number;
   /** Orientation of the capsule's long axis. */
   axis: "x" | "y";
+  /** Rotation in radians about the `(x, y)` pivot. Absent when 0. */
+  rotation?: number;
 }
 
 /**
