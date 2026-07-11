@@ -1,0 +1,75 @@
+{
+  "name": "@yagejs/pathfinding",
+  "version": "0.8.0",
+  "description": "Grid A* pathfinding for YAGE",
+  "keywords": [
+    "yage",
+    "game-engine",
+    "2d",
+    "typescript",
+    "pathfinding",
+    "a-star",
+    "astar",
+    "grid",
+    "navigation"
+  ],
+  "license": "MIT",
+  "author": "Marco Lepore",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marco-lepore/yage.git",
+    "directory": "packages/pathfinding"
+  },
+  "homepage": "https://yage.dev",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./tilemap": {
+      "import": {
+        "types": "./dist/tilemap.d.ts",
+        "default": "./dist/tilemap.js"
+      },
+      "require": {
+        "types": "./dist/tilemap.d.cts",
+        "default": "./dist/tilemap.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@yagejs/core": "^0.8.0"
+  },
+  "peerDependencies": {
+    "@yagejs/tilemap": ">=0.8.0"
+  },
+  "peerDependenciesMeta": {
+    "@yagejs/tilemap": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@yagejs/tilemap": "^0.8.0"
+  }
+}
