@@ -1,0 +1,199 @@
+---
+title: Quests
+description: Headless quest log with objectives, prerequisite chains, auto-complete rollup, and save round-trips for YAGE
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs-addons/quests` is a headless quest log: a `QuestLog` model that owns
+quest phases (active/completed/failed), per-objective progress, prerequisite
+chains, and auto-complete rollup — the logic every RPG rewrites. It is pure
+`@yagejs/core`: no renderer, no dialogue or inventory dependency, no
+presenters. A journal or tracker HUD reads the model directly; the addon just
+tracks state and emits consequences.
+
+## Install
+
+```bash
+npm install @yagejs-addons/quests
+npm install @yagejs/core
+```
+
+`@yagejs/core` is the only peer. There is no `./presenters` subpath — the
+whole package is headless.
+
+## Define quests, start one
+
+Quest ids come from the map keys; each quest's objective ids come from its own
+nested `objectives` map — so `log.advance("gatherHerbs", "herb")` type-checks
+and `log.advance("gatherHerbs", "wolf")` doesn't, with no type argument written
+anywhere.
+
+```ts
+import { defineQuests, QuestLog } from "@yagejs-addons/quests";
+
+const quests = defineQuests({
+  gatherHerbs: {
+    title: "Gather Herbs",
+    summary: "The healer needs red herbs.",
+    objectives: {
+      herb: { title: "Collect red herbs", count: 5 }, // target 5
+      turnIn: { title: "Return to the healer" }, // count omitted -> target 1
+    },
+  },
+  thinThePack: {
+    title: "Thin the Pack",
+    requires: ["gatherHerbs"], // locked until gatherHerbs is completed
+    objectives: { wolf: { title: "Slay wolves", count: 3 } },
+  },
+});
+
+const log = new QuestLog(quests);
+log.start("gatherHerbs"); // { ok: true } — prereqs met (none)
+```
+
+## Bind objectives to other addons — no addon dependency
+
+Quests declares no dependency on dialogue, inventory, or any other addon.
+Instead, the game subscribes to whatever events it likes and calls
+`advance`/`complete` — a one-line adapter per binding, with **no active-state
+guard needed**: the log silently ignores progress calls on a quest that isn't
+currently active, so firing unconditionally on every pickup/kill is correct.
+
+```ts
+import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
+
+// Inventory pickup -> advance the collect objective.
+player.on(InventoryItemAddedEvent, (e) => {
+  if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
+});
+
+// Dialogue command -> complete the turn-in objective (the healer's script
+// runs `[turnIn/]` via a command handler injected at play() time).
+dialogue.play(healerScript, {
+  commands: { turnIn: () => log.complete("gatherHerbs", "turnIn") },
+});
+
+// The game's own entity event -> advance wolf kills.
+wolf.on(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
+```
+
+<Aside type="tip">
+This is the whole binding story. A published "collect-item objective" or
+"dialogue-command objective" adapter would need quests to depend on
+inventory/dialogue as peers — the first addon-to-addon package dependency in
+the toolkit. Ready-made adapters are deferred; the one-line game-authored form
+is the v1 path.
+</Aside>
+
+## React to consequences
+
+```ts
+log.on("questCompleted", ({ questId }) => {
+  hud.toast(`Quest complete: ${quests.get(questId).title}`);
+  if (questId === "gatherHerbs") log.start("thinThePack"); // chain, one line
+});
+
+log.on("objectiveAdvanced", ({ questId, objectiveId, progress, count }) => {
+  tracker.set(objectiveId, `${progress}/${count}`); // "3/5"
+});
+```
+
+Model events: `questStarted`, `objectiveAdvanced { progress, count, done }`,
+`objectiveCompleted`, `questCompleted`, `questFailed`, and a coarse `changed`
+after every mutating call.
+
+## Reading state (what a journal/tracker needs)
+
+```ts
+log.status("thinThePack"); // "locked" | "available" | "active" | "completed" | "failed"
+log.available(); // QuestId[] — startable now (prereqs met, not started)
+log.active(); // QuestId[]
+log.progress("gatherHerbs", "herb"); // 3
+log.objectiveDone("gatherHerbs", "herb"); // false
+log.get("gatherHerbs"); // full QuestState { status, objectives: {...counts} }
+```
+
+`status()` has no separate stored "locked" state — it derives from stored
+phase (active/completed/failed) or, for a never-started quest, from whether
+every `requires` quest is `completed`.
+
+## Prerequisites
+
+`requires` is a flat list of quest ids that must be `completed` before a quest
+unlocks — no nested graph object. The dependency graph is the implicit union
+across every quest's `requires` list. Forward references (naming a
+later-declared quest) are fine; naming a quest absent from the whole
+`defineQuests` call throws at definition time. A prerequisite **cycle** is not
+detected in v1 — the cycle's quests simply stay `locked` forever, no crash.
+
+## Auto-complete rollup
+
+A quest completes automatically the moment every non-`optional` objective
+reaches its target — no explicit "finish quest" call needed for the common
+case. `optional` objectives never gate completion:
+
+```ts
+defineQuests({
+  q: {
+    title: "Explore the Ruins",
+    objectives: {
+      artifact: { title: "Recover the artifact" }, // required
+      secretDoor: { title: "Find the secret door", optional: true },
+    },
+  },
+});
+// Completing "artifact" alone completes the quest; "secretDoor" can stay
+// untouched.
+```
+
+`completeQuest(quest)` force-completes regardless of prerequisites or current
+progress — a debug/cheat/testing escape hatch.
+
+## Optional engine-bus mirror
+
+For a HUD or achievements system that shouldn't hold a `log` reference
+directly, mount a `QuestController` on any persistent entity — it re-emits the
+model's six events onto the engine bus (entity → scene):
+
+```ts
+import { QuestController, QuestCompletedEvent } from "@yagejs-addons/quests";
+
+player.add(new QuestController({ log }));
+scene.on(QuestCompletedEvent, ({ questId }) => achievements.check(questId));
+```
+
+The controller is entirely optional — `log.on(...)` reaches the same
+consequences with no component at all.
+
+## Save
+
+`snapshot()` / `restore()` round-trip the whole log as plain JSON. Wire it to
+`@yagejs/save` as a snapshot extra (no dependency needed):
+
+```ts
+snapshotService.registerSnapshotExtra("quests", {
+  serialize: () => log.snapshot(),
+  restore: (data) => log.restore(data),
+});
+```
+
+`restore` drops quest ids the current catalog no longer declares and objective
+ids no longer declared within a restored quest, clamping surviving counts to
+the current target. A quest never started stays absent from the snapshot; its
+status re-derives from `requires` on restore, same as before any snapshot
+existed.
+
+## What's deferred
+
+- **Journal / tracker presenter** — v1 is headless-first, like the behaviors
+  and interaction addons. The events plus `active()`/`get()` state carry
+  everything a list view or HUD tracker needs, so a `./presenters` subpath is
+  purely additive later.
+- **Published per-addon adapters** (a ready-made "collect-item objective"
+  bound to `InventoryItemAddedEvent`) — the one-line game-authored form covers
+  v1; an optional `./adapters` entry is a future addition.
+- **Quest abandon / reset / fail-then-retry** — `fail` is terminal in v1.
+- **Timed objectives, hidden objectives, "any N of M" branching, prerequisite
+  cycle detection, reward payloads** — all out of scope for v1; the game
+  layers these on top via events.
