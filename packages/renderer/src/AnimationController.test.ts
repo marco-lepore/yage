@@ -123,19 +123,17 @@ import {
 
 type TestAnim = "idle" | "walk" | "shoot";
 
-function makeFrames(n: number): never[] {
-  return Array.from({ length: n }, (_, i) => ({ label: `frame${i}` })) as never[];
-}
-
-const idleFrames = makeFrames(4);
-const walkFrames = makeFrames(6);
-const shootFrames = makeFrames(3);
-
+// Frame counts are driven by the mock's fixed 96px-wide texture:
+// floor(96 / frameWidth) frames. idle=4, walk=6, shoot=3.
 function testAnims(): Record<TestAnim, AnimationDef> {
   return {
-    idle: { frames: idleFrames as never, speed: 0.15 },
-    walk: { frames: walkFrames as never, speed: 0.2 },
-    shoot: { frames: shootFrames as never, speed: 0.4, loop: false },
+    idle: { source: { sheet: "idle.png", frameWidth: 24 }, speed: 0.15 },
+    walk: { source: { sheet: "walk.png", frameWidth: 16 }, speed: 0.2 },
+    shoot: {
+      source: { sheet: "shoot.png", frameWidth: 32 },
+      speed: 0.4,
+      loop: false,
+    },
   };
 }
 
@@ -146,7 +144,9 @@ function setup(anims?: Record<TestAnim, AnimationDef>) {
   const entity = spawnEntityInScene(scene);
   entity.add(new Transform());
   const spriteComp = entity.add(
-    new AnimatedSpriteComponent({ textures: idleFrames as never }),
+    new AnimatedSpriteComponent({
+      source: { sheet: "idle.png", frameWidth: 24 },
+    }),
   );
   const ctrl = entity.add(
     new AnimationController<TestAnim>(anims ?? testAnims()),
@@ -163,7 +163,7 @@ describe("AnimationController", () => {
   it("auto-plays first animation on add", () => {
     const { ctrl, sprite } = setup();
     expect(ctrl.current).toBe("idle");
-    expect(sprite.textures).toBe(idleFrames);
+    expect(sprite.textures).toHaveLength(4);
     expect(sprite.animationSpeed).toBe(0.15);
     expect(sprite.loop).toBe(true);
     expect(sprite.playing).toBe(true);
@@ -173,7 +173,7 @@ describe("AnimationController", () => {
     const { ctrl, sprite } = setup();
     ctrl.play("walk");
     expect(ctrl.current).toBe("walk");
-    expect(sprite.textures).toBe(walkFrames);
+    expect(sprite.textures).toHaveLength(6);
     expect(sprite.animationSpeed).toBe(0.2);
     expect(sprite.loop).toBe(true);
   });
@@ -348,15 +348,7 @@ describe("AnimationController", () => {
   });
 
   describe("serialization", () => {
-    it("serialize returns null when defs use raw frames", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const { ctrl } = setup();
-      expect(ctrl.serialize()).toBeNull();
-      expect(warnSpy).toHaveBeenCalledOnce();
-      warnSpy.mockRestore();
-    });
-
-    it("serialize returns data when all defs use source", () => {
+    it("serialize returns data for every def", () => {
       const { scene } = createRendererTestContext();
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
@@ -368,8 +360,7 @@ describe("AnimationController", () => {
         }),
       );
 
-      const data = ctrl.serialize()!;
-      expect(data).not.toBeNull();
+      const data = ctrl.serialize();
       expect(data.current).toBe("idle");
       expect(data.speed).toBe(1);
       expect(data.animations["idle"]!.source).toEqual({ sheet: "idle.png", frameWidth: 48 });
@@ -391,7 +382,7 @@ describe("AnimationController", () => {
       ctrl.play("walk");
       ctrl.speed = 1.5;
 
-      const data = ctrl.serialize()!;
+      const data = ctrl.serialize();
       expect(data.current).toBe("walk");
       expect(data.speed).toBe(1.5);
 
@@ -402,28 +393,6 @@ describe("AnimationController", () => {
       const restored = entity2.add(AnimationController.fromSnapshot(data));
       expect(restored.current).toBe("walk");
       expect(restored.speed).toBe(1.5);
-    });
-
-    it("mixed source/frames marks controller as not serializable", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const { scene } = createRendererTestContext();
-      const entity = spawnEntityInScene(scene);
-      entity.add(new Transform());
-      entity.add(new AnimatedSpriteComponent({ textures: makeFrames(2) as never[] }));
-      const ctrl = entity.add(
-        new AnimationController({
-          idle: { source: { sheet: "idle.png", frameWidth: 48 }, speed: 0.15 },
-          walk: { frames: makeFrames(4) as never[], speed: 0.2 },
-        }),
-      );
-      expect(ctrl.serialize()).toBeNull();
-      warnSpy.mockRestore();
-    });
-
-    it("throws when AnimationDef has neither source nor frames", () => {
-      expect(
-        () => new AnimationController({ idle: { speed: 0.15 } as never }),
-      ).toThrow(/requires either/);
     });
   });
 });

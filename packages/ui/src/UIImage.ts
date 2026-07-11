@@ -1,8 +1,9 @@
 import { Sprite } from "pixi.js";
-import type { Container, Texture } from "pixi.js";
+import type { Texture } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
 import type { AssetHandle } from "@yagejs/core";
+import type { DisplayContainer, DisplaySprite } from "@yagejs/renderer";
 import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -11,10 +12,10 @@ import { PointerEvents } from "./pointer-events.js";
 
 /** Displays a texture as a UI element, scaling to fit Yoga-computed dimensions. */
 export class UIImage implements UIElement {
-  readonly container: Sprite;
+  readonly container: DisplaySprite;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 

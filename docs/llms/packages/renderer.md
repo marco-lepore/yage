@@ -2,6 +2,32 @@
 
 Depends on `@yagejs/core`, `pixi.js`. PixiJS v8 rendering behind the YAGE plugin interface.
 
+## Type vocabulary
+
+Every exported field, parameter, and return type across `@yagejs/renderer` (and its downstream consumers — `@yagejs/ui`, `@yagejs/particles`, `@yagejs/tilemap`) uses this package's own alias names instead of a direct `pixi.js` type import, so consumer code never has to import `pixi.js` for types:
+
+| Alias | Underlying Pixi type | Where it shows up |
+|---|---|---|
+| `DisplayContainer` | `Container` | `renderObject` getters, `RenderLayer.container`, UI element `container`/`displayObject` fields |
+| `DisplaySprite` | `Sprite` | `SpriteComponent.sprite` |
+| `DisplayAnimatedSprite` | `AnimatedSprite` | `AnimatedSpriteComponent.animatedSprite` |
+| `DisplayText` | `Text` | `TextComponent.text` (canvas variant) |
+| `DisplayBitmapText` | `BitmapText` | `TextComponent.text` (bitmap variant) |
+| `DisplaySplitText` | `SplitText` | `SplitTextComponent.splitText` (canvas variant) |
+| `DisplaySplitBitmapText` | `SplitBitmapText` | `SplitTextComponent.splitText` (bitmap variant) |
+| `GraphicsContext` | `Graphics` | `GraphicsComponent.graphics`, `draw((g) => ...)`, mask draw callbacks |
+| `NineSliceSprite` | `NineSliceSprite` | `createNineSlice()` return, `UINineSlice.container` |
+| `ParticleContainer` | `ParticleContainer` | `@yagejs/particles`' `ParticleEmitterComponent.container` |
+| `Particle` | `Particle` | `@yagejs/particles`' `ParticlePool.acquire()`/`release()` |
+| `Filter` | `Filter` | effects API (`Effect.filter`, `rawFilter(filter)`) |
+| `Application` | `Application` | `RendererPlugin.application` |
+| `ApplicationOptions` | `ApplicationOptions` | `RendererConfig.pixi` |
+| `ColorValue` | `ColorSource` | every `tint` option/accessor |
+| `PointLike` | `PointData` | point-shaped callbacks/options |
+| `TextStyle` | `TextStyleOptions` | every `style` option |
+
+The aliases are transparent (`type DisplayContainer = Container`) — this is a discoverability and import-surface policy, not encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object; only the *type* used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
+
 ## Setup
 
 ```ts
@@ -171,6 +197,24 @@ Default to `@yagejs/ui` for any text that lives inside a widget, has padding, or
 
 For procedural shapes plus a label, use a parent entity with `GraphicsComponent` + a child entity with `TextComponent` — pixi v8 has no `g.text(...)` method; text is always a separate display object.
 
+### Shared options vocabulary
+
+All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `interactive` options, plus a matching runtime accessor for each — Pixi's `Container` carries all four natively, so nothing about this differs per component:
+
+```ts
+{
+  visible?: boolean;   // initial visibility, default true
+  tint?: ColorValue;    // number (0xff0000) or CSS color string ("red", "#ff0000")
+  alpha?: number;       // opacity, default 1
+  interactive?: {
+    eventMode?: "static" | "dynamic"; // default "static" when the object is set
+    consumeOnInteraction?: boolean;    // claim the press for @yagejs/input's action map
+  };
+}
+```
+
+`comp.visible` / `comp.tint` / `comp.alpha` read/write the live object; `interactive` is option-only (set once at construction, persisted through save/load). `anchor` (`{x, y}`) is shared by Sprite, AnimatedSprite, and Text — Graphics has no anchor (a raw Pixi `Container` has none), and SplitText uses its own per-segment `charAnchor` / `wordAnchor` / `lineAnchor` instead (see below).
+
 ### SpriteComponent
 
 ```ts
@@ -180,6 +224,8 @@ entity.add(new SpriteComponent({
   texture: "hero.png",   // string key (serializable) or Texture object
   layer: "world",         // render layer name
   anchor: { x: 0.5, y: 0.5 },
+  tint: 0xff0000,
+  interactive: { consumeOnInteraction: true },
 }));
 ```
 
@@ -194,12 +240,12 @@ Procedural drawing via PixiJS Graphics API:
 ```ts
 import { GraphicsComponent } from "@yagejs/renderer";
 
-entity.add(new GraphicsComponent({ layer: "world" }).draw((g) => {
+entity.add(new GraphicsComponent({ layer: "world", tint: 0x88ccff }).draw((g) => {
   g.rect(0, 0, 50, 50).fill(0xff0000);
 }));
 ```
 
-Not fully serializable -- only layer is saved. Redo drawing in `afterRestore()`.
+Serializes `layer` / `visible` / `tint` / `alpha` / `interactive` / effects / mask — the drawn geometry itself is not persisted (Pixi has no way to read commands back off a `Graphics` object), so redo the `draw()` call in `afterRestore()`.
 
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw pixi `Graphics` with the v8 fluent API: `rect` / `circle` / `roundRect` / `poly` / `moveTo` / `lineTo` / `fill` / `stroke`. See [pixi Graphics docs](https://pixijs.com/8.x/guides/components/scene-objects/graphics).
 
@@ -222,6 +268,7 @@ entity.add(new TextComponent({
     fill: 0xf8fafc,
     fontWeight: "bold",
   },
+  interactive: { consumeOnInteraction: true }, // marks a raw-Text pointer-consume surface
 }));
 ```
 
@@ -280,19 +327,23 @@ const pc = entity.add(new ProcessComponent());
 Tween.stagger(title.chars, (c) => Tween.to(c, "alpha", 1, 0.3), 0.05).forEach((p) => pc.run(p));
 ```
 
-API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `tint` / `alpha`, `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/tint/alpha/visible; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
+API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAnchor` / `wordAnchor` / `lineAnchor` (get/set), `resplit()` (manual split when `autoSplit: false`), `visible` / `tint` / `alpha`, `fx` / `setMask` / `clearMask` (same effects/mask surface as the other four components), `splitText` (underlying Pixi object), `isBitmap`. Serializable (text/style/bitmap/anchors/layer/visible/tint/alpha/interactive/effects/mask; re-splits on restore). Caveats: `SplitText` is experimental, re-lays-out on every `text`/`style` change (prefer `TextComponent` for static/simple text), and char spacing can differ slightly from `Text` (kerning lost when glyphs split).
 
 ### AnimatedSpriteComponent
+
+`source` is required — there's no raw-`Texture[]` construction path, so every `AnimatedSpriteComponent` serializes fully.
 
 ```ts
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 
-entity.add(new AnimatedSpriteComponent({
-  source: { sheet: "player_idle.png", frameWidth: 48 }, // serializable
+const player = entity.add(new AnimatedSpriteComponent({
+  source: { sheet: "player_idle.png", frameWidth: 48 },
   layer: "world",
-  speed: 0.15,
-  autoPlay: true,
+  anchor: { x: 0.5, y: 1 },
+  tint: 0xffffff,
 }));
+
+player.play({ speed: 0.15, loop: true });
 ```
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.

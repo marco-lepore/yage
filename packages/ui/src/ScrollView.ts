@@ -3,7 +3,7 @@ import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, Edge, FlexDirection, Overflow } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
-import type { MaskHandle } from "@yagejs/renderer";
+import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
   Padding,
@@ -101,7 +101,7 @@ export class ScrollViewNode implements UIContainerElement {
   private _dragStart = 0;
   private _dragStartOffset = 0;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.viewport;
   }
 

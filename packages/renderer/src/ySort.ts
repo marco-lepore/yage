@@ -1,4 +1,4 @@
-import type { Container } from "pixi.js";
+import type { DisplayContainer as Container } from "./public-types.js";
 import type { LayerSortFn } from "./LayerDef.js";
 
 /**

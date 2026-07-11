@@ -1,4 +1,4 @@
-import type { Sprite } from "pixi.js";
+import type { DisplaySprite } from "../public-types.js";
 import type { MaskFactory } from "./MaskFactory.js";
 
 /**
@@ -11,7 +11,7 @@ import type { MaskFactory } from "./MaskFactory.js";
  * (typically as a child of the target or a hidden sibling) before calling
  * `setMask`, or pixi will silently fail to apply the mask.
  */
-export function spriteMask(sprite: Sprite): MaskFactory {
+export function spriteMask(sprite: DisplaySprite): MaskFactory {
   return () => ({
     node: sprite,
     owned: false,

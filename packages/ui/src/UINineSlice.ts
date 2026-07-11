@@ -1,8 +1,9 @@
-import { NineSliceSprite } from "pixi.js";
-import type { Container, Texture } from "pixi.js";
+import { NineSliceSprite as PixiNineSliceSprite } from "pixi.js";
+import type { Texture } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
 import type { AssetHandle } from "@yagejs/core";
+import type { DisplayContainer, NineSliceSprite } from "@yagejs/renderer";
 import type { UIElement, UINineSliceProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -14,7 +15,7 @@ export class UINineSlice implements UIElement {
   readonly container: NineSliceSprite;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 
@@ -29,7 +30,7 @@ export class UINineSlice implements UIElement {
     const insets = props.insets;
 
     if (typeof insets === "number") {
-      this.container = new NineSliceSprite({
+      this.container = new PixiNineSliceSprite({
         texture,
         leftWidth: insets,
         topHeight: insets,
@@ -37,7 +38,7 @@ export class UINineSlice implements UIElement {
         bottomHeight: insets,
       });
     } else {
-      this.container = new NineSliceSprite({
+      this.container = new PixiNineSliceSprite({
         texture,
         leftWidth: insets.left,
         topHeight: insets.top,

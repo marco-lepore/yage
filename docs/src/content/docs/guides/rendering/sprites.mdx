@@ -49,7 +49,8 @@ API is available. See the [pixi Sprite docs](https://pixijs.com/8.x/guides/compo
 ## Animated Sprites
 
 For frame-based sprite animations, use `AnimatedSpriteComponent` together with
-an `AnimationController`.
+an `AnimationController`. `source` is required on both — there's no raw
+`Texture[]` construction path, so every animation is fully serializable.
 
 ```typescript
 import {
@@ -59,17 +60,20 @@ import {
 
 entity.add(
   new AnimatedSpriteComponent({
-    spritesheet: heroSheet,
-    defaultAnimation: "idle",
+    source: { sheet: "hero_idle.png", frameWidth: 48 },
+    anchor: { x: 0.5, y: 0.5 },
+    layer: "characters",
   }),
 );
 
 entity.add(
   new AnimationController({
-    animations: {
-      idle: { frames: [0, 1, 2, 3], speed: 0.1 },
-      run: { frames: [4, 5, 6, 7, 8, 9], speed: 0.15 },
-      jump: { frames: [10, 11, 12], speed: 0.12, loop: false },
+    idle: { source: { sheet: "hero_idle.png", frameWidth: 48 }, speed: 0.1 },
+    run: { source: { sheet: "hero_run.png", frameWidth: 48 }, speed: 0.15 },
+    jump: {
+      source: { sheet: "hero_jump.png", frameWidth: 48 },
+      speed: 0.12,
+      loop: false,
     },
   }),
 );
@@ -80,8 +84,11 @@ Switch animations at runtime:
 ```typescript
 const anim = entity.get(AnimationController);
 anim.play("run");
-anim.play("jump", { onComplete: () => anim.play("idle") });
+anim.playOneShot("jump", { onComplete: () => anim.play("idle") });
 ```
+
+`AnimatedSpriteComponent` also takes the same `visible` / `tint` / `alpha` /
+`interactive` options as `SpriteComponent` above.
 
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 

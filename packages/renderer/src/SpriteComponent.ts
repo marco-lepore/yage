@@ -1,111 +1,36 @@
-import {
-  AssetHandle,
-  Component,
-  makeEntityScopedQueue,
-  markPointerConsumeContainer,
-  unmarkPointerConsumeContainer,
-  serializable,
-} from "@yagejs/core";
+import { AssetHandle, serializable } from "@yagejs/core";
 import { Sprite } from "pixi.js";
-import type { Container } from "pixi.js";
-import {
-  computeRenderFacet,
-  type RenderFacetSnapshot,
-} from "./internal/renderFacet.js";
-import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { resolveRenderParent } from "./SortGroupComponent.js";
 import { resolveTextureInput } from "./assets.js";
-import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { EffectsHost } from "./effects/EffectsHost.js";
-import { attachMask, restoreMask } from "./masks/attachMask.js";
-import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { DisplaySprite, TextureInput } from "./public-types.js";
+import {
+  VisualComponent,
+  type VisualComponentData,
+  type VisualComponentOptions,
+} from "./VisualComponent.js";
 
 /** Options for creating a SpriteComponent. */
-export interface SpriteComponentOptions {
+export interface SpriteComponentOptions extends VisualComponentOptions {
   /** Texture or texture key string. */
   texture: TextureInput;
   /** Anchor point (0-1). */
   anchor?: { x: number; y: number };
-  /** Render layer name. Default: "default". */
-  layer?: string;
-  /** Initial visibility. Default: true. */
-  visible?: boolean;
-  /** Tint color. */
-  tint?: number;
-  /** Alpha (opacity). Default: 1. */
-  alpha?: number;
-  /**
-   * Make the sprite interactive. When set, Pixi `eventMode` is configured so
-   * the sprite participates in pointer hit-testing — required for any
-   * `sprite.on("pointerdown", ...)` listener to fire.
-   *
-   * `consumeOnInteraction: true` additionally marks the sprite as a UI-input
-   * surface (via `@yagejs/core`'s consume registry), so a `pointerdown` over
-   * the sprite is auto-claimed by `@yagejs/input` — preventing the same press
-   * from also firing gameplay action-map edges like `MouseLeft`. Default
-   * `false`: by default an interactive sprite still propagates the action,
-   * matching the "I want both Pixi events AND the action map" use case.
-   */
-  interactive?: {
-    /**
-     * Pixi event mode. Defaults to `"static"` when the option object is set
-     * (interactive sprite, no children-recurse cost). Pass `"dynamic"` for
-     * Pixi behavior where event-mode propagates to children automatically.
-     */
-    eventMode?: "static" | "dynamic";
-    /** When `true`, claim pointer events landing on this sprite. Default `false`. */
-    consumeOnInteraction?: boolean;
-  };
 }
 
 /** Serialisable snapshot of a SpriteComponent. */
-export interface SpriteData {
+export interface SpriteData extends VisualComponentData {
   textureKey: string | null;
-  layer: string;
-  tint?: number;
-  alpha?: number;
   anchor?: { x: number; y: number };
-  visible?: boolean;
-  /**
-   * Interactive opt-in config from the original options. Persisted so
-   * restored scenes keep `eventMode` and the `consumeOnInteraction` mark on
-   * the rebuilt sprite — without this, save/load silently strips the
-   * tappable behavior.
-   */
-  interactive?: {
-    eventMode?: "static" | "dynamic";
-    consumeOnInteraction?: boolean;
-  };
-  effects?: EffectStackSnapshot;
-  mask?: MaskSnapshot;
 }
 
 /** Component that displays a PixiJS Sprite. */
 @serializable
-export class SpriteComponent extends Component {
+export class SpriteComponent extends VisualComponent {
   readonly sprite: DisplaySprite;
-  readonly layerName: string;
-  /**
-   * Component-scope effects host. `.fx.addEffect(...)` attaches a filter to
-   * this sprite; the effect is torn down automatically when the entity or
-   * component is destroyed. `.fx.findEffect(definition)` recovers the
-   * handle for the first matching effect after save/load.
-   */
-  readonly fx = new EffectsHost(
-    () => this.sprite,
-    "component",
-    () => makeEntityScopedQueue(this.entity),
-  );
   private _textureKey: string | null;
-  private _mask: MaskHandle | undefined;
-  private _interactive: SpriteComponentOptions["interactive"];
 
   constructor(options: SpriteComponentOptions) {
-    super();
+    super(options.layer);
     this.sprite = Sprite.from(resolveTextureInput(options.texture));
-    this.layerName = options.layer ?? "default";
     this._textureKey =
       typeof options.texture === "string"
         ? options.texture
@@ -116,22 +41,12 @@ export class SpriteComponent extends Component {
     if (options.anchor) {
       this.sprite.anchor.set(options.anchor.x, options.anchor.y);
     }
-    if (options.visible !== undefined) {
-      this.sprite.visible = options.visible;
-    }
-    if (options.tint !== undefined) {
-      this.sprite.tint = options.tint;
-    }
-    if (options.alpha !== undefined) {
-      this.sprite.alpha = options.alpha;
-    }
-    if (options.interactive) {
-      this._interactive = { ...options.interactive };
-      this.sprite.eventMode = options.interactive.eventMode ?? "static";
-      if (options.interactive.consumeOnInteraction) {
-        markPointerConsumeContainer(this.sprite);
-      }
-    }
+    this.applyVisualOptions(options);
+  }
+
+  /** The underlying Pixi display object. */
+  get renderObject(): DisplaySprite {
+    return this.sprite;
   }
 
   /** Replace the sprite's texture. */
@@ -154,34 +69,16 @@ export class SpriteComponent extends Component {
       );
       return null;
     }
-    const data: SpriteData = {
+    return {
+      ...this.serializeVisual(),
       textureKey: this._textureKey,
-      layer: this.layerName,
-      tint: this.sprite.tint,
-      alpha: this.sprite.alpha,
       anchor: { x: this.sprite.anchor.x, y: this.sprite.anchor.y },
-      visible: this.sprite.visible,
     };
-    if (this._interactive) data.interactive = { ...this._interactive };
-    const effects = this.fx.serialize();
-    if (effects) data.effects = effects;
-    const mask = this._mask?.serialize();
-    if (mask) data.mask = mask;
-    return data;
   }
 
   /** Restore effects and mask after the sprite is parented in the scene tree. */
   afterRestore(data: SpriteData): void {
-    if (data.effects) this.fx.restore(data.effects);
-    if (data.mask) {
-      this._mask?.remove();
-      // Clear before restore so an unsavable snapshot (restoreMask returns
-      // null) leaves the field genuinely empty instead of holding a torn-down
-      // handle for serialize/clearMask to operate on.
-      this._mask = undefined;
-      const handle = restoreMask(this.sprite, data.mask);
-      if (handle) this._mask = handle;
-    }
+    this.restoreVisual(data);
   }
 
   /** Create a SpriteComponent from a serialised snapshot. */
@@ -196,78 +93,5 @@ export class SpriteComponent extends Component {
     if (data.visible !== undefined) opts.visible = data.visible;
     if (data.interactive) opts.interactive = { ...data.interactive };
     return new SpriteComponent(opts);
-  }
-
-  /** Set the sprite's tint color. */
-  set tint(color: number) {
-    this.sprite.tint = color;
-  }
-
-  /** Get the sprite's tint color. */
-  get tint(): number {
-    return this.sprite.tint;
-  }
-
-  /** Set the sprite's alpha (opacity). */
-  set alpha(alpha: number) {
-    this.sprite.alpha = alpha;
-  }
-
-  /** Get the sprite's alpha (opacity). */
-  get alpha(): number {
-    return this.sprite.alpha;
-  }
-
-  /**
-   * Attach a mask to this sprite, replacing any existing mask. Returns a
-   * handle for inverse toggling, redraw (graphicsMask), or removal. The
-   * mask is torn down automatically when the component is destroyed.
-   */
-  setMask(factory: MaskFactory): MaskHandle {
-    this._mask?.remove();
-    this._mask = attachMask(this.sprite, factory);
-    return this._mask;
-  }
-
-  /** Detach and destroy the current mask, if any. */
-  clearMask(): void {
-    this._mask?.remove();
-    this._mask = undefined;
-  }
-
-  /**
-   * The currently attached mask handle, if any. Useful after save/load to
-   * recover a handle whose caller-side reference went stale.
-   */
-  get mask(): MaskHandle | undefined {
-    return this._mask;
-  }
-
-  /**
-   * Derived render facet for the Inspector — world-space `bounds` and the
-   * component's own (local, non-inherited) `visible` flag, computed on demand
-   * from the live sprite. Not part of `serialize()`; see {@link computeRenderFacet}
-   * for the bounds coordinate space.
-   */
-  inspectRender(): RenderFacetSnapshot {
-    return computeRenderFacet(this.sprite);
-  }
-
-  /** The underlying Pixi display object. */
-  get renderObject(): Container {
-    return this.sprite;
-  }
-
-  onAdd(): void {
-    const tree = this.use(SceneRenderTreeKey);
-    resolveRenderParent(this.entity, this.layerName, tree).addChild(this.sprite);
-  }
-
-  onDestroy(): void {
-    unmarkPointerConsumeContainer(this.sprite);
-    this.fx.destroy();
-    this._mask?.remove();
-    this.sprite.removeFromParent();
-    this.sprite.destroy();
   }
 }

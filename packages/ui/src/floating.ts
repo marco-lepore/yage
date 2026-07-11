@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import { ServiceKey } from "@yagejs/core";
-import type { SceneRenderTree } from "@yagejs/renderer";
+import type { DisplayContainer, SceneRenderTree } from "@yagejs/renderer";
 import type { UIElement } from "./types.js";
 import { computePosition } from "./positioning.js";
 import type { Placement } from "./positioning.js";
@@ -28,7 +28,7 @@ export interface FloatConfig {
  * reconciler tree, hand-built `PanelNode`s, …).
  */
 export interface FloatingHandle {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   setReference(get: () => UIElement | null): void;
   setConfig(cfg: FloatConfig): void;
   /**

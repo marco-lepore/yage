@@ -1,12 +1,19 @@
 import { buildTextOptions } from "@yagejs/renderer";
-import type { SegmentAnchor, TextStyle } from "@yagejs/renderer";
+import type {
+  DisplayBitmapText,
+  DisplayContainer,
+  DisplaySplitBitmapText,
+  DisplaySplitText,
+  DisplayText,
+  SegmentAnchor,
+  TextStyle,
+} from "@yagejs/renderer";
 import {
   BitmapFontManager,
   CanvasTextMetrics,
   SplitText,
   SplitBitmapText,
 } from "pixi.js";
-import type { BitmapText, Container, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode, Display } from "yoga-layout";
 import type { UIElement, UISplitTextProps } from "./types.js";
@@ -17,11 +24,11 @@ import { PointerEvents } from "./pointer-events.js";
 /** The per-character / per-word / per-line segments of a split text. */
 export interface TextSegments {
   /** Per-glyph display objects (`Text` / `BitmapText`), in reading order. */
-  readonly chars: (Text | BitmapText)[];
+  readonly chars: (DisplayText | DisplayBitmapText)[];
   /** Word-group containers, each holding its character segments. */
-  readonly words: Container[];
+  readonly words: DisplayContainer[];
   /** Line-group containers, each holding its word containers. */
-  readonly lines: Container[];
+  readonly lines: DisplayContainer[];
 }
 
 /** Listener invoked after the text (re)splits into fresh segments. */
@@ -65,10 +72,10 @@ function shallowEqualStyle(
  * slightly from `Text` (kerning is lost once glyphs are split).
  */
 export class UISplitText implements UIElement {
-  readonly displayObject: Container;
+  readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   /** The underlying Pixi `SplitText` / `SplitBitmapText`. */
-  readonly splitText: SplitText | SplitBitmapText;
+  readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   /** Source string — measured for layout independent of per-glyph animation. */
@@ -142,17 +149,17 @@ export class UISplitText implements UIElement {
   }
 
   /** Per-glyph display objects, in reading order. */
-  get chars(): (Text | BitmapText)[] {
+  get chars(): (DisplayText | DisplayBitmapText)[] {
     return this.splitText.chars;
   }
 
   /** Word-group containers. */
-  get words(): Container[] {
+  get words(): DisplayContainer[] {
     return this.splitText.words;
   }
 
   /** Line-group containers. */
-  get lines(): Container[] {
+  get lines(): DisplayContainer[] {
     return this.splitText.lines;
   }
 

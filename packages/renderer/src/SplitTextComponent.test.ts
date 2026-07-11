@@ -9,6 +9,7 @@ const { mocks } = vi.hoisted(() => {
     visible = true;
     alpha = 1;
     tint = 0xffffff;
+    eventMode = "passive";
     parent: MockContainer | null = null;
     zIndex = 0;
     destroyed = false;
@@ -231,6 +232,19 @@ describe("SplitTextComponent", () => {
     expect(comp.splitText.visible).toBe(false);
     expect(comp.tint).toBe(0x00ff00);
     expect(comp.alpha).toBe(0.25);
+  });
+
+  it("applies the interactive option, defaulting eventMode to static", () => {
+    const comp = new SplitTextComponent({ text: "x", interactive: {} });
+    expect(comp.splitText.eventMode).toBe("static");
+  });
+
+  it("supports the shared mask/effects surface", () => {
+    const comp = new SplitTextComponent({ text: "x" });
+    expect(comp.fx).toBeDefined();
+    expect(comp.mask).toBeUndefined();
+    expect(typeof comp.setMask).toBe("function");
+    expect(typeof comp.clearMask).toBe("function");
   });
 
   it("resplit() calls the underlying split()", () => {

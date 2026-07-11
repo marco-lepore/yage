@@ -1,11 +1,11 @@
 import { ServiceKey } from "@yagejs/core";
 import type { Scene } from "@yagejs/core";
-import type { Container } from "pixi.js";
 import type { LayerDef } from "./LayerDef.js";
 import type { RenderLayer, CreateLayerOptions } from "./RenderLayer.js";
 import type { EffectsHost } from "./effects/EffectsHost.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle } from "./masks/MaskHandle.js";
+import type { DisplayContainer } from "./public-types.js";
 
 /**
  * Options for `ensureLayer` beyond the declarative `LayerDef`. Used by
@@ -25,7 +25,7 @@ export interface SceneRenderTree {
   /** The single root container for the scene. Lives under the renderer's
    * world-root container (which sits under `app.stage` and holds the fit
    * transform). */
-  readonly root: Container;
+  readonly root: DisplayContainer;
   /** Get a layer by name. Throws if not found. */
   get(name: string): RenderLayer;
   /** Get a layer by name, or undefined if not found. */

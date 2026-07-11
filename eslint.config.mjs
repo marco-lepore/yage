@@ -32,6 +32,10 @@ const yagePlugin = {
             !node.superClass ||
             node.superClass.type !== "Identifier" ||
             node.superClass.name !== "Component" ||
+            // Abstract classes are never instantiated, so they never reach
+            // the @serializable registry — only their concrete subclasses
+            // need the decorator.
+            node.abstract ||
             hasSerializableDecorator(node)
           ) {
             return;
