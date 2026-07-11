@@ -1,0 +1,31 @@
+export { Steering } from "./Steering.js";
+export {
+  alignment,
+  arrive,
+  avoidObstacles,
+  cohesion,
+  evade,
+  flee,
+  pursue,
+  seek,
+  separation,
+  wander,
+} from "./behaviors.js";
+export type {
+  AgentState,
+  ArriveOptions,
+  AvoidObstaclesOptions,
+  FleeOptions,
+  FlockOptions,
+  Kinematic,
+  KinematicTarget,
+  NeighborsSource,
+  Obstacle,
+  ObstaclesSource,
+  PointTarget,
+  PursueOptions,
+  SeekOptions,
+  SteeringBehavior,
+  SteeringOptions,
+  WanderOptions,
+} from "./types.js";
