@@ -4,19 +4,13 @@ import { gotoFixture, waitForClock, stepFrames, getEntityPosition } from "./help
 /**
  * The fixture (`e2e/fixtures/src/pathfinding.ts`) builds a fixed 6x4 grid
  * (20px tiles) with a vertical wall at col 3, rows 0-2 (row 3 is the gap),
- * and exposes `window.__pathfinding__` — the `GridGraph` plus a `walkTo(x, y)`
- * command that paths the "agent" entity there. Tests assert directly on the
+ * and exposes `window.__pathfinding__` — a `walkTo(x, y)` command that paths
+ * the "agent" entity there, plus `isMoving`. Tests assert directly on the
  * `Path` returned by `walkTo` (waypoints/cost/cells) and drive movement
  * through the frozen clock, reading the agent's position back via the
  * Inspector API.
  */
 interface Handle {
-  grid: {
-    cols: number;
-    rows: number;
-    tileWidth: number;
-    tileHeight: number;
-  };
   walkTo(
     x: number,
     y: number,

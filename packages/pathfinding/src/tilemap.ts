@@ -1,6 +1,7 @@
 import type { Vec2Like } from "@yagejs/core";
-// Type-only: erased at build time, so a grid-only consumer of the root entry
-// never pulls in @yagejs/tilemap. `@yagejs/tilemap` is an optional peer.
+// Type-only: erased at build time, so dist/tilemap.js has no runtime import
+// of `@yagejs/tilemap`, an optional peer — the ./tilemap subpath loads even
+// when it isn't installed.
 import type { TilemapData } from "@yagejs/tilemap";
 import { GridGraph } from "./GridGraph.js";
 
@@ -11,8 +12,9 @@ export interface GridFromTilemapOptions {
   blocked?: (gid: number, col: number, row: number) => boolean;
   /**
    * Maps a gid to a cell cost, default 1. When multiple read layers give a
-   * cell a cost, the highest wins (worse terrain dominates). Not called for
-   * gid 0 (no tile).
+   * cell a cost, the highest wins (worse terrain dominates). Each cell's
+   * cost is floored at 1 — a return value below 1 is ignored. Not called
+   * for gid 0 (no tile).
    */
   cost?: (gid: number, col: number, row: number) => number;
   /** World-pixel position of cell `(0,0)`'s top-left corner. Default `(0,0)`. */

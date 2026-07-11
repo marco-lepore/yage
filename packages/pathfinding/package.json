@@ -62,7 +62,7 @@
     "@yagejs/core": "^0.8.0"
   },
   "peerDependencies": {
-    "@yagejs/tilemap": ">=0.8.0"
+    "@yagejs/tilemap": ">=0.8.0 <1.0.0"
   },
   "peerDependenciesMeta": {
     "@yagejs/tilemap": {

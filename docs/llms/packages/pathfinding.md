@@ -31,7 +31,7 @@ Methods: `inBounds(col, row)`, `worldToCell(v): GridCell`, `cellToWorld(col, row
 - Start/goal out of grid bounds → `null`.
 - Goal cell not walkable → `null`. Start cell may be blocked (an agent can straddle a blocked edge) — only the goal must be walkable.
 - Same start/goal cell → one-waypoint path, `cost: 0`, regardless of that cell's walkability.
-- `waypoints`/`cells` run start cell → goal cell inclusive; waypoints are tile centres (no endpoint snapping to the exact start/goal in v1).
+- `waypoints`/`cells` run start cell → goal cell inclusive; waypoints are tile centres (no endpoint snapping to the exact start/goal).
 - Deterministic: identical inputs always produce identical output.
 
 Diagonal policy: `"never"` = 4-connected. `"always"` = 8-connected, cuts wall corners. `"no-corner-cutting"` (default) = diagonal only when both shared orthogonal cells are walkable.
@@ -45,13 +45,13 @@ import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 const grid = gridFromTilemap(tilemap.data, {
   layers: ["collision"], // tile layers to read; omit = all
   blocked: (gid, col, row) => gid !== 0, // default; a cell blocks if any read layer's cell satisfies this
-  cost: (gid, col, row) => 1, // maps a gid to a cell cost, default 1; highest wins across layers
+  cost: (gid, col, row) => 1, // maps a gid to a cell cost, default 1, floored at 1; highest wins across layers
   origin: tilemap.entity.get(Transform).position,
 });
 ```
 
 The `./tilemap` subpath keeps `@yagejs/tilemap` a type-only, optional peer — importing from the root `@yagejs/pathfinding` entry pulls in nothing beyond `@yagejs/core`.
 
-## Not in v1
+## Not supported
 
 Path smoothing, async/time-sliced search, nearest-walkable goal snapping, endpoint snapping, collider-derived grids (only tile GIDs are read), waypoint/navmesh graphs, flow fields.

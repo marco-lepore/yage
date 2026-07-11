@@ -2,10 +2,11 @@
  * Deterministic e2e fixture for @yagejs/pathfinding.
  *
  * Boots a tiny scene with a fixed wall layout and one agent entity, and
- * exposes the `GridGraph` plus a `walkTo` command on `window.__pathfinding__`.
- * The spec computes paths directly against the grid (known start/goal →
- * known waypoints/cost) and drives the agent's movement through the frozen,
- * step-driven clock, reading its position back via the Inspector API.
+ * exposes a `walkTo` command plus `isMoving` on `window.__pathfinding__`.
+ * `walkTo` runs `GridGraph.findPath` and drives the agent along the
+ * resulting waypoints; the spec asserts on the returned `Path` and drives
+ * movement through the frozen, step-driven clock, reading the agent's
+ * position back via the Inspector API.
  */
 
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
@@ -69,7 +70,6 @@ class PathfindingScene extends Scene {
     const controller = agent.add(new AgentController());
 
     (window as unknown as { __pathfinding__: unknown }).__pathfinding__ = {
-      grid,
       walkTo(x: number, y: number): Path | null {
         const start = agent.get(Transform).position;
         const path = grid.findPath(start, new Vec2(x, y));

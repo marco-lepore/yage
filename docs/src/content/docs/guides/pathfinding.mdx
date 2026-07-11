@@ -42,7 +42,7 @@ rebuild step needed.
 of the root `@yagejs/pathfinding` entry never pulls in `@yagejs/tilemap`.
 
 ```typescript
-import { GridGraph } from "@yagejs/pathfinding";
+import { Transform } from "@yagejs/core";
 import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 
 // tilemap is a TilemapComponent; tilemap.data is its parsed TilemapData.
@@ -89,8 +89,8 @@ const grid = new GridGraph({
 - **`heuristic`** — `"manhattan"`, `"chebyshev"`, `"octile"`, or
   `"euclidean"`. Left unset, it picks `"octile"` when diagonals are allowed
   and `"manhattan"` otherwise — the tightest admissible choice for each
-  policy. All four are admissible; picking `"manhattan"` with diagonals
-  enabled trades path optimality for a faster search.
+  policy. All four are admissible for 4-connected movement; with diagonals
+  enabled, manhattan overestimates and trades path optimality for speed.
 
 ## Path result
 
@@ -107,9 +107,9 @@ when the goal cell isn't walkable. The start cell may be blocked — an agent
 can straddle a blocked edge — only the goal must be walkable. When start and
 goal share a cell, it returns a one-waypoint path with `cost: 0`.
 
-## Not in v1
+## Not supported
 
 Path smoothing, async or time-sliced search for large grids, nearest-walkable
 goal snapping, endpoint snapping to the exact start/goal position, grids
-derived from collision shapes (v1 reads tile GIDs only), and waypoint/navmesh
+derived from collision shapes (only tile GIDs are read), and waypoint/navmesh
 graphs or flow fields.
