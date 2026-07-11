@@ -89,7 +89,12 @@ export class Interactor extends Component {
     const query = { position: this.ownTransform.worldPosition, range: this.range };
     const candidates: Interactable[] = [];
     for (const interactable of registry) {
-      if (interactable.isEnabled()) candidates.push(interactable);
+      // A destroyed host stays registered until the end-of-frame flush;
+      // skip it so a target destroyed earlier this frame can't be focused
+      // or receive a final interaction.
+      if (interactable.isEnabled() && !interactable.entity.isDestroyed) {
+        candidates.push(interactable);
+      }
     }
 
     this.setFocus(selectFocus(query, candidates));
@@ -106,11 +111,12 @@ export class Interactor extends Component {
   }
 
   /** Fires the current focus's `onInteract` and emits `InteractedEvent`.
-   *  No focus → no-op. A custom controller or a test calls this directly
-   *  instead of synthesizing device input. */
+   *  No focus — or a focus whose host was destroyed since it was resolved —
+   *  → no-op. A custom controller or a test calls this directly instead of
+   *  synthesizing device input. */
   interact(): void {
     const interactable = this._focus;
-    if (!interactable) return;
+    if (!interactable || interactable.entity.isDestroyed) return;
     interactable.interact();
     this.entity.emit(InteractedEvent, { interactable });
   }

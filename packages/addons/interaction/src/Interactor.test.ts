@@ -303,4 +303,33 @@ describe("Interactor", () => {
 
     expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(0);
   });
+
+  it("a target destroyed earlier in the frame is not selectable and cannot be interacted with", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const onInteract = vi.fn();
+    const chestInteractable = chest.add(new Interactable({ onInteract }));
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+
+    const interacted: unknown[] = [];
+    player.on(InteractedEvent, (e) => interacted.push(e));
+
+    // Deferred destroy: the entity is marked destroyed immediately but stays
+    // registered until the end-of-frame flush.
+    chest.destroy();
+
+    interactor.interact();
+    expect(onInteract).not.toHaveBeenCalled();
+    expect(interacted).toHaveLength(0);
+
+    interactor.update();
+    expect(interactor.focus).toBeNull();
+  });
 });
