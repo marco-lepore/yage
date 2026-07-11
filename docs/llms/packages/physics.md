@@ -87,8 +87,24 @@ entity.add(new ColliderComponent({
 Events:
 ```ts
 collider.onTrigger((ev) => { ev.other; ev.entered; });       // sensor events
-collider.onCollision((ev) => { ev.other; ev.started; ev.contactNormal; ev.contactPoint; });
+collider.onCollision((ev) => {
+  ev.other; ev.started;
+  // contactNormal/contactPoint/penetrationDepth: only on started, non-sensor
+  // collisions, and may be absent if no contact manifold is available.
+  ev.contactNormal;      // Vec2, unit, points from this entity toward `other`
+  ev.contactPoint;       // Vec2, world pixels, a representative point (not an average)
+  ev.penetrationDepth;   // number, world pixels, >= 0
+});
 // Both return unsubscribe function
+```
+
+Knockback example:
+```ts
+collider.onCollision((ev) => {
+  if (!ev.started || !ev.contactNormal) return;
+  const knockback = ev.contactNormal.scale(-300); // push this entity away from `other`
+  entity.get(RigidBodyComponent).setVelocity(knockback);
+});
 ```
 
 Overlap queries:

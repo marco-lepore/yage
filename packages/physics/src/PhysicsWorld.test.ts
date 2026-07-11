@@ -197,6 +197,47 @@ const { mocks } = vi.hoisted(() => {
 
   type DrainCallback = (h1: number, h2: number, started: boolean) => void;
 
+  class MockManifold {
+    constructor(
+      private _normal: { x: number; y: number },
+      private _solverContacts: Array<{ x: number; y: number; dist: number }>,
+    ) {}
+
+    normal() {
+      return this._normal;
+    }
+    numSolverContacts() {
+      return this._solverContacts.length;
+    }
+    solverContactPoint(i: number) {
+      const c = this._solverContacts[i]!;
+      return { x: c.x, y: c.y };
+    }
+    solverContactDist(i: number) {
+      return this._solverContacts[i]!.dist;
+    }
+  }
+
+  class MockNarrowPhase {
+    _pairs = new Map<
+      string,
+      { manifold: MockManifold; flipped: boolean }
+    >();
+
+    _setPair(h1: number, h2: number, manifold: MockManifold, flipped = false) {
+      this._pairs.set(`${h1}:${h2}`, { manifold, flipped });
+    }
+
+    contactPair(
+      h1: number,
+      h2: number,
+      f: (manifold: MockManifold, flipped: boolean) => void,
+    ) {
+      const entry = this._pairs.get(`${h1}:${h2}`);
+      if (entry) f(entry.manifold, entry.flipped);
+    }
+  }
+
   class MockEventQueue {
     _events: Array<[number, number, boolean]> = [];
 
@@ -218,6 +259,7 @@ const { mocks } = vi.hoisted(() => {
     _bodies = new Map<number, MockRigidBody>();
     _colliders = new Map<number, MockCollider>();
     _stepCalled = false;
+    narrowPhase = new MockNarrowPhase();
 
     constructor(gravity: { x: number; y: number }) {
       this.gravity = { ...gravity };
@@ -303,6 +345,8 @@ const { mocks } = vi.hoisted(() => {
       MockColliderDesc,
       MockEventQueue,
       MockRay,
+      MockManifold,
+      MockNarrowPhase,
       resetHandles,
     },
   };
@@ -617,6 +661,191 @@ describe("PhysicsWorld", () => {
       expect(collisions).toHaveLength(1);
       const col = collisions[0] as CollisionEvent;
       expect(col.other).toBe(entity1);
+    });
+
+    it("populates contactNormal/contactPoint/penetrationDepth on started non-sensor collisions, oriented from self toward other", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const entity1 = new Entity("e1");
+      const entity2 = new Entity("e2");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent();
+      const comp2 = createMockColliderComponent();
+      const col1 = pw.createCollider(entity1, body1, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp1);
+      const col2 = pw.createCollider(entity2, body2, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp2);
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const manifold = new mocks.MockManifold(
+        { x: 1, y: 0 },
+        [{ x: 2, y: 3, dist: -0.1 }],
+      );
+      world.narrowPhase._setPair(col1, col2, manifold, false);
+
+      const events1: CollisionEvent[] = [];
+      const events2: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision((e) => events2.push(e));
+
+      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      eq._events.push([col1, col2, true]);
+      pw.processCollisionEvents();
+
+      const ev1 = events1[0] as CollisionEvent;
+      expect(ev1.contactNormal?.x).toBeCloseTo(1);
+      expect(ev1.contactNormal?.y).toBeCloseTo(0);
+      expect(ev1.contactPoint).toEqual({ x: 100, y: 150 });
+      expect(ev1.penetrationDepth).toBeCloseTo(5);
+
+      const ev2 = events2[0] as CollisionEvent;
+      expect(ev2.contactNormal?.x).toBeCloseTo(-1);
+      expect(ev2.contactNormal?.y).toBeCloseTo(0);
+      expect(ev2.contactPoint).toEqual({ x: 100, y: 150 });
+      expect(ev2.penetrationDepth).toBeCloseTo(5);
+    });
+
+    it("negates the manifold normal when Rapier reports flipped=true", () => {
+      const pw = new PhysicsWorld();
+      const entity1 = new Entity("e1");
+      const entity2 = new Entity("e2");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent();
+      const comp2 = createMockColliderComponent();
+      const col1 = pw.createCollider(entity1, body1, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp1);
+      const col2 = pw.createCollider(entity2, body2, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp2);
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const manifold = new mocks.MockManifold(
+        { x: 1, y: 0 },
+        [{ x: 0, y: 0, dist: 0 }],
+      );
+      world.narrowPhase._setPair(col1, col2, manifold, true);
+
+      const events1: CollisionEvent[] = [];
+      const events2: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision((e) => events2.push(e));
+
+      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      eq._events.push([col1, col2, true]);
+      pw.processCollisionEvents();
+
+      const normal1 = (events1[0] as CollisionEvent).contactNormal;
+      expect(normal1?.x).toBeCloseTo(-1);
+      expect(normal1?.y).toBeCloseTo(0);
+      const normal2 = (events2[0] as CollisionEvent).contactNormal;
+      expect(normal2?.x).toBeCloseTo(1);
+      expect(normal2?.y).toBeCloseTo(0);
+    });
+
+    it("clamps penetrationDepth to >= 0 for speculative (non-overlapping) contacts", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const entity1 = new Entity("e1");
+      const entity2 = new Entity("e2");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent();
+      const comp2 = createMockColliderComponent();
+      const col1 = pw.createCollider(entity1, body1, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp1);
+      const col2 = pw.createCollider(entity2, body2, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp2);
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const manifold = new mocks.MockManifold(
+        { x: 1, y: 0 },
+        [{ x: 0, y: 0, dist: 0.05 }],
+      );
+      world.narrowPhase._setPair(col1, col2, manifold, false);
+
+      const events1: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision(() => {});
+
+      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      eq._events.push([col1, col2, true]);
+      pw.processCollisionEvents();
+
+      expect((events1[0] as CollisionEvent).penetrationDepth).toBe(0);
+    });
+
+    it("leaves contact fields undefined and skips the narrowPhase query on stopped collisions", () => {
+      const pw = new PhysicsWorld();
+      const entity1 = new Entity("e1");
+      const entity2 = new Entity("e2");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent();
+      const comp2 = createMockColliderComponent();
+      const col1 = pw.createCollider(entity1, body1, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp1);
+      const col2 = pw.createCollider(entity2, body2, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp2);
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const manifold = new mocks.MockManifold(
+        { x: 1, y: 0 },
+        [{ x: 0, y: 0, dist: -0.1 }],
+      );
+      world.narrowPhase._setPair(col1, col2, manifold, false);
+      const contactPairSpy = vi.spyOn(world.narrowPhase, "contactPair");
+
+      const events1: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision(() => {});
+
+      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      eq._events.push([col1, col2, false]);
+      pw.processCollisionEvents();
+
+      expect(contactPairSpy).not.toHaveBeenCalled();
+      const ev1 = events1[0] as CollisionEvent;
+      expect(ev1.contactNormal).toBeUndefined();
+      expect(ev1.contactPoint).toBeUndefined();
+      expect(ev1.penetrationDepth).toBeUndefined();
+    });
+
+    it("leaves contact fields undefined when no manifold is available (e.g. sensor pairs)", () => {
+      const pw = new PhysicsWorld();
+      const entity1 = new Entity("e1");
+      const entity2 = new Entity("e2");
+      const body1 = pw.createBody(entity1, { type: "dynamic" });
+      const body2 = pw.createBody(entity2, { type: "dynamic" });
+      const comp1 = createMockColliderComponent();
+      const comp2 = createMockColliderComponent();
+      const col1 = pw.createCollider(entity1, body1, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp1);
+      const col2 = pw.createCollider(entity2, body2, {
+        shape: { type: "box", width: 10, height: 10 },
+      }, comp2);
+      // No pair registered on narrowPhase: mirrors Rapier not producing a
+      // manifold for the pair (e.g. a sensor side of a mixed pair).
+
+      const events1: CollisionEvent[] = [];
+      comp1.onCollision((e) => events1.push(e));
+      comp2.onCollision(() => {});
+
+      const eq = (pw as unknown as { eventQueue: InstanceType<typeof mocks.MockEventQueue> }).eventQueue;
+      eq._events.push([col1, col2, true]);
+      pw.processCollisionEvents();
+
+      const ev1 = events1[0] as CollisionEvent;
+      expect(ev1.contactNormal).toBeUndefined();
+      expect(ev1.contactPoint).toBeUndefined();
+      expect(ev1.penetrationDepth).toBeUndefined();
     });
   });
 

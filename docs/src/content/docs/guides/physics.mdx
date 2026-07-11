@@ -177,7 +177,29 @@ collider.onCollision((event) => {
     console.log("hit", event.other.name);
     console.log("contact normal:", event.contactNormal);
     console.log("contact point:", event.contactPoint);
+    console.log("penetration depth:", event.penetrationDepth);
   }
+});
+```
+
+`contactNormal`, `contactPoint`, and `penetrationDepth` are set on started,
+non-sensor collisions:
+
+- `contactNormal` is a unit `Vec2` pointing from this entity toward the other
+  entity.
+- `contactPoint` is a representative contact point in world pixels. A resting
+  box can have two contact points; this is the first one, not an average.
+- `penetrationDepth` is the overlap depth in world pixels, always `>= 0`.
+
+All three can be `undefined` even on a started event, if Rapier has no
+contact manifold for the pair yet (for example a same-step start-and-stop).
+Guard on `contactNormal` before using any of them:
+
+```typescript
+collider.onCollision((event) => {
+  if (!event.started || !event.contactNormal) return;
+  const knockback = event.contactNormal.scale(-300);
+  entity.get(RigidBodyComponent).setVelocity(knockback);
 });
 ```
 

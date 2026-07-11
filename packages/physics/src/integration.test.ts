@@ -97,6 +97,9 @@ const { mocks } = vi.hoisted(() => {
     _bodies = new Map<number, MockRigidBody>();
     _colliders = new Map<number, MockCollider>();
     stepSpy = vi.fn();
+    // No pairs ever registered: contact manifolds are out of scope for
+    // these integration tests, so contactPair() is always a no-op.
+    narrowPhase = { contactPair: () => {} };
 
     constructor(gravity: { x: number; y: number }) {
       this.gravity = { ...gravity };
