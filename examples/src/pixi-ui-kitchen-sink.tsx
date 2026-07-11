@@ -93,7 +93,6 @@ function KitchenSink() {
 
   return (
     <Panel
-      anchor="center"
       direction="column"
       gap={14}
       padding={20}

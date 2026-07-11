@@ -28,6 +28,7 @@ export class UICheckbox implements UIElement {
   private boxColor: number;
   private checkColor: number;
   private onChange: ((checked: boolean) => void) | undefined;
+  private _destroyed = false;
 
   constructor(props: UICheckboxProps) {
     this.yogaNode = createYogaNode();
@@ -113,52 +114,70 @@ export class UICheckbox implements UIElement {
   }
 
   update(p: Partial<UICheckboxProps>): void {
-    if (p.checked !== undefined && p.checked !== this._checked) {
-      this._checked = p.checked;
-      this.drawCheckmark();
+    if ("checked" in p) {
+      const checked = p.checked ?? false;
+      if (checked !== this._checked) {
+        this._checked = checked;
+        this.drawCheckmark();
+      }
     }
-    if (p.onChange !== undefined) this.onChange = p.onChange;
-    if (p.disabled !== undefined) this.setDisabled(p.disabled);
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("onChange" in p) this.onChange = p.onChange;
+    if ("disabled" in p) this.setDisabled(p.disabled ?? false);
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
 
-    if (p.size !== undefined && p.size !== this._size) {
-      this._size = p.size;
+    if ("size" in p) {
+      const size = p.size ?? DEFAULT_SIZE;
+      if (size !== this._size) {
+        this._size = size;
+        this.drawBox();
+        this.drawCheckmark();
+        this.yogaNode.markDirty();
+      }
+    }
+
+    if ("boxColor" in p) {
+      this.boxColor = p.boxColor ?? DEFAULT_BOX_COLOR;
       this.drawBox();
-      this.drawCheckmark();
-      this.yogaNode.markDirty();
     }
-
-    if (p.boxColor !== undefined) {
-      this.boxColor = p.boxColor;
-      this.drawBox();
-    }
-    if (p.checkColor !== undefined) {
-      this.checkColor = p.checkColor;
+    if ("checkColor" in p) {
+      this.checkColor = p.checkColor ?? DEFAULT_CHECK_COLOR;
       this.drawCheckmark();
     }
 
-    if (p.label !== undefined) {
-      if (this.label) {
-        this.label.text = p.label;
-      } else {
-        this.createLabel(p.label, p.labelStyle);
+    // Removing `label` tears down the label element rather than leaving a
+    // stale one — the presence check distinguishes "not passed this update"
+    // (absent key, label untouched) from "explicitly removed" (present,
+    // undefined).
+    if ("label" in p) {
+      if (p.label !== undefined) {
+        if (this.label) {
+          this.label.text = p.label;
+        } else {
+          this.createLabel(p.label, p.labelStyle);
+        }
+      } else if (this.label) {
+        this.label.destroy();
+        this.label = undefined;
       }
       this.yogaNode.markDirty();
     }
 
-    if (p.labelStyle !== undefined && this.label) {
+    if ("labelStyle" in p && this.label) {
       this.label.style = { fontSize: 14, fill: 0xffffff, ...p.labelStyle };
       this.yogaNode.markDirty();
     }
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.box.destroy();

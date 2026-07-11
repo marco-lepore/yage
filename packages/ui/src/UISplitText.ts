@@ -85,6 +85,7 @@ export class UISplitText implements UIElement {
   private _appliedStyle: Partial<TextStyle> | undefined;
   private readonly pointerEvents: PointerEvents;
   private readonly _splitListeners = new Set<SplitListener>();
+  private _destroyed = false;
 
   constructor(props: UISplitTextProps) {
     this.yogaNode = createYogaNode();
@@ -247,28 +248,36 @@ export class UISplitText implements UIElement {
   }
 
   update(p: Partial<UISplitTextProps>): void {
-    if (p.children !== undefined && p.children !== this._source) {
-      this.setText(p.children);
+    if ("children" in p) {
+      const next = p.children ?? "";
+      if (next !== this._source) this.setText(next);
     }
     // Re-style (and thus re-split) only on an actual content change. The React
     // reconciler runs update() on every commit with a fresh style object, so
     // without this guard a parent re-render would re-split every frame and
-    // reset any in-flight per-glyph animation.
-    if (p.style && !shallowEqualStyle(p.style, this._appliedStyle)) {
-      this.setStyle(p.style);
+    // reset any in-flight per-glyph animation. Removing `style` resolves to
+    // `{}` (default style) like any other reset.
+    if ("style" in p) {
+      const nextStyle = p.style ?? {};
+      if (!shallowEqualStyle(nextStyle, this._appliedStyle)) {
+        this.setStyle(nextStyle);
+      }
     }
-    if (p.charAnchor !== undefined) this.charAnchor = p.charAnchor;
-    if (p.wordAnchor !== undefined) this.wordAnchor = p.wordAnchor;
-    if (p.lineAnchor !== undefined) this.lineAnchor = p.lineAnchor;
-    if (p.consumeInput !== undefined) {
+    if ("charAnchor" in p) this.charAnchor = p.charAnchor ?? 0;
+    if ("wordAnchor" in p) this.wordAnchor = p.wordAnchor ?? 0;
+    if ("lineAnchor" in p) this.lineAnchor = p.lineAnchor ?? 0;
+    if ("consumeInput" in p) {
       applyConsumeInput(this.splitText, p.consumeInput);
     }
     this.pointerEvents.set(p);
     applyLayoutProps(this.yogaNode, p);
-    if (p.visible !== undefined) this.visible = p.visible;
+    if ("visible" in p) this.visible = p.visible ?? true;
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this._splitListeners.clear();
     clearConsumeInput(this.splitText);
     this.yogaNode.free();

@@ -27,6 +27,7 @@ export class UIProgressBar implements UIElement {
   private lastWidth = 0;
   private lastHeight = 0;
   private readonly pointerEvents: PointerEvents;
+  private _destroyed = false;
 
   constructor(props: UIProgressBarProps) {
     this.yogaNode = createYogaNode();
@@ -78,19 +79,19 @@ export class UIProgressBar implements UIElement {
       this._value = clamp(p.value);
     }
 
-    if (p.direction !== undefined) {
-      this._direction = p.direction;
+    if ("direction" in p) {
+      this._direction = p.direction ?? "horizontal";
     }
 
-    if (p.trackBackground !== undefined) {
-      this.trackRenderer.set(p.trackBackground, this.container, 0);
+    if ("trackBackground" in p) {
+      this.trackRenderer.set(p.trackBackground ?? DEFAULT_TRACK, this.container, 0);
     }
 
-    if (p.fillBackground !== undefined) {
-      this.fillRenderer.set(p.fillBackground, this.container, 1);
+    if ("fillBackground" in p) {
+      this.fillRenderer.set(p.fillBackground ?? DEFAULT_FILL, this.container, 1);
     }
 
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
@@ -100,12 +101,15 @@ export class UIProgressBar implements UIElement {
       this.resizeFill();
     }
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.trackRenderer.destroy();

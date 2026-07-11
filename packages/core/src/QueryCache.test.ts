@@ -121,4 +121,87 @@ describe("QueryCache", () => {
     e.remove(Velocity);
     expect(result.size).toBe(1);
   });
+
+  it("unregister stops a query from receiving further entity updates", () => {
+    const result = cache.register([Position]);
+    const e = makeEntity("test");
+    e.add(new Position());
+    expect(result.size).toBe(1);
+
+    cache.unregister(result);
+
+    const other = makeEntity("other");
+    other.add(new Position());
+    expect(result.size).toBe(1); // unchanged — no longer tracked
+  });
+
+  it("unregister twice is a no-op", () => {
+    const result = cache.register([Position]);
+    cache.unregister(result);
+    expect(() => cache.unregister(result)).not.toThrow();
+  });
+
+  it("unregistering one query leaves others tracking", () => {
+    const posQuery = cache.register([Position]);
+    const velQuery = cache.register([Velocity]);
+    cache.unregister(posQuery);
+
+    const e = makeEntity("test");
+    e.add(new Position());
+    e.add(new Velocity());
+    expect(posQuery.size).toBe(0);
+    expect(velQuery.size).toBe(1);
+  });
+
+  it("register() seeds from entities that already match before registration", () => {
+    const e = makeEntity("test");
+    e.add(new Position());
+    e.add(new Velocity());
+
+    const result = cache.register([Position, Velocity]);
+    expect(result.size).toBe(1);
+    expect(result.first).toBe(e);
+  });
+
+  it("register() re-seeds after a prior unregister instead of starting empty", () => {
+    const e = makeEntity("test");
+    e.add(new Position());
+
+    const first = cache.register([Position]);
+    expect(first.size).toBe(1);
+    cache.unregister(first);
+
+    const second = cache.register([Position]);
+    expect(second.size).toBe(1);
+    expect(second.first).toBe(e);
+  });
+
+  it("queryOnce returns currently matching entities", () => {
+    const e = makeEntity("test");
+    e.add(new Position());
+
+    const result = cache.queryOnce([Position]);
+    expect(result.size).toBe(1);
+    expect(result.first).toBe(e);
+  });
+
+  it("queryOnce does not receive later updates", () => {
+    const result = cache.queryOnce([Position]);
+    expect(result.size).toBe(0);
+
+    const e = makeEntity("test");
+    e.add(new Position());
+    expect(result.size).toBe(0);
+  });
+
+  it("queryOnce results are unaffected by unregister (they were never registered)", () => {
+    const e = makeEntity("test");
+    e.add(new Position());
+
+    const result = cache.queryOnce([Position]);
+    expect(result.size).toBe(1);
+
+    expect(() => cache.unregister(result)).not.toThrow();
+    expect(result.size).toBe(1);
+  });
 });
