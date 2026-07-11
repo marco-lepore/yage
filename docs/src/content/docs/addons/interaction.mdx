@@ -1,0 +1,167 @@
+---
+title: Interaction
+description: Proximity-based "walk up, see a prompt, press E" interaction — nearest-in-range focus selection and an interact event, headless and input-optional
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+`@yagejs-addons/interaction` is the glue behind "walk near a thing, see a
+prompt, press E" — the interaction every game hand-rolls to connect the
+player to dialogue NPCs, inventory pickups, doors, and levers. It tracks the
+nearest in-range, enabled `Interactable` for an `Interactor`, and hands the
+result back as events: your game renders the prompt and decides what
+interacting *means*.
+
+The addon is **headless** — no bundled prompt view, no renderer dependency —
+and treats `@yagejs/input` as **optional**: install it and the interactor
+wires the interact key itself, or drive it manually with no input package at
+all.
+
+## Install
+
+```bash
+npm install @yagejs-addons/interaction
+```
+
+```bash
+npm install @yagejs/core @yagejs/input
+```
+
+- `@yagejs/core` is a **required** peer.
+- `@yagejs/input` is the **optional** peer. Skip it if your game drives
+  interaction from its own controller — the addon never imports a value from
+  `@yagejs/input`, so a headless install carries zero runtime footprint from
+  it.
+
+There is a single entry point — no `./presenters` subpath, because there is
+no bundled presenter yet:
+
+```ts
+import {
+  Interactable,
+  Interactor,
+  InteractionFocusChangedEvent,
+  InteractedEvent,
+} from "@yagejs-addons/interaction";
+```
+
+## Quick start
+
+<Steps>
+
+1. **Mark anything the player can interact with.**
+
+   ```ts
+   chest.add(
+     new Interactable({
+       prompt: "Open",
+       onInteract: () => chest.open(),
+     }),
+   );
+   ```
+
+2. **Give the player (or any detector entity) an `Interactor`.** Defaults:
+   48px range, the `"interact"` action, nearest-in-range focus.
+
+   ```ts
+   const interactor = player.add(new Interactor({ range: 70 }));
+   ```
+
+3. **Render the prompt from the focus-changed event.** This is the *whole*
+   render step — the event fires only when the focus (or its prompt text)
+   actually changes.
+
+   ```ts
+   player.on(InteractionFocusChangedEvent, ({ prompt }) => {
+     promptLabel.text.text = prompt ?? "";
+     promptLabel.text.visible = prompt !== null;
+   });
+   ```
+
+</Steps>
+
+With `@yagejs/input` installed and an `interact` action bound, pressing it
+while something is focused calls that interactable's `onInteract` and emits
+`InteractedEvent`. No wiring beyond the three steps above.
+
+## Per-interactable overrides
+
+Every field on `InteractableOptions` is config subtraction — no subclassing:
+
+```ts
+lever.add(
+  new Interactable({
+    prompt: () => (lever.on ? "Turn off" : "Turn on"), // re-read live, every frame
+    radius: 40,       // this interactable's own reach, added to the interactor's range
+    priority: 10,     // wins focus ties over a nearer, lower-priority thing
+    enabled: () => !player.isBusy(), // false → dropped from focus entirely
+    onInteract: () => lever.toggle(),
+  }),
+);
+```
+
+`prompt` and `enabled` both accept a static value or a `() => value`
+provider, resolved fresh every frame — a live label or a live gate needs no
+re-wiring when the underlying state changes.
+
+## Manual drive (no `@yagejs/input`, or a test)
+
+`action: null` turns off auto-input; `interactor.interact()` is the same
+call the built-in input path makes, so a custom controller or a test drives
+it with no synthetic device input:
+
+```ts
+const interactor = player.add(new Interactor({ range: 70, action: null }));
+
+// your own controller detects the press:
+if (myInput.isJustPressed("interact")) interactor.interact();
+
+interactor.focus; // the focused Interactable | null — read for a custom prompt
+```
+
+## Cross-addon composition
+
+An interactable's `onInteract` is a plain closure — wiring another addon in
+is a line, with no addon-to-addon dependency:
+
+```ts
+npc.add(
+  new Interactable({ prompt: "Talk", onInteract: () => dialogue.play(script) }),
+);
+coin.add(
+  new Interactable({
+    prompt: "Pick up",
+    onInteract: () => {
+      inventory.add("coin");
+      coin.destroy();
+    },
+  }),
+);
+```
+
+## Focus rules
+
+A candidate is in range when `distance(interactor, interactable) <= range +
+interactable.radius`. Among in-range candidates, the interactor picks the
+highest `priority`; ties break by nearest distance, then by registration
+order — deterministic even when two interactables sit exactly on top of each
+other.
+
+## Pausing tracking
+
+`interactor.enabled` (inherited from `Component`, default `true`) doubles as
+the tracking toggle — flip it to pause one interactor during a cutscene, or to
+switch tracking between several:
+
+```ts
+interactor.enabled = false; // emits a null-focus transition immediately,
+                             // then halts tracking + input polling
+```
+
+<Aside type="note">
+This addon is pure distance-query proximity — no `@yagejs/physics` dependency,
+no facing-cone, and it tracks a single focused target. A physics-sensor
+discovery source, facing-cone priority, a multi-target focused set, and a
+bundled world-anchored prompt presenter are deferred; the focus event already
+carries the prompt text, so a presenter would be purely additive later.
+</Aside>

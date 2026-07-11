@@ -18,6 +18,7 @@
   "dependencies": {
     "@yagejs-addons/dialogue": "^0.2.0",
     "@yagejs-addons/inventory": "^0.1.0",
+    "@yagejs-addons/interaction": "^0.1.0",
     "@yagejs/core": "^0.8.0",
     "@yagejs/debug": "^0.8.0",
     "@yagejs/input": "^0.8.0",
