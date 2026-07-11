@@ -38,7 +38,16 @@ export class QueryResult {
   }
 }
 
-/** Incrementally maintained entity sets based on component signatures. */
+/**
+ * Incrementally maintained entity sets based on component signatures.
+ *
+ * Registrations made once at system-install time (e.g. `DisplaySystem`,
+ * `UILayoutSystem`) are intentionally engine-lifetime and never unregistered
+ * — those queries are meant to live as long as the engine does. Per-mount
+ * registrations (e.g. `useQuery`) must call {@link unregister} when done, or
+ * the query keeps receiving `onComponentAdded`/`onComponentRemoved` updates
+ * forever.
+ */
 export class QueryCache {
   private queries: QueryResult[] = [];
 
@@ -47,6 +56,15 @@ export class QueryCache {
     const result = new QueryResult(filter);
     this.queries.push(result);
     return result;
+  }
+
+  /**
+   * Stop maintaining `result` — it no longer receives entity updates. A
+   * second call (or a `result` that was never registered) is a no-op.
+   */
+  unregister(result: QueryResult): void {
+    const idx = this.queries.indexOf(result);
+    if (idx !== -1) this.queries.splice(idx, 1);
   }
 
   /** Called by Entity when a component is added. */

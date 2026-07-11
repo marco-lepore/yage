@@ -370,7 +370,37 @@ describe("useQuery", () => {
     act(() => root.render(wrap(createElement(Comp))));
     expect(result).toBe(null);
   });
+
+  it("releases its query on unmount, leaving the cache's query count unchanged", () => {
+    function Comp() {
+      useQuery([], (r) => r.size);
+      return null;
+    }
+
+    act(() => root.render(wrap(createElement(Comp))));
+    expect(queryCacheSize(queryCache)).toBe(1);
+
+    act(() => root.render(wrap(createElement("div"))));
+    expect(queryCacheSize(queryCache)).toBe(0);
+  });
+
+  it("a mount/unmount/mount cycle leaves exactly one live query registered", () => {
+    function Comp() {
+      useQuery([], (r) => r.size);
+      return null;
+    }
+
+    act(() => root.render(wrap(createElement(Comp))));
+    act(() => root.render(wrap(createElement("div"))));
+    act(() => root.render(wrap(createElement(Comp))));
+    expect(queryCacheSize(queryCache)).toBe(1);
+  });
 });
+
+/** Peek at the private live-query count — no public accessor, tests only. */
+function queryCacheSize(cache: QueryCache): number {
+  return (cache as unknown as { queries: unknown[] }).queries.length;
+}
 
 describe("useSceneSelector", () => {
   let container: HTMLDivElement;

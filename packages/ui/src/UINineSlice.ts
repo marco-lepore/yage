@@ -20,6 +20,7 @@ export class UINineSlice implements UIElement {
 
   private textureHandle: AssetHandle<Texture>;
   private readonly pointerEvents: PointerEvents;
+  private _destroyed = false;
 
   constructor(props: UINineSliceProps) {
     this.yogaNode = createYogaNode();
@@ -83,19 +84,22 @@ export class UINineSlice implements UIElement {
       this.container.texture = resolveTexture(p.texture);
     }
 
-    if (p.tint !== undefined) this.container.tint = p.tint;
-    if (p.alpha !== undefined) this.container.alpha = p.alpha;
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("tint" in p) this.container.tint = p.tint ?? 0xffffff;
+    if ("alpha" in p) this.container.alpha = p.alpha ?? 1;
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();

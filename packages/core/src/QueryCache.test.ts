@@ -121,4 +121,35 @@ describe("QueryCache", () => {
     e.remove(Velocity);
     expect(result.size).toBe(1);
   });
+
+  it("unregister stops a query from receiving further entity updates", () => {
+    const result = cache.register([Position]);
+    const e = makeEntity("test");
+    e.add(new Position());
+    expect(result.size).toBe(1);
+
+    cache.unregister(result);
+
+    const other = makeEntity("other");
+    other.add(new Position());
+    expect(result.size).toBe(1); // unchanged — no longer tracked
+  });
+
+  it("unregister twice is a no-op", () => {
+    const result = cache.register([Position]);
+    cache.unregister(result);
+    expect(() => cache.unregister(result)).not.toThrow();
+  });
+
+  it("unregistering one query leaves others tracking", () => {
+    const posQuery = cache.register([Position]);
+    const velQuery = cache.register([Velocity]);
+    cache.unregister(posQuery);
+
+    const e = makeEntity("test");
+    e.add(new Position());
+    e.add(new Velocity());
+    expect(posQuery.size).toBe(0);
+    expect(velQuery.size).toBe(1);
+  });
 });

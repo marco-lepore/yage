@@ -672,6 +672,33 @@ describe("UIPanel", () => {
     });
   });
 
+  describe("destroy", () => {
+    it("frees the yoga node and recurses into children exactly once", () => {
+      const panel = new UIPanel();
+      const child = panel.panel();
+      const rootFree = vi.spyOn(panel._node.yogaNode, "free");
+      const childFree = vi.spyOn(child.yogaNode, "free");
+
+      panel._node.destroy();
+
+      expect(rootFree).toHaveBeenCalledTimes(1);
+      expect(childFree).toHaveBeenCalledTimes(1);
+    });
+
+    it("is idempotent — a second call is a no-op", () => {
+      const panel = new UIPanel();
+      const child = panel.panel();
+      const rootFree = vi.spyOn(panel._node.yogaNode, "free");
+      const childFree = vi.spyOn(child.yogaNode, "free");
+
+      panel._node.destroy();
+      panel._node.destroy();
+
+      expect(rootFree).toHaveBeenCalledTimes(1);
+      expect(childFree).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("flex shrink behaviour", () => {
     it("keeps flex children at their natural size by default (Yoga's flexShrink: 0)", () => {
       // Two 80px children in a 100px row want 160px total. With Yoga's raw

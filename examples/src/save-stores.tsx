@@ -200,7 +200,6 @@ function MainMenuPanel(props: {
 
   return (
     <Panel
-      anchor="center"
       direction="column"
       gap={10}
       padding={20}
@@ -343,7 +342,6 @@ function GameplayHUD() {
   const deathCount = useStore(game.deaths);
   return (
     <Panel
-      anchor="top-left"
       direction="row"
       gap={12}
       padding={8}
@@ -363,7 +361,6 @@ function GameplayHUD() {
 function GameplayActions() {
   return (
     <Panel
-      anchor="bottom-center"
       direction="row"
       gap={8}
       padding={10}
@@ -437,7 +434,6 @@ function PauseMenuPanel(props: {
 
   return (
     <Panel
-      anchor="center"
       direction="column"
       gap={10}
       padding={20}
@@ -600,7 +596,6 @@ function SettingsPanel(props: { onBack: () => void }) {
   const vsync = useStore(settings.vsync);
   return (
     <Panel
-      anchor="center"
       direction="column"
       gap={12}
       padding={20}

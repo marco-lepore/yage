@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useRef, useMemo } from "react";
+import { createContext, useContext, useCallback, useEffect, useRef, useMemo } from "react";
 import { useSyncExternalStore } from "react";
 import type {
   EngineContext,
@@ -188,7 +188,7 @@ function defaultSnapshotReader(
 /**
  * Run an ECS query and map results through a selector. Frame-polled.
  *
- * The query is registered once and stays live for the component's lifetime.
+ * The query is registered once and released when the component unmounts.
  */
 export function useQuery<R>(
   filter: readonly ComponentClass[],
@@ -201,12 +201,35 @@ export function useQuery<R>(
     [ctx],
   );
 
-  // Register query once and keep a stable ref
+  // Registered synchronously during render (not in an effect) so the first
+  // getSnapshot() call below already has a live query to read instead of
+  // waiting a frame for a passive effect to run. `registeredRef` tracks
+  // whether that query is currently held by the cache; the effect below
+  // releases it on cleanup and re-registers a replacement if a remount finds
+  // it already released (a fast unmount→mount with no render in between —
+  // no entity mutation can occur in that gap, so a freshly-registered
+  // replacement starts from the same state the released one was in).
   const queryRef = useRef<QueryResult | null>(null);
+  const registeredRef = useRef(false);
   if (queryRef.current === null) {
     queryRef.current = queryCache.register(filter);
+    registeredRef.current = true;
   }
   const query = queryRef.current;
+
+  useEffect(() => {
+    if (!registeredRef.current) {
+      queryRef.current = queryCache.register(filter);
+      registeredRef.current = true;
+    }
+    // Non-null: the branch above (or the render-time lazy init) always sets
+    // queryRef.current before this line runs.
+    const held = queryRef.current!;
+    return () => {
+      queryCache.unregister(held);
+      registeredRef.current = false;
+    };
+  }, [queryCache, filter]);
 
   const cache = useRef<{ value: R } | null>(null);
 

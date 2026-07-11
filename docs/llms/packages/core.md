@@ -323,6 +323,8 @@ a dropped promise can hide errors). Production builds suppress the warning.
 | `QueryResult` | Iterable result from `cache.register([Component, ...])` |
 | `filterEntities(entities, filter)` | One-off filter by name, tag, component, or trait |
 
+Call `cache.unregister(result)` when a registered query no longer needs live updates — a `QueryResult` keeps receiving `onComponentAdded`/`onComponentRemoved` updates until released. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
+
 ### Stable Identity
 
 Opt-in per-scene entity keys. Most entities (bullets, particles, transient enemies) don't need them; pass `{ key }` only for entities whose state should persist (chests, doors, named NPCs).

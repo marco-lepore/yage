@@ -166,6 +166,34 @@ labeled-button case (it's auto-wrapped in a centered `<Text>` styled with
 | `<Checkbox>` | Checkbox with `checked`, `onChange`, `label` |
 | `<Tooltip>` | Hover-driven floating label wrapping a trigger |
 
+### Removing a prop between renders
+
+Setting a prop to `undefined`, or dropping it with a conditional spread,
+resets it to its default instead of leaving the previous value in place:
+
+```tsx
+{/* Clears the background on the render where `selected` is false, rather
+    than keeping the last highlight color. */}
+<Panel bg={selected ? highlightBg : undefined} />
+
+{/* Same reset applies when the key disappears from a spread. */}
+<Panel {...(selected ? { bg: highlightBg } : {})} />
+```
+
+This holds for every prop on every component — a removed `onClick` unbinds
+the handler, a removed `width` goes back to Yoga's auto sizing, and so on.
+
+### The `bg` shorthand
+
+`bg` is shorthand for `background` on `<Panel>`, `<Button>`, and
+`<ScrollView>` (`<Button>` also has `hoverBg` / `pressBg` for its hover and
+press backgrounds). Passing both `bg` and `background` on the same element
+uses `background` and logs a dev warning once per component type.
+
+The Pixi* wrapper components (`<PixiProgressBar>`, `<PixiSlider>`,
+`<PixiInput>`) have their own `bg` prop — a required `@pixi/ui` view-slot
+value, unrelated to `background` — and are not affected by this shorthand.
+
 ### Absolute positioning
 
 Every component accepts the shared layout props `position`, `left`, `top`,
@@ -506,6 +534,10 @@ function EnemyCount() {
   return <Text>Enemies: {count}</Text>;
 }
 ```
+
+The query is registered on mount and released when the component unmounts,
+so mounting and unmounting `<EnemyCount>` repeatedly (e.g. across scene
+switches) does not accumulate live queries.
 
 The query re-evaluates each frame and only triggers a re-render when the
 selector result changes.

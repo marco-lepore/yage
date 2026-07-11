@@ -54,11 +54,108 @@ function warnNonContainerChild(parent: UIElement): void {
   );
 }
 
+/**
+ * Bare text/number JSX children (`<Panel>Score: {score}</Panel>`) have no
+ * host text instance in this reconciler — `createTextInstance` returns null
+ * and the content silently vanishes. Flag it once (globally, not per call
+ * site — `createTextInstance` isn't handed a parent reference to key on)
+ * so the fix (wrap in `<Text>`) is discoverable instead of a "why is my box
+ * empty?" mystery.
+ */
+let warnedBareText = false;
+
+function warnBareTextChild(text: string): void {
+  if (warnedBareText) return;
+  if (text.trim().length === 0) return; // whitespace between elements — not a real content bug
+  warnedBareText = true;
+  devWarn(
+    `A bare text child ("${text}") was passed to a UI element — it will not ` +
+      `render. This reconciler has no host text node; wrap it in <Text> ` +
+      `(e.g. <Panel><Text>${text}</Text></Panel>).`,
+  );
+}
+
+/** Reconciler-internal props stripped before forwarding to UI elements. */
+const INTERNAL_KEYS = new Set(["_ctor", "_consumesText", "_bgAlias"]);
+
 /** Strip reconciler-internal props before forwarding to UI elements. */
 function stripInternal(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k in props) {
-    if (k !== "_ctor" && k !== "_consumesText") out[k] = props[k];
+    if (!INTERNAL_KEYS.has(k)) out[k] = props[k];
+  }
+  return out;
+}
+
+/**
+ * Diff `oldProps` against `newProps` and return the props to forward to
+ * `instance.update()`: every key from `newProps` (reconciler-internal keys
+ * stripped) plus an explicit `undefined` for every key that was in
+ * `oldProps` but is now absent from `newProps` — e.g. `{...(show ? {onClick:
+ * fn} : {})}` dropping `onClick` between renders. A key that's merely
+ * absent from BOTH is never synthesized; a key present with a literal
+ * `undefined` value in `newProps` (e.g. `bg={cond ? x : undefined}`) already
+ * comes through via the `newProps` spread. Every element's `update()` reads
+ * a present-but-`undefined` key as "reset this prop to its default".
+ */
+function diffProps(
+  oldProps: Record<string, unknown>,
+  newProps: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = stripInternal(newProps);
+  for (const k in oldProps) {
+    if (!INTERNAL_KEYS.has(k) && !(k in newProps)) merged[k] = undefined;
+  }
+  return merged;
+}
+
+/**
+ * JSX-only shorthand aliases → canonical `@yagejs/ui` prop name. One row per
+ * alias; a future Mantine-style shorthand set (`p`, `m`, `w`, ...) is new
+ * rows here, not a new mechanism.
+ */
+const SHORTHAND_ALIASES: Record<string, string> = {
+  bg: "background",
+};
+
+/**
+ * Expand shorthand aliases (see {@link SHORTHAND_ALIASES}) right before an
+ * element is constructed or updated. Gated by the internal `_bgAlias`
+ * marker (set by the JSX components that accept `bg` — `Panel`, `Button`,
+ * `ScrollView`) rather than applied unconditionally: the Pixi* wrappers
+ * (`PixiProgressBar`, `PixiSlider`, `PixiInput`) use `bg` as their own
+ * required, unrelated view-slot prop and never set the marker, so they're
+ * untouched. When both the alias and its canonical key are present, the
+ * canonical value wins (dev-warns once per element type). Returns a fresh
+ * object rather than deleting alias keys in place (avoids a dynamic
+ * `delete`, which the lint config forbids).
+ */
+const warnedAliasCollision = new WeakSet<object>();
+
+function expandShorthand(
+  ctor: object,
+  props: Record<string, unknown>,
+): Record<string, unknown> {
+  const aliasKeys = Object.keys(SHORTHAND_ALIASES).filter((k) => k in props);
+  if (aliasKeys.length === 0) return props;
+
+  const out: Record<string, unknown> = {};
+  for (const k in props) {
+    if (!aliasKeys.includes(k)) out[k] = props[k];
+  }
+  for (const alias of aliasKeys) {
+    const canonical = SHORTHAND_ALIASES[alias]!;
+    if (canonical in props) {
+      if (!warnedAliasCollision.has(ctor)) {
+        warnedAliasCollision.add(ctor);
+        const name = (ctor as { name?: string }).name || "AnonymousUIElement";
+        devWarn(
+          `<${name}>: both \`${alias}\` and \`${canonical}\` were passed — \`${canonical}\` wins.`,
+        );
+      }
+    } else {
+      out[canonical] = props[alias];
+    }
   }
   return out;
 }
@@ -155,11 +252,15 @@ const hostConfig = {
   createInstance(_type: string, props: Record<string, unknown>) {
     const Ctor = props._ctor as new (p: Record<string, unknown>) => UIElement;
     if (!Ctor) throw new Error("Missing _ctor prop on <ui-element>");
-    return new Ctor(stripInternal(props));
+    const clean = stripInternal(props);
+    const finalProps = props._bgAlias ? expandShorthand(Ctor, clean) : clean;
+    return new Ctor(finalProps);
   },
 
-  createTextInstance() {
-    // Bare text nodes are not supported — use <ui-text> instead
+  createTextInstance(text: string) {
+    // Bare text nodes are not supported — use <ui-text> instead. Silently
+    // dropping this is a "why is my text missing?" trap, so flag it once.
+    warnBareTextChild(text);
     return null;
   },
 
@@ -189,6 +290,13 @@ const hostConfig = {
   removeChild(parent: UIElement, child: UIElement) {
     if (child && isContainer(parent)) {
       parent.removeElement(child);
+      // React only calls removeChild/removeChildFromContainer for the
+      // top-most host instance of a deleted subtree (never for reorders —
+      // those use insertBefore), so one recursive destroy() per deletion
+      // root exactly mirrors imperative teardown. detachDeletedInstance
+      // stays a noop: it fires per instance (would double-destroy children)
+      // and in the passive phase (after paint).
+      child.destroy();
     }
   },
 
@@ -200,6 +308,7 @@ const hostConfig = {
       if (idx !== -1) instances.splice(idx, 1);
     }
     container.removeChild(child.displayObject);
+    child.destroy();
   },
 
   insertBefore(parent: UIElement, child: UIElement, beforeChild: UIElement) {
@@ -235,8 +344,15 @@ const hostConfig = {
     return true;
   },
 
-  commitUpdate(instance: UIElement, _type: string, _oldProps: Record<string, unknown>, newProps: Record<string, unknown>) {
-    instance.update(stripInternal(newProps));
+  commitUpdate(instance: UIElement, _type: string, oldProps: Record<string, unknown>, newProps: Record<string, unknown>) {
+    const merged = diffProps(oldProps, newProps);
+    // Shorthand expansion runs AFTER the removal diff above, on the
+    // authored JSX prop names (`bg` included) — so removing `bg` clears
+    // `background` exactly like removing `background` directly would.
+    const finalProps = newProps._bgAlias
+      ? expandShorthand(instance.constructor, merged)
+      : merged;
+    instance.update(finalProps);
   },
 
   commitTextUpdate() {

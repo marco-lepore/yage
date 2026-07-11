@@ -30,6 +30,7 @@ export class UIText implements UIElement {
   private readonly _bitmap: boolean | undefined;
   private readonly _resolution: number | undefined;
   private readonly pointerEvents: PointerEvents;
+  private _destroyed = false;
 
   constructor(props: UITextProps) {
     this.yogaNode = createYogaNode();
@@ -145,11 +146,12 @@ export class UIText implements UIElement {
   }
 
   update(p: Partial<UITextProps>): void {
-    if (p.children !== undefined && p.children !== this._source) {
-      this.setText(p.children);
+    if ("children" in p) {
+      const next = p.children ?? "";
+      if (next !== this._source) this.setText(next);
     }
-    if (p.style) {
-      this.setStyle(p.style);
+    if ("style" in p) {
+      this.setStyle(p.style ?? {});
     }
     // Use `"truncate" in p` rather than `!== undefined` so an explicit
     // `{ truncate: undefined }` payload (e.g. removing the prop in the
@@ -183,16 +185,19 @@ export class UIText implements UIElement {
           "its React `key`) to switch bitmap font or resolution.",
       );
     }
-    if (p.consumeInput !== undefined) applyConsumeInput(this.text, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this.text, p.consumeInput);
     this.pointerEvents.set(p);
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.text);
     this.yogaNode.free();
     this.text.destroy();

@@ -85,6 +85,7 @@ export class PanelNode implements UIContainerElement {
   private bgRenderer: BackgroundRenderer | undefined;
   private maskHandle: MaskHandle | undefined;
   private _children: UIElement[] = [];
+  private _destroyed = false;
   private bgOpts: BackgroundOptions | undefined;
   private readonly pointerEvents: PointerEvents;
   // Explicit hit area so pointer/hover events (and the consume-input
@@ -239,8 +240,16 @@ export class PanelNode implements UIContainerElement {
   // Shared prop application (used by constructor and update)
   // ---------------------------------------------------------------------------
 
+  /**
+   * Applies props by key presence (`"direction" in p`), not `!== undefined`:
+   * a present key with an `undefined` value is how the React reconciler
+   * marks a removed JSX prop, and each branch below resets that property to
+   * its default (column direction, no gap/padding, flex-start alignment,
+   * visible overflow, no background, default input-consume) rather than
+   * leaving the previous value in place.
+   */
   private _applyProps(p: Partial<PanelProps>): void {
-    if (p.direction !== undefined) {
+    if ("direction" in p) {
       this.yogaNode.setFlexDirection(
         p.direction === "row"
           ? YogaFlexDirection.Row
@@ -248,11 +257,11 @@ export class PanelNode implements UIContainerElement {
       );
     }
 
-    if (p.gap !== undefined) {
+    if ("gap" in p) {
       this.yogaNode.setGap(Gutter.All, p.gap);
     }
 
-    if (p.padding !== undefined) {
+    if ("padding" in p) {
       const pad = resolvePadding(p.padding);
       this.yogaNode.setPadding(Edge.Top, pad.top);
       this.yogaNode.setPadding(Edge.Right, pad.right);
@@ -260,22 +269,27 @@ export class PanelNode implements UIContainerElement {
       this.yogaNode.setPadding(Edge.Left, pad.left);
     }
 
-    if (p.alignItems !== undefined) {
+    if ("alignItems" in p) {
       this.yogaNode.setAlignItems(
-        ALIGN_ITEMS_MAP[p.alignItems] ?? Align.FlexStart,
+        p.alignItems !== undefined
+          ? (ALIGN_ITEMS_MAP[p.alignItems] ?? Align.FlexStart)
+          : Align.FlexStart,
       );
     }
-    if (p.justifyContent !== undefined) {
+    if ("justifyContent" in p) {
       this.yogaNode.setJustifyContent(
-        JUSTIFY_MAP[p.justifyContent] ?? Justify.FlexStart,
+        p.justifyContent !== undefined
+          ? (JUSTIFY_MAP[p.justifyContent] ?? Justify.FlexStart)
+          : Justify.FlexStart,
       );
     }
 
-    if (p.overflow !== undefined) {
+    if ("overflow" in p) {
+      const overflow = p.overflow ?? "visible";
       this.yogaNode.setOverflow(
-        p.overflow === "hidden" ? Overflow.Hidden : Overflow.Visible,
+        overflow === "hidden" ? Overflow.Hidden : Overflow.Visible,
       );
-      if (p.overflow === "hidden" && !this.maskHandle) {
+      if (overflow === "hidden" && !this.maskHandle) {
         this.maskHandle = attachMask(
           this.container,
           graphicsMask((g) => {
@@ -286,13 +300,13 @@ export class PanelNode implements UIContainerElement {
             g.fill({ color: 0xffffff });
           }),
         );
-      } else if (p.overflow === "visible" && this.maskHandle) {
+      } else if (overflow === "visible" && this.maskHandle) {
         this.maskHandle.remove();
         this.maskHandle = undefined;
       }
     }
 
-    if (p.background !== undefined) {
+    if ("background" in p) {
       this.bgOpts = p.background;
       if (p.background) {
         if (!this.bgRenderer) {
@@ -305,12 +319,12 @@ export class PanelNode implements UIContainerElement {
       }
     }
 
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
@@ -318,7 +332,15 @@ export class PanelNode implements UIContainerElement {
   // Cleanup
   // ---------------------------------------------------------------------------
 
+  /**
+   * Frees the Yoga node and destroys the Pixi container, recursing into
+   * children. Idempotent — a second call is a no-op — because both the
+   * React reconciler (on unmount) and a caller holding a direct reference
+   * may end up calling this on the same instance.
+   */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     for (const child of this._children) {
       child.destroy();

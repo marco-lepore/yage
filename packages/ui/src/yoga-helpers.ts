@@ -94,6 +94,9 @@ function parsePercent(value: string): number {
 
 /**
  * Apply a LayoutValue to a specific dimension property on a Yoga node.
+ * `undefined` resets the property to Yoga's default (auto for width /
+ * height / flexBasis, unconstrained for min / max) — the reconciler passes
+ * this when a JSX prop that set the dimension is removed.
  */
 export function applyLayoutValue(
   node: YogaNode,
@@ -105,8 +108,34 @@ export function applyLayoutValue(
     | "minHeight"
     | "maxHeight"
     | "flexBasis",
-  value: LayoutValue,
+  value: LayoutValue | undefined,
 ): void {
+  if (value === undefined) {
+    switch (prop) {
+      case "width":
+        node.setWidthAuto();
+        return;
+      case "height":
+        node.setHeightAuto();
+        return;
+      case "flexBasis":
+        node.setFlexBasisAuto();
+        return;
+      case "minWidth":
+        node.setMinWidth(undefined);
+        return;
+      case "maxWidth":
+        node.setMaxWidth(undefined);
+        return;
+      case "minHeight":
+        node.setMinHeight(undefined);
+        return;
+      case "maxHeight":
+        node.setMaxHeight(undefined);
+        return;
+    }
+  }
+
   if (value === "auto") {
     switch (prop) {
       case "width":
@@ -181,39 +210,51 @@ export function applyLayoutValue(
 
 /**
  * Apply common LayoutProps to a Yoga node.
+ *
+ * Uses key-presence checks (`"width" in props`), not `!== undefined`: a
+ * present key with an `undefined` value is how the React reconciler marks a
+ * removed prop (see `commitUpdate`), and it must reset that property to its
+ * Yoga default rather than being skipped like a key that was never set.
  */
 export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
-  if (props.width !== undefined) applyLayoutValue(node, "width", props.width);
-  if (props.height !== undefined)
-    applyLayoutValue(node, "height", props.height);
-  if (props.minWidth !== undefined)
-    applyLayoutValue(node, "minWidth", props.minWidth);
-  if (props.maxWidth !== undefined)
-    applyLayoutValue(node, "maxWidth", props.maxWidth);
-  if (props.minHeight !== undefined)
+  if ("width" in props) applyLayoutValue(node, "width", props.width);
+  if ("height" in props) applyLayoutValue(node, "height", props.height);
+  if ("minWidth" in props) applyLayoutValue(node, "minWidth", props.minWidth);
+  if ("maxWidth" in props) applyLayoutValue(node, "maxWidth", props.maxWidth);
+  if ("minHeight" in props)
     applyLayoutValue(node, "minHeight", props.minHeight);
-  if (props.maxHeight !== undefined)
+  if ("maxHeight" in props)
     applyLayoutValue(node, "maxHeight", props.maxHeight);
   // `flex: <n>` shorthand = grow n / shrink 1 / basis 0 (CSS). Applied first so
   // the explicit flexGrow/flexShrink/flexBasis below can override any part.
-  if (props.flex !== undefined) {
+  // Removing `flex` resets all three to their Yoga defaults.
+  if ("flex" in props) {
     node.setFlexGrow(props.flex);
-    node.setFlexShrink(1);
-    node.setFlexBasis(0);
+    node.setFlexShrink(props.flex !== undefined ? 1 : undefined);
+    node.setFlexBasis(props.flex !== undefined ? 0 : undefined);
   }
 
-  if (props.flexBasis !== undefined)
+  if ("flexBasis" in props)
     applyLayoutValue(node, "flexBasis", props.flexBasis);
 
-  if (props.flexGrow !== undefined) node.setFlexGrow(props.flexGrow);
-  if (props.flexShrink !== undefined) node.setFlexShrink(props.flexShrink);
+  if ("flexGrow" in props) node.setFlexGrow(props.flexGrow);
+  if ("flexShrink" in props) node.setFlexShrink(props.flexShrink);
 
-  if (props.alignSelf !== undefined) {
-    node.setAlignSelf(ALIGN_MAP[props.alignSelf] ?? Align.Auto);
+  if ("alignSelf" in props) {
+    node.setAlignSelf(
+      props.alignSelf !== undefined
+        ? (ALIGN_MAP[props.alignSelf] ?? Align.Auto)
+        : Align.Auto,
+    );
   }
 
-  if (props.margin !== undefined) {
-    if (typeof props.margin === "number") {
+  if ("margin" in props) {
+    if (props.margin === undefined) {
+      node.setMargin(Edge.Top, undefined);
+      node.setMargin(Edge.Right, undefined);
+      node.setMargin(Edge.Bottom, undefined);
+      node.setMargin(Edge.Left, undefined);
+    } else if (typeof props.margin === "number") {
       node.setMargin(Edge.All, props.margin);
     } else {
       if (props.margin.top !== undefined)
@@ -227,7 +268,7 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
     }
   }
 
-  if (props.position !== undefined) {
+  if ("position" in props) {
     if (props.position === "absolute") {
       node.setPositionType(PositionType.Absolute);
     } else {
@@ -252,16 +293,14 @@ export function applyLayoutProps(node: YogaNode, props: LayoutProps): void {
     (props.position === undefined &&
       node.getPositionType() === PositionType.Absolute);
   if (isAbsolute) {
-    if (props.left !== undefined) node.setPosition(Edge.Left, props.left);
-    if (props.top !== undefined) node.setPosition(Edge.Top, props.top);
-    if (props.right !== undefined) node.setPosition(Edge.Right, props.right);
-    if (props.bottom !== undefined) node.setPosition(Edge.Bottom, props.bottom);
+    if ("left" in props) node.setPosition(Edge.Left, props.left);
+    if ("top" in props) node.setPosition(Edge.Top, props.top);
+    if ("right" in props) node.setPosition(Edge.Right, props.right);
+    if ("bottom" in props) node.setPosition(Edge.Bottom, props.bottom);
   }
 
-  if (props.visible === false) {
-    node.setDisplay(Display.None);
-  } else if (props.visible === true) {
-    node.setDisplay(Display.Flex);
+  if ("visible" in props) {
+    node.setDisplay(props.visible === false ? Display.None : Display.Flex);
   }
 }
 
