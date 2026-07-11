@@ -5,7 +5,7 @@ description: Proximity-based "walk up, see a prompt, press E" interaction — ne
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-`@yagejs-addons/interaction` is the glue behind "walk near a thing, see a
+`@yagejs-addons/interaction` implements "walk near a thing, see a
 prompt, press E" — the interaction every game hand-rolls to connect the
 player to dialogue NPCs, inventory pickups, doors, and levers. It tracks the
 nearest in-range, enabled `Interactable` for an `Interactor`, and hands the
@@ -14,7 +14,7 @@ interacting *means*.
 
 The addon is **headless** — no bundled prompt view, no renderer dependency —
 and treats `@yagejs/input` as **optional**: install it and the interactor
-wires the interact key itself, or drive it manually with no input package at
+handles the interact key itself, or drive it manually with no input package at
 all.
 
 ## Install
@@ -82,7 +82,7 @@ import {
 
 With `@yagejs/input` installed and an `interact` action bound, pressing it
 while something is focused calls that interactable's `onInteract` and emits
-`InteractedEvent`. No wiring beyond the three steps above.
+`InteractedEvent`. No setup beyond the three steps above.
 
 ## Per-interactable overrides
 
@@ -102,7 +102,7 @@ lever.add(
 
 `prompt` and `enabled` both accept a static value or a `() => value`
 provider, resolved fresh every frame — a live label or a live gate needs no
-re-wiring when the underlying state changes.
+extra setup when the underlying state changes.
 
 ## Manual drive (no `@yagejs/input`, or a test)
 
@@ -121,8 +121,8 @@ interactor.focus; // the focused Interactable | null — read for a custom promp
 
 ## Cross-addon composition
 
-An interactable's `onInteract` is a plain closure — wiring another addon in
-is a line, with no addon-to-addon dependency:
+An interactable's `onInteract` is a plain closure — connecting another addon
+takes one line, with no addon-to-addon dependency:
 
 ```ts
 npc.add(

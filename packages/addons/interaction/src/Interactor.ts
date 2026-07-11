@@ -2,18 +2,12 @@ import { Component, LoggerKey, ServiceKey, Transform, isDev, type Logger } from 
 import type { InputManager } from "@yagejs/input";
 import { selectFocus } from "./core/focus.js";
 import { interactableRegistryFor } from "./core/registry.js";
-import type { InteractCandidate, InteractorOptions } from "./core/types.js";
+import type { InteractorOptions } from "./core/types.js";
 import type { Interactable } from "./Interactable.js";
 import { InteractedEvent, InteractionFocusChangedEvent } from "./events.js";
 
 const DEFAULT_RANGE = 48;
 const DEFAULT_ACTION = "interact";
-
-/** A candidate carrying its source `Interactable` alongside the geometry
- *  `selectFocus` reads, so the winner resolves back to it with no lookup. */
-interface FocusCandidate extends InteractCandidate {
-  readonly interactable: Interactable;
-}
 
 /**
  * `@yagejs/input` is an optional peer — this addon must work with the
@@ -45,10 +39,7 @@ export class Interactor extends Component {
   private _focus: Interactable | null = null;
   private _focusPrompt: string | null = null;
   private warnedMissingInput = false;
-  /** Guards `setFocus`'s emit against firing before `onAdd` (e.g. when the
-   *  `enabled: false` constructor option routes through the accessor's
-   *  setter during construction, before an entity is attached). */
-  private added = false;
+  private warnedUnmappedAction = false;
 
   constructor(opts: InteractorOptions = {}) {
     super();
@@ -76,12 +67,17 @@ export class Interactor extends Component {
 
   onAdd(): void {
     this.logger = this.context.tryResolve(LoggerKey);
-    this.added = true;
   }
 
   onDestroy(): void {
-    this.added = false;
-    // Clear focus without emitting — no scene left to bubble the event to.
+    // `entity.remove(Interactor)` leaves the entity alive, so this emit
+    // reaches any listener normally. `entity.destroy()` marks the entity
+    // destroyed before the deferred teardown that runs this hook, so
+    // `Entity.emit` silently drops it — the same as any other post-destroy
+    // emit.
+    if (this._focus) {
+      this.entity.emit(InteractionFocusChangedEvent, { interactable: null, prompt: null });
+    }
     this._focus = null;
     this._focusPrompt = null;
   }
@@ -91,20 +87,12 @@ export class Interactor extends Component {
 
     const registry = interactableRegistryFor(this.scene);
     const query = { position: this.ownTransform.worldPosition, range: this.range };
-    const candidates: FocusCandidate[] = [];
+    const candidates: Interactable[] = [];
     for (const interactable of registry) {
-      if (!interactable.isEnabled()) continue;
-      candidates.push({
-        interactable,
-        position: interactable.position,
-        radius: interactable.radius,
-        priority: interactable.priority,
-        order: interactable.order,
-      });
+      if (interactable.isEnabled()) candidates.push(interactable);
     }
 
-    const winner = selectFocus(query, candidates);
-    this.setFocus(winner?.interactable ?? null);
+    this.setFocus(selectFocus(query, candidates));
 
     if (this.action !== null && this._focus) {
       const input = this.resolveInputManager();
@@ -132,25 +120,42 @@ export class Interactor extends Component {
     if (next === this._focus && nextPrompt === this._focusPrompt) return;
     this._focus = next;
     this._focusPrompt = nextPrompt;
-    if (this.added) {
-      this.entity.emit(InteractionFocusChangedEvent, {
-        interactable: next,
-        prompt: nextPrompt,
-      });
-    }
+    this.entity.emit(InteractionFocusChangedEvent, {
+      interactable: next,
+      prompt: nextPrompt,
+    });
   }
 
   private resolveInputManager(): InputManager | undefined {
     const input = this.context.tryResolve(INPUT_MANAGER_KEY);
-    if (!input && !this.warnedMissingInput && isDev()) {
-      this.warnedMissingInput = true;
+    if (!isDev()) return input;
+
+    if (!input) {
+      if (!this.warnedMissingInput) {
+        this.warnedMissingInput = true;
+        this.logger?.warn(
+          "interaction",
+          `Interactor has action "${this.action}" but no InputManager is resolvable — is ` +
+            `@yagejs/input installed and its plugin registered? Falling back to manual ` +
+            `interact() calls only.`,
+        );
+      }
+      return input;
+    }
+
+    // Dev-only, once: the default action name (or a custom one) may not
+    // exist in the game's action map — the silent-no-op trap, mirroring
+    // the inventory addon's `warnIfActionsUnmapped`.
+    if (this.action !== null && !this.warnedUnmappedAction && !input.hasAction(this.action)) {
+      this.warnedUnmappedAction = true;
       this.logger?.warn(
         "interaction",
-        `Interactor has action "${this.action}" but no InputManager is resolvable — is ` +
-          `@yagejs/input installed and its plugin registered? Falling back to manual ` +
-          `interact() calls only.`,
+        `Interactor action "${this.action}" is absent from the InputManager action map; ` +
+          `auto-input will do nothing. Add "${this.action}" to your action map, or pass a ` +
+          `different \`action\` to Interactor.`,
       );
     }
+
     return input;
   }
 }

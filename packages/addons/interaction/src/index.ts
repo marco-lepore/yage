@@ -2,8 +2,8 @@
  * @yagejs-addons/interaction — headless entry (the only entry; no presenters).
  *
  * Pure `@yagejs/core`, with `@yagejs/input` as an optional peer: present, an
- * `Interactor` auto-wires the interact key; absent, the game drives
- * `interactor.interact()` itself. Nothing here imports pixi or
+ * `Interactor` handles the interact key automatically; absent, the game
+ * drives `interactor.interact()` itself. Nothing here imports pixi or
  * `@yagejs/renderer` — the game renders the prompt from
  * `InteractionFocusChangedEvent`.
  */

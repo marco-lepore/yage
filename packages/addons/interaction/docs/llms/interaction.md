@@ -13,7 +13,7 @@ npm install @yagejs/core @yagejs/input
 ```
 
 `@yagejs/core` is a required peer; `@yagejs/input` is an **optional** peer —
-present, `Interactor` auto-wires the interact key; absent, drive
+present, `Interactor` handles the interact key automatically; absent, drive
 `interactor.interact()` yourself. No runtime deps, no pixi, no `@yagejs/physics`.
 
 ## Single entry (no `./presenters`)
@@ -61,7 +61,7 @@ interface InteractableOptions {
 ```
 
 `prompt` and `enabled` accept a live provider, re-resolved every frame — no
-re-wiring needed for a lever's "Turn on"/"Turn off" or a busy-gated door.
+extra setup needed for a lever's "Turn on"/"Turn off" or a busy-gated door.
 
 ## `InteractorOptions`
 
@@ -106,7 +106,7 @@ if (input.isJustPressed("interact")) interactor.interact();
 
 ## Cross-addon composition (no addon→addon dependency)
 
-An interactable's `onInteract` is a plain closure — wire dialogue, inventory,
+An interactable's `onInteract` is a plain closure — connect dialogue, inventory,
 or anything else from it directly:
 
 ```ts
