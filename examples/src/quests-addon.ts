@@ -3,14 +3,19 @@
  * shape `@yagejs-addons/quests` is built for: objectives driven by OTHER
  * addons' events, with no addon->addon dependency.
  *
+ *  • **Accept** — talking to the healer NPC (E to interact) runs a
+ *    `@yagejs-addons/dialogue` box conversation whose `acceptQuest` command
+ *    starts `gatherHerbs`. Herbs picked up before accepting are credited at
+ *    that moment (`setProgress` from the inventory count) — the
+ *    count-on-accept idiom, since advancing a quest that isn't active is a
+ *    silent no-op.
  *  • **Gather Herbs** — a WASD player walks over 5 herb pickups, which land in
  *    a headless `@yagejs-addons/inventory` `Inventory`. Its `itemAdded` model
  *    event advances the `herb` objective directly — one line, no UI needed.
- *  • **Turn-in** — talking to the healer NPC (E to interact) runs a
- *    `@yagejs-addons/dialogue` box conversation whose `[turnIn/]` command
- *    completes the `turnIn` objective. The script conditions on the herb
- *    objective's own progress (`herbsDone()`, a function reading the quest
- *    log) so the healer's line changes once you've gathered enough.
+ *  • **Turn-in** — talking to the healer again once the herbs are gathered
+ *    jumps to the turn-in node (the script conditions on `herbsDone()`, a
+ *    function reading the quest log), whose `turnIn` command completes the
+ *    `turnIn` objective.
  *  • **Chaining** — `gatherHerbs` completing (both objectives satisfied — the
  *    auto-complete rollup) starts `thinThePack` via one `on("questCompleted",
  *    …)` line. That quest's `wolf` objective advances from the player's own
@@ -34,6 +39,7 @@ import {
   TextComponent,
   type LayerDef,
 } from "@yagejs/renderer";
+import { DebugPlugin } from "@yagejs/debug";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { defineItems, Inventory } from "@yagejs-addons/inventory";
 import { DialogueController, defineScript } from "@yagejs-addons/dialogue";
@@ -277,6 +283,7 @@ const healerScript = defineScript({
           speaker: "healer",
           text: "Bring me 5 red herbs from the clearing and I'll reward you.",
         },
+        { kind: "command", commands: [{ type: "acceptQuest" }] },
         { kind: "end" },
       ],
     },
@@ -321,7 +328,16 @@ class QuestsRoomScene extends Scene {
       new DialogueController({
         ...createBoxDialogue(),
         functions: { herbsDone: () => log.objectiveDone("gatherHerbs", "herb") },
-        commands: { turnIn: () => log.complete("gatherHerbs", "turnIn") },
+        commands: {
+          acceptQuest: () => {
+            log.start("gatherHerbs");
+            // Credit herbs picked up before accepting: advancing a quest
+            // that isn't active is a silent no-op, so the accept moment
+            // seeds progress from the inventory count.
+            log.setProgress("gatherHerbs", "herb", inventory.count("redHerb"));
+          },
+          turnIn: () => log.complete("gatherHerbs", "turnIn"),
+        },
       }),
     );
     const busy = (): boolean => dialogue.isActive();
@@ -416,7 +432,7 @@ class QuestsRoomScene extends Scene {
     title.add(new Transform({ position: new Vec2(WIDTH / 2, 56) }));
     title.add(
       new TextComponent({
-        text: "Gather herbs, turn them in, then thin the pack",
+        text: "Talk to the healer, gather herbs, turn them in, then thin the pack",
         style: { fontSize: 15, fill: 0x8888aa, fontFamily: "sans-serif" },
         layer: ROOM_LAYER,
         anchor: { x: 0.5, y: 0.5 },
@@ -471,6 +487,7 @@ async function main(): Promise<void> {
       preventDefaultKeys: ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
+  engine.use(new DebugPlugin());
   await engine.start();
   await engine.scenes.push(new QuestsRoomScene());
 }
