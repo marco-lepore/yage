@@ -30,8 +30,8 @@ describe("start", () => {
 
   it("a prereq-locked quest refuses to start with no state change", () => {
     const catalog = defineQuests({
-      a: { title: "A", objectives: {} },
-      b: { title: "B", objectives: {}, requires: ["a"] },
+      a: { title: "A", objectives: { step: {} } },
+      b: { title: "B", objectives: { step: {} }, requires: ["a"] },
     });
     const log = new QuestLog(catalog);
     const changed = vi.fn();
@@ -89,6 +89,22 @@ describe("advance / setProgress / complete", () => {
     const log = herbLog();
     log.start("gatherHerbs");
     log.advance("gatherHerbs", "herb", 999);
+    expect(log.progress("gatherHerbs", "herb")).toBe(5);
+  });
+
+  it("advancing an already-maxed objective emits nothing (quest still active)", () => {
+    const log = herbLog();
+    log.start("gatherHerbs");
+    log.advance("gatherHerbs", "herb", 5); // reaches the target
+    const advanced = vi.fn();
+    const changed = vi.fn();
+    log.on("objectiveAdvanced", advanced);
+    log.on("changed", changed);
+
+    log.advance("gatherHerbs", "herb", 1); // surplus pickup past the target
+
+    expect(advanced).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
     expect(log.progress("gatherHerbs", "herb")).toBe(5);
   });
 
@@ -195,6 +211,18 @@ describe("auto-complete rollup", () => {
     expect(completed).toHaveBeenCalledTimes(1);
     expect(log.status("gatherHerbs")).toBe("completed");
   });
+
+  it("completeQuest on an unknown quest id is a silent no-op", () => {
+    const log = herbLog();
+    const completed = vi.fn();
+    const changed = vi.fn();
+    log.on("questCompleted", completed);
+    log.on("changed", changed);
+
+    expect(() => log.completeQuest("nope" as never)).not.toThrow();
+    expect(completed).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+  });
 });
 
 describe("fail", () => {
@@ -205,6 +233,15 @@ describe("fail", () => {
     log.fail("gatherHerbs"); // available -> failed
     expect(failed).toHaveBeenCalledTimes(1);
     expect(log.status("gatherHerbs")).toBe("failed");
+  });
+
+  it("fail on an unknown quest id is a silent no-op", () => {
+    const log = herbLog();
+    const failed = vi.fn();
+    log.on("questFailed", failed);
+
+    expect(() => log.fail("nope" as never)).not.toThrow();
+    expect(failed).not.toHaveBeenCalled();
   });
 
   it("further advance/complete on a failed quest is a no-op", () => {
@@ -252,9 +289,9 @@ describe("prereq chain + status", () => {
 
   it("available/active/completed list ids in authoring order", () => {
     const catalog = defineQuests({
-      c: { title: "C", objectives: {} },
-      a: { title: "A", objectives: {} },
-      b: { title: "B", objectives: {} },
+      c: { title: "C", objectives: { step: {} } },
+      a: { title: "A", objectives: { step: {} } },
+      b: { title: "B", objectives: { step: {} } },
     });
     const log = new QuestLog(catalog);
     log.start("a");
@@ -296,8 +333,8 @@ describe("snapshot / restore", () => {
 
   it("a restored not-started quest re-derives locked/available from requires", () => {
     const catalog = defineQuests({
-      a: { title: "A", objectives: {} },
-      b: { title: "B", objectives: {}, requires: ["a"] },
+      a: { title: "A", objectives: { step: {} } },
+      b: { title: "B", objectives: { step: {} }, requires: ["a"] },
     });
     const log = new QuestLog(catalog);
     log.restore({ quests: { a: { phase: "completed", objectives: {} } } });
@@ -313,5 +350,48 @@ describe("snapshot / restore", () => {
     });
     expect(changed).toHaveBeenCalledTimes(1);
     expect(changed).toHaveBeenCalledWith({ questId: "gatherHerbs" });
+  });
+
+  it("a blob whose quests isn't a plain object throws and leaves prior state intact", () => {
+    const log = herbLog();
+    log.start("gatherHerbs");
+    log.advance("gatherHerbs", "herb", 3);
+
+    expect(() => log.restore({} as never)).toThrow(/snapshot\.quests must be a plain object/);
+    expect(log.status("gatherHerbs")).toBe("active");
+    expect(log.progress("gatherHerbs", "herb")).toBe(3);
+  });
+
+  it("a non-finite objective count (NaN or a non-numeric value) is skipped, reading back as 0", () => {
+    const log = herbLog();
+    log.restore({
+      quests: {
+        gatherHerbs: {
+          phase: "active",
+          objectives: { herb: NaN, turnIn: "3" as unknown as number },
+        },
+      },
+    });
+    expect(log.progress("gatherHerbs", "herb")).toBe(0);
+    expect(log.progress("gatherHerbs", "turnIn")).toBe(0);
+  });
+
+  it("a fractional objective count is truncated", () => {
+    const log = herbLog();
+    log.restore({
+      quests: { gatherHerbs: { phase: "active", objectives: { herb: 2.9 } } },
+    });
+    expect(log.progress("gatherHerbs", "herb")).toBe(2);
+  });
+
+  it("an unrecognized phase drops the quest entry, same as an unknown quest id", () => {
+    const log = herbLog();
+    log.restore({
+      quests: {
+        gatherHerbs: { phase: "in-progress" as never, objectives: { herb: 3 } },
+      },
+    });
+    expect(log.status("gatherHerbs")).toBe("available");
+    expect(log.progress("gatherHerbs", "herb")).toBe(0);
   });
 });

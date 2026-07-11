@@ -50,7 +50,7 @@ describe("defineQuests", () => {
   it("rejects a requires id naming a quest absent from the whole map", () => {
     expect(() =>
       defineQuests({
-        q: { title: "Q", objectives: {}, requires: ["nope"] },
+        q: { title: "Q", objectives: { step: {} }, requires: ["nope"] },
       }),
     ).toThrow(/requires unknown quest/);
   });
@@ -58,14 +58,39 @@ describe("defineQuests", () => {
   it("allows a requires forward reference to a later-declared quest", () => {
     expect(() =>
       defineQuests({
-        first: { title: "First", objectives: {}, requires: ["second"] },
-        second: { title: "Second", objectives: {} },
+        first: { title: "First", objectives: { step: {} }, requires: ["second"] },
+        second: { title: "Second", objectives: { step: {} } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a quest with no objectives", () => {
+    expect(() => defineQuests({ q: { title: "Q", objectives: {} } })).toThrow(
+      /must declare at least one non-optional objective/,
+    );
+  });
+
+  it("rejects a quest whose objectives are all optional", () => {
+    expect(() =>
+      defineQuests({
+        q: { title: "Q", objectives: { bonus: { optional: true } } },
+      }),
+    ).toThrow(/must declare at least one non-optional objective/);
+  });
+
+  it("allows a mix of optional and non-optional objectives", () => {
+    expect(() =>
+      defineQuests({
+        q: {
+          title: "Q",
+          objectives: { required: {}, bonus: { optional: true } },
+        },
       }),
     ).not.toThrow();
   });
 
   it("get throws on unknown ids; tryGet returns undefined; has narrows", () => {
-    const catalog = defineQuests({ q: { title: "Q", objectives: {} } });
+    const catalog = defineQuests({ q: { title: "Q", objectives: { step: {} } } });
     expect(() => catalog.get("nope" as never)).toThrow(/unknown quest id/);
     expect(catalog.tryGet("nope")).toBeUndefined();
     expect(catalog.has("nope")).toBe(false);

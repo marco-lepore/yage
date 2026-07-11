@@ -79,7 +79,7 @@ wolf.on(WolfDiedEvent, () => log.advance("thinThePack", "wolf"));
 ```
 
 <Aside type="tip">
-This is the whole binding story. A published "collect-item objective" or
+This is the whole binding mechanism. A published "collect-item objective" or
 "dialogue-command objective" adapter would need quests to depend on
 inventory/dialogue as peers — the first addon-to-addon package dependency in
 the toolkit. Ready-made adapters are deferred; the one-line game-authored form
@@ -126,6 +126,8 @@ across every quest's `requires` list. Forward references (naming a
 later-declared quest) are fine; naming a quest absent from the whole
 `defineQuests` call throws at definition time. A prerequisite **cycle** is not
 detected in v1 — the cycle's quests simply stay `locked` forever, no crash.
+`fail` is terminal, so a failed quest never reaches `completed` again — any
+quest that `requires` it stays `locked` permanently.
 
 ## Auto-complete rollup
 

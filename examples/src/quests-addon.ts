@@ -252,7 +252,7 @@ class QuestHud extends Component {
       lines.push(def.title);
       for (const objId of def.objectiveIds) {
         const objDef = def.objectives.get(objId)!;
-        const p = this.log.progress(questId, objId as never);
+        const p = this.log.get(questId).objectives[objId] ?? 0;
         lines.push(`  ${objDef.title ?? objId}: ${p}/${objDef.count}`);
       }
     }

@@ -126,8 +126,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
    * with a single `questCompleted`. No-op if already `completed`; no-op on a
    * `failed` quest (terminal). An inactive-but-available quest activates and
    * completes in the same call (still one `questCompleted`, no `questStarted`).
+   * No-op — no throw — for a quest id the catalog doesn't declare.
    */
   completeQuest(quest: QuestId<TDefs>): void {
+    if (!this.catalog.has(quest)) return;
     const state = this.states.get(quest);
     if (state?.phase === "completed" || state?.phase === "failed") return;
     const def = this.catalog.get(quest);
@@ -142,8 +144,10 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   }
 
   /** Fail `quest` — terminal in v1 (no re-open/retry). Only `active` or
-   *  `available` quests can fail; already-terminal or `locked` is a no-op. */
+   *  `available` quests can fail; already-terminal or `locked` is a no-op.
+   *  No-op — no throw — for a quest id the catalog doesn't declare. */
   fail(quest: QuestId<TDefs>): void {
+    if (!this.catalog.has(quest)) return;
     const state = this.states.get(quest);
     if (state?.phase === "completed" || state?.phase === "failed") return;
     const status = this.status(quest);
@@ -230,27 +234,43 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   }
 
   /**
-   * Replace the runtime state with `snapshot`. Quest ids the current catalog
-   * no longer declares are dropped; within a restored quest, objective ids no
-   * longer declared are dropped and surviving counts are clamped to the
-   * current target (a catalog change since the snapshot was taken never
-   * resurrects a removed quest/objective or exceeds a shrunk target). Emits
-   * one coarse `changed` per restored (and known) quest id — not-started
-   * quests re-derive `locked`/`available` from `requires` the next time
-   * they're read.
+   * Replace the runtime state with `snapshot`. The whole blob is read and
+   * validated before any current state is touched, so a malformed snapshot
+   * throws and leaves prior progress intact rather than wiping it first.
+   * `snapshot.quests` must be a plain object — anything else throws. Within
+   * it, the same no-throw drop policy applies to every entry: a quest id the
+   * current catalog no longer declares, or one whose `phase` isn't
+   * `"active"`, `"completed"`, or `"failed"`, is dropped. Within a restored
+   * quest, objective ids no longer declared are dropped; a non-finite
+   * progress count (`NaN`, `Infinity`) is dropped the same way (reads back as
+   * `0`, same as an untouched objective); a fractional count is truncated;
+   * the surviving count is clamped to `[0, target]` (a catalog change since
+   * the snapshot was taken never resurrects a removed quest/objective or
+   * exceeds a shrunk target). Emits one coarse `changed` per restored (and
+   * known) quest id — not-started quests re-derive `locked`/`available` from
+   * `requires` the next time they're read.
    */
   restore(snapshot: QuestSnapshot): void {
-    this.states.clear();
-    for (const [questId, snap] of Object.entries(snapshot.quests)) {
+    const quests: unknown = snapshot?.quests;
+    if (typeof quests !== "object" || quests === null || Array.isArray(quests)) {
+      throw new Error("QuestLog.restore: snapshot.quests must be a plain object");
+    }
+    const restored = new Map<string, QuestRuntimeState>();
+    for (const [questId, snap] of Object.entries(quests as Record<string, QuestStateSnapshot>)) {
       if (!this.catalog.has(questId)) continue;
+      if (snap.phase !== "active" && snap.phase !== "completed" && snap.phase !== "failed") continue;
       const def = this.catalog.get(questId);
       const objectives = new Map<string, number>();
       for (const [objId, count] of Object.entries(snap.objectives)) {
         const objDef = def.objectives.get(objId);
-        if (!objDef) continue;
-        objectives.set(objId, Math.max(0, Math.min(objDef.count, count)));
+        if (!objDef || !Number.isFinite(count)) continue;
+        objectives.set(objId, Math.max(0, Math.min(objDef.count, Math.trunc(count))));
       }
-      this.states.set(questId, { phase: snap.phase, objectives });
+      restored.set(questId, { phase: snap.phase, objectives });
+    }
+    this.states.clear();
+    for (const [questId, state] of restored) {
+      this.states.set(questId, state);
       this.emitter.emit("changed", { questId });
     }
   }
@@ -268,7 +288,8 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   /** The shared event chain for advance/setProgress/complete: emit
    *  `objectiveAdvanced`, and — only on the transition from below target to
    *  at-or-above it — `objectiveCompleted` followed by the auto-complete
-   *  rollup. Always ends with one `changed`. */
+   *  rollup. Always ends with one `changed`. No-op — no event at all — when
+   *  `nextProgress` equals the current value, since nothing changed. */
   private applyProgress(
     quest: string,
     state: QuestRuntimeState,
@@ -277,6 +298,7 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     nextProgress: number,
   ): void {
     const current = state.objectives.get(objective) ?? 0;
+    if (nextProgress === current) return;
     state.objectives.set(objective, nextProgress);
     const done = nextProgress >= def.count;
     this.emitter.emit("objectiveAdvanced", {

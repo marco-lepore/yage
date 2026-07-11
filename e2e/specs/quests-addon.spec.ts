@@ -78,6 +78,10 @@ test.describe("quests addon", () => {
 
     await addHerb(page, 2);
     state = await probe(page);
+    expect(state.herbProgress).toBe(5);
+
+    await addHerb(page, 2); // surplus pickup past the target
+    state = await probe(page);
     expect(state.herbProgress).toBe(5); // clamped to target
   });
 

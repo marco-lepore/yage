@@ -46,8 +46,11 @@ be integer >= 1); optional?: boolean (default false, excluded from
 auto-complete rollup) }`.
 
 Validation (throws at `defineQuests` call time): empty `title` on a quest;
-non-integer or `< 1` objective `count`; a `requires` id naming a quest absent
-from the whole map (forward references to a later-declared quest are fine).
+non-integer or `< 1` objective `count`; a quest with no non-`optional`
+objective (an empty or all-optional objective set would never gate the
+auto-complete rollup, so the quest would complete immediately); a `requires`
+id naming a quest absent from the whole map (forward references to a
+later-declared quest are fine).
 
 `QuestCatalog<TDefs>`: `ids` (readonly array, authoring order), `get(id)`
 (throws on unknown), `tryGet(id)` (undefined on unknown), `has(id)` (type
@@ -79,7 +82,8 @@ const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
   `completed` or `failed`. On an inactive-but-available quest, activates and
   completes in the same call (one `questCompleted`, no `questStarted`).
 - `fail(quest): void` — `active` or `available` -> `failed`. No-op if already
-  terminal. Terminal in v1 (no re-open/retry).
+  terminal. Terminal in v1 (no re-open/retry) — a failed quest never reaches
+  `completed`, so any quest that `requires` it stays `locked` permanently.
 
 Unknown **objective** id (unreachable through the typed API) throws. Unknown
 **quest** id behaves exactly like "not active" everywhere except `start`
