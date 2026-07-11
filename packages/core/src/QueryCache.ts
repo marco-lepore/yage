@@ -50,12 +50,37 @@ export class QueryResult {
  */
 export class QueryCache {
   private queries: QueryResult[] = [];
+  /** Every entity currently alive in this cache's scene, for seeding new queries. */
+  private readonly liveEntities = new Set<Entity>();
 
-  /** Register a query. Returns a stable reference to a live result set. */
+  /**
+   * Register a query. The returned result is pre-populated with currently
+   * matching entities and then maintained incrementally as components are
+   * added/removed and entities are destroyed.
+   */
   register(filter: QueryFilter): QueryResult {
     const result = new QueryResult(filter);
+    this.seed(result);
     this.queries.push(result);
     return result;
+  }
+
+  /**
+   * Build a seeded `QueryResult` without registering it — a detached
+   * point-in-time read for callers that must not register (e.g. render-phase
+   * snapshots). It never receives updates. Use `register` for a live query.
+   */
+  queryOnce(filter: QueryFilter): QueryResult {
+    const result = new QueryResult(filter);
+    this.seed(result);
+    return result;
+  }
+
+  /** Populate `result._entities` with currently matching live entities. */
+  private seed(result: QueryResult): void {
+    for (const e of this.liveEntities) {
+      if (this.matches(e, result._filter)) result._entities.add(e);
+    }
   }
 
   /**
@@ -69,6 +94,7 @@ export class QueryCache {
 
   /** Called by Entity when a component is added. */
   onComponentAdded(entity: Entity): void {
+    this.liveEntities.add(entity);
     for (const q of this.queries) {
       if (this.matches(entity, q._filter)) {
         q._entities.add(entity);
@@ -87,6 +113,7 @@ export class QueryCache {
 
   /** Called when an entity is destroyed. */
   onEntityDestroyed(entity: Entity): void {
+    this.liveEntities.delete(entity);
     for (const q of this.queries) {
       q._entities.delete(entity);
     }

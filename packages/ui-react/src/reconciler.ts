@@ -288,16 +288,17 @@ const hostConfig = {
   },
 
   removeChild(parent: UIElement, child: UIElement) {
-    if (child && isContainer(parent)) {
-      parent.removeElement(child);
-      // React only calls removeChild/removeChildFromContainer for the
-      // top-most host instance of a deleted subtree (never for reorders —
-      // those use insertBefore), so one recursive destroy() per deletion
-      // root exactly mirrors imperative teardown. detachDeletedInstance
-      // stays a noop: it fires per instance (would double-destroy children)
-      // and in the passive phase (after paint).
-      child.destroy();
-    }
+    if (!child) return;
+    if (isContainer(parent)) parent.removeElement(child);
+    // React only calls removeChild/removeChildFromContainer for the
+    // top-most host instance of a deleted subtree (never for reorders —
+    // those use insertBefore), so one recursive destroy() per deletion
+    // root exactly mirrors imperative teardown. detachDeletedInstance
+    // stays a noop: it fires per instance (would double-destroy children)
+    // and in the passive phase (after paint). Destroy unconditionally —
+    // even a child whose append onto a non-container leaf was warned and
+    // ignored still needs its own teardown on removal.
+    child.destroy();
   },
 
   removeChildFromContainer(container: Container, child: UIElement) {

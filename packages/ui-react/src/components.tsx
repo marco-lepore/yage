@@ -66,13 +66,19 @@ export interface PanelProps extends UIElementPanelProps {
 
 export type TextProps = UIElementTextProps;
 
-export interface ButtonProps extends Omit<UIElementButtonProps, "children"> {
+export interface ButtonProps extends Omit<
+  UIElementButtonProps,
+  "children" | "hoverBackground" | "pressBackground"
+> {
   /** Shorthand for `background` (see {@link PanelProps.bg}). */
   bg?: BackgroundOptions;
   /**
    * Hover-state background override. Button-specific alias applied inline
    * by `Button` itself (not part of the shared shorthand table — no other
-   * element has a hover-state background to alias).
+   * element has a hover-state background to alias). The canonical
+   * `hoverBackground`/`pressBackground` props are omitted from this
+   * interface — `hoverBg`/`pressBg` are the only way to set these on
+   * `<Button>`.
    */
   hoverBg?: BackgroundOptions;
   /** Press-state background override — see {@link hoverBg}. */

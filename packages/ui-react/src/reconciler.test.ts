@@ -488,6 +488,30 @@ describe("reconciler dev-warnings", () => {
     warn.mockRestore();
   });
 
+  it("destroys a child rendered under a non-container leaf when it is removed", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const container = new mocks.MockContainer();
+    const root = createRoot(container as never);
+    const destroySpy = vi.spyOn(PanelNode.prototype, "destroy");
+
+    // The child's append onto the leaf parent is warned-and-ignored (never
+    // reaches the display tree), so it can't be found via the parent's own
+    // child bookkeeping — only React's fiber tree still holds the reference.
+    const tree = (open: boolean) =>
+      createElement(
+        "ui-element",
+        { _ctor: SilentLeafWidget },
+        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+      );
+
+    root.render(tree(true));
+    root.render(tree(false));
+
+    expect(destroySpy).toHaveBeenCalledTimes(1);
+    destroySpy.mockRestore();
+    warn.mockRestore();
+  });
+
   describe("prop removal (commitUpdate diff)", () => {
     it("resets a removed prop to its default instead of leaving the old value", () => {
       const container = new mocks.MockContainer();

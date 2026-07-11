@@ -133,6 +133,10 @@ export function applyLayoutValue(
       case "maxHeight":
         node.setMaxHeight(undefined);
         return;
+      default: {
+        const exhaustive: never = prop;
+        return exhaustive;
+      }
     }
   }
 

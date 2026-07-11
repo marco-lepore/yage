@@ -237,7 +237,7 @@ const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 
 `useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
 
-`useQuery` registers its `QueryCache` query on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone.
+`useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine — re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
 
 ```ts
 const inv  = useStore(game.inventory);                          // entries snapshot

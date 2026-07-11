@@ -321,9 +321,12 @@ a dropped promise can hide errors). Production builds suppress the warning.
 |---|---|
 | `QueryCache` | Incremental entity query cache |
 | `QueryResult` | Iterable result from `cache.register([Component, ...])` |
+| `cache.queryOnce([Component, ...])` | Detached, seeded, one-shot `QueryResult` — never registered, never updated |
 | `filterEntities(entities, filter)` | One-off filter by name, tag, component, or trait |
 
-Call `cache.unregister(result)` when a registered query no longer needs live updates — a `QueryResult` keeps receiving `onComponentAdded`/`onComponentRemoved` updates until released. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
+`cache.register(filter)` returns a `QueryResult` pre-populated with entities that already match, then kept current via `onComponentAdded`/`onComponentRemoved`/`onEntityDestroyed`. Call `cache.unregister(result)` when it no longer needs live updates — otherwise it keeps receiving updates forever. Queries registered once at system-install time (`DisplaySystem`, `UILayoutSystem`) are engine-lifetime by design and are never unregistered; per-mount registrations (e.g. `@yagejs/ui-react`'s `useQuery`) release on unmount.
+
+`cache.queryOnce(filter)` builds the same seeded snapshot but skips registration entirely — use it for a point-in-time read (e.g. a render-phase snapshot) that must not hold a live entry in the cache.
 
 ### Stable Identity
 
