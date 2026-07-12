@@ -8,8 +8,7 @@ import {
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -215,7 +214,7 @@ async function main() {
     },
     preventDefaultKeys: ["Space"],
   }));
-  engine.use(new DebugPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new PhysicsBasicsScene());

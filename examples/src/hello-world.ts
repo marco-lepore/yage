@@ -1,7 +1,6 @@
 import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -86,7 +85,7 @@ async function main() {
     backgroundColor: 0x0a0a0a,
     container: setupGameContainer(800, 600),
   }));
-  engine.use(new DebugPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new HelloWorldScene());

@@ -3,8 +3,7 @@ import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   .controls kbd { min-width: 24px; text-align: center; }
@@ -388,7 +387,7 @@ async function main() {
     preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
   }));
   engine.use(new AudioPlugin());
-  engine.use(new DebugPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new AudioScene());

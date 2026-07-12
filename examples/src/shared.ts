@@ -1,4 +1,21 @@
 /** Shared utilities for YAGE examples. */
+import type { Engine } from "@yagejs/core";
+
+/**
+ * Install `DebugPlugin` when the page URL opts in via a `debug` query param:
+ * `?debug=1` (any value) installs the plugin — inspector `time`/`input`
+ * control plus the backquote overlay toggle — and `?debug=overlay` also
+ * starts with the overlay visible. Without the param the plugin is neither
+ * installed nor loaded. Call it where `engine.use(new DebugPlugin())` would
+ * go, before `engine.start()`. Examples that showcase the overlay itself
+ * install `DebugPlugin` directly instead.
+ */
+export async function installDebugFromUrl(engine: Engine): Promise<void> {
+  const mode = new URLSearchParams(window.location.search).get("debug");
+  if (mode === null) return;
+  const { DebugPlugin } = await import("@yagejs/debug");
+  engine.use(new DebugPlugin({ startEnabled: mode === "overlay" }));
+}
 
 /** Inject optional extra CSS for a specific example. Base styles are in shared.css. */
 export function injectStyles(extra?: string): void {
