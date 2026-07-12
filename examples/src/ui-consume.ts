@@ -31,7 +31,7 @@ import {
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import { Anchor, UIPanel, UIPlugin, UIText } from "@yagejs/ui";
-import { setupGameContainer } from "./shared.js";
+import { installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -254,6 +254,7 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
+await installDebugFromUrl(engine);
 
 await engine.start();
 await engine.scenes.push(new DemoScene());

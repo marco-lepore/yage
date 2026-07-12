@@ -10,7 +10,7 @@ import {
   SplitTextComponent,
   TextComponent,
 } from "@yagejs/renderer";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -302,7 +302,7 @@ class SplitTextScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
-  const engine = new Engine();
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -312,6 +312,8 @@ async function main(): Promise<void> {
       container: setupGameContainer(WIDTH, HEIGHT),
     }),
   );
+
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new SplitTextScene());

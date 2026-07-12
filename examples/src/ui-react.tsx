@@ -17,7 +17,7 @@ import {
   Anchor,
 } from "@yagejs/ui-react";
 import type { Placement } from "@yagejs/ui-react";
-import { injectStyles, setupGameContainer } from "./shared";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared";
 import {
   textStyle, allAssets, defaultTextStyle, nineSliceBtnReact, panelBg,
   sprites as S, nineSlice,
@@ -325,6 +325,7 @@ async function main() {
   // preload), replacing the old manual `document.fonts.load` call.
   engine.use(new UIPlugin({ defaultTextStyle }));
   engine.use(new UIReactPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new UIReactScene());

@@ -65,7 +65,7 @@ import {
   wave,
 } from "@yagejs/effects";
 import type { HitFlashHandle, ShockwaveHandle } from "@yagejs/effects";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 const VIRTUAL_WIDTH = 900;
 const VIRTUAL_HEIGHT = 640;
@@ -775,7 +775,7 @@ let activeSidebar: PanelNode | null = null;
 let sidebarScrollY = 0;
 
 async function main(): Promise<void> {
-  const engine = new Engine({ debug: false });
+  const engine = new Engine({ debug: true });
 
   const container = setupGameContainer(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
   engine.use(
@@ -788,6 +788,7 @@ async function main(): Promise<void> {
   );
   engine.use(new SnapshotPlugin());
   engine.use(new UIPlugin());
+  await installDebugFromUrl(engine);
 
   // Wheel-scroll the sidebar when the pointer is over it. Yoga's
   // `margin.top: -scrollY` on `scroller` slides overflowing content up under
