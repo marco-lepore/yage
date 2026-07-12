@@ -45,6 +45,10 @@ export class GridGraph {
   private readonly heuristicFn: (dx: number, dy: number) => number;
 
   constructor(options: GridGraphOptions) {
+    if (options.tileWidth <= 0 || options.tileHeight <= 0) {
+      // Zero divides to NaN in worldToCell; negative silently mirrors it.
+      throw new RangeError("GridGraph: tileWidth and tileHeight must be positive");
+    }
     this.cols = options.cols;
     this.rows = options.rows;
     this.tileWidth = options.tileWidth;

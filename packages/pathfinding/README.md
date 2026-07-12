@@ -13,10 +13,12 @@ npm install @yagejs/pathfinding
 ```ts
 import { GridGraph } from "@yagejs/pathfinding";
 
+const cols = 20;
+const rows = 15;
 const walls = new Uint8Array(cols * rows); // 1 = blocked
 const grid = new GridGraph({
-  cols: 20,
-  rows: 15,
+  cols,
+  rows,
   tileWidth: 32,
   tileHeight: 32,
   isWalkable: (col, row) => walls[row * cols + col] === 0,

@@ -7,9 +7,12 @@ Depends on `@yagejs/core`. Grid A* pathfinding, pixels in and out.
 ```ts
 import { GridGraph } from "@yagejs/pathfinding";
 
+const cols = 20;
+const rows = 15;
+const walls = new Uint8Array(cols * rows); // 1 = blocked
 const grid = new GridGraph({
-  cols: 20,
-  rows: 15,
+  cols,
+  rows,
   tileWidth: 32,
   tileHeight: 32,
   isWalkable: (col, row) => walls[row * cols + col] === 0, // called on every findPath, never cached
@@ -43,12 +46,14 @@ import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 
 // tilemap.data is @yagejs/tilemap's TilemapData
 const grid = gridFromTilemap(tilemap.data, {
-  layers: ["collision"], // tile layers to read; omit = all
+  layers: ["collision"], // tile layers to read; omit = all; throws if none match
   blocked: (gid, col, row) => gid !== 0, // default; a cell blocks if any read layer's cell satisfies this
   cost: (gid, col, row) => 1, // maps a gid to a cell cost, default 1, floored at 1; highest wins across layers
   origin: tilemap.entity.get(Transform).position,
 });
 ```
+
+Callbacks receive base tile ids — Tiled flip/rotation flag bits are masked off, so `gid === 1` matches a flipped instance of tile 1.
 
 The `./tilemap` subpath keeps `@yagejs/tilemap` a type-only, optional peer — importing from the root `@yagejs/pathfinding` entry pulls in nothing beyond `@yagejs/core`.
 

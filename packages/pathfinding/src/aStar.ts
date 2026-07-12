@@ -123,10 +123,10 @@ function reconstructPath(parent: Int32Array, goalIndex: number, cols: number): G
   for (;;) {
     const col = index % cols;
     const row = (index - col) / cols;
-    cells.unshift({ col, row });
+    cells.push({ col, row });
     const p = parent[index]!;
     if (p === -1) break;
     index = p;
   }
-  return cells;
+  return cells.reverse();
 }

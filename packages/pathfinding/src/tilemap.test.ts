@@ -108,4 +108,29 @@ describe("gridFromTilemap", () => {
     const intoWall = grid.findPath({ x: 5, y: 5 }, { x: 15, y: 15 }); // goal cell (1,1) is a wall
     expect(intoWall).toBeNull();
   });
+
+  it("masks Tiled flip flags off gids before the blocked/cost callbacks", () => {
+    const FLIP_H = 0x80000000;
+    const map = buildTilemap();
+    // Replace the wall at (1,1) with a horizontally-flipped instance of gid 1.
+    map.tileLayers[0]!.data[5] = (FLIP_H | 1) >>> 0;
+
+    const seen: number[] = [];
+    const grid = gridFromTilemap(map, {
+      blocked: (gid) => {
+        seen.push(gid);
+        return gid === 1;
+      },
+    });
+
+    expect(seen).not.toContain((FLIP_H | 1) >>> 0); // callbacks get base ids only
+    const blockedRow = grid.findPath({ x: 5, y: 15 }, { x: 35, y: 15 });
+    expect(blockedRow!.cells.some((c) => c.row !== 1)).toBe(true); // flipped wall still blocks
+  });
+
+  it("throws when a layers filter matches no tile layer", () => {
+    expect(() => gridFromTilemap(buildTilemap(), { layers: ["colision"] })).toThrow(
+      /no tile layer matches/,
+    );
+  });
 });

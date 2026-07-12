@@ -227,4 +227,10 @@ describe("GridGraph", () => {
     const b = grid.findPath({ x: 5, y: 5 }, { x: 55, y: 55 });
     expect(a).toEqual(b);
   });
+
+  it("rejects non-positive tile dimensions", () => {
+    const base = { cols: 4, rows: 4, isWalkable: () => true };
+    expect(() => new GridGraph({ ...base, tileWidth: 0, tileHeight: 16 })).toThrow(RangeError);
+    expect(() => new GridGraph({ ...base, tileWidth: 16, tileHeight: -8 })).toThrow(RangeError);
+  });
 });

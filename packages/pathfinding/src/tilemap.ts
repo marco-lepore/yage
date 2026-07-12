@@ -8,7 +8,9 @@ import { GridGraph } from "./GridGraph.js";
 export interface GridFromTilemapOptions {
   /** Tile-layer names to read. Omit to read every tile layer. */
   layers?: string[];
-  /** A cell blocks if any read layer's cell satisfies this. Default `gid => gid !== 0`. */
+  /** A cell blocks if any read layer's cell satisfies this. Default
+   *  `gid => gid !== 0`. Receives the base tile id — Tiled's flip/rotation
+   *  flag bits are masked off, so a flipped wall matches its plain gid. */
   blocked?: (gid: number, col: number, row: number) => boolean;
   /**
    * Maps a gid to a cell cost, default 1. When multiple read layers give a
@@ -23,6 +25,10 @@ export interface GridFromTilemapOptions {
 
 const DEFAULT_BLOCKED = (gid: number): boolean => gid !== 0;
 
+/** Tiled stores flip/rotation flags in a gid's four high bits; masking them
+ *  off recovers the base tile id the `blocked`/`cost` callbacks match on. */
+const GID_MASK = 0x0fffffff;
+
 /**
  * Builds a `GridGraph` from a tilemap's tile layers. Precomputes a
  * walkability + cost pass over the grid once; the returned graph's
@@ -35,6 +41,12 @@ export function gridFromTilemap(data: TilemapData, options: GridFromTilemapOptio
   const layers = options.layers
     ? data.tileLayers.filter((l) => options.layers!.includes(l.name))
     : data.tileLayers;
+  if (options.layers && layers.length === 0) {
+    throw new Error(
+      `gridFromTilemap: no tile layer matches [${options.layers.join(", ")}] — ` +
+        `available: [${data.tileLayers.map((l) => l.name).join(", ")}]`,
+    );
+  }
   const blocked = options.blocked ?? DEFAULT_BLOCKED;
   const cost = options.cost;
 
@@ -47,7 +59,7 @@ export function gridFromTilemap(data: TilemapData, options: GridFromTilemapOptio
       let isBlocked = false;
       let cellCost = 1;
       for (const layer of layers) {
-        const gid = layer.data[index] ?? 0;
+        const gid = (layer.data[index] ?? 0) & GID_MASK;
         if (blocked(gid, col, row)) isBlocked = true;
         if (cost && gid !== 0) cellCost = Math.max(cellCost, cost(gid, col, row));
       }
