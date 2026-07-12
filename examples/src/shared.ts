@@ -9,12 +9,22 @@ import type { Engine } from "@yagejs/core";
  * installed nor loaded. Call it where `engine.use(new DebugPlugin())` would
  * go, before `engine.start()`. Examples that showcase the overlay itself
  * install `DebugPlugin` directly instead.
+ *
+ * Reaching the inspector at `window.__yage__` additionally requires the
+ * engine to be constructed with `new Engine({ debug: true })` — every
+ * example does.
  */
 export async function installDebugFromUrl(engine: Engine): Promise<void> {
   const mode = new URLSearchParams(window.location.search).get("debug");
   if (mode === null) return;
-  const { DebugPlugin } = await import("@yagejs/debug");
-  engine.use(new DebugPlugin({ startEnabled: mode === "overlay" }));
+  try {
+    const { DebugPlugin } = await import("@yagejs/debug");
+    engine.use(new DebugPlugin({ startEnabled: mode === "overlay" }));
+  } catch (err) {
+    // Debug support is opt-in sugar; a failed chunk load (offline, stale
+    // deployment) must not keep the example from booting.
+    console.warn("[examples] ?debug requested but @yagejs/debug failed to load:", err);
+  }
 }
 
 /** Inject optional extra CSS for a specific example. Base styles are in shared.css. */
