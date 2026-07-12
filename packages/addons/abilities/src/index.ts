@@ -1,1 +1,80 @@
-export {};
+export { Abilities } from "./core/Abilities.js";
+export { defineStep } from "./core/defineStep.js";
+export type {
+  AbilityDef,
+  AbilityStep,
+  PlayRejection,
+  PlayResult,
+  PointStep,
+  PointStepHooks,
+  StepContext,
+  WindowStep,
+  WindowStepHooks,
+} from "./core/types.js";
+
+export { Hittable } from "./core/hit/types.js";
+export type {
+  Hit,
+  HitOutcomes,
+  HitResult,
+  StandardHitData,
+} from "./core/hit/types.js";
+export {
+  createHitDelivery,
+  resolveHitSpec,
+  shouldConsumeProjectile,
+} from "./core/hit/delivery.js";
+export type {
+  DeliveryColliderGroups,
+  HitDelivery,
+  HitDeliveryOptions,
+  HitSpec,
+} from "./core/hit/delivery.js";
+export { resolveHit } from "./core/hit/resolve.js";
+export type { HitStage } from "./core/hit/resolve.js";
+
+export {
+  HitGuarded,
+  HitReceived,
+  HitReceiver,
+} from "./components/HitReceiver.js";
+export type {
+  GuardParams,
+  GuardPolicy,
+  HitFilter,
+  HitReceiverOptions,
+} from "./components/HitReceiver.js";
+export {
+  Health,
+  HealthDamaged,
+  HealthDied,
+  HealthHealed,
+} from "./components/Health.js";
+export { Stagger } from "./components/Stagger.js";
+export {
+  damageStep,
+  defaultHitSteps,
+  reactionStep,
+} from "./components/standardHit.js";
+export { Facing } from "./components/Facing.js";
+export type { Cardinal } from "./components/Facing.js";
+export { HitDealt, createReportingDelivery } from "./components/reportedDelivery.js";
+export { resolveAim } from "./components/aim.js";
+export type { Aim } from "./components/aim.js";
+export { anim } from "./components/steps/anim.js";
+export { guard } from "./components/steps/guard.js";
+export { invulnerable } from "./components/steps/invulnerable.js";
+export {
+  REACTION_PRIORITY,
+  staggerMotion,
+  staggerReaction,
+} from "./components/steps/stagger.js";
+
+export { Projectile } from "./entities/Projectile.js";
+export type { ProjectileConfig } from "./entities/Projectile.js";
+export { hitbox } from "./components/steps/hitbox.js";
+export type { HitboxParams } from "./components/steps/hitbox.js";
+export { projectile } from "./components/steps/projectile.js";
+export type { ProjectileParams } from "./components/steps/projectile.js";
+export { TouchDamage } from "./components/TouchDamage.js";
+export type { TouchDamageOptions } from "./components/TouchDamage.js";
