@@ -9,8 +9,8 @@ function agentAt(position: Vec2, maxSpeed = 100): AgentState {
 }
 
 /** A constant-output behavior, for isolating blend math from a real behavior's own logic. */
-function constant(vector: Vec2, weight = 1): SteeringBehavior {
-  return { weight, evaluate: () => vector };
+function constant(vector: Vec2, weight = 1, priority = 0): SteeringBehavior {
+  return { weight, priority, evaluate: () => vector };
 }
 
 describe("Steering.compute", () => {
@@ -70,5 +70,55 @@ describe("Steering.compute", () => {
     steering.add(behavior).add(constant(new Vec2(0, 10)));
     steering.clear();
     expect(steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60)).toEqual(Vec2.ZERO);
+  });
+
+  it("a non-zero higher tier overrides the lower tier outright", () => {
+    const steering = new Steering([
+      constant(new Vec2(100, 0), 1, 0), // seek-like, tier 0
+      constant(new Vec2(0, 100), 1, 1), // avoid-like, tier 1
+    ]);
+    const result = steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60);
+    expect(result.x).toBeCloseTo(0); // tier 0 never enters the sum
+    expect(result.y).toBeCloseTo(100);
+  });
+
+  it("a silent higher tier falls through to the weighted sum below", () => {
+    const steering = new Steering([
+      constant(new Vec2(100, 0), 1, 0),
+      constant(Vec2.ZERO, 1, 1),
+    ]);
+    const result = steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60);
+    expect(result.x).toBeCloseTo(100);
+  });
+
+  it("behaviors within one tier still weighted-sum", () => {
+    const steering = new Steering([
+      constant(new Vec2(100, 0), 1, 2),
+      constant(new Vec2(0, 100), 3, 2),
+      constant(new Vec2(-1000, -1000), 1, 0), // never consulted
+    ]);
+    const result = steering.compute(agentAt(Vec2.ZERO, 1000), 1 / 60);
+    expect(result.x).toBeCloseTo(100);
+    expect(result.y).toBeCloseTo(300);
+  });
+
+  it("lower tiers are not evaluated on frames a higher tier wins", () => {
+    let lowerEvaluated = 0;
+    const lower: SteeringBehavior = {
+      weight: 1,
+      priority: 0,
+      evaluate: () => {
+        lowerEvaluated++;
+        return new Vec2(100, 0);
+      },
+    };
+    const steering = new Steering([lower, constant(new Vec2(0, 100), 1, 1)]);
+
+    steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60);
+    expect(lowerEvaluated).toBe(0);
+
+    steering.remove(steering.behaviors[1]!);
+    steering.compute(agentAt(Vec2.ZERO, 100), 1 / 60);
+    expect(lowerEvaluated).toBe(1);
   });
 });

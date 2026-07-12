@@ -5,8 +5,10 @@ import {
   arrive,
   avoidObstacles,
   cohesion,
+  contain,
   evade,
   flee,
+  followPath,
   pursue,
   seek,
   separation,
@@ -130,13 +132,17 @@ describe("wander", () => {
   it("uses agent.velocity as heading when moving, falls back to the last heading when stationary", () => {
     const random = deterministicRandom([0.5, 0.5, 0.5]);
     const behavior = wander({ random, jitter: 0 });
-    // Moving right: wander circle sits ahead along +x.
-    const moving = behavior.evaluate(agent(Vec2.ZERO, new Vec2(1, 0), 100), 1 / 60);
-    // Now stationary: heading should fall back to the last (rightward) heading,
-    // not snap to Vec2.RIGHT-from-scratch or collapse to ZERO.
+    // Moving DOWN (+y) — deliberately not the Vec2.RIGHT initial fallback,
+    // so a stationary frame distinguishes "kept the last heading" from
+    // "reset to the default".
+    const moving = behavior.evaluate(agent(Vec2.ZERO, new Vec2(0, 1), 100), 1 / 60);
     const stationary = behavior.evaluate(agent(Vec2.ZERO, Vec2.ZERO, 100), 1 / 60);
     expect(moving.length()).toBeCloseTo(100);
     expect(stationary.length()).toBeCloseTo(100);
+    // Circle center 60px along the kept +y heading, offset radius 30 at
+    // angle 0 (+x): the steer must point dominantly downward, not along +x.
+    expect(stationary.y).toBeGreaterThan(stationary.x);
+    expect(stationary.y).toBeGreaterThan(50);
   });
 });
 
@@ -307,6 +313,112 @@ describe("separation / alignment / cohesion", () => {
     const neighbors: Kinematic[] = [{ position: new Vec2(1000, 0), velocity: Vec2.ZERO }];
     const result = cohesion(neighbors, { radius: 40 }).evaluate(agent(Vec2.ZERO), 1 / 60);
     expect(result).toEqual(Vec2.ZERO);
+  });
+});
+
+describe("followPath", () => {
+  const path = [new Vec2(100, 0), new Vec2(100, 100), new Vec2(0, 100)];
+
+  it("seeks the first waypoint at full speed", () => {
+    const result = followPath(path).evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
+    expect(result.x).toBeCloseTo(50);
+    expect(result.y).toBeCloseTo(0);
+  });
+
+  it("advances to the next waypoint inside waypointRadius", () => {
+    const behavior = followPath(path, { waypointRadius: 16 });
+    const result = behavior.evaluate(agent(new Vec2(95, 0), Vec2.ZERO, 50), 1 / 60);
+    expect(result.y).toBeCloseTo(50, 0); // now heading to (100, 100)
+  });
+
+  it("gives the final waypoint arrive semantics and fires onArrive once", () => {
+    const onArrive = vi.fn();
+    const behavior = followPath(path, { slowRadius: 100, arriveRadius: 4, onArrive });
+    // Walk the index to the last waypoint.
+    behavior.evaluate(agent(new Vec2(100, 0)), 1 / 60);
+    behavior.evaluate(agent(new Vec2(100, 100)), 1 / 60);
+
+    const ramped = behavior.evaluate(agent(new Vec2(50, 100), Vec2.ZERO, 100), 1 / 60);
+    expect(ramped.length()).toBeCloseTo(50); // d=50 inside slowRadius 100 at maxSpeed 100
+
+    const settled = behavior.evaluate(agent(new Vec2(1, 100)), 1 / 60);
+    expect(settled).toEqual(Vec2.ZERO);
+    behavior.evaluate(agent(new Vec2(1, 100)), 1 / 60);
+    expect(onArrive).toHaveBeenCalledTimes(1);
+  });
+
+  it("loop wraps back to the first waypoint instead of settling", () => {
+    const behavior = followPath(path, { loop: true, waypointRadius: 16 });
+    behavior.evaluate(agent(new Vec2(100, 0)), 1 / 60);
+    behavior.evaluate(agent(new Vec2(100, 100)), 1 / 60);
+    // At the last waypoint: advances back to (100, 0), never ZERO.
+    const result = behavior.evaluate(agent(new Vec2(0, 100), Vec2.ZERO, 50), 1 / 60);
+    expect(result.length()).toBeCloseTo(50);
+    expect(result.x).toBeGreaterThan(0);
+    expect(result.y).toBeLessThan(0);
+  });
+
+  it("returns ZERO for an empty waypoint list", () => {
+    const result = followPath([]).evaluate(agent(Vec2.ZERO), 1 / 60);
+    expect(result).toEqual(Vec2.ZERO);
+  });
+
+  it("startAt resumes from a saved waypoint index", () => {
+    const behavior = followPath(path, { startAt: 2 });
+    const result = behavior.evaluate(agent(new Vec2(50, 100), Vec2.ZERO, 50), 1 / 60);
+    expect(result.x).toBeLessThan(0); // heading to (0, 100), not back to (100, 0)
+    expect(behavior.waypointIndex).toBe(2);
+  });
+
+  it("startAt 'nearest' enters the path at the closest waypoint", () => {
+    const behavior = followPath(path, { startAt: "nearest" });
+    behavior.evaluate(agent(new Vec2(120, 60), Vec2.ZERO, 50), 1 / 60);
+    expect(behavior.waypointIndex).toBe(1); // (100, 100) is closest, outside waypointRadius
+  });
+
+  it("waypointIndex tracks advancement for saving", () => {
+    const behavior = followPath(path, { waypointRadius: 16 });
+    expect(behavior.waypointIndex).toBe(0);
+    behavior.evaluate(agent(new Vec2(95, 0)), 1 / 60);
+    expect(behavior.waypointIndex).toBe(1);
+  });
+});
+
+describe("contain", () => {
+  const bounds = { x: 0, y: 0, width: 200, height: 200 };
+
+  it("returns ZERO while the look-ahead point stays inside", () => {
+    const result = contain(bounds, { lookAhead: 50 }).evaluate(
+      agent(new Vec2(100, 100), new Vec2(100, 0)),
+      1 / 60,
+    );
+    expect(result).toEqual(Vec2.ZERO);
+  });
+
+  it("steers inward when heading across an edge, keeping the along-edge component", () => {
+    // Moving right-and-slightly-down near the right edge: x flips inward, y keeps sign.
+    const result = contain(bounds, { lookAhead: 60 }).evaluate(
+      agent(new Vec2(180, 100), new Vec2(100, 20).normalize().scale(100), 100),
+      1 / 60,
+    );
+    expect(result.x).toBeLessThan(0);
+    expect(result.y).toBeGreaterThan(0);
+    expect(result.length()).toBeCloseTo(100);
+  });
+
+  it("steers a stationary agent outside the bounds straight back in", () => {
+    const result = contain(bounds).evaluate(agent(new Vec2(-40, 100), Vec2.ZERO, 80), 1 / 60);
+    expect(result.x).toBeCloseTo(80);
+    expect(result.y).toBeCloseTo(0);
+  });
+
+  it("steers diagonally inward from a corner violation", () => {
+    const result = contain(bounds, { lookAhead: 10 }).evaluate(
+      agent(new Vec2(210, 210), Vec2.ZERO, 100),
+      1 / 60,
+    );
+    expect(result.x).toBeLessThan(0);
+    expect(result.y).toBeLessThan(0);
   });
 });
 

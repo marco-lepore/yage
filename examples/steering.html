@@ -3,24 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YAGE — Behaviors Addon</title>
+    <title>YAGE — Steering Addon</title>
     <link rel="stylesheet" href="/shared.css" />
   </head>
   <body>
     <a class="back-link" href="/">&larr; All Examples</a>
-    <h1>Behaviors Addon</h1>
+    <h1>Steering Addon</h1>
     <div id="game-container"></div>
     <div class="controls">
       <span><kbd>WASD</kbd> / arrows move the blue player</span>
       <span>
+        <kbd>1</kbd>-<kbd>7</kbd> toggle each agent group (seek, flee, wander,
+        patrol, flock, avoider, physics) · <kbd>8</kbd>/<kbd>9</kbd>/<kbd>0</kbd>
+        toggle the flock's separation/alignment/cohesion rules
+      </span>
+      <span>
         <span style="color: #ef4444">red</span> seeks ·
         <span style="color: #f97316">orange</span> flees within range ·
-        <span style="color: #38bdf8">blue dots</span> wander ·
+        <span style="color: #38bdf8">blue dots</span> wander, contained on the field ·
+        <span style="color: #2dd4bf">teal</span> patrols a waypoint loop ·
         <span style="color: #c084fc">purple</span> flock ·
         <span style="color: #facc15">yellow</span> routes around the rocks ·
-        <span style="color: #4ade80">green</span> is a physics body driven by steering
+        <span style="color: #4ade80">green</span> is a dynamic body (impulse drive) that shoves the crates
       </span>
     </div>
-    <script type="module" src="/src/behaviors.ts"></script>
+    <script type="module" src="/src/steering.ts"></script>
   </body>
 </html>

@@ -3,7 +3,10 @@ import { defineConfig } from "tsup";
 const isWatch = process.argv.includes("--watch");
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // Two entries enforce the export split:
+  //   "."         -> src/index.ts   (headless: @yagejs/core only)
+  //   "./physics" -> src/physics.ts (value-imports @yagejs/physics)
+  entry: ["src/index.ts", "src/physics.ts"],
   format: ["esm", "cjs"],
   dts: !isWatch,
   clean: !isWatch,

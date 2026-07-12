@@ -1,29 +1,34 @@
 /**
- * Deterministic e2e fixture for @yagejs-addons/behaviors.
+ * Deterministic e2e fixture for @yagejs-addons/steering.
  *
  * Every agent targets a FIXED point or a fixed obstacle list — no player
  * input needed, so determinism comes from the frozen clock alone (plus a
  * seeded `random` for the one wander agent, included for parity with the
  * shipped example even though nothing here asserts on it). Entities are
  * named so the spec drives them purely through the Inspector API
- * (`getEntityPosition`), and `window.__behaviors__` exposes the fixed
- * target/obstacle data so the spec never hardcodes it a second time.
+ * (`getEntityPosition`), and `window.__steering__` exposes the fixed
+ * target/waypoint/obstacle data (and a knockback trigger for the impulse
+ * agent) so the spec never hardcodes them a second time.
  */
 
 import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
+import { ColliderComponent, PhysicsPlugin, PhysicsWorldKey, RigidBodyComponent } from "@yagejs/physics";
 import { DebugPlugin } from "@yagejs/debug";
 import {
   alignment,
+  arrive,
   avoidObstacles,
   cohesion,
   flee,
+  followPath,
   seek,
   separation,
   SteeringAgent,
   wander,
-} from "@yagejs-addons/behaviors";
-import type { Kinematic, Obstacle } from "@yagejs-addons/behaviors";
+} from "@yagejs-addons/steering";
+import { avoidColliders, PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import type { Kinematic, Obstacle } from "@yagejs-addons/steering";
 import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
@@ -38,6 +43,11 @@ const AVOID_TARGET = new Vec2(750, 500);
 const OBSTACLES: Obstacle[] = [{ position: new Vec2(350, 485), radius: 35 }];
 const BOID_COUNT = 6;
 const BOID_NAMES = Array.from({ length: BOID_COUNT }, (_, i) => `boid-${i}`);
+const PATH_WAYPOINTS = [new Vec2(100, 560), new Vec2(400, 520), new Vec2(700, 560)];
+const IMPULSE_TARGET = new Vec2(700, 100);
+const CRATE_START = new Vec2(400, 100);
+const COLLIDER_AVOID_TARGET = new Vec2(750, 200);
+const WALL_ROCK = { position: new Vec2(400, 210), radius: 30 };
 
 /** A small seeded PRNG (mulberry32) so `wander` is reproducible run to run. */
 function seededRandom(seed: number): () => number {
@@ -51,8 +61,8 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-class BehaviorsE2EScene extends Scene {
-  readonly name = "behaviors-e2e";
+class SteeringE2EScene extends Scene {
+  readonly name = "steering-e2e";
 
   onEnter(): void {
     this.spawnSeeker();
@@ -60,12 +70,24 @@ class BehaviorsE2EScene extends Scene {
     this.spawnAvoider();
     this.spawnFlock();
     this.spawnWanderer();
+    this.spawnPather();
+    this.spawnColliderAvoider();
+    const knockback = this.spawnImpulseAgent();
 
-    (window as unknown as { __behaviors__: unknown }).__behaviors__ = {
+    (window as unknown as { __steering__: unknown }).__steering__ = {
       seekTarget: { x: SEEK_TARGET.x, y: SEEK_TARGET.y },
       fleeTarget: { x: FLEE_TARGET.x, y: FLEE_TARGET.y },
       obstacles: OBSTACLES.map((o) => ({ x: o.position.x, y: o.position.y, radius: o.radius })),
       boidNames: BOID_NAMES,
+      pathWaypoints: PATH_WAYPOINTS.map((w) => ({ x: w.x, y: w.y })),
+      impulseTarget: { x: IMPULSE_TARGET.x, y: IMPULSE_TARGET.y },
+      crateName: "crate-0",
+      colliderObstacle: {
+        x: WALL_ROCK.position.x,
+        y: WALL_ROCK.position.y,
+        radius: WALL_ROCK.radius,
+      },
+      knockback,
     };
   }
 
@@ -89,7 +111,7 @@ class BehaviorsE2EScene extends Scene {
         maxSpeed: 140,
         behaviors: [
           seek(AVOID_TARGET),
-          avoidObstacles(OBSTACLES, { lookAhead: 120, agentRadius: 8, weight: 3 }),
+          avoidObstacles(OBSTACLES, { lookAhead: 120, agentRadius: 8, priority: 1 }),
         ],
       }),
     );
@@ -126,14 +148,81 @@ class BehaviorsE2EScene extends Scene {
       new SteeringAgent({ maxSpeed: 60, behaviors: [wander({ random: seededRandom(42) })] }),
     );
   }
+
+  private spawnPather(): void {
+    const entity = this.spawn("pather");
+    entity.add(new Transform({ position: new Vec2(60, 560) }));
+    entity.add(
+      new SteeringAgent({
+        maxSpeed: 150,
+        behaviors: [followPath(PATH_WAYPOINTS, { waypointRadius: 16 })],
+      }),
+    );
+  }
+
+  /**
+   * Kinematic agent steering around a real static collider discovered by
+   * avoidColliders' raycasts — no hand-authored obstacle list.
+   */
+  private spawnColliderAvoider(): void {
+    const rock = this.spawn("wall-rock");
+    rock.add(new Transform({ position: WALL_ROCK.position }));
+    rock.add(new RigidBodyComponent({ type: "static" }));
+    rock.add(
+      new ColliderComponent({ shape: { type: "circle", radius: WALL_ROCK.radius } }),
+    );
+
+    const world = this.use(PhysicsWorldKey);
+    const entity = this.spawn("collider-avoider");
+    entity.add(new Transform({ position: new Vec2(50, 200) }));
+    entity.add(
+      new SteeringAgent({
+        maxSpeed: 140,
+        behaviors: [
+          seek(COLLIDER_AVOID_TARGET),
+          avoidColliders(world, { lookAhead: 120, priority: 1 }),
+        ],
+      }),
+    );
+  }
+
+  /**
+   * Impulse-drive agent on a straight run through a pushable crate. Returns
+   * a knockback trigger for the spec: a mass-scaled impulse for an exact
+   * -300 px/s vertical velocity change.
+   */
+  private spawnImpulseAgent(): () => void {
+    const crate = this.spawn("crate-0");
+    crate.add(new Transform({ position: CRATE_START }));
+    crate.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0, linearDamping: 3 }));
+    crate.add(
+      new ColliderComponent({ shape: { type: "box", width: 20, height: 20 }, density: 0.4 }),
+    );
+
+    const entity = this.spawn("impulse-agent");
+    entity.add(new Transform({ position: new Vec2(100, 100) }));
+    entity.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0, linearDamping: 0 }));
+    entity.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
+    entity.add(
+      new PhysicsSteeringAgent({
+        maxSpeed: 150,
+        maxAcceleration: 500,
+        behaviors: [arrive(IMPULSE_TARGET, { slowRadius: 100 })],
+      }),
+    );
+
+    const body = entity.get(RigidBodyComponent);
+    return () => body.applyImpulse({ x: 0, y: -300 * body.getMass() });
+  }
 }
 
 async function main() {
   const engine = new Engine({ debug: true });
   engine.use(new RendererPlugin({ width: WIDTH, height: HEIGHT, container }));
+  engine.use(new PhysicsPlugin());
   engine.use(new DebugPlugin());
   await engine.start();
-  await engine.scenes.push(new BehaviorsE2EScene());
+  await engine.scenes.push(new SteeringE2EScene());
 }
 
 main().catch(console.error);

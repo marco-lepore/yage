@@ -1,0 +1,360 @@
+---
+title: Steering
+description: Steering (movement AI) for YAGE — seek, flee, arrive, wander, pursue/evade, obstacle avoidance, flocking, path-following, and containment, blended into a desired velocity
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+`@yagejs-addons/steering` is movement-level AI: the logic that turns "chase
+the player", "keep your distance", or "flock with your neighbors" into a
+velocity every frame. The root entry is pure `@yagejs/core` — no pixi, no
+physics, no input. Physics integration lives behind
+`@yagejs-addons/steering/physics`, which adds a mount-and-go agent for
+`RigidBodyComponent` entities.
+
+<Aside type="note">
+This is steering, not decision-making. It answers "which way do I move right
+now", not "should I attack or flee". A behavior tree or state machine for the
+decision layer is a separate, future addon that would sit above this one.
+</Aside>
+
+## Install
+
+```bash
+npm install @yagejs-addons/steering
+# engine peer (single install, reused — not bundled):
+npm install @yagejs/core
+# only if you import @yagejs-addons/steering/physics:
+npm install @yagejs/physics
+```
+
+`@yagejs/core` is the required peer; `@yagejs/physics` is optional and only
+needed for the `/physics` entry. There's no `/presenters` subpath, because
+steering has no view to swap.
+
+## Zero-config kinematic chase
+
+The default output integrates the entity's `Transform` directly — no physics
+body, no extra wiring:
+
+```ts
+import { SteeringAgent, seek } from "@yagejs-addons/steering";
+import { Transform } from "@yagejs/core";
+
+// enemy is an Entity with a Transform. Default output:
+// position += velocity * dt. Nothing else to wire.
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [seek(() => player.get(Transform).position)],
+  }),
+);
+```
+
+`SteeringAgent` is a `@yagejs/core` Component: `ComponentUpdateSystem` drives
+its `update(dt)` automatically once it's added to an entity. It assumes the
+entity is root-level — the default output writes `transform.position`
+(local), so local and world coordinates need to match, which only holds
+without a parent.
+
+## Driving a physics body
+
+`PhysicsSteeringAgent` (from the `/physics` entry) finds the entity's
+`RigidBodyComponent` itself — mount it next to a body and collider and it
+drives them:
+
+```ts
+import { arrive } from "@yagejs-addons/steering";
+import { PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
+import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
+
+enemy.add(new RigidBodyComponent({ type: "dynamic", gravityScale: 0 }));
+enemy.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density: 1 }));
+enemy.add(
+  new PhysicsSteeringAgent({
+    maxSpeed: 130,
+    maxAcceleration: 500, // required — see impulse drive below
+    behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
+  }),
+);
+```
+
+It defaults to **impulse drive**: each frame the agent applies
+`clamp(desired − actual, maxAcceleration·dt) × mass` through `applyImpulse`,
+so steering *composes* with the physics world instead of overriding it. A
+dynamic agent shoves lighter bodies out of its way, gets deflected when
+something hits it, and a knockback impulse sends it flying — then steering
+pulls it back on course at `maxAcceleration`. That's also why
+`maxAcceleration` is required here: the cap is what lets external impulses
+persist instead of being cancelled on the next tick.
+
+Pass `drive: "velocity"` for full-authority movers — the commanded velocity
+is written with `setVelocity` every frame. Combined with a kinematic
+velocity-based body, the agent pushes everything and nothing pushes it back.
+
+<Aside type="caution">
+Components are keyed by exact class: read the agent back with
+`entity.get(PhysicsSteeringAgent)` — `entity.get(SteeringAgent)` won't find
+it.
+</Aside>
+
+On the root class, the same integration is the structural `body` option — no
+physics import, and a custom mover works by implementing the two methods:
+
+```ts
+import { SteeringAgent, arrive } from "@yagejs-addons/steering";
+import { RigidBodyComponent } from "@yagejs/physics";
+
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 130,
+    maxAcceleration: 500,
+    behaviors: [arrive(() => waypoint)],
+    body: enemy.get(RigidBodyComponent), // { setVelocity, getVelocity } — or your own object
+  }),
+);
+```
+
+With a `body`, behaviors and the acceleration ramp read the body's *actual*
+velocity each frame — a wall pin, a contact, a knockback all feed back into
+steering instead of the model computing over them.
+
+## Blending behaviors
+
+Two knobs govern how behaviors combine. `weight` (default 1) is the volume
+within a tier: contributions are summed, each scaled by its weight, and the
+result is clamped to `maxSpeed`. `priority` (default 0) picks who speaks:
+tiers are consulted highest-first each frame, and the first tier whose
+weighted sum is non-zero wins outright — lower tiers aren't evaluated that
+frame.
+
+Weights shade a blend:
+
+```ts
+import { SteeringAgent, flee, wander } from "@yagejs-addons/steering";
+
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 90,
+    faceHeading: true, // rotate the Transform to face travel direction
+    behaviors: [
+      flee(() => player.get(Transform).position, { radius: 200, weight: 2 }),
+      wander({ weight: 0.5 }),
+    ],
+  }),
+);
+```
+
+Priority makes a behavior an override — the classic use is obstacle
+avoidance that must never be out-voted by seek:
+
+```ts
+behaviors: [
+  seek(() => player.position),
+  avoidObstacles(() => rocks, { priority: 1 }), // near a rock, this steer wins outright
+],
+```
+
+With everything on the default priority 0 the model is a plain weighted
+sum. A higher tier that returns ZERO (nothing to avoid) passes the frame
+down, so seek runs normally. An overridden stateful behavior (a path
+follower, a wander) pauses rather than advancing blind.
+
+## Obstacle avoidance and flocking
+
+Two discovery modes. The portable one: obstacles and neighbors are
+**game-supplied arrays** — a plain list, or a provider for a live one
+(providers receive the agent's state, so agent-relative sources work too):
+
+```ts
+import { SteeringAgent, seek, avoidObstacles } from "@yagejs-addons/steering";
+
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [
+      seek(() => player.position),
+      avoidObstacles(
+        () => rocks.map((r) => ({ position: r.position, radius: r.radius })),
+        { lookAhead: 80, priority: 1 }, // overrides seek when a rock is in the path
+      ),
+    ],
+  }),
+);
+```
+
+The physics one (`/physics` entry): `avoidColliders` raycasts the real world
+along the heading — a center ray plus two whiskers — and steers away from
+whatever it hits. No obstacle list to maintain; tilemap walls, crates, and
+every other collider count, and the agent's own collider is excluded
+automatically:
+
+```ts
+import { avoidColliders } from "@yagejs-addons/steering/physics";
+import { PhysicsWorldKey } from "@yagejs/physics";
+
+const world = this.use(PhysicsWorldKey); // in a Scene's onEnter
+enemy.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [
+      seek(() => player.position),
+      avoidColliders(world, { lookAhead: 90, priority: 1 }),
+    ],
+  }),
+);
+```
+
+`physicsNeighbors` does the same for flocking: a `NeighborsSource` backed by
+`PhysicsWorld.queryRadius` around the agent, so anything with a collider in
+range counts as a neighbor (entities without a body count as stationary):
+
+```ts
+import { physicsNeighbors } from "@yagejs-addons/steering/physics";
+
+const nearby = physicsNeighbors(world, { radius: 60 });
+boid.add(
+  new SteeringAgent({
+    maxSpeed: 100,
+    behaviors: [separation(nearby, { weight: 1.5 }), alignment(nearby), cohesion(nearby)],
+  }),
+);
+```
+
+Flocking (boids) composes from three primitives — separation, alignment,
+cohesion — each reading the same neighbor list:
+
+```ts
+import { SteeringAgent, separation, alignment, cohesion } from "@yagejs-addons/steering";
+
+for (const boid of boids) {
+  const neighbors = () =>
+    boids.filter((b) => b !== boid).map((b) => ({ position: b.position, velocity: b.velocity }));
+  boid.entity.add(
+    new SteeringAgent({
+      maxSpeed: 100,
+      behaviors: [
+        separation(neighbors, { radius: 30, weight: 1.5 }),
+        alignment(neighbors, { radius: 60 }),
+        cohesion(neighbors, { radius: 60, weight: 0.8 }),
+      ],
+    }),
+  );
+}
+```
+
+## Path-following and containment
+
+`followPath` walks a plain waypoint list — `@yagejs/pathfinding`'s
+`Path.waypoints` feeds it directly, and so does any hand-authored route.
+`contain` steers an agent back inside a rectangle before it leaves:
+
+```ts
+import { SteeringAgent, followPath, contain, wander } from "@yagejs-addons/steering";
+import { defineEvent } from "@yagejs/core";
+import { findPath } from "@yagejs/pathfinding";
+
+// A patrol looping its route forever:
+guard.add(
+  new SteeringAgent({
+    maxSpeed: 120,
+    behaviors: [followPath(patrolPoints, { loop: true })],
+  }),
+);
+
+// A pathfinding result, walked once with an arrive-style stop at the end:
+const Arrived = defineEvent("enemy:arrived");
+const path = findPath(grid, start, goal);
+if (path) {
+  enemy.add(
+    new SteeringAgent({
+      maxSpeed: 140,
+      behaviors: [followPath(path.waypoints, { onArrive: () => enemy.emit(Arrived) })],
+    }),
+  );
+}
+
+// A wanderer that never drifts off the field:
+critter.add(
+  new SteeringAgent({
+    maxSpeed: 70,
+    behaviors: [wander(), contain({ x: 0, y: 0, width: 900, height: 600 }, { weight: 2 })],
+  }),
+);
+```
+
+Waypoint progress lives inside the behavior — to follow a new path, swap in
+a new `followPath` (`agent.setBehaviors([...])`). For save/restore, snapshot
+the returned behavior's `waypointIndex` and pass it back as `startAt`; a
+plain `startAt: "nearest"` enters the path at the closest waypoint (restored
+agents and mid-route attach both skip the walk back to waypoint 0).
+
+## Headless / manual drive
+
+Skip the Component entirely and drive the `Steering` model yourself — your
+own loop, your own integration:
+
+```ts
+import { Steering, seek } from "@yagejs-addons/steering";
+import { Vec2 } from "@yagejs/core";
+
+const steering = new Steering([seek(() => target)]);
+let pos = new Vec2(0, 0);
+let vel = Vec2.ZERO;
+// each tick:
+vel = steering.compute({ position: pos, velocity: vel, maxSpeed: 120 }, dt);
+pos = pos.add(vel.scale(dt));
+```
+
+## Live escape hatches
+
+The hosted model and the commanded velocity are always readable and
+mutable — nothing here is locked behind construction-time config:
+
+```ts
+agent.steering.add(flee(() => boss.position, { weight: 4 })); // add a behavior live
+agent.maxSpeed = 200; // retune
+agent.velocity; // Vec2 the agent is steering toward — draw a debug arrow with it
+agent.stop(); // halt now: zeroes the model AND the body/output
+agent.enabled = false; // pause ticking without removing the component
+```
+
+## Behaviors reference
+
+Every factory returns a `SteeringBehavior` and takes an options object with
+at least `weight` (default 1) and `priority` (default 0). Targets,
+obstacles, and neighbors accept either a static value or a provider
+`(agent) => value`, resolved fresh each tick with the agent's state.
+
+| Behavior | Signature | Notes |
+|---|---|---|
+| `seek` | `seek(target, opts?)` | Straight toward `target` at full speed. |
+| `flee` | `flee(target, { radius? })` | Straight away; `radius` gates it to nearby threats only. |
+| `arrive` | `arrive(target, { slowRadius?, arriveRadius?, onArrive?, onDepart? })` | Ramps speed down inside `slowRadius`, settles inside `arriveRadius`. |
+| `wander` | `wander({ distance?, radius?, jitter?, random? })` | Slowly-turning circle ahead of the current heading. |
+| `pursue` / `evade` | `pursue(target, { maxPrediction? })` | `target` is `{ position, velocity }`; leads the predicted position. |
+| `avoidObstacles` | `avoidObstacles(obstacles, { lookAhead?, agentRadius? })` | Look-ahead ray against a supplied circle list. |
+| `avoidColliders` | `avoidColliders(world, { lookAhead?, whiskerAngle?, whiskerLength? })` | `/physics` entry: raycasts the real world, center ray + whiskers. |
+| `separation` / `alignment` / `cohesion` | `separation(neighbors, { radius? })` | The three boid rules; `neighbors` is `{ position, velocity }[]`. |
+| `followPath` | `followPath(waypoints, { waypointRadius?, loop?, startAt?, slowRadius?, arriveRadius?, onArrive?, onDepart? })` | Waypoints in order; `loop` patrols forever, otherwise arrives at the end. |
+| `contain` | `contain(bounds, { lookAhead? })` | Steers back inside `{ x, y, width, height }` before crossing an edge. |
+
+`arrive`'s and `followPath`'s `onArrive`/`onDepart` are the addon's discrete
+consequences — fire your own entity/bus event from inside them in a line, if
+the game wants one:
+
+```ts
+const ReachedWaypoint = defineEvent("enemy:reached-waypoint");
+
+arrive(waypoint, {
+  onArrive: () => enemy.emit(ReachedWaypoint),
+});
+```
+
+## Not in v1
+
+A bundled debug presenter is deferred — read `agent.velocity` and draw the
+arrow yourself, as the steering example does. Two absences are by design,
+not deferrals: arrival is a callback (`onArrive` — mirror it to your own
+event in a line), and there is no snapshot/restore (steering state is
+transient; `followPath` progress saves via `waypointIndex`/`startAt`).
