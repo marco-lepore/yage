@@ -24,9 +24,10 @@ Call `.draw()` again at any time to redraw. The callback receives a PixiJS
 
 `GraphicsComponent` takes the same `visible` / `tint` / `alpha` /
 `interactive` options as `SpriteComponent`, plus `setMask()` / `fx` for
-masking and filters. `serialize()` persists `layer` and those options —
-the drawn geometry itself isn't recorded (Pixi has no way to read commands
-back off a `Graphics` object), so redo the `.draw()` call in `afterRestore()`.
+masking and filters. `serialize()` persists `layer`, those options, and any
+attached effects and mask — only the drawn geometry isn't recorded (Pixi has
+no way to read commands back off a `Graphics` object), so redo the `.draw()`
+call in `afterRestore()`; everything else restores on its own.
 
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw
 pixi `Graphics` instance. The fluent API mirrors Canvas 2D vocabulary —

@@ -1,9 +1,11 @@
 import { NineSliceSprite as PixiNineSliceSprite } from "pixi.js";
-import type { Texture } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
-import type { AssetHandle } from "@yagejs/core";
-import type { DisplayContainer, NineSliceSprite } from "@yagejs/renderer";
+import type {
+  DisplayContainer,
+  NineSliceSprite,
+  TextureHandle,
+} from "@yagejs/renderer";
 import type { UIElement, UINineSliceProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -19,7 +21,7 @@ export class UINineSlice implements UIElement {
     return this.container;
   }
 
-  private textureHandle: AssetHandle<Texture>;
+  private textureHandle: TextureHandle;
   private readonly pointerEvents: PointerEvents;
   private _destroyed = false;
 

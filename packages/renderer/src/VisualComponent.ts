@@ -4,7 +4,6 @@ import {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
-import type { DestroyOptions } from "pixi.js";
 import { computeRenderFacet } from "./internal/renderFacet.js";
 import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
@@ -14,7 +13,11 @@ import { EffectsHost } from "./effects/EffectsHost.js";
 import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
-import type { ColorValue, DisplayContainer } from "./public-types.js";
+import type {
+  ColorValue,
+  DestroyOptions,
+  DisplayContainer,
+} from "./public-types.js";
 
 /**
  * Pixi event-mode + pointer-consume config shared by every visual

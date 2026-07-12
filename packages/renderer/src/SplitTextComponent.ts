@@ -1,8 +1,8 @@
 import { serializable } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
-import type { DestroyOptions } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type {
+  DestroyOptions,
   DisplayBitmapText,
   DisplayContainer,
   DisplaySplitBitmapText,

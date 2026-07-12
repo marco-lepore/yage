@@ -1,9 +1,11 @@
 import { Sprite } from "pixi.js";
-import type { Texture } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
-import type { AssetHandle } from "@yagejs/core";
-import type { DisplayContainer, DisplaySprite } from "@yagejs/renderer";
+import type {
+  DisplayContainer,
+  DisplaySprite,
+  TextureHandle,
+} from "@yagejs/renderer";
 import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -19,7 +21,7 @@ export class UIImage implements UIElement {
     return this.container;
   }
 
-  private textureHandle: AssetHandle<Texture>;
+  private textureHandle: TextureHandle;
   private readonly pointerEvents: PointerEvents;
   private _destroyed = false;
 

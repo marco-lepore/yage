@@ -7,6 +7,7 @@ import type {
   BitmapText,
   ColorSource,
   Container,
+  DestroyOptions as PixiDestroyOptions,
   Filter as PixiFilter,
   FillGradient,
   Graphics,
@@ -75,6 +76,9 @@ export type Application = PixiApplication;
 
 /** Options accepted by the PixiJS `Application` — see `RendererConfig.pixi`. */
 export type ApplicationOptions = PixiApplicationOptions;
+
+/** Options for `Container.destroy()`, as returned by a visual component's `destroyOptions()` hook. */
+export type DestroyOptions = PixiDestroyOptions;
 
 /** A loaded bitmap font (parsed `.fnt`/`.xml` + glyph atlas). */
 export type BitmapFontResource = BitmapFont;
