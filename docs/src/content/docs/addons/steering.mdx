@@ -26,6 +26,8 @@ npm install @yagejs-addons/steering
 npm install @yagejs/core
 # only if you import @yagejs-addons/steering/physics:
 npm install @yagejs/physics
+# only for the pathfinding-fed followPath example below:
+npm install @yagejs/pathfinding
 ```
 
 `@yagejs/core` is the required peer; `@yagejs/physics` is optional and only
@@ -358,5 +360,7 @@ arrive(waypoint, {
 A bundled debug presenter is deferred — read `agent.velocity` and draw the
 arrow yourself, as the steering example does. Two absences are by design,
 not deferrals: arrival is a callback (`onArrive` — mirror it to your own
-event in a line), and there is no snapshot/restore (steering state is
-transient; `followPath` progress saves via `waypointIndex`/`startAt`).
+event in a line), and the addon ships no snapshot/restore serialization —
+steering state is transient and re-derives. The one piece of progress worth
+keeping, `followPath`'s waypoint index, is saved by the game: read
+`waypointIndex`, store it, pass it back as `startAt`.

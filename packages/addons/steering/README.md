@@ -65,6 +65,9 @@ entry never imports physics; `{ setVelocity, getVelocity }` is satisfied by
 `RigidBodyComponent` as-is, and by any custom mover object:
 
 ```ts
+import { SteeringAgent, arrive } from "@yagejs-addons/steering";
+import { RigidBodyComponent } from "@yagejs/physics";
+
 enemy.add(
   new SteeringAgent({
     maxSpeed: 130,

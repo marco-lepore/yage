@@ -122,7 +122,9 @@ function predict(target: KinematicTarget, agent: AgentState, maxPrediction: numb
   const k = resolve(target, agent);
   const targetPos = new Vec2(k.position.x, k.position.y);
   const distance = targetPos.distance(agent.position);
-  const leadTime = Math.min(maxPrediction, distance / agent.maxSpeed);
+  // maxSpeed 0 (frozen agent) at the target position would divide 0/0.
+  const leadTime =
+    agent.maxSpeed > 0 ? Math.min(maxPrediction, distance / agent.maxSpeed) : 0;
   return targetPos.add(new Vec2(k.velocity.x, k.velocity.y).scale(leadTime));
 }
 
@@ -187,7 +189,9 @@ export function avoidObstacles(
       for (const obstacle of resolve(obstacles, agent)) {
         const obstaclePos = new Vec2(obstacle.position.x, obstacle.position.y);
         const toObstacle = obstaclePos.sub(agent.position);
-        const t = clamp(toObstacle.dot(dir), 0, lookAhead);
+        const projection = toObstacle.dot(dir);
+        if (projection < 0) continue; // behind the agent — not in the ray's path
+        const t = clamp(projection, 0, lookAhead);
         const ahead = agent.position.add(dir.scale(t));
         const threatRadius = obstacle.radius + agentRadius;
         if (ahead.distance(obstaclePos) > threatRadius) continue;
@@ -308,7 +312,7 @@ export function followPath(
   const slowRadius = opts.slowRadius ?? 120;
   const arriveRadius = opts.arriveRadius ?? 4;
   // "nearest" resolves on the first evaluate, when the agent position is known.
-  let index = typeof opts.startAt === "number" ? opts.startAt : 0;
+  let index = typeof opts.startAt === "number" ? Math.max(0, opts.startAt) : 0;
   let pickNearest = opts.startAt === "nearest";
   let arrived = false;
   return {

@@ -156,6 +156,8 @@ test.describe("Steering addon fixture", () => {
 
     const crateEnd = await getEntityPosition(page, crateName);
     const agentEnd = await getEntityPosition(page, "impulse-agent");
+    expect(crateEnd).toBeDefined();
+    expect(agentEnd).toBeDefined();
     expect(dist(crateEnd!, crateStart!)).toBeGreaterThan(15); // pushed, not phased through
     expect(dist(agentEnd!, impulseTarget)).toBeLessThan(30); // and still arrived
   });
@@ -168,6 +170,7 @@ test.describe("Steering addon fixture", () => {
     // Control: on the straight run the agent holds its lane.
     await stepFrames(page, 60);
     const before = await getEntityPosition(page, "impulse-agent");
+    expect(before).toBeDefined();
     expect(Math.abs(before!.y - 100)).toBeLessThan(5);
 
     await page.evaluate(() =>
@@ -177,11 +180,13 @@ test.describe("Steering addon fixture", () => {
     // The impulse persists: the agent is visibly off its lane...
     await stepFrames(page, 30);
     const deflected = await getEntityPosition(page, "impulse-agent");
+    expect(deflected).toBeDefined();
     expect(Math.abs(deflected!.y - 100)).toBeGreaterThan(40);
 
     // ...and steering recovers at maxAcceleration, still converging.
     await stepFrames(page, 250);
     const recovered = await getEntityPosition(page, "impulse-agent");
+    expect(recovered).toBeDefined();
     expect(dist(recovered!, impulseTarget)).toBeLessThan(30);
   });
 
@@ -233,6 +238,7 @@ test.describe("Steering addon fixture", () => {
 
     async function meanPairwiseDistance(): Promise<number> {
       const positions = await Promise.all(boidNames.map((name) => getEntityPosition(page, name)));
+      for (const pos of positions) expect(pos).toBeDefined();
       let sum = 0;
       let count = 0;
       for (let i = 0; i < positions.length; i++) {

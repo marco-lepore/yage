@@ -63,6 +63,7 @@ custom movers implementing the two methods:
 
 ```ts
 import { SteeringAgent, arrive } from "@yagejs-addons/steering";
+import { RigidBodyComponent } from "@yagejs/physics";
 
 enemy.add(
   new SteeringAgent({
@@ -70,7 +71,7 @@ enemy.add(
     maxAcceleration: 500,
     behaviors: [arrive(() => target)],
     body: enemy.get(RigidBodyComponent), // read actual velocity + write output
-    drive: "impulse",                    // or "velocity" (default)
+    drive: "impulse", // needs applyImpulse + getMass on the body; omit for velocity drive
   }),
 );
 ```

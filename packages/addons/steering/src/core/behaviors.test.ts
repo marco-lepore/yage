@@ -202,7 +202,11 @@ describe("avoidObstacles", () => {
   });
 
   it("returns ZERO for an obstacle behind or off the ray", () => {
-    const behind: Obstacle[] = [{ position: new Vec2(-50, 0), radius: 10 }];
+    // The close one sits behind within its threat radius — still not a threat.
+    const behind: Obstacle[] = [
+      { position: new Vec2(-50, 0), radius: 10 },
+      { position: new Vec2(-5, 0), radius: 10 },
+    ];
     const offRay: Obstacle[] = [{ position: new Vec2(50, 500), radius: 10 }];
     const resultBehind = avoidObstacles(behind).evaluate(
       agent(Vec2.ZERO, new Vec2(1, 0), 100),
@@ -361,6 +365,13 @@ describe("followPath", () => {
   it("returns ZERO for an empty waypoint list", () => {
     const result = followPath([]).evaluate(agent(Vec2.ZERO), 1 / 60);
     expect(result).toEqual(Vec2.ZERO);
+  });
+
+  it("clamps a negative startAt to the first waypoint", () => {
+    const behavior = followPath(path, { startAt: -3 });
+    const result = behavior.evaluate(agent(Vec2.ZERO, Vec2.ZERO, 50), 1 / 60);
+    expect(behavior.waypointIndex).toBe(0);
+    expect(result.x).toBeCloseTo(50); // heading to (100, 0)
   });
 
   it("startAt resumes from a saved waypoint index", () => {
