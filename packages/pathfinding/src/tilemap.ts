@@ -2,7 +2,8 @@ import type { Vec2Like } from "@yagejs/core";
 // Type-only: erased at build time, so dist/tilemap.js has no runtime import
 // of `@yagejs/tilemap`, an optional peer — the ./tilemap subpath loads even
 // when it isn't installed.
-import type { TilemapData } from "@yagejs/tilemap";
+import type { TilemapColliderConfig, TilemapData } from "@yagejs/tilemap";
+import { shapeAabb, shapeOverlapsCell } from "./colliderRaster.js";
 import { GridGraph } from "./GridGraph.js";
 
 export interface GridFromTilemapOptions {
@@ -35,7 +36,10 @@ const GID_MASK = 0x0fffffff;
  * `isWalkable`/`cost` read the precomputed arrays instead of re-scanning the
  * layers on every `findPath` call.
  */
-export function gridFromTilemap(data: TilemapData, options: GridFromTilemapOptions = {}): GridGraph {
+export function gridFromTilemap(
+  data: TilemapData,
+  options: GridFromTilemapOptions = {},
+): GridGraph {
   const cols = data.width;
   const rows = data.height;
   const layers = options.layers
@@ -61,7 +65,8 @@ export function gridFromTilemap(data: TilemapData, options: GridFromTilemapOptio
       for (const layer of layers) {
         const gid = (layer.data[index] ?? 0) & GID_MASK;
         if (blocked(gid, col, row)) isBlocked = true;
-        if (cost && gid !== 0) cellCost = Math.max(cellCost, cost(gid, col, row));
+        if (cost && gid !== 0)
+          cellCost = Math.max(cellCost, cost(gid, col, row));
       }
       walkable[index] = isBlocked ? 0 : 1;
       costs[index] = cellCost;
@@ -75,6 +80,85 @@ export function gridFromTilemap(data: TilemapData, options: GridFromTilemapOptio
     tileHeight: data.tileHeight,
     isWalkable: (col, row) => walkable[row * cols + col] === 1,
     cost: (col, row) => costs[row * cols + col]!,
+    ...(options.origin ? { origin: options.origin } : {}),
+  });
+}
+
+export interface GridFromCollidersOptions {
+  /** Shapes in map-local pixels — typically `tilemap.getCollisionShapes("<layer>")`. */
+  shapes: readonly TilemapColliderConfig[];
+  /** World-pixel position of cell `(0,0)`'s top-left corner. Default `(0,0)`. */
+  origin?: Vec2Like;
+}
+
+/**
+ * Builds a `GridGraph` from Tiled object-layer collision shapes (rects,
+ * circles, capsules, polygons, polylines) instead of tile-layer gids. A cell
+ * blocks if any shape overlaps any part of it — grazing a cell's edge is
+ * enough. Cost is 1 everywhere. Precomputes the walkability pass once over
+ * the grid; the returned graph's `isWalkable` reads the precomputed array
+ * instead of re-testing shapes on every `findPath` call.
+ *
+ * Grid dimensions and tile size come from `data`, not from the shapes —
+ * `shapes` only supplies which cells are blocked.
+ */
+export function gridFromColliders(
+  data: TilemapData,
+  options: GridFromCollidersOptions,
+): GridGraph {
+  const cols = data.width;
+  const rows = data.height;
+  const tileWidth = data.tileWidth;
+  const tileHeight = data.tileHeight;
+
+  const walkable = new Uint8Array(cols * rows).fill(1);
+
+  for (const shape of options.shapes) {
+    const bounds = shapeAabb(shape);
+    const colMin = Math.max(
+      0,
+      Math.min(cols - 1, Math.floor(bounds.minX / tileWidth) - 1),
+    );
+    const colMax = Math.max(
+      0,
+      Math.min(cols - 1, Math.floor(bounds.maxX / tileWidth) + 1),
+    );
+    const rowMin = Math.max(
+      0,
+      Math.min(rows - 1, Math.floor(bounds.minY / tileHeight) - 1),
+    );
+    const rowMax = Math.max(
+      0,
+      Math.min(rows - 1, Math.floor(bounds.maxY / tileHeight) + 1),
+    );
+
+    for (let row = rowMin; row <= rowMax; row++) {
+      for (let col = colMin; col <= colMax; col++) {
+        const index = row * cols + col;
+        if (walkable[index] === 0) continue; // already blocked by an earlier shape
+        const cellMinX = col * tileWidth;
+        const cellMinY = row * tileHeight;
+        if (
+          shapeOverlapsCell(
+            shape,
+            cellMinX,
+            cellMinY,
+            cellMinX + tileWidth,
+            cellMinY + tileHeight,
+          )
+        ) {
+          walkable[index] = 0;
+        }
+      }
+    }
+  }
+
+  return new GridGraph({
+    cols,
+    rows,
+    tileWidth,
+    tileHeight,
+    isWalkable: (col, row) => walkable[row * cols + col] === 1,
     ...(options.origin ? { origin: options.origin } : {}),
   });
 }

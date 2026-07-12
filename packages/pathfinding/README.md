@@ -36,5 +36,16 @@ import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
 const grid = gridFromTilemap(tilemap.data, { layers: ["collision"] });
 ```
 
+The same subpath also builds a grid from Tiled object-layer shapes (rects,
+circles, capsules, polygons, polylines) instead of tile gids:
+
+```ts
+import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
+
+const grid = gridFromColliders(tilemap.data, {
+  shapes: tilemap.getCollisionShapes("pathfinding"),
+});
+```
+
 See the [Pathfinding guide](https://yage.dev/guides/pathfinding) for the full
 option reference.

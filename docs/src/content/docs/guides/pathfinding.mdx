@@ -60,6 +60,41 @@ read layer's cell satisfies `blocked`. The adapter precomputes a
 walkability + cost pass over the grid once, so the returned `GridGraph`
 doesn't re-scan tilemap data on every search.
 
+## From object-layer collision shapes
+
+Some maps author walkability as Tiled objects (rects, ellipses, capsules,
+polygons) instead of, or alongside, tile layers. `gridFromColliders` builds a
+grid from those shapes:
+
+```typescript
+import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
+
+const grid = gridFromColliders(tilemap.data, {
+  shapes: tilemap.getCollisionShapes("pathfinding"), // an object layer
+  origin: tilemap.entity.get(Transform).position,
+});
+```
+
+There are two ways to feed it shapes:
+
+- **A dedicated nav layer (recommended).** Walkability and collision aren't
+  the same thing — shallow water or a low fence might block movement without
+  blocking a projectile, or vice versa. Draw a separate object layer (e.g.
+  `"pathfinding"`) with only the shapes that should affect the grid, and pass
+  its name to `getCollisionShapes`.
+- **Point it at the collision layer directly.** When walkability and
+  collision genuinely coincide, reuse the same layer you already pass to your
+  physics setup — `tilemap.getCollisionShapes("collision")` works for either.
+
+A cell blocks if any shape overlaps any part of it — a shape only grazing a
+cell's edge still blocks it. The overlap test is exact per shape (a rotated
+rect uses its true bounding rectangle, a polygon its real, possibly concave
+outline), not a bounding-box approximation, so a concave shape's notch stays
+walkable. A shape drawn with Tiled's Polygon tool is a filled region — its
+interior blocks, concave or not. A Polyline-tool shape is a thin wall:
+only the cells its segments cross block. Cost is 1 everywhere; there's no
+per-shape cost option.
+
 ## Weighted terrain and diagonal movement
 
 Both live on the same options object as `isWalkable`:
