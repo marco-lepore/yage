@@ -84,6 +84,51 @@ typewriter, choice UI, portrait, and frame are each swappable and composable. A
 what makes "logic installed, presentation swappable, copy-paste/eject for UI
 only" actually hold.
 
+## Per-game factory pattern (typed config pinning)
+
+When an addon's typing must be re-established at every use site — a generic
+domain type (rule 3) threading through components, policy functions,
+def/step factories, and event payloads — consider exporting a factory the game
+calls **once** with its type parameter and full config catalog. It converts
+"annotate every site" into "close over the type once". The factory returns:
+
+- **Retyped def/step/policy factories** — no per-call-site type parameters.
+- **New event tokens, created per factory call** and typed to the game's
+  payload, so handlers need no narrowing. Entity events dispatch by token
+  *string name* (`packages/core/src/Entity.ts`), so the factory must
+  namespace event names via a required `id` option and warn in dev mode on
+  duplicate ids — two instances creating tokens with the same name would
+  collide silently.
+- **A bundle component** that mounts the addon's standard sibling stack in
+  `onAdd` (`packages/core/src/Component.ts`) and exposes the boundary API.
+  Any erasure cast between an unparameterized shared contract (a trait or
+  event singleton) and the game's typed model lives inside the bundle, never
+  in game code.
+- **Id-literal unions derived from the catalog's map keys** (a mistyped id is
+  a compile error) plus eager whole-catalog cross-reference validation that
+  fails naming the offending key. Precedent for keys-as-ids: dialogue stamps
+  each `SpeakerDef.id` from its `speakers` map key
+  (`packages/addons/dialogue/src/core/types.ts`).
+
+The charter rule that keeps it honest: **assembly + typing only — no behavior
+may exist only through the factory.** Everything it returns must be
+hand-constructible from the public exports (rule 6). The factory is a preset
+over the addon's primitives, not a layer; it lives in the component layer (it
+returns L2 assemblies), and the headless core stays factory-free.
+
+Boundaries and caveats:
+
+- Traits are class-static (`packages/core/src/Entity.ts`), so neither a
+  factory nor a component can attach a trait to its host entity — the
+  `@trait` + delegation lines stay in game code. Only a factory-returned base
+  class could absorb them, at the single-inheritance cost.
+- When the game creates the event tokens through the factory, L3 presenters
+  must attach to the factory instance or its tokens (the way dialogue
+  channels attach to a session), not to module-global events.
+- Skip the pattern when the addon has no generic domain type and a
+  one-component surface (rule 3's "don't force a `<T>`") — there the factory
+  would just rename constructors.
+
 ## Rules in, consequences out
 
 - **Rules** the system needs to function correctly (do these stack? can this go
