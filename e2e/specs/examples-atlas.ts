@@ -76,4 +76,16 @@ export const EXAMPLE_SCRIPTS: Record<string, ExampleScript> = {
       { hold: "KeyA", frames: 20 },
     ],
   },
+
+  // Move toward an enemy, slash, dash, then drink a potion. Exercises the
+  // Abilities addon's timeline runner + hit contract end to end.
+  "abilities-addon": {
+    warmup: 10,
+    actions: [
+      { hold: "KeyD", frames: 30 },
+      { tap: "Space", frames: 20 },
+      { tap: "ShiftLeft", frames: 15 },
+      { tap: "KeyQ", frames: 10 },
+    ],
+  },
 };

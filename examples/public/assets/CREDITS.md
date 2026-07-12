@@ -24,3 +24,10 @@ By [Kenney](https://kenney.nl)
 - `dungeon/` — tileset and map data
 
 By [Kenney](https://kenney.nl)
+
+## Boxer melee character sprites
+
+- `boxer/` — 8-directional idle, run, jab/flying-kick combo, kick, roll,
+  guard-hold, charge-hold, drink, hit, die, and fireball-cast sheets
+
+[8-Directional Melee Character (Boxer)](https://hormelz.itch.io/8-directional-melee-character) by Hormelz. CC0.

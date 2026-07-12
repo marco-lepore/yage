@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YAGE — Abilities Addon</title>
+    <link rel="stylesheet" href="/shared.css">
+  </head>
+  <body>
+    <a class="back-link" href="/">&larr; All Examples</a>
+    <h1>Abilities Addon</h1>
+    <div id="game-container"></div>
+    <div class="controls">
+      <span>
+        A close-quarters brawl built on <code>@yagejs-addons/abilities</code>:
+        a hand-rolled 1-2-3 combo chains three <code>hitbox</code> abilities,
+        each a windup &rarr; active &rarr; recovery sequence that leaves you
+        briefly exposed after landing (or whiffing) &mdash; every combo stage,
+        the charge finisher, and the parry counter set a <code>priority</code>
+        above the addon's built-in stagger reaction, so a committed attack
+        still takes damage but can't be flinched or knocked back out of it.
+        Holding the attack key charges a heavier finisher; pressing dash
+        mid-attack buffers it to fire the instant the hit lands, cancelling
+        the recovery. <code>dash</code> and the parry counter both pair
+        <code>invulnerable</code> with a matching game-defined flash step, so
+        invulnerability from any source (those windows, or the post-hit
+        i-frames <code>HitReceiver</code> arms automatically) strobes the
+        sprite. Guard is a hold-vs-tap split: holding reduces every landed
+        hit in place with no stagger and stays open across as many hits as
+        land, tapping cancels the hold into a short parry that negates and
+        punishes back through the <code>Hittable</code> trait, with a
+        counter (melee punch or projectile reflect, both hand-rolled) on a
+        successful parry. <code>potion</code> plays on its own
+        <code>"item"</code> lane so it works even mid-stagger. Enemies close
+        to melee range for a telegraphed <code>hitbox</code> strike or hang
+        back and fire a <code>projectile</code> fireball, flashing a warning
+        tint and bursting particles through their windup &mdash; unlike the
+        player, enemies carry no <code>priority</code>, so a landed hit
+        always interrupts the telegraph. An engagement token lets only one
+        enemy attack at a time; the rest orbit/strafe at mid range instead of
+        piling on. Landed hits scale hitstop, camera shake, impact particles,
+        and a hit thock by weight; the camera is zoomed in and softly follows
+        the player, clamped to the arena; the bottom hotbar tracks each
+        action's cooldown with a clock-wipe arc.
+      </span>
+      <span>
+        <kbd>WASD</kbd>/<kbd>Arrows</kbd> move &middot; <kbd>Space</kbd>/<kbd>J</kbd> attack (hold to charge) &middot;
+        <kbd>Shift</kbd>/<kbd>K</kbd> dash (buffers mid-attack) &middot; <kbd>F</kbd>/<kbd>L</kbd> hold to block, tap to parry &middot;
+        <kbd>Q</kbd>/<kbd>1</kbd> potion &middot; <kbd>H</kbd> toggle hitbox/collider debug overlay &middot; <kbd>R</kbd> reset
+      </span>
+    </div>
+    <script type="module" src="/src/abilities-addon.ts"></script>
+  </body>
+</html>
