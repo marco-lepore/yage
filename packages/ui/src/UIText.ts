@@ -1,8 +1,8 @@
 import { devWarn } from "@yagejs/core";
 import { buildTextOptions, resolveTextStyle } from "@yagejs/renderer";
+import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import { getUIDefaultTextStyle } from "./text-defaults.js";
 import { BitmapText, Text } from "pixi.js";
-import type { TextStyleOptions, Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode } from "yoga-layout";
 import { Display } from "yoga-layout";
@@ -15,7 +15,7 @@ const ELLIPSIS = "…";
 
 /** Lightweight wrapper around a PixiJS Text for use in UI panels. */
 export class UIText implements UIElement {
-  readonly displayObject: Container;
+  readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   private readonly text: Text | BitmapText;
   private _truncate: "clip" | "ellipsis" | undefined;
@@ -23,7 +23,7 @@ export class UIText implements UIElement {
   private _source: string;
   // Raw style options, kept so `mergeStyle()` can patch over the current
   // style instead of replacing it.
-  private _styleOptions: TextStyleOptions | undefined;
+  private _styleOptions: TextStyle | undefined;
   // `bitmap` / `resolution` are construction-only (Pixi v8 can't morph
   // Text↔BitmapText or change resolution in place). Cached so `update()`
   // can detect — and warn about — a change it cannot honor.
@@ -116,7 +116,7 @@ export class UIText implements UIElement {
    * defaults (then Pixi's), so this is a full replace, not a patch — to
    * change a few properties while keeping the rest, use {@link mergeStyle}.
    */
-  setStyle(s: Partial<TextStyleOptions>): void {
+  setStyle(s: Partial<TextStyle>): void {
     // Re-resolve against engine + UI defaults: the raw style carries neither,
     // so an omitted prop would otherwise drop to Pixi's bare default.
     this.text.style = resolveTextStyle(s, getUIDefaultTextStyle()) ?? s;
@@ -132,7 +132,7 @@ export class UIText implements UIElement {
    * imperative recolour (`mergeStyle({ fill })`) that keeps the font, size,
    * weight, etc.
    */
-  mergeStyle(s: Partial<TextStyleOptions>): void {
+  mergeStyle(s: Partial<TextStyle>): void {
     this.setStyle({ ...this._styleOptions, ...s });
   }
 

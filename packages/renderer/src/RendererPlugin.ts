@@ -27,7 +27,13 @@ import type { SnapshotContributor } from "@yagejs/save";
 // save package while letting us reference `typeof SaveModule` for the
 // dynamic-import variable below.
 import type * as SaveModule from "@yagejs/save";
-import { Application, Assets, Container, Graphics, TextureStyle } from "pixi.js";
+import {
+  Application as PixiApplication,
+  Assets,
+  Container,
+  Graphics,
+  TextureStyle,
+} from "pixi.js";
 import type { BitmapFont, Spritesheet, SCALE_MODE } from "pixi.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
 import { RendererSnapshotContributor } from "./effects/RendererSnapshotContributor.js";
@@ -35,7 +41,13 @@ import { DisplaySystem } from "./DisplaySystem.js";
 import { RenderFacetContributor } from "./RenderFacetContributor.js";
 import { FitController } from "./Fit.js";
 import type { CanvasRect, VirtualRect } from "./Fit.js";
-import type { GraphicsContext, TextStyle, TextureResource } from "./public-types.js";
+import type {
+  Application,
+  DisplayContainer,
+  GraphicsContext,
+  TextStyle,
+  TextureResource,
+} from "./public-types.js";
 import { getDefaultTextStyle, setDefaultTextStyle } from "./internal/textConstruction.js";
 import { RendererKey } from "./types.js";
 import type { RendererConfig, RendererFitOptions } from "./types.js";
@@ -89,7 +101,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * children (transition overlays, screen-scope effects) keep their
    * intended canvas-pixel coordinates.
    */
-  private _worldRoot!: Container;
+  private _worldRoot!: DisplayContainer;
   private _installed = {
     app: false,
     fit: false,
@@ -157,7 +169,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
     }
 
     // 2. Create & init PixiJS Application
-    this._app = new Application();
+    this._app = new PixiApplication();
     const resolution =
       this._config.resolution ??
       (typeof window !== "undefined" ? window.devicePixelRatio : 1);
@@ -469,7 +481,7 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * Use `app.stage` instead when the geometry must cover the canvas
    * including letterbox / expand bars (full-screen dip-to-color overlays).
    */
-  get worldRoot(): Container {
+  get worldRoot(): DisplayContainer {
     return this._worldRoot;
   }
 
@@ -521,13 +533,13 @@ export class RendererPlugin implements Plugin, RendererAdapter {
    * auto-claim presses landing on UI surfaces.
    *
    * Scope: this only sees surfaces marked via `markPointerConsumeContainer` —
-   * `@yagejs/ui` primitives (`UIPanel`, `UIButton`, …) plus `Sprite` /
-   * `AnimatedSprite` components configured with
-   * `interactive: { consumeOnInteraction: true }`. A plain sprite is not a
-   * consume surface. It does not detect raw-Pixi UI drawn directly
-   * with `GraphicsComponent` / `TextComponent`, such as the `@yagejs-addons/dialogue`
-   * box, which never marks its containers. Dialogue-aware callers should gate
-   * on `DialogueController.isActive()` / `isChoosing()` instead.
+   * `@yagejs/ui` primitives (`UIPanel`, `UIButton`, …) plus any visual
+   * component (`Sprite`, `AnimatedSprite`, `Graphics`, `Text`, `SplitText`)
+   * configured with `interactive: { consumeOnInteraction: true }`. A plain
+   * sprite is not a consume surface. UI drawn on raw Pixi containers outside
+   * those paths — such as the `@yagejs-addons/dialogue` box, which never
+   * marks its containers — is not detected. Dialogue-aware callers should
+   * gate on `DialogueController.isActive()` / `isChoosing()` instead.
    *
    * Coordinates are supplied in virtual space (matching how the input plugin
    * stores pointer positions); they are converted to canvas space via
@@ -551,9 +563,9 @@ export class RendererPlugin implements Plugin, RendererAdapter {
       boundary.rootTarget = this._worldRoot;
     }
     const canvas = this._fitController.virtualToCanvas(x, y);
-    const hit = boundary.hitTest(canvas.x, canvas.y) as Container | null;
+    const hit = boundary.hitTest(canvas.x, canvas.y) as DisplayContainer | null;
     if (!hit) return false;
-    let node: Container | null = hit;
+    let node: DisplayContainer | null = hit;
     while (node) {
       if (isPointerConsumeContainer(node)) return true;
       node = node.parent ?? null;

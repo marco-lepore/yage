@@ -11,12 +11,13 @@ import { RenderLayerManager, layerDefToOptions } from "./RenderLayer.js";
 import type { EffectQueueFactory, RenderLayer } from "./RenderLayer.js";
 import type { EffectStackSnapshot } from "./effects/EffectStack.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { attachMask, restoreMask } from "./masks/attachMask.js";
+import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+import type { DisplayContainer } from "./public-types.js";
 
 interface SceneEntry {
-  root: Container;
+  root: DisplayContainer;
   manager: RenderLayerManager;
   tree: SceneRenderTreeImpl;
 }
@@ -28,7 +29,7 @@ class SceneRenderTreeImpl implements SceneRenderTree {
   private _mask: MaskHandle | undefined;
 
   constructor(
-    readonly root: Container,
+    readonly root: DisplayContainer,
     private readonly manager: RenderLayerManager,
     queueFactory?: EffectQueueFactory,
   ) {
@@ -81,13 +82,7 @@ class SceneRenderTreeImpl implements SceneRenderTree {
 
   /** @internal — used by the renderer's snapshot contributor. */
   _restoreMask(snap: MaskSnapshot): void {
-    this._mask?.remove();
-    // Clear before restore so an unsavable snapshot (restoreMask returns
-    // null) leaves the field genuinely empty instead of holding a torn-down
-    // handle for serialize/clearMask to operate on.
-    this._mask = undefined;
-    const handle = restoreMask(this.root, snap);
-    if (handle) this._mask = handle;
+    this._mask = reattachMaskFromSnapshot(this._mask, this.root, snap);
   }
 }
 
@@ -113,7 +108,7 @@ export class SceneRenderTreeProviderImpl implements SceneRenderTreeProvider {
   private entries = new Map<Scene, SceneEntry>();
 
   constructor(
-    private readonly stage: Container,
+    private readonly stage: DisplayContainer,
     private readonly processSystem?: ProcessSystem,
   ) {}
 

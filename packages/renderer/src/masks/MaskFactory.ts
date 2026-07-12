@@ -1,4 +1,4 @@
-import type { Container } from "pixi.js";
+import type { DisplayContainer as Container } from "../public-types.js";
 
 /**
  * Internal value returned by a `MaskFactory`. Bundles the pixi node that will

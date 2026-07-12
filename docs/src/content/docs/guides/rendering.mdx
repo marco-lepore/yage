@@ -78,5 +78,13 @@ You'll see two patterns called out in each section:
   (`TextComponent`'s `style` is a pixi `TextStyleOptions`; `GradientFill`
   IS pixi `FillGradient`). When in doubt about an option, the upstream
   pixi docs are the source of truth.
+- **Type aliases, not raw pixi types** — every exported field, parameter,
+  and return type (`SpriteComponent.sprite`, `RenderLayer.container`, ...)
+  is typed through `@yagejs/renderer`'s own alias names (`DisplaySprite`,
+  `DisplayContainer`, `GraphicsContext`, `ColorValue`, ...) rather than a
+  direct `pixi.js` import, so your code never has to import `pixi.js` just
+  to name a type. The aliases are transparent — `DisplaySprite` IS pixi's
+  `Sprite` — so every pixi method still works on the value; only the type
+  you write down to describe it changes.
 
 Each section links to the relevant pixi v8 docs.

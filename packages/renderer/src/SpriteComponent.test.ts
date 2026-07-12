@@ -14,6 +14,7 @@ const { mocks } = vi.hoisted(() => {
     label = "";
     destroyed = false;
     tint = 0xffffff;
+    eventMode = "passive";
     anchor = {
       x: 0,
       y: 0,
@@ -155,6 +156,14 @@ describe("SpriteComponent", () => {
   it("sets alpha when provided", () => {
     const comp = new SpriteComponent({ texture: {} as never, alpha: 0.5 });
     expect(comp.sprite.alpha).toBe(0.5);
+  });
+
+  it("applies the interactive option, defaulting eventMode to static", () => {
+    const comp = new SpriteComponent({
+      texture: {} as never,
+      interactive: {},
+    });
+    expect(comp.sprite.eventMode).toBe("static");
   });
 
   it("onAdd adds sprite to correct layer container", () => {

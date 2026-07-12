@@ -8,6 +8,8 @@ const { mocks } = vi.hoisted(() => {
     rotation = 0;
     visible = true;
     alpha = 1;
+    tint = 0xffffff;
+    eventMode = "passive";
     parent: MockContainer | null = null;
     sortableChildren = false;
     zIndex = 0;
@@ -160,6 +162,62 @@ describe("GraphicsComponent", () => {
     comp.onDestroy?.();
     expect(gfx.parent).toBeNull();
     expect(gfx.destroyed).toBe(true);
+  });
+
+  it("applies visible, tint, and alpha options", () => {
+    const comp = new GraphicsComponent({
+      visible: false,
+      tint: 0x00ff00,
+      alpha: 0.25,
+    });
+    expect(comp.graphics.visible).toBe(false);
+    expect(comp.graphics.tint).toBe(0x00ff00);
+    expect(comp.graphics.alpha).toBe(0.25);
+  });
+
+  it("visible, tint, and alpha setters update the underlying Graphics", () => {
+    const comp = new GraphicsComponent();
+    comp.visible = false;
+    comp.tint = 0xabcdef;
+    comp.alpha = 0.5;
+    expect(comp.graphics.visible).toBe(false);
+    expect(comp.graphics.tint).toBe(0xabcdef);
+    expect(comp.graphics.alpha).toBe(0.5);
+    expect(comp.visible).toBe(false);
+    expect(comp.tint).toBe(0xabcdef);
+    expect(comp.alpha).toBe(0.5);
+  });
+
+  it("applies the interactive option, defaulting eventMode to static", () => {
+    const comp = new GraphicsComponent({ interactive: {} });
+    expect(comp.graphics.eventMode).toBe("static");
+  });
+
+  describe("serialization", () => {
+    it("serialize/fromSnapshot round-trips layer, tint, alpha, visible, interactive", () => {
+      const original = new GraphicsComponent({
+        layer: "fx",
+        tint: 0x123456,
+        alpha: 0.7,
+        visible: false,
+        interactive: { consumeOnInteraction: true },
+      });
+      const data = original.serialize();
+      expect(data).toEqual({
+        layer: "fx",
+        tint: 0x123456,
+        alpha: 0.7,
+        visible: false,
+        interactive: { consumeOnInteraction: true },
+      });
+
+      const restored = GraphicsComponent.fromSnapshot(data);
+      expect(restored.layerName).toBe("fx");
+      expect(restored.graphics.tint).toBe(0x123456);
+      expect(restored.graphics.alpha).toBe(0.7);
+      expect(restored.graphics.visible).toBe(false);
+      expect(restored.serialize()).toEqual(data);
+    });
   });
 
   describe("inspectRender", () => {

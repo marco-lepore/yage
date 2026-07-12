@@ -2,6 +2,7 @@ import { Component, Transform, serializable } from "@yagejs/core";
 import type { AssetHandle } from "@yagejs/core";
 import { Assets, Container } from "pixi.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
+import type { DisplayContainer } from "@yagejs/renderer";
 import { createTilemapLayers, toTilemapData } from "./tiled/parseTiledMap.js";
 import { extractCollisionShapes } from "./colliders.js";
 import { tiledObjectKey } from "./keys.js";
@@ -49,7 +50,7 @@ export interface TilemapComponentData {
 /** Component that renders a Tiled map using @pixi/tilemap. */
 @serializable
 export class TilemapComponent extends Component {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
   readonly mapKey: string | null;

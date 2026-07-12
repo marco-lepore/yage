@@ -125,13 +125,12 @@ import {
 
 type Anim = "idle" | "attack";
 
-function frames(n: number): never[] {
-  return Array.from({ length: n }, (_, i) => ({ label: `f${i}` })) as never[];
-}
-
-const idleFrames3 = frames(3);
-const attackFrames5 = frames(5);
-const attackFrames10 = frames(10);
+// Frame counts are driven by the mock's fixed 96px-wide texture:
+// floor(96 / frameWidth) frames. idle=3, attack(5-frame variant)=5,
+// attack(10-frame variant)=10.
+const IDLE_SOURCE = { sheet: "idle.png", frameWidth: 32 };
+const ATTACK_SOURCE_5 = { sheet: "attack5.png", frameWidth: 19 };
+const ATTACK_SOURCE_10 = { sheet: "attack10.png", frameWidth: 9 };
 
 function makeLayer(
   scene: Scene,
@@ -139,11 +138,11 @@ function makeLayer(
 ): AnimationController<Anim> {
   const entity = spawnEntityInScene(scene);
   entity.add(new Transform());
-  entity.add(new AnimatedSpriteComponent({ textures: idleFrames3 as never }));
+  entity.add(new AnimatedSpriteComponent({ source: IDLE_SOURCE }));
   const anims: Record<Anim, AnimationDef> = {
-    idle: { frames: idleFrames3 as never, speed: 0.2 },
+    idle: { source: IDLE_SOURCE, speed: 0.2 },
     attack: {
-      frames: (attackFrameCount === 5 ? attackFrames5 : attackFrames10) as never,
+      source: attackFrameCount === 5 ? ATTACK_SOURCE_5 : ATTACK_SOURCE_10,
       speed: 0.4,
       loop: false,
     },

@@ -1,6 +1,7 @@
 import { Container } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
+import type { DisplayContainer } from "@yagejs/renderer";
 import type { BackgroundOptions, UIElement, UIProgressBarProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
@@ -13,10 +14,10 @@ const DEFAULT_FILL: BackgroundOptions = { color: 0x44aa44, alpha: 1 };
 
 /** A progress bar with track and fill backgrounds. */
 export class UIProgressBar implements UIElement {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 

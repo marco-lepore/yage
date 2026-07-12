@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import { devWarn } from "@yagejs/core";
-import type { TextStyle } from "@yagejs/renderer";
+import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
 import type {
@@ -58,10 +58,10 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
  * them to let Yoga shrink-to-fit the content.
  */
 export class UIButton implements UIContainerElement {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 

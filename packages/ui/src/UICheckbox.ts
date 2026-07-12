@@ -1,6 +1,7 @@
 import { Container, Graphics, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
+import type { DisplayContainer } from "@yagejs/renderer";
 import type { UIElement, UICheckboxProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
@@ -12,10 +13,10 @@ const LABEL_GAP = 6;
 
 /** Interactive checkbox with optional label. */
 export class UICheckbox implements UIElement {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 

@@ -1,5 +1,5 @@
 import { Graphics, Sprite, NineSliceSprite, TilingSprite } from "pixi.js";
-import type { Container } from "pixi.js";
+import type { DisplayContainer } from "@yagejs/renderer";
 import type { BackgroundOptions, ColorBackground, TextureBackground } from "./types.js";
 import { isTextureBackground } from "./types.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -15,7 +15,7 @@ export class BackgroundRenderer {
   private lastHeight = 0;
 
   /** Create or replace the background display object. */
-  set(opts: BackgroundOptions, parent: Container, insertIndex = 0): void {
+  set(opts: BackgroundOptions, parent: DisplayContainer, insertIndex = 0): void {
     // If the type of background changed, destroy the old one
     if (this.displayObject) {
       const wasTexture = this.opts && isTextureBackground(this.opts);
@@ -34,7 +34,7 @@ export class BackgroundRenderer {
 
     if (!this.displayObject) {
       this.displayObject = this.createDisplayObject(opts);
-      parent.addChildAt(this.displayObject as unknown as Container, insertIndex);
+      parent.addChildAt(this.displayObject as unknown as DisplayContainer, insertIndex);
     }
 
     // Apply properties
@@ -155,8 +155,8 @@ export class BackgroundRenderer {
 
   private destroyDisplayObject(): void {
     if (this.displayObject) {
-      (this.displayObject as unknown as Container).removeFromParent();
-      (this.displayObject as unknown as Container).destroy();
+      (this.displayObject as unknown as DisplayContainer).removeFromParent();
+      (this.displayObject as unknown as DisplayContainer).destroy();
       this.displayObject = undefined;
     }
   }

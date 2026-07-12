@@ -14,6 +14,7 @@ const { mocks } = vi.hoisted(() => {
     label = "";
     destroyed = false;
     tint = 0xffffff;
+    eventMode = "passive";
     anchor = {
       x: 0,
       y: 0,
@@ -165,6 +166,11 @@ describe("TextComponent", () => {
     expect(comp.text.visible).toBe(false);
     expect(comp.text.tint).toBe(0x00ff00);
     expect(comp.text.alpha).toBe(0.25);
+  });
+
+  it("applies the interactive option, defaulting eventMode to static", () => {
+    const comp = new TextComponent({ text: "x", interactive: {} });
+    expect(comp.text.eventMode).toBe("static");
   });
 
   it("setText updates the underlying Text content", () => {

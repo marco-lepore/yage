@@ -1,6 +1,6 @@
 import { Component, Transform, serializable } from "@yagejs/core";
 import { Container, Rectangle } from "pixi.js";
-import type { TextStyleOptions } from "pixi.js";
+import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import {
   FlexDirection as YogaFlexDirection,
@@ -15,7 +15,7 @@ import {
   attachMask,
   graphicsMask,
 } from "@yagejs/renderer";
-import type { MaskHandle } from "@yagejs/renderer";
+import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
 import { ScrollViewNode } from "./ScrollView.js";
@@ -75,10 +75,10 @@ const ALIGN_ITEMS_MAP: Record<string, number> = {
  * an ordered list of UIElement children.
  */
 export class PanelNode implements UIContainerElement {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 
@@ -153,7 +153,7 @@ export class PanelNode implements UIContainerElement {
   // ---------------------------------------------------------------------------
 
   /** Add a text element. */
-  text(content: string, style?: Partial<TextStyleOptions>): UIText {
+  text(content: string, style?: Partial<TextStyle>): UIText {
     const t = new UIText(
       style ? { children: content, style } : { children: content },
     );
@@ -382,7 +382,7 @@ export class UIPanel extends Component {
   }
 
   /** The PixiJS Container for this panel. */
-  get container(): Container {
+  get container(): DisplayContainer {
     return this._node.container;
   }
 
@@ -400,7 +400,7 @@ export class UIPanel extends Component {
   }
 
   /** Add a text element. */
-  text(content: string, style?: Partial<TextStyleOptions>): UIText {
+  text(content: string, style?: Partial<TextStyle>): UIText {
     return this._node.text(content, style);
   }
 
