@@ -308,6 +308,8 @@ const { mocks } = vi.hoisted(() => {
       return null;
     }
 
+    intersectionsWithShape() {}
+
     free() {}
   }
 
@@ -901,6 +903,106 @@ describe("PhysicsWorld", () => {
       expect(() => pw.raycast(new Vec2(0, 0), new Vec2(0, 0), 100)).toThrow(
         "non-zero",
       );
+    });
+
+    it("excludeEntity filters that entity's colliders via the predicate", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const caster = new Entity("caster");
+      const bodyHandle = pw.createBody(caster, { type: "static" });
+      const comp = createMockColliderComponent();
+      const casterCollider = pw.createCollider(caster, bodyHandle, {
+        shape: { type: "circle", radius: 10 },
+      }, comp);
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      let capturedPredicate: ((c: { handle: number }) => boolean) | undefined;
+      world.castRayAndGetNormal = ((...args: unknown[]) => {
+        capturedPredicate = args[7] as (c: { handle: number }) => boolean;
+        return null;
+      }) as unknown as typeof world.castRayAndGetNormal;
+
+      pw.raycast(new Vec2(0, 0), new Vec2(1, 0), 100, { excludeEntity: caster });
+
+      expect(capturedPredicate).toBeDefined();
+      expect(capturedPredicate!({ handle: casterCollider })).toBe(false);
+      expect(capturedPredicate!({ handle: 9999 })).toBe(true);
+    });
+  });
+
+  describe("queryShape / queryRadius", () => {
+    function setupQuery(pw: PhysicsWorld) {
+      const entities: Entity[] = [];
+      const colliderHandles: number[] = [];
+      for (const name of ["a", "b"]) {
+        const entity = new Entity(name);
+        const bodyHandle = pw.createBody(entity, { type: "static" });
+        const comp = createMockColliderComponent();
+        const handle = pw.createCollider(entity, bodyHandle, {
+          shape: { type: "circle", radius: 10 },
+        }, comp);
+        entities.push(entity);
+        colliderHandles.push(handle);
+      }
+
+      const world = (pw as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+      const captured: { pos: { x: number; y: number }; rot: number }[] = [];
+      let hitHandles: number[] = [];
+      world.intersectionsWithShape = ((
+        pos: { x: number; y: number },
+        rot: number,
+        _shape: unknown,
+        callback: (c: { handle: number }) => boolean,
+      ) => {
+        captured.push({ pos, rot });
+        for (const handle of hitHandles) {
+          if (!callback({ handle })) break;
+        }
+      }) as unknown as typeof world.intersectionsWithShape;
+
+      return {
+        entities,
+        colliderHandles,
+        captured,
+        setHits: (handles: number[]) => {
+          hitHandles = handles;
+        },
+      };
+    }
+
+    it("maps overlapping colliders to entities and dedupes repeats", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { entities, colliderHandles, setHits } = setupQuery(pw);
+      setHits([colliderHandles[0]!, colliderHandles[1]!, colliderHandles[0]!]);
+
+      const result = pw.queryShape({ type: "circle", radius: 40 }, new Vec2(0, 0));
+
+      expect(result).toEqual([entities[0], entities[1]]);
+    });
+
+    it("excludeEntity drops that entity from the results", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { entities, colliderHandles, setHits } = setupQuery(pw);
+      setHits([colliderHandles[0]!, colliderHandles[1]!]);
+
+      const result = pw.queryRadius(new Vec2(0, 0), 40, {
+        excludeEntity: entities[0]!,
+      });
+
+      expect(result).toEqual([entities[1]]);
+    });
+
+    it("converts the query position to meters and passes rotation through", () => {
+      const pw = new PhysicsWorld({ pixelsPerMeter: 50 });
+      const { captured, setHits } = setupQuery(pw);
+      setHits([]);
+
+      pw.queryShape({ type: "box", width: 20, height: 10 }, new Vec2(100, 50), {
+        rotation: Math.PI / 4,
+      });
+
+      expect(captured[0]!.pos.x).toBeCloseTo(2); // 100px / 50ppm
+      expect(captured[0]!.pos.y).toBeCloseTo(1);
+      expect(captured[0]!.rot).toBeCloseTo(Math.PI / 4);
     });
   });
 

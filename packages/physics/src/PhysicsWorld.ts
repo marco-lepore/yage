@@ -382,12 +382,14 @@ export class PhysicsWorld {
    *
    * The direction is normalized internally, so any non-zero vector works —
    * e.g. `target.sub(origin)`. Throws on a zero-length direction.
+   * `excludeEntity` skips every collider of that entity — pass the caster
+   * when the ray starts inside its own collider.
    */
   raycast(
     origin: Vec2Like,
     direction: Vec2Like,
     maxDistance: number,
-    options?: { filterGroups?: number },
+    options?: { filterGroups?: number; excludeEntity?: Entity },
   ): RaycastHit | null {
     const length = Math.hypot(direction.x, direction.y);
     if (length === 0) {
@@ -399,12 +401,18 @@ export class PhysicsWorld {
     );
 
     const maxToi = this.toMeters(maxDistance);
+    const exclude = options?.excludeEntity;
     const result = this.world.castRayAndGetNormal(
       ray,
       maxToi,
       true,
       undefined,
       options?.filterGroups,
+      undefined,
+      undefined,
+      exclude
+        ? (collider) => this.colliderMap.get(collider.handle) !== exclude
+        : undefined,
     );
 
     if (!result) return null;
@@ -422,6 +430,54 @@ export class PhysicsWorld {
       normal: new Vec2(result.normal.x, result.normal.y),
       distance: this.toPixels(result.timeOfImpact),
     };
+  }
+
+  /**
+   * Return all entities with a collider overlapping the circle around
+   * `center` (pixels). Sugar over `queryShape` with a circle.
+   */
+  queryRadius(
+    center: Vec2Like,
+    radius: number,
+    options?: { filterGroups?: number; excludeEntity?: Entity },
+  ): Entity[] {
+    return this.queryShape({ type: "circle", radius }, center, options);
+  }
+
+  /**
+   * Return all entities with a collider overlapping `shape` placed at
+   * `position` (pixels, `rotation` in radians). `excludeEntity` skips every
+   * collider of that entity — pass the querying entity for "what's around
+   * me" queries.
+   */
+  queryShape(
+    shape: ColliderShape,
+    position: Vec2Like,
+    options?: { rotation?: number; filterGroups?: number; excludeEntity?: Entity },
+  ): Entity[] {
+    const desc = this.buildColliderDesc(shape);
+    const exclude = options?.excludeEntity;
+    const result: Entity[] = [];
+    const seen = new Set<Entity>();
+    // buildColliderDesc leaves the capsule axis:"x" 90° turn to the caller.
+    const axisRotation =
+      shape.type === "capsule" && shape.axis === "x" ? Math.PI / 2 : 0;
+    this.world.intersectionsWithShape(
+      { x: this.toMeters(position.x), y: this.toMeters(position.y) },
+      (options?.rotation ?? 0) + axisRotation,
+      desc.shape,
+      (collider) => {
+        const entity = this.colliderMap.get(collider.handle);
+        if (entity && entity !== exclude && !seen.has(entity)) {
+          seen.add(entity);
+          result.push(entity);
+        }
+        return true; // continue iteration
+      },
+      undefined,
+      options?.filterGroups,
+    );
+    return result;
   }
 
   /** Return all entities whose colliders currently overlap the given collider. */
