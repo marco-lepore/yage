@@ -12,6 +12,7 @@ export type {
   BitmapFontHandle,
   BitmapFontResource,
   ColorValue,
+  DestroyOptions,
   DisplayAnimatedSprite,
   DisplayBitmapText,
   DisplayContainer,

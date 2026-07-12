@@ -22,6 +22,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `Filter` | `Filter` | effects API (`Effect.filter`, `rawFilter(filter)`) |
 | `Application` | `Application` | `RendererPlugin.application` |
 | `ApplicationOptions` | `ApplicationOptions` | `RendererConfig.pixi` |
+| `DestroyOptions` | `DestroyOptions` | visual components' `destroyOptions()` override hook |
 | `ColorValue` | `ColorSource` | every `tint` option/accessor |
 | `PointLike` | `PointData` | point-shaped callbacks/options |
 | `TextStyle` | `TextStyleOptions` | every `style` option |
@@ -199,7 +200,7 @@ For procedural shapes plus a label, use a parent entity with `GraphicsComponent`
 
 ### Shared options vocabulary
 
-All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `interactive` options, plus a matching runtime accessor for each — Pixi's `Container` carries all four natively, so nothing about this differs per component:
+All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitText) accept the same `visible` / `tint` / `alpha` / `interactive` options, with runtime accessors for the first three — Pixi's `Container` carries all four natively, so nothing about this differs per component:
 
 ```ts
 {

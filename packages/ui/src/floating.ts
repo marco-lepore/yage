@@ -51,7 +51,7 @@ interface Dimensions {
 }
 
 interface Entry {
-  container: Container;
+  container: DisplayContainer;
   getReference: () => UIElement | null;
   config: FloatConfig;
   layout: (maxWidth: number | undefined) => Dimensions;
@@ -75,7 +75,7 @@ const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
  * knows nothing about React or specific node types.
  */
 export class FloatingOverlay {
-  private layer: Container | null = null;
+  private layer: DisplayContainer | null = null;
   private readonly entries = new Set<Entry>();
   private zSeq = 1;
 
