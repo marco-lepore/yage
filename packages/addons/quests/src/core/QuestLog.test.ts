@@ -394,4 +394,23 @@ describe("snapshot / restore", () => {
     expect(log.status("gatherHerbs")).toBe("available");
     expect(log.progress("gatherHerbs", "herb")).toBe(0);
   });
+
+  it("a known quest id mapping to a non-object entry is dropped, not thrown on", () => {
+    const log = herbLog();
+    log.start("gatherHerbs");
+    log.restore({
+      quests: { gatherHerbs: null as never },
+    });
+    expect(log.status("gatherHerbs")).toBe("available"); // dropped; log otherwise restored empty
+  });
+
+  it("an entry whose objectives isn't a plain object is dropped, not thrown on", () => {
+    const log = herbLog();
+    log.restore({
+      quests: {
+        gatherHerbs: { phase: "active", objectives: null as never },
+      },
+    });
+    expect(log.status("gatherHerbs")).toBe("available");
+  });
 });

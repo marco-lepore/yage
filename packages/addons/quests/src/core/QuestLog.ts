@@ -239,8 +239,9 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
    * throws and leaves prior progress intact rather than wiping it first.
    * `snapshot.quests` must be a plain object — anything else throws. Within
    * it, the same no-throw drop policy applies to every entry: a quest id the
-   * current catalog no longer declares, or one whose `phase` isn't
-   * `"active"`, `"completed"`, or `"failed"`, is dropped. Within a restored
+   * current catalog no longer declares, one whose entry or `objectives`
+   * isn't a plain object, or one whose `phase` isn't `"active"`,
+   * `"completed"`, or `"failed"`, is dropped. Within a restored
    * quest, objective ids no longer declared are dropped; a non-finite
    * progress count (`NaN`, `Infinity`) is dropped the same way (reads back as
    * `0`, same as an untouched objective); a fractional count is truncated;
@@ -258,7 +259,14 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     const restored = new Map<string, QuestRuntimeState>();
     for (const [questId, snap] of Object.entries(quests as Record<string, QuestStateSnapshot>)) {
       if (!this.catalog.has(questId)) continue;
+      // Per-entry drop policy covers entry shape too: a known quest id
+      // mapping to null, a non-object, or one without an objectives object
+      // is dropped, not thrown on.
+      if (typeof snap !== "object" || snap === null || Array.isArray(snap)) continue;
       if (snap.phase !== "active" && snap.phase !== "completed" && snap.phase !== "failed") continue;
+      if (typeof snap.objectives !== "object" || snap.objectives === null || Array.isArray(snap.objectives)) {
+        continue;
+      }
       const def = this.catalog.get(questId);
       const objectives = new Map<string, number>();
       for (const [objId, count] of Object.entries(snap.objectives)) {
