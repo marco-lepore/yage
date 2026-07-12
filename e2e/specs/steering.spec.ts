@@ -185,6 +185,47 @@ test.describe("Steering addon fixture", () => {
     expect(dist(recovered!, impulseTarget)).toBeLessThan(30);
   });
 
+  test("movement stays smooth: no frame-to-frame direction flips at cruise", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/steering.html");
+    await waitForClock(page);
+
+    // The acceleration low-pass bounds how fast the walked path can turn.
+    // Without it, priority-tier switching near the obstacle and flock-rule
+    // flapping alternate the direction by 60-120° every frame (a zigzag
+    // path with a V-shaped arrow). Sample per-frame movement deltas and
+    // bound the turn between consecutive ones while at cruise speed.
+    const agents = ["avoider", "collider-avoider", "boid-2"];
+    const samples = new Map<string, { x: number; y: number }[]>(
+      agents.map((name) => [name, []]),
+    );
+    for (let i = 0; i < 150; i++) {
+      await stepFrames(page, 1);
+      for (const name of agents) {
+        const pos = await getEntityPosition(page, name);
+        expect(pos).toBeDefined();
+        samples.get(name)!.push(pos!);
+      }
+    }
+
+    for (const name of agents) {
+      const pts = samples.get(name)!;
+      let maxTurn = 0;
+      for (let i = 2; i < pts.length; i++) {
+        const d1 = { x: pts[i - 1]!.x - pts[i - 2]!.x, y: pts[i - 1]!.y - pts[i - 2]!.y };
+        const d2 = { x: pts[i]!.x - pts[i - 1]!.x, y: pts[i]!.y - pts[i - 1]!.y };
+        const l1 = Math.hypot(d1.x, d1.y);
+        const l2 = Math.hypot(d2.x, d2.y);
+        if (l1 < 1 || l2 < 1) continue; // turning in place is allowed
+        const cos = (d1.x * d2.x + d1.y * d2.y) / (l1 * l2);
+        const turn = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+        maxTurn = Math.max(maxTurn, turn);
+      }
+      expect(maxTurn, `${name} max per-frame turn`).toBeLessThan(30);
+    }
+  });
+
   test("a boid flock's mean pairwise distance stays bounded", async ({ page }) => {
     await gotoFixture(page, "/steering.html");
     await waitForClock(page);

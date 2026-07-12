@@ -49,7 +49,7 @@ enemy.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density
 enemy.add(
   new PhysicsSteeringAgent({
     maxSpeed: 130,
-    maxAcceleration: 500, // required: the per-frame impulse is the capped correction
+    maxAcceleration: 500, // default 4x maxSpeed; the per-frame impulse is the capped correction
     behaviors: [arrive(() => target, { slowRadius: 140 })],
   }),
 );
@@ -83,9 +83,8 @@ Drive modes:
   overwritten). Fits kinematic velocity-based bodies (unstoppable movers).
 - `"impulse"` — per frame applies `clamp(desired − actual, maxAcceleration·dt)
   · getMass()` through `applyImpulse`, so external impulses compose with
-  steering. Requires `maxAcceleration` and a body with
-  `applyImpulse`/`getMass` (a dynamic `RigidBodyComponent`). Two-way physics:
-  push and be pushed.
+  steering. Requires a body with `applyImpulse`/`getMass` (a dynamic
+  `RigidBodyComponent`). Two-way physics: push and be pushed.
 
 ```ts
 interface VelocityBody { setVelocity(v: Vec2Like): void; getVelocity(): Vec2Like; }
@@ -118,7 +117,7 @@ interface SteeringBehavior { readonly weight: number; readonly priority: number;
 interface SteeringAgentOptions {
   maxSpeed: number;                 // required, px/s, settable live
   behaviors?: SteeringBehavior[];
-  maxAcceleration?: number;         // px/s²; omit = instant velocity change (velocity drive only)
+  maxAcceleration?: number;         // px/s²; default 4 x maxSpeed (top speed in 0.25s); Infinity = instant snap
   body?: VelocityBody | ImpulseBody; // structural; RigidBodyComponent satisfies both
   drive?: "velocity" | "impulse";   // default "velocity"
   apply?: (velocity: Vec2, ctx: SteeringApplyContext) => void; // bodyless custom output; exclusive with body
@@ -131,8 +130,8 @@ interface SteeringApplyContext { readonly entity: Entity; readonly dt: number; r
 Per-frame (`update(dt)`): skip if `!enabled` → `current` = body's
 `getVelocity()` if a body is set, else last commanded → `desired =
 steering.compute({ position, velocity: current, maxSpeed }, dt)` → velocity
-drive: `velocity = moveTowards(current, desired, maxAcceleration·dt)` (or
-`desired` without the cap), written to the body or `apply`; impulse drive:
+drive: `velocity = moveTowards(current, desired, maxAcceleration·dt)`,
+written to the body or `apply`; impulse drive:
 `applyImpulse(clamp(desired − current, maxAcceleration·dt) · getMass())` →
 `faceHeading` && speed > 1 px/s: `transform.setRotation(velocity.angle())`.
 

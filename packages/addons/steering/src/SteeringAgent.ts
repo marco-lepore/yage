@@ -36,10 +36,11 @@ export interface SteeringAgentOptions {
   /** Behaviors to blend. Mutate `agent.steering` live to add/remove more. */
   behaviors?: SteeringBehavior[];
   /**
-   * Acceleration cap in px/s². Omit for an instant velocity change
-   * (velocity drive only — impulse drive requires it: the cap is what lets
+   * Acceleration cap in px/s² — the low-pass that keeps steering smooth
+   * when the blend changes direction between frames, and what lets
    * knockback and contact impulses persist instead of being cancelled in
-   * one frame).
+   * one write. Default `4 × maxSpeed` (top speed in 0.25 s). Pass
+   * `Infinity` for an instant velocity snap.
    */
   maxAcceleration?: number;
   /**
@@ -85,8 +86,8 @@ const FACE_HEADING_MIN_SPEED_SQ = 1;
 export class SteeringAgent extends Component {
   /** Top speed in px/s. */
   maxSpeed: number;
-  /** Acceleration cap in px/s². `undefined` means the velocity snaps to the desired value. */
-  maxAcceleration: number | undefined;
+  /** Acceleration cap in px/s². `Infinity` snaps the velocity to the desired value. */
+  maxAcceleration: number;
   /** Rotate the Transform to face the travel direction each frame. */
   faceHeading: boolean;
   /** The hosted blend model — mutate live (`add`/`remove`/`clear`) to retune behavior. */
@@ -103,7 +104,7 @@ export class SteeringAgent extends Component {
   constructor(options: SteeringAgentOptions) {
     super();
     this.maxSpeed = options.maxSpeed;
-    this.maxAcceleration = options.maxAcceleration;
+    this.maxAcceleration = options.maxAcceleration ?? options.maxSpeed * 4;
     this.faceHeading = options.faceHeading ?? false;
     this.enabled = options.enabled ?? true;
     this.steering = new Steering(options.behaviors ?? []);
@@ -111,11 +112,6 @@ export class SteeringAgent extends Component {
     this.drive = options.drive ?? "velocity";
     if (options.body && options.apply) {
       throw new Error("SteeringAgent: pass `body` or `apply`, not both");
-    }
-    if (this.drive === "impulse" && options.maxAcceleration === undefined) {
-      throw new Error(
-        "SteeringAgent: impulse drive requires `maxAcceleration` (each frame's impulse is the capped correction toward the desired velocity)",
-      );
     }
     this.applyFn = options.apply ?? defaultKinematicApply;
   }
@@ -179,14 +175,11 @@ export class SteeringAgent extends Component {
           "SteeringAgent: impulse drive requires a `body` with `applyImpulse()`/`getMass()` (e.g. a dynamic RigidBodyComponent)",
         );
       }
-      const dv = clampMagnitude(desired.sub(current), (this.maxAcceleration ?? 0) * dt);
+      const dv = clampMagnitude(desired.sub(current), this.maxAcceleration * dt);
       impulseBody.applyImpulse(dv.scale(impulseBody.getMass()));
       this._velocity = current.add(dv);
     } else {
-      this._velocity =
-        this.maxAcceleration !== undefined
-          ? Vec2.moveTowards(current, desired, this.maxAcceleration * dt)
-          : desired;
+      this._velocity = Vec2.moveTowards(current, desired, this.maxAcceleration * dt);
       if (body) {
         (body as VelocityBody).setVelocity(this._velocity);
       } else {

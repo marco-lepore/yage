@@ -21,23 +21,15 @@ import type {
 /** A world to query, or a provider resolved per frame from the agent. */
 export type WorldSource = PhysicsWorld | ((agent: AgentState) => PhysicsWorld);
 
-export interface PhysicsSteeringAgentOptions
-  extends Omit<SteeringAgentOptions, "body" | "apply"> {
-  /**
-   * Acceleration cap in px/s². Required for both drives: impulse drive is
-   * defined by it, and velocity drive without it would erase knockback in
-   * one write.
-   */
-  maxAcceleration: number;
-}
+export type PhysicsSteeringAgentOptions = Omit<SteeringAgentOptions, "body" | "apply">;
 
 /**
  * `SteeringAgent` that drives the entity's own `RigidBodyComponent` — mount
  * it next to a body and collider, nothing to wire. Defaults to impulse
  * drive, so a dynamic body pushes and is pushed like any other: knockback
- * persists, contacts deflect it, and steering corrects at `maxAcceleration`.
- * Pass `drive: "velocity"` for full-authority movers (e.g. kinematic
- * velocity-based bodies).
+ * persists, contacts deflect it, and steering corrects at `maxAcceleration`
+ * (default `4 × maxSpeed`). Pass `drive: "velocity"` for full-authority
+ * movers (e.g. kinematic velocity-based bodies).
  */
 export class PhysicsSteeringAgent extends SteeringAgent {
   constructor(options: PhysicsSteeringAgentOptions) {

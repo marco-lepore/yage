@@ -73,7 +73,7 @@ enemy.add(new ColliderComponent({ shape: { type: "circle", radius: 10 }, density
 enemy.add(
   new PhysicsSteeringAgent({
     maxSpeed: 130,
-    maxAcceleration: 500, // required — see impulse drive below
+    maxAcceleration: 500, // default 4 x maxSpeed — see impulse drive below
     behaviors: [arrive(() => waypoint, { slowRadius: 140 })],
   }),
 );
@@ -84,9 +84,11 @@ It defaults to **impulse drive**: each frame the agent applies
 so steering *composes* with the physics world instead of overriding it. A
 dynamic agent shoves lighter bodies out of its way, gets deflected when
 something hits it, and a knockback impulse sends it flying — then steering
-pulls it back on course at `maxAcceleration`. That's also why
-`maxAcceleration` is required here: the cap is what lets external impulses
-persist instead of being cancelled on the next tick.
+pulls it back on course at `maxAcceleration`. The cap is doing two jobs:
+it lets external impulses persist instead of being cancelled on the next
+tick, and it low-passes the blend so direction changes are curves, not
+frame-to-frame flips. It defaults to `4 × maxSpeed` (top speed in 0.25 s);
+pass `Infinity` for an instant snap.
 
 Pass `drive: "velocity"` for full-authority movers — the commanded velocity
 is written with `setVelocity` every frame. Combined with a kinematic

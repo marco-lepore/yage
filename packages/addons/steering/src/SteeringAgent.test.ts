@@ -44,9 +44,20 @@ describe("SteeringAgent", () => {
     expect(agent.velocity.x).toBeCloseTo(2, 5);
   });
 
-  it("without maxAcceleration the velocity snaps directly to the desired value", () => {
+  it("maxAcceleration defaults to 4x maxSpeed", () => {
     const { agent } = setup({
       maxSpeed: 100,
+      behaviors: [seek(new Vec2(1000, 0))],
+    });
+    expect(agent.maxAcceleration).toBe(400);
+    agent.update(1 / 60);
+    expect(agent.velocity.x).toBeCloseTo(400 / 60, 5); // ramping, not snapped
+  });
+
+  it("maxAcceleration: Infinity snaps the velocity to the desired value", () => {
+    const { agent } = setup({
+      maxSpeed: 100,
+      maxAcceleration: Infinity,
       behaviors: [seek(new Vec2(1000, 0))],
     });
     agent.update(1 / 60);
@@ -56,6 +67,7 @@ describe("SteeringAgent", () => {
   it("faceHeading sets rotation to the commanded heading", () => {
     const { entity, agent } = setup({
       maxSpeed: 100,
+      maxAcceleration: Infinity,
       faceHeading: true,
       behaviors: [seek(new Vec2(0, 1000))],
     });
@@ -68,6 +80,7 @@ describe("SteeringAgent", () => {
     const received: Vec2[] = [];
     const { entity } = setup({
       maxSpeed: 50,
+      maxAcceleration: Infinity,
       behaviors: [seek(new Vec2(1000, 0))],
       apply: (v) => received.push(v),
     });
@@ -100,6 +113,7 @@ describe("SteeringAgent", () => {
   it("velocity reflects the last commanded value", () => {
     const { agent } = setup({
       maxSpeed: 40,
+      maxAcceleration: Infinity,
       behaviors: [seek(new Vec2(1000, 0))],
     });
     expect(agent.velocity).toEqual(Vec2.ZERO);
@@ -108,7 +122,7 @@ describe("SteeringAgent", () => {
   });
 
   it("agent.steering.add(...) changes behavior live", () => {
-    const { agent } = setup({ maxSpeed: 40, behaviors: [] });
+    const { agent } = setup({ maxSpeed: 40, maxAcceleration: Infinity, behaviors: [] });
     agent.update(1 / 60);
     expect(agent.velocity).toEqual(Vec2.ZERO);
 
@@ -228,6 +242,7 @@ describe("SteeringAgent with a body", () => {
     const body = fakeVelocityBody();
     const { entity, agent } = setup({
       maxSpeed: 50,
+      maxAcceleration: Infinity,
       behaviors: [seek(new Vec2(1000, 0))],
       body,
     });
@@ -277,13 +292,6 @@ describe("SteeringAgent with a body", () => {
     expect(Math.hypot(v.x - 0, v.y - -200)).toBeLessThanOrEqual(1 + 1e-6);
   });
 
-  it("impulse drive without maxAcceleration throws at construction", () => {
-    const body = fakeImpulseBody(1);
-    expect(
-      () => new SteeringAgent({ maxSpeed: 100, drive: "impulse", body }),
-    ).toThrow(/maxAcceleration/);
-  });
-
   it("body and apply together throw at construction", () => {
     const body = fakeVelocityBody();
     expect(
@@ -322,6 +330,7 @@ describe("SteeringAgent with a body", () => {
   it("faceHeading ignores sub-1px/s jitter velocities", () => {
     const { entity, agent } = setup({
       maxSpeed: 100,
+      maxAcceleration: Infinity,
       faceHeading: true,
       behaviors: [{ weight: 1, priority: 0, evaluate: () => new Vec2(0.5, 0.5) }],
     });
