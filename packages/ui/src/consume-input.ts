@@ -2,7 +2,7 @@ import {
   markPointerConsumeContainer,
   unmarkPointerConsumeContainer,
 } from "@yagejs/core";
-import type { Container } from "pixi.js";
+import type { DisplayContainer } from "@yagejs/renderer";
 
 /**
  * Apply the UI auto-consume marking to a container. Used internally by the
@@ -22,7 +22,7 @@ import type { Container } from "pixi.js";
  * to `"passive"` on opt-out so the container becomes transparent again.
  */
 export function applyConsumeInput(
-  container: Container,
+  container: DisplayContainer,
   consumeInput: boolean | undefined,
 ): void {
   if (consumeInput === false) {
@@ -45,6 +45,6 @@ export function applyConsumeInput(
  * GC eventually, but explicit cleanup avoids brief windows where a hit-test
  * misfires on a half-torn-down element.
  */
-export function clearConsumeInput(container: Container): void {
+export function clearConsumeInput(container: DisplayContainer): void {
   unmarkPointerConsumeContainer(container);
 }

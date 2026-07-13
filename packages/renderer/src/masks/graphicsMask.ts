@@ -1,4 +1,5 @@
 import { Graphics } from "pixi.js";
+import type { GraphicsContext } from "../public-types.js";
 import type { MaskFactory } from "./MaskFactory.js";
 
 /**
@@ -42,7 +43,7 @@ import type { MaskFactory } from "./MaskFactory.js";
  *    ```
  */
 export function graphicsMask(
-  draw: (g: Graphics) => void,
+  draw: (g: GraphicsContext) => void,
 ): MaskFactory {
   return () => {
     const g = new Graphics();

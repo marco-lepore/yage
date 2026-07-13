@@ -1,4 +1,4 @@
-import type { Container } from "pixi.js";
+import type { DisplayContainer as Container } from "../public-types.js";
 import type { MaskHandle, MaskSnapshot } from "./MaskHandle.js";
 import type { MaskFactory } from "./MaskFactory.js";
 import {
@@ -137,4 +137,24 @@ export function restoreMask(
 /** @internal — test reset. */
 export function _resetMaskAttachWarning(): void {
   warnedUnsavable = false;
+}
+
+/**
+ * Shared restore-ordering step for every mask-owning site (visual
+ * components, `RenderLayer`, `SceneRenderTree`): drop the current handle,
+ * then re-attach from the snapshot. Clearing before restore means a snapshot
+ * that no longer resolves (`restoreMask` warns and returns `null` — its
+ * definition was never registered) leaves the site's mask field genuinely
+ * empty instead of holding a torn-down handle for `serialize`/`clearMask` to
+ * operate on.
+ *
+ * @internal
+ */
+export function reattachMaskFromSnapshot(
+  current: MaskHandle | undefined,
+  target: Container,
+  snapshot: MaskSnapshot,
+): MaskHandle | undefined {
+  current?.remove();
+  return restoreMask(target, snapshot) ?? undefined;
 }

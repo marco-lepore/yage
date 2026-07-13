@@ -3,9 +3,10 @@ import type { EventMode } from "pixi.js";
 import type { ScopedProcessQueue } from "@yagejs/core";
 import type { LayerDef, LayerSortFn, LayerSpace } from "./LayerDef.js";
 import { EffectsHost } from "./effects/EffectsHost.js";
-import { attachMask, restoreMask } from "./masks/attachMask.js";
+import { attachMask, reattachMaskFromSnapshot } from "./masks/attachMask.js";
 import type { MaskFactory } from "./masks/MaskFactory.js";
 import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
+import type { DisplayContainer } from "./public-types.js";
 
 /**
  * Factory that produces a fresh `ScopedProcessQueue` instance — called once
@@ -60,7 +61,7 @@ export function layerDefToOptions(
 export class RenderLayer {
   readonly name: string;
   readonly order: number;
-  readonly container: Container;
+  readonly container: DisplayContainer;
   /** Coordinate space — see `CreateLayerOptions.space`. */
   readonly space: LayerSpace;
   private _sort: LayerSortFn | undefined;
@@ -78,7 +79,7 @@ export class RenderLayer {
   constructor(
     name: string,
     order: number,
-    container: Container,
+    container: DisplayContainer,
     space: LayerSpace = "world",
     queueFactory?: EffectQueueFactory,
     sort?: LayerSortFn,
@@ -155,13 +156,7 @@ export class RenderLayer {
 
   /** @internal — used by the renderer's snapshot contributor. */
   _restoreMask(snap: MaskSnapshot): void {
-    this._mask?.remove();
-    // Clear before restore so an unsavable snapshot (restoreMask returns
-    // null) leaves the field genuinely empty instead of holding a torn-down
-    // handle for serialize/clearMask to operate on.
-    this._mask = undefined;
-    const handle = restoreMask(this.container, snap);
-    if (handle) this._mask = handle;
+    this._mask = reattachMaskFromSnapshot(this._mask, this.container, snap);
   }
 }
 
@@ -172,13 +167,13 @@ export class RenderLayer {
  */
 export class RenderLayerManager {
   private layers = new Map<string, RenderLayer>();
-  private readonly rootContainer: Container;
+  private readonly rootContainer: DisplayContainer;
   private readonly _defaultLayer: RenderLayer;
   private readonly _defaultEventMode: EventMode | undefined;
   private readonly _queueFactory: EffectQueueFactory | undefined;
 
   constructor(
-    root: Container,
+    root: DisplayContainer,
     defaultEventMode?: EventMode,
     queueFactory?: EffectQueueFactory,
     /**
@@ -276,7 +271,7 @@ export class RenderLayerManager {
   }
 
   /** The root container holding all layers. */
-  get root(): Container {
+  get root(): DisplayContainer {
     return this.rootContainer;
   }
 

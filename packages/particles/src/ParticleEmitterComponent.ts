@@ -9,7 +9,8 @@ import {
   SceneRenderTreeKey,
   resolveTextureInput,
 } from "@yagejs/renderer";
-import { ParticleContainer, Texture } from "pixi.js";
+import type { ParticleContainer } from "@yagejs/renderer";
+import { ParticleContainer as PixiParticleContainer, Texture } from "pixi.js";
 import type { Particle } from "pixi.js";
 import { ParticlePool } from "./ParticlePool.js";
 import { isLerped, resolveRange } from "./types.js";
@@ -100,7 +101,7 @@ export class ParticleEmitterComponent extends Component {
       ...config,
     };
 
-    this.container = new ParticleContainer({
+    this.container = new PixiParticleContainer({
       texture: particleTexture,
       dynamicProperties: {
         position: true,

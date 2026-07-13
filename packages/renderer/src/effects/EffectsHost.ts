@@ -1,5 +1,5 @@
 import type { ScopedProcessQueue } from "@yagejs/core";
-import type { Container } from "pixi.js";
+import type { DisplayContainer as Container } from "../public-types.js";
 import { EffectStack } from "./EffectStack.js";
 import type { EffectStackSnapshot } from "./EffectStack.js";
 import type { EffectFactory, EffectScope } from "./Effect.js";

@@ -73,6 +73,15 @@ const { mocks } = vi.hoisted(() => {
       this.destroyed = true;
       this.removeFromParent();
     }
+
+    off(event: string, fn: (...args: unknown[]) => void): this {
+      this._listeners.get(event)?.delete(fn);
+      return this;
+    }
+
+    setMask(opts: { mask: MockContainer | null; inverse?: boolean }): void {
+      this.mask = opts.mask;
+    }
   }
 
   class MockGraphics extends MockContainer {
@@ -124,7 +133,7 @@ import Yoga from "yoga-layout";
 import { setYoga, createYogaNode, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
-import { Button, Panel, Tooltip, UIText as Text } from "./components.js";
+import { Button, Checkbox, Panel, ScrollView, Tooltip, UIText as Text } from "./components.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -176,6 +185,74 @@ describe("reconciler", () => {
 
     root.unmount();
     expect(container.children.length).toBe(0);
+  });
+
+  it("unmount frees the yoga nodes of the whole tree, not just the root", () => {
+    const root = createRoot(container as never);
+    root.render(
+      createElement(
+        "ui-element",
+        { _ctor: PanelNode },
+        createElement("ui-element", { _ctor: PanelNode, key: "child" }),
+      ),
+    );
+    const rootInstance = getRootInstances(container as never)![0] as unknown as {
+      yogaNode: { free(): void };
+      children: Array<{ yogaNode: { free(): void } }>;
+    };
+    const rootFree = vi.spyOn(rootInstance.yogaNode, "free");
+    const childFree = vi.spyOn(rootInstance.children[0]!.yogaNode, "free");
+
+    root.unmount();
+
+    expect(rootFree).toHaveBeenCalledTimes(1);
+    expect(childFree).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggling a conditional child ({open && <Panel/>}) frees its yoga node on removal", () => {
+    const root = createRoot(container as never);
+    const tree = (open: boolean) =>
+      createElement(
+        "ui-element",
+        { _ctor: PanelNode },
+        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+      );
+
+    root.render(tree(true));
+    const rootInstance = getRootInstances(container as never)![0] as unknown as {
+      children: Array<{ yogaNode: { free(): void } }>;
+    };
+    const removedChild = rootInstance.children[0]!;
+    const childFree = vi.spyOn(removedChild.yogaNode, "free");
+
+    root.render(tree(false));
+
+    expect(childFree).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy() on a removed element is a no-op the second time", () => {
+    const root = createRoot(container as never);
+    const tree = (open: boolean) =>
+      createElement(
+        "ui-element",
+        { _ctor: PanelNode },
+        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+      );
+
+    root.render(tree(true));
+    const rootInstance = getRootInstances(container as never)![0] as unknown as {
+      children: Array<{ yogaNode: { free(): void }; destroy(): void }>;
+    };
+    const removedChild = rootInstance.children[0]!;
+    const childFree = vi.spyOn(removedChild.yogaNode, "free");
+
+    root.render(tree(false));
+    expect(childFree).toHaveBeenCalledTimes(1);
+
+    // A caller holding a direct reference calling destroy() again must not
+    // double-free the (already-freed) Yoga WASM node.
+    expect(() => removedChild.destroy()).not.toThrow();
+    expect(childFree).toHaveBeenCalledTimes(1);
   });
 
   it("tracks root instances for layout", () => {
@@ -409,5 +486,181 @@ describe("reconciler dev-warnings", () => {
     expect(msg).toContain("layout leaf");
     expect(msg).toContain("ScrollView");
     warn.mockRestore();
+  });
+
+  it("destroys a child rendered under a non-container leaf when it is removed", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const container = new mocks.MockContainer();
+    const root = createRoot(container as never);
+    const destroySpy = vi.spyOn(PanelNode.prototype, "destroy");
+
+    // The child's append onto the leaf parent is warned-and-ignored (never
+    // reaches the display tree), so it can't be found via the parent's own
+    // child bookkeeping — only React's fiber tree still holds the reference.
+    const tree = (open: boolean) =>
+      createElement(
+        "ui-element",
+        { _ctor: SilentLeafWidget },
+        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+      );
+
+    root.render(tree(true));
+    root.render(tree(false));
+
+    expect(destroySpy).toHaveBeenCalledTimes(1);
+    destroySpy.mockRestore();
+    warn.mockRestore();
+  });
+
+  describe("prop removal (commitUpdate diff)", () => {
+    it("resets a removed prop to its default instead of leaving the old value", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      const withBg = createElement("ui-element", {
+        _ctor: PanelNode,
+        background: { color: 0xff0000 },
+      });
+      root.render(withBg);
+      const panel = getRootInstances(container as never)![0] as unknown as {
+        yogaNode: unknown;
+      };
+
+      // Next render omits `background` entirely (conditional-spread pattern:
+      // `background={selected ? hl : undefined}` / `{...(cond ? {bg} : {})}`).
+      const withoutBg = createElement("ui-element", { _ctor: PanelNode });
+      root.render(withoutBg);
+
+      // The panel instance is stable across the update (same host instance).
+      expect(getRootInstances(container as never)![0]).toBe(panel);
+      // No direct "has background" getter on PanelNode; assert indirectly via
+      // the background-renderer's absence — background: undefined must have
+      // reached update() as an explicit reset, not been skipped.
+      const bgRenderer = (panel as unknown as { bgRenderer: unknown }).bgRenderer;
+      expect(bgRenderer).toBeUndefined();
+    });
+
+    it("resets a removed onClick handler instead of leaving it bound", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+      const onClick = vi.fn();
+
+      root.render(createElement(Button, { onClick }, "Click"));
+      root.render(createElement(Button, {}, "Click")); // onClick dropped
+
+      const btn = getRootInstances(container as never)![0] as unknown as {
+        onClick: (() => void) | undefined;
+      };
+      expect(btn.onClick).toBeUndefined();
+    });
+  });
+
+  describe("bare text child warning", () => {
+    it("warns once when a raw string/number is passed where createTextInstance is hit", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      // Panel's underlying UIElement has no addElement matching a bare-text
+      // fiber — createTextInstance() itself is what returns null; drive it
+      // directly the way React would for a `{"Score: " + score}` child.
+      root.render(
+        createElement("ui-element", { _ctor: PanelNode }, "a raw text child"),
+      );
+
+      const messages = warn.mock.calls.map((c) => String(c.join(" ")));
+      expect(messages.some((m) => m.includes("bare text child"))).toBe(true);
+      warn.mockRestore();
+    });
+  });
+
+  describe("bg shorthand alias", () => {
+    it("bg styles the panel same as background", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(createElement(Panel, { bg: { color: 0x00ff00 } }));
+
+      const panel = getRootInstances(container as never)![0] as unknown as {
+        bgRenderer: unknown;
+      };
+      expect(panel.bgRenderer).toBeDefined();
+    });
+
+    it("canonical background wins over bg, with a once-per-type dev warning", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      // @ts-expect-error — intentionally passing both for the collision test
+      root.render(createElement(Panel, { bg: { color: 0x00ff00 }, background: { color: 0xff0000 } }));
+
+      const panel = getRootInstances(container as never)![0] as unknown as {
+        bgRenderer: { opts: unknown } | undefined;
+      };
+      expect(panel.bgRenderer).toBeDefined();
+
+      const messages = warn.mock.calls.map((c) => String(c.join(" ")));
+      expect(messages.some((m) => m.includes("`bg`") && m.includes("`background`"))).toBe(true);
+      warn.mockRestore();
+    });
+
+    it("removing bg clears the background, same as removing background directly", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(createElement(Panel, { bg: { color: 0x00ff00 } }));
+      root.render(createElement(Panel, {})); // bg dropped between renders
+
+      const panel = getRootInstances(container as never)![0] as unknown as {
+        bgRenderer: unknown;
+      };
+      expect(panel.bgRenderer).toBeUndefined();
+    });
+
+    it("does not expand bg on Pixi* wrappers (own required view-slot prop)", () => {
+      // PixiProgressBar's `bg` is a required PixiViewType, not a background
+      // alias — the reconciler must never touch it. It has no `_bgAlias`
+      // marker, so createInstance/commitUpdate pass `bg` straight through.
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+      const bgView = "some-texture-path";
+
+      root.render(
+        createElement("ui-element", {
+          _ctor: PanelNode, // stand-in ctor; only checking prop plumbing, not @pixi/ui internals
+          bg: bgView,
+        }),
+      );
+
+      const instance = getRootInstances(container as never)![0] as unknown as {
+        bgRenderer: unknown;
+      };
+      // No `_bgAlias` marker was set, so `bg` was never expanded to
+      // `background` — PanelNode's own background stays unset.
+      expect(instance.bgRenderer).toBeUndefined();
+    });
+  });
+
+  describe("derived prop types accept consumeInput (item 4 drift fix)", () => {
+    it("Checkbox forwards consumeInput to the underlying container", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(createElement(Checkbox, { consumeInput: false }));
+
+      // Compiling this at all is the regression check (CheckboxProps used to
+      // extend only LayoutProps); a mounted instance confirms it also runs.
+      expect(getRootInstances(container as never)!.length).toBe(1);
+    });
+
+    it("ScrollView forwards consumeInput to the underlying viewport", () => {
+      const container = new mocks.MockContainer();
+      const root = createRoot(container as never);
+
+      root.render(createElement(ScrollView, { consumeInput: false }));
+
+      expect(getRootInstances(container as never)!.length).toBe(1);
+    });
   });
 });

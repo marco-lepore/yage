@@ -1,30 +1,19 @@
-import {
-  Component,
-  makeEntityScopedQueue,
-  serializable,
-} from "@yagejs/core";
+import { serializable } from "@yagejs/core";
 import { BitmapText, Text } from "pixi.js";
-import type { Container } from "pixi.js";
-import {
-  computeRenderFacet,
-  type RenderFacetSnapshot,
-} from "./internal/renderFacet.js";
-import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { resolveRenderParent } from "./SortGroupComponent.js";
-import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { EffectsHost } from "./effects/EffectsHost.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
-import { attachMask, restoreMask } from "./masks/attachMask.js";
-import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type {
   DisplayBitmapText,
   DisplayText,
   TextStyle,
 } from "./public-types.js";
+import {
+  VisualComponent,
+  type VisualComponentData,
+  type VisualComponentOptions,
+} from "./VisualComponent.js";
 
 /** Options for creating a TextComponent. */
-export interface TextComponentOptions {
+export interface TextComponentOptions extends VisualComponentOptions {
   /** The text string to render. */
   text: string;
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
@@ -47,36 +36,21 @@ export interface TextComponentOptions {
   resolution?: number;
   /** Anchor point (0-1). Default: { x: 0, y: 0 } (top-left). */
   anchor?: { x: number; y: number };
-  /** Render layer name. Default: "default". */
-  layer?: string;
-  /** Initial visibility. Default: true. */
-  visible?: boolean;
-  /** Tint color. */
-  tint?: number;
-  /** Alpha (opacity). Default: 1. */
-  alpha?: number;
 }
 
 /** Serialisable snapshot of a TextComponent. */
-export interface TextData {
+export interface TextData extends VisualComponentData {
   text: string;
   style?: TextStyle;
   bitmap?: boolean;
   resolution?: number;
-  layer: string;
-  tint?: number;
-  alpha?: number;
   anchor?: { x: number; y: number };
-  visible?: boolean;
-  effects?: EffectStackSnapshot;
-  mask?: MaskSnapshot;
 }
 
 /** Component that displays text on a render layer. */
 @serializable
-export class TextComponent extends Component {
+export class TextComponent extends VisualComponent {
   readonly text: DisplayText | DisplayBitmapText;
-  readonly layerName: string;
   // Raw style options as passed in — kept so `serialize()` emits a POJO, not
   // the live pixi `TextStyle` instance (which has non-enumerable getters and
   // would not round-trip through JSON).
@@ -85,16 +59,9 @@ export class TextComponent extends Component {
   // the pixi instance doesn't faithfully read them back.
   private _bitmap?: boolean;
   private _resolution?: number;
-  /** See {@link SpriteComponent.fx}. */
-  readonly fx = new EffectsHost(
-    () => this.text,
-    "component",
-    () => makeEntityScopedQueue(this.entity),
-  );
-  private _mask: MaskHandle | undefined;
 
   constructor(options: TextComponentOptions) {
-    super();
+    super(options.layer);
     const { options: textOptions, bitmap } = buildTextOptions(
       options.text,
       options.style,
@@ -104,7 +71,6 @@ export class TextComponent extends Component {
     this.text = bitmap
       ? new BitmapText(textOptions)
       : new Text(textOptions);
-    this.layerName = options.layer ?? "default";
     // Shallow-clone so external mutation of the caller's options object
     // doesn't drift our cached snapshot away from the live pixi state.
     if (options.style) this._styleOptions = { ...options.style };
@@ -116,15 +82,12 @@ export class TextComponent extends Component {
     if (options.anchor) {
       this.text.anchor.set(options.anchor.x, options.anchor.y);
     }
-    if (options.visible !== undefined) {
-      this.text.visible = options.visible;
-    }
-    if (options.tint !== undefined) {
-      this.text.tint = options.tint;
-    }
-    if (options.alpha !== undefined) {
-      this.text.alpha = options.alpha;
-    }
+    this.applyVisualOptions(options);
+  }
+
+  /** The underlying Pixi display object. */
+  get renderObject(): DisplayText | DisplayBitmapText {
+    return this.text;
   }
 
   /** Replace the displayed string. */
@@ -163,53 +126,21 @@ export class TextComponent extends Component {
     this.setStyle({ ...this._styleOptions, ...style });
   }
 
-  /** Tint color applied to the rendered text. */
-  set tint(color: number) {
-    this.text.tint = color;
-  }
-  get tint(): number {
-    return this.text.tint;
-  }
-
-  /** Opacity (0-1). */
-  set alpha(alpha: number) {
-    this.text.alpha = alpha;
-  }
-  get alpha(): number {
-    return this.text.alpha;
-  }
-
   serialize(): TextData {
     const data: TextData = {
+      ...this.serializeVisual(),
       text: this.text.text,
-      layer: this.layerName,
-      tint: this.text.tint,
-      alpha: this.text.alpha,
       anchor: { x: this.text.anchor.x, y: this.text.anchor.y },
-      visible: this.text.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
     if (this._bitmap !== undefined) data.bitmap = this._bitmap;
     if (this._resolution !== undefined) data.resolution = this._resolution;
-    const effects = this.fx.serialize();
-    if (effects) data.effects = effects;
-    const mask = this._mask?.serialize();
-    if (mask) data.mask = mask;
     return data;
   }
 
   /** Restore effects and mask after the text node is parented. */
   afterRestore(data: TextData): void {
-    if (data.effects) this.fx.restore(data.effects);
-    if (data.mask) {
-      this._mask?.remove();
-      // Clear before restore so an unsavable snapshot (restoreMask returns
-      // null) leaves the field genuinely empty instead of holding a torn-down
-      // handle for serialize/clearMask to operate on.
-      this._mask = undefined;
-      const handle = restoreMask(this.text, data.mask);
-      if (handle) this._mask = handle;
-    }
+    this.restoreVisual(data);
   }
 
   static fromSnapshot(data: TextData): TextComponent {
@@ -224,54 +155,7 @@ export class TextComponent extends Component {
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.anchor) opts.anchor = data.anchor;
     if (data.visible !== undefined) opts.visible = data.visible;
+    if (data.interactive) opts.interactive = { ...data.interactive };
     return new TextComponent(opts);
-  }
-
-  /** Attach a mask to this text node. See {@link SpriteComponent.setMask}. */
-  setMask(factory: MaskFactory): MaskHandle {
-    this._mask?.remove();
-    this._mask = attachMask(this.text, factory);
-    return this._mask;
-  }
-
-  /** Detach and destroy the current mask, if any. */
-  clearMask(): void {
-    this._mask?.remove();
-    this._mask = undefined;
-  }
-
-  /**
-   * The currently attached mask handle, if any. Useful after save/load to
-   * recover a handle whose caller-side reference went stale.
-   */
-  get mask(): MaskHandle | undefined {
-    return this._mask;
-  }
-
-  /**
-   * Derived render facet for the Inspector — world-space `bounds` and the
-   * component's own (local, non-inherited) `visible` flag of the rendered text,
-   * computed on demand. Not part of `serialize()`; see {@link computeRenderFacet}
-   * for the bounds coordinate space.
-   */
-  inspectRender(): RenderFacetSnapshot {
-    return computeRenderFacet(this.text);
-  }
-
-  /** The underlying Pixi display object. */
-  get renderObject(): Container {
-    return this.text;
-  }
-
-  onAdd(): void {
-    const tree = this.use(SceneRenderTreeKey);
-    resolveRenderParent(this.entity, this.layerName, tree).addChild(this.text);
-  }
-
-  onDestroy(): void {
-    this.fx.destroy();
-    this._mask?.remove();
-    this.text.removeFromParent();
-    this.text.destroy();
   }
 }

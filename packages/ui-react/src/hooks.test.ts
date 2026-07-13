@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot as createDomRoot } from "react-dom/client";
@@ -18,6 +18,8 @@ import {
   EngineContext,
   QueryCacheKey,
   QueryCache,
+  Entity,
+  Component,
   createRecord,
   createValue,
   createCounter,
@@ -26,6 +28,8 @@ import {
   createList,
   createStore,
 } from "@yagejs/core";
+
+class Position extends Component {}
 
 beforeAll(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -370,7 +374,83 @@ describe("useQuery", () => {
     act(() => root.render(wrap(createElement(Comp))));
     expect(result).toBe(null);
   });
+
+  it("releases its query on unmount, leaving the cache's query count unchanged", () => {
+    function Comp() {
+      useQuery([], (r) => r.size);
+      return null;
+    }
+
+    act(() => root.render(wrap(createElement(Comp))));
+    expect(queryCacheSize(queryCache)).toBe(1);
+
+    act(() => root.render(wrap(createElement("div"))));
+    expect(queryCacheSize(queryCache)).toBe(0);
+  });
+
+  it("a mount/unmount/mount cycle leaves exactly one live query registered", () => {
+    function Comp() {
+      useQuery([], (r) => r.size);
+      return null;
+    }
+
+    act(() => root.render(wrap(createElement(Comp))));
+    act(() => root.render(wrap(createElement("div"))));
+    act(() => root.render(wrap(createElement(Comp))));
+    expect(queryCacheSize(queryCache)).toBe(1);
+  });
+
+  function makeMatchingEntity(): Entity {
+    const e = new Entity("test");
+    e._setScene(null, {
+      onComponentAdded: (entity) => queryCache.onComponentAdded(entity),
+      onComponentRemoved: (entity) => queryCache.onComponentRemoved(entity),
+    });
+    e.add(new Position());
+    return e;
+  }
+
+  it("mounting after entities already exist returns them on first read", () => {
+    makeMatchingEntity();
+
+    let result: number | undefined;
+    function Comp() {
+      result = useQuery([Position], (r) => r.size);
+      return null;
+    }
+
+    act(() => root.render(wrap(createElement(Comp))));
+    expect(result).toBe(1);
+  });
+
+  it("a new inline array with identical contents does not unregister/re-register", () => {
+    makeMatchingEntity();
+
+    const registerSpy = vi.spyOn(queryCache, "register");
+    const unregisterSpy = vi.spyOn(queryCache, "unregister");
+
+    const results: number[] = [];
+    function Comp() {
+      // A fresh array literal every render — same contents, new identity.
+      const size = useQuery([Position], (r) => r.size);
+      results.push(size);
+      return null;
+    }
+
+    act(() => root.render(wrap(createElement(Comp))));
+    act(() => root.render(wrap(createElement(Comp))));
+    act(() => root.render(wrap(createElement(Comp))));
+
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+    expect(unregisterSpy).not.toHaveBeenCalled();
+    expect(results.every((size) => size === 1)).toBe(true);
+  });
 });
+
+/** Peek at the private live-query count — no public accessor, tests only. */
+function queryCacheSize(cache: QueryCache): number {
+  return (cache as unknown as { queries: unknown[] }).queries.length;
+}
 
 describe("useSceneSelector", () => {
   let container: HTMLDivElement;

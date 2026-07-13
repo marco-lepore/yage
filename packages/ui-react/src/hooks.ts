@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useRef, useMemo } from "react";
+import { createContext, useContext, useCallback, useEffect, useRef, useMemo } from "react";
 import { useSyncExternalStore } from "react";
 import type {
   EngineContext,
@@ -185,10 +185,22 @@ function defaultSnapshotReader(
 // useQuery
 // ---------------------------------------------------------------------------
 
+/** True if two filters have the same component classes in the same order. */
+function sameFilter(
+  a: readonly ComponentClass[],
+  b: readonly ComponentClass[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Run an ECS query and map results through a selector. Frame-polled.
  *
- * The query is registered once and stays live for the component's lifetime.
+ * The query is registered once and released when the component unmounts.
  */
 export function useQuery<R>(
   filter: readonly ComponentClass[],
@@ -201,23 +213,53 @@ export function useQuery<R>(
     [ctx],
   );
 
-  // Register query once and keep a stable ref
-  const queryRef = useRef<QueryResult | null>(null);
-  if (queryRef.current === null) {
-    queryRef.current = queryCache.register(filter);
+  // Inline array literals are the common authoring shape (`useQuery([Foo,
+  // Bar], ...)`), which gives `filter` a new identity on every render. Only
+  // re-key off `filter` when its contents actually changed, so an inline
+  // array doesn't force a re-registration on every render.
+  const filterRef = useRef(filter);
+  if (filterRef.current !== filter && !sameFilter(filterRef.current, filter)) {
+    filterRef.current = filter;
   }
-  const query = queryRef.current;
+  const stableFilter = filterRef.current;
+
+  const queryRef = useRef<{
+    q: QueryResult;
+    filter: readonly ComponentClass[];
+  } | null>(null);
+
+  // Registration happens only here, never during render. React may invoke
+  // and discard a render (StrictMode, interrupted concurrent work) without
+  // running effects, so a render-time registration would leak an entry in
+  // the cache that nothing ever unregisters.
+  useEffect(() => {
+    const held = queryCache.register(stableFilter);
+    queryRef.current = { q: held, filter: stableFilter };
+    return () => {
+      queryCache.unregister(held);
+      queryRef.current = null;
+    };
+  }, [queryCache, stableFilter]);
 
   const cache = useRef<{ value: R } | null>(null);
 
   const getSnapshot = useCallback((): R => {
+    // Before the effect above registers (first paint, or the one frame after
+    // a filter change before the effect re-runs), fall back to a detached
+    // one-shot read — it's seeded from the same live entities the
+    // registered query will pick up once the effect runs.
+    const held = queryRef.current;
+    const query =
+      held && held.filter === stableFilter
+        ? held.q
+        : queryCache.queryOnce(stableFilter);
     const next = selector(query);
     if (cache.current && isEqual(cache.current.value, next)) {
       return cache.current.value;
     }
     cache.current = { value: next };
     return next;
-  }, [selector, isEqual, query]);
+  }, [selector, isEqual, queryCache, stableFilter]);
 
   return useSyncExternalStore(subscribeFrame, getSnapshot, getSnapshot);
 }

@@ -134,6 +134,13 @@ vi.mock("pixi.js", () => ({
   Text: mocks.MockText,
 }));
 
+// This suite only cares that Transform syncs onto whatever display object a
+// component creates — not frame content — so resolveFrames is stubbed to
+// skip the real sliceSheet/Texture/Assets path this file doesn't mock.
+vi.mock("./spritesheet.js", () => ({
+  resolveFrames: () => [{}],
+}));
+
 import { Transform, Vec2 } from "@yagejs/core";
 import { DisplaySystem } from "./DisplaySystem.js";
 import { CameraComponent } from "./CameraComponent.js";
@@ -233,7 +240,7 @@ describe("DisplaySystem", () => {
     const entity = spawnEntityInScene(scene);
     entity.add(new Transform({ position: new Vec2(30, 40) }));
     const animComp = entity.add(
-      new AnimatedSpriteComponent({ textures: [{} as never] }),
+      new AnimatedSpriteComponent({ source: { sheet: "x.png", frameWidth: 1 } }),
     );
 
     system.update();

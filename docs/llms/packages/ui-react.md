@@ -61,6 +61,14 @@ import { Panel, ZStack, Text, Button, Image, ProgressBar, Checkbox } from "@yage
 
 PixiUI wrappers: `PixiFancyButton`, `PixiCheckbox`, `PixiProgressBar`, `PixiSlider`, `PixiInput`, `PixiSelect`, `PixiRadioGroup`.
 
+Each JSX prop type extends its `@yagejs/ui` imperative counterpart (e.g. `ButtonProps` extends `UIButtonProps`). A prop the imperative class accepts is always a valid JSX prop too. `consumeInput` works on every element, including `Checkbox`, `ScrollView`, and the Pixi* wrappers.
+
+**Prop removal resets to default.** Dropping a prop between renders resets it instead of leaving the old value: a cleared `background` removes the fill, an unbound handler stops firing, a removed layout value (`width`, `margin`, and the rest) goes back to its Yoga default. This applies to every element. Two JSX patterns both drop a prop this way: an explicit `undefined` (`bg={selected ? hl : undefined}`) and a conditional spread (`{...(open ? { onClick } : {})}`).
+
+**`bg` is shorthand for `background`** on `Panel`, `Button`, and `ScrollView`. `Button` also has `hoverBg` and `pressBg` for its hover/press backgrounds. Passing both `bg` and `background` on the same element resolves to `background` and fires a dev warning once per element type. `PixiProgressBar`, `PixiSlider`, and `PixiInput` have their own `bg` prop — a required `@pixi/ui` view-slot value, not this alias — and are unaffected.
+
+Removing an element destroys it: a child removed from a container, or the whole `<UIRoot>` tree torn down, frees its Yoga node and Pixi display objects. `destroy()` is idempotent.
+
 ## Scrolling lists
 
 `<ScrollView>` is the scroll primitive for any list that can outgrow its container — inventories, quest logs, chat, order panels, leaderboards. A plain `<Panel>` clips overflow silently; `<ScrollView>` adds wheel + drag scrolling, is a true Yoga container (children are normal elements, not handed to a foreign widget), and **preserves scroll position across re-renders** — fulfilling/refilling a store-driven list does not jump the scroll.
@@ -228,6 +236,8 @@ const entityCount = useSceneSelector((scene) => scene.getEntities().length);
 ```
 
 `useStore(compound)` is supported — it returns the encoded snapshot of the whole tree. Reading individual leaves keeps subscription granularity per-leaf. Dispatch is symbol-driven (each shape carries a `[STATE_KIND]` brand from `@yagejs/core`).
+
+`useQuery` registers its `QueryCache` query in an effect on mount and releases it when the component unmounts (`QueryCache.unregister`), so a query does not keep matching new entities after the component is gone. Passing an inline array literal as `filter` (`useQuery([EnemyTag], ...)`) is fine — re-registration is keyed off the filter's contents, not its identity, so a new array with the same component classes on every render does not churn the registration. Before the effect commits (first paint, or the frame after `filter`'s contents change), reads fall back to `QueryCache.queryOnce`, a detached snapshot seeded with the same currently-matching entities the live query will pick up.
 
 ```ts
 const inv  = useStore(game.inventory);                          // entries snapshot

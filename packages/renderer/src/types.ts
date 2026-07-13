@@ -1,6 +1,6 @@
 import { ServiceKey } from "@yagejs/core";
 import type { RendererPlugin } from "./RendererPlugin.js";
-import type { TextStyle } from "./public-types.js";
+import type { ApplicationOptions, TextStyle } from "./public-types.js";
 
 /** Service key for the RendererPlugin. */
 export const RendererKey = new ServiceKey<RendererPlugin>("renderer");
@@ -50,7 +50,7 @@ export interface RendererConfig {
   /** Device pixel ratio. Defaults to `window.devicePixelRatio` for crisp rendering on HiDPI displays. Set to 1 to disable. */
   resolution?: number;
   /** Additional PixiJS Application options. */
-  pixi?: Record<string, unknown>;
+  pixi?: Partial<ApplicationOptions>;
   /**
    * Responsive fit. Defaults to `{ mode: "letterbox" }` against the resolved
    * target (see {@link RendererFitOptions.target}), so the canvas is

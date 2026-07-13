@@ -1,4 +1,4 @@
-import type { Container, Filter } from "pixi.js";
+import type { DisplayContainer as Container, Filter } from "../public-types.js";
 import type { EffectHandle } from "./EffectHandle.js";
 
 /**

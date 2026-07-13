@@ -1,5 +1,5 @@
 import type { Scene, SceneTransitionContext } from "@yagejs/core";
-import type { Container } from "pixi.js";
+import type { DisplayContainer } from "../public-types.js";
 import { SceneRenderTreeProviderKey } from "../SceneRenderTree.js";
 import { RendererKey } from "../types.js";
 
@@ -13,7 +13,7 @@ import { RendererKey } from "../types.js";
 export function getSceneContainer(
   ctx: SceneTransitionContext,
   scene: Scene | undefined,
-): Container | undefined {
+): DisplayContainer | undefined {
   if (!scene) return undefined;
   return ctx.engineContext
     .resolve(SceneRenderTreeProviderKey)

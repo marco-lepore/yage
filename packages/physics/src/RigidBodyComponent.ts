@@ -169,6 +169,16 @@ export class RigidBodyComponent extends Component {
     return body.angvel();
   }
 
+  /**
+   * Mass derived from the attached colliders (density × shape size).
+   * `applyImpulse(dv.scale(getMass()))` changes velocity by exactly `dv` px/s.
+   */
+  getMass(): number {
+    const body = this.physicsWorld.getBody(this._bodyHandle);
+    if (!body) return 0;
+    return body.mass();
+  }
+
   /** Set which translation axes are enabled at runtime. */
   setEnabledTranslations(enableX: boolean, enableY: boolean): void {
     const body = this.physicsWorld.getBody(this._bodyHandle);

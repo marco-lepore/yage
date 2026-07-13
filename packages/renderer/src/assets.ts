@@ -4,7 +4,7 @@ import {
   BitmapFont,
   BitmapFontManager,
   CanvasTextMetrics,
-  NineSliceSprite,
+  NineSliceSprite as PixiNineSliceSprite,
   Rectangle,
   Texture,
   TextStyle as PixiTextStyle,
@@ -27,6 +27,7 @@ import {
 } from "./internal/textConstruction.js";
 import type {
   BitmapFontHandle,
+  NineSliceSprite,
   RendererAsset,
   TextStyle,
   TextureHandle,
@@ -648,7 +649,7 @@ export interface NineSliceOptions {
  * degenerate frame.
  */
 export function createNineSlice(options: NineSliceOptions): NineSliceSprite {
-  return new NineSliceSprite({
+  return new PixiNineSliceSprite({
     texture: resolveTextureInput(options.texture),
     leftWidth: options.leftWidth,
     topHeight: options.topHeight,

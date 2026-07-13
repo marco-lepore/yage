@@ -83,7 +83,6 @@ function MainMenu() {
 
   return (
     <Panel
-      anchor="center"
       direction="column"
       padding={24}
       alignItems="center"
