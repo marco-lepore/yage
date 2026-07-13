@@ -385,4 +385,128 @@ describe("Interactor", () => {
     expect(onInteract).not.toHaveBeenCalled();
     expect(interacted).toHaveLength(0);
   });
+
+  it("inRange ranks every in-range interactable best-first, with inRange[0] === focus", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    // Before the first update() the snapshot is empty.
+    expect(interactor.inRange).toEqual([]);
+
+    const near = scene.spawn("near");
+    near.add(new Transform({ position: { x: 10, y: 0 } }));
+    const nearInteractable = near.add(new Interactable({ onInteract: () => {} }));
+
+    const far = scene.spawn("far");
+    far.add(new Transform({ position: { x: 40, y: 0 } }));
+    const farInteractable = far.add(new Interactable({ onInteract: () => {} }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 30, y: 0 } }));
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract: () => {}, priority: 10 }),
+    );
+
+    interactor.update();
+
+    // Priority chest first, then the two priority-0 by nearest distance.
+    expect(interactor.inRange).toEqual([chestInteractable, nearInteractable, farInteractable]);
+    expect(interactor.inRange[0]).toBe(interactor.focus);
+  });
+
+  it("inRange excludes out-of-range and disabled interactables", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 50 }));
+
+    const inRange = scene.spawn("in");
+    inRange.add(new Transform({ position: { x: 10, y: 0 } }));
+    const inRangeInteractable = inRange.add(new Interactable({ onInteract: () => {} }));
+
+    const disabled = scene.spawn("disabled");
+    disabled.add(new Transform({ position: { x: 12, y: 0 } }));
+    disabled.add(new Interactable({ onInteract: () => {}, enabled: false }));
+
+    const outOfRange = scene.spawn("out");
+    outOfRange.add(new Transform({ position: { x: 500, y: 0 } }));
+    outOfRange.add(new Interactable({ onInteract: () => {} }));
+
+    interactor.update();
+    expect(interactor.inRange).toEqual([inRangeInteractable]);
+  });
+
+  it("inRange is empty while the interactor is disabled", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    chest.add(new Interactable({ onInteract: () => {} }));
+
+    interactor.update();
+    expect(interactor.inRange).toHaveLength(1);
+
+    interactor.enabled = false;
+    expect(interactor.inRange).toEqual([]);
+  });
+
+  it("interact(target) fires a chosen non-focus interactable and emits the event for it", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const chestOnInteract = vi.fn();
+    const chestInteractable = chest.add(new Interactable({ onInteract: chestOnInteract, priority: 10 }));
+
+    const coin = scene.spawn("coin");
+    coin.add(new Transform({ position: { x: 20, y: 0 } }));
+    const coinOnInteract = vi.fn();
+    const coinInteractable = coin.add(new Interactable({ onInteract: coinOnInteract }));
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable); // higher priority
+
+    const interacted: { interactable: Interactable }[] = [];
+    player.on(InteractedEvent, (e) => interacted.push(e));
+
+    // Pick the coin from the ranked set instead of the default focus.
+    interactor.interact(coinInteractable);
+
+    expect(coinOnInteract).toHaveBeenCalledTimes(1);
+    expect(chestOnInteract).not.toHaveBeenCalled();
+    expect(interacted).toEqual([{ interactable: coinInteractable }]);
+  });
+
+  it("interact(target) is guarded: a disabled chosen target is a no-op", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const coin = scene.spawn("coin");
+    coin.add(new Transform({ position: { x: 20, y: 0 } }));
+    const coinOnInteract = vi.fn();
+    let enabled = true;
+    const coinInteractable = coin.add(
+      new Interactable({ onInteract: coinOnInteract, enabled: () => enabled }),
+    );
+
+    interactor.update();
+
+    const interacted: unknown[] = [];
+    player.on(InteractedEvent, (e) => interacted.push(e));
+
+    enabled = false;
+    interactor.interact(coinInteractable);
+    expect(coinOnInteract).not.toHaveBeenCalled();
+    expect(interacted).toHaveLength(0);
+  });
 });

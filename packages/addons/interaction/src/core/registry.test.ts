@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMockScene } from "@yagejs/core";
-import { interactableRegistryFor } from "./registry.js";
+import { interactableRegistryFor, interactablesIn } from "./registry.js";
 import type { Interactable } from "../Interactable.js";
 
 // The registry only needs object identity from its members — a plain object
@@ -58,5 +58,33 @@ describe("interactableRegistryFor", () => {
     registry.register(a);
     registry.unregister(fakeInteractable());
     expect([...registry]).toEqual([a]);
+  });
+
+  it("has reflects membership", () => {
+    const { scene } = createMockScene();
+    const registry = interactableRegistryFor(scene);
+    const a = fakeInteractable();
+    registry.register(a);
+    expect(registry.has(a)).toBe(true);
+    registry.unregister(a);
+    expect(registry.has(a)).toBe(false);
+    expect(registry.has(fakeInteractable())).toBe(false);
+  });
+});
+
+describe("interactablesIn", () => {
+  it("returns every registered interactable in the scene, in registration order", () => {
+    const { scene } = createMockScene();
+    const registry = interactableRegistryFor(scene);
+    const a = fakeInteractable();
+    const b = fakeInteractable();
+    registry.register(a);
+    registry.register(b);
+    expect(interactablesIn(scene)).toEqual([a, b]);
+  });
+
+  it("is empty for a scene with no interactables", () => {
+    const { scene } = createMockScene();
+    expect(interactablesIn(scene)).toEqual([]);
   });
 });

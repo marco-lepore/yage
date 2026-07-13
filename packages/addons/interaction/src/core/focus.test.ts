@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectFocus } from "./focus.js";
+import { rankCandidates, selectFocus } from "./focus.js";
 import type { InteractCandidate } from "./types.js";
 
 function candidate(overrides: Partial<InteractCandidate> = {}): InteractCandidate {
@@ -70,5 +70,41 @@ describe("selectFocus", () => {
     const noRadius = candidate({ position: { x: 15, y: 0 }, radius: 0, order: 0 });
     const winner = selectFocus({ position: { x: 0, y: 0 }, range: 10 }, [noRadius]);
     expect(winner).toBeNull();
+  });
+});
+
+describe("rankCandidates", () => {
+  it("returns every in-range candidate ordered priority, then distance, then order", () => {
+    const query = { position: { x: 0, y: 0 }, range: 50 };
+    const nearLow = candidate({ position: { x: 5, y: 0 }, priority: 0, order: 0 });
+    const farLow = candidate({ position: { x: 20, y: 0 }, priority: 0, order: 1 });
+    const high = candidate({ position: { x: 30, y: 0 }, priority: 10, order: 2 });
+    expect(rankCandidates(query, [nearLow, farLow, high])).toEqual([high, nearLow, farLow]);
+  });
+
+  it("excludes out-of-range candidates", () => {
+    const query = { position: { x: 0, y: 0 }, range: 10 };
+    const inRange = candidate({ position: { x: 5, y: 0 }, order: 0 });
+    const outOfRange = candidate({ position: { x: 50, y: 0 }, order: 1 });
+    expect(rankCandidates(query, [inRange, outOfRange])).toEqual([inRange]);
+  });
+
+  it("returns an empty array when nothing is in range", () => {
+    expect(rankCandidates({ position: { x: 0, y: 0 }, range: 10 }, [])).toEqual([]);
+    expect(
+      rankCandidates({ position: { x: 0, y: 0 }, range: 10 }, [
+        candidate({ position: { x: 99, y: 0 } }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("its first element is exactly what selectFocus picks", () => {
+    const query = { position: { x: 0, y: 0 }, range: 50 };
+    const candidates = [
+      candidate({ position: { x: 20, y: 0 }, priority: 0, order: 0 }),
+      candidate({ position: { x: 5, y: 0 }, priority: 0, order: 1 }),
+      candidate({ position: { x: 30, y: 0 }, priority: 5, order: 2 }),
+    ];
+    expect(rankCandidates(query, candidates)[0]).toBe(selectFocus(query, candidates));
   });
 });

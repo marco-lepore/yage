@@ -49,3 +49,14 @@ export function interactableRegistryFor(scene: Scene): InteractableRegistry {
   }
   return registry;
 }
+
+/**
+ * Every `Interactable` currently registered in `scene`, in registration order.
+ * The scene-wide read surface, independent of any one `Interactor`'s range —
+ * for revealing what is interactable (an observation skill highlighting every
+ * interactable actor). Includes disabled ones; filter on `isEnabled()` for the
+ * live set, or `rankCandidates()` to order a subset by proximity.
+ */
+export function interactablesIn(scene: Scene): readonly Interactable[] {
+  return [...interactableRegistryFor(scene)];
+}

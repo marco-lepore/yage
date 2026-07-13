@@ -1,29 +1,34 @@
 /**
- * Interaction addon example — the composition demo `@yagejs-addons/interaction`
- * exists for: one player `Interactor` meeting three different addons/patterns
- * through the SAME `Interactable` marking, with zero addon-to-addon coupling:
+ * Interaction addon example — one player `Interactor` meeting several
+ * addons/patterns through the SAME `Interactable` marking, with zero
+ * addon-to-addon coupling, plus a "which one?" selection menu for overlapping
+ * targets:
  *
  *  • **An NPC** ("Talk") — stands in for a dialogue addon call
  *    (`onInteract: () => dialogue.play(script)` in a real game).
  *  • **A coin pickup** ("Pick up") — stands in for an inventory addon call;
- *    destroys itself and bumps a HUD counter on interact.
+ *    destroys itself and bumps a counter on interact.
  *  • **A door** (live "Open"/"Close" prompt) — toggles, proving the `prompt`
  *    provider re-resolves every frame with no re-wiring.
- *  • **An overlapping pair** (quest chest vs. decorative crate, same
- *    position) — the quest chest's higher `priority` always wins the focus
- *    tie, so the crate is never reachable underneath it.
+ *  • **A loot pile** (three stacked gems) — the selection case. When more than
+ *    one thing is in range, the menu lists them ranked (the rare gem's higher
+ *    `priority` makes it the default), Q cycles the highlight, and E takes the
+ *    highlighted one via `interactor.interact(target)`.
  *
- * The addon is headless: this example owns 100% of the rendering. The prompt
- * label is the ENTIRE render step — one `InteractionFocusChangedEvent`
- * listener, since the event fires only on a real transition.
+ * The addon is headless: this example owns 100% of the rendering, and drives
+ * interaction itself (`action: null`). A small `InteractionMenu` controller
+ * reads `interactor.inRange` each frame — the ranked in-range set, `inRange[0]`
+ * being the focus — and the menu doubles as the single-target prompt and the
+ * multi-target wheel. A prompt-only game could instead render from
+ * `InteractionFocusChangedEvent` and let the interactor self-drive off input.
  *
- * Controls: WASD/arrows walk · E interact.
+ * Controls: WASD/arrows walk · E interact/take · Q cycle the selection.
  */
 
 import { Component, Engine, type Entity, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin, TextComponent } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
-import { Interactable, Interactor, InteractionFocusChangedEvent } from "@yagejs-addons/interaction";
+import { Interactable, Interactor } from "@yagejs-addons/interaction";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
@@ -38,6 +43,7 @@ const BOUNDS = { minX: 40, maxX: WIDTH - 40, minY: 100, maxY: HEIGHT - 40 };
 interface DemoState {
   npcTalks: number;
   coinsCollected: number;
+  gemsTaken: number;
   doorOpen: boolean;
 }
 
@@ -61,13 +67,76 @@ class PlayerMover extends Component {
   }
 }
 
+// ── selection menu: reads inRange, cycles, confirms ─────────────────────────
+
+/** Renders the ranked in-range set as a fixed panel: one row when a single
+ *  thing is in range (a plain prompt), or a cyclable list when several
+ *  overlap (`▶` marks the highlight). Hidden when nothing is in range. */
+class MenuView {
+  constructor(
+    private readonly panel: GraphicsComponent,
+    private readonly text: TextComponent,
+  ) {}
+
+  render(options: readonly Interactable[], selected: number): void {
+    if (options.length === 0) {
+      this.panel.visible = false;
+      this.text.visible = false;
+      return;
+    }
+    this.panel.visible = true;
+    this.text.visible = true;
+
+    if (options.length === 1) {
+      const only = options[0];
+      this.text.setText(`Press E\n${only?.prompt ?? "Interact"}`);
+      return;
+    }
+
+    const rows = options
+      .map((o, i) => `${i === selected ? "▶" : " "}  ${o.prompt ?? "Interact"}`)
+      .join("\n");
+    this.text.setText(`Q cycle · E take\n${rows}`);
+  }
+}
+
+/** Drives interaction manually from `interactor.inRange`. Added after the
+ *  `Interactor` so it reads that frame's freshly-resolved set. */
+class InteractionMenu extends Component {
+  private readonly input = this.service(InputManagerKey);
+  private readonly interactor = this.sibling(Interactor);
+  private selected = 0;
+
+  constructor(private readonly view: MenuView) {
+    super();
+  }
+
+  update(): void {
+    const options = this.interactor.inRange;
+    if (this.selected >= options.length) this.selected = 0;
+
+    // Cycle only when there's a genuine choice between overlapping targets.
+    if (options.length > 1 && this.input.isJustPressed("cycle")) {
+      this.selected = (this.selected + 1) % options.length;
+    }
+
+    // Confirm the highlighted option — the focus when only one is in range.
+    if (this.input.isJustPressed("interact")) {
+      this.interactor.interact(options[this.selected]);
+      this.selected = 0;
+    }
+
+    this.view.render(options, this.selected);
+  }
+}
+
 // ── scene ─────────────────────────────────────────────────────────────────────
 
 class InteractionRoomScene extends Scene {
   readonly name = "interaction-room";
 
   onEnter(): void {
-    const state: DemoState = { npcTalks: 0, coinsCollected: 0, doorOpen: false };
+    const state: DemoState = { npcTalks: 0, coinsCollected: 0, gemsTaken: 0, doorOpen: false };
 
     this.drawRoom();
 
@@ -80,23 +149,9 @@ class InteractionRoomScene extends Scene {
       }),
     );
     player.add(new PlayerMover());
-    const interactor = player.add(new Interactor({ range: 60 }));
-
-    // The ENTIRE render step for the addon's output: one label, one listener.
-    const prompt = this.spawn("prompt");
-    prompt.add(new Transform({ position: new Vec2(400, 270) }));
-    const promptText = prompt.add(
-      new TextComponent({
-        text: "",
-        style: { fontSize: 14, fill: 0xffffff, fontFamily: "sans-serif" },
-        anchor: { x: 0.5, y: 0.5 },
-      }),
-    );
-    promptText.text.visible = false;
-    player.on(InteractionFocusChangedEvent, ({ prompt: text }) => {
-      promptText.text.text = text ?? "";
-      promptText.text.visible = text !== null;
-    });
+    // action: null — the InteractionMenu below owns the interact input so it
+    // can act on the highlighted option, not just the focus.
+    const interactor = player.add(new Interactor({ range: 60, action: null }));
 
     // ── NPC: stands in for a dialogue addon call ───────────────────────────
     const npc = this.spawnMarker("npc", 400, 150, 0xf97316);
@@ -133,17 +188,32 @@ class InteractionRoomScene extends Scene {
       }),
     );
 
-    // ── Overlapping pair: focus tie-break by priority, deterministic ───────
-    const crate = this.spawnMarker("crate", 400, 460, 0x94a3b8);
-    crate.add(new Interactable({ prompt: "Search crate", onInteract: () => {} }));
-    const chest = this.spawnMarker("chest", 400, 460, 0xf59e0b);
-    chest.add(
-      new Interactable({
-        prompt: "Open quest chest",
-        priority: 10,
-        onInteract: () => console.log("[chest] the quest chest wins the tie every time"),
+    // ── Loot pile: stacked targets → the selection menu ────────────────────
+    // Three gems within one range circle. The ruby's priority makes it the
+    // default (top of `inRange`); Q cycles to the others.
+    this.spawnGem("ruby", 390, 460, 0xef4444, "Take ruby", 10, state);
+    this.spawnGem("emerald", 410, 460, 0x10b981, "Take emerald", 0, state);
+    this.spawnGem("sapphire", 400, 476, 0x3b82f6, "Take sapphire", 0, state);
+
+    // ── the menu UI: fixed panel, top-right ────────────────────────────────
+    const panelEntity = this.spawn("menu-panel");
+    panelEntity.add(new Transform({ position: new Vec2(WIDTH - 214, 98) }));
+    const panel = panelEntity.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(0, 0, 190, 116, 8).fill({ color: 0x14141f, alpha: 0.92 });
+        g.roundRect(0, 0, 190, 116, 8).stroke({ color: 0x2c2c4a, width: 1.5 });
       }),
     );
+    const menuTextEntity = this.spawn("menu-text");
+    menuTextEntity.add(new Transform({ position: new Vec2(WIDTH - 200, 110) }));
+    const menuText = menuTextEntity.add(
+      new TextComponent({
+        text: "",
+        style: { fontSize: 14, fill: 0xffffff, fontFamily: "sans-serif" },
+        anchor: { x: 0, y: 0 },
+      }),
+    );
+    player.add(new InteractionMenu(new MenuView(panel, menuText)));
 
     // E2E / console handle.
     exposeProbe({ interactor, state });
@@ -156,6 +226,37 @@ class InteractionRoomScene extends Scene {
       new GraphicsComponent().draw((g) => {
         g.roundRect(-14, -14, 28, 28, 6).fill({ color, alpha: 0.9 });
         g.roundRect(-14, -14, 28, 28, 6).stroke({ color: 0xffffff, width: 1.5, alpha: 0.5 });
+      }),
+    );
+    return e;
+  }
+
+  private spawnGem(
+    name: string,
+    x: number,
+    y: number,
+    color: number,
+    prompt: string,
+    priority: number,
+    state: DemoState,
+  ): Entity {
+    const e = this.spawn(name);
+    e.add(new Transform({ position: new Vec2(x, y) }));
+    e.add(
+      new GraphicsComponent().draw((g) => {
+        g.circle(0, 0, 9).fill({ color });
+        g.circle(0, 0, 9).stroke({ color: 0xffffff, width: 1.5, alpha: 0.6 });
+      }),
+    );
+    e.add(
+      new Interactable({
+        prompt,
+        priority,
+        radius: 10, // a small reach bonus so the whole pile sits in one range
+        onInteract: () => {
+          state.gemsTaken++;
+          e.destroy();
+        },
       }),
     );
     return e;
@@ -175,7 +276,7 @@ class InteractionRoomScene extends Scene {
     title.add(new Transform({ position: new Vec2(WIDTH / 2, 56) }));
     title.add(
       new TextComponent({
-        text: "Walk up to anything and press E",
+        text: "Walk up and press E · stack onto the gems, then Q to cycle",
         style: { fontSize: 15, fill: 0x8888aa, fontFamily: "sans-serif" },
         anchor: { x: 0.5, y: 0.5 },
       }),
@@ -210,12 +311,13 @@ async function main(): Promise<void> {
     new InputPlugin({
       actions: {
         interact: ["KeyE", "Enter"],
+        cycle: ["KeyQ", "Tab"],
         "move-up": ["ArrowUp", "KeyW"],
         "move-down": ["ArrowDown", "KeyS"],
         "move-left": ["ArrowLeft", "KeyA"],
         "move-right": ["ArrowRight", "KeyD"],
       },
-      preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
+      preventDefaultKeys: ["Space", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
   await engine.start();

@@ -1,8 +1,8 @@
 import { Component, LoggerKey, ServiceKey, Transform, isDev, type Logger } from "@yagejs/core";
 import type { InputManager } from "@yagejs/input";
-import { selectFocus } from "./core/focus.js";
+import { rankCandidates, selectFocus } from "./core/focus.js";
 import { interactableRegistryFor } from "./core/registry.js";
-import type { InteractorOptions } from "./core/types.js";
+import type { FocusQuery, InteractorOptions } from "./core/types.js";
 import type { Interactable } from "./Interactable.js";
 import { InteractedEvent, InteractionFocusChangedEvent } from "./events.js";
 
@@ -38,6 +38,11 @@ export class Interactor extends Component {
   private logger: Logger | undefined;
   private _focus: Interactable | null = null;
   private _focusPrompt: string | null = null;
+  /** Last-`update()` snapshot backing `inRange`, kept in step with `_focus`:
+   *  the enabled, non-destroyed candidates and the query they were ranked
+   *  against. Cleared whenever focus is (disable, removal). */
+  private _candidates: Interactable[] = [];
+  private _query: FocusQuery | null = null;
   private warnedMissingInput = false;
   private warnedUnmappedAction = false;
 
@@ -60,7 +65,7 @@ export class Interactor extends Component {
       set: (value: boolean): void => {
         if (value === trackingEnabled) return;
         trackingEnabled = value;
-        if (!value) this.setFocus(null);
+        if (!value) this.clearFocusState();
       },
     });
   }
@@ -70,23 +75,20 @@ export class Interactor extends Component {
   }
 
   onDestroy(): void {
-    // `entity.remove(Interactor)` leaves the entity alive, so this emit
-    // reaches any listener normally. `entity.destroy()` marks the entity
-    // destroyed before the deferred teardown that runs this hook, so
-    // `Entity.emit` silently drops it — the same as any other post-destroy
-    // emit.
-    if (this._focus) {
-      this.entity.emit(InteractionFocusChangedEvent, { interactable: null, prompt: null });
-    }
-    this._focus = null;
-    this._focusPrompt = null;
+    // `entity.remove(Interactor)` leaves the entity alive, so the null-focus
+    // emit inside `clearFocusState` reaches any listener normally.
+    // `entity.destroy()` marks the entity destroyed before the deferred
+    // teardown that runs this hook, so `Entity.emit` silently drops it — the
+    // same as any other post-destroy emit.
+    this.clearFocusState();
   }
 
   update(): void {
     if (!this.enabled) return;
 
     const registry = interactableRegistryFor(this.scene);
-    const query = { position: this.ownTransform.worldPosition, range: this.range };
+    const position = this.ownTransform.worldPosition;
+    const query: FocusQuery = { position: { x: position.x, y: position.y }, range: this.range };
     const candidates: Interactable[] = [];
     for (const interactable of registry) {
       // A destroyed host stays registered until the end-of-frame flush;
@@ -97,6 +99,10 @@ export class Interactor extends Component {
       }
     }
 
+    // Cache the snapshot `inRange` ranks lazily, so it stays in step with the
+    // focus picked from the same set. `focus === inRange[0]`.
+    this._candidates = candidates;
+    this._query = query;
     this.setFocus(selectFocus(query, candidates));
 
     if (this.action !== null && this._focus) {
@@ -105,18 +111,30 @@ export class Interactor extends Component {
     }
   }
 
-  /** The currently focused interactable, or `null` when nothing is in range. */
+  /** The currently focused interactable, or `null` when nothing is in range.
+   *  Same as `inRange[0] ?? null`. */
   get focus(): Interactable | null {
     return this._focus;
   }
 
-  /** Fires the current focus's `onInteract` and emits `InteractedEvent`.
-   *  No-op when there is no focus, or when the held focus went stale since it
-   *  was resolved: its host was destroyed, the component was removed, or its
-   *  `enabled` gate flipped false. A custom controller or a test calls this
-   *  directly instead of synthesizing device input. */
-  interact(): void {
-    const interactable = this._focus;
+  /** Every in-range, enabled interactable this frame, best focus first —
+   *  `inRange[0]` is the current `focus`. Reflects the last `update()` (empty
+   *  before the first one and while disabled). Read it to drive a "which do I
+   *  interact with?" selection UI, or a per-target proximity icon/highlight;
+   *  pass a choice back to `interact(target)`. A fresh array each call — safe to
+   *  hold across frames without it changing underneath. */
+  get inRange(): readonly Interactable[] {
+    return this._query === null ? [] : rankCandidates(this._query, this._candidates);
+  }
+
+  /** Fires an interactable's `onInteract` and emits `InteractedEvent`. Targets
+   *  the current `focus` by default; pass one from `inRange` to interact with a
+   *  specific chosen target instead. No-op when there is no target, or when the
+   *  target is not interactable right now — its host was destroyed, the
+   *  component was removed, or its `enabled` gate is false. A custom controller
+   *  or a test calls this directly instead of synthesizing device input. */
+  interact(target?: Interactable): void {
+    const interactable = target ?? this._focus;
     if (
       !interactable ||
       interactable.entity.isDestroyed ||
@@ -138,6 +156,14 @@ export class Interactor extends Component {
       interactable: next,
       prompt: nextPrompt,
     });
+  }
+
+  /** Drops focus and the `inRange` snapshot together (emitting the null-focus
+   *  transition if a focus was held), so both read empty when tracking stops. */
+  private clearFocusState(): void {
+    this.setFocus(null);
+    this._candidates = [];
+    this._query = null;
   }
 
   private resolveInputManager(): InputManager | undefined {

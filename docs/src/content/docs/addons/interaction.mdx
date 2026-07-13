@@ -147,6 +147,58 @@ highest `priority`; ties break by nearest distance, then by registration
 order — deterministic even when two interactables sit exactly on top of each
 other.
 
+## Multiple targets, selection UI, and highlighting
+
+`focus` is the single default target. Behind it, `interactor.inRange` is the
+full set of in-range, enabled interactables **in the same order focus is picked
+by** — so `inRange[0]` is always the current `focus`. It reflects the last
+`update()`, and reads empty before the first frame and while the interactor is
+disabled.
+
+Use it when several things overlap and the player should choose — the pickup
+selection in games like Genshin. Show your own list or wheel, then pass the
+chosen one back to `interact`:
+
+```ts
+player.on(InteractionFocusChangedEvent, () => {
+  const options = interactor.inRange; // ranked, options[0] === focus
+  if (options.length > 1) wheel.show(options);
+  else wheel.hide();
+});
+
+function confirm(chosen: Interactable) {
+  interactor.interact(chosen); // fires it and emits InteractedEvent, same guards as focus
+}
+```
+
+`interact(target)` runs the same staleness guards as the no-argument call: a
+target whose host was destroyed, whose component was removed, or whose `enabled`
+gate is false does nothing.
+
+For a scene-wide reveal — an observation skill that highlights everything
+interactable, whatever the interactor's range — enumerate by scene with
+`interactablesIn`:
+
+```ts
+import { interactablesIn, rankCandidates } from "@yagejs-addons/interaction";
+
+for (const it of interactablesIn(scene)) {
+  if (it.isEnabled()) outline(it.entity); // it.entity is the host to draw the outline on
+}
+
+// or rank a subset by proximity from any point and radius:
+const nearby = rankCandidates({ position: playerPos, range: 200 }, interactablesIn(scene));
+```
+
+Each `Interactable` exposes read-only `position`, `radius`, `priority`,
+`prompt`, `order`, `isEnabled()`, and its host `entity` — the per-target data a
+highlight outline or a proximity icon needs. To place an icon over the nearest
+target when the player is close, read `interactor.focus?.position`; for an icon
+over every in-range target, iterate `interactor.inRange`.
+
+This is data only — the addon draws nothing. You keep full control of the wheel,
+the outline shader, and the icon; the addon tells you what and where.
+
 ## Pausing tracking
 
 `interactor.enabled` (inherited from `Component`, default `true`) doubles as
@@ -159,9 +211,9 @@ interactor.enabled = false; // emits a null-focus transition immediately,
 ```
 
 <Aside type="note">
-This addon is pure distance-query proximity — no `@yagejs/physics` dependency,
-no facing-cone, and it tracks a single focused target. A physics-sensor
-discovery source, facing-cone priority, a multi-target focused set, and a
-bundled world-anchored prompt presenter are deferred; the focus event already
-carries the prompt text, so a presenter would be purely additive later.
+This addon is pure distance-query proximity — no `@yagejs/physics` dependency
+and no facing-cone. A physics-sensor discovery source, facing-cone priority, and
+a bundled world-anchored prompt presenter are deferred; the focus event and
+`inRange` already carry what a presenter would draw, so one stays purely
+additive later.
 </Aside>

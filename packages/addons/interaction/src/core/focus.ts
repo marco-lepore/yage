@@ -1,12 +1,40 @@
 import type { FocusQuery, InteractCandidate } from "./types.js";
 
 /**
- * Pure nearest-in-range focus selection. A candidate is in range when its
- * distance to `query.position` is `<= query.range + candidate.radius`. Among
- * in-range candidates, the winner is the highest `priority`; ties break by
- * nearest distance, then by lowest `order` (registration order) for a fully
- * deterministic result. Empty or all-out-of-range candidates return `null`.
- * Compares squared distances internally to avoid a `sqrt` per candidate.
+ * Squared distance from `query.position` to the candidate when the candidate
+ * is in range, else `null`. In range means `distance <= query.range +
+ * candidate.radius`. Squared throughout to avoid a `sqrt` per candidate.
+ */
+function inRangeDistanceSq(query: FocusQuery, candidate: InteractCandidate): number | null {
+  const dx = query.position.x - candidate.position.x;
+  const dy = query.position.y - candidate.position.y;
+  const distanceSq = dx * dx + dy * dy;
+  const reach = query.range + candidate.radius;
+  return distanceSq <= reach * reach ? distanceSq : null;
+}
+
+/**
+ * Focus ordering shared by {@link selectFocus} and {@link rankCandidates}:
+ * highest `priority` first, then nearest distance, then lowest `order`
+ * (registration order) for a fully deterministic result. Negative when `a`
+ * outranks `b`.
+ */
+function byFocusOrder(
+  a: InteractCandidate,
+  aDistanceSq: number,
+  b: InteractCandidate,
+  bDistanceSq: number,
+): number {
+  if (a.priority !== b.priority) return b.priority - a.priority;
+  if (aDistanceSq !== bDistanceSq) return aDistanceSq - bDistanceSq;
+  return a.order - b.order;
+}
+
+/**
+ * Pure nearest-in-range focus selection — the single winner. Empty or
+ * all-out-of-range candidates return `null`. Equivalent to
+ * `rankCandidates(query, candidates)[0] ?? null`, but O(n) with no sort or
+ * allocation, so the per-frame focus path stays cheap.
  */
 export function selectFocus<C extends InteractCandidate>(
   query: FocusQuery,
@@ -16,39 +44,33 @@ export function selectFocus<C extends InteractCandidate>(
   let bestDistanceSq = Infinity;
 
   for (const candidate of candidates) {
-    const dx = query.position.x - candidate.position.x;
-    const dy = query.position.y - candidate.position.y;
-    const distanceSq = dx * dx + dy * dy;
-    const reach = query.range + candidate.radius;
-    if (distanceSq > reach * reach) continue;
-
-    if (best === null) {
-      best = candidate;
-      bestDistanceSq = distanceSq;
-      continue;
-    }
-
-    if (candidate.priority !== best.priority) {
-      if (candidate.priority > best.priority) {
-        best = candidate;
-        bestDistanceSq = distanceSq;
-      }
-      continue;
-    }
-
-    if (distanceSq !== bestDistanceSq) {
-      if (distanceSq < bestDistanceSq) {
-        best = candidate;
-        bestDistanceSq = distanceSq;
-      }
-      continue;
-    }
-
-    if (candidate.order < best.order) {
+    const distanceSq = inRangeDistanceSq(query, candidate);
+    if (distanceSq === null) continue;
+    if (best === null || byFocusOrder(candidate, distanceSq, best, bestDistanceSq) < 0) {
       best = candidate;
       bestDistanceSq = distanceSq;
     }
   }
 
   return best;
+}
+
+/**
+ * Pure ranking of every in-range candidate, best focus first — the same order
+ * {@link selectFocus} picks its winner by, so `rankCandidates(...)[0]` equals
+ * `selectFocus(...)`. Feeds a "which of these do I interact with?" selection
+ * UI or a proximity highlight. Out-of-range candidates are excluded; an empty
+ * or all-out-of-range input returns `[]`.
+ */
+export function rankCandidates<C extends InteractCandidate>(
+  query: FocusQuery,
+  candidates: Iterable<C>,
+): C[] {
+  const scored: Array<{ candidate: C; distanceSq: number }> = [];
+  for (const candidate of candidates) {
+    const distanceSq = inRangeDistanceSq(query, candidate);
+    if (distanceSq !== null) scored.push({ candidate, distanceSq });
+  }
+  scored.sort((a, b) => byFocusOrder(a.candidate, a.distanceSq, b.candidate, b.distanceSq));
+  return scored.map((entry) => entry.candidate);
 }

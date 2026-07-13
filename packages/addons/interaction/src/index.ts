@@ -9,7 +9,8 @@
  */
 
 // --- Headless model (L1) ---
-export { selectFocus } from "./core/focus.js";
+export { rankCandidates, selectFocus } from "./core/focus.js";
+export { interactablesIn } from "./core/registry.js";
 export type {
   FocusQuery,
   InteractableOptions,
