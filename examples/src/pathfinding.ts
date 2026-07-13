@@ -1,9 +1,15 @@
-import { Engine, Scene, Entity, Component, Transform, Vec2 } from "@yagejs/core";
+import {
+  Engine,
+  Scene,
+  Entity,
+  Component,
+  Transform,
+  Vec2,
+} from "@yagejs/core";
 import {
   RendererPlugin,
   CameraEntity,
   GraphicsComponent,
-  renderAsset,
   type LayerDef,
 } from "@yagejs/renderer";
 import { TilemapPlugin, TilemapComponent, tiledMap } from "@yagejs/tilemap";
@@ -18,8 +24,7 @@ injectStyles();
 // ---------------------------------------------------------------------------
 // Asset handles
 // ---------------------------------------------------------------------------
-const DungeonAtlas = renderAsset("/assets/dungeon/dungeon.json");
-const DungeonMap = tiledMap("/assets/dungeon/dungeon-map.json");
+const PathfindingMap = tiledMap("/assets/dungeon/pathfinding-map.json");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -53,7 +58,11 @@ class AgentController extends Component {
     const transform = this.entity.get(Transform);
     if (this.index < this.path.length) {
       const target = this.path[this.index]!;
-      const next = Vec2.moveTowards(transform.position, target, AGENT_SPEED * dt);
+      const next = Vec2.moveTowards(
+        transform.position,
+        target,
+        AGENT_SPEED * dt,
+      );
       transform.setPosition(next.x, next.y);
       if (next.x === target.x && next.y === target.y) this.index++;
     }
@@ -80,7 +89,7 @@ class AgentEntity extends Entity {
 class TilemapEntity extends Entity {
   setup(): void {
     this.add(new Transform());
-    this.add(new TilemapComponent({ source: DungeonMap, layer: "map" }));
+    this.add(new TilemapComponent({ source: PathfindingMap, layer: "map" }));
   }
 }
 
@@ -125,7 +134,8 @@ class GameController extends Component {
       g.moveTo(first.x, first.y);
       for (const wp of rest) g.lineTo(wp.x, wp.y);
       g.stroke({ color: 0xfacc15, width: 3 });
-      for (const wp of path.waypoints) g.circle(wp.x, wp.y, 3).fill({ color: 0xfacc15 });
+      for (const wp of path.waypoints)
+        g.circle(wp.x, wp.y, 3).fill({ color: 0xfacc15 });
     });
   }
 }
@@ -135,7 +145,7 @@ class GameController extends Component {
 // ---------------------------------------------------------------------------
 class PathfindingScene extends Scene {
   readonly name = "pathfinding";
-  readonly preload = [DungeonMap];
+  readonly preload = [PathfindingMap];
   readonly layers: readonly LayerDef[] = [{ name: "map", order: -10 }];
 
   onEnter(): void {
@@ -186,7 +196,9 @@ interface PathfindingProbeHandle {
 }
 
 function exposeProbe(handle: PathfindingProbeHandle): void {
-  (window as unknown as { __pathfinding__: PathfindingProbeHandle }).__pathfinding__ = handle;
+  (
+    window as unknown as { __pathfinding__: PathfindingProbeHandle }
+  ).__pathfinding__ = handle;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,9 +220,6 @@ async function main() {
   engine.use(new DebugPlugin());
 
   await engine.start();
-
-  // Load the atlas first so tile textures are ready before the map resolves GIDs.
-  await engine.assets.loadAll([DungeonAtlas]);
 
   await engine.scenes.push(new PathfindingScene());
 }
