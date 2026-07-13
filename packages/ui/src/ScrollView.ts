@@ -3,10 +3,11 @@ import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, Edge, FlexDirection, Overflow } from "yoga-layout";
 import { attachMask, graphicsMask } from "@yagejs/renderer";
-import type { MaskHandle } from "@yagejs/renderer";
+import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
   Padding,
+  PanelProps,
   ScrollbarOptions,
   ScrollViewProps,
   UIContainerElement,
@@ -100,8 +101,9 @@ export class ScrollViewNode implements UIContainerElement {
   private _dragging = false;
   private _dragStart = 0;
   private _dragStartOffset = 0;
+  private _destroyed = false;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.viewport;
   }
 
@@ -398,15 +400,15 @@ export class ScrollViewNode implements UIContainerElement {
   }
 
   update(props: Partial<ScrollViewProps>): void {
-    if (props.onScroll !== undefined) this.onScroll = props.onScroll;
-    if (props.scrollbar !== undefined) {
+    if ("onScroll" in props) this.onScroll = props.onScroll;
+    if ("scrollbar" in props) {
       this._sb = resolveScrollbar(props.scrollbar);
     }
-    if (props.consumeInput !== undefined) {
+    if ("consumeInput" in props) {
       applyConsumeInput(this.viewport, props.consumeInput);
     }
 
-    if (props.background !== undefined) {
+    if ("background" in props) {
       this.bgOpts = props.background;
       if (props.background) {
         if (!this.bgRenderer) this.bgRenderer = new BackgroundRenderer();
@@ -417,8 +419,8 @@ export class ScrollViewNode implements UIContainerElement {
       }
     }
 
-    if (props.direction !== undefined) {
-      const vertical = props.direction === "vertical";
+    if ("direction" in props) {
+      const vertical = (props.direction ?? "vertical") === "vertical";
       if (vertical !== this.vertical) {
         this.vertical = vertical;
         this.yogaNode.setFlexDirection(
@@ -432,11 +434,15 @@ export class ScrollViewNode implements UIContainerElement {
       }
     }
 
-    const contentUpdate: Partial<{ gap: number; padding: Padding }> = {};
-    if (props.gap !== undefined) contentUpdate.gap = props.gap;
-    if (props.padding !== undefined) contentUpdate.padding = props.padding;
+    const contentUpdate: { gap?: number | undefined; padding?: Padding | undefined } = {};
+    if ("gap" in props) contentUpdate.gap = props.gap;
+    if ("padding" in props) contentUpdate.padding = props.padding;
     if (Object.keys(contentUpdate).length > 0) {
-      this.content.update(contentUpdate);
+      // Cast: `contentUpdate` may carry an explicit `undefined` (a removed
+      // gap/padding, forwarded as a reset) which `exactOptionalPropertyTypes`
+      // doesn't allow through `Partial<PanelProps>`'s plain `gap?: number`.
+      // PanelNode.update() reads presence, not the static type, so this is safe.
+      this.content.update(contentUpdate as Partial<PanelProps>);
     }
 
     applyLayoutProps(this.yogaNode, props);
@@ -445,10 +451,13 @@ export class ScrollViewNode implements UIContainerElement {
     // direction flip (edges swap), and any padding reset by applyLayoutProps.
     this._applyGutter();
 
-    if (props.visible !== undefined) this.visible = props.visible;
+    if ("visible" in props) this.visible = props.visible ?? true;
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this._detachInput();
     clearConsumeInput(this.viewport);
     this.maskHandle?.remove();

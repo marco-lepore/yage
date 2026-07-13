@@ -166,7 +166,7 @@ import {
   type DialogueTheme,
 } from "@yagejs-addons/dialogue/presenters";
 import { Assets, Texture } from "pixi.js";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -1392,6 +1392,7 @@ async function main(): Promise<void> {
   );
   // A dedicated "voice" channel for Sage's clips (own volume, mute, pause).
   engine.use(new AudioPlugin({ channels: { voice: { volume: 1 } } }));
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new RoomScene());

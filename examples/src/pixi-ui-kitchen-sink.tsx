@@ -16,7 +16,7 @@ import {
   PixiSelect,
   PixiRadioGroup,
 } from "@yagejs/ui-react";
-import { injectStyles, setupGameContainer } from "./shared";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared";
 import {
   textStyle, loadFonts, assets, allAssets,
   nineSlice, btnTextOffset, panelBg,
@@ -93,7 +93,6 @@ function KitchenSink() {
 
   return (
     <Panel
-      anchor="center"
       direction="column"
       gap={14}
       padding={20}
@@ -309,6 +308,7 @@ async function main() {
 
   engine.use(new UIPlugin());
   engine.use(new UIReactPlugin());
+  await installDebugFromUrl(engine);
 
   await loadFonts();
   await engine.start();

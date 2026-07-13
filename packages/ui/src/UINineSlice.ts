@@ -1,8 +1,11 @@
-import { NineSliceSprite } from "pixi.js";
-import type { Container, Texture } from "pixi.js";
+import { NineSliceSprite as PixiNineSliceSprite } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display } from "yoga-layout";
-import type { AssetHandle } from "@yagejs/core";
+import type {
+  DisplayContainer,
+  NineSliceSprite,
+  TextureHandle,
+} from "@yagejs/renderer";
 import type { UIElement, UINineSliceProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -14,12 +17,13 @@ export class UINineSlice implements UIElement {
   readonly container: NineSliceSprite;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 
-  private textureHandle: AssetHandle<Texture>;
+  private textureHandle: TextureHandle;
   private readonly pointerEvents: PointerEvents;
+  private _destroyed = false;
 
   constructor(props: UINineSliceProps) {
     this.yogaNode = createYogaNode();
@@ -29,7 +33,7 @@ export class UINineSlice implements UIElement {
     const insets = props.insets;
 
     if (typeof insets === "number") {
-      this.container = new NineSliceSprite({
+      this.container = new PixiNineSliceSprite({
         texture,
         leftWidth: insets,
         topHeight: insets,
@@ -37,7 +41,7 @@ export class UINineSlice implements UIElement {
         bottomHeight: insets,
       });
     } else {
-      this.container = new NineSliceSprite({
+      this.container = new PixiNineSliceSprite({
         texture,
         leftWidth: insets.left,
         topHeight: insets.top,
@@ -83,19 +87,22 @@ export class UINineSlice implements UIElement {
       this.container.texture = resolveTexture(p.texture);
     }
 
-    if (p.tint !== undefined) this.container.tint = p.tint;
-    if (p.alpha !== undefined) this.container.alpha = p.alpha;
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("tint" in p) this.container.tint = p.tint ?? 0xffffff;
+    if ("alpha" in p) this.container.alpha = p.alpha ?? 1;
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();

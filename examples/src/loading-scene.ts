@@ -18,7 +18,7 @@ import {
   UIPanel,
   UIPlugin,
 } from "@yagejs/ui";
-import { setupGameContainer, injectStyles } from "./shared.js";
+import { setupGameContainer, injectStyles, installDebugFromUrl } from "./shared.js";
 
 injectStyles(`
   .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
@@ -197,7 +197,7 @@ class PressAnyKeyLogic extends Component {
 // ---------------------------------------------------------------------------
 // Boot the engine.
 // ---------------------------------------------------------------------------
-const engine = new Engine();
+const engine = new Engine({ debug: true });
 engine.use(
   new RendererPlugin({
     width: WIDTH,
@@ -213,6 +213,7 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
+await installDebugFromUrl(engine);
 await engine.start();
 engine.assets.registerLoader("slow", slowLoader);
 

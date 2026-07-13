@@ -1,4 +1,4 @@
-import type { Filter } from "pixi.js";
+import type { Filter } from "../public-types.js";
 import type { Effect, EffectFactory } from "./Effect.js";
 
 /** Options for {@link rawFilter}. */

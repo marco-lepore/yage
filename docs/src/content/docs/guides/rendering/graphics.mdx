@@ -12,7 +12,7 @@ backgrounds, prefer [`UIPanel`](/guides/ui/) instead.
 import { GraphicsComponent } from "@yagejs/renderer";
 
 entity.add(
-  new GraphicsComponent().draw((g) => {
+  new GraphicsComponent({ layer: "world", tint: 0x88ccff }).draw((g) => {
     g.circle(0, 0, 50).fill({ color: 0x38bdf8 });
   }),
 );
@@ -21,6 +21,13 @@ entity.add(
 Call `.draw()` again at any time to redraw. The callback receives a PixiJS
 `Graphics` object, so all standard drawing methods are available — `rect`,
 `roundRect`, `poly`, `moveTo`/`lineTo`, `stroke`, and `fill`.
+
+`GraphicsComponent` takes the same `visible` / `tint` / `alpha` /
+`interactive` options as `SpriteComponent`, plus `setMask()` / `fx` for
+masking and filters. `serialize()` persists `layer`, those options, and any
+attached effects and mask — only the drawn geometry isn't recorded (Pixi has
+no way to read commands back off a `Graphics` object), so redo the `.draw()`
+call in `afterRestore()`; everything else restores on its own.
 
 **Escape hatch:** `.graphics` (and the `g` passed to `.draw(fn)`) is a raw
 pixi `Graphics` instance. The fluent API mirrors Canvas 2D vocabulary —

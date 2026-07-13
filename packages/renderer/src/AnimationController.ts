@@ -7,9 +7,7 @@ import type { FrameSource } from "./spritesheet.js";
 /** Definition for a single named animation. */
 export interface AnimationDef {
   /** Serializable frame source (sprite strip or atlas). */
-  source?: FrameSource;
-  /** Raw frame textures (not serializable). Resolved from source if omitted. */
-  frames?: Texture[];
+  source: FrameSource;
   /** PixiJS animationSpeed value (e.g. 0.15). */
   speed: number;
   /** Whether the animation loops. Default: true. */
@@ -33,9 +31,9 @@ export interface AnimationControllerData {
   speed: number;
 }
 
-// Internal: AnimationDef with frames guaranteed resolved.
+// Internal: AnimationDef with frames resolved from its source.
 interface ResolvedAnimDef {
-  source?: FrameSource;
+  source: FrameSource;
   frames: Texture[];
   speed: number;
   loop?: boolean;
@@ -74,7 +72,6 @@ export class AnimationController<
 > extends Component {
   private readonly _anims: Record<T, ResolvedAnimDef>;
   private readonly _sprite = this.sibling(AnimatedSpriteComponent);
-  private readonly _serializable: boolean;
 
   private _current: T | "" = "";
   private _locked = false;
@@ -86,35 +83,19 @@ export class AnimationController<
   constructor(animations: Record<T, AnimationDef>) {
     super();
 
-    let allHaveSource = true;
     const resolved = {} as Record<T, ResolvedAnimDef>;
-
     for (const name of Object.keys(animations) as T[]) {
       const def = animations[name];
-      let frames: Texture[];
-
-      if (def.source && !def.frames) {
-        frames = resolveFrames(def.source);
-      } else if (def.frames) {
-        frames = def.frames;
-        allHaveSource = false; // raw frames used — not serializable even if source is also set
-      } else {
-        throw new Error(
-          `AnimationDef "${name}" requires either \`source\` or \`frames\`.`,
-        );
-      }
-
       resolved[name] = {
-        frames,
+        source: def.source,
+        frames: resolveFrames(def.source),
         speed: def.speed,
-        ...(def.source && { source: def.source }),
         ...(def.loop != null && { loop: def.loop }),
         ...(def.anchor && { anchor: def.anchor }),
       };
     }
 
     this._anims = resolved;
-    this._serializable = allHaveSource;
   }
 
   /** Currently playing animation name, or "" if none. */
@@ -199,17 +180,9 @@ export class AnimationController<
     return f >= start && f <= end;
   }
 
-  serialize(): AnimationControllerData | null {
-    if (!this._serializable) {
-      console.warn(
-        `AnimationController on "${this.entity?.name}": some animation defs use raw frames. ` +
-          `Use { source } on all defs for save/load support.`,
-      );
-      return null;
-    }
+  serialize(): AnimationControllerData {
     const animations: AnimationControllerData["animations"] = {};
     for (const [name, def] of Object.entries<ResolvedAnimDef>(this._anims)) {
-      if (!def.source) continue; // guarded by _serializable check above
       animations[name] = {
         source: def.source,
         speed: def.speed,

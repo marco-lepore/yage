@@ -13,6 +13,22 @@ const { mocks } = vi.hoisted(() => {
     zIndex = 0;
     label = "";
     destroyed = false;
+    tint = 0xffffff;
+    eventMode = "passive";
+    anchor = {
+      x: 0,
+      y: 0,
+      set: vi.fn(function (
+        this: { x: number; y: number },
+        ax: number,
+        ay: number,
+      ) {
+        this.x = ax;
+        this.y = ay;
+      }),
+    };
+
+    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
 
     addChild(child: MockContainer): MockContainer {
       this.children.push(child);
@@ -36,8 +52,6 @@ const { mocks } = vi.hoisted(() => {
     sortChildren(): void {
       this.children.sort((a, b) => a.zIndex - b.zIndex);
     }
-
-    boundsBox = { x: 0, y: 0, width: 0, height: 0 };
 
     getLocalBounds(): { x: number; y: number; width: number; height: number } {
       return { ...this.boundsBox };
@@ -66,15 +80,6 @@ const { mocks } = vi.hoisted(() => {
     loop = true;
     playing = false;
     onComplete: (() => void) | null = null;
-    tint: number | string = 0xffffff;
-    anchor = {
-      x: 0,
-      y: 0,
-      set(ax: number, ay: number) {
-        this.x = ax;
-        this.y = ay;
-      },
-    };
 
     constructor(textures: unknown[]) {
       super();
@@ -133,79 +138,94 @@ import { Transform } from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
 
-describe("AnimatedSpriteComponent", () => {
-  const textures = [{ label: "frame1" }, { label: "frame2" }] as never[];
+// frameWidth=48 against the mock's fixed 96px-wide texture → 2 frames.
+const SOURCE = { sheet: "hero.png", frameWidth: 48 };
 
+describe("AnimatedSpriteComponent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("creates an animated sprite from textures", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+  it("creates an animated sprite from a frame source", () => {
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     expect(comp.animatedSprite).toBeDefined();
-    expect((comp.animatedSprite as unknown as InstanceType<typeof mocks.MockAnimatedSprite>).textures).toBe(textures);
+    expect(
+      (comp.animatedSprite as unknown as InstanceType<typeof mocks.MockAnimatedSprite>)
+        .textures,
+    ).toHaveLength(2);
   });
 
   it("defaults to 'default' layer", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     expect(comp.layerName).toBe("default");
   });
 
   it("accepts custom layer name", () => {
-    const comp = new AnimatedSpriteComponent({ textures, layer: "fx" });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE, layer: "fx" });
     expect(comp.layerName).toBe("fx");
   });
 
   it("applies component-level anchor from a Vec2-like option", () => {
     const comp = new AnimatedSpriteComponent({
-      textures,
+      source: SOURCE,
       anchor: { x: 0.5, y: 1 },
     });
     expect(comp.animatedSprite.anchor.x).toBe(0.5);
     expect(comp.animatedSprite.anchor.y).toBe(1);
   });
 
-  it("applies component-level anchor from a tuple", () => {
-    const comp = new AnimatedSpriteComponent({ textures, anchor: [0.5, 0.5] });
-    expect(comp.animatedSprite.anchor.x).toBe(0.5);
-    expect(comp.animatedSprite.anchor.y).toBe(0.5);
-  });
-
   it("applies tint when provided (numeric and string)", () => {
-    const num = new AnimatedSpriteComponent({ textures, tint: 0xff0000 });
+    const num = new AnimatedSpriteComponent({ source: SOURCE, tint: 0xff0000 });
     expect(num.animatedSprite.tint).toBe(0xff0000);
 
-    const str = new AnimatedSpriteComponent({ textures, tint: "#00ff00" });
+    const str = new AnimatedSpriteComponent({ source: SOURCE, tint: "#00ff00" });
     expect(str.animatedSprite.tint).toBe("#00ff00");
   });
 
+  it("applies visible and alpha options, with runtime accessors", () => {
+    const comp = new AnimatedSpriteComponent({
+      source: SOURCE,
+      visible: false,
+      alpha: 0.5,
+    });
+    expect(comp.animatedSprite.visible).toBe(false);
+    expect(comp.animatedSprite.alpha).toBe(0.5);
+    expect(comp.visible).toBe(false);
+    expect(comp.alpha).toBe(0.5);
+
+    comp.visible = true;
+    comp.alpha = 1;
+    expect(comp.animatedSprite.visible).toBe(true);
+    expect(comp.animatedSprite.alpha).toBe(1);
+  });
+
   it("play() starts the animation", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play();
     expect(comp.isPlaying).toBe(true);
   });
 
   it("play() sets speed when provided", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play({ speed: 0.5 });
     expect(comp.animatedSprite.animationSpeed).toBe(0.5);
   });
 
   it("play() sets loop when provided", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play({ loop: false });
     expect(comp.animatedSprite.loop).toBe(false);
   });
 
   it("play() sets onComplete when provided", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     const cb = vi.fn();
     comp.play({ onComplete: cb });
     expect(comp.animatedSprite.onComplete).toBe(cb);
   });
 
   it("stop() stops the animation", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     comp.play();
     expect(comp.isPlaying).toBe(true);
     comp.stop();
@@ -213,7 +233,7 @@ describe("AnimatedSpriteComponent", () => {
   });
 
   it("isPlaying reflects animation state", () => {
-    const comp = new AnimatedSpriteComponent({ textures });
+    const comp = new AnimatedSpriteComponent({ source: SOURCE });
     expect(comp.isPlaying).toBe(false);
     comp.play();
     expect(comp.isPlaying).toBe(true);
@@ -223,7 +243,7 @@ describe("AnimatedSpriteComponent", () => {
     const { scene, layerManager } = createRendererTestContext();
     const entity = spawnEntityInScene(scene);
     entity.add(new Transform());
-    const comp = entity.add(new AnimatedSpriteComponent({ textures }));
+    const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
 
     const layerContainer = layerManager.defaultLayer.container as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(layerContainer.children).toContain(comp.animatedSprite);
@@ -233,7 +253,7 @@ describe("AnimatedSpriteComponent", () => {
     const { scene } = createRendererTestContext();
     const entity = spawnEntityInScene(scene);
     entity.add(new Transform());
-    const comp = entity.add(new AnimatedSpriteComponent({ textures }));
+    const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
 
     const anim = comp.animatedSprite as unknown as InstanceType<typeof mocks.MockContainer>;
     expect(anim.parent).not.toBeNull();
@@ -241,6 +261,16 @@ describe("AnimatedSpriteComponent", () => {
     comp.onDestroy?.();
     expect(anim.parent).toBeNull();
     expect(anim.destroyed).toBe(true);
+  });
+
+  describe("interactive", () => {
+    it("sets eventMode and defaults to static", () => {
+      const comp = new AnimatedSpriteComponent({
+        source: SOURCE,
+        interactive: {},
+      });
+      expect(comp.animatedSprite.eventMode).toBe("static");
+    });
   });
 
   describe("serialization", () => {
@@ -252,24 +282,19 @@ describe("AnimatedSpriteComponent", () => {
       expect(comp.animatedSprite.textures).toHaveLength(2);
     });
 
-    it("serialize returns source + layer when constructed with source", () => {
+    it("serialize returns source, layer, and shared visual fields", () => {
       const source = { sheet: "player.png", frameWidth: 48 };
       const comp = new AnimatedSpriteComponent({ source, layer: "fg" });
-      expect(comp.serialize()).toEqual({ source, layer: "fg" });
-    });
-
-    it("serialize returns null with warning when constructed with raw textures", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const comp = new AnimatedSpriteComponent({ textures });
-      expect(comp.serialize()).toBeNull();
-      expect(warnSpy).toHaveBeenCalledOnce();
-      warnSpy.mockRestore();
+      const data = comp.serialize();
+      expect(data.source).toEqual(source);
+      expect(data.layer).toBe("fg");
+      expect(data.anchor).toEqual({ x: 0, y: 0 });
     });
 
     it("fromSnapshot round-trips", () => {
       const source = { sheet: "player.png", frameWidth: 48 };
       const original = new AnimatedSpriteComponent({ source, layer: "bg" });
-      const data = original.serialize()!;
+      const data = original.serialize();
       const restored = AnimatedSpriteComponent.fromSnapshot(data);
       expect(restored.layerName).toBe("bg");
       expect(restored.serialize()).toEqual(data);
@@ -282,7 +307,7 @@ describe("AnimatedSpriteComponent", () => {
         anchor: { x: 0.5, y: 1 },
         tint: 0xff0000,
       });
-      const data = original.serialize()!;
+      const data = original.serialize();
       expect(data.anchor).toEqual({ x: 0.5, y: 1 });
       expect(data.tint).toBe(0xff0000);
 
@@ -292,12 +317,6 @@ describe("AnimatedSpriteComponent", () => {
       expect(restored.animatedSprite.tint).toBe(0xff0000);
       expect(restored.serialize()).toEqual(data);
     });
-
-    it("throws when neither source nor textures provided", () => {
-      expect(() => new AnimatedSpriteComponent({} as never)).toThrow(
-        /requires either/,
-      );
-    });
   });
 
   describe("inspectRender", () => {
@@ -305,7 +324,7 @@ describe("AnimatedSpriteComponent", () => {
       const { scene } = createRendererTestContext();
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
-      const comp = entity.add(new AnimatedSpriteComponent({ textures }));
+      const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
       const sprite = comp.animatedSprite as unknown as InstanceType<
         typeof mocks.MockAnimatedSprite
       >;
@@ -320,7 +339,7 @@ describe("AnimatedSpriteComponent", () => {
       const { scene } = createRendererTestContext();
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform());
-      const comp = entity.add(new AnimatedSpriteComponent({ textures }));
+      const comp = entity.add(new AnimatedSpriteComponent({ source: SOURCE }));
       const sprite = comp.animatedSprite as unknown as InstanceType<
         typeof mocks.MockAnimatedSprite
       >;

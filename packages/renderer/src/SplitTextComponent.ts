@@ -1,14 +1,21 @@
-import { Component, serializable } from "@yagejs/core";
+import { serializable } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
-import type { BitmapText, Container, Text } from "pixi.js";
-import {
-  computeRenderFacet,
-  type RenderFacetSnapshot,
-} from "./internal/renderFacet.js";
-import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { resolveRenderParent } from "./SortGroupComponent.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
-import type { TextStyle } from "./public-types.js";
+import type {
+  DestroyOptions,
+  DisplayBitmapText,
+  DisplayContainer,
+  DisplaySplitBitmapText,
+  DisplaySplitText,
+  DisplayText,
+  TextStyle,
+} from "./public-types.js";
+import type { RenderFacetSnapshot } from "./internal/renderFacet.js";
+import {
+  VisualComponent,
+  type VisualComponentData,
+  type VisualComponentOptions,
+} from "./VisualComponent.js";
 
 /**
  * Renderer-specific extras `SplitTextComponent.inspectRender()` attaches on
@@ -43,7 +50,7 @@ function cloneAnchor(anchor: SegmentAnchor): SegmentAnchor {
 }
 
 /** Options for creating a {@link SplitTextComponent}. */
-export interface SplitTextComponentOptions {
+export interface SplitTextComponentOptions extends VisualComponentOptions {
   /** The text string to render and segment. */
   text: string;
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
@@ -65,18 +72,10 @@ export interface SplitTextComponentOptions {
    * Set `false` and call {@link SplitTextComponent.resplit} to batch updates.
    */
   autoSplit?: boolean;
-  /** Render layer name. Default: "default". */
-  layer?: string;
-  /** Initial visibility. Default: true. */
-  visible?: boolean;
-  /** Tint color applied to the whole text (cascades to every segment). */
-  tint?: number;
-  /** Alpha (opacity). Default: 1. */
-  alpha?: number;
 }
 
 /** Serialisable snapshot of a SplitTextComponent. */
-export interface SplitTextData {
+export interface SplitTextData extends VisualComponentData {
   text: string;
   style?: TextStyle;
   bitmap?: boolean;
@@ -84,10 +83,6 @@ export interface SplitTextData {
   wordAnchor?: SegmentAnchor;
   lineAnchor?: SegmentAnchor;
   autoSplit?: boolean;
-  layer: string;
-  tint?: number;
-  alpha?: number;
-  visible?: boolean;
 }
 
 /**
@@ -106,12 +101,11 @@ export interface SplitTextData {
  * differ slightly from `Text` (browser kerning is lost once glyphs are split).
  */
 @serializable
-export class SplitTextComponent extends Component {
+export class SplitTextComponent extends VisualComponent {
   /** The underlying Pixi `SplitText` / `SplitBitmapText` container. */
-  readonly splitText: SplitText | SplitBitmapText;
+  readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
-  readonly layerName: string;
   // Raw options kept so `serialize()` emits POJOs, not the live pixi objects
   // (whose getters don't faithfully round-trip through JSON). Mirrors TextComponent.
   private _styleOptions?: TextStyle;
@@ -122,7 +116,7 @@ export class SplitTextComponent extends Component {
   private _autoSplit?: boolean;
 
   constructor(options: SplitTextComponentOptions) {
-    super();
+    super(options.layer);
     // Reuse the shared builder for style-default resolution and the
     // canvas/bitmap class pick. `resolution` is N/A for split text (Pixi's
     // SplitOptions has no resolution), so it's not forwarded.
@@ -152,7 +146,6 @@ export class SplitTextComponent extends Component {
     this.splitText = bitmap
       ? new SplitBitmapText(splitOptions)
       : new SplitText(splitOptions);
-    this.layerName = options.layer ?? "default";
 
     // Shallow-clone so external mutation of the caller's options can't drift
     // our cached snapshot away from the live pixi state.
@@ -166,23 +159,26 @@ export class SplitTextComponent extends Component {
       this._lineAnchor = cloneAnchor(options.lineAnchor);
     if (options.autoSplit !== undefined) this._autoSplit = options.autoSplit;
 
-    if (options.visible !== undefined) this.splitText.visible = options.visible;
-    if (options.tint !== undefined) this.splitText.tint = options.tint;
-    if (options.alpha !== undefined) this.splitText.alpha = options.alpha;
+    this.applyVisualOptions(options);
+  }
+
+  /** The underlying Pixi display object. */
+  get renderObject(): DisplaySplitText | DisplaySplitBitmapText {
+    return this.splitText;
   }
 
   /** Individual character segments (`Text` or `BitmapText`), in reading order. */
-  get chars(): (Text | BitmapText)[] {
+  get chars(): (DisplayText | DisplayBitmapText)[] {
     return this.splitText.chars;
   }
 
   /** Word-group containers, each holding its character segments. */
-  get words(): Container[] {
+  get words(): DisplayContainer[] {
     return this.splitText.words;
   }
 
   /** Line-group containers, each holding its word containers. */
-  get lines(): Container[] {
+  get lines(): DisplayContainer[] {
     return this.splitText.lines;
   }
 
@@ -238,29 +234,10 @@ export class SplitTextComponent extends Component {
     return this.splitText.lineAnchor;
   }
 
-  /** Tint color applied to the whole text (cascades to every segment). */
-  set tint(color: number) {
-    this.splitText.tint = color;
-  }
-  get tint(): number {
-    return this.splitText.tint;
-  }
-
-  /** Opacity (0-1). */
-  set alpha(alpha: number) {
-    this.splitText.alpha = alpha;
-  }
-  get alpha(): number {
-    return this.splitText.alpha;
-  }
-
   serialize(): SplitTextData {
     const data: SplitTextData = {
+      ...this.serializeVisual(),
       text: this.splitText.text,
-      layer: this.layerName,
-      tint: this.splitText.tint,
-      alpha: this.splitText.alpha,
-      visible: this.splitText.visible,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
     if (this._bitmap !== undefined) data.bitmap = this._bitmap;
@@ -272,6 +249,11 @@ export class SplitTextComponent extends Component {
       data.lineAnchor = cloneAnchor(this._lineAnchor);
     if (this._autoSplit !== undefined) data.autoSplit = this._autoSplit;
     return data;
+  }
+
+  /** Restore effects and mask after the split text is parented. */
+  afterRestore(data: SplitTextData): void {
+    this.restoreVisual(data);
   }
 
   static fromSnapshot(data: SplitTextData): SplitTextComponent {
@@ -288,6 +270,7 @@ export class SplitTextComponent extends Component {
     if (data.tint !== undefined) opts.tint = data.tint;
     if (data.alpha !== undefined) opts.alpha = data.alpha;
     if (data.visible !== undefined) opts.visible = data.visible;
+    if (data.interactive) opts.interactive = { ...data.interactive };
     return new SplitTextComponent(opts);
   }
 
@@ -308,7 +291,7 @@ export class SplitTextComponent extends Component {
    * glyphs* are on screen, not to reconstruct the original string verbatim.
    */
   inspectRender(): SplitTextRenderFacet {
-    const facet = computeRenderFacet(this.splitText);
+    const facet = super.inspectRender();
     const chars = this.splitText.chars;
     const glyphs = chars.map((char) => ({ visible: char.visible }));
     const visibleText = chars
@@ -318,22 +301,11 @@ export class SplitTextComponent extends Component {
     return { ...facet, glyphs, visibleText };
   }
 
-  /** The underlying Pixi display object. */
-  get renderObject(): Container {
-    return this.splitText;
-  }
-
-  onAdd(): void {
-    const tree = this.use(SceneRenderTreeKey);
-    resolveRenderParent(this.entity, this.layerName, tree).addChild(
-      this.splitText,
-    );
-  }
-
-  onDestroy(): void {
-    this.splitText.removeFromParent();
-    // `{ children: true }` so the per-line / word / char display objects that
-    // `split()` parented are destroyed too (not freed by the default destroy).
-    this.splitText.destroy({ children: true });
+  /**
+   * `{ children: true }` so the per-line / word / char display objects that
+   * `split()` parented are destroyed too (not freed by the default destroy).
+   */
+  protected destroyOptions(): DestroyOptions {
+    return { children: true };
   }
 }

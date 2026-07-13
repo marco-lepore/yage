@@ -1,8 +1,11 @@
 import { Sprite } from "pixi.js";
-import type { Container, Texture } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
-import type { AssetHandle } from "@yagejs/core";
+import type {
+  DisplayContainer,
+  DisplaySprite,
+  TextureHandle,
+} from "@yagejs/renderer";
 import type { UIElement, UIImageProps } from "./types.js";
 import { createYogaNode, applyLayoutProps } from "./yoga-helpers.js";
 import { resolveTexture } from "./asset-helpers.js";
@@ -11,15 +14,16 @@ import { PointerEvents } from "./pointer-events.js";
 
 /** Displays a texture as a UI element, scaling to fit Yoga-computed dimensions. */
 export class UIImage implements UIElement {
-  readonly container: Sprite;
+  readonly container: DisplaySprite;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 
-  private textureHandle: AssetHandle<Texture>;
+  private textureHandle: TextureHandle;
   private readonly pointerEvents: PointerEvents;
+  private _destroyed = false;
 
   constructor(props: UIImageProps) {
     this.yogaNode = createYogaNode();
@@ -92,19 +96,22 @@ export class UIImage implements UIElement {
       this.yogaNode.markDirty();
     }
 
-    if (p.tint !== undefined) this.container.tint = p.tint;
-    if (p.alpha !== undefined) this.container.alpha = p.alpha;
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("tint" in p) this.container.tint = p.tint ?? 0xffffff;
+    if ("alpha" in p) this.container.alpha = p.alpha ?? 1;
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
     this.pointerEvents.set(p);
 
     applyLayoutProps(this.yogaNode, p);
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     this.yogaNode.free();
     this.container.destroy();

@@ -15,6 +15,7 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 | `@yagejs/audio`     | Channel-based audio via @pixi/sound                    |
 | `@yagejs/particles` | Particle emitters with pooling and presets             |
 | `@yagejs/tilemap`   | Tiled map loading and rendering                        |
+| `@yagejs/pathfinding` | Grid A* pathfinding, tilemap adapter                 |
 | `@yagejs/ui`        | Yoga flexbox-based UI components                       |
 | `@yagejs/ui-react`  | React reconciler over the UI layer                     |
 | `@yagejs/debug`     | Debug overlay, stats, world/HUD drawing                |
@@ -48,6 +49,7 @@ Enforced by tooling — match these conventions exactly:
 - **Pixels everywhere** — all user-facing APIs work in pixels. Physics coordinate conversion is internal to `PhysicsWorld`.
 - **Immutable `Vec2`, mutable `Transform`** — `Vec2` operations return new instances. `Transform` has mutating methods (`setPosition`, `translate`, etc.).
 - **No pixi.js imports in `@yagejs/core`** — core has zero runtime dependencies.
+- **No raw `pixi.js` type in an exported signature** — public fields, parameters, and return types (in `@yagejs/renderer` and downstream consumers: ui, particles, tilemap, ...) use `@yagejs/renderer`'s alias layer (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...) instead of a direct `pixi.js` type import, so consumer code never needs to import `pixi.js` for types. The aliases are transparent (`type DisplayContainer = Container`) — this covers discoverability, not encapsulation. Constructing the actual Pixi object still imports `pixi.js` directly; only type positions in public signatures go through the alias.
 - **Export new public types from `index.ts`** — every package has a barrel export.
 - **Plain objects for config** — plugin configs, action maps, collider shapes. No `Map`, no classes for config.
 - **Entity subclasses with `setup()` for entity types** — preferred pattern for game entities. `defineBlueprint()` still works for simple parametric factories but is deprecated.

@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import { ServiceKey } from "@yagejs/core";
-import type { SceneRenderTree } from "@yagejs/renderer";
+import type { DisplayContainer, SceneRenderTree } from "@yagejs/renderer";
 import type { UIElement } from "./types.js";
 import { computePosition } from "./positioning.js";
 import type { Placement } from "./positioning.js";
@@ -28,7 +28,7 @@ export interface FloatConfig {
  * reconciler tree, hand-built `PanelNode`s, …).
  */
 export interface FloatingHandle {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   setReference(get: () => UIElement | null): void;
   setConfig(cfg: FloatConfig): void;
   /**
@@ -51,7 +51,7 @@ interface Dimensions {
 }
 
 interface Entry {
-  container: Container;
+  container: DisplayContainer;
   getReference: () => UIElement | null;
   config: FloatConfig;
   layout: (maxWidth: number | undefined) => Dimensions;
@@ -75,7 +75,7 @@ const EMPTY_SIZE: Dimensions = { width: 0, height: 0 };
  * knows nothing about React or specific node types.
  */
 export class FloatingOverlay {
-  private layer: Container | null = null;
+  private layer: DisplayContainer | null = null;
   private readonly entries = new Set<Entry>();
   private zSeq = 1;
 

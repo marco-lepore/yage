@@ -57,6 +57,7 @@ for Vite configuration and bundler setup.
 | `@yagejs/audio`     | Audio playback                                   |
 | `@yagejs/particles` | Particle effects                                 |
 | `@yagejs/tilemap`   | Tilemap support                                  |
+| `@yagejs/pathfinding` | Grid A* pathfinding                            |
 | `@yagejs/ui`        | UI components                                    |
 | `@yagejs/ui-react`  | React-based UI                                   |
 | `@yagejs/save`      | Save/load system                                 |

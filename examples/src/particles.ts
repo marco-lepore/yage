@@ -11,8 +11,7 @@ import {
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 import type { EmitterConfig } from "@yagejs/particles";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -231,7 +230,7 @@ async function main() {
     preventDefaultKeys: ["Space"],
   }));
   engine.use(new ParticlesPlugin());
-  engine.use(new DebugPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new ParticlesScene());

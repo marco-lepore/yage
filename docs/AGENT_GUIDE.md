@@ -70,6 +70,8 @@ When modifying packages, changes flow downstream. Build and test in dependency o
   │
   ├── @yagejs/audio (→ core, @pixi/sound)
   │
+  ├── @yagejs/pathfinding (→ core; optional: tilemap)
+  │
   └── @yagejs/save (→ core)
 ```
 
@@ -607,10 +609,10 @@ class MyComponent extends Component {
 
 **Partial serialization** (contains Textures or other non-serializable objects):
 
-Use string-based alternatives (`source: FrameSource`, `textureKey: string`) when available. When only raw objects are provided, `serialize()` returns `null` and the entity must reconstruct in `afterRestore()`.
+Use string-based alternatives (`source: FrameSource`, `textureKey: string`) when available. `AnimatedSpriteComponent` and `AnimationController` require `source` — there's no raw-texture construction path, so both always serialize fully. `SpriteComponent` still accepts a raw `Texture` object; when it's given one instead of a string/handle, `serialize()` returns `null` and the entity must reconstruct in `afterRestore()`.
 
 ```typescript
-import { AnimatedSpriteComponent, AnimationController } from "@yagejs/renderer";
+import { AnimatedSpriteComponent, AnimationController, SpriteComponent } from "@yagejs/renderer";
 
 // Serializable — uses FrameSource (string key + frame dimensions)
 new AnimatedSpriteComponent({
@@ -622,8 +624,8 @@ new AnimationController<PlayerAnim>({
   walk: { source: { sheet: "player_walk.png", frameWidth: 48 }, speed: 0.2 },
 });
 
-// NOT serializable — raw Texture[] (backward compat, entity handles afterRestore)
-new AnimatedSpriteComponent({ textures: myTextureArray });
+// NOT serializable — a raw Texture object instead of a string/handle
+new SpriteComponent({ texture: myTexture });
 ```
 
 **Serialization status by component:**
@@ -632,11 +634,11 @@ new AnimatedSpriteComponent({ textures: myTextureArray });
 | -------------------------- | ------------------------------------------ | --------------------------------------------------------- |
 | `Transform`                | Full                                       | N/A (all primitives)                                      |
 | `SpriteComponent`          | Full when using string texture key         | `texture: "sprite.png"`                                   |
-| `GraphicsComponent`        | Partial (layer only, draw in afterRestore) | N/A                                                       |
+| `GraphicsComponent`        | Partial (layer/visual options only, draw in afterRestore) | N/A                                          |
 | `RigidBodyComponent`       | Full                                       | N/A (all primitives)                                      |
 | `ColliderComponent`        | Full                                       | N/A (all primitives)                                      |
-| `AnimatedSpriteComponent`  | Full when using `source`                   | `source: { sheet, frameWidth }` or `{ atlas, animation }` |
-| `AnimationController`      | Full when ALL defs use `source`            | Same as above                                             |
+| `AnimatedSpriteComponent`  | Full                                       | `source: { sheet, frameWidth }` or `{ atlas, animation }` |
+| `AnimationController`      | Full                                       | Same as above                                             |
 | `SoundComponent`           | Full                                       | `alias` is already a string                               |
 | `ParticleEmitterComponent` | Full when using `textureKey`               | `textureKey: "particle.png"`                              |
 | `TilemapComponent`         | Full when using `mapKey`                   | `mapKey: "dungeon.json"`                                  |
@@ -958,6 +960,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | **Putting engine-level cross-cutting concerns in Components** | Physics stepping, render sync, and collision dispatch need efficient cross-entity queries and strict phase ordering. Putting these in Components means duplicate work and no centralized control. | Use Systems for engine-level concerns (physics, rendering, audio). Components are for game logic.                           |
 | **Importing PixiJS types into `@yagejs/core`**                | Creates a dependency from core to pixi.js, breaking the zero-dependency guarantee.                                                                                                                | Keep PixiJS types inside `@yagejs/renderer`. Use abstract interfaces in core if needed.                                     |
+| **Typing a public field/param/return with a raw `pixi.js` type** | Forces consumer code to import `pixi.js` for types, defeating the alias layer's discoverability goal.                                                                                            | Use `@yagejs/renderer`'s aliases (`DisplayContainer`, `DisplaySprite`, `GraphicsContext`, `ColorValue`, ...) in exported signatures — construction still imports `pixi.js` directly. |
 | **Using `context.resolve()` in a constructor**                | Context may not be fully populated during plugin installation.                                                                                                                                    | Use `onRegister()` for systems or `onEnter()` for scenes to resolve services.                                               |
 | **Mutating Vec2**                                             | Vec2 is immutable by design. Mutations would break assumptions in caching and comparison.                                                                                                         | Use `vec.add()`, `vec.scale()`, etc. which return new instances.                                                            |
 | **Running async code in system `update()`**                   | The game loop is synchronous. Async operations skip frames and cause non-determinism.                                                                                                             | Start async work outside the loop, use events to communicate completion, or use Process for frame-aligned delays.           |

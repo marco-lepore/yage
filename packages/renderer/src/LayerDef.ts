@@ -1,4 +1,4 @@
-import type { Container } from "pixi.js";
+import type { DisplayContainer } from "./public-types.js";
 
 /** Coordinate space a layer lives in. See `LayerDef.space`. */
 export type LayerSpace = "world" | "screen";
@@ -20,7 +20,7 @@ export type LayerSpace = "world" | "screen";
  * the layer by zIndex — so the resulting paint order is exactly what
  * Pixi shows for any manually-zIndexed scene, no separate sort path.
  */
-export type LayerSortFn = (c: Container) => number;
+export type LayerSortFn = (c: DisplayContainer) => number;
 
 /**
  * Declarative layer definition attached to a Scene subclass via

@@ -2,6 +2,7 @@ import { Component, Transform, devWarn, serializable } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { Container } from "pixi.js";
 import type { LayerSortFn } from "./LayerDef.js";
+import type { DisplayContainer } from "./public-types.js";
 import type { SceneRenderTree } from "./SceneRenderTree.js";
 import { SceneRenderTreeKey } from "./SceneRenderTree.js";
 
@@ -22,7 +23,7 @@ export interface LayerRenderable {
   /** Name of the layer this component renders into. */
   readonly layerName: string;
   /** The underlying Pixi display object. */
-  readonly renderObject: Container;
+  readonly renderObject: DisplayContainer;
 }
 
 /**
@@ -69,7 +70,7 @@ export function resolveRenderParent(
   entity: Entity,
   layerName: string,
   tree: SceneRenderTree,
-): Container {
+): DisplayContainer {
   let current: Entity | null = entity;
   while (current) {
     const group = current.tryGet(SortGroupComponent);
@@ -93,7 +94,7 @@ export function resolveRenderParent(
  * `DisplaySystem` recognise a group container during its per-frame sort pass
  * with an O(1) lookup and no per-frame allocation.
  */
-const groupByContainer = new WeakMap<Container, SortGroupComponent>();
+const groupByContainer = new WeakMap<DisplayContainer, SortGroupComponent>();
 
 /**
  * The sort group that owns `container`, or `undefined` for a plain visual.
@@ -101,7 +102,7 @@ const groupByContainer = new WeakMap<Container, SortGroupComponent>();
  * @internal Used by `DisplaySystem.applyLayerSort`.
  */
 export function sortGroupForContainer(
-  container: Container,
+  container: DisplayContainer,
 ): SortGroupComponent | undefined {
   return groupByContainer.get(container);
 }
@@ -168,14 +169,14 @@ export interface SortGroupData {
 @serializable
 export class SortGroupComponent extends Component {
   /** The group's Pixi container. Kept at identity; holds the member visuals. */
-  readonly container: Container;
+  readonly container: DisplayContainer;
   /** Layer this group renders into. */
   readonly layer: string;
   /** Depth key for intra-group member order, or `undefined` for insertion order. */
   innerSort: LayerSortFn | undefined;
   /** Lazily-created stand-in used for the group's sort key when the owning
    * entity has no sprite of its own. */
-  private _proxy: Container | undefined;
+  private _proxy: DisplayContainer | undefined;
 
   constructor(options?: SortGroupComponentOptions) {
     super();
@@ -241,7 +242,7 @@ export class SortGroupComponent extends Component {
   }
 
   /** The owning entity's own visual on this layer, if currently in the group. */
-  private findSample(): Container | undefined {
+  private findSample(): DisplayContainer | undefined {
     for (const component of this.entity.getAll()) {
       if (
         isLayerRenderable(component) &&
@@ -275,7 +276,7 @@ export class SortGroupComponent extends Component {
     }
   }
 
-  private tryLayerContainer(): Container | undefined {
+  private tryLayerContainer(): DisplayContainer | undefined {
     if (!this.entity.tryScene) return undefined;
     return this.use(SceneRenderTreeKey).tryGet(this.layer)?.container;
   }

@@ -1,13 +1,6 @@
 import { useState, forwardRef } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
-import type {
-  ColorValue,
-  DisplayContainer,
-  PointLike,
-  SegmentAnchor,
-  TextStyle,
-  TextureHandle,
-} from "@yagejs/renderer";
+import type { TextStyle } from "@yagejs/renderer";
 import {
   PanelNode,
   UIText as UITextNode,
@@ -28,112 +21,68 @@ import {
 } from "@yagejs/ui";
 import type {
   BackgroundOptions,
-  FancyButtonAnimations,
-  LayoutProps,
-  LayoutValue,
   Padding,
-  PixiViewType,
   Placement,
-  PointerEventProps,
-  ScrollbarOptions,
   UIElement,
+  PanelProps as UIElementPanelProps,
+  UITextProps as UIElementTextProps,
+  UISplitTextProps as UIElementSplitTextProps,
+  UIButtonProps as UIElementButtonProps,
+  UIImageProps as UIElementImageProps,
+  UINineSliceProps as UIElementNineSliceProps,
+  UIProgressBarProps as UIElementProgressBarProps,
+  UICheckboxProps as UIElementCheckboxProps,
+  ScrollViewProps as UIElementScrollViewProps,
+  PixiFancyButtonProps as UIElementPixiFancyButtonProps,
+  PixiCheckboxProps as UIElementPixiCheckboxProps,
+  PixiProgressBarProps as UIElementPixiProgressBarProps,
+  PixiSliderProps as UIElementPixiSliderProps,
+  PixiInputProps as UIElementPixiInputProps,
+  PixiSelectProps as UIElementPixiSelectProps,
+  PixiRadioGroupProps as UIElementPixiRadioGroupProps,
 } from "@yagejs/ui";
 import { useFloating } from "./use-floating.js";
 
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements
+//
+// Each interface derives from its `@yagejs/ui` imperative counterpart
+// (aliased `UIElement*Props` above) instead of hand-copying fields — drift
+// between the two (a prop accepted at runtime but rejected by the JSX type,
+// or vice versa) becomes a compile error. JSX-only additions layer on top:
+// `children` where it's richer than the imperative type (e.g. `Button`
+// accepts `ReactNode`, not just a string), and shorthand aliases (`bg` for
+// `background`) expanded by the reconciler's shared alias table — see
+// `reconciler.ts`'s `SHORTHAND_ALIASES` — before the element ever sees them.
 // ---------------------------------------------------------------------------
 
-export interface PanelProps extends LayoutProps, PointerEventProps {
-  anchor?: string;
-  direction?: "row" | "column";
-  gap?: number;
-  /** Single number or per-side object — matches `@yagejs/ui` `PanelProps.padding`. */
-  padding?: Padding;
-  bg?: BackgroundOptions;
-  alignItems?:
-    | "flex-start"
-    | "center"
-    | "flex-end"
-    | "stretch"
-    | "baseline";
-  justifyContent?:
-    | "flex-start"
-    | "center"
-    | "flex-end"
-    | "space-between"
-    | "space-around"
-    | "space-evenly";
-  overflow?: "visible" | "hidden";
+export interface PanelProps extends UIElementPanelProps {
   /**
-   * Opt the panel out of the UI auto-consume pointer fallback (default
-   * `true`). Pass `false` for a decorative / pass-through container that
-   * shouldn't swallow clicks meant for the world or elements beneath it.
+   * Shorthand for `background` — expanded by the reconciler's shared alias
+   * table. If both `bg` and `background` are passed, `background` wins.
    */
-  consumeInput?: boolean;
-  visible?: boolean;
+  bg?: BackgroundOptions;
 }
 
-export interface TextProps extends LayoutProps, PointerEventProps {
-  style?: Partial<TextStyle>;
-  /**
-   * Overflow behavior when the rendered text is wider than the layout slot.
-   * Omitted → wrap to the layout width.
-   * `"clip"` → single line, visually clipped by the parent panel's `overflow`.
-   * `"ellipsis"` → single line truncated with `…`.
-   */
-  truncate?: "clip" | "ellipsis";
-  /**
-   * Render with a bitmap font instead of canvas-rasterised `Text` — the
-   * pixel-art escape hatch (canvas text blurs at non-integer scale on
-   * non-Retina displays). Pixi bakes or looks up the glyph atlas from
-   * `style.fontFamily` (an `installBitmapFont` name, or any font for a
-   * dynamic bake) at `style.fontSize`.
-   */
-  bitmap?: boolean;
-  /**
-   * Per-text render resolution. Pixi v8 `resolution` is a `Text`
-   * constructor option, not a `TextStyle` property — set it here for crisp
-   * canvas text. Ignored when `bitmap` is set.
-   */
-  resolution?: number;
-  children?: string;
-}
+export type TextProps = UIElementTextProps;
 
-export interface ButtonProps extends LayoutProps, PointerEventProps {
-  /**
-   * Fixed width — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
-   * `"auto"` to shrink-to-fit the button's content (text + any icon /
-   * nested elements). Omit to let Yoga measure.
-   */
-  width?: LayoutValue;
-  /**
-   * Fixed height — pixels, `"<n>%"` of parent, `"<n>vw"` / `"<n>vh"`, or
-   * `"auto"` to shrink-to-fit the button's content. Omit to let Yoga
-   * measure.
-   */
-  height?: LayoutValue;
-  onClick?: () => void;
+export interface ButtonProps extends Omit<
+  UIElementButtonProps,
+  "children" | "hoverBackground" | "pressBackground"
+> {
+  /** Shorthand for `background` (see {@link PanelProps.bg}). */
   bg?: BackgroundOptions;
+  /**
+   * Hover-state background override. Button-specific alias applied inline
+   * by `Button` itself (not part of the shared shorthand table — no other
+   * element has a hover-state background to alias). The canonical
+   * `hoverBackground`/`pressBackground` props are omitted from this
+   * interface — `hoverBg`/`pressBg` are the only way to set these on
+   * `<Button>`.
+   */
   hoverBg?: BackgroundOptions;
+  /** Press-state background override — see {@link hoverBg}. */
   pressBg?: BackgroundOptions;
-  /** Style applied to the auto-wrapped text node when `children` is a string. */
-  textStyle?: Partial<TextStyle>;
-  /**
-   * Bitmap font for the auto-wrapped label when `children` is a string /
-   * number. Forwarded to the inner `<Text>`. No effect when `children` is a
-   * React element — set `bitmap` on that `<Text>` directly.
-   */
-  bitmap?: boolean;
-  /**
-   * Overflow behavior for the auto-wrapped label when `children` is a
-   * string / number. Forwarded straight to the inner `<Text>` so a
-   * fixed-width button can ellipsize long labels instead of wrapping or
-   * overflowing. No effect when `children` is a React element (compose
-   * with a `<Text truncate="...">` directly).
-   */
-  truncate?: "clip" | "ellipsis";
-  disabled?: boolean;
   /**
    * String for the common labeled-button case — auto-wrapped in a centered
    * `<Text>` with `textStyle` applied. Pass `ReactNode`s (Text + Image rows,
@@ -143,38 +92,13 @@ export interface ButtonProps extends LayoutProps, PointerEventProps {
   children?: ReactNode;
 }
 
-export interface ImageProps extends LayoutProps, PointerEventProps {
-  texture: TextureHandle;
-  tint?: number;
-  alpha?: number;
-}
+export type ImageProps = UIElementImageProps;
 
-export interface NineSliceProps extends LayoutProps, PointerEventProps {
-  texture: TextureHandle;
-  insets:
-    | { left: number; top: number; right: number; bottom: number }
-    | number;
-  tint?: number;
-  alpha?: number;
-}
+export type NineSliceProps = UIElementNineSliceProps;
 
-export interface ProgressBarProps extends LayoutProps, PointerEventProps {
-  value: number;
-  trackBackground?: BackgroundOptions;
-  fillBackground?: BackgroundOptions;
-  direction?: "horizontal" | "vertical";
-}
+export type ProgressBarProps = UIElementProgressBarProps;
 
-export interface CheckboxProps extends LayoutProps {
-  checked?: boolean;
-  onChange?: (checked: boolean) => void;
-  size?: number;
-  boxColor?: number;
-  checkColor?: number;
-  label?: string;
-  labelStyle?: Partial<TextStyle>;
-  disabled?: boolean;
-}
+export type CheckboxProps = UIElementCheckboxProps;
 
 // ---------------------------------------------------------------------------
 // JSX Components — thin wrappers that emit custom reconciler element types
@@ -182,9 +106,10 @@ export interface CheckboxProps extends LayoutProps {
 
 /** A flex-layout container with optional background. */
 export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
-  const { children, bg, ...rest } = props;
+  const { children, ...rest } = props;
+  // `_bgAlias` tells the reconciler to expand a `bg` prop to `background`;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PanelNode} {...rest} background={bg}>{children}</ui-element>;
+  return <ui-element _ctor={PanelNode} _bgAlias {...rest}>{children}</ui-element>;
 }
 
 /**
@@ -195,9 +120,9 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
  */
 const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
   function RefPanel(props, ref) {
-    const { children, bg, ...rest } = props;
+    const { children, ...rest } = props;
     // @ts-expect-error — custom reconciler element type
-    return <ui-element _ctor={PanelNode} {...rest} background={bg} ref={ref}>{children}</ui-element>;
+    return <ui-element _ctor={PanelNode} _bgAlias {...rest} ref={ref}>{children}</ui-element>;
   },
 );
 
@@ -366,20 +291,7 @@ export function UIText(props: TextProps): React.JSX.Element {
   return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
 }
 
-export interface SplitTextProps extends LayoutProps, PointerEventProps {
-  style?: Partial<TextStyle>;
-  /** Render with a bitmap font (`SplitBitmapText`) instead of canvas text. */
-  bitmap?: boolean;
-  /** Transform origin (0–1) each character rotates / scales about. */
-  charAnchor?: SegmentAnchor;
-  /** Transform origin (0–1) each word rotates / scales about. */
-  wordAnchor?: SegmentAnchor;
-  /** Transform origin (0–1) each line rotates / scales about. */
-  lineAnchor?: SegmentAnchor;
-  /** Re-split automatically on text/style change (default `true`). */
-  autoSplit?: boolean;
-  children?: string;
-}
+export type SplitTextProps = UIElementSplitTextProps;
 
 /**
  * Text split into per-character / per-word / per-line display objects for
@@ -416,7 +328,7 @@ export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
  *   dropped (this reconciler has no `createTextInstance`).
  */
 export function Button(props: ButtonProps): React.JSX.Element {
-  const { children, bg, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } = props;
+  const { children, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } = props;
   const isPrimitiveLabel =
     typeof children === "string" || typeof children === "number";
   const content = isPrimitiveLabel
@@ -428,8 +340,11 @@ export function Button(props: ButtonProps): React.JSX.Element {
         {String(children)}
       </UIText>
     : children;
+  // `rest` still carries `bg` (see ButtonProps) — the reconciler's `_bgAlias`
+  // marker expands it to `background`. `hoverBg`/`pressBg` are Button-only
+  // sugar, mapped inline since no other element has those two states.
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UIButtonNode} {...rest} background={bg} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
+  return <ui-element _ctor={UIButtonNode} _bgAlias {...rest} hoverBackground={hoverBg} pressBackground={pressBg}>{content}</ui-element>;
 }
 
 /** An image element displaying a texture. */
@@ -460,23 +375,7 @@ export function Checkbox(props: CheckboxProps): React.JSX.Element {
 // @pixi/ui wrapper components
 // ---------------------------------------------------------------------------
 
-export interface PixiFancyButtonReactProps extends LayoutProps {
-  defaultView?: PixiViewType;
-  hoverView?: PixiViewType;
-  pressedView?: PixiViewType;
-  disabledView?: PixiViewType;
-  text?: string;
-  icon?: DisplayContainer;
-  textStyle?: Partial<TextStyle>;
-  padding?: number;
-  nineSliceSprite?: [number, number, number, number];
-  onClick?: () => void;
-  disabled?: boolean;
-  anchor?: number;
-  scale?: number;
-  animations?: FancyButtonAnimations;
-  textOffset?: { x?: number; y?: number } & { [K in "default" | "hover" | "pressed" | "disabled"]?: { x?: number; y?: number } };
-}
+export type PixiFancyButtonReactProps = UIElementPixiFancyButtonProps;
 
 /** @pixi/ui FancyButton with Yoga layout. */
 export function PixiFancyButton(props: PixiFancyButtonReactProps): React.JSX.Element {
@@ -484,15 +383,7 @@ export function PixiFancyButton(props: PixiFancyButtonReactProps): React.JSX.Ele
   return <ui-element _ctor={PixiFancyButtonNode} {...props} />;
 }
 
-export interface PixiCheckboxReactProps extends LayoutProps {
-  checked?: boolean;
-  onChange?: (checked: boolean) => void;
-  checkedView: PixiViewType;
-  uncheckedView: PixiViewType;
-  text?: string;
-  textStyle?: Partial<TextStyle>;
-  textOffset?: { x?: number; y?: number };
-}
+export type PixiCheckboxReactProps = UIElementPixiCheckboxProps;
 
 /** @pixi/ui CheckBox with Yoga layout. */
 export function PixiCheckbox(props: PixiCheckboxReactProps): React.JSX.Element {
@@ -500,35 +391,20 @@ export function PixiCheckbox(props: PixiCheckboxReactProps): React.JSX.Element {
   return <ui-element _ctor={PixiCheckboxNode} {...props} />;
 }
 
-export interface PixiProgressBarReactProps extends LayoutProps {
-  value: number;
-  bg: PixiViewType;
-  fill: PixiViewType;
-  fillPaddings?: { top?: number; right?: number; bottom?: number; left?: number };
-  nineSliceSprite?: [number, number, number, number];
-}
+export type PixiProgressBarReactProps = UIElementPixiProgressBarProps;
 
-/** @pixi/ui ProgressBar with Yoga layout. */
+/**
+ * @pixi/ui ProgressBar with Yoga layout. `bg`/`fill` are the upstream
+ * @pixi/ui view-slot props (required `PixiViewType`) — a different concept
+ * from the style-config `background` on `<Panel>`/`<Button>`/`<ScrollView>`,
+ * so they are NOT expanded by the shorthand alias table.
+ */
 export function PixiProgressBar(props: PixiProgressBarReactProps): React.JSX.Element {
   // @ts-expect-error — custom reconciler element type
   return <ui-element _ctor={PixiProgressBarNode} {...props} />;
 }
 
-export interface PixiSliderReactProps extends LayoutProps {
-  value?: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  bg: PixiViewType;
-  fill: PixiViewType;
-  slider: PixiViewType;
-  onChange?: (value: number) => void;
-  onUpdate?: (value: number) => void;
-  showValue?: boolean;
-  valueTextStyle?: Partial<TextStyle>;
-  fillPaddings?: { top?: number; right?: number; bottom?: number; left?: number };
-  nineSliceSprite?: [number, number, number, number];
-}
+export type PixiSliderReactProps = UIElementPixiSliderProps;
 
 /** @pixi/ui Slider with Yoga layout. */
 export function PixiSlider(props: PixiSliderReactProps): React.JSX.Element {
@@ -536,19 +412,7 @@ export function PixiSlider(props: PixiSliderReactProps): React.JSX.Element {
   return <ui-element _ctor={PixiSliderNode} {...props} />;
 }
 
-export interface PixiInputReactProps extends LayoutProps {
-  bg: PixiViewType;
-  textStyle?: Partial<TextStyle>;
-  placeholder?: string;
-  value?: string;
-  maxLength?: number;
-  secure?: boolean;
-  align?: "left" | "center" | "right";
-  padding?: number | number[];
-  nineSliceSprite?: [number, number, number, number];
-  onChange?: (value: string) => void;
-  onEnter?: (value: string) => void;
-}
+export type PixiInputReactProps = UIElementPixiInputProps;
 
 /** @pixi/ui Input with Yoga layout. */
 export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
@@ -556,23 +420,9 @@ export function PixiInput(props: PixiInputReactProps): React.JSX.Element {
   return <ui-element _ctor={PixiInputNode} {...props} />;
 }
 
-export interface ScrollViewReactProps extends LayoutProps {
-  /** Scroll/stack axis. Default `"vertical"`. */
-  direction?: "vertical" | "horizontal";
-  /** Gap between child cards. */
-  gap?: number;
-  /** Padding inside the scrollable content. */
-  padding?: Padding;
-  /**
-   * Scrollbar thumb: `true` (default) / omitted → default style; `false` →
-   * hidden (no gutter); an object → custom size / style. A gutter equal to
-   * the thumb footprint is reserved so content never sits under the thumb.
-   */
-  scrollbar?: boolean | ScrollbarOptions;
-  /** Background drawn behind the clipped content. */
+export interface ScrollViewReactProps extends UIElementScrollViewProps {
+  /** Shorthand for `background` (see {@link PanelProps.bg}). */
   bg?: BackgroundOptions;
-  /** Called when the scroll offset changes. */
-  onScroll?: (offset: number) => void;
 }
 
 /**
@@ -585,26 +435,12 @@ export interface ScrollViewReactProps extends LayoutProps {
 export function ScrollView(
   props: PropsWithChildren<ScrollViewReactProps>,
 ): React.JSX.Element {
-  const { children, bg, ...rest } = props;
+  const { children, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={ScrollViewNode} {...rest} background={bg}>{children}</ui-element>;
+  return <ui-element _ctor={ScrollViewNode} _bgAlias {...rest}>{children}</ui-element>;
 }
 
-export interface PixiSelectReactProps extends LayoutProps {
-  closedBG: PixiViewType;
-  openBG: PixiViewType;
-  items: string[];
-  selected?: number;
-  textStyle?: Partial<TextStyle>;
-  itemTextStyle?: Partial<TextStyle>;
-  itemWidth?: number;
-  itemHeight?: number;
-  itemBG?: ColorValue;
-  itemHoverBG?: ColorValue;
-  visibleItems?: number;
-  onSelect?: (index: number, text: string) => void;
-  scrollBoxOffset?: PointLike;
-}
+export type PixiSelectReactProps = UIElementPixiSelectProps;
 
 /** @pixi/ui Select dropdown with Yoga layout. */
 export function PixiSelect(props: PixiSelectReactProps): React.JSX.Element {
@@ -612,13 +448,7 @@ export function PixiSelect(props: PixiSelectReactProps): React.JSX.Element {
   return <ui-element _ctor={PixiSelectNode} {...props} />;
 }
 
-export interface PixiRadioGroupReactProps extends LayoutProps {
-  items: PixiCheckboxReactProps[];
-  type: "vertical" | "horizontal";
-  elementsMargin: number;
-  selected?: number;
-  onChange?: (selectedIndex: number, selectedValue: string) => void;
-}
+export type PixiRadioGroupReactProps = UIElementPixiRadioGroupProps;
 
 /** @pixi/ui RadioGroup with Yoga layout. */
 export function PixiRadioGroup(props: PixiRadioGroupReactProps): React.JSX.Element {

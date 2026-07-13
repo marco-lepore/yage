@@ -14,6 +14,7 @@
       "@yagejs/audio",
       "@yagejs/particles",
       "@yagejs/tilemap",
+      "@yagejs/pathfinding",
       "@yagejs/ui",
       "@yagejs/ui-react",
       "@yagejs/debug",

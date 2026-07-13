@@ -1,6 +1,6 @@
 import { Container } from "pixi.js";
 import { devWarn } from "@yagejs/core";
-import type { TextStyle } from "@yagejs/renderer";
+import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
 import type {
@@ -58,10 +58,10 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
  * them to let Yoga shrink-to-fit the content.
  */
 export class UIButton implements UIContainerElement {
-  readonly container: Container;
+  readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
-  get displayObject(): Container {
+  get displayObject(): DisplayContainer {
     return this.container;
   }
 
@@ -79,6 +79,7 @@ export class UIButton implements UIContainerElement {
   private _hasExplicitWidth = false;
   private _hasExplicitHeight = false;
   private _defaultPaddingApplied = false;
+  private _destroyed = false;
   private bgOpts: BackgroundOptions;
   private hoverBgOpts: BackgroundOptions;
   private pressBgOpts: BackgroundOptions;
@@ -311,10 +312,11 @@ export class UIButton implements UIContainerElement {
     // Refresh the cached label style (so a not-yet-promoted label is built
     // with it) and apply it in place when the label already exists. Mirrors
     // the bitmap refresh above so a `textStyle`-before-`children` two-step
-    // update isn't silently dropped on the promote path.
-    if (p.textStyle) {
+    // update isn't silently dropped on the promote path. Removing the prop
+    // resets the label to its default style.
+    if ("textStyle" in p) {
       this._labelStyle = p.textStyle;
-      this._label?.setStyle(p.textStyle);
+      this._label?.setStyle(p.textStyle ?? {});
     }
     if (p.children !== undefined && typeof p.children === "string") {
       this.setText(p.children);
@@ -325,36 +327,42 @@ export class UIButton implements UIContainerElement {
       this._truncate = p.truncate;
       this._label?.update({ truncate: p.truncate });
     }
-    if (p.onClick !== undefined) this.onClick = p.onClick;
+    if ("onClick" in p) this.onClick = p.onClick;
     this.pointerEvents.set(p);
-    if (p.disabled !== undefined) this.setDisabled(p.disabled);
-    if (p.consumeInput !== undefined) applyConsumeInput(this.container, p.consumeInput);
+    if ("disabled" in p) this.setDisabled(p.disabled ?? false);
+    if ("consumeInput" in p) applyConsumeInput(this.container, p.consumeInput);
 
-    if (p.background) {
+    if ("background" in p) {
       this.bgOpts = mergeBg(DEFAULT_BG, p.background);
     }
-    if (p.hoverBackground) {
+    if ("hoverBackground" in p) {
       this.hoverBgOpts = mergeBg(DEFAULT_HOVER_BG, p.hoverBackground);
     }
-    if (p.pressBackground) {
+    if ("pressBackground" in p) {
       this.pressBgOpts = mergeBg(DEFAULT_PRESS_BG, p.pressBackground);
     }
-    if ((p.background || p.hoverBackground || p.pressBackground) && !this._disabled) {
+    if (
+      ("background" in p || "hoverBackground" in p || "pressBackground" in p) &&
+      !this._disabled
+    ) {
       this.applyCurrentBg();
     }
 
-    if (p.width !== undefined) this._hasExplicitWidth = isExplicitSize(p.width);
-    if (p.height !== undefined) this._hasExplicitHeight = isExplicitSize(p.height);
+    if ("width" in p) this._hasExplicitWidth = isExplicitSize(p.width);
+    if ("height" in p) this._hasExplicitHeight = isExplicitSize(p.height);
 
     applyLayoutProps(this.yogaNode, p);
     this._reconcileDefaultPadding();
 
-    if (p.visible !== undefined) {
-      this.visible = p.visible;
+    if ("visible" in p) {
+      this.visible = p.visible ?? true;
     }
   }
 
+  /** Idempotent — a second call is a no-op (the React reconciler and a direct caller can both destroy the same instance). */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     clearConsumeInput(this.container);
     for (const child of this._children) {
       child.destroy();

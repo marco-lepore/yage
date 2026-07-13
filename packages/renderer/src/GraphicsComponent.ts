@@ -1,53 +1,32 @@
-import {
-  Component,
-  makeEntityScopedQueue,
-  serializable,
-} from "@yagejs/core";
+import { serializable } from "@yagejs/core";
 import { Graphics } from "pixi.js";
-import type { Container } from "pixi.js";
-import {
-  computeRenderFacet,
-  type RenderFacetSnapshot,
-} from "./internal/renderFacet.js";
-import { SceneRenderTreeKey } from "./SceneRenderTree.js";
-import { resolveRenderParent } from "./SortGroupComponent.js";
-import type { EffectStackSnapshot } from "./effects/EffectStack.js";
-import { EffectsHost } from "./effects/EffectsHost.js";
-import { attachMask, restoreMask } from "./masks/attachMask.js";
-import type { MaskFactory } from "./masks/MaskFactory.js";
-import type { MaskHandle, MaskSnapshot } from "./masks/MaskHandle.js";
 import type { GraphicsContext } from "./public-types.js";
+import {
+  VisualComponent,
+  type VisualComponentData,
+  type VisualComponentOptions,
+} from "./VisualComponent.js";
 
 /** Options for creating a GraphicsComponent. */
-export interface GraphicsComponentOptions {
-  /** Render layer name. Default: "default". */
-  layer?: string;
-}
+export type GraphicsComponentOptions = VisualComponentOptions;
 
 /** Serialisable snapshot of a GraphicsComponent. */
-export interface GraphicsData {
-  layer: string;
-  effects?: EffectStackSnapshot;
-  mask?: MaskSnapshot;
-}
+export type GraphicsData = VisualComponentData;
 
 /** Component that wraps a PixiJS Graphics object for procedural drawing. */
 @serializable
-export class GraphicsComponent extends Component {
+export class GraphicsComponent extends VisualComponent {
   readonly graphics: GraphicsContext;
-  readonly layerName: string;
-  /** See {@link SpriteComponent.fx}. */
-  readonly fx = new EffectsHost(
-    () => this.graphics,
-    "component",
-    () => makeEntityScopedQueue(this.entity),
-  );
-  private _mask: MaskHandle | undefined;
 
   constructor(options?: GraphicsComponentOptions) {
-    super();
+    super(options?.layer);
     this.graphics = new Graphics();
-    this.layerName = options?.layer ?? "default";
+    if (options) this.applyVisualOptions(options);
+  }
+
+  /** The underlying Pixi display object. */
+  get renderObject(): GraphicsContext {
+    return this.graphics;
   }
 
   /** Execute a drawing function on the graphics object. Returns this for chaining. */
@@ -58,82 +37,21 @@ export class GraphicsComponent extends Component {
 
   /** Serialise to a plain object for save/load. */
   serialize(): GraphicsData {
-    const data: GraphicsData = { layer: this.layerName };
-    const effects = this.fx.serialize();
-    if (effects) data.effects = effects;
-    const mask = this._mask?.serialize();
-    if (mask) data.mask = mask;
-    return data;
+    return this.serializeVisual();
   }
 
   /** Create a GraphicsComponent from a serialised snapshot. */
   static fromSnapshot(data: GraphicsData): GraphicsComponent {
-    return new GraphicsComponent({ layer: data.layer });
+    const opts: GraphicsComponentOptions = { layer: data.layer };
+    if (data.tint !== undefined) opts.tint = data.tint;
+    if (data.alpha !== undefined) opts.alpha = data.alpha;
+    if (data.visible !== undefined) opts.visible = data.visible;
+    if (data.interactive) opts.interactive = { ...data.interactive };
+    return new GraphicsComponent(opts);
   }
 
   /** Restore effects and mask after the graphics object is parented. */
   afterRestore(data: GraphicsData): void {
-    if (data.effects) this.fx.restore(data.effects);
-    if (data.mask) {
-      this._mask?.remove();
-      // Clear before restore so an unsavable snapshot (restoreMask returns
-      // null) leaves the field genuinely empty instead of holding a torn-down
-      // handle for serialize/clearMask to operate on.
-      this._mask = undefined;
-      const handle = restoreMask(this.graphics, data.mask);
-      if (handle) this._mask = handle;
-    }
-  }
-
-  /** Attach a mask to this graphics object. See {@link SpriteComponent.setMask}. */
-  setMask(factory: MaskFactory): MaskHandle {
-    this._mask?.remove();
-    this._mask = attachMask(this.graphics, factory);
-    return this._mask;
-  }
-
-  /** Detach and destroy the current mask, if any. */
-  clearMask(): void {
-    this._mask?.remove();
-    this._mask = undefined;
-  }
-
-  /**
-   * The currently attached mask handle, if any. Useful after save/load to
-   * recover a handle whose caller-side reference went stale: a savable
-   * mask (`rectMask`, custom `defineMask`-registered factory) is rebuilt
-   * by `afterRestore`, but the handle held in user code is not.
-   */
-  get mask(): MaskHandle | undefined {
-    return this._mask;
-  }
-
-  /**
-   * Derived render facet for the Inspector — world-space `bounds` of the drawn
-   * geometry and the component's own (local, non-inherited) `visible` flag,
-   * computed on demand. An empty `Graphics` reports `bounds: null`. Not part of
-   * `serialize()`; see {@link computeRenderFacet} for the bounds coordinate space.
-   */
-  inspectRender(): RenderFacetSnapshot {
-    return computeRenderFacet(this.graphics);
-  }
-
-  /** The underlying Pixi display object. */
-  get renderObject(): Container {
-    return this.graphics;
-  }
-
-  onAdd(): void {
-    const tree = this.use(SceneRenderTreeKey);
-    resolveRenderParent(this.entity, this.layerName, tree).addChild(
-      this.graphics,
-    );
-  }
-
-  onDestroy(): void {
-    this.fx.destroy();
-    this._mask?.remove();
-    this.graphics.removeFromParent();
-    this.graphics.destroy();
+    this.restoreVisual(data);
   }
 }

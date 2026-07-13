@@ -31,7 +31,7 @@ import {
 } from "@yagejs/ui-react";
 import { createRecord } from "@yagejs/core";
 import type { ReactiveRecord } from "@yagejs/core";
-import { injectStyles, setupGameContainer } from "./shared";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared";
 
 injectStyles();
 
@@ -602,7 +602,7 @@ class InputRemappingScene extends Scene {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const engine = new Engine();
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -629,6 +629,7 @@ async function main() {
 
   engine.use(new UIPlugin());
   engine.use(new UIReactPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new InputRemappingScene());

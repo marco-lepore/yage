@@ -1,12 +1,19 @@
 import { buildTextOptions } from "@yagejs/renderer";
-import type { SegmentAnchor, TextStyle } from "@yagejs/renderer";
+import type {
+  DisplayBitmapText,
+  DisplayContainer,
+  DisplaySplitBitmapText,
+  DisplaySplitText,
+  DisplayText,
+  SegmentAnchor,
+  TextStyle,
+} from "@yagejs/renderer";
 import {
   BitmapFontManager,
   CanvasTextMetrics,
   SplitText,
   SplitBitmapText,
 } from "pixi.js";
-import type { BitmapText, Container, Text } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
 import { MeasureMode, Display } from "yoga-layout";
 import type { UIElement, UISplitTextProps } from "./types.js";
@@ -17,11 +24,11 @@ import { PointerEvents } from "./pointer-events.js";
 /** The per-character / per-word / per-line segments of a split text. */
 export interface TextSegments {
   /** Per-glyph display objects (`Text` / `BitmapText`), in reading order. */
-  readonly chars: (Text | BitmapText)[];
+  readonly chars: (DisplayText | DisplayBitmapText)[];
   /** Word-group containers, each holding its character segments. */
-  readonly words: Container[];
+  readonly words: DisplayContainer[];
   /** Line-group containers, each holding its word containers. */
-  readonly lines: Container[];
+  readonly lines: DisplayContainer[];
 }
 
 /** Listener invoked after the text (re)splits into fresh segments. */
@@ -65,10 +72,10 @@ function shallowEqualStyle(
  * slightly from `Text` (kerning is lost once glyphs are split).
  */
 export class UISplitText implements UIElement {
-  readonly displayObject: Container;
+  readonly displayObject: DisplayContainer;
   readonly yogaNode: YogaNode;
   /** The underlying Pixi `SplitText` / `SplitBitmapText`. */
-  readonly splitText: SplitText | SplitBitmapText;
+  readonly splitText: DisplaySplitText | DisplaySplitBitmapText;
   /** Whether this renders with a bitmap font (`SplitBitmapText`). */
   readonly isBitmap: boolean;
   /** Source string — measured for layout independent of per-glyph animation. */
@@ -85,6 +92,7 @@ export class UISplitText implements UIElement {
   private _appliedStyle: Partial<TextStyle> | undefined;
   private readonly pointerEvents: PointerEvents;
   private readonly _splitListeners = new Set<SplitListener>();
+  private _destroyed = false;
 
   constructor(props: UISplitTextProps) {
     this.yogaNode = createYogaNode();
@@ -142,17 +150,17 @@ export class UISplitText implements UIElement {
   }
 
   /** Per-glyph display objects, in reading order. */
-  get chars(): (Text | BitmapText)[] {
+  get chars(): (DisplayText | DisplayBitmapText)[] {
     return this.splitText.chars;
   }
 
   /** Word-group containers. */
-  get words(): Container[] {
+  get words(): DisplayContainer[] {
     return this.splitText.words;
   }
 
   /** Line-group containers. */
-  get lines(): Container[] {
+  get lines(): DisplayContainer[] {
     return this.splitText.lines;
   }
 
@@ -247,28 +255,36 @@ export class UISplitText implements UIElement {
   }
 
   update(p: Partial<UISplitTextProps>): void {
-    if (p.children !== undefined && p.children !== this._source) {
-      this.setText(p.children);
+    if ("children" in p) {
+      const next = p.children ?? "";
+      if (next !== this._source) this.setText(next);
     }
     // Re-style (and thus re-split) only on an actual content change. The React
     // reconciler runs update() on every commit with a fresh style object, so
     // without this guard a parent re-render would re-split every frame and
-    // reset any in-flight per-glyph animation.
-    if (p.style && !shallowEqualStyle(p.style, this._appliedStyle)) {
-      this.setStyle(p.style);
+    // reset any in-flight per-glyph animation. Removing `style` resolves to
+    // `{}` (default style) like any other reset.
+    if ("style" in p) {
+      const nextStyle = p.style ?? {};
+      if (!shallowEqualStyle(nextStyle, this._appliedStyle)) {
+        this.setStyle(nextStyle);
+      }
     }
-    if (p.charAnchor !== undefined) this.charAnchor = p.charAnchor;
-    if (p.wordAnchor !== undefined) this.wordAnchor = p.wordAnchor;
-    if (p.lineAnchor !== undefined) this.lineAnchor = p.lineAnchor;
-    if (p.consumeInput !== undefined) {
+    if ("charAnchor" in p) this.charAnchor = p.charAnchor ?? 0;
+    if ("wordAnchor" in p) this.wordAnchor = p.wordAnchor ?? 0;
+    if ("lineAnchor" in p) this.lineAnchor = p.lineAnchor ?? 0;
+    if ("consumeInput" in p) {
       applyConsumeInput(this.splitText, p.consumeInput);
     }
     this.pointerEvents.set(p);
     applyLayoutProps(this.yogaNode, p);
-    if (p.visible !== undefined) this.visible = p.visible;
+    if ("visible" in p) this.visible = p.visible ?? true;
   }
 
+  /** Idempotent — a second call is a no-op. */
   destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
     this._splitListeners.clear();
     clearConsumeInput(this.splitText);
     this.yogaNode.free();

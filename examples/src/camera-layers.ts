@@ -24,8 +24,7 @@ import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -309,7 +308,7 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-engine.use(new DebugPlugin());
+await installDebugFromUrl(engine);
 
 await engine.start();
 await engine.scenes.push(new WorldScene());

@@ -16,7 +16,6 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
 import {
   Anchor,
   attachTooltip,
@@ -26,7 +25,7 @@ import {
   UIProgressBar,
   UIText,
 } from "@yagejs/ui";
-import { getContainer } from "./shared.js";
+import { getContainer, installDebugFromUrl } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -509,7 +508,7 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-engine.use(new DebugPlugin());
+await installDebugFromUrl(engine);
 
 await engine.start();
 

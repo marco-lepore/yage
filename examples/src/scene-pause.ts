@@ -15,7 +15,7 @@ import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/ph
 import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
 injectStyles();
@@ -308,6 +308,7 @@ async function main() {
     preventDefaultKeys: ["Space"],
   }));
   engine.use(new UIPlugin());
+  await installDebugFromUrl(engine);
 
   await loadFonts();
   await engine.start();

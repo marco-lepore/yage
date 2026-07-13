@@ -7,15 +7,25 @@ export { RendererKey } from "./types.js";
 export type { RendererConfig, FitMode, RendererFitOptions } from "./types.js";
 export type { CanvasRect, VirtualRect } from "./Fit.js";
 export type {
+  Application,
+  ApplicationOptions,
   BitmapFontHandle,
   BitmapFontResource,
   ColorValue,
+  DestroyOptions,
+  DisplayAnimatedSprite,
   DisplayBitmapText,
   DisplayContainer,
+  DisplaySplitBitmapText,
+  DisplaySplitText,
   DisplaySprite,
   DisplayText,
+  Filter,
   GradientFill,
   GraphicsContext,
+  NineSliceSprite,
+  Particle,
+  ParticleContainer,
   PointLike,
   RendererAsset,
   TextStyle,
@@ -176,8 +186,6 @@ export type {
   WebFontBakeOptions,
   WebFontOptions,
 } from "./assets.js";
-/** Raw pixi nine-slice display type returned by {@link createNineSlice}. */
-export type { NineSliceSprite } from "pixi.js";
 
 // Effects
 export type { EffectHandle } from "./effects/EffectHandle.js";

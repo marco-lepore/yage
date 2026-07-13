@@ -122,10 +122,24 @@ export interface CollisionEvent {
   otherCollider: ColliderComponent;
   /** True if the collision just started, false if it ended. */
   started: boolean;
-  /** Contact normal (only for started collisions). */
+  /**
+   * Unit vector pointing from this entity toward the other, in world space.
+   * Only on started, non-sensor collisions; may be absent if no contact
+   * manifold is available (e.g. same-step start+stop).
+   */
   contactNormal?: Vec2;
-  /** Contact point in world pixels (only for started collisions). */
+  /**
+   * A representative contact point in world pixels (a resting box has two;
+   * this is the first, not an average). Only on started, non-sensor
+   * collisions; may be absent if no contact manifold is available.
+   */
   contactPoint?: Vec2;
+  /**
+   * Penetration depth in pixels, clamped to >= 0. Only on started,
+   * non-sensor collisions; may be absent if no contact manifold is
+   * available.
+   */
+  penetrationDepth?: number;
 }
 
 /** Trigger event data passed to trigger handlers. */

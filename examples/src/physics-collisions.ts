@@ -8,8 +8,7 @@ import {
 } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   #hud {
@@ -271,7 +270,7 @@ async function main() {
       right: ["KeyD", "ArrowRight"],
     },
   }));
-  engine.use(new DebugPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new CollisionsScene());

@@ -43,6 +43,7 @@ export default defineConfig({
         platformer: resolve(__dirname, "platformer.html"),
         "dialogue-addon": resolve(__dirname, "dialogue-addon.html"),
         interaction: resolve(__dirname, "interaction.html"),
+        steering: resolve(__dirname, "steering.html"),
       },
     },
   },

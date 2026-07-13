@@ -1,4 +1,4 @@
-import type { Container } from "pixi.js";
+import type { DisplayContainer } from "@yagejs/renderer";
 import type { PointerEventProps } from "./types.js";
 
 /**
@@ -28,7 +28,7 @@ export class PointerEvents {
   private readonly inert: () => boolean;
 
   constructor(
-    container: Container,
+    container: DisplayContainer,
     props: PointerEventProps,
     inert: () => boolean = (): boolean => false,
   ) {

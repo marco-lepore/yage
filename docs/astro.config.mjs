@@ -29,6 +29,7 @@ export default defineConfig({
             "../packages/audio",
             "../packages/particles",
             "../packages/tilemap",
+            "../packages/pathfinding",
             "../packages/ui",
             "../packages/save",
             "../packages/debug",
@@ -118,6 +119,7 @@ export default defineConfig({
             { label: "Audio", slug: "guides/audio" },
             { label: "Particles", slug: "guides/particles" },
             { label: "Tilemaps", slug: "guides/tilemaps" },
+            { label: "Pathfinding", slug: "guides/pathfinding" },
             { label: "UI", slug: "guides/ui" },
             { label: "UI (React)", slug: "guides/ui-react" },
             { label: "Save & Load", slug: "guides/save-and-load" },
@@ -155,6 +157,7 @@ export default defineConfig({
             { label: "Dialogue", slug: "addons/dialogue" },
             { label: "Virtual Controls", slug: "addons/virtual-controls" },
             { label: "Inventory", slug: "addons/inventory" },
+            { label: "Steering", slug: "addons/steering" },
           ],
         },
         {
