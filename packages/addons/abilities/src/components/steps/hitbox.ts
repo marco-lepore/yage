@@ -2,6 +2,10 @@ import { Transform } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { ColliderShape } from "@yagejs/physics";
 import { defineStep } from "../../core/defineStep.js";
+import {
+  resolveAbilitySource,
+  resolveAbilityTeam,
+} from "../../core/AbilitySpawned.js";
 import type { StepContext } from "../../core/types.js";
 import { resolveHitSpec } from "../../core/hit/delivery.js";
 import type { HitSpec } from "../../core/hit/delivery.js";
@@ -57,9 +61,12 @@ export const hitbox = defineStep<HitboxParams>("hitbox", {
       );
     }
     const from = transform.worldPosition;
-    const team = params.team ?? ctx.entity.tryGet(HitReceiver)?.team;
+    const team =
+      params.team ??
+      resolveAbilityTeam(ctx.entity) ??
+      ctx.entity.tryGet(HitReceiver)?.team;
     const delivery = createReportingDelivery({
-      source: ctx.entity,
+      source: resolveAbilitySource(ctx.entity),
       data: resolveHitSpec(params.hit, ctx),
       ...(team !== undefined ? { team } : {}),
       ...(params.tags ? { tags: params.tags } : {}),

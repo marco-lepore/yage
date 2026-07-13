@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { Entity, ProcessComponent, Transform, Vec2, createMockScene, trait } from "@yagejs/core";
-import type { Scene } from "@yagejs/core";
+import {
+  Entity,
+  ProcessComponent,
+  Transform,
+  Vec2,
+  createMockScene,
+  trait,
+} from "@yagejs/core";
+import type { Scene, Vec2Like } from "@yagejs/core";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import { Hittable } from "../core/hit/types.js";
 import type { Hit, HitResult } from "../core/hit/types.js";
@@ -24,7 +31,8 @@ const captured = vi.hoisted(() => ({
 }));
 
 vi.mock("@yagejs/physics", async () => {
-  const core = await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
+  const core =
+    await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
 
   class RigidBodyComponent extends core.Component {
     readonly type: string;
@@ -65,21 +73,30 @@ class Target extends Entity {
 
 function spawnProjectile(
   scene: Scene,
-  overrides: Partial<ProjectileConfig> & { delivery?: HitDelivery } = {},
+  overrides: Partial<ProjectileConfig> & {
+    owner?: Entity;
+    delivery?: HitDelivery;
+    position?: Vec2Like;
+    direction?: Vec2Like;
+  } = {},
 ) {
   const owner = overrides.owner ?? scene.spawn("owner");
-  const delivery = overrides.delivery ?? createHitDelivery({ source: owner, data: { damage: 5 } });
+  const delivery =
+    overrides.delivery ??
+    createHitDelivery({ source: owner, data: { damage: 5 } });
   const config: ProjectileConfig = {
-    position: { x: 0, y: 0 },
-    direction: { x: 1, y: 0 },
-    speed: 100,
-    shape: { type: "circle", radius: 4 },
-    lifetime: 1,
-    ...overrides,
-    delivery,
-    owner,
+    speed: overrides.speed ?? 100,
+    shape: overrides.shape ?? { type: "circle", radius: 4 },
+    lifetime: overrides.lifetime ?? 1,
+    ...(overrides.groups ? { groups: overrides.groups } : {}),
   };
-  const projectile = scene.spawn(Projectile, config);
+  const projectile = scene.spawn(Projectile, {
+    caster: owner,
+    aim: new Vec2(overrides.direction?.x ?? 1, overrides.direction?.y ?? 0),
+    position: new Vec2(overrides.position?.x ?? 0, overrides.position?.y ?? 0),
+    params: config,
+    delivery,
+  });
   return { owner, delivery, projectile };
 }
 
@@ -107,13 +124,28 @@ describe("Projectile", () => {
     expect(transform.position).toEqual(new Vec2(10, 20));
   });
 
+  it("passes collision groups to its sensor collider", () => {
+    const { scene } = createMockScene();
+    const { projectile } = spawnProjectile(scene, {
+      groups: { layers: 2, mask: 5 },
+    });
+
+    const collider = projectile.get(ColliderComponent);
+    expect(collider.config.layers).toBe(2);
+    expect(collider.config.mask).toBe(5);
+  });
+
   it("destroys itself on a landed hit", () => {
     const { scene } = createMockScene();
     const { projectile } = spawnProjectile(scene);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
 
-    fireTrigger(projectile.get(ColliderComponent), { other: target, entered: true, otherCollider: solid });
+    fireTrigger(projectile.get(ColliderComponent), {
+      other: target,
+      entered: true,
+      otherCollider: solid,
+    });
 
     expect(target.received).toHaveLength(1);
     expect(projectile.isDestroyed).toBe(true);
@@ -124,7 +156,11 @@ describe("Projectile", () => {
     const { projectile } = spawnProjectile(scene);
     const wall = scene.spawn("wall"); // not Hittable
 
-    fireTrigger(projectile.get(ColliderComponent), { other: wall, entered: true, otherCollider: solid });
+    fireTrigger(projectile.get(ColliderComponent), {
+      other: wall,
+      entered: true,
+      otherCollider: solid,
+    });
 
     expect(projectile.isDestroyed).toBe(true);
   });
@@ -134,7 +170,11 @@ describe("Projectile", () => {
     const { projectile } = spawnProjectile(scene);
     const pickup = scene.spawn("pickup-zone"); // not Hittable, sensor
 
-    fireTrigger(projectile.get(ColliderComponent), { other: pickup, entered: true, otherCollider: sensor });
+    fireTrigger(projectile.get(ColliderComponent), {
+      other: pickup,
+      entered: true,
+      otherCollider: sensor,
+    });
 
     expect(projectile.isDestroyed).toBe(false);
   });
@@ -145,7 +185,11 @@ describe("Projectile", () => {
     owner.add(new Transform({ position: new Vec2(0, 0) }));
     const { projectile } = spawnProjectile(scene, { owner });
 
-    fireTrigger(projectile.get(ColliderComponent), { other: owner, entered: true, otherCollider: solid });
+    fireTrigger(projectile.get(ColliderComponent), {
+      other: owner,
+      entered: true,
+      otherCollider: solid,
+    });
 
     expect(owner.received).toHaveLength(0);
     expect(projectile.isDestroyed).toBe(false);
@@ -157,7 +201,11 @@ describe("Projectile", () => {
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
     const collider = projectile.get(ColliderComponent);
-    const ev: FakeTriggerEvent = { other: target, entered: true, otherCollider: solid };
+    const ev: FakeTriggerEvent = {
+      other: target,
+      entered: true,
+      otherCollider: solid,
+    };
 
     fireTrigger(collider, ev);
     fireTrigger(collider, ev);
@@ -174,23 +222,29 @@ describe("Projectile", () => {
     expect(projectile.isDestroyed).toBe(true);
   });
 
-  it("spawns standalone (no ability) via scene.spawn with a game-built delivery", () => {
+  it("can be spawned directly with a game-built delivery", () => {
     const { scene } = createMockScene();
     const owner = scene.spawn("thrower");
     const delivery = createHitDelivery({ source: owner, data: { damage: 3 } });
     const projectile = scene.spawn(Projectile, {
-      position: { x: 0, y: 0 },
-      direction: { x: 1, y: 0 },
-      speed: 50,
-      shape: { type: "circle", radius: 4 },
+      caster: owner,
+      aim: Vec2.RIGHT,
+      position: Vec2.ZERO,
       delivery,
-      owner,
-      lifetime: 1,
+      params: {
+        speed: 50,
+        shape: { type: "circle", radius: 4 },
+        lifetime: 1,
+      },
     });
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
 
-    fireTrigger(projectile.get(ColliderComponent), { other: target, entered: true, otherCollider: solid });
+    fireTrigger(projectile.get(ColliderComponent), {
+      other: target,
+      entered: true,
+      otherCollider: solid,
+    });
 
     expect(target.received).toHaveLength(1);
   });

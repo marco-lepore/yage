@@ -31,13 +31,14 @@ import {
   Hittable,
   HitGuarded,
   HitReceiver,
+  Projectile,
   Stagger,
   TouchDamage,
   defineStep,
   guard,
   hitbox,
   invulnerable,
-  projectile,
+  spawn,
 } from "@yagejs-addons/abilities";
 import type { AbilityDef, Hit, HitResult } from "@yagejs-addons/abilities";
 import { injectStyles, setupContainer } from "./shared.js";
@@ -122,11 +123,14 @@ const SHOOT: AbilityDef = {
   id: "shoot",
   cooldown: 1.6,
   timeline: [
-    projectile({
+    spawn({
       at: 0,
-      speed: 240,
-      lifetime: 2.5,
-      shape: { type: "circle", radius: 5 },
+      entity: Projectile,
+      params: {
+        speed: 240,
+        lifetime: 2.5,
+        shape: { type: "circle", radius: 5 },
+      },
       aim: (ctx) => {
         const from = ctx.entity.get(Transform).worldPosition;
         const player = ctx.entity.scene.findEntity("PlayerEntity");

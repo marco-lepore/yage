@@ -10,6 +10,8 @@ import {
 import type { Scene } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
 import { Abilities } from "../../core/Abilities.js";
+import { AbilitySpawned } from "../../core/AbilitySpawned.js";
+import type { AbilitySpawnContext } from "../../core/AbilitySpawned.js";
 import { Hittable } from "../../core/hit/types.js";
 import type { Hit, HitResult } from "../../core/hit/types.js";
 import { Facing } from "../Facing.js";
@@ -30,7 +32,8 @@ const captured = vi.hoisted(() => ({
 }));
 
 vi.mock("@yagejs/physics", async () => {
-  const core = await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
+  const core =
+    await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
 
   class RigidBodyComponent extends core.Component {
     readonly type: string;
@@ -60,6 +63,15 @@ class Target extends Entity {
   receiveHit(hit: Hit): HitResult {
     this.received.push(hit);
     return "hit";
+  }
+}
+
+@trait(AbilitySpawned)
+class SpawnedAttacker extends Entity {
+  abilitySpawnContext: AbilitySpawnContext<object> | undefined;
+
+  override setup(context: AbilitySpawnContext<object>): void {
+    this.abilitySpawnContext = context;
   }
 }
 
@@ -94,7 +106,12 @@ describe("hitbox step", () => {
         {
           id: "swing",
           timeline: [
-            hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: {} }),
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
           ],
         },
       ]),
@@ -140,7 +157,13 @@ describe("hitbox step", () => {
         {
           id: "swing",
           timeline: [
-            hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: {}, aim: resolver }),
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+              aim: resolver,
+            }),
           ],
         },
       ]),
@@ -160,7 +183,14 @@ describe("hitbox step", () => {
       new Abilities([
         {
           id: "swing",
-          timeline: [hitbox({ from: 0, to: 0.1, shape: { type: "circle", radius: 5 }, hit: {} })],
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 0.1,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
         },
       ]),
     );
@@ -201,7 +231,12 @@ describe("hitbox step", () => {
         {
           id: "swing",
           timeline: [
-            hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: { damage: 1 } }),
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: { damage: 1 },
+            }),
           ],
         },
       ]),
@@ -315,7 +350,14 @@ describe("hitbox step", () => {
       new Abilities([
         {
           id: "swing",
-          timeline: [hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: {} })],
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
         },
       ]),
     );
@@ -336,7 +378,14 @@ describe("hitbox step", () => {
       new Abilities([
         {
           id: "swing",
-          timeline: [hitbox({ from: 0, to: 1, shape: { type: "circle", radius: 5 }, hit: {} })],
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 1,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
         },
       ]),
     );
@@ -357,8 +406,18 @@ describe("hitbox step", () => {
         {
           id: "combo",
           timeline: [
-            hitbox({ from: 0, to: 0.1, shape: { type: "circle", radius: 5 }, hit: {} }),
-            hitbox({ from: 0, to: 0.3, shape: { type: "circle", radius: 5 }, hit: {} }),
+            hitbox({
+              from: 0,
+              to: 0.1,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+            hitbox({
+              from: 0,
+              to: 0.3,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
           ],
         },
       ]),
@@ -386,7 +445,12 @@ describe("hitbox step", () => {
         {
           id: "swing",
           timeline: [
-            hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: {} }),
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
           ],
         },
       ]),
@@ -409,6 +473,48 @@ describe("hitbox step", () => {
     abilities.cancel(); // never contacts a target
 
     expect(dealt).toEqual([]);
+  });
+
+  it("attributes a spawned attack's hitbox to the original caster", () => {
+    const { entity: caster, scene } = createMockEntity("caster");
+    caster.add(new Transform({ position: Vec2.ZERO }));
+    const spawned = scene.spawn(SpawnedAttacker, {
+      caster,
+      aim: Vec2.RIGHT,
+      position: new Vec2(5, 0),
+      params: {},
+      team: "player",
+    });
+    spawned.add(new Transform({ position: new Vec2(5, 0) }));
+    spawned.add(new Facing());
+    const pc = spawned.add(new ProcessComponent());
+    spawned.add(
+      new Abilities([
+        {
+          id: "child-hit",
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: { damage: 2 },
+            }),
+          ],
+        },
+      ]),
+    );
+    const dealt: HitResult[] = [];
+    caster.on(HitDealt, ({ result }) => dealt.push(result));
+
+    spawned.get(Abilities).play("child-hit");
+    pc._tick(0.01);
+    const target = scene.spawn(Target);
+    target.add(new Transform({ position: new Vec2(10, 0) }));
+    fireHitboxTrigger(findHitbox(scene), target);
+
+    expect(target.received[0]?.source).toBe(caster);
+    expect(target.received[0]?.team).toBe("player");
+    expect(dealt).toEqual(["hit"]);
   });
 
   it("wires the caster in as the follow target when follow is set", () => {
@@ -448,7 +554,14 @@ describe("hitbox step", () => {
       new Abilities([
         {
           id: "swing",
-          timeline: [hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: {} })],
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
+          ],
         },
       ]),
     );
@@ -468,7 +581,12 @@ describe("hitbox step", () => {
         {
           id: "swing",
           timeline: [
-            hitbox({ from: 0, to: 0.2, shape: { type: "circle", radius: 5 }, hit: {} }),
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: {},
+            }),
           ],
         },
       ]),

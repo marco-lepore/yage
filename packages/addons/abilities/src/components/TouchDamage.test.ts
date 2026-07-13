@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { Entity, Transform, Vec2, createMockEntity, trait } from "@yagejs/core";
+import {
+  Entity,
+  Transform,
+  Vec2,
+  createMockEntity,
+  createMockScene,
+  trait,
+} from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
+import { AbilitySpawned } from "../core/AbilitySpawned.js";
+import type { AbilitySpawnContext } from "../core/AbilitySpawned.js";
 import { Hittable } from "../core/hit/types.js";
 import type { Hit, HitResult } from "../core/hit/types.js";
 import { HitReceiver } from "./HitReceiver.js";
@@ -28,7 +37,8 @@ const captured = vi.hoisted(() => ({
 }));
 
 vi.mock("@yagejs/physics", async () => {
-  const core = await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
+  const core =
+    await vi.importActual<typeof import("@yagejs/core")>("@yagejs/core");
 
   class RigidBodyComponent extends core.Component {
     setVelocity(): void {}
@@ -60,7 +70,18 @@ class Target extends Entity {
   }
 }
 
-function spawnTarget(scene: ReturnType<typeof createMockEntity>["scene"]): Target {
+@trait(AbilitySpawned)
+class SpawnedZone extends Entity {
+  abilitySpawnContext: AbilitySpawnContext<object> | undefined;
+
+  override setup(context: AbilitySpawnContext<object>): void {
+    this.abilitySpawnContext = context;
+  }
+}
+
+function spawnTarget(
+  scene: ReturnType<typeof createMockEntity>["scene"],
+): Target {
   const target = scene.spawn(Target);
   target.add(new Transform({ position: new Vec2(5, 0) }));
   return target;
@@ -97,7 +118,9 @@ describe("TouchDamage", () => {
     const { scene, collider } = setup(true);
     const other = scene.spawn("rock");
 
-    expect(() => captured.triggerHandlers.get(collider)?.({ other, entered: true })).not.toThrow();
+    expect(() =>
+      captured.triggerHandlers.get(collider)?.({ other, entered: true }),
+    ).not.toThrow();
   });
 
   it("re-delivers after the interval elapses while held in contact", () => {
@@ -146,7 +169,10 @@ describe("TouchDamage", () => {
     expect(captured.triggerHandlers.has(collider)).toBe(false);
 
     const target = spawnTarget(scene);
-    captured.collisionHandlers.get(collider)?.({ other: target, started: true });
+    captured.collisionHandlers.get(collider)?.({
+      other: target,
+      started: true,
+    });
 
     expect(target.received).toHaveLength(1);
   });
@@ -167,6 +193,35 @@ describe("TouchDamage", () => {
     captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
 
     expect(target.received[0]!.team).toBe("boss");
+  });
+
+  it("attributes a spawned zone's touch damage to the original caster", () => {
+    const { scene } = createMockScene();
+    const caster = scene.spawn("caster");
+    const zone = scene.spawn(SpawnedZone, {
+      caster,
+      aim: Vec2.RIGHT,
+      position: Vec2.ZERO,
+      params: {},
+      team: "player",
+    });
+    zone.add(new Transform());
+    const collider = zone.add(
+      new ColliderComponent({
+        shape: { type: "circle", radius: 5 },
+        sensor: true,
+      }),
+    );
+    zone.add(new TouchDamage({ hit: { damage: 5 } }));
+    const target = spawnTarget(scene);
+    const dealt: HitResult[] = [];
+    caster.on(HitDealt, ({ result }) => dealt.push(result));
+
+    captured.triggerHandlers.get(collider)?.({ other: target, entered: true });
+
+    expect(target.received[0]?.source).toBe(caster);
+    expect(target.received[0]?.team).toBe("player");
+    expect(dealt).toEqual(["hit"]);
   });
 
   it("emits HitDealt on the touch source on contact; a re-hit after the interval emits again", () => {

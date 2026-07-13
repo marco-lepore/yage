@@ -1,5 +1,16 @@
 export { Abilities } from "./core/Abilities.js";
 export { defineStep } from "./core/defineStep.js";
+export {
+  AbilitySpawned,
+  resolveAbilitySource,
+  resolveAbilityTeam,
+} from "./core/AbilitySpawned.js";
+export type {
+  AbilitySpawnContext,
+  AbilitySpawnedClass,
+  AbilitySpawnedEntity,
+  AbilitySpawnParams,
+} from "./core/AbilitySpawned.js";
 export type {
   AbilityDef,
   AbilityStep,
@@ -58,7 +69,10 @@ export {
 } from "./components/standardHit.js";
 export { Facing } from "./components/Facing.js";
 export type { Cardinal } from "./components/Facing.js";
-export { HitDealt, createReportingDelivery } from "./components/reportedDelivery.js";
+export {
+  HitDealt,
+  createReportingDelivery,
+} from "./components/reportedDelivery.js";
 export { resolveAim } from "./components/aim.js";
 export type { Aim } from "./components/aim.js";
 export { anim } from "./components/steps/anim.js";
@@ -74,7 +88,7 @@ export { Projectile } from "./entities/Projectile.js";
 export type { ProjectileConfig } from "./entities/Projectile.js";
 export { hitbox } from "./components/steps/hitbox.js";
 export type { HitboxParams } from "./components/steps/hitbox.js";
-export { projectile } from "./components/steps/projectile.js";
-export type { ProjectileParams } from "./components/steps/projectile.js";
+export { spawn } from "./components/steps/spawn.js";
+export type { SpawnParams, SpawnStepArgs } from "./components/steps/spawn.js";
 export { TouchDamage } from "./components/TouchDamage.js";
 export type { TouchDamageOptions } from "./components/TouchDamage.js";

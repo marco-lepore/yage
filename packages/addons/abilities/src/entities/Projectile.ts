@@ -1,25 +1,23 @@
-import { Entity, Process, ProcessComponent, Transform, Vec2 } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
+import {
+  Entity,
+  Process,
+  ProcessComponent,
+  Transform,
+  Vec2,
+  trait,
+} from "@yagejs/core";
 import { ColliderComponent, RigidBodyComponent } from "@yagejs/physics";
 import type { ColliderShape } from "@yagejs/physics";
+import { AbilitySpawned } from "../core/AbilitySpawned.js";
+import type { AbilitySpawnContext } from "../core/AbilitySpawned.js";
 import { shouldConsumeProjectile } from "../core/hit/delivery.js";
-import type {
-  DeliveryColliderGroups,
-  HitDelivery,
-} from "../core/hit/delivery.js";
+import type { DeliveryColliderGroups } from "../core/hit/delivery.js";
 
 export interface ProjectileConfig {
-  position: Vec2Like;
-  /** Unit travel direction (the step passes the resolved aim). */
-  direction: Vec2Like;
   /** Speed px/s. */
   speed: number;
   /** Collider shape. */
   shape: ColliderShape;
-  /** Pre-built delivery (source/team/tags/data). */
-  delivery: HitDelivery;
-  /** Excluded from contact entirely — no deliver, no consume (survives its own body). */
-  owner: Entity;
   /** Seconds before self-destruct. */
   lifetime: number;
   groups?: DeliveryColliderGroups;
@@ -28,13 +26,22 @@ export interface ProjectileConfig {
 /**
  * A dynamic zero-gravity sensor body: velocity is set once at spawn, and it
  * self-destructs on the bit-free consume rule (`shouldConsumeProjectile`) or
- * on its lifetime timer, whichever comes first. Exported for direct
- * spawning outside abilities (a game-thrown item with its own `HitDelivery`)
- * as well as via the `projectile` step.
+ * on its lifetime timer, whichever comes first. Use it as the entity class
+ * for `spawn`, subclass it to add presentation, or pass an ability context to
+ * `Scene.spawn` for an attack that has no ability timeline.
  */
+@trait(AbilitySpawned)
 export class Projectile extends Entity {
-  setup(config: ProjectileConfig): void {
-    const position = new Vec2(config.position.x, config.position.y);
+  abilitySpawnContext: AbilitySpawnContext<ProjectileConfig> | undefined;
+
+  override setup(context: AbilitySpawnContext<ProjectileConfig>): void {
+    this.abilitySpawnContext = context;
+    const { params: config } = context;
+    const { delivery } = context;
+    if (!delivery) {
+      throw new Error("Projectile requires an ability spawn delivery.");
+    }
+    const position = new Vec2(context.position.x, context.position.y);
     this.add(new Transform({ position }));
     const body = this.add(
       new RigidBodyComponent({
@@ -48,11 +55,15 @@ export class Projectile extends Entity {
       new ColliderComponent({
         shape: config.shape,
         sensor: true,
-        ...(config.groups?.layers !== undefined ? { layers: config.groups.layers } : {}),
-        ...(config.groups?.mask !== undefined ? { mask: config.groups.mask } : {}),
+        ...(config.groups?.layers !== undefined
+          ? { layers: config.groups.layers }
+          : {}),
+        ...(config.groups?.mask !== undefined
+          ? { mask: config.groups.mask }
+          : {}),
       }),
     );
-    const dir = new Vec2(config.direction.x, config.direction.y);
+    const dir = new Vec2(context.aim.x, context.aim.y);
     body.setVelocity(dir.scale(config.speed));
 
     const pc = this.add(new ProcessComponent());
@@ -61,12 +72,14 @@ export class Projectile extends Entity {
     let consumed = false;
     collider.onTrigger((ev) => {
       if (!ev.entered || consumed) return;
-      if (ev.other === config.owner) return; // pass through the firer's own body
-      const result = config.delivery.deliver(
+      if (ev.other === context.caster) return; // pass through the firer's own body
+      const result = delivery.deliver(
         ev.other,
         this.get(Transform).worldPosition,
       );
-      if (shouldConsumeProjectile(result, ev.otherCollider.config.sensor === true)) {
+      if (
+        shouldConsumeProjectile(result, ev.otherCollider.config.sensor === true)
+      ) {
         consumed = true;
         this.destroy();
       }

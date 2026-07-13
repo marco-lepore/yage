@@ -87,7 +87,6 @@ import {
   Component,
   Engine,
   Entity,
-  EventBusKey,
   Process,
   ProcessComponent,
   ProcessSystemKey,
@@ -142,14 +141,16 @@ import {
   guard,
   hitbox,
   invulnerable,
-  projectile,
+  spawn,
 } from "@yagejs-addons/abilities";
 import type {
   AbilityDef,
+  AbilitySpawnContext,
   AbilityStep,
   GuardPolicy,
   Hit,
   HitResult,
+  ProjectileConfig,
 } from "@yagejs-addons/abilities";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
@@ -1393,6 +1394,18 @@ const MELEE: AbilityDef = {
   ],
 };
 
+class FireballProjectile extends Projectile {
+  override setup(context: AbilitySpawnContext<ProjectileConfig>): void {
+    super.setup(context);
+    this.add(
+      new GraphicsComponent().draw((graphics) => {
+        graphics.circle(0, 0, 7).fill({ color: 0xfb923c });
+        graphics.circle(0, 0, 3.5).fill({ color: 0xfde68a });
+      }),
+    );
+  }
+}
+
 /** Ranged enemy attack: `aim` is an explicit fire-time resolver — the other
  *  half of the aim vocabulary (the player instead omits `aim` and falls
  *  back to its `Facing`). The explicit `duration` spans the whole cast
@@ -1400,7 +1413,7 @@ const MELEE: AbilityDef = {
  *  `Abilities.isActive("main")` stays true (and `EnemyAI` stays planted,
  *  holding the throwing pose) through the follow-through — see `EnemyAI`.
  *  The `telegraph` step covers the whole hold, ending exactly as the
- *  projectile fires. `projectile`'s `at` is timed to the Fireball sheet's
+ *  projectile fires. `spawn`'s `at` is timed to the Fireball sheet's
  *  own release frame (the arm snapping down past the shoulder, ~0.83 of the
  *  way through the windup-spin-throw cycle at this speed). No `priority`,
  *  same as `MELEE` — a landed hit cancels the cast before it releases. */
@@ -1411,11 +1424,14 @@ const SHOOT: AbilityDef = {
   timeline: [
     spriteAnim({ at: 0, name: "cast" }),
     telegraph({ from: 0, to: 0.874, every: 0.213, baseTint: ENEMY_TINT, burstCount: 7 }),
-    projectile({
+    spawn({
       at: 0.874,
-      speed: 240,
-      lifetime: 2.5,
-      shape: { type: "circle", radius: 7 },
+      entity: FireballProjectile,
+      params: {
+        speed: 240,
+        lifetime: 2.5,
+        shape: { type: "circle", radius: 7 },
+      },
       aim: (ctx) => {
         const from = ctx.entity.get(Transform).worldPosition;
         const player = ctx.entity.scene.findEntity("PlayerEntity");
@@ -2004,17 +2020,17 @@ class PlayerController extends Component {
       data: { damage: REFLECT_DAMAGE, knockback: REFLECT_KNOCKBACK, stun: REFLECT_STUN },
       ...(team !== undefined ? { team } : {}),
     });
-    // Direct-spawn use of the addon's `Projectile` entity, sanctioned for
-    // exactly this — a reflected/returned attack with no timeline step of
-    // its own to fire from.
-    this.scene.spawn(Projectile, {
+    this.scene.spawn(FireballProjectile, {
+      caster: this.entity,
+      aim: direction,
       position: from,
-      direction,
-      speed: REFLECT_SPEED,
-      shape: { type: "circle", radius: 7 },
       delivery,
-      owner: this.entity,
-      lifetime: 2.5,
+      params: {
+        speed: REFLECT_SPEED,
+        shape: { type: "circle", radius: 7 },
+        lifetime: 2.5,
+      },
+      ...(team !== undefined ? { team } : {}),
     });
   }
 
@@ -2482,8 +2498,6 @@ class AbilitiesDemoScene extends Scene {
   fx!: VfxHub;
   token!: EngagementToken;
 
-  private unsubProjectileVisuals: (() => void) | undefined;
-
   onEnter(): void {
     // R (see `PlayerController.resetDemo`) rebuilds this scene from scratch —
     // hide any banner left over from a previous run before anything below
@@ -2503,20 +2517,6 @@ class AbilitiesDemoScene extends Scene {
     const tokenEntity = this.spawn("engagement-token");
     tokenEntity.add(new Transform());
     this.token = tokenEntity.add(new EngagementToken());
-
-    // The `projectile` step spawns headless entities — give each a fireball visual.
-    this.unsubProjectileVisuals = this.context
-      .resolve(EventBusKey)
-      .on("entity:created", ({ entity }) => {
-        if (entity instanceof Projectile) {
-          entity.add(
-            new GraphicsComponent().draw((g) => {
-              g.circle(0, 0, 7).fill({ color: 0xfb923c });
-              g.circle(0, 0, 3.5).fill({ color: 0xfde68a });
-            }),
-          );
-        }
-      });
 
     this.buildArena();
 
@@ -2554,10 +2554,6 @@ class AbilitiesDemoScene extends Scene {
         deadBanner.style.display = "block";
       }
     });
-  }
-
-  onExit(): void {
-    this.unsubProjectileVisuals?.();
   }
 
   private buildArena(): void {

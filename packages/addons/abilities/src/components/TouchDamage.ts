@@ -1,6 +1,10 @@
 import { Component, Transform, Vec2 } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { ColliderComponent } from "@yagejs/physics";
+import {
+  resolveAbilitySource,
+  resolveAbilityTeam,
+} from "../core/AbilitySpawned.js";
 import type { HitDelivery } from "../core/hit/delivery.js";
 import type { StandardHitData } from "../core/hit/types.js";
 import { HitReceiver } from "./HitReceiver.js";
@@ -39,9 +43,12 @@ export class TouchDamage extends Component {
   }
 
   onAdd(): void {
-    const team = this.options.team ?? this.entity.tryGet(HitReceiver)?.team;
+    const team =
+      this.options.team ??
+      resolveAbilityTeam(this.entity) ??
+      this.entity.tryGet(HitReceiver)?.team;
     this.delivery = createReportingDelivery({
-      source: this.entity,
+      source: resolveAbilitySource(this.entity),
       data: this.options.hit,
       ...(team !== undefined ? { team } : {}),
       ...(this.options.tags ? { tags: this.options.tags } : {}),
