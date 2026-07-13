@@ -1,0 +1,150 @@
+---
+title: "Pathfinding"
+description: "Grid A* pathfinding with a tilemap adapter"
+---
+
+The `@yagejs/pathfinding` package provides a grid graph with A* search.
+Coordinates in and out are world pixels — build a grid from raw wall data or
+from a `@yagejs/tilemap` map, then ask it for a path.
+
+## GridGraph
+
+```typescript
+import { GridGraph } from "@yagejs/pathfinding";
+
+const cols = 20;
+const rows = 15;
+const walls = new Uint8Array(cols * rows); // 1 = blocked, filled by your game
+
+const grid = new GridGraph({
+  cols,
+  rows,
+  tileWidth: 32,
+  tileHeight: 32,
+  isWalkable: (col, row) => walls[row * cols + col] === 0,
+});
+
+const path = grid.findPath({ x: 48, y: 48 }, { x: 600, y: 400 });
+if (path) {
+  for (const wp of path.waypoints) {
+    // wp is a Vec2 in world pixels (tile centre).
+  }
+}
+```
+
+`isWalkable` is called on every `findPath` call, never cached — flip a bit in
+`walls` (open a door, block a passage) and the next path reflects it, no
+rebuild step needed.
+
+## From a tilemap
+
+`gridFromTilemap` lives behind a `./tilemap` subpath so a grid-only consumer
+of the root `@yagejs/pathfinding` entry never pulls in `@yagejs/tilemap`.
+
+```typescript
+import { Transform } from "@yagejs/core";
+import { gridFromTilemap } from "@yagejs/pathfinding/tilemap";
+
+// tilemap is a TilemapComponent; tilemap.data is its parsed TilemapData.
+const grid = gridFromTilemap(tilemap.data, {
+  layers: ["collision"], // which tile layers block; omit = every layer
+  blocked: (gid) => gid !== 0, // default: any non-empty tile blocks
+  origin: tilemap.entity.get(Transform).position, // map placement offset
+});
+
+const path = grid.findPath(agent.position, target.position);
+```
+
+`layers` restricts which tile layers are read. A cell is blocked if **any**
+read layer's cell satisfies `blocked`. The adapter precomputes a
+walkability + cost pass over the grid once, so the returned `GridGraph`
+doesn't re-scan tilemap data on every search.
+
+## From object-layer collision shapes
+
+Some maps author walkability as Tiled objects (rects, ellipses, capsules,
+polygons) instead of, or alongside, tile layers. `gridFromColliders` builds a
+grid from those shapes:
+
+```typescript
+import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
+
+const grid = gridFromColliders(tilemap.data, {
+  shapes: tilemap.getCollisionShapes("pathfinding"), // an object layer
+  origin: tilemap.entity.get(Transform).position,
+});
+```
+
+There are two ways to feed it shapes:
+
+- **A dedicated nav layer (recommended).** Walkability and collision aren't
+  the same thing — shallow water or a low fence might block movement without
+  blocking a projectile, or vice versa. Draw a separate object layer (e.g.
+  `"pathfinding"`) with only the shapes that should affect the grid, and pass
+  its name to `getCollisionShapes`.
+- **Point it at the collision layer directly.** When walkability and
+  collision genuinely coincide, reuse the same layer you already pass to your
+  physics setup — `tilemap.getCollisionShapes("collision")` works for either.
+
+A cell blocks if any shape overlaps any part of it — a shape only grazing a
+cell's edge still blocks it. The overlap test is exact per shape (a rotated
+rect uses its true bounding rectangle, a polygon its real, possibly concave
+outline), not a bounding-box approximation, so a concave shape's notch stays
+walkable. A shape drawn with Tiled's Polygon tool is a filled region — its
+interior blocks, concave or not. A Polyline-tool shape is a thin wall:
+only the cells its segments cross block. Cost is 1 everywhere; there's no
+per-shape cost option.
+
+## Weighted terrain and diagonal movement
+
+Both live on the same options object as `isWalkable`:
+
+```typescript
+const grid = new GridGraph({
+  cols,
+  rows,
+  tileWidth,
+  tileHeight,
+  isWalkable,
+  cost: (col, row) => terrain[row * cols + col], // 1 = normal, 3 = mud, ...
+  diagonalMovement: "no-corner-cutting", // "never" | "always" | "no-corner-cutting"
+  heuristic: "octile", // omit to auto-pick: octile with diagonals, else manhattan
+});
+```
+
+- **`cost`** is a per-cell multiplier on the step entering that cell (default
+  `1`). A diagonal step costs `Math.SQRT2` times the destination cell's cost;
+  an orthogonal step costs `1` times it. Costs must be `>= 1` for the search
+  to guarantee the shortest path — a lower cost still returns *a* path, just
+  not necessarily the cheapest one.
+- **`diagonalMovement`** — `"never"` restricts movement to 4 directions.
+  `"always"` allows all 8, including cutting a diagonal past a blocked wall
+  corner. `"no-corner-cutting"` (the default) allows a diagonal step only
+  when both orthogonal cells it would cut past are walkable.
+- **`heuristic`** — `"manhattan"`, `"chebyshev"`, `"octile"`, or
+  `"euclidean"`. Left unset, it picks `"octile"` when diagonals are allowed
+  and `"manhattan"` otherwise — the tightest admissible choice for each
+  policy. All four are admissible for 4-connected movement; with diagonals
+  enabled, manhattan overestimates and trades path optimality for speed.
+
+## Path result
+
+```typescript
+interface Path {
+  waypoints: Vec2[]; // tile centres, world pixels, start cell through goal cell
+  cells: GridCell[]; // { col, row }, parallel to waypoints
+  cost: number;
+}
+```
+
+`findPath` returns `null` when the start or goal cell is out of bounds, or
+when the goal cell isn't walkable. The start cell may be blocked — an agent
+can straddle a blocked edge — only the goal must be walkable. When start and
+goal share a cell, it returns a one-waypoint path with `cost: 0`.
+
+## Not supported
+
+Path smoothing, async or time-sliced search for large grids, nearest-walkable
+goal snapping, endpoint snapping to the exact start/goal position, grids
+derived from collision shapes (only tile GIDs are read), and waypoint/navmesh
+graphs or flow fields.

@@ -26,6 +26,7 @@
     "@yagejs/effects": "^0.8.0",
     "@yagejs/input": "^0.8.0",
     "@yagejs/particles": "^0.8.0",
+    "@yagejs/pathfinding": "^0.8.0",
     "@yagejs/physics": "^0.8.0",
     "@yagejs/renderer": "^0.8.0",
     "@yagejs/save": "^0.8.0",

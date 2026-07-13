@@ -15,6 +15,7 @@ YAGE is a 2D game engine built as a Turborepo monorepo.
 | `@yagejs/audio`     | Channel-based audio via @pixi/sound                    |
 | `@yagejs/particles` | Particle emitters with pooling and presets             |
 | `@yagejs/tilemap`   | Tiled map loading and rendering                        |
+| `@yagejs/pathfinding` | Grid A* pathfinding, tilemap adapter                 |
 | `@yagejs/ui`        | Yoga flexbox-based UI components                       |
 | `@yagejs/ui-react`  | React reconciler over the UI layer                     |
 | `@yagejs/debug`     | Debug overlay, stats, world/HUD drawing                |
