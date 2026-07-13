@@ -3,7 +3,6 @@ import {
   RendererPlugin,
   CameraEntity,
   GraphicsComponent,
-  renderAsset,
   ySort,
   type LayerDef,
 } from "@yagejs/renderer";
@@ -29,7 +28,6 @@ injectStyles();
 // ---------------------------------------------------------------------------
 // Asset handles
 // ---------------------------------------------------------------------------
-const DungeonAtlas = renderAsset("/assets/dungeon/dungeon.json");
 const DungeonMap = tiledMap("/assets/dungeon/dungeon-map.json");
 
 // ---------------------------------------------------------------------------
@@ -301,9 +299,6 @@ async function main() {
   engine.use(new DebugPlugin({ startEnabled: true }));
 
   await engine.start();
-
-  // Load the atlas first so tile textures are ready before the map resolves GIDs.
-  await engine.assets.loadAll([DungeonAtlas]);
 
   await engine.scenes.push(new TilemapScene());
 }
