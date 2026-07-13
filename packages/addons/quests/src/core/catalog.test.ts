@@ -28,6 +28,15 @@ describe("defineQuests", () => {
     expect(catalog.get("q").objectives.get("step")?.count).toBe(1);
   });
 
+  it("defaults autoComplete to true and preserves false", () => {
+    const catalog = defineQuests({
+      automatic: { title: "Automatic", objectives: { step: {} } },
+      manual: { title: "Manual", autoComplete: false, objectives: { step: {} } },
+    });
+    expect(catalog.get("automatic").autoComplete).toBe(true);
+    expect(catalog.get("manual").autoComplete).toBe(false);
+  });
+
   it("freezes quest defs", () => {
     const catalog = defineQuests({ q: { title: "Q", objectives: { a: {} } } });
     expect(Object.isFrozen(catalog.get("q"))).toBe(true);

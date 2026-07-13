@@ -1,6 +1,6 @@
 /**
  * @yagejs-addons/quests — headless quest log with objectives, prerequisite
- * chains, and auto-complete rollup.
+ * chains, and automatic or explicit completion.
  *
  * Pure `@yagejs/core`: no dialogue/inventory/renderer dependency. Objectives
  * bind to other addons' events (or the game's own) through game-authored
@@ -35,7 +35,7 @@ export {
   QuestChangedEvent,
   QuestCompletedEvent,
   QuestFailedEvent,
-  QuestObjectiveAdvancedEvent,
+  QuestObjectiveProgressChangedEvent,
   QuestObjectiveCompletedEvent,
   QuestStartedEvent,
 } from "./events.js";

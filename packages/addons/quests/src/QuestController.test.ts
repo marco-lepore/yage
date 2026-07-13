@@ -7,7 +7,7 @@ import {
   QuestChangedEvent,
   QuestCompletedEvent,
   QuestFailedEvent,
-  QuestObjectiveAdvancedEvent,
+  QuestObjectiveProgressChangedEvent,
   QuestObjectiveCompletedEvent,
   QuestStartedEvent,
 } from "./events.js";
@@ -30,13 +30,13 @@ describe("QuestController", () => {
     host.add(new QuestController({ log }));
 
     const started = vi.fn();
-    const advanced = vi.fn();
+    const progressChanged = vi.fn();
     const objCompleted = vi.fn();
     const completed = vi.fn();
     const failed = vi.fn();
     const changed = vi.fn();
     host.on(QuestStartedEvent, started);
-    host.on(QuestObjectiveAdvancedEvent, advanced);
+    host.on(QuestObjectiveProgressChangedEvent, progressChanged);
     host.on(QuestObjectiveCompletedEvent, objCompleted);
     host.on(QuestCompletedEvent, completed);
     host.on(QuestFailedEvent, failed);
@@ -47,7 +47,7 @@ describe("QuestController", () => {
     expect(changed).toHaveBeenCalledWith({ questId: "gatherHerbs" });
 
     log.advance("gatherHerbs", "herb", 5);
-    expect(advanced).toHaveBeenCalledWith({
+    expect(progressChanged).toHaveBeenCalledWith({
       questId: "gatherHerbs",
       objectiveId: "herb",
       progress: 5,

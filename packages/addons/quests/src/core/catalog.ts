@@ -77,6 +77,7 @@ export class QuestCatalog<
  * const quests = defineQuests({
  *   gatherHerbs: {
  *     title: "Gather Herbs",
+ *     autoComplete: false,
  *     objectives: {
  *       herb: { title: "Collect red herbs", count: 5 },
  *       turnIn: { title: "Return to the healer" }, // count omitted -> target 1
@@ -92,9 +93,8 @@ export class QuestCatalog<
  *
  * Validates every def (non-empty `title`; integer `count >= 1` per objective;
  * at least one non-`optional` objective per quest, since an all-optional or
- * empty objective set would never gate the auto-complete rollup and the
- * quest would complete immediately; every `requires` id naming a quest
- * declared somewhere in the same call, forward references allowed) and
+ * empty objective set would never gate completion; every `requires` id naming
+ * a quest declared somewhere in the same call, forward references allowed) and
  * freezes it. The returned catalog's quest id AND per-quest objective id
  * types are the literal key unions, which flow through `QuestLog<TDefs>` so
  * `log.advance(quest, objective)` is fully typed with zero explicit type
@@ -133,6 +133,7 @@ export function defineQuests<const TDefs extends Record<string, QuestDefInput>>(
         id,
         objectives,
         objectiveIds,
+        autoComplete: input.autoComplete ?? true,
         requires: input.requires ?? [],
       }),
     );

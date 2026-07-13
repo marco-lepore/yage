@@ -29,6 +29,10 @@ export interface QuestDefInput {
   /** Objective ids and their defs — the id IS the key, same as
    *  {@link defineQuests}'s own quest-id map. */
   readonly objectives: Record<string, ObjectiveDefInput>;
+  /** Whether satisfying every required objective completes the quest
+   *  immediately. Set to `false` for quests that require an explicit turn-in
+   *  while their objectives may become incomplete again. Default `true`. */
+  readonly autoComplete?: boolean;
   /** Quest ids that must be `completed` before this one unlocks. Forward
    *  references (naming a quest declared later in the same call) are allowed;
    *  naming a quest absent from the whole map throws. */
@@ -44,6 +48,7 @@ export interface QuestDef {
   readonly objectives: ReadonlyMap<string, ObjectiveDef>;
   /** Objective ids in authoring order (the journal sort key). */
   readonly objectiveIds: readonly string[];
+  readonly autoComplete: boolean;
   readonly requires: readonly string[];
 }
 
@@ -64,7 +69,7 @@ export interface QuestStartResult {
 /** {@link QuestLog}'s model events (`log.on(event, fn)`). */
 export interface QuestEvents {
   questStarted: { questId: string };
-  objectiveAdvanced: {
+  objectiveProgressChanged: {
     questId: string;
     objectiveId: string;
     progress: number;

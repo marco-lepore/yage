@@ -31,6 +31,7 @@ const quests = defineQuests({
       herb: { title: "...", count: 5 },   // count omitted -> default 1
       turnIn: { title: "..." },
     },
+    autoComplete: false,           // optional; default true
     requires: [],                 // optional; quest ids that must be `completed` first
   },
   thinThePack: {
@@ -77,10 +78,11 @@ const log = new QuestLog(quests); // TDefs inferred from `quests`, zero <T>
   inactive.
 - `complete(quest, objective): void` — active-only; drives straight to the
   target. No-op if already done or inactive.
-- `completeQuest(quest): void` — **force**: every objective marked done,
-  status `completed`, ignores `requires`/current phase. No-op if already
-  `completed` or `failed`. On an inactive-but-available quest, activates and
-  completes in the same call (one `questCompleted`, no `questStarted`).
+- `completeQuest(quest): void` — completes only when the quest is active and
+  every non-optional objective is currently done. Does not alter progress.
+- `forceCompleteQuest(quest): void` — escape hatch: marks every objective done
+  and completes any non-terminal known quest regardless of prerequisites or
+  progress.
 - `fail(quest): void` — `active` or `available` -> `failed`. No-op if already
   terminal. Terminal in v1 (no re-open/retry) — a failed quest never reaches
   `completed`, so any quest that `requires` it stays `locked` permanently.
@@ -95,6 +97,8 @@ Unknown **objective** id (unreachable through the typed API) throws. Unknown
   — pure function of stored phase; no separate stored "locked". A quest never
   started is `locked` unless every `requires` quest is `completed`.
 - `isActive(quest)` / `isCompleted(quest)`: boolean.
+- `canComplete(quest): boolean` — active and every non-optional objective is
+  currently done.
 - `progress(quest, objective): number` (0 if untouched).
 - `objectiveDone(quest, objective): boolean`.
 - `available() / active() / completed(): QuestId[]` — authoring order.
@@ -103,7 +107,8 @@ Unknown **objective** id (unreachable through the typed API) throws. Unknown
 
 ### Auto-complete rollup
 
-After any objective crosses from below-target to at-or-above it: emits
+With `autoComplete: true` (default), after any objective crosses from
+below-target to at-or-above it: emits
 `objectiveCompleted`, then — if every **non-`optional`** objective on that
 quest is now done — the quest transitions to `completed` and emits
 `questCompleted`, all before the trailing `changed`. `optional` objectives
@@ -111,7 +116,7 @@ never gate completion.
 
 ### Events — `log.on(event, fn): () => void`
 
-`questStarted { questId }` · `objectiveAdvanced { questId, objectiveId,
+`questStarted { questId }` · `objectiveProgressChanged { questId, objectiveId,
 progress, count, done }` · `objectiveCompleted { questId, objectiveId }` ·
 `questCompleted { questId }` · `questFailed { questId }` · `changed { questId
 }` (coarse re-render signal, fires once per mutating call, after the
@@ -142,7 +147,7 @@ scene.on(QuestCompletedEvent, ({ questId }) => {});
 ```
 
 Mirrors the log's six model events onto the host entity as engine-bus events
-(`QuestStartedEvent`, `QuestObjectiveAdvancedEvent`,
+(`QuestStartedEvent`, `QuestObjectiveProgressChangedEvent`,
 `QuestObjectiveCompletedEvent`, `QuestCompletedEvent`, `QuestFailedEvent`,
 `QuestChangedEvent`) — bubble entity -> scene. Bus payloads carry `string`
 ids (event tokens can't be generic). No per-frame `update`. `.log` exposes the
@@ -160,6 +165,20 @@ import { InventoryItemAddedEvent } from "@yagejs-addons/inventory";
 player.on(InventoryItemAddedEvent, (e) => {
   if (e.itemId === "redHerb") log.advance("gatherHerbs", "herb", e.quantity);
 });
+```
+
+For a current-inventory requirement, set `autoComplete: false` on the quest
+and synchronize absolute progress on both inventory additions and removals:
+
+```ts
+const syncWood = () =>
+  log.setProgress("bringWood", "wood", inventory.count("wood"));
+inventory.on("itemAdded", syncWood);
+inventory.on("itemRemoved", syncWood);
+log.start("bringWood");
+syncWood();
+
+if (log.canComplete("bringWood")) log.completeQuest("bringWood");
 ```
 
 ## Deferred to v1.x

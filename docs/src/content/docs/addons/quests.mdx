@@ -94,12 +94,12 @@ log.on("questCompleted", ({ questId }) => {
   if (questId === "gatherHerbs") log.start("thinThePack"); // chain, one line
 });
 
-log.on("objectiveAdvanced", ({ questId, objectiveId, progress, count }) => {
+log.on("objectiveProgressChanged", ({ questId, objectiveId, progress, count }) => {
   tracker.set(objectiveId, `${progress}/${count}`); // "3/5"
 });
 ```
 
-Model events: `questStarted`, `objectiveAdvanced { progress, count, done }`,
+Model events: `questStarted`, `objectiveProgressChanged { progress, count, done }`,
 `objectiveCompleted`, `questCompleted`, `questFailed`, and a coarse `changed`
 after every mutating call.
 
@@ -111,6 +111,7 @@ log.available(); // QuestId[] — startable now (prereqs met, not started)
 log.active(); // QuestId[]
 log.progress("gatherHerbs", "herb"); // 3
 log.objectiveDone("gatherHerbs", "herb"); // false
+log.canComplete("gatherHerbs"); // false
 log.get("gatherHerbs"); // full QuestState { status, objectives: {...counts} }
 ```
 
@@ -149,8 +150,48 @@ defineQuests({
 // untouched.
 ```
 
-`completeQuest(quest)` force-completes regardless of prerequisites or current
-progress — a debug/cheat/testing escape hatch.
+Set `autoComplete: false` when the game must explicitly turn in a quest.
+`completeQuest(quest)` then completes the quest only while it is active and
+every required objective is currently done. `forceCompleteQuest(quest)` marks
+every objective done and completes the quest regardless of prerequisites or
+progress; use it for scripts, cheats, and tests.
+
+## Current-state objectives
+
+Use `setProgress()` when an objective represents current state rather than a
+cumulative total. The quest must use `autoComplete: false` so reaching the
+target does not make completion permanent before the player turns it in.
+
+```ts
+const quests = defineQuests({
+  bringWood: {
+    title: "Bring Robin 10 wood",
+    autoComplete: false,
+    objectives: { wood: { title: "Have 10 wood", count: 10 } },
+  },
+});
+
+const syncWood = () =>
+  log.setProgress("bringWood", "wood", inventory.count("wood"));
+
+inventory.on("itemAdded", syncWood);
+inventory.on("itemRemoved", syncWood);
+log.start("bringWood");
+syncWood(); // Include wood already held when the quest starts.
+```
+
+If the player reaches 10 wood and then drops to 9, the objective becomes
+incomplete again. The NPC can finish the quest only while the requirement is
+satisfied:
+
+```ts
+if (log.canComplete("bringWood")) {
+  log.completeQuest("bringWood");
+}
+```
+
+Use `advance()` instead for an “obtain 10 wood” objective whose progress must
+only increase.
 
 ## Optional engine-bus mirror
 

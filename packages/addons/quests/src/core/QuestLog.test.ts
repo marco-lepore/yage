@@ -51,7 +51,7 @@ describe("start", () => {
   it("starting a completed quest returns already-completed", () => {
     const log = herbLog();
     log.start("gatherHerbs");
-    log.completeQuest("gatherHerbs");
+    log.forceCompleteQuest("gatherHerbs");
     expect(log.start("gatherHerbs")).toEqual({ ok: false, reason: "already-completed" });
   });
 
@@ -62,11 +62,11 @@ describe("start", () => {
 });
 
 describe("advance / setProgress / complete", () => {
-  it("advance bumps and clamps to target, emitting objectiveAdvanced with progress/count/done", () => {
+  it("advance bumps and clamps to target, emitting objectiveProgressChanged", () => {
     const log = herbLog();
     log.start("gatherHerbs");
     const advanced: { progress: number; count: number; done: boolean }[] = [];
-    log.on("objectiveAdvanced", (e) => advanced.push(e));
+    log.on("objectiveProgressChanged", (e) => advanced.push(e));
 
     log.advance("gatherHerbs", "herb", 2);
     expect(advanced).toEqual([
@@ -98,7 +98,7 @@ describe("advance / setProgress / complete", () => {
     log.advance("gatherHerbs", "herb", 5); // reaches the target
     const advanced = vi.fn();
     const changed = vi.fn();
-    log.on("objectiveAdvanced", advanced);
+    log.on("objectiveProgressChanged", advanced);
     log.on("changed", changed);
 
     log.advance("gatherHerbs", "herb", 1); // surplus pickup past the target
@@ -113,7 +113,7 @@ describe("advance / setProgress / complete", () => {
     // never started -> locked/available, not active
     const advanced = vi.fn();
     const changed = vi.fn();
-    log.on("objectiveAdvanced", advanced);
+    log.on("objectiveProgressChanged", advanced);
     log.on("changed", changed);
 
     log.advance("gatherHerbs", "herb");
@@ -186,40 +186,112 @@ describe("auto-complete rollup", () => {
     expect(log.progress("q", "bonus")).toBe(0);
   });
 
-  it("completeQuest force-completes with a single questCompleted", () => {
-    const log = herbLog();
-    log.start("gatherHerbs");
+  it("autoComplete false keeps a ready quest active and lets an objective reopen", () => {
+    const catalog = defineQuests({
+      bringWood: {
+        title: "Bring Wood",
+        autoComplete: false,
+        objectives: { wood: { count: 10 } },
+      },
+    });
+    const log = new QuestLog(catalog);
+    const completed = vi.fn();
+    const progressChanged = vi.fn();
+    log.on("objectiveCompleted", completed);
+    log.on("objectiveProgressChanged", progressChanged);
+    log.start("bringWood");
+
+    log.setProgress("bringWood", "wood", 10);
+    expect(log.status("bringWood")).toBe("active");
+    expect(log.canComplete("bringWood")).toBe(true);
+
+    log.setProgress("bringWood", "wood", 9);
+    expect(log.objectiveDone("bringWood", "wood")).toBe(false);
+    expect(log.canComplete("bringWood")).toBe(false);
+    expect(progressChanged).toHaveBeenLastCalledWith({
+      questId: "bringWood",
+      objectiveId: "wood",
+      progress: 9,
+      count: 10,
+      done: false,
+    });
+
+    log.setProgress("bringWood", "wood", 10);
+    expect(log.canComplete("bringWood")).toBe(true);
+    expect(completed).toHaveBeenCalledTimes(2);
+  });
+
+  it("completeQuest completes only an active quest whose required objectives are done", () => {
+    const catalog = defineQuests({
+      q: { title: "Q", autoComplete: false, objectives: { step: {} } },
+    });
+    const log = new QuestLog(catalog);
     const completed = vi.fn();
     log.on("questCompleted", completed);
 
-    log.completeQuest("gatherHerbs");
+    log.completeQuest("q");
+    log.start("q");
+    log.completeQuest("q");
+    expect(log.status("q")).toBe("active");
+    expect(completed).not.toHaveBeenCalled();
+
+    log.complete("q", "step");
+    log.completeQuest("q");
+    expect(log.status("q")).toBe("completed");
+    expect(completed).toHaveBeenCalledTimes(1);
+  });
+
+  it("canComplete ignores optional objectives and is false outside the active phase", () => {
+    const catalog = defineQuests({
+      q: {
+        title: "Q",
+        autoComplete: false,
+        objectives: { required: {}, bonus: { optional: true } },
+      },
+    });
+    const log = new QuestLog(catalog);
+    expect(log.canComplete("q")).toBe(false);
+    log.start("q");
+    expect(log.canComplete("q")).toBe(false);
+    log.complete("q", "required");
+    expect(log.canComplete("q")).toBe(true);
+    log.completeQuest("q");
+    expect(log.canComplete("q")).toBe(false);
+  });
+
+  it("forceCompleteQuest marks every objective done and emits questCompleted once", () => {
+    const log = herbLog();
+    const completed = vi.fn();
+    log.on("questCompleted", completed);
+
+    log.forceCompleteQuest("gatherHerbs");
     expect(completed).toHaveBeenCalledTimes(1);
     expect(log.status("gatherHerbs")).toBe("completed");
     expect(log.progress("gatherHerbs", "herb")).toBe(5);
     expect(log.progress("gatherHerbs", "turnIn")).toBe(1);
   });
 
-  it("completeQuest on an available (not yet started) quest activates then completes with one questCompleted and no questStarted", () => {
+  it("forceCompleteQuest completes an available quest without questStarted", () => {
     const log = herbLog();
     const started = vi.fn();
     const completed = vi.fn();
     log.on("questStarted", started);
     log.on("questCompleted", completed);
 
-    log.completeQuest("gatherHerbs");
+    log.forceCompleteQuest("gatherHerbs");
     expect(started).not.toHaveBeenCalled();
     expect(completed).toHaveBeenCalledTimes(1);
     expect(log.status("gatherHerbs")).toBe("completed");
   });
 
-  it("completeQuest on an unknown quest id is a silent no-op", () => {
+  it("forceCompleteQuest on an unknown quest id is a silent no-op", () => {
     const log = herbLog();
     const completed = vi.fn();
     const changed = vi.fn();
     log.on("questCompleted", completed);
     log.on("changed", changed);
 
-    expect(() => log.completeQuest("nope" as never)).not.toThrow();
+    expect(() => log.forceCompleteQuest("nope" as never)).not.toThrow();
     expect(completed).not.toHaveBeenCalled();
     expect(changed).not.toHaveBeenCalled();
   });
@@ -255,7 +327,7 @@ describe("fail", () => {
   it("fail on an already-terminal quest is a no-op", () => {
     const log = herbLog();
     log.start("gatherHerbs");
-    log.completeQuest("gatherHerbs");
+    log.forceCompleteQuest("gatherHerbs");
     const failed = vi.fn();
     log.on("questFailed", failed);
     log.fail("gatherHerbs");
@@ -278,7 +350,7 @@ describe("prereq chain + status", () => {
     expect(log.status("b")).toBe("locked");
     log.start("a");
     expect(log.status("b")).toBe("locked");
-    log.completeQuest("a");
+    log.complete("a", "step");
     expect(log.status("b")).toBe("available");
   });
 
@@ -295,7 +367,7 @@ describe("prereq chain + status", () => {
     });
     const log = new QuestLog(catalog);
     log.start("a");
-    log.completeQuest("b");
+    log.forceCompleteQuest("b");
     expect(log.available()).toEqual(["c"]);
     expect(log.active()).toEqual(["a"]);
     expect(log.completed()).toEqual(["b"]);

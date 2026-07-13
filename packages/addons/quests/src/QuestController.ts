@@ -17,7 +17,7 @@ import {
   QuestChangedEvent,
   QuestCompletedEvent,
   QuestFailedEvent,
-  QuestObjectiveAdvancedEvent,
+  QuestObjectiveProgressChangedEvent,
   QuestObjectiveCompletedEvent,
   QuestStartedEvent,
 } from "./events.js";
@@ -46,7 +46,9 @@ export class QuestController<
     const log = this.opts.log;
     this.unsubs.push(
       log.on("questStarted", (e) => this.entity.emit(QuestStartedEvent, e)),
-      log.on("objectiveAdvanced", (e) => this.entity.emit(QuestObjectiveAdvancedEvent, e)),
+      log.on("objectiveProgressChanged", (e) =>
+        this.entity.emit(QuestObjectiveProgressChangedEvent, e),
+      ),
       log.on("objectiveCompleted", (e) => this.entity.emit(QuestObjectiveCompletedEvent, e)),
       log.on("questCompleted", (e) => this.entity.emit(QuestCompletedEvent, e)),
       log.on("questFailed", (e) => this.entity.emit(QuestFailedEvent, e)),

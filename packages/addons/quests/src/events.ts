@@ -10,13 +10,13 @@ import { defineEvent } from "@yagejs/core";
 
 export const QuestStartedEvent = defineEvent<{ questId: string }>("quest:started");
 
-export const QuestObjectiveAdvancedEvent = defineEvent<{
+export const QuestObjectiveProgressChangedEvent = defineEvent<{
   questId: string;
   objectiveId: string;
   progress: number;
   count: number;
   done: boolean;
-}>("quest:objective-advanced");
+}>("quest:objective-progress-changed");
 
 export const QuestObjectiveCompletedEvent = defineEvent<{
   questId: string;

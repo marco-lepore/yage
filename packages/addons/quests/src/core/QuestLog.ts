@@ -2,7 +2,7 @@
  * QuestLog — the headless runtime model: quest phases (active/completed/
  * failed) plus per-objective progress counts, driven entirely by intent calls
  * (`start`/`advance`/`setProgress`/`complete`/`completeQuest`/`fail`) that emit
- * consequences (`questStarted`, `objectiveAdvanced`, `questCompleted`, …).
+ * consequences (`questStarted`, `objectiveProgressChanged`, `questCompleted`, …).
  *
  * The binding contract that makes a game-authored adapter a guardless
  * one-liner: `advance`/`setProgress`/`complete` on a quest that is NOT
@@ -121,14 +121,22 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   }
 
   /**
-   * Force-complete `quest`: every objective is marked done and the quest
-   * transitions to `completed` regardless of `requires` or current phase,
-   * with a single `questCompleted`. No-op if already `completed`; no-op on a
-   * `failed` quest (terminal). An inactive-but-available quest activates and
-   * completes in the same call (still one `questCompleted`, no `questStarted`).
-   * No-op — no throw — for a quest id the catalog doesn't declare.
+   * Complete an active quest when every non-optional objective is currently
+   * done. No-op when the quest is inactive or its requirements are not met.
    */
   completeQuest(quest: QuestId<TDefs>): void {
+    const state = this.states.get(quest);
+    if (!state || !this.canComplete(quest)) return;
+    state.phase = "completed";
+    this.emitter.emit("questCompleted", { questId: quest });
+    this.emitter.emit("changed", { questId: quest });
+  }
+
+  /**
+   * Complete `quest` regardless of its current progress. Every objective is
+   * marked done. No-op for completed, failed, or unknown quests.
+   */
+  forceCompleteQuest(quest: QuestId<TDefs>): void {
     if (!this.catalog.has(quest)) return;
     const state = this.states.get(quest);
     if (state?.phase === "completed" || state?.phase === "failed") return;
@@ -177,6 +185,17 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
 
   isCompleted(quest: QuestId<TDefs>): boolean {
     return this.states.get(quest)?.phase === "completed";
+  }
+
+  /** Whether `quest` is active and every non-optional objective is done. */
+  canComplete(quest: QuestId<TDefs>): boolean {
+    const state = this.states.get(quest);
+    if (!state || state.phase !== "active") return false;
+    const def = this.catalog.get(quest);
+    return def.objectiveIds.every((objId) => {
+      const objDef = this.objectiveDef(quest, objId);
+      return objDef.optional || (state.objectives.get(objId) ?? 0) >= objDef.count;
+    });
   }
 
   /** Current progress count for `objective` (0 if never touched). */
@@ -294,8 +313,8 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   }
 
   /** The shared event chain for advance/setProgress/complete: emit
-   *  `objectiveAdvanced`, and — only on the transition from below target to
-   *  at-or-above it — `objectiveCompleted` followed by the auto-complete
+   *  `objectiveProgressChanged`, and — only on the transition from below
+   *  target to at-or-above it — `objectiveCompleted` followed by the auto-complete
    *  rollup. Always ends with one `changed`. No-op — no event at all — when
    *  `nextProgress` equals the current value, since nothing changed. */
   private applyProgress(
@@ -309,7 +328,7 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
     if (nextProgress === current) return;
     state.objectives.set(objective, nextProgress);
     const done = nextProgress >= def.count;
-    this.emitter.emit("objectiveAdvanced", {
+    this.emitter.emit("objectiveProgressChanged", {
       questId: quest,
       objectiveId: objective,
       progress: nextProgress,
@@ -329,12 +348,7 @@ export class QuestLog<TDefs extends Record<string, QuestDefInput> = Record<strin
   private tryAutoComplete(quest: string, state: QuestRuntimeState): void {
     if (state.phase !== "active") return;
     const def = this.catalog.get(quest as QuestId<TDefs>);
-    const allRequiredDone = def.objectiveIds.every((objId) => {
-      const objDef = def.objectives.get(objId)!;
-      if (objDef.optional) return true;
-      return (state.objectives.get(objId) ?? 0) >= objDef.count;
-    });
-    if (!allRequiredDone) return;
+    if (!def.autoComplete || !this.canComplete(quest as QuestId<TDefs>)) return;
     state.phase = "completed";
     this.emitter.emit("questCompleted", { questId: quest });
   }
