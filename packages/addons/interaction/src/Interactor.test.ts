@@ -332,4 +332,57 @@ describe("Interactor", () => {
     interactor.update();
     expect(interactor.focus).toBeNull();
   });
+
+  it("a focus whose enabled gate flips false before interact() cannot be interacted with", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const onInteract = vi.fn();
+    let enabled = true;
+    const chestInteractable = chest.add(
+      new Interactable({ onInteract, enabled: () => enabled }),
+    );
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+
+    const interacted: unknown[] = [];
+    player.on(InteractedEvent, (e) => interacted.push(e));
+
+    // The live gate flips after focus was resolved but before interact().
+    enabled = false;
+    interactor.interact();
+    expect(onInteract).not.toHaveBeenCalled();
+    expect(interacted).toHaveLength(0);
+  });
+
+  it("a focus whose Interactable is removed before interact() cannot be interacted with", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const onInteract = vi.fn();
+    const chestInteractable = chest.add(new Interactable({ onInteract }));
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+
+    const interacted: unknown[] = [];
+    player.on(InteractedEvent, (e) => interacted.push(e));
+
+    // Remove the component but keep the entity alive; the interactor still
+    // holds the cached focus until its next update().
+    chest.remove(Interactable);
+
+    interactor.interact();
+    expect(onInteract).not.toHaveBeenCalled();
+    expect(interacted).toHaveLength(0);
+  });
 });

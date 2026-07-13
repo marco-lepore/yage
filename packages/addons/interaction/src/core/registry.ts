@@ -26,6 +26,13 @@ export class InteractableRegistry {
     this.members.delete(interactable);
   }
 
+  /** Whether `interactable` is still registered — false once its host removed
+   *  or destroyed it. Lets a cached focus detect a target that went away
+   *  between frames. */
+  has(interactable: Interactable): boolean {
+    return this.members.has(interactable);
+  }
+
   [Symbol.iterator](): IterableIterator<Interactable> {
     return this.members[Symbol.iterator]();
   }

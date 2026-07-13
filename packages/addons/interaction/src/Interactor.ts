@@ -111,12 +111,20 @@ export class Interactor extends Component {
   }
 
   /** Fires the current focus's `onInteract` and emits `InteractedEvent`.
-   *  No focus — or a focus whose host was destroyed since it was resolved —
-   *  → no-op. A custom controller or a test calls this directly instead of
-   *  synthesizing device input. */
+   *  No-op when there is no focus, or when the held focus went stale since it
+   *  was resolved: its host was destroyed, the component was removed, or its
+   *  `enabled` gate flipped false. A custom controller or a test calls this
+   *  directly instead of synthesizing device input. */
   interact(): void {
     const interactable = this._focus;
-    if (!interactable || interactable.entity.isDestroyed) return;
+    if (
+      !interactable ||
+      interactable.entity.isDestroyed ||
+      !interactable.isEnabled() ||
+      !interactableRegistryFor(this.scene).has(interactable)
+    ) {
+      return;
+    }
     interactable.interact();
     this.entity.emit(InteractedEvent, { interactable });
   }
