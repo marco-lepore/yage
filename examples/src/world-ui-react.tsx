@@ -26,7 +26,7 @@ import {
   ProgressBar,
   Anchor,
 } from "@yagejs/ui-react";
-import { getContainer } from "./shared.js";
+import { getContainer, installDebugFromUrl } from "./shared.js";
 
 const WIDTH = 900;
 const HEIGHT = 600;
@@ -188,5 +188,6 @@ engine.use(
 );
 engine.use(new UIPlugin());
 engine.use(new UIReactPlugin());
+await installDebugFromUrl(engine);
 await engine.start();
 await engine.scenes.push(new DemoScene());

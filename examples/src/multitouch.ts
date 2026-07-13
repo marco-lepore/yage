@@ -16,7 +16,7 @@ import {
   InputPlugin,
   type PointerInfo,
 } from "@yagejs/input";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   /* Stop iOS / Android from interpreting touches as scroll, zoom, or
@@ -312,7 +312,7 @@ class MultitouchScene extends Scene {
 }
 
 async function main() {
-  const engine = new Engine();
+  const engine = new Engine({ debug: true });
 
   const renderer = new RendererPlugin({
     width: WIDTH,
@@ -323,6 +323,7 @@ async function main() {
   engine.use(renderer);
 
   engine.use(new InputPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
 

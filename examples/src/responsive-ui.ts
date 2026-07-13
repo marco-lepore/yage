@@ -30,7 +30,7 @@ import {
 } from "@yagejs/renderer";
 import type { GradientFill, LayerDef } from "@yagejs/renderer";
 import { Anchor, UIPanel, UIPlugin } from "@yagejs/ui";
-import { injectStyles, getContainer } from "./shared.js";
+import { injectStyles, getContainer, installDebugFromUrl } from "./shared.js";
 
 injectStyles(`
   #game-container {
@@ -418,7 +418,7 @@ class ResponsiveUIScene extends Scene {
 // Boot
 // ---------------------------------------------------------------------------
 async function main() {
-  const engine = new Engine();
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -430,6 +430,7 @@ async function main() {
     }),
   );
   engine.use(new UIPlugin());
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new ResponsiveUIScene());

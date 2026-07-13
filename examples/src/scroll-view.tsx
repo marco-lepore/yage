@@ -12,7 +12,7 @@ import {
   Tooltip,
   Anchor,
 } from "@yagejs/ui-react";
-import { setupGameContainer } from "./shared";
+import { installDebugFromUrl, setupGameContainer } from "./shared";
 
 // ---------------------------------------------------------------------------
 // A right-rail "Orders" panel: a declarative, scrollable list of card
@@ -141,6 +141,7 @@ async function main(): Promise<void> {
   );
   engine.use(new UIPlugin());
   engine.use(new UIReactPlugin());
+  await installDebugFromUrl(engine);
   await engine.start();
   await engine.scenes.push(new ScrollViewScene());
 }

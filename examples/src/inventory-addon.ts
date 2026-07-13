@@ -68,7 +68,7 @@ import {
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 import { Assets, Texture } from "pixi.js";
-import { setupGameContainer } from "./shared.js";
+import { installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
@@ -830,6 +830,7 @@ async function main(): Promise<void> {
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
+  await installDebugFromUrl(engine);
   await engine.start();
   await engine.scenes.push(new InventoryRoomScene());
 }

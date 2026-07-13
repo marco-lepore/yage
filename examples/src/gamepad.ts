@@ -15,7 +15,7 @@ import {
   InputPlugin,
   getKeyDisplayName,
 } from "@yagejs/input";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles();
 
@@ -305,7 +305,7 @@ function addHudLabel(scene: Scene, x: number, y: number, text: string): void {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const engine = new Engine();
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -330,6 +330,8 @@ async function main() {
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"],
     }),
   );
+
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new GamepadScene());

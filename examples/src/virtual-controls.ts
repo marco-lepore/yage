@@ -18,7 +18,7 @@ import {
   VirtualControls,
 } from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 injectStyles(`
   /* Keep the browser from turning touches into scroll/zoom/selection. */
@@ -296,7 +296,7 @@ class ControlsDemoScene extends Scene {
 }
 
 async function main() {
-  const engine = new Engine();
+  const engine = new Engine({ debug: true });
 
   engine.use(
     new RendererPlugin({
@@ -320,6 +320,8 @@ async function main() {
       preventDefaultKeys: ["Space", "ArrowUp", "ArrowDown"],
     }),
   );
+
+  await installDebugFromUrl(engine);
 
   await engine.start();
   const scene = new ControlsDemoScene();

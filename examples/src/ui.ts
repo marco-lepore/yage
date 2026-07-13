@@ -10,7 +10,7 @@ import {
   Anchor,
 } from "@yagejs/ui";
 import { Transform } from "@yagejs/core";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 import {
   textStyle, allAssets, defaultTextStyle, nineSliceBtn, panelBg,
 } from "./ui-theme.js";
@@ -284,6 +284,7 @@ async function main() {
   // the fonts themselves load declaratively via the `webFont` handles in
   // `allAssets` (scene preload) — no manual `document.fonts.load` needed.
   engine.use(new UIPlugin({ defaultTextStyle }));
+  await installDebugFromUrl(engine);
 
   await engine.start();
   await engine.scenes.push(new UIExampleScene());
