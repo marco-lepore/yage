@@ -349,6 +349,8 @@ export abstract class Scene {
    *     params and `setup()` (no real params) keyed.
    *   - Else → `X` is params (forwarded to `setup`).
    * The 3-arg form is always unambiguous: `spawn(Class, params, options)`.
+   * If `setup()` throws, the entity is destroyed and removed before the
+   * error is rethrown.
    *
    * Don't name a top-level setup-params field `key` — the shape check would
    * misroute it. If you must, use the 3-arg form.
@@ -407,7 +409,12 @@ export abstract class Scene {
       if (options?.key !== undefined) this._registerKey(entity, options.key);
       this.entities.add(entity);
       this.bus?.emit("entity:created", { entity });
-      entity.setup?.(params);
+      try {
+        entity.setup?.(params);
+      } catch (error) {
+        this._discardFailedSpawn(entity);
+        throw error;
+      }
       return entity;
     }
 
@@ -747,22 +754,32 @@ export abstract class Scene {
    */
   _flushDestroyQueue(): void {
     for (const entity of this.destroyQueue) {
-      entity._performDestroy();
-      this.queryCache?.onEntityDestroyed(entity);
-      this.entities.delete(entity);
-      if (
-        entity.key !== undefined &&
-        this._identityIndex?.get(entity.key) === entity
-      ) {
-        // Only evict if the slot still points to *this* entity. A
-        // same-frame destroy + respawn with the same key replaces the
-        // map entry inside `_registerKey`; we must not delete the
-        // replacement here.
-        this._identityIndex.delete(entity.key);
-      }
-      this.bus?.emit("entity:destroyed", { entity });
+      this._finalizeEntityDestroy(entity);
     }
     this.destroyQueue.length = 0;
+  }
+
+  /** Remove a class-spawned entity whose setup failed. */
+  private _discardFailedSpawn(entity: Entity): void {
+    entity.destroy();
+    const queueIndex = this.destroyQueue.lastIndexOf(entity);
+    if (queueIndex >= 0) this.destroyQueue.splice(queueIndex, 1);
+    this._finalizeEntityDestroy(entity);
+  }
+
+  private _finalizeEntityDestroy(entity: Entity): void {
+    entity._performDestroy();
+    this.queryCache?.onEntityDestroyed(entity);
+    this.entities.delete(entity);
+    if (
+      entity.key !== undefined &&
+      this._identityIndex?.get(entity.key) === entity
+    ) {
+      // Only evict if the slot still points to this entity. A same-frame
+      // destroy + respawn can replace the map entry before destruction flushes.
+      this._identityIndex.delete(entity.key);
+    }
+    this.bus?.emit("entity:destroyed", { entity });
   }
 
   /**

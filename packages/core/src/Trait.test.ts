@@ -1,5 +1,10 @@
 import { describe, it, expect, expectTypeOf, beforeEach } from "vitest";
-import { defineTrait, trait, TraitToken } from "./Trait.js";
+import {
+  defineTrait,
+  entityClassHasTrait,
+  trait,
+  TraitToken,
+} from "./Trait.js";
 import { Entity, _resetEntityIdCounter } from "./Entity.js";
 
 beforeEach(() => {
@@ -127,5 +132,11 @@ describe("inheritance", () => {
     const e = new BlinkingLight();
     expect(e).toBeInstanceOf(Entity);
     expect(e).toBeInstanceOf(Light);
+  });
+
+  it("checks declared and inherited traits without constructing the entity", () => {
+    expect(entityClassHasTrait(Light, Interactable)).toBe(true);
+    expect(entityClassHasTrait(BlinkingLight, Interactable)).toBe(true);
+    expect(entityClassHasTrait(BlinkingLight, Damageable)).toBe(false);
   });
 });

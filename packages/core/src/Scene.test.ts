@@ -82,6 +82,44 @@ describe("Scene", () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it("removes a class entity when setup throws", () => {
+    class BrokenSetup extends Entity {
+      static latest: BrokenSetup | undefined;
+
+      constructor() {
+        super();
+        BrokenSetup.latest = this;
+      }
+
+      override setup(params: { message: string }): void {
+        this.add(new TestComponent());
+        throw new Error(params.message);
+      }
+    }
+
+    const { ctx, bus } = createContext();
+    const destroyed = vi.fn();
+    bus.on("entity:destroyed", destroyed);
+    const scene = new TestScene();
+    scene._setContext(ctx);
+
+    expect(() =>
+      scene.spawn(
+        BrokenSetup,
+        { message: "broken setup" },
+        { key: "broken" },
+      ),
+    ).toThrow("broken setup");
+    expect(BrokenSetup.latest?.isDestroyed).toBe(true);
+    expect(BrokenSetup.latest?.tryGet(TestComponent)).toBeUndefined();
+    expect(scene.getEntities().size).toBe(0);
+    expect(scene.findByKey("broken")).toBeUndefined();
+    expect(destroyed).toHaveBeenCalledOnce();
+
+    scene._flushDestroyQueue();
+    expect(destroyed).toHaveBeenCalledOnce();
+  });
+
   it("findEntity by name", () => {
     const { ctx } = createContext();
     const scene = new TestScene();
