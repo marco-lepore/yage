@@ -1,10 +1,15 @@
 import { Component, LoggerKey, ServiceKey, Transform, isDev, type Logger } from "@yagejs/core";
 import type { InputManager } from "@yagejs/input";
-import { rankCandidates, selectFocus } from "./core/focus.js";
+import { rankInteractables } from "./core/focus.js";
 import { interactableRegistryFor } from "./core/registry.js";
-import type { FocusQuery, InteractorOptions } from "./core/types.js";
+import type { FocusQuery } from "./core/types.js";
+import type { InteractorOptions } from "./core/types.js";
 import type { Interactable } from "./Interactable.js";
-import { InteractedEvent, InteractionFocusChangedEvent } from "./events.js";
+import {
+  InteractionFocusChangedEvent,
+  InteractionInRangeChangedEvent,
+  InteractionPerformedEvent,
+} from "./events.js";
 
 const DEFAULT_RANGE = 48;
 const DEFAULT_ACTION = "interact";
@@ -18,16 +23,27 @@ const DEFAULT_ACTION = "interact";
  */
 const INPUT_MANAGER_KEY = new ServiceKey<InputManager>("inputManager");
 
+/** Whether two ranked snapshots hold the same interactables in the same order. */
+function sameRanking(a: readonly Interactable[], b: readonly Interactable[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
- * The proximity detector. Tracks the nearest in-range, enabled `Interactable`
- * registered in the scene, exposes it as `focus`, and — with a non-null
- * `action` and a resolvable `InputManager` — fires the interact edge itself.
- * Headless drive (`interact()`) always works, with or without input.
+ * The proximity detector. Each `update()` ranks every in-range, enabled
+ * `Interactable` registered in the scene into one snapshot: `inRange` is that
+ * snapshot and `focus` is its first element, so the two can never disagree.
+ * With a non-null `action` and a resolvable `InputManager` it fires the
+ * interact edge itself; headless drive (`interact()`) always works, with or
+ * without input.
  *
  * `enabled` (inherited from `Component`, default `true`) doubles as the
- * tracking toggle: setting it `false` emits a null-focus transition (if a
- * focus was held) and halts tracking + input polling; setting it `true`
- * resumes tracking next frame. Flip it to pause one interactor during a
+ * tracking toggle: setting it `false` empties the snapshot (emitting the
+ * transitions) and halts tracking, input polling, and `interact()`; setting it
+ * `true` resumes tracking next frame. Flip it to pause one interactor during a
  * cutscene, or to switch focus tracking between several interactors.
  */
 export class Interactor extends Component {
@@ -36,13 +52,13 @@ export class Interactor extends Component {
   private readonly action: string | null;
 
   private logger: Logger | undefined;
-  private _focus: Interactable | null = null;
-  private _focusPrompt: string | null = null;
-  /** Last-`update()` snapshot backing `inRange`, kept in step with `_focus`:
-   *  the enabled, non-destroyed candidates and the query they were ranked
-   *  against. Cleared whenever focus is (disable, removal). */
-  private _candidates: Interactable[] = [];
-  private _query: FocusQuery | null = null;
+  /** The single source of truth, rebuilt each `update()`. `focus` is derived
+   *  from it, never stored separately — two writable fields is how they drift. */
+  private _inRange: readonly Interactable[] = [];
+  /** Last values actually handed to listeners, for change detection only. */
+  private emittedFocus: Interactable | null = null;
+  private emittedPrompt: string | null = null;
+  private emittedInRange: readonly Interactable[] = [];
   private warnedMissingInput = false;
   private warnedUnmappedAction = false;
 
@@ -55,8 +71,8 @@ export class Interactor extends Component {
     // update-gate) with no assignment hook, and TS forbids overriding a
     // field with an accessor at the class level (TS2611). Defining it as an
     // own-instance accessor here instead lets toggling `interactor.enabled`
-    // emit the null-focus transition immediately rather than silently
-    // freezing whatever focus was live when tracking stopped.
+    // empty the snapshot immediately rather than silently freezing whatever
+    // was in range when tracking stopped.
     let trackingEnabled = opts.enabled ?? true;
     Object.defineProperty(this, "enabled", {
       configurable: true,
@@ -65,7 +81,7 @@ export class Interactor extends Component {
       set: (value: boolean): void => {
         if (value === trackingEnabled) return;
         trackingEnabled = value;
-        if (!value) this.clearFocusState();
+        if (!value) this.setInRange([]);
       },
     });
   }
@@ -75,12 +91,11 @@ export class Interactor extends Component {
   }
 
   onDestroy(): void {
-    // `entity.remove(Interactor)` leaves the entity alive, so the null-focus
-    // emit inside `clearFocusState` reaches any listener normally.
-    // `entity.destroy()` marks the entity destroyed before the deferred
-    // teardown that runs this hook, so `Entity.emit` silently drops it — the
-    // same as any other post-destroy emit.
-    this.clearFocusState();
+    // `entity.remove(Interactor)` leaves the entity alive, so the transitions
+    // emitted here reach listeners normally. `entity.destroy()` marks the
+    // entity destroyed before the deferred teardown that runs this hook, so
+    // `Entity.emit` silently drops them — as with any post-destroy emit.
+    this.setInRange([]);
   }
 
   update(): void {
@@ -91,52 +106,55 @@ export class Interactor extends Component {
     const query: FocusQuery = { position: { x: position.x, y: position.y }, range: this.range };
     const candidates: Interactable[] = [];
     for (const interactable of registry) {
-      // A destroyed host stays registered until the end-of-frame flush;
-      // skip it so a target destroyed earlier this frame can't be focused
-      // or receive a final interaction.
+      // A destroyed host stays registered until the end-of-frame flush; skip
+      // it so a target destroyed earlier this frame can't be focused or
+      // receive a final interaction.
       if (interactable.isEnabled() && !interactable.entity.isDestroyed) {
         candidates.push(interactable);
       }
     }
 
-    // Cache the snapshot `inRange` ranks lazily, so it stays in step with the
-    // focus picked from the same set. `focus === inRange[0]`.
-    this._candidates = candidates;
-    this._query = query;
-    this.setFocus(selectFocus(query, candidates));
+    // One ranked snapshot, sampled from one geometry pass. `Interactable.position`
+    // is a live transform read, so ranking lazily on read would let a target that
+    // moved since this frame reorder the set out from under `focus`.
+    this.setInRange(rankInteractables(query, candidates));
 
-    if (this.action !== null && this._focus) {
+    if (this.action !== null && this.focus) {
       const input = this.resolveInputManager();
       if (input?.isJustPressed(this.action)) this.interact();
     }
   }
 
-  /** The currently focused interactable, or `null` when nothing is in range.
-   *  Same as `inRange[0] ?? null`. */
+  /** The interactable this interactor would act on — the top of `inRange`, or
+   *  `null` when nothing is in range. */
   get focus(): Interactable | null {
-    return this._focus;
+    return this._inRange[0] ?? null;
   }
 
-  /** Every in-range, enabled interactable this frame, best focus first —
-   *  `inRange[0]` is the current `focus`. Reflects the last `update()` (empty
-   *  before the first one and while disabled). Read it to drive a "which do I
-   *  interact with?" selection UI, or a per-target proximity icon/highlight;
-   *  pass a choice back to `interact(target)`. A fresh array each call — safe to
-   *  hold across frames without it changing underneath. */
+  /** Every in-range, enabled interactable, best focus first — `inRange[0]` is
+   *  `focus`. Rebuilt each `update()`; empty before the first one and while
+   *  disabled. Read it to drive a "which do I interact with?" selection UI, or
+   *  a per-target proximity icon, and pass a choice back to `interact(target)`. */
   get inRange(): readonly Interactable[] {
-    return this._query === null ? [] : rankCandidates(this._query, this._candidates);
+    return this._inRange;
   }
 
-  /** Fires an interactable's `onInteract` and emits `InteractedEvent`. Targets
-   *  the current `focus` by default; pass one from `inRange` to interact with a
-   *  specific chosen target instead. No-op when there is no target, or when the
-   *  target is not interactable right now — its host was destroyed, the
-   *  component was removed, or its `enabled` gate is false. A custom controller
-   *  or a test calls this directly instead of synthesizing device input. */
+  /** Fires an interactable's `onInteract` and emits `InteractionPerformedEvent`.
+   *  Targets the current `focus` by default; pass one from `inRange` to act on a
+   *  chosen target instead. No-op unless the interactor is enabled and the target
+   *  is in the current `inRange` snapshot and still live (host not destroyed,
+   *  component not removed, `enabled` gate still true).
+   *
+   *  To fire an interactable the interactor can't reach — a scripted or remote
+   *  trigger — call `interactable.interact()` directly. That bypasses every
+   *  check here and emits no interactor event. */
   interact(target?: Interactable): void {
-    const interactable = target ?? this._focus;
+    if (!this.enabled) return;
+
+    const interactable = target ?? this.focus;
     if (
       !interactable ||
+      !this._inRange.includes(interactable) ||
       interactable.entity.isDestroyed ||
       !interactable.isEnabled() ||
       !interactableRegistryFor(this.scene).has(interactable)
@@ -144,26 +162,39 @@ export class Interactor extends Component {
       return;
     }
     interactable.interact();
-    this.entity.emit(InteractedEvent, { interactable });
+    this.entity.emit(InteractionPerformedEvent, { interactable });
   }
 
-  private setFocus(next: Interactable | null): void {
-    const nextPrompt = next?.prompt ?? null;
-    if (next === this._focus && nextPrompt === this._focusPrompt) return;
-    this._focus = next;
-    this._focusPrompt = nextPrompt;
-    this.entity.emit(InteractionFocusChangedEvent, {
-      interactable: next,
-      prompt: nextPrompt,
-    });
-  }
+  /**
+   * Installs the new snapshot, then emits whatever changed. Entity handlers run
+   * synchronously, so every field is assigned *before* the first emit — a
+   * listener reading `focus`/`inRange` must see the new state, never the old.
+   */
+  private setInRange(next: readonly Interactable[]): void {
+    this._inRange = next;
 
-  /** Drops focus and the `inRange` snapshot together (emitting the null-focus
-   *  transition if a focus was held), so both read empty when tracking stops. */
-  private clearFocusState(): void {
-    this.setFocus(null);
-    this._candidates = [];
-    this._query = null;
+    const focus = next[0] ?? null;
+    const prompt = focus?.prompt ?? null;
+
+    // Each `emitted*` field is written immediately before its own emit, never
+    // up front: an emit that gets skipped below must not leave the bookkeeping
+    // claiming it announced something it did not.
+    if (focus !== this.emittedFocus || prompt !== this.emittedPrompt) {
+      this.emittedFocus = focus;
+      this.emittedPrompt = prompt;
+      this.entity.emit(InteractionFocusChangedEvent, { interactable: focus, prompt });
+
+      // A handler can re-enter and install a newer snapshot — disabling the
+      // interactor, say. `next` is then already history, so announcing it would
+      // report targets this interactor has dropped. The re-entrant call (or the
+      // next update) announces whatever is current.
+      if (this._inRange !== next) return;
+    }
+
+    if (!sameRanking(next, this.emittedInRange)) {
+      this.emittedInRange = next;
+      this.entity.emit(InteractionInRangeChangedEvent, { inRange: next });
+    }
   }
 
   private resolveInputManager(): InputManager | undefined {

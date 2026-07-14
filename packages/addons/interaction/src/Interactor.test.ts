@@ -3,7 +3,11 @@ import { createMockScene, Logger, LoggerKey, LogLevel, Transform } from "@yagejs
 import { InputManagerKey, type InputManager } from "@yagejs/input";
 import { Interactor } from "./Interactor.js";
 import { Interactable } from "./Interactable.js";
-import { InteractedEvent, InteractionFocusChangedEvent } from "./events.js";
+import {
+  InteractionFocusChangedEvent,
+  InteractionInRangeChangedEvent,
+  InteractionPerformedEvent,
+} from "./events.js";
 
 function fakeInputManager(
   pressed: Set<string> = new Set(),
@@ -98,7 +102,7 @@ describe("Interactor", () => {
     expect(events.at(-1)).toEqual({ interactable: null, prompt: null });
   });
 
-  it("interact() fires the focused interactable's onInteract and emits InteractedEvent", () => {
+  it("interact() fires the focused interactable's onInteract and emits InteractionPerformedEvent", () => {
     const { scene } = createMockScene();
     const player = scene.spawn("player");
     player.add(new Transform());
@@ -110,7 +114,7 @@ describe("Interactor", () => {
     const chestInteractable = chest.add(new Interactable({ onInteract }));
 
     const interacted = vi.fn();
-    player.on(InteractedEvent, interacted);
+    player.on(InteractionPerformedEvent, interacted);
 
     interactor.update();
     interactor.interact();
@@ -126,7 +130,7 @@ describe("Interactor", () => {
     const interactor = player.add(new Interactor({ range: 100 }));
 
     const interacted = vi.fn();
-    player.on(InteractedEvent, interacted);
+    player.on(InteractionPerformedEvent, interacted);
 
     expect(() => interactor.interact()).not.toThrow();
     expect(interacted).not.toHaveBeenCalled();
@@ -319,7 +323,7 @@ describe("Interactor", () => {
     expect(interactor.focus).toBe(chestInteractable);
 
     const interacted: unknown[] = [];
-    player.on(InteractedEvent, (e) => interacted.push(e));
+    player.on(InteractionPerformedEvent, (e) => interacted.push(e));
 
     // Deferred destroy: the entity is marked destroyed immediately but stays
     // registered until the end-of-frame flush.
@@ -351,7 +355,7 @@ describe("Interactor", () => {
     expect(interactor.focus).toBe(chestInteractable);
 
     const interacted: unknown[] = [];
-    player.on(InteractedEvent, (e) => interacted.push(e));
+    player.on(InteractionPerformedEvent, (e) => interacted.push(e));
 
     // The live gate flips after focus was resolved but before interact().
     enabled = false;
@@ -375,7 +379,7 @@ describe("Interactor", () => {
     expect(interactor.focus).toBe(chestInteractable);
 
     const interacted: unknown[] = [];
-    player.on(InteractedEvent, (e) => interacted.push(e));
+    player.on(InteractionPerformedEvent, (e) => interacted.push(e));
 
     // Remove the component but keep the entity alive; the interactor still
     // holds the cached focus until its next update().
@@ -475,7 +479,7 @@ describe("Interactor", () => {
     expect(interactor.focus).toBe(chestInteractable); // higher priority
 
     const interacted: { interactable: Interactable }[] = [];
-    player.on(InteractedEvent, (e) => interacted.push(e));
+    player.on(InteractionPerformedEvent, (e) => interacted.push(e));
 
     // Pick the coin from the ranked set instead of the default focus.
     interactor.interact(coinInteractable);
@@ -502,11 +506,201 @@ describe("Interactor", () => {
     interactor.update();
 
     const interacted: unknown[] = [];
-    player.on(InteractedEvent, (e) => interacted.push(e));
+    player.on(InteractionPerformedEvent, (e) => interacted.push(e));
 
     enabled = false;
     interactor.interact(coinInteractable);
     expect(coinOnInteract).not.toHaveBeenCalled();
     expect(interacted).toHaveLength(0);
+  });
+
+  it("a target moving after update() cannot reorder inRange out from under focus", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const far = scene.spawn("far");
+    const farTransform = far.add(new Transform({ position: { x: 60, y: 0 } }));
+    const farInteractable = far.add(new Interactable({ onInteract: () => {} }));
+
+    const near = scene.spawn("near");
+    near.add(new Transform({ position: { x: 10, y: 0 } }));
+    const nearInteractable = near.add(new Interactable({ onInteract: () => {} }));
+
+    interactor.update();
+    expect(interactor.inRange).toEqual([nearInteractable, farInteractable]);
+    expect(interactor.focus).toBe(nearInteractable);
+
+    // `Interactable.position` is a live transform read. Ranking on read would
+    // now put `far` first while `focus` still said `near`.
+    farTransform.setPosition(0, 0);
+    expect(interactor.inRange).toEqual([nearInteractable, farInteractable]);
+    expect(interactor.focus).toBe(interactor.inRange[0]);
+
+    interactor.update();
+    expect(interactor.inRange).toEqual([farInteractable, nearInteractable]);
+    expect(interactor.focus).toBe(interactor.inRange[0]);
+  });
+
+  it("interact(target) is a no-op while the interactor is disabled", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const onInteract = vi.fn();
+    const chestInteractable = chest.add(new Interactable({ onInteract }));
+
+    interactor.update();
+    expect(interactor.focus).toBe(chestInteractable);
+
+    interactor.enabled = false;
+    interactor.interact(chestInteractable);
+    expect(onInteract).not.toHaveBeenCalled();
+  });
+
+  it("interact(target) is a no-op for a live target that is out of range", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 50 }));
+
+    const distant = scene.spawn("distant");
+    distant.add(new Transform({ position: { x: 500, y: 0 } }));
+    const onInteract = vi.fn();
+    const distantInteractable = distant.add(new Interactable({ onInteract }));
+
+    interactor.update();
+    expect(interactor.inRange).toEqual([]);
+
+    // Enabled and registered, but never in reach — only `interactable.interact()`
+    // fires something the interactor can't reach.
+    interactor.interact(distantInteractable);
+    expect(onInteract).not.toHaveBeenCalled();
+  });
+
+  it("InteractionInRangeChangedEvent reports a non-focused target entering and leaving", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const chestInteractable = chest.add(new Interactable({ onInteract: () => {}, priority: 10 }));
+
+    const coin = scene.spawn("coin");
+    const coinTransform = coin.add(new Transform({ position: { x: 9999, y: 0 } }));
+    const coinInteractable = coin.add(new Interactable({ onInteract: () => {} }));
+
+    const focusEvents: unknown[] = [];
+    const inRangeEvents: (readonly Interactable[])[] = [];
+    player.on(InteractionFocusChangedEvent, (e) => focusEvents.push(e));
+    player.on(InteractionInRangeChangedEvent, ({ inRange }) => inRangeEvents.push(inRange));
+
+    interactor.update();
+    expect(inRangeEvents).toEqual([[chestInteractable]]);
+    expect(focusEvents).toHaveLength(1);
+
+    // The coin enters range but the chest keeps the focus (higher priority), so
+    // ONLY the in-range event fires — the case a focus-only listener misses.
+    coinTransform.setPosition(20, 0);
+    interactor.update();
+    expect(inRangeEvents.at(-1)).toEqual([chestInteractable, coinInteractable]);
+    expect(focusEvents).toHaveLength(1);
+
+    // Stable ranking: no repeat.
+    interactor.update();
+    expect(inRangeEvents).toHaveLength(2);
+
+    coinTransform.setPosition(9999, 0);
+    interactor.update();
+    expect(inRangeEvents.at(-1)).toEqual([chestInteractable]);
+    expect(focusEvents).toHaveLength(1);
+  });
+
+  it("InteractionInRangeChangedEvent reports two targets swapping rank", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    // Both outrank nothing and neither is the focus-holder after the swap flips
+    // which is nearest, so this is a pure reorder.
+    const a = scene.spawn("a");
+    const aTransform = a.add(new Transform({ position: { x: 10, y: 0 } }));
+    const aInteractable = a.add(new Interactable({ onInteract: () => {} }));
+    const b = scene.spawn("b");
+    b.add(new Transform({ position: { x: 20, y: 0 } }));
+    const bInteractable = b.add(new Interactable({ onInteract: () => {} }));
+
+    const inRangeEvents: (readonly Interactable[])[] = [];
+    player.on(InteractionInRangeChangedEvent, ({ inRange }) => inRangeEvents.push(inRange));
+
+    interactor.update();
+    expect(inRangeEvents.at(-1)).toEqual([aInteractable, bInteractable]);
+
+    aTransform.setPosition(30, 0); // now b is nearest
+    interactor.update();
+    expect(inRangeEvents.at(-1)).toEqual([bInteractable, aInteractable]);
+    expect(interactor.focus).toBe(bInteractable);
+  });
+
+  it("a listener on the disable transition sees focus and inRange already cleared", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    chest.add(new Interactable({ onInteract: () => {} }));
+
+    interactor.update();
+    expect(interactor.inRange).toHaveLength(1);
+
+    // Entity handlers run synchronously, so state must be assigned before the
+    // emit — a handler must never observe the stale, pre-clear snapshot.
+    const seenInRange: (readonly Interactable[])[] = [];
+    const seenFocus: (Interactable | null)[] = [];
+    player.on(InteractionFocusChangedEvent, () => {
+      seenInRange.push(interactor.inRange);
+      seenFocus.push(interactor.focus);
+    });
+
+    interactor.enabled = false;
+    expect(seenInRange).toEqual([[]]);
+    expect(seenFocus).toEqual([null]);
+  });
+
+  it("a handler that disables the interactor mid-emit gets no stale in-range event after it", () => {
+    const { scene } = createMockScene();
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    const interactor = player.add(new Interactor({ range: 100 }));
+
+    const chest = scene.spawn("chest");
+    chest.add(new Transform({ position: { x: 10, y: 0 } }));
+    const chestInteractable = chest.add(new Interactable({ onInteract: () => {} }));
+
+    const announced: Interactable[] = [];
+    player.on(InteractionInRangeChangedEvent, ({ inRange }) => announced.push(...inRange));
+    // Re-enters setInRange from inside the focus emit: the interactor empties
+    // its snapshot before the outer call reaches its own in-range emit.
+    player.on(InteractionFocusChangedEvent, () => {
+      interactor.enabled = false;
+    });
+
+    interactor.update();
+
+    // The interactor dropped the chest before it ever finished announcing it,
+    // so no in-range event may carry it — a selection UI must never be handed a
+    // target that is already gone.
+    expect(announced).not.toContain(chestInteractable);
+    expect(interactor.inRange).toEqual([]);
+    expect(interactor.focus).toBeNull();
   });
 });

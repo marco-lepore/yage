@@ -14,10 +14,10 @@ function inRangeDistanceSq(query: FocusQuery, candidate: InteractCandidate): num
 }
 
 /**
- * Focus ordering shared by {@link selectFocus} and {@link rankCandidates}:
- * highest `priority` first, then nearest distance, then lowest `order`
- * (registration order) for a fully deterministic result. Negative when `a`
- * outranks `b`.
+ * Focus ordering shared by {@link selectInteractionFocus} and
+ * {@link rankInteractables}: highest `priority` first, then nearest distance,
+ * then lowest `order` (registration order) for a fully deterministic result.
+ * Negative when `a` outranks `b`.
  */
 function byFocusOrder(
   a: InteractCandidate,
@@ -31,12 +31,13 @@ function byFocusOrder(
 }
 
 /**
- * Pure nearest-in-range focus selection — the single winner. Empty or
- * all-out-of-range candidates return `null`. Equivalent to
- * `rankCandidates(query, candidates)[0] ?? null`, but O(n) with no sort or
- * allocation, so the per-frame focus path stays cheap.
+ * Pure nearest-in-range focus selection — the single winner, in O(n) with no
+ * sort and no array allocation. Empty or all-out-of-range candidates return
+ * `null`. Equivalent to `rankInteractables(query, candidates)[0] ?? null`;
+ * reach for this one when a custom detector needs only the winner and would
+ * otherwise pay for a sorted array it throws away.
  */
-export function selectFocus<C extends InteractCandidate>(
+export function selectInteractionFocus<C extends InteractCandidate>(
   query: FocusQuery,
   candidates: Iterable<C>,
 ): C | null {
@@ -57,12 +58,16 @@ export function selectFocus<C extends InteractCandidate>(
 
 /**
  * Pure ranking of every in-range candidate, best focus first — the same order
- * {@link selectFocus} picks its winner by, so `rankCandidates(...)[0]` equals
- * `selectFocus(...)`. Feeds a "which of these do I interact with?" selection
- * UI or a proximity highlight. Out-of-range candidates are excluded; an empty
- * or all-out-of-range input returns `[]`.
+ * {@link selectInteractionFocus} picks its winner by, so
+ * `rankInteractables(...)[0]` equals `selectInteractionFocus(...)`. Feeds a
+ * "which of these do I interact with?" selection UI or a proximity highlight.
+ * Out-of-range candidates are excluded; an empty or all-out-of-range input
+ * returns `[]`.
+ *
+ * Geometry only — it has no notion of the `enabled` gate. Filter on
+ * `isEnabled()` first when ranking a raw scene list.
  */
-export function rankCandidates<C extends InteractCandidate>(
+export function rankInteractables<C extends InteractCandidate>(
   query: FocusQuery,
   candidates: Iterable<C>,
 ): C[] {

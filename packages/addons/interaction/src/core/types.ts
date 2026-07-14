@@ -13,7 +13,7 @@ export interface InteractCandidate {
   readonly order: number;
 }
 
-/** The interactor's own position and reach, read by `selectFocus`. */
+/** The interactor's own position and reach, read by the focus selection. */
 export interface FocusQuery {
   readonly position: Vec2Like;
   readonly range: number;

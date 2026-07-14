@@ -14,8 +14,17 @@ export const InteractionFocusChangedEvent = defineEvent<{
   prompt: string | null;
 }>("interaction:focus-changed");
 
-/** Fires when the interactor interacts with its current focus (auto-input
- *  edge or a manual `interact()` call). */
-export const InteractedEvent = defineEvent<{
+/** Fires when the ranked in-range set changes — a target enters or leaves, or
+ *  two of them swap rank. Carries the whole ranked set (`inRange[0]` is the
+ *  focus). The hook for a selection UI, which must also react to a *non-focused*
+ *  target appearing or disappearing — something
+ *  {@link InteractionFocusChangedEvent} does not report. */
+export const InteractionInRangeChangedEvent = defineEvent<{
+  inRange: readonly Interactable[];
+}>("interaction:in-range-changed");
+
+/** Fires when the interactor interacts with a target (auto-input edge, or a
+ *  manual `interact()` / `interact(target)` call). */
+export const InteractionPerformedEvent = defineEvent<{
   interactable: Interactable;
-}>("interaction:interacted");
+}>("interaction:performed");

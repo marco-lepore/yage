@@ -16,11 +16,14 @@
  *    highlighted one via `interactor.interact(target)`.
  *
  * The addon is headless: this example owns 100% of the rendering, and drives
- * interaction itself (`action: null`). A small `InteractionMenu` controller
- * reads `interactor.inRange` each frame — the ranked in-range set, `inRange[0]`
- * being the focus — and the menu doubles as the single-target prompt and the
- * multi-target wheel. A prompt-only game could instead render from
- * `InteractionFocusChangedEvent` and let the interactor self-drive off input.
+ * interaction itself (`action: null`) so the confirm key can act on the
+ * highlighted option rather than always the focus. The `InteractionMenu`
+ * controller listens to both interactor events — `InteractionInRangeChangedEvent`
+ * for the ranked set behind the wheel, `InteractionFocusChangedEvent` for the
+ * live prompt text — and the one menu doubles as the single-target prompt and
+ * the multi-target wheel. A game that only ever needs "walk up, press E" can
+ * skip all of this: render from the focus event and let the interactor
+ * self-drive off `@yagejs/input`.
  *
  * Controls: WASD/arrows walk · E interact/take · Q cycle the selection.
  */
@@ -28,7 +31,12 @@
 import { Component, Engine, type Entity, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin, TextComponent } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
-import { Interactable, Interactor } from "@yagejs-addons/interaction";
+import {
+  Interactable,
+  InteractionFocusChangedEvent,
+  InteractionInRangeChangedEvent,
+  Interactor,
+} from "@yagejs-addons/interaction";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles();
@@ -100,33 +108,49 @@ class MenuView {
   }
 }
 
-/** Drives interaction manually from `interactor.inRange`. Added after the
- *  `Interactor` so it reads that frame's freshly-resolved set. */
+/** Drives interaction from the two interactor events, re-rendering only when
+ *  something actually changed. Added after the `Interactor` so its input runs
+ *  against that frame's freshly-resolved set. */
 class InteractionMenu extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly interactor = this.sibling(Interactor);
+  private options: readonly Interactable[] = [];
   private selected = 0;
 
   constructor(private readonly view: MenuView) {
     super();
   }
 
-  update(): void {
-    const options = this.interactor.inRange;
-    if (this.selected >= options.length) this.selected = 0;
+  onAdd(): void {
+    // The set in reach changed — including a NON-focused target entering or
+    // leaving, which the focus event alone never reports. This is what a
+    // selection UI has to listen to.
+    this.listen(this.entity, InteractionInRangeChangedEvent, ({ inRange }) => {
+      this.options = inRange;
+      if (this.selected >= inRange.length) this.selected = 0;
+      this.render();
+    });
+    // The focus or its prompt text changed — the door's live "Open"/"Close".
+    this.listen(this.entity, InteractionFocusChangedEvent, () => this.render());
+    this.render();
+  }
 
+  update(): void {
     // Cycle only when there's a genuine choice between overlapping targets.
-    if (options.length > 1 && this.input.isJustPressed("cycle")) {
-      this.selected = (this.selected + 1) % options.length;
+    if (this.options.length > 1 && this.input.isJustPressed("cycle")) {
+      this.selected = (this.selected + 1) % this.options.length;
+      this.render();
     }
 
     // Confirm the highlighted option — the focus when only one is in range.
     if (this.input.isJustPressed("interact")) {
-      this.interactor.interact(options[this.selected]);
+      this.interactor.interact(this.options[this.selected]);
       this.selected = 0;
     }
+  }
 
-    this.view.render(options, this.selected);
+  private render(): void {
+    this.view.render(this.options, this.selected);
   }
 }
 

@@ -9,7 +9,7 @@
  */
 
 // --- Headless model (L1) ---
-export { rankCandidates, selectFocus } from "./core/focus.js";
+export { rankInteractables, selectInteractionFocus } from "./core/focus.js";
 export { interactablesIn } from "./core/registry.js";
 export type {
   FocusQuery,
@@ -23,4 +23,8 @@ export { Interactable } from "./Interactable.js";
 export { Interactor } from "./Interactor.js";
 
 // --- Events ---
-export { InteractedEvent, InteractionFocusChangedEvent } from "./events.js";
+export {
+  InteractionFocusChangedEvent,
+  InteractionInRangeChangedEvent,
+  InteractionPerformedEvent,
+} from "./events.js";

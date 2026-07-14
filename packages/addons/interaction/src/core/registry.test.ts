@@ -3,11 +3,11 @@ import { createMockScene } from "@yagejs/core";
 import { interactableRegistryFor, interactablesIn } from "./registry.js";
 import type { Interactable } from "../Interactable.js";
 
-// The registry only needs object identity from its members — a plain object
-// stands in for `Interactable` here so these tests stay in `core/` with no
-// dependency on the Component-based class.
-function fakeInteractable(): Interactable {
-  return {} as Interactable;
+// The registry needs object identity plus the host's destroyed flag (the live
+// filter `interactablesIn` applies). A plain object stands in for `Interactable`
+// here so these tests stay in `core/` with no dependency on the Component class.
+function fakeInteractable(isDestroyed = false): Interactable {
+  return { entity: { isDestroyed } } as Interactable;
 }
 
 describe("interactableRegistryFor", () => {
@@ -86,5 +86,18 @@ describe("interactablesIn", () => {
   it("is empty for a scene with no interactables", () => {
     const { scene } = createMockScene();
     expect(interactablesIn(scene)).toEqual([]);
+  });
+
+  it("excludes interactables whose host is already destroyed", () => {
+    const { scene } = createMockScene();
+    const registry = interactableRegistryFor(scene);
+    const live = fakeInteractable();
+    const destroyed = fakeInteractable(true);
+    registry.register(live);
+    registry.register(destroyed);
+
+    // A destroyed entity stays registered until the end-of-frame teardown, so
+    // the scene query has to filter it out itself.
+    expect(interactablesIn(scene)).toEqual([live]);
   });
 });

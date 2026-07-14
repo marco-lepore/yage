@@ -41,9 +41,24 @@ import {
   Interactable,
   Interactor,
   InteractionFocusChangedEvent,
-  InteractedEvent,
+  InteractionInRangeChangedEvent,
+  InteractionPerformedEvent,
+  interactablesIn,
 } from "@yagejs-addons/interaction";
 ```
+
+## Which API for what
+
+The addon answers three different questions, at three different scopes. Most
+games never leave the first row.
+
+| Use case | Pull | Push | Interact |
+| --- | --- | --- | --- |
+| Prompt + press E (the default) | `interactor.focus` | `InteractionFocusChangedEvent` | `interactor.interact()` |
+| Multi-target selection UI | `interactor.inRange` | `InteractionInRangeChangedEvent` | `interactor.interact(chosen)` |
+| Scene-wide or custom query | `interactablesIn(scene)`, `rankInteractables` | none — query on demand | `interactable.interact()` (scripted bypass) |
+
+`focus` is simply `inRange[0]` — one snapshot, not two sources of truth.
 
 ## Quick start
 
@@ -82,7 +97,7 @@ import {
 
 With `@yagejs/input` installed and an `interact` action bound, pressing it
 while something is focused calls that interactable's `onInteract` and emits
-`InteractedEvent`. No setup beyond the three steps above.
+`InteractionPerformedEvent`. No setup beyond the three steps above.
 
 ## Per-interactable overrides
 
@@ -151,43 +166,54 @@ other.
 
 `focus` is the single default target. Behind it, `interactor.inRange` is the
 full set of in-range, enabled interactables **in the same order focus is picked
-by** — so `inRange[0]` is always the current `focus`. It reflects the last
-`update()`, and reads empty before the first frame and while the interactor is
-disabled.
+by** — so `inRange[0]` *is* the current `focus`. Both come from one snapshot
+rebuilt each `update()`, so they can never disagree; it reads empty before the
+first frame and while the interactor is disabled.
 
 Use it when several things overlap and the player should choose — the pickup
-selection in games like Genshin. Show your own list or wheel, then pass the
-chosen one back to `interact`:
+selection in games like Genshin. Listen to `InteractionInRangeChangedEvent`,
+show your own list or wheel, then pass the chosen one back to `interact`:
 
 ```ts
-player.on(InteractionFocusChangedEvent, () => {
-  const options = interactor.inRange; // ranked, options[0] === focus
-  if (options.length > 1) wheel.show(options);
+player.on(InteractionInRangeChangedEvent, ({ inRange }) => {
+  if (inRange.length > 1) wheel.show(inRange); // ranked; inRange[0] is the focus
   else wheel.hide();
 });
 
 function confirm(chosen: Interactable) {
-  interactor.interact(chosen); // fires it and emits InteractedEvent, same guards as focus
+  interactor.interact(chosen);
 }
 ```
 
-`interact(target)` runs the same staleness guards as the no-argument call: a
-target whose host was destroyed, whose component was removed, or whose `enabled`
-gate is false does nothing.
+<Aside type="caution">
+Drive a selection UI from `InteractionInRangeChangedEvent`, **not** the focus
+event. A *lower-ranked* target entering or leaving range does not change the
+focus, so the focus event never fires for it and your wheel would silently miss
+the new option.
+</Aside>
+
+`interact(target)` acts only on something the interactor can actually reach: it
+does nothing unless the interactor is enabled, the target is in the current
+`inRange`, and the target is still live (host not destroyed, component not
+removed, `enabled` gate still true). To fire an interactable the interactor
+*can't* reach — a scripted or remote trigger — call `interactable.interact()`
+directly. That skips every check and emits no interactor event.
 
 For a scene-wide reveal — an observation skill that highlights everything
 interactable, whatever the interactor's range — enumerate by scene with
 `interactablesIn`:
 
 ```ts
-import { interactablesIn, rankCandidates } from "@yagejs-addons/interaction";
+import { interactablesIn, rankInteractables } from "@yagejs-addons/interaction";
 
-for (const it of interactablesIn(scene)) {
-  if (it.isEnabled()) outline(it.entity); // it.entity is the host to draw the outline on
-}
+// interactablesIn drops destroyed hosts but keeps DISABLED ones, since whether
+// an ungated target is still worth revealing is the game's call.
+const live = interactablesIn(scene).filter((it) => it.isEnabled());
 
-// or rank a subset by proximity from any point and radius:
-const nearby = rankCandidates({ position: playerPos, range: 200 }, interactablesIn(scene));
+for (const it of live) outline(it.entity); // it.entity is the host to draw the outline on
+
+// rankInteractables is geometry only, so filter the enabled gate first:
+const nearby = rankInteractables({ position: playerPos, range: 200 }, live);
 ```
 
 Each `Interactable` exposes read-only `position`, `radius`, `priority`,
@@ -206,9 +232,13 @@ the tracking toggle — flip it to pause one interactor during a cutscene, or to
 switch tracking between several:
 
 ```ts
-interactor.enabled = false; // emits a null-focus transition immediately,
-                             // then halts tracking + input polling
+interactor.enabled = false; // empties the snapshot immediately (emitting the
+                            // transitions), then halts tracking, input polling,
+                            // and interact()
 ```
+
+A disabled interactor interacts with nothing, even when handed an explicit
+target — the pause is not something an argument can bypass.
 
 <Aside type="note">
 This addon is pure distance-query proximity — no `@yagejs/physics` dependency

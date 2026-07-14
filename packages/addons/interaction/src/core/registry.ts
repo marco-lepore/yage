@@ -26,9 +26,9 @@ export class InteractableRegistry {
     this.members.delete(interactable);
   }
 
-  /** Whether `interactable` is still registered — false once its host removed
-   *  or destroyed it. Lets a cached focus detect a target that went away
-   *  between frames. */
+  /** Whether `interactable` is still registered. Goes false when its host
+   *  removes the component; a destroyed *entity* stays registered until the
+   *  end-of-frame teardown, so callers pair this with an `isDestroyed` check. */
   has(interactable: Interactable): boolean {
     return this.members.has(interactable);
   }
@@ -51,12 +51,21 @@ export function interactableRegistryFor(scene: Scene): InteractableRegistry {
 }
 
 /**
- * Every `Interactable` currently registered in `scene`, in registration order.
- * The scene-wide read surface, independent of any one `Interactor`'s range —
- * for revealing what is interactable (an observation skill highlighting every
- * interactable actor). Includes disabled ones; filter on `isEnabled()` for the
- * live set, or `rankCandidates()` to order a subset by proximity.
+ * Every live `Interactable` registered in `scene`, in registration order. The
+ * scene-wide read surface, independent of any one `Interactor`'s range — for
+ * revealing what is interactable (an observation skill highlighting every
+ * interactable actor).
+ *
+ * Excludes entities already destroyed (their components stay registered until
+ * the end-of-frame teardown, so returning them would hand out dead targets).
+ * Keeps *disabled* ones: whether a currently-ungated target should still be
+ * revealed is the game's call — filter on `isEnabled()` for the interactable-
+ * right-now set, and `rankInteractables()` to order a subset by proximity.
  */
 export function interactablesIn(scene: Scene): readonly Interactable[] {
-  return [...interactableRegistryFor(scene)];
+  const live: Interactable[] = [];
+  for (const interactable of interactableRegistryFor(scene)) {
+    if (!interactable.entity.isDestroyed) live.push(interactable);
+  }
+  return live;
 }
