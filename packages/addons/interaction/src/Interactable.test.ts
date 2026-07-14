@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMockScene, Transform } from "@yagejs/core";
+import { createMockScene, Logger, LoggerKey, LogLevel, Transform } from "@yagejs/core";
 import { Interactable } from "./Interactable.js";
 import { interactableRegistryFor } from "./core/registry.js";
 
@@ -101,5 +101,33 @@ describe("Interactable", () => {
     const interactable = entity.add(new Interactable({ onInteract }));
     interactable.interact();
     expect(onInteract).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns (dev) when radius is negative — the reach test would square it back positive", () => {
+    const { scene } = createMockScene();
+    const logger = new Logger({ level: LogLevel.Debug });
+    scene.context.register(LoggerKey, logger);
+    const warn = vi.spyOn(logger, "warn");
+
+    const entity = scene.spawn("chest");
+    entity.add(new Transform());
+    entity.add(new Interactable({ onInteract: () => {}, radius: -10 }));
+
+    const warns = warn.mock.calls.filter((c) => c[0] === "interaction");
+    expect(warns).toHaveLength(1);
+    expect(warns[0]?.[1]).toMatch(/radius is -10/);
+  });
+
+  it("does not warn for a non-negative radius", () => {
+    const { scene } = createMockScene();
+    const logger = new Logger({ level: LogLevel.Debug });
+    scene.context.register(LoggerKey, logger);
+    const warn = vi.spyOn(logger, "warn");
+
+    const entity = scene.spawn("chest");
+    entity.add(new Transform());
+    entity.add(new Interactable({ onInteract: () => {}, radius: 0 }));
+
+    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(0);
   });
 });

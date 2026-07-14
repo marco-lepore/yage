@@ -162,6 +162,14 @@ highest `priority`; ties break by nearest distance, then by registration
 order — deterministic even when two interactables sit exactly on top of each
 other.
 
+<Aside type="caution">
+`range` and `radius` must be non-negative. The reach test compares squared
+distances, so a negative total would come back positive and start matching
+distant targets. Rather than pay for that check on every candidate every frame,
+`Interactor` and `Interactable` each warn once (in dev) when they're added with
+a negative value. Use `range: 0` to reach only what the interactor overlaps.
+</Aside>
+
 ## Multiple targets, selection UI, and highlighting
 
 `focus` is the single default target. Behind it, `interactor.inRange` is the

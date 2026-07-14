@@ -288,6 +288,34 @@ describe("Interactor", () => {
     expect(interactionWarns[0]?.[1]).toMatch(/action "interact"/);
   });
 
+  it("warns (dev) when range is negative — the reach test would square it back positive", () => {
+    const { scene } = createMockScene();
+    const logger = new Logger({ level: LogLevel.Debug });
+    scene.context.register(LoggerKey, logger);
+    const warn = vi.spyOn(logger, "warn");
+
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    player.add(new Interactor({ range: -20, action: null }));
+
+    const warns = warn.mock.calls.filter((c) => c[0] === "interaction");
+    expect(warns).toHaveLength(1);
+    expect(warns[0]?.[1]).toMatch(/range is -20/);
+  });
+
+  it("does not warn for a non-negative range", () => {
+    const { scene } = createMockScene();
+    const logger = new Logger({ level: LogLevel.Debug });
+    scene.context.register(LoggerKey, logger);
+    const warn = vi.spyOn(logger, "warn");
+
+    const player = scene.spawn("player");
+    player.add(new Transform());
+    player.add(new Interactor({ range: 0, action: null }));
+
+    expect(warn.mock.calls.filter((c) => c[0] === "interaction")).toHaveLength(0);
+  });
+
   it("does not warn when the action is mapped", () => {
     const { scene } = createMockScene();
     const logger = new Logger({ level: LogLevel.Debug });

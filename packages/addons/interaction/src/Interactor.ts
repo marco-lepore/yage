@@ -88,6 +88,19 @@ export class Interactor extends Component {
 
   onAdd(): void {
     this.logger = this.context.tryResolve(LoggerKey);
+
+    // The in-range test squares `range + radius`, which turns a negative reach
+    // back into a positive one — distant targets would silently become
+    // selectable. Caught here, at the edge, so the per-candidate test stays a
+    // plain comparison.
+    if (isDev() && this.range < 0) {
+      this.logger?.warn(
+        "interaction",
+        `Interactor range is ${this.range}. Range is a distance in world px and cannot be ` +
+          `negative: the in-range test squares it, so this behaves like range ${-this.range}. ` +
+          `Use 0 to reach only interactables the interactor overlaps.`,
+      );
+    }
   }
 
   onDestroy(): void {

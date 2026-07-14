@@ -1,4 +1,4 @@
-import { Component, Transform } from "@yagejs/core";
+import { Component, LoggerKey, Transform, isDev } from "@yagejs/core";
 import { interactableRegistryFor } from "./core/registry.js";
 import type { InteractableOptions } from "./core/types.js";
 
@@ -19,6 +19,18 @@ export class Interactable extends Component {
 
   onAdd(): void {
     this._order = interactableRegistryFor(this.scene).register(this);
+
+    // `radius` is the other half of the reach an interactor squares. A negative
+    // one shrinks the reach, and once the total drops below zero the squaring
+    // silently makes distant targets selectable.
+    if (isDev() && this.radius < 0) {
+      this.context.tryResolve(LoggerKey)?.warn(
+        "interaction",
+        `Interactable radius is ${this.radius}. Radius is a reach bonus in world px added to ` +
+          `the interactor's range and cannot be negative: once the total reach goes below ` +
+          `zero, the in-range test squares it and matches distant targets. Use 0 for no bonus.`,
+      );
+    }
   }
 
   onDestroy(): void {

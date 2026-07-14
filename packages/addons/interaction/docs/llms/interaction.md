@@ -96,6 +96,11 @@ A candidate is in range when `distance(interactor, interactable) <= range +
 interactable.radius`. Focus = highest `priority` in-range enabled candidate;
 ties break by nearest, then by registration order (deterministic).
 
+`range` and `radius` must be non-negative. The reach test compares squared
+distances, which would turn a negative total back into a positive one and match
+distant targets; each component dev-warns once on add rather than guarding every
+candidate. Use `range: 0` to reach only what the interactor overlaps.
+
 ## `Interactor` API
 
 Each `update()` builds ONE ranked snapshot from one geometry pass. `inRange` is

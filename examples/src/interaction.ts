@@ -115,7 +115,11 @@ class InteractionMenu extends Component {
   private readonly input = this.service(InputManagerKey);
   private readonly interactor = this.sibling(Interactor);
   private options: readonly Interactable[] = [];
-  private selected = 0;
+  /** The highlighted target, held by identity rather than by index: `inRange`
+   *  re-ranks as the player moves, so two equal-priority targets can swap
+   *  places and an index would quietly start pointing at a different thing.
+   *  `null` means "no explicit pick" — the focus. */
+  private selected: Interactable | null = null;
 
   constructor(private readonly view: MenuView) {
     super();
@@ -127,7 +131,8 @@ class InteractionMenu extends Component {
     // selection UI has to listen to.
     this.listen(this.entity, InteractionInRangeChangedEvent, ({ inRange }) => {
       this.options = inRange;
-      if (this.selected >= inRange.length) this.selected = 0;
+      // Drop a pick that walked out of reach; a re-rank alone keeps it.
+      if (this.selected && !inRange.includes(this.selected)) this.selected = null;
       this.render();
     });
     // The focus or its prompt text changed — the door's live "Open"/"Close".
@@ -138,19 +143,28 @@ class InteractionMenu extends Component {
   update(): void {
     // Cycle only when there's a genuine choice between overlapping targets.
     if (this.options.length > 1 && this.input.isJustPressed("cycle")) {
-      this.selected = (this.selected + 1) % this.options.length;
+      const next = (this.selectedIndex() + 1) % this.options.length;
+      this.selected = this.options[next] ?? null;
       this.render();
     }
 
     // Confirm the highlighted option — the focus when only one is in range.
     if (this.input.isJustPressed("interact")) {
-      this.interactor.interact(this.options[this.selected]);
-      this.selected = 0;
+      this.interactor.interact(this.options[this.selectedIndex()]);
+      this.selected = null;
     }
   }
 
+  /** Where the highlight sits now. No explicit pick (or one that just left
+   *  range) falls back to the focus, which is always `inRange[0]`. */
+  private selectedIndex(): number {
+    if (!this.selected) return 0;
+    const index = this.options.indexOf(this.selected);
+    return index === -1 ? 0 : index;
+  }
+
   private render(): void {
-    this.view.render(this.options, this.selected);
+    this.view.render(this.options, this.selectedIndex());
   }
 }
 
