@@ -235,6 +235,8 @@ export {
   LocalizationKey,
   LocalizationPlugin,
   resolveLocalized,
+  LocalizedTextController,
+  resolveStatic,
 } from "./localization/index.js";
 export type {
   JsonValue,
@@ -242,6 +244,7 @@ export type {
   LocalizationAdapter,
   Localization,
   LocalizationPluginOptions,
+  LocalizableText,
 } from "./localization/index.js";
 
 export type {

@@ -70,6 +70,8 @@ export type {
   SegmentAnchor,
   SplitTextRenderFacet,
   SplitTextRenderFacetExtras,
+  SplitTextSegments,
+  SplitListener,
 } from "./SplitTextComponent.js";
 export { SortGroupComponent, resolveRenderParent } from "./SortGroupComponent.js";
 export type {

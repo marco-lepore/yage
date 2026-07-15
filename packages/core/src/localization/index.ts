@@ -18,3 +18,9 @@ export {
   resolveLocalized,
 } from "./LocalizationPlugin.js";
 export type { LocalizationPluginOptions } from "./LocalizationPlugin.js";
+
+export {
+  LocalizedTextController,
+  resolveStatic,
+} from "./LocalizedTextController.js";
+export type { LocalizableText } from "./LocalizedTextController.js";

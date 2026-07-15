@@ -1,4 +1,10 @@
-import { serializable } from "@yagejs/core";
+import {
+  LocalizationKey,
+  LocalizedTextController,
+  resolveStatic,
+  serializable,
+} from "@yagejs/core";
+import type { LocalizableText } from "@yagejs/core";
 import { SplitText, SplitBitmapText } from "pixi.js";
 import { buildTextOptions } from "./internal/textConstruction.js";
 import type {
@@ -35,6 +41,19 @@ export interface SplitTextRenderFacetExtras {
 /** The full render facet shape returned by {@link SplitTextComponent.inspectRender}. */
 export type SplitTextRenderFacet = RenderFacetSnapshot<SplitTextRenderFacetExtras>;
 
+/** The per-character / per-word / per-line segments of a split text. */
+export interface SplitTextSegments {
+  /** Per-glyph display objects (`Text` / `BitmapText`), in reading order. */
+  readonly chars: (DisplayText | DisplayBitmapText)[];
+  /** Word-group containers, each holding its character segments. */
+  readonly words: DisplayContainer[];
+  /** Line-group containers, each holding its word containers. */
+  readonly lines: DisplayContainer[];
+}
+
+/** Listener invoked after the text (re)splits into fresh segments. */
+export type SplitListener = (segments: SplitTextSegments) => void;
+
 /**
  * Transform origin for a text segment, normalized 0–1. `0` is top-left, `0.5`
  * is center, `1` is bottom-right. A single number applies to both axes.
@@ -52,8 +71,13 @@ function cloneAnchor(anchor: SegmentAnchor): SegmentAnchor {
 
 /** Options for creating a {@link SplitTextComponent}. */
 export interface SplitTextComponentOptions extends VisualComponentOptions {
-  /** The text string to render and segment. */
-  text: string;
+  /**
+   * The text to render and segment — a literal, or a {@link LocalizedBinding}
+   * (via `msg`) that re-resolves on locale change. A locale refresh forces a
+   * resplit even when {@link autoSplit} is `false` (a swapped glyph set would
+   * otherwise orphan animations), and fires {@link SplitTextComponent.onSplit}.
+   */
+  text: LocalizableText;
   /** Text style — forwards to PixiJS TextStyleOptions (CSS-like font properties). */
   style?: TextStyle;
   /**
@@ -82,7 +106,8 @@ export interface SplitTextComponentOptions extends VisualComponentOptions {
 
 /** Serialisable snapshot of a SplitTextComponent. */
 export interface SplitTextData extends VisualComponentData {
-  text: string;
+  /** The source text — the binding descriptor when bound, else the literal. */
+  text: LocalizableText;
   style?: TextStyle;
   bitmap?: boolean;
   anchor?: { x: number; y: number };
@@ -122,21 +147,26 @@ export class SplitTextComponent extends VisualComponent {
   private _wordAnchor?: SegmentAnchor;
   private _lineAnchor?: SegmentAnchor;
   private _autoSplit?: boolean;
+  private readonly _splitListeners = new Set<SplitListener>();
+  // Retains a LocalizedBinding (if the text is one); a locale refresh forces a
+  // resplit + emits onSplit even when autoSplit is off.
+  private readonly _localizer: LocalizedTextController;
 
   constructor(options: SplitTextComponentOptions) {
     super(options.layer);
+    const initialText = resolveStatic(options.text);
     // Reuse the shared builder for style-default resolution and the
     // canvas/bitmap class pick. `resolution` is N/A for split text (Pixi's
     // SplitOptions has no resolution), so it's not forwarded.
     const { options: textOptions, bitmap } = buildTextOptions(
-      options.text,
+      initialText,
       options.style,
       options.bitmap,
       undefined,
     );
     this.isBitmap = bitmap;
     const splitOptions = {
-      text: options.text,
+      text: initialText,
       style: textOptions.style ?? {},
       ...(options.charAnchor !== undefined
         ? { charAnchor: options.charAnchor }
@@ -168,6 +198,25 @@ export class SplitTextComponent extends VisualComponent {
       this._lineAnchor = cloneAnchor(options.lineAnchor);
     if (options.autoSplit !== undefined) this._autoSplit = options.autoSplit;
 
+    this._localizer = new LocalizedTextController(
+      // set() path: honor autoSplit (pixi auto-splits when on; deferred to
+      // resplit() when off). The pivot is re-derived by setText, which owns
+      // the call.
+      (value) => {
+        this.splitText.text = value;
+      },
+      // locale-refresh path: force a resplit even when autoSplit is off — a
+      // swapped glyph set must not leave stale segments — re-derive the pivot
+      // from the new bounds, then notify.
+      (value) => {
+        this.splitText.text = value;
+        this.splitText.split();
+        this.applyBlockAnchor();
+        this.emitSplit();
+      },
+    );
+    this._localizer.seed(options.text);
+
     this.applyBlockAnchor();
     this.applyVisualOptions(options);
   }
@@ -175,6 +224,39 @@ export class SplitTextComponent extends VisualComponent {
   /** The underlying Pixi display object. */
   get renderObject(): DisplaySplitText | DisplaySplitBitmapText {
     return this.splitText;
+  }
+
+  onAdd(): void {
+    super.onAdd();
+    this._localizer.attach(this.context.tryResolve(LocalizationKey));
+    this.addCleanup(() => this._localizer.detach());
+  }
+
+  /** The current segments as one object — handy for {@link onSplit} callbacks. */
+  get segments(): SplitTextSegments {
+    return {
+      chars: this.splitText.chars,
+      words: this.splitText.words,
+      lines: this.splitText.lines,
+    };
+  }
+
+  /**
+   * Subscribe to (re)splits. The listener fires after every `setText` /
+   * `setStyle` / `resplit` (when it produces fresh segments) and on a locale
+   * refresh — i.e. whenever the segment objects may have changed and animations
+   * bound to the old `chars` must be rebound. Returns an unsubscribe function.
+   */
+  onSplit(listener: SplitListener): () => void {
+    this._splitListeners.add(listener);
+    return () => this._splitListeners.delete(listener);
+  }
+
+  private emitSplit(): void {
+    if (this._splitListeners.size === 0) return;
+    const segments = this.segments;
+    // Snapshot: a listener may unsubscribe (or subscribe) itself while running.
+    for (const listener of [...this._splitListeners]) listener(segments);
   }
 
   /** Individual character segments (`Text` or `BitmapText`), in reading order. */
@@ -192,10 +274,17 @@ export class SplitTextComponent extends VisualComponent {
     return this.splitText.lines;
   }
 
-  /** Replace the displayed string (re-splits when `autoSplit` is on). */
-  setText(value: string): void {
-    this.splitText.text = value;
+  /**
+   * Replace the displayed text — a literal, or a {@link LocalizedBinding} that
+   * re-resolves on locale change. Re-splits when `autoSplit` is on; passing a
+   * string clears any retained binding.
+   */
+  setText(value: LocalizableText): void {
+    this._localizer.set(value);
     this.applyBlockAnchor();
+    // Parity with UISplitText: emit only when a split actually ran (autoSplit
+    // on); otherwise the segments are stale/empty until resplit().
+    if (this._autoSplit ?? true) this.emitSplit();
   }
 
   /** Replace the text style (re-splits when `autoSplit` is on). */
@@ -209,6 +298,7 @@ export class SplitTextComponent extends VisualComponent {
     this.splitText.style = options.style ?? style;
     this._styleOptions = { ...style };
     this.applyBlockAnchor();
+    if (this._autoSplit ?? true) this.emitSplit();
   }
 
   /**
@@ -218,6 +308,7 @@ export class SplitTextComponent extends VisualComponent {
   resplit(): void {
     this.splitText.split();
     this.applyBlockAnchor();
+    this.emitSplit();
   }
 
   /** Transform origin for each character (normalized 0–1). */
@@ -250,7 +341,8 @@ export class SplitTextComponent extends VisualComponent {
   serialize(): SplitTextData {
     const data: SplitTextData = {
       ...this.serializeVisual(),
-      text: this.splitText.text,
+      // Store the SOURCE descriptor when bound, else the resolved literal.
+      text: this._localizer.binding ?? this.splitText.text,
     };
     if (this._styleOptions) data.style = { ...this._styleOptions };
     if (this._bitmap !== undefined) data.bitmap = this._bitmap;

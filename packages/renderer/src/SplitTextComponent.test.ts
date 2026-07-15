@@ -153,7 +153,8 @@ vi.mock("pixi.js", () => ({
   Point: mocks.MockPoint,
 }));
 
-import { Transform } from "@yagejs/core";
+import { LocalizationPlugin, Transform, msg } from "@yagejs/core";
+import type { LocalizationAdapter } from "@yagejs/core";
 import { SplitTextComponent } from "./SplitTextComponent.js";
 import {
   createRendererTestContext,
@@ -451,6 +452,98 @@ describe("SplitTextComponent", () => {
         { visible: false },
       ]);
       expect(facet.visibleText).toBe("Hel");
+    });
+  });
+
+  describe("onSplit", () => {
+    it("fires on setText when autoSplit is on", () => {
+      const comp = new SplitTextComponent({ text: "ab" });
+      const seen: number[] = [];
+      comp.onSplit((segments) => seen.push(segments.chars.length));
+      comp.setText("abcd");
+      expect(seen).toEqual([4]);
+    });
+
+    it("does not fire on setText when autoSplit is off (deferred to resplit)", () => {
+      const comp = new SplitTextComponent({ text: "ab", autoSplit: false });
+      const listener = vi.fn();
+      comp.onSplit(listener);
+      comp.setText("abcd");
+      expect(listener).not.toHaveBeenCalled();
+      comp.resplit();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("unsubscribes cleanly", () => {
+      const comp = new SplitTextComponent({ text: "ab" });
+      const listener = vi.fn();
+      const off = comp.onSplit(listener);
+      off();
+      comp.setText("abc");
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("localization", () => {
+    class FakeAdapter implements LocalizationAdapter {
+      locale = "en";
+      private readonly listeners = new Set<() => void>();
+      constructor(
+        private readonly table: Record<string, Record<string, string>>,
+      ) {}
+      t(id: string, fallback: string | undefined): string {
+        return this.table[this.locale]?.[id] ?? fallback ?? id;
+      }
+      subscribe(cb: () => void): () => void {
+        this.listeners.add(cb);
+        return () => this.listeners.delete(cb);
+      }
+      setLocale(next: string): void {
+        this.locale = next;
+        for (const l of this.listeners) l();
+      }
+    }
+
+    it("renders a binding's default with no plugin", () => {
+      const comp = new SplitTextComponent({ text: msg("k", undefined, "ab") });
+      expect(comp.splitText.text).toBe("ab");
+      expect(comp.chars).toHaveLength(2);
+    });
+
+    it("re-resolves and force-resplits on a locale switch, even with autoSplit off", async () => {
+      const { context, scene } = createRendererTestContext();
+      const plugin = new LocalizationPlugin({
+        adapter: new FakeAdapter({
+          en: { greet: "ab" },
+          fr: { greet: "abcd" },
+        }),
+      });
+      plugin.install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(
+        new SplitTextComponent({ text: msg("greet"), autoSplit: false }),
+      );
+      const splits: number[] = [];
+      comp.onSplit((segments) => splits.push(segments.chars.length));
+      expect(comp.splitText.text).toBe("ab");
+
+      await plugin.setLocale("fr");
+      expect(comp.splitText.text).toBe("abcd");
+      // Forced resplit ran despite autoSplit:false, and onSplit fired.
+      expect(comp.chars).toHaveLength(4);
+      expect(splits).toEqual([4]);
+    });
+
+    it("serialize stores the binding descriptor", () => {
+      const { context, scene } = createRendererTestContext();
+      new LocalizationPlugin({
+        adapter: new FakeAdapter({ en: { greet: "hi" } }),
+      }).install(context);
+      const entity = spawnEntityInScene(scene);
+      entity.add(new Transform());
+      const comp = entity.add(new SplitTextComponent({ text: msg("greet") }));
+      expect(comp.serialize().text).toEqual({ id: "greet" });
     });
   });
 });
