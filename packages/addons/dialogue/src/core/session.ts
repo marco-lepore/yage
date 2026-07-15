@@ -1205,10 +1205,19 @@ export class DialogueSession {
       meta: c.option.meta,
       disabled: c.disabled,
       // i18n-resolve the reason (interpolating {tokens}) only for disabled rows
-      // that carry one; there's no separate i18n key for it.
+      // that carry one. Keyed off the choice line id (`<lineId>.disabledReason`)
+      // so it is addressable in the catalog independently of the label.
       disabledReason:
         c.disabled && c.option.disabledReason !== undefined
-          ? stripMarkup(this.i18n.t(undefined, c.option.disabledReason, view))
+          ? stripMarkup(
+              this.i18n.t(
+                c.option.key !== undefined
+                  ? `${c.option.key}.disabledReason`
+                  : undefined,
+                c.option.disabledReason,
+                view,
+              ),
+            )
           : undefined,
     }));
     this.channels.choices.present(presented, ctx);

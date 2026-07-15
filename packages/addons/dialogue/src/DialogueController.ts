@@ -14,10 +14,18 @@
  *   host.add(new DialogueController({ ...createBoxDialogue(theme), avatar, storage }));
  */
 
-import { Component, LoggerKey, isDev, type Logger } from "@yagejs/core";
+import {
+  Component,
+  LocalizationKey,
+  LoggerKey,
+  isDev,
+  type Localization,
+  type Logger,
+} from "@yagejs/core";
 import { InputManagerKey } from "@yagejs/input";
 import {
   DialogueSession,
+  engineI18nAdapter,
   type CommandHandler,
   type DialogueExtraChannel,
   type DialogueFunction,
@@ -66,7 +74,16 @@ export interface DialogueBundle {
 export interface DialogueControllerOptions<
   TStorage extends VariableStorage = VariableStorage,
 > extends DialogueBundle {
-  readonly i18n?: I18nAdapter | undefined;
+  /**
+   * Localization. `true` bridges to the engine's registered
+   * {@link LocalizationKey} plugin — a line's `#line:id` is the catalog key and the
+   * authored text is the fallback, so lines resolve through the game's i18n
+   * library. Pass your own {@link I18nAdapter} to wrap a library directly. Omit
+   * (or `false`) for literal text with `{param}` interpolation. Resolution is at
+   * present time: new lines use the current locale, but a live locale switch
+   * does NOT retro-update a line already on screen.
+   */
+  readonly i18n?: I18nAdapter | boolean | undefined;
   /**
    * The variable storage installed for every `play()`. Persists across
    * plays. Omit for a zero-config `MemoryVariableStorage`; supply your own (or
@@ -186,7 +203,7 @@ export class DialogueController<
         chrome: this.opts.chrome,
       },
       {
-        i18n: this.opts.i18n,
+        i18n: this.resolveI18n(),
         skipMultiplier: this.opts.skipMultiplier,
         // Controller-installed environment — persists across plays.
         storage: this.opts.storage,
@@ -468,6 +485,30 @@ export class DialogueController<
     if (!this.bindingActive) return;
     this.binding?.dispose?.();
     this.bindingActive = false;
+  }
+
+  /**
+   * Resolve the effective i18n adapter from the `i18n` option: an explicit
+   * {@link I18nAdapter} is used as-is; `true` bridges to the registered engine
+   * {@link LocalizationKey} plugin (a dev warning + literal fallback if none is
+   * registered); `false`/omitted leaves the session on its identity adapter.
+   */
+  private resolveI18n(): I18nAdapter | undefined {
+    const opt = this.opts.i18n;
+    if (opt === true) {
+      const localization: Localization | undefined =
+        this.context.tryResolve(LocalizationKey);
+      if (localization === undefined) {
+        this.logger?.warn(
+          "dialogue",
+          "i18n: true but no LocalizationPlugin is registered; dialogue falls back to literal text.",
+        );
+        return undefined;
+      }
+      return engineI18nAdapter(localization);
+    }
+    if (opt === false || opt === undefined) return undefined;
+    return opt;
   }
 
   /**
