@@ -4,6 +4,18 @@ import type { PixiFancyButtonProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
 
+/**
+ * Force @pixi/ui `FancyButton` to re-fit its text after the label changed.
+ * `FancyButton.set text` mutates an existing text view but skips the fit +
+ * recenter pass (only `createTextView` runs it), so a longer/shorter
+ * translation would overflow the button or sit off-center. Re-assigning
+ * `textOffset` is the cheapest public trigger for that pass.
+ */
+export function refitButtonText(btn: FancyButton): void {
+  const offset = btn.textOffset;
+  btn.textOffset = offset;
+}
+
 /** Yoga-aware wrapper around @pixi/ui FancyButton. */
 export class PixiFancyButton extends PixiUIBase<FancyButton> {
   /** Retains the label binding (if any) and re-resolves it on locale change. */
@@ -27,6 +39,9 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
 
     this._textLocalizer = new LocalizedTextController((value) => {
       this.view.text = value;
+      // Setting `.text` alone leaves the previous label's fit scale — re-fit so
+      // a longer translation doesn't overflow.
+      refitButtonText(this.view);
     });
     this.localizers.push(this._textLocalizer);
     if (text !== undefined) this._textLocalizer.seed(text);

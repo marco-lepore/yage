@@ -100,13 +100,23 @@ implements UIElement {
     for (const l of this.localizers) l.detach();
   }
 
+  /** Re-measure this element's Yoga leaf after a localized text change resized
+   *  the view — Yoga caches leaf measurements, so a grown/shrunk label needs an
+   *  explicit dirty mark. Mirrors UIText / UICheckbox. */
+  protected invalidateMeasure(): void {
+    this.yogaNode.markDirty();
+  }
+
   abstract update(props: Record<string, unknown>): void;
 
   destroy(): void {
-    for (const l of this.localizers) l.detach();
+    this.detachLocalization();
     this.disconnectAll();
     this.yogaNode.free();
-    this.view.destroy();
+    // `{ children: true }` so composite widgets tear their internals down — e.g.
+    // Select's ScrollBox, whose own destroy() removes a document `wheel`
+    // listener that a bare `destroy()` would leak.
+    this.view.destroy({ children: true });
   }
 
   /** Override in subclass to disconnect all signals on destroy. */

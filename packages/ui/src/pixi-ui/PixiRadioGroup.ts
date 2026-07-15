@@ -38,6 +38,10 @@ export class PixiRadioGroup extends PixiUIBase<RadioGroup> {
       if (!box) return;
       const localizer = new LocalizedTextController((value) => {
         box.text = value;
+        // A longer label grows the checkbox — re-arrange the internal List so
+        // siblings don't overlap, then re-measure the Yoga leaf.
+        this.view.innerView?.arrangeChildren();
+        this.invalidateMeasure();
       });
       this.localizers.push(localizer);
       if (item.text !== undefined) localizer.seed(item.text);

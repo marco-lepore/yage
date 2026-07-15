@@ -24,6 +24,9 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
 
     this._textLocalizer = new LocalizedTextController((value) => {
       this.view.text = value;
+      // A relabelled checkbox changes its footprint (icon + label) — re-measure
+      // the Yoga leaf so siblings reflow.
+      this.invalidateMeasure();
     });
     this.localizers.push(this._textLocalizer);
     if (props.text !== undefined) this._textLocalizer.seed(props.text);
