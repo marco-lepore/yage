@@ -1,6 +1,6 @@
 import { serializable } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
-import { AnimatedSprite } from "pixi.js";
+import { AnimatedSprite, Ticker } from "pixi.js";
 import type { DisplayAnimatedSprite } from "./public-types.js";
 import { resolveFrames } from "./spritesheet.js";
 import type { FrameSource } from "./spritesheet.js";
@@ -9,6 +9,8 @@ import {
   type VisualComponentData,
   type VisualComponentOptions,
 } from "./VisualComponent.js";
+
+let animationTicker: Ticker | undefined;
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
@@ -37,7 +39,10 @@ export class AnimatedSpriteComponent extends VisualComponent {
   constructor(options: AnimatedSpriteComponentOptions) {
     super(options.layer);
     this._source = options.source;
-    this.animatedSprite = new AnimatedSprite(resolveFrames(options.source));
+    this.animatedSprite = new AnimatedSprite(
+      resolveFrames(options.source),
+      false,
+    );
 
     if (options.anchor) {
       this.animatedSprite.anchor.set(options.anchor.x, options.anchor.y);
@@ -76,6 +81,14 @@ export class AnimatedSpriteComponent extends VisualComponent {
   /** Whether the animation is currently playing. */
   get isPlaying(): boolean {
     return this.animatedSprite.playing;
+  }
+
+  /** Advance playback using engine-scaled time. */
+  update(dt: number): void {
+    if (dt === 0) return;
+    const ticker = (animationTicker ??= new Ticker());
+    ticker.deltaTime = dt * 1000 * Ticker.targetFPMS;
+    this.animatedSprite.update(ticker);
   }
 
   serialize(): AnimatedSpriteData {

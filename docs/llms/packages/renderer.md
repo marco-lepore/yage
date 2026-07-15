@@ -347,6 +347,12 @@ const player = entity.add(new AnimatedSpriteComponent({
 player.play({ speed: 0.15, loop: true });
 ```
 
+Playback runs in engine-scaled component time. `scene.timeScale` and
+`entity.timeScale` compose with Pixi's `animationSpeed`; a paused scene,
+`scene.timeScale = 0`, or a disabled component freezes the animation. Host an
+animation in a separate active overlay scene when it must keep playing while
+gameplay is frozen.
+
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
 ### AnimationController
@@ -385,7 +391,7 @@ class HeroController extends Component {
 }
 ```
 
-`playOneShot(name, options?)` — `options.duration` (seconds) overrides the auto-computed lock duration; the wall-clock fallback uses `(frames * (1 / 60)) / speed`. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
+`playOneShot(name, options?)` — `options.duration` (engine-scaled seconds) overrides the auto-computed lock duration; the fallback uses `(frames * (1 / 60)) / speed`. The lock timer and sprite playback receive the same scene and entity time scaling. Pass an explicit `duration` when synchronising lock release across multiple controllers (see `LayeredAnimationController` below).
 
 ### LayeredAnimationController
 

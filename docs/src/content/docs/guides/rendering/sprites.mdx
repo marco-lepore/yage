@@ -90,6 +90,13 @@ anim.playOneShot("jump", { onComplete: () => anim.play("idle") });
 `AnimatedSpriteComponent` also takes the same `visible` / `tint` / `alpha` /
 `interactive` options as `SpriteComponent` above.
 
+Animated sprites use engine-scaled component time. `scene.timeScale` and
+`entity.timeScale` compose with the animation's `speed`: `0.25` plays at
+quarter speed and `2` plays at double speed. A paused scene,
+`scene.timeScale = 0`, or a disabled `AnimatedSpriteComponent` freezes
+playback. Put an animation in a separate active overlay scene when it must keep
+playing while gameplay is frozen.
+
 **Escape hatch:** `.animatedSprite` is the underlying pixi `AnimatedSprite`.
 
 ### Typing the controller
