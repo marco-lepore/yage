@@ -29,6 +29,20 @@ export class Facing extends Component {
     return y >= 0 ? "S" : "N";
   }
 
+  /**
+   * Nearest-of-`n` direction index for selecting an N-way sprite variant.
+   * `0` = east, increasing clockwise in screen space (+y = south), wrapping
+   * at `n`. `Math.round` picks the nearest sector (ties round up). `sector(8)`
+   * gives the 45° octants an 8-directional sheet needs; the game keeps its own
+   * index→asset table.
+   */
+  sector(n: number): number {
+    const step = (2 * Math.PI) / n;
+    const twoPi = 2 * Math.PI;
+    const angle = ((this.angleRad % twoPi) + twoPi) % twoPi;
+    return Math.round(angle / step) % n;
+  }
+
   /** Point facing along a vector (normalized). Zero vectors are ignored. */
   set(dx: number, dy: number): void {
     const unit = new Vec2(dx, dy).normalize();

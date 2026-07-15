@@ -4,7 +4,7 @@ import type { Entity } from "@yagejs/core";
 import { Abilities } from "../../core/Abilities.js";
 import type { Hit } from "../../core/hit/types.js";
 import { HitReceiver } from "../HitReceiver.js";
-import { guard } from "./guard.js";
+import { block, guard, parry } from "./guard.js";
 
 // HitReceiver's default steps pull in Stagger, whose RigidBodyComponent
 // import can't resolve Rapier headless — stub the class (no Stagger here).
@@ -105,5 +105,72 @@ describe("guard step", () => {
     expect(() => pc._tick(0.2)).toThrow(
       /step "guard" requires a HitReceiver component/,
     );
+  });
+});
+
+describe("parry wrapper", () => {
+  it("negates every hit in its window, reporting 'parried'", () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    const abilities = entity.add(
+      new Abilities([{ id: "p", timeline: [parry({ from: 0, to: 1 })] }]),
+    );
+
+    abilities.play("p");
+    pc._tick(0.1);
+    expect(receiver.receive(makeHit(attacker))).toBe("parried");
+  });
+
+  it("threads punish onto the guard params, omitting it when unset", () => {
+    const withPunish = parry({ from: 0, to: 0.3, punish: { damage: 5 } });
+    expect(withPunish.params.punish).toEqual({ damage: 5 });
+
+    const without = parry({ from: 0, to: 0.3 });
+    expect("punish" in without.params).toBe(false);
+  });
+});
+
+describe("block wrapper", () => {
+  function makeStandardHit(source: Entity): Hit {
+    return {
+      source,
+      direction: new Vec2(1, 0),
+      tags: [],
+      data: { damage: 10, knockback: 100, stun: 1 },
+    };
+  }
+
+  it("scales the hit in place and lets it land as a hit", () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    const abilities = entity.add(
+      new Abilities([
+        {
+          id: "b",
+          timeline: [block({ from: 0, to: 1, damageScale: 0.5, knockbackScale: 0.25 })],
+        },
+      ]),
+    );
+
+    abilities.play("b");
+    pc._tick(0.1);
+    const hit = makeStandardHit(attacker);
+    expect(receiver.receive(hit)).toBe("hit");
+    // stunScale defaults to 0 — a blocked hit never stuns unless opted in.
+    expect(hit.data).toEqual({ damage: 5, knockback: 25, stun: 0 });
+  });
+
+  it("fully mitigates when no scales are given", () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    const abilities = entity.add(
+      new Abilities([{ id: "b", timeline: [block({ from: 0, to: 1 })] }]),
+    );
+
+    abilities.play("b");
+    pc._tick(0.1);
+    const hit = makeStandardHit(attacker);
+    expect(receiver.receive(hit)).toBe("hit");
+    expect(hit.data).toEqual({ damage: 0, knockback: 0, stun: 0 });
   });
 });

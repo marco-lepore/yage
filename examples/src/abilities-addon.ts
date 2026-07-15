@@ -137,18 +137,19 @@ import {
   Projectile,
   REACTION_PRIORITY,
   Stagger,
+  aimAt,
+  block,
   createReportingDelivery,
   defineStep,
-  guard,
   hitbox,
   invulnerable,
+  parry,
   spawn,
 } from "@yagejs-addons/abilities";
 import type {
   AbilityDef,
   AbilitySpawnContext,
   AbilityStep,
-  GuardPolicy,
   Hit,
   HitResult,
   ProjectileConfig,
@@ -260,12 +261,10 @@ const DEFAULT_DIR = 6;
 /** Octant index (0=E, 1=SE, 2=S, ... 7=NE, going clockwise) -> sheet `dirN`. */
 const OCTANT_TO_DIR = [6, 5, 8, 1, 2, 3, 4, 7] as const;
 
-/** Quantize a facing unit vector to the sprite sheet's nearest 45° direction (1-8). */
-function facingToDir(facing: Vec2): number {
-  const deg = (facing.angle() * 180) / Math.PI;
-  const normalizedDeg = ((deg % 360) + 360) % 360;
-  const octant = Math.round(normalizedDeg / 45) % 8;
-  return OCTANT_TO_DIR[octant]!;
+/** Map a facing to the sprite sheet's `dirN` (1-8): `Facing.sector(8)` gives the
+ *  octant (0=E, clockwise), this pack's own table names the matching sheet. */
+function facingToDir(facing: Facing): number {
+  return OCTANT_TO_DIR[facing.sector(DIR_COUNT)]!;
 }
 
 /** Corrects `facingToDir`'s otherwise-uniform octant table for RunForward's
@@ -587,7 +586,7 @@ function playBoxerAnim(
   options: { oneShot: boolean; startFrame?: number; lockDuration?: number },
 ): void {
   const facing = entity.tryGet(Facing);
-  const dir = resolveSheetDir(anim, facing ? facingToDir(facing.unit) : DEFAULT_DIR);
+  const dir = resolveSheetDir(anim, facing ? facingToDir(facing) : DEFAULT_DIR);
   const state = boxerAnimState.get(entity);
   if (state) {
     state.anim = anim;
@@ -1324,27 +1323,20 @@ const DASH: AbilityDef = {
  *  for as long as it's held (the same large-`to`-plus-`cancel()`-on-release
  *  pattern `CHARGE_HOLD` uses) — nothing in this def ever forces a
  *  higher-priority activation onto the lane, so the window stays open across
- *  as many hits as land while the key is down. `policy` reduces every landed
+ *  as many hits as land while the key is down. `block` reduces every landed
  *  hit in place rather than negating it: damage and knockback both survive
- *  at a fraction, and stun is zeroed so a blocked hit never triggers the
- *  stagger reaction. No `punish` — see `PARRY` below for the tap-release
- *  counter-punishing window this cancels into. `PlayerController.updateGuard`
- *  owns the press/hold/release state machine. */
+ *  at a fraction (`damageScale`/`knockbackScale`), and stun stays at its
+ *  default 0 so a blocked hit never triggers the stagger reaction. No parry
+ *  punish — see `PARRY` below for the tap-release counter-punishing window
+ *  this cancels into. `PlayerController.updateGuard` owns the
+ *  press/hold/release state machine. */
 const GUARD_HOLD_ID = "guardHold";
-const BLOCK_DAMAGE_MULT = 0.3;
-const BLOCK_KNOCKBACK_MULT = 0.4;
-const blockPolicy: GuardPolicy = (hit) => {
-  hit.data.damage = (hit.data.damage ?? 0) * BLOCK_DAMAGE_MULT;
-  hit.data.knockback = (hit.data.knockback ?? 0) * BLOCK_KNOCKBACK_MULT;
-  hit.data.stun = 0;
-  return "modified";
-};
 const GUARD_HOLD: AbilityDef = {
   id: GUARD_HOLD_ID,
   cooldown: 0.4,
   timeline: [
     spriteHold({ from: 0, to: 999, name: "guard" }),
-    guard({ from: 0, to: 999, outcome: "blocked", policy: blockPolicy }),
+    block({ from: 0, to: 999, damageScale: 0.3, knockbackScale: 0.4 }),
   ],
 };
 
@@ -1368,11 +1360,9 @@ const PARRY: AbilityDef = {
   duration: 0.44,
   timeline: [
     spriteHold({ from: 0, to: PARRY_ACTIVE_WINDOW, name: "guard" }),
-    guard({
+    parry({
       from: 0,
       to: PARRY_ACTIVE_WINDOW,
-      outcome: "parried",
-      policy: () => "negate",
       punish: { damage: 10, knockback: 335, stun: 0.45 },
     }),
   ],
@@ -1455,11 +1445,7 @@ const SHOOT: AbilityDef = {
         lifetime: 2.5,
         shape: { type: "circle", radius: 7 },
       },
-      aim: (ctx) => {
-        const from = ctx.entity.get(Transform).worldPosition;
-        const player = ctx.entity.scene.findEntity("PlayerEntity");
-        return player ? player.get(Transform).worldPosition.sub(from) : Vec2.RIGHT;
-      },
+      aim: aimAt((ctx) => ctx.entity.scene.findEntity("PlayerEntity")),
       hit: { damage: 10, knockback: 180, stun: 0.3 },
     }),
   ],

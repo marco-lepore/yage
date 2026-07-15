@@ -1,5 +1,5 @@
-import { Vec2 } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
+import { Transform, Vec2 } from "@yagejs/core";
+import type { Entity, Vec2Like } from "@yagejs/core";
 import type { StepContext } from "../core/types.js";
 import { Facing } from "./Facing.js";
 
@@ -37,4 +37,34 @@ export function resolveAim(aim: Aim | undefined, ctx: StepContext): Vec2 {
     );
   }
   return unit;
+}
+
+/**
+ * A fire-time `Aim` resolver that points from the caster to a target entity:
+ * reads both `Transform.worldPosition`s and returns the delta (`resolveAim`
+ * normalizes it). `getTarget` runs when the delivery step fires; throwing
+ * when it returns no entity matches `resolveAim`'s loud-error style.
+ *
+ * With `{ face: true }` the resolver also points the caster's sibling
+ * `Facing` at the target. That side effect happens at fire time, so timeline
+ * steps earlier than the delivery still read the pre-fire facing — pair with
+ * boundary resampling where an earlier step must see the new direction.
+ */
+export function aimAt(
+  getTarget: (ctx: StepContext) => Entity | undefined,
+  options: { face?: boolean } = {},
+): (ctx: StepContext) => Vec2 {
+  return (ctx) => {
+    const target = getTarget(ctx);
+    if (!target) {
+      throw new Error(
+        "Abilities: aimAt's getTarget returned no entity — a delivery step " +
+          "needs a target to aim at.",
+      );
+    }
+    const from = ctx.entity.get(Transform).worldPosition;
+    const delta = target.get(Transform).worldPosition.sub(from);
+    if (options.face) ctx.entity.tryGet(Facing)?.set(delta.x, delta.y);
+    return delta;
+  };
 }

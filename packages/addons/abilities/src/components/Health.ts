@@ -34,21 +34,23 @@ export class Health extends Component {
     return this.hp <= 0;
   }
 
-  /** Subtract HP (clamped at 0), emitting `HealthDamaged` and, on reaching 0, `HealthDied`. Dead entities take no further damage. */
-  takeDamage(amount: number): void {
-    if (this.isDead || amount <= 0) return;
+  /** Subtract HP (clamped at 0), emitting `HealthDamaged` and, on reaching 0, `HealthDied`. Dead entities take no further damage. Returns the HP actually subtracted (0 on a no-op). */
+  takeDamage(amount: number): number {
+    if (this.isDead || amount <= 0) return 0;
     const applied = Math.min(this.hp, amount);
     this.hp -= applied;
     this.entity.emit(HealthDamaged, { amount: applied, hp: this.hp });
     if (this.hp === 0) this.entity.emit(HealthDied);
+    return applied;
   }
 
-  /** Restore HP (clamped at `max`), emitting `HealthHealed`. Dead entities can't be healed back — revive by writing `hp` directly. */
-  heal(amount: number): void {
-    if (this.isDead || amount <= 0) return;
+  /** Restore HP (clamped at `max`), emitting `HealthHealed`. Dead entities can't be healed back — revive by writing `hp` directly. Returns the HP actually restored (0 on a no-op). */
+  heal(amount: number): number {
+    if (this.isDead || amount <= 0) return 0;
     const applied = Math.min(this.max - this.hp, amount);
-    if (applied <= 0) return;
+    if (applied <= 0) return 0;
     this.hp += applied;
     this.entity.emit(HealthHealed, { amount: applied, hp: this.hp });
+    return applied;
   }
 }
