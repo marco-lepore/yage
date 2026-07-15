@@ -1,3 +1,4 @@
+import type { Localization, LocalizedBinding } from "@yagejs/core";
 import type {
   ColorValue,
   DisplayContainer,
@@ -176,6 +177,16 @@ export interface UIElement {
   applyLayout?(): void;
   update(props: Record<string, unknown>): void;
   destroy(): void;
+  /**
+   * Bind this element (and any children) to the scene's localization service so
+   * any {@link LocalizedBinding} text re-resolves on locale change. Propagated
+   * by the owning {@link UIPanel} on add; `undefined` when no plugin is
+   * registered (bindings render their default). Implemented by text-bearing
+   * elements and containers.
+   */
+  attachLocalization?(localization: Localization | undefined): void;
+  /** Release localization subscriptions. Propagated on remove / move. */
+  detachLocalization?(): void;
 }
 
 /** A container element that can hold child UIElements. */
@@ -236,7 +247,9 @@ export interface UITextProps
   extends LayoutProps,
     ConsumeInputProps,
     PointerEventProps {
-  children?: string;
+  /** The label text — a literal, or a {@link LocalizedBinding} (via `msg`)
+   *  that re-resolves when the locale changes. */
+  children?: string | LocalizedBinding;
   style?: Partial<TextStyle>;
   /**
    * Overflow behavior when the rendered text is wider than the layout slot:
@@ -270,7 +283,9 @@ export interface UISplitTextProps
   extends LayoutProps,
     ConsumeInputProps,
     PointerEventProps {
-  children?: string;
+  /** The text to render and segment — a literal, or a {@link LocalizedBinding}
+   *  (via `msg`) that re-resolves on locale change (forcing a resplit). */
+  children?: string | LocalizedBinding;
   style?: Partial<TextStyle>;
   /**
    * Render the segments with a bitmap font (`SplitBitmapText`) instead of
@@ -296,7 +311,9 @@ export interface UIButtonProps
   extends LayoutProps,
     ConsumeInputProps,
     PointerEventProps {
-  children?: string;
+  /** The button label — a literal, or a {@link LocalizedBinding} (via `msg`)
+   *  that re-resolves on locale change. */
+  children?: string | LocalizedBinding;
   onClick?: () => void;
   background?: BackgroundOptions;
   hoverBackground?: BackgroundOptions;
@@ -386,7 +403,9 @@ export interface UICheckboxProps extends LayoutProps, ConsumeInputProps {
   size?: number;
   boxColor?: number;
   checkColor?: number;
-  label?: string;
+  /** The label text — a literal, or a {@link LocalizedBinding} (via `msg`)
+   *  that re-resolves on locale change. */
+  label?: string | LocalizedBinding;
   labelStyle?: Partial<TextStyle>;
   disabled?: boolean;
 }

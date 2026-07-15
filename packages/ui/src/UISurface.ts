@@ -1,4 +1,4 @@
-import { Component, Transform, serializable } from "@yagejs/core";
+import { Component, LocalizationKey, Transform, serializable } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
@@ -166,9 +166,15 @@ export class UISurface extends Component {
     // runs right after, and only for an active entity. Start hidden so a tree
     // mounted on a dormant entity doesn't show before it should.
     this.root.visible = false;
+
+    // Bind the whole tree to the scene's localization service (if any) so
+    // LocalizedBinding text re-resolves on locale change. `undefined` when no
+    // plugin is registered — bindings then render their default.
+    this.root.attachLocalization(this.context.tryResolve(LocalizationKey));
   }
 
   onDestroy(): void {
+    this.root.detachLocalization();
     this.root.container.removeFromParent();
     this.root.destroy();
   }

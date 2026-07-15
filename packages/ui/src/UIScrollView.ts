@@ -1,3 +1,4 @@
+import type { Localization } from "@yagejs/core";
 import { Container, Graphics, Rectangle } from "pixi.js";
 import type { FederatedPointerEvent, FederatedWheelEvent } from "pixi.js";
 import type { Node as YogaNode } from "yoga-layout";
@@ -193,6 +194,16 @@ export class UIScrollView implements UIContainerElement {
 
   insertElementBefore(child: UIElement, before: UIElement): void {
     this.content.insertElementBefore(child, before);
+  }
+
+  /** Bind the scrolled content to the scene's localization service. */
+  attachLocalization(localization: Localization | undefined): void {
+    this.content.attachLocalization(localization);
+  }
+
+  /** Release localization subscriptions for the scrolled content. */
+  detachLocalization(): void {
+    this.content.detachLocalization();
   }
 
   // -- Public scroll API (also the non-federated fallback) -----------------

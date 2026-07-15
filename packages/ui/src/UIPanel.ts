@@ -1,3 +1,4 @@
+import type { Localization } from "@yagejs/core";
 import { Container, Rectangle } from "pixi.js";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
@@ -30,6 +31,7 @@ import {
 } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { ContainerLocalization } from "./localization-lifecycle.js";
 import { PointerEvents } from "./pointer-events.js";
 
 // ---------------------------------------------------------------------------
@@ -76,6 +78,7 @@ export class UIPanel implements UIContainerElement {
   private _destroyed = false;
   private bgOpts: BackgroundOptions | undefined;
   private readonly pointerEvents: PointerEvents;
+  private readonly _localization = new ContainerLocalization();
   // Transparent child that catches pointer/hover events (and the consume-input
   // fallback) across the panel's whole computed box — gaps, padding, and the
   // empty space around shrink-wrapped children, where no descendant paints.
@@ -117,6 +120,7 @@ export class UIPanel implements UIContainerElement {
     this._children.push(child);
     this.container.addChild(child.displayObject);
     this.yogaNode.insertChild(child.yogaNode, this.yogaNode.getChildCount());
+    this._localization.attachChild(child);
   }
 
   removeElement(child: UIElement): void {
@@ -125,6 +129,17 @@ export class UIPanel implements UIContainerElement {
     this._children.splice(idx, 1);
     this.container.removeChild(child.displayObject);
     this.yogaNode.removeChild(child.yogaNode);
+    this._localization.detachChild(child);
+  }
+
+  /** Bind this subtree to the scene's localization service. */
+  attachLocalization(localization: Localization | undefined): void {
+    this._localization.attach(this._children, localization);
+  }
+
+  /** Release localization subscriptions for this subtree. */
+  detachLocalization(): void {
+    this._localization.detach(this._children);
   }
 
   insertElementBefore(child: UIElement, before: UIElement): void {
@@ -144,6 +159,7 @@ export class UIPanel implements UIContainerElement {
     }
 
     this.yogaNode.insertChild(child.yogaNode, beforeIdx);
+    this._localization.attachChild(child);
   }
 
   // ---------------------------------------------------------------------------

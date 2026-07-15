@@ -1,5 +1,6 @@
 import { Container } from "pixi.js";
 import { devWarn } from "@yagejs/core";
+import type { Localization, LocalizedBinding } from "@yagejs/core";
 import type { DisplayContainer, TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Align, Display, Edge, Justify } from "yoga-layout";
@@ -18,6 +19,7 @@ import {
 } from "./yoga-helpers.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
+import { ContainerLocalization } from "./localization-lifecycle.js";
 import { PointerEvents } from "./pointer-events.js";
 import { UIText } from "./UIText.js";
 
@@ -46,6 +48,15 @@ function mergeBg(def: ColorBackground, override?: BackgroundOptions): Background
  */
 function isExplicitSize(v: LayoutValue | undefined): boolean {
   return v !== undefined && v !== "auto";
+}
+
+/** A string label auto-wraps only when non-empty; a binding always does. */
+function hasLabelContent(
+  children: string | LocalizedBinding | undefined,
+): children is string | LocalizedBinding {
+  return typeof children === "string"
+    ? children.length > 0
+    : children !== undefined;
 }
 
 /**
@@ -85,6 +96,7 @@ export class UIButton implements UIContainerElement {
   private pressBgOpts: BackgroundOptions;
   private onClick: (() => void) | undefined;
   private readonly pointerEvents: PointerEvents;
+  private readonly _localization = new ContainerLocalization();
 
   constructor(p: UIButtonProps) {
     this.yogaNode = createYogaNode();
@@ -116,7 +128,7 @@ export class UIButton implements UIContainerElement {
     // having to construct a UIText themselves.
     this._labelStyle = p.textStyle;
     this._labelBitmap = p.bitmap;
-    if (typeof p.children === "string" && p.children.length > 0) {
+    if (hasLabelContent(p.children)) {
       this._label = new UIText(this._labelProps(p.children));
       this.addElement(this._label);
     }
@@ -160,6 +172,7 @@ export class UIButton implements UIContainerElement {
     this._children.push(child);
     this.container.addChild(child.displayObject);
     this.yogaNode.insertChild(child.yogaNode, this.yogaNode.getChildCount());
+    this._localization.attachChild(child);
   }
 
   removeElement(child: UIElement): void {
@@ -168,7 +181,18 @@ export class UIButton implements UIContainerElement {
     this._children.splice(idx, 1);
     this.container.removeChild(child.displayObject);
     this.yogaNode.removeChild(child.yogaNode);
+    this._localization.detachChild(child);
     if (child === this._label) this._label = undefined;
+  }
+
+  /** Bind the label (and any children) to the scene's localization service. */
+  attachLocalization(localization: Localization | undefined): void {
+    this._localization.attach(this._children, localization);
+  }
+
+  /** Release localization subscriptions. */
+  detachLocalization(): void {
+    this._localization.detach(this._children);
   }
 
   insertElementBefore(child: UIElement, before: UIElement): void {
@@ -195,6 +219,7 @@ export class UIButton implements UIContainerElement {
       this.container.addChild(child.displayObject);
     }
     this.yogaNode.insertChild(child.yogaNode, beforeIdx);
+    this._localization.attachChild(child);
   }
 
   /** Apply Yoga-computed positions to children and resize background. */
@@ -247,7 +272,7 @@ export class UIButton implements UIContainerElement {
    * truncate mode. Omits absent keys so `exactOptionalPropertyTypes` stays
    * happy.
    */
-  private _labelProps(children: string): UITextProps {
+  private _labelProps(children: string | LocalizedBinding): UITextProps {
     const props: UITextProps = { children };
     if (this._labelStyle) props.style = this._labelStyle;
     if (this._labelBitmap !== undefined) props.bitmap = this._labelBitmap;
@@ -255,13 +280,19 @@ export class UIButton implements UIContainerElement {
     return props;
   }
 
-  setText(s: string): void {
+  /**
+   * Replace the label text — a literal, or a {@link LocalizedBinding} that
+   * re-resolves on locale change. Promotes a label element on first call when
+   * the button was built without one.
+   */
+  setText(s: string | LocalizedBinding): void {
     if (this._label) {
       this._label.setText(s);
       return;
     }
     // Promote: caller constructed without a string child, but now wants a
-    // label — create one and add it as the first child.
+    // label — create one and add it as the first child. addElement wires it to
+    // localization if the button is already attached.
     this._label = new UIText(this._labelProps(s));
     this.addElement(this._label);
   }
@@ -318,7 +349,7 @@ export class UIButton implements UIContainerElement {
       this._labelStyle = p.textStyle;
       this._label?.setStyle(p.textStyle ?? {});
     }
-    if (p.children !== undefined && typeof p.children === "string") {
+    if (p.children !== undefined) {
       this.setText(p.children);
     }
     // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:
