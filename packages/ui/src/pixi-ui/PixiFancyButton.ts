@@ -45,7 +45,9 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
 
     this.bridgeSignal(this.view.onPress, "onClick", props);
 
-    if (p.text !== undefined) this._textLocalizer.set(p.text);
+    // Present-but-undefined means "reset" per the reconciler contract — clear
+    // the label and drop its binding rather than leaving stale text bound.
+    if ("text" in props) this._textLocalizer.set(p.text ?? "");
     if (p.textStyle !== undefined && this.view.textView) {
       this.view.textView.style = p.textStyle;
     }

@@ -44,7 +44,9 @@ export class PixiCheckbox extends PixiUIBase<CheckBox> {
     this.bridgeSignal(this.view.onCheck, "onChange", props);
 
     if (p.checked !== undefined) this.view.forceCheck(p.checked);
-    if (p.text !== undefined) this._textLocalizer.set(p.text);
+    // Present-but-undefined means "reset" per the reconciler contract — clear
+    // the label and drop its binding rather than leaving stale text bound.
+    if ("text" in props) this._textLocalizer.set(p.text ?? "");
 
     this.updateBase(props);
   }

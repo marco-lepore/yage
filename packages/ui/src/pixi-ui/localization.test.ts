@@ -268,4 +268,59 @@ describe("pixi-ui localization", () => {
     await loc.setLocale("it");
     expect((btn as unknown as { view: { text: string } }).view.text).toBe("Static");
   });
+
+  it("update() with a present-but-undefined label clears text and drops the binding", async () => {
+    const btn = new PixiFancyButton({ text: msg("play", undefined, "Play") });
+    btn.attachLocalization(loc);
+    const view = (btn as unknown as { view: { text: string } }).view;
+    expect(view.text).toBe("Play");
+
+    // Reconciler synthesizes `text: undefined` when the prop is removed.
+    btn.update({ text: undefined });
+    expect(view.text).toBe("");
+
+    // Binding dropped: a later locale change must not revive the old label.
+    await loc.setLocale("it");
+    expect(view.text).toBe("");
+  });
+
+  it("update({ selected }) refreshes the shown label immediately", () => {
+    const select = new PixiSelect({
+      closedBG: undefined as never,
+      openBG: undefined as never,
+      items: [msg("red", undefined, "Red"), msg("blue", undefined, "Blue")],
+      selected: 0,
+    });
+    select.attachLocalization(loc);
+    const view = (select as unknown as {
+      view: { openButton: { text: string }; closeButton: { text: string }; value: number };
+    }).view;
+    expect(view.openButton.text).toBe("Red");
+
+    select.update({ selected: 1 });
+    expect(view.value).toBe(1);
+    expect(view.openButton.text).toBe("Blue");
+    expect(view.closeButton.text).toBe("Blue");
+  });
+
+  it("destroy() disconnects item-press handlers so a late press can't reach the wrapper", () => {
+    const onSelect = vi.fn();
+    const select = new PixiSelect({
+      closedBG: undefined as never,
+      openBG: undefined as never,
+      items: [msg("red", undefined, "Red"), msg("blue", undefined, "Blue")],
+      selected: 0,
+      onSelect,
+    });
+    select.attachLocalization(loc);
+    const view = (select as unknown as {
+      view: { scrollBox: { items: { onPress: { emit(): void } }[] } };
+    }).view;
+
+    select.destroy();
+
+    // Firing a stale button press must not invoke the caller's onSelect.
+    view.scrollBox.items[0]?.onPress.emit();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

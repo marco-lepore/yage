@@ -59,8 +59,10 @@ export class PixiInput extends PixiUIBase<LocalizedInput> {
     this.bridgeSignal(this.view.onChange, "onChange", props);
     this.bridgeSignal(this.view.onEnter, "onEnter", props);
 
-    if (p.placeholder !== undefined) {
-      this._placeholderLocalizer.set(p.placeholder);
+    // Present-but-undefined means "reset" per the reconciler contract — clear
+    // the placeholder and drop its binding rather than leaving stale text bound.
+    if ("placeholder" in props) {
+      this._placeholderLocalizer.set(p.placeholder ?? "");
     }
     if (p.value !== undefined) this.view.value = p.value;
     if (p.secure !== undefined) this.view.secure = p.secure;
