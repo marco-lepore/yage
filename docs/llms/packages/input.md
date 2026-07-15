@@ -38,9 +38,18 @@ input.isPressed("jump"); // held this frame
 input.isJustPressed("fire"); // pressed this frame (edge)
 input.isJustReleased("jump"); // released this frame (edge)
 
-// Hold duration
-input.getHoldDuration("fire"); // ms held, 0 if not held
-input.isHeldFor("fire", 500); // held >= 500ms
+// Hold duration (seconds)
+input.getHoldDuration("fire"); // seconds held, 0 if not held
+input.isHeldFor("fire", 0.5); // held >= 0.5s
+
+// Tap vs hold — call-site thresholds in seconds, no per-action config
+input.isJustHeldFor("fire", 0.5); // hold-start edge: true the frame hold crosses 0.5s
+input.isJustTapped("fire", 0.2); // release frame, held <= 0.2s (a tap)
+input.isJustReleasedAfter("fire", 0.5); // release frame, held >= 0.5s
+input.getReleaseDuration("fire"); // seconds held, valid only on the release frame
+
+// Buffered press — consuming query; true once per press within the window
+input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
 
 // Axis/vector
 input.getAxis("left", "right"); // -1, 0, or 1
@@ -442,7 +451,7 @@ input.hasAction("attack");           // is the name in the action map? Validate
                                      //   catching the throw mid-gesture
 ```
 
-`fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: each frame sample `const charge = getHoldDuration("attack")` **before** `setActionHeld("attack", pointerDown)`, then on `isJustReleased("attack")` fire with the captured `charge`. Sample first because `fireActionUp` (via `setActionHeld(..., false)`) resets `getHoldDuration` to 0 on the release frame.
+`fireActionDown` is idempotent (a repeat does not reset the hold start or re-fire the edge). Hold/charge example: `setActionHeld("attack", pointerDown)` each frame, then on `isJustReleased("attack")` fire with `getReleaseDuration("attack")` (seconds held, valid on the release frame regardless of mirror order).
 
 For deterministic inspector probes with a real controller plugged in, pair
 `new InputPlugin({ pollGamepads: false })` with

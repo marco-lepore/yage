@@ -207,7 +207,7 @@ class Hud extends Component {
       [
         `getStick("left")  x ${stick.x.toFixed(2)}  y ${stick.y.toFixed(2)}`,
         `getVector(4-way)  x ${vec.x.toFixed(0)}  y ${vec.y.toFixed(0)}`,
-        `jump held ${this.input.isPressed("jump") ? `${Math.round(hold)}ms` : "no"}   dash cd ${cd.toFixed(2)}s`,
+        `jump held ${this.input.isPressed("jump") ? `${hold.toFixed(2)}s` : "no"}   dash cd ${cd.toFixed(2)}s`,
         `last button event: ${this.lastEvent}`,
         `prefersTouchControls(): ${prefersTouchControls() ? "yes — would auto-show" : "no — auto would hide (forced on here)"}`,
       ].join("\n"),

@@ -512,8 +512,7 @@ class Hud extends Component {
     // Bottom-centre meter: fast-forward glyph while J held; skip ring while X held.
     const ff = this.input.isPressed("attack");
     const skipHeld = this.input.isPressed("skip");
-    // `getHoldDuration` reports milliseconds; SKIP_HOLD is seconds.
-    const skipT = MathUtils.clamp(this.input.getHoldDuration("skip") / 1000 / SKIP_HOLD, 0, 1);
+    const skipT = MathUtils.clamp(this.input.getHoldDuration("skip") / SKIP_HOLD, 0, 1);
     if (ff === this.meterFf && skipHeld === this.meterSkipHeld && skipT === this.meterSkipT) {
       return;
     }

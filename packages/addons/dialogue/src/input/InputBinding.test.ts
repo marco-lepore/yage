@@ -86,11 +86,11 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
     b.bind(input.asManager(), session.asSession());
 
     input.pressed.add("skip");
-    input.hold.set("skip", 100);
+    input.hold.set("skip", 0.1);
     b.poll();
     expect(session.skipped).toBe(0); // below threshold
 
-    input.hold.set("skip", 600);
+    input.hold.set("skip", 0.6);
     b.poll();
     expect(session.skipped).toBe(1); // crossed threshold
     b.poll();
@@ -100,7 +100,7 @@ describe("KeyboardInputBinding — hold-to-skip", () => {
     input.hold.set("skip", 0);
     b.poll(); // released → re-arm
     input.pressed.add("skip");
-    input.hold.set("skip", 600);
+    input.hold.set("skip", 0.6);
     b.poll();
     expect(session.skipped).toBe(2);
   });

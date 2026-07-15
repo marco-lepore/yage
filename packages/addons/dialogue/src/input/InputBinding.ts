@@ -131,9 +131,8 @@ export class KeyboardInputBinding implements InputBinding {
   private pollSkip(input: InputManager, session: DialogueSession): void {
     const skip = this.actions.skip;
     if (!skip) return;
-    // `isHeldFor` takes milliseconds.
     const ready = skip.some(
-      (a) => input.isPressed(a) && input.isHeldFor(a, this.skipHold * 1000),
+      (a) => input.isPressed(a) && input.isHeldFor(a, this.skipHold),
     );
     if (ready) {
       if (!this.skipFired) {
