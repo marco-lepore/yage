@@ -16,8 +16,10 @@ import type {
   ReactiveStore,
   StoreLeaves,
   EncodedStore,
+  Localization,
+  LocalizableText,
 } from "@yagejs/core";
-import { QueryCacheKey, STATE_KIND } from "@yagejs/core";
+import { LocalizationKey, QueryCacheKey, STATE_KIND, resolveStatic } from "@yagejs/core";
 import { shallowEqual } from "./shallowEqual.js";
 
 // ---------------------------------------------------------------------------
@@ -179,6 +181,49 @@ function defaultSnapshotReader(
         )}).`,
       );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Localization
+// ---------------------------------------------------------------------------
+
+/**
+ * The scene's localization service, or `undefined` when no
+ * {@link LocalizationPlugin} is registered. Use {@link useMessage} to resolve a
+ * binding; reach for this directly to call `setLocale` or read `locale`.
+ */
+export function useLocalization(): Localization | undefined {
+  // Read the context nullably (not via useEngine, which throws): a bare
+  // reconciler tree with no UIRoot has no engine, and a binding then resolves
+  // statically to its default rather than crashing.
+  const ctx = useContext(EngineCtx);
+  return useMemo(
+    () => ctx?.tryResolve(LocalizationKey),
+    [ctx],
+  );
+}
+
+/**
+ * Resolve a {@link LocalizableText} to a string, re-rendering the component on
+ * every locale change (or lazy catalog load). A plain string passes through;
+ * a binding resolves against the registered adapter, or renders its default
+ * when no plugin is registered.
+ *
+ * Bindings are immutable — pass a new binding to change `values`. The hook
+ * re-formats on every parent render, so an inline `msg(...)` is fine.
+ */
+export function useMessage(value: LocalizableText): string {
+  const localization = useLocalization();
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      localization ? localization.subscribe(onChange) : () => {},
+    [localization],
+  );
+  const getSnapshot = useCallback((): string => {
+    if (typeof value === "string") return value;
+    return localization ? localization.resolve(value) : resolveStatic(value);
+  }, [localization, value]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 // ---------------------------------------------------------------------------

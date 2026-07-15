@@ -1,6 +1,8 @@
-import { useState, forwardRef } from "react";
+import { isValidElement, useState, forwardRef } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
+import type { LocalizedBinding } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
+import { useMessage } from "./hooks.js";
 import {
   UIPanel,
   UIText as UITextNode,
@@ -43,6 +45,22 @@ import type {
 } from "@yagejs/ui";
 import { useFloating } from "./use-floating.js";
 
+/**
+ * True for a {@link LocalizedBinding} descriptor — a plain object with a string
+ * `id` that is neither a React element nor an array. Lets the label-bearing
+ * wrappers treat a binding like a string primitive and hand it to `<Text>`,
+ * which resolves it reactively via {@link useMessage}.
+ */
+function isLocalizedBinding(value: unknown): value is LocalizedBinding {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !isValidElement(value) &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Prop types for JSX elements
 //
@@ -84,12 +102,13 @@ export interface ButtonProps extends Omit<
   /** Press-state background override — see {@link hoverBg}. */
   pressBg?: BackgroundOptions;
   /**
-   * String for the common labeled-button case — auto-wrapped in a centered
-   * `<Text>` with `textStyle` applied. Pass `ReactNode`s (Text + Image rows,
-   * nested panels) for richer button content; those render as flex children
-   * of the button.
+   * String (or a {@link LocalizedBinding} via `msg`) for the common labeled-
+   * button case — auto-wrapped in a centered `<Text>` with `textStyle` applied
+   * (a binding re-resolves on locale change). Pass `ReactNode`s (Text + Image
+   * rows, nested panels) for richer button content; those render as flex
+   * children of the button.
    */
-  children?: ReactNode;
+  children?: ReactNode | LocalizedBinding;
 }
 
 export type ImageProps = UIElementImageProps;
@@ -148,11 +167,12 @@ export function ZStack(props: PropsWithChildren<PanelProps>): React.JSX.Element 
 
 export interface TooltipProps {
   /**
-   * Tooltip body. A `string` / `number` is auto-wrapped in a `<Text>`
-   * styled with `textStyle`; pass `ReactNode`s for rich content (icon +
-   * text rows, stat blocks, …).
+   * Tooltip body. A `string` / `number` (or a {@link LocalizedBinding} via
+   * `msg`, which re-resolves on locale change) is auto-wrapped in a `<Text>`
+   * styled with `textStyle`; pass `ReactNode`s for rich content (icon + text
+   * rows, stat blocks, …).
    */
-  content: ReactNode;
+  content: ReactNode | LocalizedBinding;
   /**
    * Preferred side, optionally aligned (`"top"`, `"bottom-start"`,
    * `"right-end"`, …). Default `"top"` (center-aligned). The bubble flips
@@ -225,13 +245,14 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
     ...(maxWidth !== undefined ? { maxWidth } : {}),
   });
 
+  const binding = isLocalizedBinding(content);
   const body =
-    typeof content === "string" || typeof content === "number" ? (
+    typeof content === "string" || typeof content === "number" || binding ? (
       <UIText {...(textStyle ? { style: textStyle } : {})}>
-        {String(content)}
+        {binding ? content : String(content)}
       </UIText>
     ) : (
-      content
+      (content as ReactNode)
     );
 
   // Headless: a bare layout container (single portal/fallback root). Style
@@ -284,11 +305,15 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
   );
 }
 
-/** A text label. */
+/** A text label. `children` may be a `LocalizedBinding` (via `msg`); it
+ *  resolves reactively and re-renders on locale change. */
 export function UIText(props: TextProps): React.JSX.Element {
   const { children, ...rest } = props;
+  // Resolve any binding to a string BEFORE the reconciler — the React
+  // re-render (not the panel attach lifecycle) drives locale updates here.
+  const text = useMessage(children ?? "");
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UITextNode} _consumesText {...rest}>{children}</ui-element>;
+  return <ui-element _ctor={UITextNode} _consumesText {...rest}>{text}</ui-element>;
 }
 
 export type SplitTextProps = UIElementSplitTextProps;
@@ -311,8 +336,9 @@ export type SplitTextProps = UIElementSplitTextProps;
 export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
   function SplitText(props, ref) {
     const { children, ...rest } = props;
+    const text = useMessage(children ?? "");
     // @ts-expect-error — custom reconciler element type
-    return <ui-element _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>{children}</ui-element>;
+    return <ui-element _ctor={UISplitTextNode} _consumesText {...rest} ref={ref}>{text}</ui-element>;
   },
 );
 
@@ -329,17 +355,21 @@ export const SplitText = forwardRef<UISplitTextNode, SplitTextProps>(
  */
 export function Button(props: ButtonProps): React.JSX.Element {
   const { children, hoverBg, pressBg, textStyle, truncate, bitmap, ...rest } = props;
+  const binding = isLocalizedBinding(children);
   const isPrimitiveLabel =
-    typeof children === "string" || typeof children === "number";
+    typeof children === "string" || typeof children === "number" || binding;
+  // A binding flows through <Text>, which resolves it reactively; a string /
+  // number is wrapped verbatim.
+  const label = binding ? children : String(children);
   const content = isPrimitiveLabel
     ? <UIText
         {...(textStyle ? { style: textStyle } : {})}
         {...(truncate ? { truncate } : {})}
         {...(bitmap !== undefined ? { bitmap } : {})}
       >
-        {String(children)}
+        {label}
       </UIText>
-    : children;
+    : (children as ReactNode);
   // `rest` still carries `bg` (see ButtonProps) — the reconciler's `_bgAlias`
   // marker expands it to `background`. `hoverBg`/`pressBg` are Button-only
   // sugar, mapped inline since no other element has those two states.

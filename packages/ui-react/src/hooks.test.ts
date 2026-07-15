@@ -12,6 +12,7 @@ import {
   useStore,
   useQuery,
   useSceneSelector,
+  useMessage,
   notifyFrame,
 } from "./hooks.js";
 import {
@@ -20,6 +21,9 @@ import {
   QueryCache,
   Entity,
   Component,
+  LocalizationKey,
+  LocalizationPlugin,
+  msg,
   createRecord,
   createValue,
   createCounter,
@@ -28,6 +32,7 @@ import {
   createList,
   createStore,
 } from "@yagejs/core";
+import type { LocalizationAdapter } from "@yagejs/core";
 
 class Position extends Component {}
 
@@ -517,5 +522,86 @@ describe("useSceneSelector", () => {
     expect(renderCount).toBe(1);
     // Selector was called though
     expect(counter).toBeGreaterThan(1);
+  });
+});
+
+class FakeMsgAdapter implements LocalizationAdapter {
+  locale = "en";
+  private readonly listeners = new Set<() => void>();
+  constructor(private readonly table: Record<string, Record<string, string>>) {}
+  t(id: string, fallback: string | undefined): string {
+    return this.table[this.locale]?.[id] ?? fallback ?? id;
+  }
+  subscribe(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  setLocale(next: string): void {
+    this.locale = next;
+    for (const l of this.listeners) l();
+  }
+}
+
+describe("useMessage", () => {
+  let container: HTMLDivElement;
+  let root: ReturnType<typeof createDomRoot>;
+
+  beforeEach(() => {
+    container = createContainer();
+    root = createDomRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("passes a plain string through", () => {
+    let result: string | undefined;
+    function Comp() {
+      result = useMessage("literal");
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toBe("literal");
+  });
+
+  it("renders a binding's default with no engine provider", () => {
+    let result: string | undefined;
+    function Comp() {
+      result = useMessage(msg("k", { n: 3 }, "{n} coins"));
+      return null;
+    }
+    act(() => root.render(createElement(Comp)));
+    expect(result).toBe("3 coins");
+  });
+
+  it("resolves against the plugin and re-renders on locale change", async () => {
+    const plugin = new LocalizationPlugin({
+      adapter: new FakeMsgAdapter({
+        en: { greet: "Hello" },
+        fr: { greet: "Bonjour" },
+      }),
+    });
+    const ctx = {
+      tryResolve: (key: unknown) => (key === LocalizationKey ? plugin : undefined),
+    } as never;
+
+    let result: string | undefined;
+    function Comp() {
+      result = useMessage(msg("greet"));
+      return null;
+    }
+    act(() =>
+      root.render(
+        createElement(EngineCtx.Provider, { value: ctx }, createElement(Comp)),
+      ),
+    );
+    expect(result).toBe("Hello");
+
+    await act(async () => {
+      await plugin.setLocale("fr");
+    });
+    expect(result).toBe("Bonjour");
   });
 });
