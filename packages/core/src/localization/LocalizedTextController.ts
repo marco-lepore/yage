@@ -43,13 +43,13 @@ export class LocalizedTextController {
    * its statically-resolved text. Call once at construction, before `attach`.
    */
   seed(value: LocalizableText): void {
-    this._binding = typeof value === "string" ? undefined : value;
+    this._binding = this.retain(value);
   }
 
   /** Resolve `value` against the current context and apply it now. A binding is
    *  retained; a plain string clears any retained binding. */
   set(value: LocalizableText): void {
-    this._binding = typeof value === "string" ? undefined : value;
+    this._binding = this.retain(value);
     this.apply(this.resolve(value));
   }
 
@@ -58,13 +58,21 @@ export class LocalizedTextController {
    * registered): re-resolve the retained binding against the real catalog and
    * subscribe to revision bumps. With no plugin this is a no-op — the identity
    * adapter is locale-static, so the value seeded at construction stands.
+   *
+   * Idempotent: any previous subscription is released first, so re-attaching a
+   * still-attached sink (e.g. a React reorder that moves a mounted child) can't
+   * leak the prior subscription.
    */
   attach(localization: Localization | undefined): void {
+    this._unsubscribe?.();
+    this._unsubscribe = undefined;
     this._localization = localization;
     if (!localization) return;
     if (this._binding) this.onRefresh(localization.resolve(this._binding));
+    // Capture the service locally — a bump must resolve against the localization
+    // this subscription belongs to, never a `this._localization` since cleared.
     this._unsubscribe = localization.subscribe(() => {
-      if (this._binding) this.onRefresh(this._localization!.resolve(this._binding));
+      if (this._binding) this.onRefresh(localization.resolve(this._binding));
     });
   }
 
@@ -73,6 +81,17 @@ export class LocalizedTextController {
     this._unsubscribe?.();
     this._unsubscribe = undefined;
     this._localization = undefined;
+  }
+
+  /**
+   * A plain string clears the binding; a binding is deep-cloned so the retained
+   * descriptor is insulated from later mutation of the caller's object. `values`
+   * are JSON-safe by contract, so `structuredClone` round-trips them exactly —
+   * this is what keeps a mutated-after-assign object from leaking into a later
+   * resolve or a save snapshot (bindings are immutable).
+   */
+  private retain(value: LocalizableText): LocalizedBinding | undefined {
+    return typeof value === "string" ? undefined : structuredClone(value);
   }
 
   private resolve(value: LocalizableText): string {

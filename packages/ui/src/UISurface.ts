@@ -1,4 +1,5 @@
 import { Component, LocalizationKey, Transform, serializable } from "@yagejs/core";
+import type { LocalizableText } from "@yagejs/core";
 import type { TextStyle } from "@yagejs/renderer";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import type { DisplayContainer } from "@yagejs/renderer";
@@ -70,13 +71,13 @@ export class UISurface extends Component {
     this.root.update(handlers);
   }
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
+  /** Add a text element — a literal or a {@link LocalizedBinding} (via `msg`). */
+  text(content: LocalizableText, style?: Partial<TextStyle>): UIText {
     return this.root.text(content, style);
   }
 
-  /** Add a button element. */
-  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
+  /** Add a button element — label may be a literal or a {@link LocalizedBinding}. */
+  button(label: LocalizableText, opts: Omit<UIButtonProps, "children">): UIButton {
     return this.root.button(label, opts);
   }
 

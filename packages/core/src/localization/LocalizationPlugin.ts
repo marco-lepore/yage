@@ -61,6 +61,10 @@ export class LocalizationPlugin implements Plugin, Localization {
     this._unsubscribe = this._adapter.subscribe(() => {
       // Coalesce onChange fired during a driven switch — the switch bumps once.
       if (this._switching) return;
+      // The catalog changed outside a driven switch (e.g. the game drove the
+      // i18n library directly). Track the adapter's locale so `locale` stays
+      // honest, then re-resolve.
+      this._locale.set(this._adapter.locale);
       this._revision.increment();
     });
   }
@@ -84,13 +88,19 @@ export class LocalizationPlugin implements Plugin, Localization {
 
   /**
    * Resolve a binding to a string. Wraps `adapter.t` so a throw renders the
-   * binding's `default` (or its `id`) instead of breaking the render loop.
+   * binding's `default` (or its `id`) instead of breaking the render loop —
+   * interpolating `{tokens}` on that fallback path too, matching the
+   * plugin-absent identity path.
    */
   resolve(binding: LocalizedBinding): string {
     try {
       return this._adapter.t(binding.id, binding.default, binding.values);
     } catch {
-      return binding.default ?? binding.id;
+      return identityLocalizationAdapter.t(
+        binding.id,
+        binding.default,
+        binding.values,
+      );
     }
   }
 

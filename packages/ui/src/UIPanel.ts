@@ -1,4 +1,4 @@
-import type { Localization } from "@yagejs/core";
+import type { LocalizableText, Localization } from "@yagejs/core";
 import { Container, Rectangle } from "pixi.js";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
@@ -166,8 +166,8 @@ export class UIPanel implements UIContainerElement {
   // Builder methods (backward compat)
   // ---------------------------------------------------------------------------
 
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
+  /** Add a text element — a literal or a {@link LocalizedBinding} (via `msg`). */
+  text(content: LocalizableText, style?: Partial<TextStyle>): UIText {
     const t = new UIText(
       style ? { children: content, style } : { children: content },
     );
@@ -175,8 +175,8 @@ export class UIPanel implements UIContainerElement {
     return t;
   }
 
-  /** Add a button element. */
-  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
+  /** Add a button element — label may be a literal or a {@link LocalizedBinding}. */
+  button(label: LocalizableText, opts: Omit<UIButtonProps, "children">): UIButton {
     const b = new UIButton({ children: label, ...opts });
     this.addElement(b);
     return b;

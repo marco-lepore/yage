@@ -113,6 +113,14 @@ describe("LocalizationPlugin.resolve — never throws", () => {
     const { plugin } = installed(adapter);
     expect(plugin.resolve(msg("x"))).toBe("x");
   });
+
+  it("interpolates the default on the catch path when the adapter throws", () => {
+    const adapter = new MockAdapter();
+    adapter.throwOnT = true;
+    const { plugin } = installed(adapter);
+    // The fallback must interpolate, matching the plugin-absent identity path.
+    expect(plugin.resolve(msg("coins", { n: 3 }, "{n} coins"))).toBe("3 coins");
+  });
 });
 
 describe("LocalizationPlugin.setLocale", () => {
@@ -148,6 +156,18 @@ describe("LocalizationPlugin.setLocale", () => {
     adapter.emit();
 
     expect(plugin.revision()).toBe(2);
+  });
+
+  it("tracks the adapter's locale on an onChange outside a switch", () => {
+    // The game drove the i18n library directly; the adapter changed locale and
+    // fired onChange. `locale` must reflect the adapter, not stay stale.
+    const adapter = new MockAdapter();
+    const { plugin } = installed(adapter);
+
+    adapter.locale = "de";
+    adapter.emit();
+
+    expect(plugin.locale).toBe("de");
   });
 
   it("last concurrent caller wins; superseded call commits nothing", async () => {

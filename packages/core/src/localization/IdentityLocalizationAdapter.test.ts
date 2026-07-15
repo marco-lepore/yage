@@ -22,6 +22,12 @@ describe("interpolate", () => {
   it("stringifies non-string values", () => {
     expect(interpolate("{a}-{b}", { a: true, b: null })).toBe("true-null");
   });
+
+  it("leaves the token intact when String() would throw, never throwing", () => {
+    // `{ toString: null }` is a valid JsonValue object but has no primitive
+    // conversion — String() throws. The identity adapter must not.
+    expect(interpolate("{a}", { a: { toString: null } })).toBe("{a}");
+  });
 });
 
 describe("IdentityLocalizationAdapter", () => {

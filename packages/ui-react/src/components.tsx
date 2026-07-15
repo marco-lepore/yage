@@ -395,10 +395,22 @@ export function ProgressBar(props: ProgressBarProps): React.JSX.Element {
   return <ui-element _ctor={UIProgressBarNode} {...props} />;
 }
 
-/** An interactive checkbox with optional label. */
+/**
+ * An interactive checkbox with optional label. `label` may be a
+ * {@link LocalizedBinding} (via `msg`); it resolves reactively and re-renders on
+ * locale change. The label is a prop (not a child through `<Text>`), so — unlike
+ * the auto-wrapped `<Button>` label — it's resolved here with {@link useMessage}
+ * rather than by the panel attach lifecycle, which the reconciler doesn't drive.
+ */
 export function Checkbox(props: CheckboxProps): React.JSX.Element {
+  const { label, ...rest } = props;
+  // Resolve any binding to a string BEFORE the reconciler; called
+  // unconditionally to respect the rules of hooks. Omit the prop entirely when
+  // absent so a later removal diffs to `undefined` and tears the label down.
+  const resolvedLabel = useMessage(label ?? "");
+  const labelProp = label !== undefined ? { label: resolvedLabel } : {};
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={UICheckboxNode} {...props} />;
+  return <ui-element _ctor={UICheckboxNode} {...rest} {...labelProp} />;
 }
 
 // ---------------------------------------------------------------------------

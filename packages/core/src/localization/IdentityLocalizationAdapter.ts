@@ -6,15 +6,23 @@ const TOKEN = /\{(\w+)\}/g;
 /**
  * Replace `{token}` with `values.token`; leaves unknown tokens untouched.
  * Own-property check only — `{constructor}`/`{toString}` must not stringify
- * inherited `Object.prototype` members.
+ * inherited `Object.prototype` members. `String()` is guarded: a JSON-safe but
+ * primitive-hostile value (e.g. `{ toString: null }`) leaves the token intact
+ * rather than throwing, keeping the never-throw guarantee of the last-resort
+ * identity adapter.
  */
 export function interpolate(
   text: string,
   values: Readonly<Record<string, JsonValue>>,
 ): string {
-  return text.replace(TOKEN, (whole, name: string) =>
-    Object.hasOwn(values, name) ? String(values[name]) : whole,
-  );
+  return text.replace(TOKEN, (whole, name: string) => {
+    if (!Object.hasOwn(values, name)) return whole;
+    try {
+      return String(values[name]);
+    } catch {
+      return whole;
+    }
+  });
 }
 
 /**

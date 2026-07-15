@@ -107,4 +107,33 @@ describe("LocalizedTextController", () => {
     c.attach(undefined);
     expect(apply).not.toHaveBeenCalled();
   });
+
+  it("clones values on assign — mutating the caller's object can't leak in", () => {
+    const c = new LocalizedTextController(() => {});
+    const values = { n: 1 };
+    c.set(msg("coins", values, "{n} coins"));
+    values.n = 2; // caller mutates after assigning
+    expect(c.binding?.values).toEqual({ n: 1 });
+  });
+
+  it("re-attaching a still-attached controller does not leak the prior subscription", async () => {
+    const refreshed: string[] = [];
+    const c = new LocalizedTextController(
+      () => {},
+      (t) => refreshed.push(t),
+    );
+    c.seed(msg("greet"));
+    const loc = makeLocalization({
+      en: { greet: "Hello" },
+      fr: { greet: "Bonjour" },
+    });
+    c.attach(loc); // subscribes once
+    c.attach(loc); // re-attach: prior subscription must be released first
+    refreshed.length = 0;
+
+    await loc.setLocale("fr");
+
+    // A leaked first subscription would push "Bonjour" twice.
+    expect(refreshed).toEqual(["Bonjour"]);
+  });
 });

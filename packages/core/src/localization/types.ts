@@ -42,10 +42,15 @@ export interface LocalizationAdapter {
   /** Current locale tag, e.g. `"en"`, `"fr-CA"`. */
   readonly locale: string;
   /**
-   * Resolve `id` to a string. `fallback` is the authored literal (a missing
-   * key with a `fallback` renders it; missing key with no `fallback` renders
-   * the `id`). `values` feed interpolation. Should not throw — but callers
-   * wrap it so a throw can't break the render loop.
+   * Resolve `id` to a string. `values` feed interpolation.
+   *
+   * Resolution order the adapter is expected to honor: the active locale, then
+   * the locale's parent (e.g. `fr-CA` → `fr`), then any fallback locales the
+   * adapter is configured with, then the authored `fallback` literal, and
+   * finally the `id` itself. So `fallback` is the last resort *before* the id —
+   * an adapter must not prefer it over a parent/fallback locale that has the
+   * key. `values` feed interpolation. Should not throw — but callers wrap it so
+   * a throw can't break the render loop.
    */
   t(
     id: string,

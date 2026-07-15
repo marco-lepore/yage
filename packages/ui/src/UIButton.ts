@@ -357,7 +357,13 @@ export class UIButton implements UIContainerElement {
       this._labelStyle = p.textStyle;
       this._label?.setStyle(p.textStyle ?? {});
     }
-    if (p.children !== undefined) {
+    // Only a string / binding label drives setText. A composed React child
+    // (e.g. a `<UIText>` element) also arrives on `p.children` when the parent
+    // rerenders; the reconciler already manages it as a flex child, so treating
+    // it as a label here would spawn a stray internal label and read the React
+    // element as a binding. `hasLabelContent` filters those out, matching the
+    // constructor's gate.
+    if ("children" in p && hasLabelContent(p.children)) {
       this.setText(p.children);
     }
     // `"truncate" in p` (not `!== undefined`) so an explicit `{ truncate:
