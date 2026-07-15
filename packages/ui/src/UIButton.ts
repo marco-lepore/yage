@@ -50,13 +50,21 @@ function isExplicitSize(v: LayoutValue | undefined): boolean {
   return v !== undefined && v !== "auto";
 }
 
-/** A string label auto-wraps only when non-empty; a binding always does. */
+/**
+ * A string label auto-wraps only when non-empty; a {@link LocalizedBinding}
+ * always does. The binding is matched by shape (a plain object with a string
+ * `id`) so a composed-element child — which the reconciler also surfaces on
+ * `children` — is left to render as a flex child, not mistaken for a label.
+ */
 function hasLabelContent(
-  children: string | LocalizedBinding | undefined,
+  children: unknown,
 ): children is string | LocalizedBinding {
-  return typeof children === "string"
-    ? children.length > 0
-    : children !== undefined;
+  if (typeof children === "string") return children.length > 0;
+  return (
+    typeof children === "object" &&
+    children !== null &&
+    typeof (children as { id?: unknown }).id === "string"
+  );
 }
 
 /**
