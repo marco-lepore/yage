@@ -1,4 +1,8 @@
-import type { Localization, LocalizedBinding } from "@yagejs/core";
+import type {
+  LocalizableText,
+  Localization,
+  LocalizedBinding,
+} from "@yagejs/core";
 import type {
   ColorValue,
   DisplayContainer,
@@ -428,7 +432,9 @@ export interface PixiFancyButtonProps extends LayoutProps, ConsumeInputProps {
   hoverView?: PixiViewType;
   pressedView?: PixiViewType;
   disabledView?: PixiViewType;
-  text?: string;
+  /** Button label — a literal, or a {@link LocalizedBinding} (via `msg`) that
+   *  re-resolves on locale change. */
+  text?: LocalizableText;
   icon?: DisplayContainer;
   textStyle?: Partial<TextStyle>;
   padding?: number;
@@ -447,7 +453,9 @@ export interface PixiCheckboxProps extends LayoutProps, ConsumeInputProps {
   onChange?: (checked: boolean) => void;
   checkedView: PixiViewType;
   uncheckedView: PixiViewType;
-  text?: string;
+  /** Label text — a literal, or a {@link LocalizedBinding} (via `msg`) that
+   *  re-resolves on locale change. */
+  text?: LocalizableText;
   textStyle?: Partial<TextStyle>;
   textOffset?: { x?: number; y?: number };
 }
@@ -482,7 +490,10 @@ export interface PixiSliderProps extends LayoutProps, ConsumeInputProps {
 export interface PixiInputProps extends LayoutProps, ConsumeInputProps {
   bg: PixiViewType;
   textStyle?: Partial<TextStyle>;
-  placeholder?: string;
+  /** Placeholder shown while empty — a literal, or a {@link LocalizedBinding}
+   *  (via `msg`) that re-resolves on locale change. The typed `value` stays a
+   *  plain string: it is user input, never localized. */
+  placeholder?: LocalizableText;
   value?: string;
   maxLength?: number;
   secure?: boolean;
@@ -540,7 +551,11 @@ export interface UIScrollViewProps extends LayoutProps, ConsumeInputProps {
 export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
   closedBG: PixiViewType;
   openBG: PixiViewType;
-  items: string[];
+  /** Dropdown options — literals, or {@link LocalizedBinding}s (via `msg`) that
+   *  re-resolve on locale change (item text, the selected label, and each
+   *  item's emitted `onSelect` text all update; open/selected/scroll state is
+   *  preserved). */
+  items: LocalizableText[];
   selected?: number;
   textStyle?: Partial<TextStyle>;
   itemTextStyle?: Partial<TextStyle>;

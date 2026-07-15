@@ -1,4 +1,5 @@
 import { CheckBox, RadioGroup } from "@pixi/ui";
+import { LocalizedTextController, resolveStatic } from "@yagejs/core";
 import type { PixiRadioGroupProps, PixiCheckboxProps } from "../types.js";
 import { PixiUIBase } from "./PixiUIBase.js";
 import { resolvePixiView } from "./view-resolver.js";
@@ -12,7 +13,7 @@ function makeCheckBox(p: PixiCheckboxProps): CheckBox {
       text: p.textStyle,
       textOffset: p.textOffset,
     },
-    text: p.text,
+    text: p.text !== undefined ? resolveStatic(p.text) : undefined,
     checked: p.checked ?? false,
   } as ConstructorParameters<typeof CheckBox>[0]);
 }
@@ -29,6 +30,18 @@ export class PixiRadioGroup extends PixiUIBase<RadioGroup> {
       selectedItem: props.selected,
     } as ConstructorParameters<typeof RadioGroup>[0]);
     super(view, props);
+
+    // One localizer per item label — each re-resolves its CheckBox's text on
+    // locale change, leaving selection and layout untouched.
+    props.items.forEach((item, i) => {
+      const box = checkboxes[i];
+      if (!box) return;
+      const localizer = new LocalizedTextController((value) => {
+        box.text = value;
+      });
+      this.localizers.push(localizer);
+      if (item.text !== undefined) localizer.seed(item.text);
+    });
 
     if (props.onChange) view.onChange.connect(props.onChange);
     this.prevProps = { ...props };

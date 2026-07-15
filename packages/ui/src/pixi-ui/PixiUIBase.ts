@@ -1,3 +1,4 @@
+import type { Localization, LocalizedTextController } from "@yagejs/core";
 import type { DisplayContainer } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
 import { Display, MeasureMode } from "yoga-layout";
@@ -8,13 +9,21 @@ import { createYogaNode, applyLayoutProps } from "../yoga-helpers.js";
  * Abstract base class for wrapping @pixi/ui components as Yoga-aware UIElements.
  *
  * Handles: Yoga node + measure function, prevProps storage, bridgeSignal helper,
- * visible prop, applyLayout, and destroy cleanup.
+ * visible prop, applyLayout, localization attach/detach fan-out, and destroy
+ * cleanup.
  */
 export abstract class PixiUIBase<T extends DisplayContainer>
 implements UIElement {
   readonly yogaNode: YogaNode;
   protected readonly view: T;
   protected prevProps: Record<string, unknown> = {};
+  /**
+   * Localized-text sinks owned by the subclass — one per translatable field.
+   * The base fans `attach` / `detach` (propagated by the owning panel) out to
+   * them so any {@link LocalizedBinding} text re-resolves on locale change.
+   * Empty for widgets with no text.
+   */
+  protected readonly localizers: LocalizedTextController[] = [];
 
   get displayObject(): DisplayContainer {
     return this.view;
@@ -79,9 +88,22 @@ implements UIElement {
     Object.assign(this.prevProps, props);
   }
 
+  /** Bind every text sink to the scene's localization service (propagated by
+   *  the owning panel). Re-resolves retained bindings against the real catalog
+   *  and re-applies on locale change. */
+  attachLocalization(localization: Localization | undefined): void {
+    for (const l of this.localizers) l.attach(localization);
+  }
+
+  /** Release every text sink's localization subscription. */
+  detachLocalization(): void {
+    for (const l of this.localizers) l.detach();
+  }
+
   abstract update(props: Record<string, unknown>): void;
 
   destroy(): void {
+    for (const l of this.localizers) l.detach();
     this.disconnectAll();
     this.yogaNode.free();
     this.view.destroy();
