@@ -1,22 +1,16 @@
-import { Transform, Vec2, entityClassHasTrait } from "@yagejs/core";
+import { Vec2, entityClassHasTrait } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
-import {
-  AbilitySpawned,
-  resolveAbilitySource,
-} from "../../core/AbilitySpawned.js";
+import { AbilitySpawned } from "../../core/AbilitySpawned.js";
 import type {
   AbilitySpawnContext,
   AbilitySpawnedClass,
   AbilitySpawnParams,
 } from "../../core/AbilitySpawned.js";
-import { resolveHitSpec } from "../../core/hit/delivery.js";
 import type { HitSpec } from "../../core/hit/delivery.js";
 import type { StandardHitData } from "../../core/hit/types.js";
 import type { PointStep, StepContext } from "../../core/types.js";
-import { resolveAim } from "../aim.js";
+import { resolveAbilitySpawn } from "../spawnResolution.js";
 import type { Aim } from "../aim.js";
-import { HitReceiver } from "../HitReceiver.js";
-import { createReportingDelivery } from "../reportedDelivery.js";
 
 /** Parameters shared by `spawn` and built-ins implemented through it. */
 export interface SpawnParams<
@@ -84,40 +78,28 @@ function fireSpawn<TClass extends AbilitySpawnedClass, TData>(
     );
   }
 
-  const aim = resolveAim(params.aim, ctx);
-  const transform = ctx.entity.tryGet(Transform);
-  if (!transform) {
-    throw new Error(
-      `Abilities: step "${kind}" requires a Transform component on the entity.`,
-    );
-  }
+  const resolved = resolveAbilitySpawn<TData>({
+    ctx,
+    kind,
+    ...(params.aim !== undefined ? { aim: params.aim } : {}),
+    ...(params.team !== undefined ? { team: params.team } : {}),
+    ...(params.hit !== undefined ? { hit: params.hit } : {}),
+    ...(params.tags ? { tags: params.tags } : {}),
+  });
 
   const position = params.offset
-    ? transform.worldPosition.add(
-        new Vec2(params.offset.x, params.offset.y).rotate(aim.angle()),
+    ? resolved.transform.worldPosition.add(
+        new Vec2(params.offset.x, params.offset.y).rotate(resolved.aim.angle()),
       )
-    : transform.worldPosition;
-  const caster = resolveAbilitySource(ctx.entity);
-  const inheritedTeam = ctx.entity.hasTrait(AbilitySpawned)
-    ? ctx.entity.abilitySpawnContext?.team
-    : undefined;
-  const team = params.team ?? inheritedTeam ?? caster.tryGet(HitReceiver)?.team;
-  const delivery =
-    params.hit === undefined
-      ? undefined
-      : createReportingDelivery<TData>({
-          source: caster,
-          data: resolveHitSpec(params.hit, ctx),
-          ...(team !== undefined ? { team } : {}),
-          ...(params.tags ? { tags: params.tags } : {}),
-        });
+    : resolved.transform.worldPosition;
   const context: AbilitySpawnContext<AbilitySpawnParams<TClass>> = {
-    caster,
-    aim,
+    caster: resolved.caster,
+    aim: resolved.aim,
     position,
     params: params.params,
-    ...(team !== undefined ? { team } : {}),
-    ...(delivery ? { delivery } : {}),
+    ...(resolved.team !== undefined ? { team: resolved.team } : {}),
+    ...(resolved.delivery ? { delivery: resolved.delivery } : {}),
+    activation: ctx.activation,
   };
 
   ctx.entity.scene.spawn(params.entity, context);

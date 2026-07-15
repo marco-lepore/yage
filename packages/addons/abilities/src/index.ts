@@ -1,4 +1,4 @@
-export { Abilities } from "./core/Abilities.js";
+export { Abilities, AbilityEnded, AbilityStarted } from "./core/Abilities.js";
 export { defineStep } from "./core/defineStep.js";
 export {
   AbilitySpawned,
@@ -12,6 +12,7 @@ export type {
   AbilitySpawnParams,
 } from "./core/AbilitySpawned.js";
 export type {
+  AbilityActivation,
   AbilityDef,
   AbilityStep,
   PlayRejection,

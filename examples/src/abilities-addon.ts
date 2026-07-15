@@ -123,6 +123,7 @@ import { DebugPlugin } from "@yagejs/debug";
 import { AudioManagerKey, AudioPlugin, sound } from "@yagejs/audio";
 import {
   Abilities,
+  AbilityEnded,
   Facing,
   Health,
   HealthDamaged,
@@ -151,6 +152,7 @@ import type {
   Hit,
   HitResult,
   ProjectileConfig,
+  WindowStep,
 } from "@yagejs-addons/abilities";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
@@ -1086,6 +1088,19 @@ const invulnFlash = defineStep<{ baseTint: number }>("invulnFlash", {
   },
 });
 
+/** Pairs `invulnerable` with `invulnFlash` at identical `from`/`to`/`every`,
+ *  so a def author can't let the mechanical window and its visual drift
+ *  apart the way two independently-authored steps could. */
+function invulnerableWithFlash(args: {
+  from: number;
+  to: number;
+  every?: number;
+  baseTint: number;
+}): readonly [WindowStep<object>, WindowStep<{ baseTint: number }>] {
+  const { baseTint, ...window } = args;
+  return [invulnerable(window), invulnFlash({ ...window, baseTint })];
+}
+
 // ---------------------------------------------------------------------------
 // Ability defs — every timeline below is windup → active → recovery:
 // `duration` extends past the last hitbox/effect window so committing to an
@@ -1259,17 +1274,21 @@ const CHARGE_RELEASE: AbilityDef = {
  *  committed swing. Force-only. Rides the same (now ~12%-slower) `attack3`
  *  sprite as the finisher, so its own window is scaled the same way.
  *  `invulnerable` covers the counter start-to-active-end (the same
- *  def-authored pattern `DASH` uses), paired with `invulnFlash` at the same
- *  `from`/`to` so a second enemy landing a hit mid-counter is visibly
- *  no-sold instead of only mechanically ignored. */
+ *  def-authored pattern `DASH` uses), paired via `invulnerableWithFlash` so
+ *  a second enemy landing a hit mid-counter is visibly no-sold instead of
+ *  only mechanically ignored. */
 const COUNTER: AbilityDef = {
   id: "counter",
   priority: SUPER_ARMOR_PRIORITY,
   duration: 0.381,
   timeline: [
     spriteAnim({ at: 0, name: "attack3" }),
-    invulnerable({ from: 0, to: 0.213 }),
-    invulnFlash({ from: 0, to: 0.213, every: INVULN_FLASH_INTERVAL, baseTint: PLAYER_TINT }),
+    ...invulnerableWithFlash({
+      from: 0,
+      to: 0.213,
+      every: INVULN_FLASH_INTERVAL,
+      baseTint: PLAYER_TINT,
+    }),
     hitbox({
       from: 0.101,
       to: 0.213,
@@ -1289,10 +1308,14 @@ const DASH: AbilityDef = {
     // A brief 0.03s startup before the roll (and its invulnerability) takes
     // over — dash still reads as fast, but doesn't erase input-to-motion
     // entirely — and a ~0.12s landing recovery afterward, so the roll can't
-    // be chained frame-perfectly into the next action. `invulnFlash` pairs
-    // the same window with a visible pale strobe (see its doc).
-    invulnerable({ from: 0.03, to: 0.24 }),
-    invulnFlash({ from: 0.03, to: 0.24, every: INVULN_FLASH_INTERVAL, baseTint: PLAYER_TINT }),
+    // be chained frame-perfectly into the next action. `invulnerableWithFlash`
+    // pairs the same window with a visible pale strobe (see its doc).
+    ...invulnerableWithFlash({
+      from: 0.03,
+      to: 0.24,
+      every: INVULN_FLASH_INTERVAL,
+      baseTint: PLAYER_TINT,
+    }),
     dashMove({ from: 0.03, to: 0.24, speed: 480 }),
   ],
 };
@@ -1442,10 +1465,12 @@ const SHOOT: AbilityDef = {
   ],
 };
 
-/** The four player abilities that occupy the `"main"` lane, keyed by id —
- *  used by `PlayerController.attackSlotState` to read the shared attack/
- *  charge hotbar slot's own progress off the active def's `duration`,
- *  since no single `cooldownRemaining(id)` covers all four. */
+/** The player abilities that occupy the `"main"` lane, keyed by id.
+ *  `PlayerController.updateCombat`'s buffered dash-cancel looks a def up by
+ *  id here to scan its hitbox window's close time (`activeCloseTime`).
+ *  `attackSlotState` below only checks id membership against this table; it
+ *  reads the active def's own `duration`/`elapsed` off
+ *  `Abilities.active("main")`. */
 const PLAYER_MAIN_DEFS: Readonly<Record<string, AbilityDef>> = {
   attack1: ATTACK_1,
   attack2: ATTACK_2,
@@ -1693,6 +1718,13 @@ class PlayerController extends Component {
       playHitSfx(this.entity, { speed: 1.8, volume: 0.55 });
       this.counterattack(hit.source);
     });
+    // Releases the hold-block whenever something else takes the "main" lane
+    // away from it (e.g. death forcing a stagger reaction). A no-op for the
+    // hold's own deliberate release (`updateGuard` already clears
+    // `guardHeld` before calling `cancel`, so this sees it already false).
+    this.listen(this.entity, AbilityEnded, ({ activation }) => {
+      if (activation.def.id === GUARD_HOLD_ID) this.guardHeld = false;
+    });
   }
 
   update(dt: number): void {
@@ -1749,17 +1781,17 @@ class PlayerController extends Component {
   /** Hotbar read for the shared attack/charge slot: it has no single
    *  `cooldownRemaining` id to poll (four ids share it — the three combo
    *  stages plus the charge release, and the parry counter besides), so
-   *  it's driven off the currently-active def's own elapsed time against
-   *  its `duration` instead. Idle (or holding a def not in
-   *  `PLAYER_MAIN_DEFS`, e.g. `dash`/`guardHold`/`parry` occupying the same
-   *  lane) reads as ready. */
+   *  it's driven off the active run's own `elapsed`/`duration` instead —
+   *  both resolved directly off the activation handle, no per-id def
+   *  lookup needed. Idle (or holding a def not in `PLAYER_MAIN_DEFS`, e.g.
+   *  `dash`/`guardHold`/`parry` occupying the same lane) reads as ready. */
   attackSlotState(): { ratio: number; label: string } {
     if (this.charging) return { ratio: 0, label: "HOLD" };
-    const id = this.abilities.activeId("main");
-    const def = id ? PLAYER_MAIN_DEFS[id] : undefined;
-    if (!def) return { ratio: 1, label: "0.0" };
-    const elapsed = this.abilities.elapsed("main") ?? 0;
-    const duration = def.duration ?? 0;
+    const activation = this.abilities.active("main");
+    if (!activation || !(activation.def.id in PLAYER_MAIN_DEFS)) {
+      return { ratio: 1, label: "0.0" };
+    }
+    const { elapsed, duration } = activation;
     if (duration <= 0) return { ratio: 1, label: "0.0" };
     const ratio = Math.min(1, elapsed / duration);
     return { ratio, label: Math.max(0, duration - elapsed).toFixed(1) };
@@ -1936,12 +1968,9 @@ class PlayerController extends Component {
 
   private updateGuard(dt: number): void {
     if (this.guardHeld) {
-      if (this.abilities.activeId("main") !== GUARD_HOLD_ID) {
-        // Something else already ended the hold (e.g. death) — nothing left
-        // to release.
-        this.guardHeld = false;
-        return;
-      }
+      // If something else already ended the hold (e.g. death forcing a
+      // stagger reaction), the `AbilityEnded` listener in `onAdd` has
+      // already cleared `guardHeld` by the time this runs.
       this.guardHoldElapsed += dt;
       if (this.input.isJustReleased("guard")) {
         this.guardHeld = false;
@@ -2131,23 +2160,24 @@ class EnemyAI extends Component {
   // circlers spread around the player instead of stacking on one spot.
   private readonly orbitDir = Math.random() < 0.5 ? 1 : -1;
 
-  // Edge-detects "my own melee/shoot just ended" to release the engagement
-  // token the instant it recovers — the same isActive("main") transition
-  // shape `PlayerController.updateCombat` uses for its combo window.
-  private wasEngaging = false;
-
   onAdd(): void {
     this.listen(this.entity, HealthDied, () => this.die());
     this.listen(this.entity, HitReceived, (hit) => reactToHit(this.entity, this.pc, ENEMY_TINT, hit));
+    // Releases the engagement token the instant my own "main" lane ability
+    // ends, for any reason (recovers naturally, gets interrupted) — filtered
+    // to that lane, since `melee`/`shoot`/the forced stagger reaction are
+    // the only things this token tracks. `release` is a no-op unless I'm the
+    // current holder, so this doesn't need to track whether I was engaging.
+    this.listen(this.entity, AbilityEnded, ({ activation }) => {
+      if (activation.lane !== "main") return;
+      tokenOf(this.entity).release(this.entity);
+    });
   }
 
   update(): void {
     const token = tokenOf(this.entity);
     const holdsToken = token.hasToken(this.entity);
     const mainBusy = this.abilities.isActive("main");
-
-    if (this.wasEngaging && !mainBusy) token.release(this.entity);
-    this.wasEngaging = holdsToken && mainBusy;
 
     const player = this.scene.findEntity("PlayerEntity");
     const playerDead = player?.tryGet(Health)?.isDead ?? true;

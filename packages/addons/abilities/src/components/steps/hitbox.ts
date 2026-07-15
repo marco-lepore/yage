@@ -1,18 +1,10 @@
-import { Transform } from "@yagejs/core";
 import type { Vec2Like } from "@yagejs/core";
 import type { ColliderShape } from "@yagejs/physics";
 import { defineStep } from "../../core/defineStep.js";
-import {
-  resolveAbilitySource,
-  resolveAbilityTeam,
-} from "../../core/AbilitySpawned.js";
 import type { StepContext } from "../../core/types.js";
-import { resolveHitSpec } from "../../core/hit/delivery.js";
 import type { HitSpec } from "../../core/hit/delivery.js";
-import { resolveAim } from "../aim.js";
+import { resolveAbilitySpawn } from "../spawnResolution.js";
 import type { Aim } from "../aim.js";
-import { HitReceiver } from "../HitReceiver.js";
-import { createReportingDelivery } from "../reportedDelivery.js";
 import { Hitbox } from "../../entities/Hitbox.js";
 
 export interface HitboxParams {
@@ -38,9 +30,10 @@ export interface HitboxParams {
   follow?: boolean;
 }
 
-// Per-activation spawn ledger: ctx is unique per (entity, activation) and each
-// step's `params` is unique in a timeline, so (ctx, params) identifies one
-// open window. WeakMap-by-ctx releases when the activation ends.
+// Per-activation spawn ledger: ctx is unique per (entity, activation), and
+// `Abilities`'s construction-time validator rejects the same step object
+// appearing twice in one timeline, so (ctx, params) identifies one open
+// window. WeakMap-by-ctx releases when the activation ends.
 const open = new WeakMap<StepContext, Map<object, Hitbox>>();
 
 /**
@@ -53,27 +46,20 @@ const open = new WeakMap<StepContext, Map<object, Hitbox>>();
  */
 export const hitbox = defineStep<HitboxParams>("hitbox", {
   enter(params, ctx) {
-    const dir = resolveAim(params.aim, ctx); // throws on no aim + no Facing, or zero aim
-    const transform = ctx.entity.tryGet(Transform);
-    if (!transform) {
-      throw new Error(
-        `Abilities: step "hitbox" requires a Transform component on the entity.`,
-      );
-    }
-    const from = transform.worldPosition;
-    const team =
-      params.team ??
-      resolveAbilityTeam(ctx.entity) ??
-      ctx.entity.tryGet(HitReceiver)?.team;
-    const delivery = createReportingDelivery({
-      source: resolveAbilitySource(ctx.entity),
-      data: resolveHitSpec(params.hit, ctx),
-      ...(team !== undefined ? { team } : {}),
+    const resolved = resolveAbilitySpawn({
+      ctx,
+      kind: "hitbox",
+      ...(params.aim !== undefined ? { aim: params.aim } : {}),
+      ...(params.team !== undefined ? { team: params.team } : {}),
+      hit: params.hit,
       ...(params.tags ? { tags: params.tags } : {}),
     });
+    // `hit` is required on `HitboxParams`, so `resolveAbilitySpawn` always
+    // resolves a delivery here.
+    const delivery = resolved.delivery!;
     const entity = ctx.entity.scene.spawn(Hitbox, {
-      position: from,
-      rotation: dir.angle(),
+      position: resolved.transform.worldPosition,
+      rotation: resolved.aim.angle(),
       shape: params.shape,
       ...(params.offset ? { offset: params.offset } : {}),
       delivery,

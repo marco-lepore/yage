@@ -90,6 +90,32 @@ describe("invulnerable step", () => {
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
   });
 
+  it("two concurrent lanes reusing the same step object don't close each other's window", () => {
+    const { entity, pc, receiver } = setup();
+    const { entity: attacker } = createMockEntity("attacker");
+    // One `invulnerable(...)` value shared across two defs in different
+    // lanes — a game might do this to keep a shared window definition in
+    // one place. Each lane's own `enter`/`exit` must still be independent.
+    const sharedWindow = invulnerable({ from: 0, to: 1 });
+    const abilities = entity.add(
+      new Abilities([
+        { id: "a", lane: "main", timeline: [sharedWindow] },
+        { id: "b", lane: "side", timeline: [sharedWindow] },
+      ]),
+    );
+
+    abilities.play("a");
+    abilities.play("b");
+    pc._tick(0.1); // both enter
+    expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
+
+    abilities.cancel("main"); // closes only lane "a"'s window
+    expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored"); // lane "b" still open
+
+    abilities.cancel("side");
+    expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
+  });
+
   it("throws on an entity with no HitReceiver", () => {
     const { entity } = createMockEntity("no-receiver");
     const pc = entity.add(new ProcessComponent());

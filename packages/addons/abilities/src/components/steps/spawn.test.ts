@@ -70,6 +70,10 @@ describe("spawn step", () => {
       new Abilities([
         {
           id: "orb",
+          // Explicit duration past the point step, so the run is still
+          // "active" after the tick below — needed for the identity
+          // assertions, which read the live `active(lane)` handle.
+          duration: 1,
           timeline: [
             spawn({
               at: 0,
@@ -83,7 +87,8 @@ describe("spawn step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("orb");
+    const result = entity.get(Abilities).play("orb");
+    if (!result.ok) throw new Error("expected play to succeed");
     pc._tick(0.01);
 
     const context = findOrb(scene.findEntities()).abilitySpawnContext;
@@ -94,6 +99,24 @@ describe("spawn step", () => {
     expect(context?.team).toBe("player");
     expect(context?.params).toEqual({ power: 4, label: "arc" });
     expect(context?.delivery).toBeDefined();
+    expect(context?.activation?.def.id).toBe("orb");
+    expect(context?.activation?.lane).toBe("main");
+    // Identity, not just field equality: the same handle threaded through
+    // PlayResult, AbilitySpawnContext, and the live `active(lane)` read.
+    expect(context?.activation).toBe(result.activation);
+    expect(context?.activation).toBe(entity.get(Abilities).active("main"));
+  });
+
+  it("omits activation on a direct scene.spawn not fired through the spawn step", () => {
+    const { scene } = setup();
+    const caster = scene.spawn("direct-caster");
+    const orb = scene.spawn(Orb, {
+      caster,
+      aim: new Vec2(1, 0),
+      position: new Vec2(0, 0),
+      params: { power: 1, label: "direct" },
+    });
+    expect(orb.abilitySpawnContext?.activation).toBeUndefined();
   });
 
   it("omits delivery when the step has no hit", () => {
@@ -285,6 +308,56 @@ describe("spawn step", () => {
       .findEntities()
       .find((candidate): candidate is Parent => candidate instanceof Parent);
     expect(parent?.child?.abilitySpawnContext?.caster).toBe(entity);
+  });
+
+  it("a nested spawn's activation.entity is the spawned attack that ran it, not the original caster", () => {
+    const { entity, scene, pc } = setup();
+    entity.add(
+      new Abilities([
+        {
+          id: "orb",
+          timeline: [
+            spawn({
+              at: 0,
+              entity: Orb,
+              params: { power: 1, label: "parent" },
+            }),
+          ],
+        },
+      ]),
+    );
+    entity.get(Abilities).play("orb");
+    pc._tick(0.01);
+    const orb = findOrb(scene.findEntities());
+
+    const orbPc = orb.add(new ProcessComponent());
+    orb.add(
+      new Abilities([
+        {
+          id: "child",
+          timeline: [
+            spawn({
+              at: 0,
+              entity: Orb,
+              params: { power: 2, label: "child" },
+              aim: { x: 1, y: 0 },
+            }),
+          ],
+        },
+      ]),
+    );
+    orb.get(Abilities).play("child");
+    orbPc._tick(0.01);
+
+    const children = scene
+      .findEntities()
+      .filter(
+        (candidate): candidate is Orb =>
+          candidate instanceof Orb && candidate !== orb,
+      );
+    expect(children).toHaveLength(1);
+    expect(children[0]!.abilitySpawnContext?.caster).toBe(entity); // original caster preserved
+    expect(children[0]!.abilitySpawnContext?.activation?.entity).toBe(orb); // this run's owner
   });
 
   it("requires params to match the spawned entity class", () => {

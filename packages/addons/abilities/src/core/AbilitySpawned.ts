@@ -1,5 +1,6 @@
 import { defineTrait } from "@yagejs/core";
 import type { Entity, SetupParams, Vec2 } from "@yagejs/core";
+import type { AbilityActivation } from "./types.js";
 import type { HitDelivery } from "./hit/delivery.js";
 
 /** Values resolved when an ability spawns a game-owned attack entity. */
@@ -16,6 +17,17 @@ export interface AbilitySpawnContext<TParams = unknown> {
   readonly team?: string;
   /** Ready reporting delivery when the step declares a hit. */
   readonly delivery?: HitDelivery;
+  /**
+   * The `spawn` step's own run, when one fired this spawn — absent for a
+   * direct `scene.spawn(entity, context)` built by game code with no
+   * timeline behind it. Poll `activation?.state !== "active"` in `update()`
+   * for a spawned entity's wind-down: robust through natural end, cancel,
+   * interrupt, and caster destruction alike, with no subscription to clean
+   * up. For a reactive listener instead, subscribe on `activation.entity`
+   * (this run's owner) — not `caster`, which for a nested spawn is the
+   * *original* caster, not necessarily the entity that ran this spawn.
+   */
+  readonly activation?: AbilityActivation;
 }
 
 /** Structural contract enforced by the `AbilitySpawned` trait. */

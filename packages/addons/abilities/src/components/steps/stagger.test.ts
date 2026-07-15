@@ -104,7 +104,10 @@ describe("scenario: a recovery skill breaks out of an active stagger", () => {
     expect(abilities.activeId()).toBe("stagger");
     expect(stagger.active).toBe(true);
 
-    expect(abilities.play("burst")).toEqual({ ok: true });
+    expect(abilities.play("burst")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
     expect(abilities.activeId()).toBe("burst");
     expect(stagger.active).toBe(false); // exit ran on interrupt
     expect(captured.velocities.at(-1)).toEqual({ x: 0, y: 0 });
@@ -135,7 +138,10 @@ describe("scenario: a potion plays in its own lane during a main-lane stagger", 
     pc._tick(0.1);
     expect(abilities.isActive("main")).toBe(true);
 
-    expect(abilities.play("potion")).toEqual({ ok: true });
+    expect(abilities.play("potion")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
     expect(abilities.isActive("item")).toBe(true);
 
     pc._tick(0.05);

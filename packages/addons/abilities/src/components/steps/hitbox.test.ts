@@ -517,6 +517,49 @@ describe("hitbox step", () => {
     expect(dealt).toEqual(["hit"]);
   });
 
+  it("falls back to the original caster's HitReceiver team when the spawned attack's own context has none", () => {
+    // The spawned attack itself carries no team (no explicit context team,
+    // no HitReceiver of its own) — team resolution must reach past it to
+    // the resolved caster's own HitReceiver, not stop at the running
+    // entity's (`ctx.entity`'s) own, which is what a team-fallback drift
+    // between `hitbox` and `spawn` used to do.
+    const { entity: caster, scene } = createMockEntity("caster");
+    caster.add(new Transform({ position: Vec2.ZERO }));
+    caster.add(new HitReceiver({ team: "boss" }));
+    const spawned = scene.spawn(SpawnedAttacker, {
+      caster,
+      aim: Vec2.RIGHT,
+      position: new Vec2(5, 0),
+      params: {},
+    });
+    spawned.add(new Transform({ position: new Vec2(5, 0) }));
+    spawned.add(new Facing());
+    const pc = spawned.add(new ProcessComponent());
+    spawned.add(
+      new Abilities([
+        {
+          id: "child-hit",
+          timeline: [
+            hitbox({
+              from: 0,
+              to: 0.2,
+              shape: { type: "circle", radius: 5 },
+              hit: { damage: 2 },
+            }),
+          ],
+        },
+      ]),
+    );
+
+    spawned.get(Abilities).play("child-hit");
+    pc._tick(0.01);
+    const target = scene.spawn(Target);
+    target.add(new Transform({ position: new Vec2(10, 0) }));
+    fireHitboxTrigger(findHitbox(scene), target);
+
+    expect(target.received[0]?.team).toBe("boss");
+  });
+
   it("wires the caster in as the follow target when follow is set", () => {
     const { entity, scene, pc } = setup();
     entity.add(new Facing());

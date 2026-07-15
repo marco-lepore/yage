@@ -153,7 +153,10 @@ describe("reactionStep with a sibling Abilities", () => {
     });
     const attacker = scene.spawn("attacker");
 
-    expect(abilities.play("swing")).toEqual({ ok: true });
+    expect(abilities.play("swing")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
     pc._tick(0.01); // opens the swing's window
 
     reactionStep(makeHit(attacker, { knockback: 100, stun: 0.2 }), receiver);

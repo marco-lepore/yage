@@ -6,6 +6,32 @@ export interface StepContext {
   entity: Entity;
   def: AbilityDef;
   abilities: Abilities;
+  /** The run this step belongs to — same object as `Abilities.active(lane)` while it's active. */
+  activation: AbilityActivation;
+}
+
+/**
+ * A stable handle to one ability run: identity-comparable with `===`, and
+ * the same object everywhere it appears — `Abilities.active()`,
+ * `StepContext`, `AbilitySpawnContext`, `PlayResult`, and both lifecycle
+ * event payloads. A same-def restart (see `Abilities`'s activation rule)
+ * creates a new handle; it never reuses one, since a later run can share the
+ * earlier run's ability id and lane.
+ */
+export interface AbilityActivation {
+  readonly def: AbilityDef;
+  /** The lane this run occupies. */
+  readonly lane: string;
+  /** The entity running this activation — the spawned attack itself for a nested run, not necessarily the original caster. */
+  readonly entity: Entity;
+  /** Resolved duration: `def.duration`, or the timeline's last step end — floored to a small positive epsilon for a degenerate (empty, or all-instant-at-0) timeline that would otherwise resolve to 0. */
+  readonly duration: number;
+  /** Seconds since the run started, clamped to `duration`. Stops advancing once the run ends. */
+  readonly elapsed: number;
+  /** `"active"` while running; flips to a terminal value exactly once, when the run ends. */
+  readonly state: "active" | "completed" | "cancelled";
+  /** Started via `force()` rather than `play()`. Does not mean uninterruptible — see `AbilityDef.priority`. */
+  readonly forced: boolean;
 }
 
 /**
@@ -89,7 +115,7 @@ export interface AbilityDef {
  */
 export type PlayRejection = "cooldown" | "busy";
 
-/** Result of `play`/`force`: check `ok` for the common case; on refusal, `reason` says why. */
+/** Result of `play`/`force`: check `ok` for the common case; on success, `activation` is the new run's handle; on refusal, `reason` says why. */
 export type PlayResult =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly activation: AbilityActivation }
   | { readonly ok: false; readonly reason: PlayRejection };

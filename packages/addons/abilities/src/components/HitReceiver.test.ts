@@ -185,11 +185,13 @@ describe("HitReceiver — i-frames", () => {
 describe("HitReceiver — manual invulnerability", () => {
   it("an open invulnerability window ignores every hit regardless of team or steps", () => {
     let steps = 0;
-    const { receiver } = setup({ steps: [
+    const { receiver } = setup({
+      steps: [
         () => {
           steps++;
         },
-      ] });
+      ],
+    });
     const { entity: attacker } = createMockEntity("attacker");
 
     const key = {};
@@ -223,14 +225,55 @@ describe("HitReceiver — manual invulnerability", () => {
   });
 });
 
+describe("HitReceiver — isInvulnerable", () => {
+  it("false when neither source is armed", () => {
+    const { receiver } = setup();
+    expect(receiver.isInvulnerable).toBe(false);
+  });
+
+  it("true while a manual invulnerability window is open", () => {
+    const { receiver } = setup();
+    const key = {};
+    receiver.openInvulnerability(key);
+    expect(receiver.isInvulnerable).toBe(true);
+    receiver.closeInvulnerability(key);
+    expect(receiver.isInvulnerable).toBe(false);
+  });
+
+  it("true while post-hit i-frames are armed", () => {
+    const { receiver } = setup({ iframes: 0.5 });
+    const { entity: attacker } = createMockEntity("attacker");
+
+    receiver.receive(makeHit(attacker));
+    expect(receiver.isInvulnerable).toBe(true);
+    receiver.update(0.5);
+    expect(receiver.isInvulnerable).toBe(false);
+  });
+
+  it("stays true when both sources are armed at once, until the last one clears", () => {
+    const { receiver } = setup({ iframes: 0.5 });
+    const { entity: attacker } = createMockEntity("attacker");
+
+    receiver.receive(makeHit(attacker)); // arms i-frames
+    const key = {};
+    receiver.openInvulnerability(key);
+    receiver.update(0.5); // i-frames elapse; the manual window is still open
+    expect(receiver.isInvulnerable).toBe(true);
+    receiver.closeInvulnerability(key);
+    expect(receiver.isInvulnerable).toBe(false);
+  });
+});
+
 describe("HitReceiver — guards", () => {
   it("a 'negate' verdict ends resolution with the guard's outcome label; apply steps don't run", () => {
     let steps = 0;
-    const { receiver } = setup({ steps: [
+    const { receiver } = setup({
+      steps: [
         () => {
           steps++;
         },
-      ] });
+      ],
+    });
     receiver.openGuard(guardParams({ outcome: "parried" }));
     const { entity: attacker } = createMockEntity("attacker");
 
@@ -240,11 +283,13 @@ describe("HitReceiver — guards", () => {
 
   it("a 'pass' verdict continues resolution to the apply stages", () => {
     let steps = 0;
-    const { receiver } = setup({ steps: [
+    const { receiver } = setup({
+      steps: [
         () => {
           steps++;
         },
-      ] });
+      ],
+    });
     receiver.openGuard(guardParams({ policy: () => "pass" }));
     const { entity: attacker } = createMockEntity("attacker");
 
@@ -265,9 +310,9 @@ describe("HitReceiver — guards", () => {
     );
     const { entity: attacker } = createMockEntity("attacker");
 
-    expect(
-      receiver.receive(makeHit(attacker, { data: { damage: 10 } })),
-    ).toBe("hit");
+    expect(receiver.receive(makeHit(attacker, { data: { damage: 10 } }))).toBe(
+      "hit",
+    );
     expect(health.hp).toBe(5);
   });
 

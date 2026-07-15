@@ -142,6 +142,18 @@ export class HitReceiver<TData = StandardHitData> extends Component {
     return this._iframesRemaining;
   }
 
+  /**
+   * Whether any invulnerability source is currently active: a def-authored
+   * `invulnerable()` window, or the post-hit i-frames timer. Merges both so
+   * a presenter can react to "is this hit going to be ignored" from one
+   * read regardless of which armed it — frame-diff the boolean for edges;
+   * it doesn't distinguish the source (read `iframesRemaining` alongside for
+   * the post-hit-only case).
+   */
+  get isInvulnerable(): boolean {
+    return this.openInvulnerabilities.size > 0 || this._iframesRemaining > 0;
+  }
+
   /** Open a guard window (the `guard` step's `enter` hook). */
   openGuard(params: GuardParams<TData>): void {
     this.openGuards.add(params);
@@ -210,14 +222,10 @@ export class HitReceiver<TData = StandardHitData> extends Component {
   };
 
   private readonly iframesStage: HitStage<TData, HitReceiver<TData>> = () => {
-    if (this.openInvulnerabilities.size > 0 || this._iframesRemaining > 0) {
-      return "ignored";
-    }
+    if (this.isInvulnerable) return "ignored";
   };
 
-  private readonly guardStage: HitStage<TData, HitReceiver<TData>> = (
-    hit,
-  ) => {
+  private readonly guardStage: HitStage<TData, HitReceiver<TData>> = (hit) => {
     for (const guard of this.openGuards) {
       const verdict = guard.policy(hit, this);
       if (verdict === "pass") continue;
