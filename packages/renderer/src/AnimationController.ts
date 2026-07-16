@@ -163,11 +163,11 @@ export class AnimationController<
   }
 
   /**
-   * Calculate the wall-clock duration (seconds) of a named animation.
+   * Calculate the engine-scaled duration (seconds) of a named animation.
    *
    * Frame-rate independent: PixiJS normalises `deltaTime` via
-   * `Ticker.targetFPMS` (0.06), so the formula holds at any actual fps.
-   * Inaccurate only if `Ticker.shared.speed` is changed from 1.
+   * `Ticker.targetFPMS` (0.06), so the formula holds at any actual fps. The
+   * controller timer and animated sprite both receive engine-scaled time.
    */
   calcDuration(name: T): number {
     const def = this._anims[name];

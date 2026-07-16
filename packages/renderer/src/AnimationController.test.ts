@@ -293,7 +293,7 @@ describe("AnimationController", () => {
     expect(ctrl.current).toBe("walk");
   });
 
-  it("calcDuration() computes wall-clock seconds", () => {
+  it("calcDuration() computes engine-scaled seconds", () => {
     const { ctrl } = setup();
     // shoot: 3 frames, speed 0.4, global speed 1
     const expected = (3 * (1 / 60)) / (0.4 * 1);

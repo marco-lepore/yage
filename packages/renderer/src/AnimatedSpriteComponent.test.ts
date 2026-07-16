@@ -79,11 +79,18 @@ const { mocks } = vi.hoisted(() => {
     animationSpeed = 1;
     loop = true;
     playing = false;
+    currentFrame = 0;
+    autoUpdate: boolean;
     onComplete: (() => void) | null = null;
+    onLoop: (() => void) | null = null;
+    onFrameChange: ((frame: number) => void) | null = null;
+    lastDeltaTime = 0;
+    private currentTime = 0;
 
-    constructor(textures: unknown[]) {
+    constructor(textures: unknown[], autoUpdate = true) {
       super();
       this.textures = textures;
+      this.autoUpdate = autoUpdate;
     }
 
     play(): void {
@@ -93,9 +100,50 @@ const { mocks } = vi.hoisted(() => {
     stop(): void {
       this.playing = false;
     }
+
+    gotoAndPlay(frame: number): void {
+      this.currentTime = frame;
+      this.setFrame(frame);
+      this.play();
+    }
+
+    update(ticker: { deltaTime: number }): void {
+      if (!this.playing) return;
+      this.lastDeltaTime = ticker.deltaTime;
+      const previousFrame = this.currentFrame;
+      this.currentTime += this.animationSpeed * ticker.deltaTime;
+
+      if (!this.loop && this.currentTime >= this.textures.length) {
+        this.currentTime = this.textures.length - 1;
+        this.stop();
+        this.setFrame(this.textures.length - 1);
+        this.onComplete?.();
+        return;
+      }
+
+      const nextFrame =
+        ((Math.floor(this.currentTime) % this.textures.length) +
+          this.textures.length) %
+        this.textures.length;
+      this.setFrame(nextFrame);
+      if (this.loop && nextFrame < previousFrame) {
+        this.onLoop?.();
+      }
+    }
+
+    private setFrame(frame: number): void {
+      if (frame === this.currentFrame) return;
+      this.currentFrame = frame;
+      this.onFrameChange?.(frame);
+    }
   }
 
-  return { mocks: { MockContainer, MockAnimatedSprite } };
+  class MockTicker {
+    static targetFPMS = 0.06;
+    deltaTime = 1;
+  }
+
+  return { mocks: { MockContainer, MockAnimatedSprite, MockTicker } };
 });
 
 vi.mock("pixi.js", () => {
@@ -127,6 +175,7 @@ vi.mock("pixi.js", () => {
   return {
     Container: mocks.MockContainer,
     AnimatedSprite: mocks.MockAnimatedSprite,
+    Ticker: mocks.MockTicker,
     Texture: MockTexture,
     Rectangle: MockRectangle,
     Point: MockPoint,
@@ -134,12 +183,39 @@ vi.mock("pixi.js", () => {
   };
 });
 
-import { Transform } from "@yagejs/core";
+import {
+  ComponentUpdateSystem,
+  SceneManagerKey,
+  Transform,
+} from "@yagejs/core";
 import { AnimatedSpriteComponent } from "./AnimatedSpriteComponent.js";
 import { createRendererTestContext, spawnEntityInScene } from "./test-helpers.js";
 
 // frameWidth=48 against the mock's fixed 96px-wide texture → 2 frames.
 const SOURCE = { sheet: "hero.png", frameWidth: 48 };
+const PLAYBACK_SOURCE = { sheet: "hero.png", frameWidth: 24 };
+
+type MockSprite = InstanceType<typeof mocks.MockAnimatedSprite>;
+
+function setupPlayback() {
+  const { context, scene } = createRendererTestContext();
+  context.register(SceneManagerKey, {
+    get activeScenes() {
+      return scene.paused ? [] : [scene];
+    },
+  } as never);
+  const updateSystem = new ComponentUpdateSystem();
+  updateSystem._setContext(context);
+  updateSystem.onRegister?.(context);
+
+  const entity = spawnEntityInScene(scene);
+  entity.add(new Transform());
+  const component = entity.add(
+    new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE }),
+  );
+  const sprite = component.animatedSprite as unknown as MockSprite;
+  return { scene, entity, component, sprite, updateSystem };
+}
 
 describe("AnimatedSpriteComponent", () => {
   beforeEach(() => {
@@ -153,6 +229,7 @@ describe("AnimatedSpriteComponent", () => {
       (comp.animatedSprite as unknown as InstanceType<typeof mocks.MockAnimatedSprite>)
         .textures,
     ).toHaveLength(2);
+    expect(comp.animatedSprite.autoUpdate).toBe(false);
   });
 
   it("defaults to 'default' layer", () => {
@@ -237,6 +314,131 @@ describe("AnimatedSpriteComponent", () => {
     expect(comp.isPlaying).toBe(false);
     comp.play();
     expect(comp.isPlaying).toBe(true);
+  });
+
+  describe("engine-scaled playback", () => {
+    it("matches the shared ticker rate at scale 1", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      const sprite = comp.animatedSprite as unknown as MockSprite;
+      comp.play();
+
+      comp.update(1 / 60);
+
+      expect(sprite.lastDeltaTime).toBeCloseTo(1);
+      expect(sprite.currentFrame).toBe(1);
+    });
+
+    it("does not advance for update(0)", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      const sprite = comp.animatedSprite as unknown as MockSprite;
+      comp.play();
+
+      comp.update(0);
+
+      expect(sprite.currentFrame).toBe(0);
+    });
+
+    it("follows scene timeScale", () => {
+      const { scene, component, sprite, updateSystem } = setupPlayback();
+      scene.timeScale = 0.25;
+      component.play();
+
+      for (let i = 0; i < 4; i++) updateSystem.update(1 / 60);
+
+      expect(sprite.lastDeltaTime).toBeCloseTo(0.25);
+      expect(sprite.currentFrame).toBe(1);
+    });
+
+    it("composes entity timeScale", () => {
+      const { entity, component, sprite, updateSystem } = setupPlayback();
+      entity.timeScale = 2;
+      component.play();
+
+      updateSystem.update(1 / 60);
+
+      expect(sprite.lastDeltaTime).toBeCloseTo(2);
+      expect(sprite.currentFrame).toBe(2);
+    });
+
+    it("freezes at scene timeScale 0", () => {
+      const { scene, component, sprite, updateSystem } = setupPlayback();
+      scene.timeScale = 0;
+      component.play();
+
+      updateSystem.update(1 / 60);
+
+      expect(sprite.currentFrame).toBe(0);
+    });
+
+    it("freezes while the component is disabled or the scene is paused", () => {
+      const { scene, component, sprite, updateSystem } = setupPlayback();
+      component.play();
+      component.enabled = false;
+
+      updateSystem.update(1 / 60);
+      expect(sprite.currentFrame).toBe(0);
+
+      component.enabled = true;
+      scene.paused = true;
+      updateSystem.update(1 / 60);
+      expect(sprite.currentFrame).toBe(0);
+    });
+
+    it("composes animationSpeed with scaled time", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      const sprite = comp.animatedSprite as unknown as MockSprite;
+      comp.play({ speed: 0.5 });
+
+      comp.update(1 / 60);
+      expect(sprite.currentFrame).toBe(0);
+      comp.update(1 / 60);
+      expect(sprite.currentFrame).toBe(1);
+    });
+
+    it("does not advance while stopped and resumes from the same frame", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      const sprite = comp.animatedSprite as unknown as MockSprite;
+      comp.play();
+      comp.update(1 / 60);
+      comp.stop();
+
+      comp.update(1 / 60);
+      expect(sprite.currentFrame).toBe(1);
+
+      comp.play();
+      comp.update(1 / 60);
+      expect(sprite.currentFrame).toBe(2);
+    });
+
+    it("keeps gotoAndPlay, onLoop, and onFrameChange behavior", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const onLoop = vi.fn();
+      const onFrameChange = vi.fn();
+      sprite.onLoop = onLoop;
+      sprite.onFrameChange = onFrameChange;
+      sprite.gotoAndPlay(3);
+      onFrameChange.mockClear();
+
+      comp.update(1 / 60);
+
+      expect(sprite.currentFrame).toBe(0);
+      expect(onLoop).toHaveBeenCalledOnce();
+      expect(onFrameChange).toHaveBeenCalledWith(0);
+    });
+
+    it("fires onComplete when a non-looping animation ends", () => {
+      const comp = new AnimatedSpriteComponent({ source: PLAYBACK_SOURCE });
+      const sprite = comp.animatedSprite as unknown as MockSprite;
+      const onComplete = vi.fn();
+      comp.play({ loop: false, onComplete });
+
+      comp.update(4 / 60);
+
+      expect(sprite.currentFrame).toBe(3);
+      expect(comp.isPlaying).toBe(false);
+      expect(onComplete).toHaveBeenCalledOnce();
+    });
   });
 
   it("onAdd adds animated sprite to correct layer container", () => {
