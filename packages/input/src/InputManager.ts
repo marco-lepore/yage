@@ -99,6 +99,14 @@ export class InputManager {
   private syntheticActionStarts = new Map<string, number>();
   /** Synthetic action release edges, true for one frame after {@link fireActionUp}. */
   private justReleasedActions = new Set<string>();
+  /** Hold duration (ms) of the press that ended this frame, keyed by action. Valid only on the release frame. */
+  private releaseDurationMs = new Map<string, number>();
+  /** Last press timestamp (ms on the input clock) per action, for {@link consumeBufferedPress}. */
+  private bufferedPressMs = new Map<string, number>();
+  /** Actions whose buffered press has been claimed via {@link consumeBufferedPress}; cleared by the next press. */
+  private claimedBufferedPress = new Set<string>();
+  /** Per-action hold duration (ms) at the end of the previous frame — the baseline for {@link isJustHeldFor}'s crossing test. */
+  private prevHoldMs = new Map<string, number>();
   private actionMap = new Map<string, string[]>();
   private defaultBindings = new Map<string, string[]>();
   private groups = new Map<string, Set<string>>();
@@ -207,6 +215,14 @@ export class InputManager {
   }
 
   /** Returns true if any key bound to the action exists in the given set. */
+  /** Whether any binding (key or synthetic) still holds the action, ignoring group enablement. */
+  private isActionStillHeld(action: string): boolean {
+    return (
+      this.anyKeyInSet(action, this.pressedKeys) ||
+      this.isSyntheticPressed(action)
+    );
+  }
+
   private anyKeyInSet(action: string, set: Set<string>): boolean {
     const keys = this.actionMap.get(action);
     if (!keys) return false;
@@ -216,9 +232,14 @@ export class InputManager {
     return false;
   }
 
-  /** Milliseconds the action has been held. Returns 0 if not held. */
-  getHoldDuration(action: string): number {
+  /** Hold duration (ms) across all keys/synthetic sources mapped to the action, 0 if not held. */
+  private holdDurationMs(action: string): number {
     if (!this.isActionEnabled(action)) return 0;
+    return this.rawHoldDurationMs(action);
+  }
+
+  /** {@link holdDurationMs} without the group-enablement guard, for the end-of-frame hold snapshot. */
+  private rawHoldDurationMs(action: string): number {
     const keys = this.actionMap.get(action);
     if (!keys && !this.isSyntheticPressed(action)) return 0;
     let maxDuration = 0;
@@ -235,9 +256,96 @@ export class InputManager {
     return maxDuration;
   }
 
-  /** Whether the action has been held for at least `minTime` ms. */
-  isHeldFor(action: string, minTime: number): boolean {
-    return this.getHoldDuration(action) >= minTime;
+  /** Seconds the action has been held. Returns 0 if not held. */
+  getHoldDuration(action: string): number {
+    return this.holdDurationMs(action) / 1000;
+  }
+
+  /** Whether the action has been held for at least `minSeconds`. */
+  isHeldFor(action: string, minSeconds: number): boolean {
+    return this.getHoldDuration(action) >= minSeconds;
+  }
+
+  /**
+   * Hold-start edge: true only on the frame the action's hold crosses
+   * `seconds`. Threshold-crossing math over the hold clock, so any call-site
+   * threshold works with no per-action config. Drives "released before T = a
+   * tap, crossed T = hold-start" input feel. A tap (released before the
+   * threshold) never fires it — the hold resets to 0 on the release frame.
+   */
+  isJustHeldFor(action: string, seconds: number): boolean {
+    if (!this.isActionEnabled(action)) return false;
+    const holdMs = this.holdDurationMs(action);
+    if (holdMs <= 0) return false;
+    const thresholdMs = seconds * 1000;
+    return (
+      holdMs >= thresholdMs &&
+      (this.prevHoldMs.get(action) ?? 0) < thresholdMs
+    );
+  }
+
+  /**
+   * Seconds the action was held, valid only on the frame the action is fully
+   * released — the last pressed binding (key or synthetic) lets go; a chord's
+   * partial release reports 0. Captured at the release edge, so it survives
+   * {@link getHoldDuration} resetting to 0 that same frame — no
+   * sample-before-release dance needed.
+   */
+  getReleaseDuration(action: string): number {
+    if (!this.isActionEnabled(action)) return 0;
+    if (this.isActionStillHeld(action)) return 0;
+    return (this.releaseDurationMs.get(action) ?? 0) / 1000;
+  }
+
+  /** True on the frame the action is fully released, if it was held for at most `maxSeconds` (a tap). */
+  isJustTapped(action: string, maxSeconds: number): boolean {
+    return (
+      this.isJustReleased(action) &&
+      !this.isActionStillHeld(action) &&
+      this.getReleaseDuration(action) <= maxSeconds
+    );
+  }
+
+  /** True on the frame the action is fully released, if it was held for at least `minSeconds`. */
+  isJustReleasedAfter(action: string, minSeconds: number): boolean {
+    return (
+      this.isJustReleased(action) &&
+      !this.isActionStillHeld(action) &&
+      this.getReleaseDuration(action) >= minSeconds
+    );
+  }
+
+  /**
+   * Consuming buffered-press query: true if the action was pressed within the
+   * last `windowSeconds` and that press has not yet been claimed. Claims the
+   * press on success, so it returns true at most once per press; only a new
+   * press clears the claim (last-press-wins, no queue). Consumption is scoped
+   * to this query — {@link isJustPressed} and action listeners still see every
+   * press.
+   *
+   * Lets a consumer act on a press up to `windowSeconds` late (e.g. jump
+   * buffered just before landing) without the press re-triggering later.
+   */
+  consumeBufferedPress(action: string, windowSeconds: number): boolean {
+    if (!this.isActionEnabled(action)) return false;
+    const pressed = this.bufferedPressMs.get(action);
+    if (pressed === undefined) return false;
+    if (this.claimedBufferedPress.has(action)) return false;
+    if (this.elapsedMs - pressed > windowSeconds * 1000) return false;
+    this.claimedBufferedPress.add(action);
+    return true;
+  }
+
+  /** Record a press edge for buffered-press tracking; a new press clears any prior claim. */
+  private recordActionPress(action: string): void {
+    this.bufferedPressMs.set(action, this.elapsedMs);
+    this.claimedBufferedPress.delete(action);
+  }
+
+  /** Record the hold duration (ms) of a press ending this frame, keeping the longest across keys. */
+  private recordActionRelease(action: string, durationMs: number): void {
+    const prev = this.releaseDurationMs.get(action) ?? 0;
+    this.releaseDurationMs.set(action, Math.max(prev, durationMs));
   }
 
   // -- Axis helpers --
@@ -1298,6 +1406,7 @@ export class InputManager {
     // at query time, so its listeners must not fire either.
     if (this.isActionEnabled(name)) {
       this.notifyActionListeners(this.actionListeners, name);
+      this.recordActionPress(name);
     }
   }
 
@@ -1325,6 +1434,7 @@ export class InputManager {
     // at query time, so its press listeners must not fire either.
     if (this.isActionEnabled(name)) {
       this.notifyActionListeners(this.actionListeners, name);
+      this.recordActionPress(name);
     }
   }
 
@@ -1338,6 +1448,8 @@ export class InputManager {
       throw new Error(`InputManager.fireActionUp(): unknown action "${name}".`);
     }
     if (!this.heldSyntheticActions.has(name)) return;
+    const start = this.syntheticActionStarts.get(name);
+    const durationMs = start !== undefined ? this.elapsedMs - start : 0;
     this.heldSyntheticActions.delete(name);
     this.pulsedSyntheticActions.delete(name);
     this.syntheticActionStarts.delete(name);
@@ -1346,6 +1458,7 @@ export class InputManager {
     // fire, mirroring how its press was suppressed.
     if (this.isActionEnabled(name)) {
       this.notifyActionListeners(this.actionReleasedListeners, name);
+      this.recordActionRelease(name, durationMs);
     }
   }
 
@@ -1377,6 +1490,10 @@ export class InputManager {
     this.heldSyntheticActions.clear();
     this.syntheticActionStarts.clear();
     this.justReleasedActions.clear();
+    this.releaseDurationMs.clear();
+    this.bufferedPressMs.clear();
+    this.claimedBufferedPress.clear();
+    this.prevHoldMs.clear();
     this.pointers.clear();
     this.primaryPointerId = null;
     this.mouseButtonAggregate.clear();
@@ -1701,6 +1818,7 @@ export class InputManager {
       this.notifyKeyListeners(this.keyDownListeners, this.keyDownListenersAny, code);
       for (const action of this.actionsForCode(code)) {
         this.notifyActionListeners(this.actionListeners, action);
+        this.recordActionPress(action);
       }
     }
   }
@@ -1711,12 +1829,15 @@ export class InputManager {
    */
   _applyKeyUp(code: string): void {
     if (this.pressedKeys.has(code)) {
+      const start = this.holdStart.get(code);
+      const durationMs = start !== undefined ? this.elapsedMs - start : 0;
       this.pressedKeys.delete(code);
       this.justReleasedKeys.add(code);
       this.holdStart.delete(code);
       this.notifyKeyListeners(this.keyUpListeners, this.keyUpListenersAny, code);
       for (const action of this.actionsForCode(code)) {
         this.notifyActionListeners(this.actionReleasedListeners, action);
+        this.recordActionRelease(action, durationMs);
       }
     }
   }
@@ -1914,11 +2035,13 @@ export class InputManager {
     return result;
   }
 
-  /** @internal Clear per-frame justPressed/justReleased flags. */
+  /** @internal End-of-frame reset: clear per-frame edge flags and snapshot per-action holds for the next frame's crossing tests. */
   _clearFrameState(): void {
     this.justPressedKeys.clear();
     this.justReleasedKeys.clear();
     this.justReleasedActions.clear();
+    // Release durations are release-frame-only, matching isJustReleased.
+    this.releaseDurationMs.clear();
     // One-frame pulses clear; sustained holds from fireActionDown persist.
     for (const action of this.pulsedSyntheticActions) {
       if (!this.heldSyntheticActions.has(action)) {
@@ -1927,6 +2050,16 @@ export class InputManager {
     }
     this.pulsedSyntheticActions.clear();
     this.consumedWheelThisFrame = false;
+    // Snapshot each action's hold for isJustHeldFor: the max across bindings
+    // can DROP when the longest-held one releases, so "last frame's hold"
+    // cannot be derived from dt — that would re-fire the crossing edge.
+    // Raw (enablement-ignoring) so a hold spanning a disabled group keeps its
+    // baseline: re-enabling mid-hold must not report a second crossing.
+    for (const action of this.actionMap.keys()) {
+      const holdMs = this.rawHoldDurationMs(action);
+      if (holdMs > 0) this.prevHoldMs.set(action, holdMs);
+      else this.prevHoldMs.delete(action);
+    }
   }
 
   /** Set camera for pointer world-coord conversion. */

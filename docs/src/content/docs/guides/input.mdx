@@ -72,16 +72,67 @@ entity.transform.translate(dir.x * speed * dt, dir.y * speed * dt);
 
 ### Hold Duration
 
-Check how long an action has been continuously held:
+Check how long an action has been continuously held. Durations are in
+**seconds** (matching engine time everywhere else):
 
 ```typescript
-const ms = input.getHoldDuration("attack");
+const seconds = input.getHoldDuration("attack");
 
 // Convenience check — true if held for at least the given duration
-if (input.isHeldFor("attack", 500)) {
+if (input.isHeldFor("attack", 0.5)) {
   chargeAttack();
 }
 ```
+
+### Tap vs Hold
+
+Classify a press as a tap or a hold with call-site thresholds — no per-action
+configuration. `isJustHeldFor` fires once, on the frame the hold crosses the
+threshold; the release helpers fire once, on the frame the action fully
+releases (for an action bound to several keys, letting go of one key while
+another still holds it doesn't count):
+
+```typescript
+// Fires the frame the hold passes 0.5s — start a charged state here.
+if (input.isJustHeldFor("attack", 0.5)) {
+  beginCharge();
+}
+
+// A tap: released before 0.2s.
+if (input.isJustTapped("attack", 0.2)) {
+  quickAttack();
+}
+
+// A long press: released after being held at least 0.5s.
+if (input.isJustReleasedAfter("attack", 0.5)) {
+  releaseChargedAttack();
+}
+
+// The exact hold length at release (0 except on the release frame).
+const held = input.getReleaseDuration("attack"); // seconds
+```
+
+`getReleaseDuration` is captured at the release edge, so it stays valid on the
+frame the action is released — no need to sample `getHoldDuration` before the
+release lands.
+
+### Buffered Press
+
+Act on a press up to a window late — the classic "buffer the jump just before
+landing" feel. `consumeBufferedPress` returns true if the action was pressed
+within the last window seconds and that press has not been claimed yet; it
+claims the press so it fires at most once, and only a new press re-arms it:
+
+```typescript
+// Each frame: jump the moment we're grounded if a jump was pressed in the
+// last 0.12s. The claim prevents a single press from firing twice.
+if (grounded && input.consumeBufferedPress("jump", 0.12)) {
+  jump();
+}
+```
+
+Consumption is scoped to this query — `isJustPressed` and action listeners
+still see every press.
 
 ## Pointer (Mouse / Touch)
 
@@ -501,16 +552,15 @@ input.setActionHeld("attack", held); // mirror a boolean onto down/up
 through the action map. `fireActionDown` is idempotent — re-calling while held
 neither resets the hold start nor re-fires the press edge.
 
-A hold-to-charge attack driven by a touch button, with zero keymap knowledge:
+A hold-to-charge attack driven by a touch button, with zero keymap knowledge.
+`getReleaseDuration` holds the charge length on the release frame, so the
+button can be mirrored in any order:
 
 ```typescript
-// Sample the hold BEFORE mirroring the button: fireActionUp (via
-// setActionHeld(..., false)) resets getHoldDuration to 0 on the release frame.
-const charge = input.getHoldDuration("attack");
 input.setActionHeld("attack", chargeButton.isHeld);
 
 if (input.isJustReleased("attack")) {
-  const power = Math.min(charge / 1000, 1); // 0..1 over 1s
+  const power = Math.min(input.getReleaseDuration("attack"), 1); // 0..1 over 1s
   fireChargedAttack(power);
 }
 ```

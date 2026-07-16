@@ -302,7 +302,6 @@ class PlayerController extends Component {
 
   private grounded = false;
   private coyoteTimer = 0;
-  private jumpBufferTimer = 0;
   private wasGrounded = false;
   facingRight = true;
 
@@ -440,19 +439,15 @@ class PlayerController extends Component {
         : PlayerController.SPEED;
     this.rb.setVelocityX(dx * speed);
 
-    // -- Jump buffering --
-    if (this.input.isJustPressed("jump")) {
-      this.jumpBufferTimer = PlayerController.JUMP_BUFFER_SECONDS;
-    } else {
-      this.jumpBufferTimer -= dt;
-    }
-
-    // -- Jump execution --
-    if (this.jumpBufferTimer > 0 && this.grounded) {
+    // -- Jump (buffered): a press within the window fires on the next grounded
+    // frame; the input manager holds the buffer and claim-once prevents refire.
+    if (
+      this.grounded &&
+      this.input.consumeBufferedPress("jump", PlayerController.JUMP_BUFFER_SECONDS)
+    ) {
       this.rb.setVelocityY(-PlayerController.JUMP_VELOCITY);
       this.grounded = false;
       this.coyoteTimer = 0;
-      this.jumpBufferTimer = 0;
 
       // Jump stretch
       this.startSquash(0.8, 1.2);

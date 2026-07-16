@@ -80,12 +80,12 @@ describe("InputManager", () => {
 
   // -- getHoldDuration / isHeldFor --
 
-  it("getHoldDuration returns ms since key press", () => {
+  it("getHoldDuration returns seconds since key press", () => {
     input._advanceTime(100);
     input._onKeyDown("Space");
 
     input._advanceTime(250);
-    expect(input.getHoldDuration("jump")).toBe(250);
+    expect(input.getHoldDuration("jump")).toBe(0.25);
   });
 
   it("getHoldDuration returns 0 when not held", () => {
@@ -100,20 +100,189 @@ describe("InputManager", () => {
     input._onKeyDown("ArrowLeft");
 
     input._advanceTime(200);
-    // KeyA held for 300ms, ArrowLeft held for 200ms — should return 300
-    expect(input.getHoldDuration("moveLeft")).toBe(300);
+    // KeyA held for 300ms, ArrowLeft held for 200ms — should return 0.3s
+    expect(input.getHoldDuration("moveLeft")).toBe(0.3);
   });
 
   it("isHeldFor returns true when held long enough", () => {
     input._onKeyDown("Space");
     input._advanceTime(500);
-    expect(input.isHeldFor("jump", 500)).toBe(true);
+    expect(input.isHeldFor("jump", 0.5)).toBe(true);
   });
 
   it("isHeldFor returns false when not held long enough", () => {
     input._onKeyDown("Space");
     input._advanceTime(200);
-    expect(input.isHeldFor("jump", 500)).toBe(false);
+    expect(input.isHeldFor("jump", 0.5)).toBe(false);
+  });
+
+  // -- tap / hold classifier --
+
+  describe("isJustHeldFor / release classifier", () => {
+    it("isJustHeldFor fires once, on the frame the hold crosses the threshold", () => {
+      input._onKeyDown("Space"); // holdStart at elapsed 0
+      // 100ms frames ended by _clearFrameState, as InputClearSystem does each
+      // frame; the 0.5s threshold crosses when the hold reaches 500ms.
+      for (let held = 100; held < 500; held += 100) {
+        input._advanceTime(100);
+        expect(input.isJustHeldFor("jump", 0.5)).toBe(false);
+        input._clearFrameState();
+      }
+      input._advanceTime(100); // hold reaches 500ms
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(true);
+      input._clearFrameState();
+      input._advanceTime(100); // hold past 500ms
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(false);
+    });
+
+    it("isJustHeldFor does not re-fire when the longer-held of two bound keys releases", () => {
+      input._onKeyDown("KeyA"); // moveLeft binding #1, holdStart at elapsed 0
+      input._advanceTime(100);
+      input._clearFrameState();
+      input._onKeyDown("ArrowLeft"); // binding #2, staggered 100ms behind
+      // Advance to elapsed 600ms: KeyA's hold (the max) crosses 0.55s once.
+      let fired = 0;
+      for (let i = 0; i < 5; i++) {
+        input._advanceTime(100);
+        if (input.isJustHeldFor("moveLeft", 0.55)) fired++;
+        input._clearFrameState();
+      }
+      expect(fired).toBe(1);
+      // Releasing KeyA drops the action's hold to ArrowLeft's shorter one
+      // (600ms at elapsed 700) — the drop must not re-trigger the crossing.
+      input._onKeyUp("KeyA");
+      input._advanceTime(100);
+      expect(input.isJustHeldFor("moveLeft", 0.55)).toBe(false);
+    });
+
+    it("release wins over hold-start: no hold-start edge on the release frame", () => {
+      input._onKeyDown("Space");
+      input._advanceTime(500); // hold reaches the threshold this frame
+      // Released before the next frame's advance (drain-then-advance order),
+      // so the hold-start edge never fires — the release classifies it.
+      input._onKeyUp("Space"); // releaseDuration = 500ms
+      input._advanceTime(100);
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(false);
+      expect(input.getReleaseDuration("jump")).toBe(0.5);
+      expect(input.isJustReleasedAfter("jump", 0.5)).toBe(true);
+    });
+
+    it("getReleaseDuration is valid only on the release frame", () => {
+      input._onKeyDown("Space");
+      input._advanceTime(300);
+      expect(input.getReleaseDuration("jump")).toBe(0); // not released yet
+      input._onKeyUp("Space");
+      expect(input.getReleaseDuration("jump")).toBe(0.3);
+      input._clearFrameState();
+      expect(input.getReleaseDuration("jump")).toBe(0); // cleared next frame
+    });
+
+    it("isJustTapped is true on release when held within maxSeconds", () => {
+      input._onKeyDown("Space");
+      input._advanceTime(150);
+      input._onKeyUp("Space");
+      expect(input.isJustTapped("jump", 0.2)).toBe(true);
+      expect(input.isJustTapped("jump", 0.1)).toBe(false); // 0.15s exceeds 0.1s
+    });
+
+    it("isJustReleasedAfter is true on release when held at least minSeconds", () => {
+      input._onKeyDown("Space");
+      input._advanceTime(600);
+      input._onKeyUp("Space");
+      expect(input.isJustReleasedAfter("jump", 0.5)).toBe(true);
+      expect(input.isJustReleasedAfter("jump", 0.7)).toBe(false);
+    });
+
+    it("isJustHeldFor does not re-fire when a disabled group re-enables mid-hold", () => {
+      input.setGroups({ gameplay: ["jump"] });
+      input._onKeyDown("Space");
+      input._advanceTime(600); // hold crosses 0.5s
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(true);
+      input._clearFrameState();
+      input.disableGroup("gameplay"); // menu opens; key stays physically held
+      input._advanceTime(100);
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(false); // masked while disabled
+      input._clearFrameState();
+      input.enableGroup("gameplay"); // menu closes, key never released
+      input._advanceTime(100);
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(false); // no second crossing
+    });
+
+    it("release helpers stay quiet on a partial chord release", () => {
+      input._onKeyDown("KeyA"); // moveLeft binding #1
+      input._advanceTime(600);
+      input._onKeyDown("ArrowLeft"); // binding #2 joins at 600ms
+      input._advanceTime(200);
+      input._onKeyUp("KeyA"); // action still held via ArrowLeft
+      expect(input.isJustReleased("moveLeft")).toBe(true); // per-binding edge, unchanged
+      expect(input.getReleaseDuration("moveLeft")).toBe(0);
+      expect(input.isJustTapped("moveLeft", 10)).toBe(false);
+      expect(input.isJustReleasedAfter("moveLeft", 0.1)).toBe(false);
+      input._clearFrameState();
+      input._advanceTime(200);
+      input._onKeyUp("ArrowLeft"); // full release: ArrowLeft held 400ms
+      expect(input.getReleaseDuration("moveLeft")).toBe(0.4);
+      expect(input.isJustReleasedAfter("moveLeft", 0.4)).toBe(true);
+    });
+
+    it("classifier works for synthetic presses (fireActionDown / fireActionUp)", () => {
+      input.fireActionDown("jump");
+      input._advanceTime(500);
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(true);
+      input.fireActionUp("jump");
+      expect(input.getReleaseDuration("jump")).toBe(0.5);
+      expect(input.isJustReleasedAfter("jump", 0.5)).toBe(true);
+    });
+
+    it("classifier works under per-frame setActionHeld mirroring", () => {
+      input.setActionHeld("jump", true);
+      input._advanceTime(200);
+      input.setActionHeld("jump", true); // idempotent re-assert keeps the start
+      input._advanceTime(200);
+      expect(input.getHoldDuration("jump")).toBe(0.4);
+      input.setActionHeld("jump", false); // release
+      expect(input.getReleaseDuration("jump")).toBe(0.4);
+    });
+  });
+
+  // -- buffered press --
+
+  describe("consumeBufferedPress", () => {
+    it("is true within the window", () => {
+      input._onKeyDown("Space"); // press at elapsed 0
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+    });
+
+    it("is false once the window elapses", () => {
+      input._onKeyDown("Space");
+      input._advanceTime(200); // 0.2s exceeds the 0.12s window
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+    });
+
+    it("claim-once: fires at most once per press", () => {
+      input._onKeyDown("Space");
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(false);
+    });
+
+    it("a new press re-arms the buffer after a consume", () => {
+      input._onKeyDown("Space");
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+      input._onKeyUp("Space");
+      input._onKeyDown("Space"); // new press clears the claim
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+    });
+
+    it("consumption does not suppress isJustPressed", () => {
+      input._onKeyDown("Space");
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+      expect(input.isJustPressed("jump")).toBe(true);
+    });
+
+    it("records a buffered press for synthetic input", () => {
+      input.fireActionDown("jump");
+      expect(input.consumeBufferedPress("jump", 0.12)).toBe(true);
+    });
   });
 
   // -- getAxis --
@@ -902,12 +1071,12 @@ describe("InputManager", () => {
     it("getHoldDuration accrues while a synthetic action is held and resets on release", () => {
       input.fireActionDown("jump");
       input._advanceTime(100);
-      expect(input.getHoldDuration("jump")).toBe(100);
+      expect(input.getHoldDuration("jump")).toBe(0.1);
 
       input._clearFrameState();
       input._advanceTime(150);
-      expect(input.getHoldDuration("jump")).toBe(250);
-      expect(input.isHeldFor("jump", 200)).toBe(true);
+      expect(input.getHoldDuration("jump")).toBe(0.25);
+      expect(input.isHeldFor("jump", 0.2)).toBe(true);
 
       input.fireActionUp("jump");
       expect(input.getHoldDuration("jump")).toBe(0);
@@ -920,7 +1089,7 @@ describe("InputManager", () => {
       input.fireActionDown("jump");
       input._advanceTime(100);
       // Re-down kept the original start, so the duration keeps growing.
-      expect(input.getHoldDuration("jump")).toBe(200);
+      expect(input.getHoldDuration("jump")).toBe(0.2);
     });
 
     it("fireActionDown fires onAction only on the rising edge", () => {
