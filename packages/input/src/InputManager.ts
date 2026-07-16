@@ -215,6 +215,14 @@ export class InputManager {
   }
 
   /** Returns true if any key bound to the action exists in the given set. */
+  /** Whether any binding (key or synthetic) still holds the action, ignoring group enablement. */
+  private isActionStillHeld(action: string): boolean {
+    return (
+      this.anyKeyInSet(action, this.pressedKeys) ||
+      this.isSyntheticPressed(action)
+    );
+  }
+
   private anyKeyInSet(action: string, set: Set<string>): boolean {
     const keys = this.actionMap.get(action);
     if (!keys) return false;
@@ -227,6 +235,11 @@ export class InputManager {
   /** Hold duration (ms) across all keys/synthetic sources mapped to the action, 0 if not held. */
   private holdDurationMs(action: string): number {
     if (!this.isActionEnabled(action)) return 0;
+    return this.rawHoldDurationMs(action);
+  }
+
+  /** {@link holdDurationMs} without the group-enablement guard, for the end-of-frame hold snapshot. */
+  private rawHoldDurationMs(action: string): number {
     const keys = this.actionMap.get(action);
     if (!keys && !this.isSyntheticPressed(action)) return 0;
     let maxDuration = 0;
@@ -272,28 +285,32 @@ export class InputManager {
   }
 
   /**
-   * Seconds the action was held, valid only on its release frame (when
-   * {@link isJustReleased} is true); 0 otherwise. Captured at the release
-   * edge, so it survives {@link getHoldDuration} resetting to 0 that same
-   * frame — no sample-before-release dance needed.
+   * Seconds the action was held, valid only on the frame the action is fully
+   * released — the last pressed binding (key or synthetic) lets go; a chord's
+   * partial release reports 0. Captured at the release edge, so it survives
+   * {@link getHoldDuration} resetting to 0 that same frame — no
+   * sample-before-release dance needed.
    */
   getReleaseDuration(action: string): number {
     if (!this.isActionEnabled(action)) return 0;
+    if (this.isActionStillHeld(action)) return 0;
     return (this.releaseDurationMs.get(action) ?? 0) / 1000;
   }
 
-  /** True on the release frame if the action was held for at most `maxSeconds` (a tap). */
+  /** True on the frame the action is fully released, if it was held for at most `maxSeconds` (a tap). */
   isJustTapped(action: string, maxSeconds: number): boolean {
     return (
       this.isJustReleased(action) &&
+      !this.isActionStillHeld(action) &&
       this.getReleaseDuration(action) <= maxSeconds
     );
   }
 
-  /** True on the release frame if the action was held for at least `minSeconds`. */
+  /** True on the frame the action is fully released, if it was held for at least `minSeconds`. */
   isJustReleasedAfter(action: string, minSeconds: number): boolean {
     return (
       this.isJustReleased(action) &&
+      !this.isActionStillHeld(action) &&
       this.getReleaseDuration(action) >= minSeconds
     );
   }
@@ -2036,8 +2053,10 @@ export class InputManager {
     // Snapshot each action's hold for isJustHeldFor: the max across bindings
     // can DROP when the longest-held one releases, so "last frame's hold"
     // cannot be derived from dt — that would re-fire the crossing edge.
+    // Raw (enablement-ignoring) so a hold spanning a disabled group keeps its
+    // baseline: re-enabling mid-hold must not report a second crossing.
     for (const action of this.actionMap.keys()) {
-      const holdMs = this.holdDurationMs(action);
+      const holdMs = this.rawHoldDurationMs(action);
       if (holdMs > 0) this.prevHoldMs.set(action, holdMs);
       else this.prevHoldMs.delete(action);
     }

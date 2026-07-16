@@ -88,7 +88,9 @@ if (input.isHeldFor("attack", 0.5)) {
 
 Classify a press as a tap or a hold with call-site thresholds — no per-action
 configuration. `isJustHeldFor` fires once, on the frame the hold crosses the
-threshold; the release helpers fire once, on the release frame:
+threshold; the release helpers fire once, on the frame the action fully
+releases (for an action bound to several keys, letting go of one key while
+another still holds it doesn't count):
 
 ```typescript
 // Fires the frame the hold passes 0.5s — start a charged state here.

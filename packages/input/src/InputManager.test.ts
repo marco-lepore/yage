@@ -193,6 +193,38 @@ describe("InputManager", () => {
       expect(input.isJustReleasedAfter("jump", 0.7)).toBe(false);
     });
 
+    it("isJustHeldFor does not re-fire when a disabled group re-enables mid-hold", () => {
+      input.setGroups({ gameplay: ["jump"] });
+      input._onKeyDown("Space");
+      input._advanceTime(600); // hold crosses 0.5s
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(true);
+      input._clearFrameState();
+      input.disableGroup("gameplay"); // menu opens; key stays physically held
+      input._advanceTime(100);
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(false); // masked while disabled
+      input._clearFrameState();
+      input.enableGroup("gameplay"); // menu closes, key never released
+      input._advanceTime(100);
+      expect(input.isJustHeldFor("jump", 0.5)).toBe(false); // no second crossing
+    });
+
+    it("release helpers stay quiet on a partial chord release", () => {
+      input._onKeyDown("KeyA"); // moveLeft binding #1
+      input._advanceTime(600);
+      input._onKeyDown("ArrowLeft"); // binding #2 joins at 600ms
+      input._advanceTime(200);
+      input._onKeyUp("KeyA"); // action still held via ArrowLeft
+      expect(input.isJustReleased("moveLeft")).toBe(true); // per-binding edge, unchanged
+      expect(input.getReleaseDuration("moveLeft")).toBe(0);
+      expect(input.isJustTapped("moveLeft", 10)).toBe(false);
+      expect(input.isJustReleasedAfter("moveLeft", 0.1)).toBe(false);
+      input._clearFrameState();
+      input._advanceTime(200);
+      input._onKeyUp("ArrowLeft"); // full release: ArrowLeft held 400ms
+      expect(input.getReleaseDuration("moveLeft")).toBe(0.4);
+      expect(input.isJustReleasedAfter("moveLeft", 0.4)).toBe(true);
+    });
+
     it("classifier works for synthetic presses (fireActionDown / fireActionUp)", () => {
       input.fireActionDown("jump");
       input._advanceTime(500);

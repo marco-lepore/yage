@@ -47,6 +47,8 @@ input.isJustHeldFor("fire", 0.5); // hold-start edge: true the frame hold crosse
 input.isJustTapped("fire", 0.2); // release frame, held <= 0.2s (a tap)
 input.isJustReleasedAfter("fire", 0.5); // release frame, held >= 0.5s
 input.getReleaseDuration("fire"); // seconds held, valid only on the release frame
+// "Release frame" = the action fully releases (last bound key/synthetic lets
+// go); a multi-key chord's partial release reports 0 / false.
 
 // Buffered press — consuming query; true once per press within the window
 input.consumeBufferedPress("jump", 0.12); // pressed within last 0.12s and unclaimed → claim + true
