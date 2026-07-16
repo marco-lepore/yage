@@ -17,10 +17,13 @@ interface ProbeData {
 }
 
 type Who = "player" | "enemy";
+type StatKind = "atk" | "def" | "maxHp" | "atkSpeed";
 
 interface HostHandle {
   play(who: Who, id: string): boolean;
   teleport(who: Who, x: number, y: number): void;
+  setStat(who: Who, kind: StatKind, value: number): void;
+  cooldownRemaining(who: Who, id: string): number;
 }
 
 function probe(page: Page, who: Who): Promise<ProbeData | undefined> {
@@ -51,6 +54,29 @@ async function teleport(page: Page, who: Who, x: number, y: number): Promise<voi
         py,
       ),
     { who, x, y },
+  );
+}
+
+async function setStat(
+  page: Page,
+  who: Who,
+  kind: StatKind,
+  value: number,
+): Promise<void> {
+  await page.evaluate(
+    ({ who: w, kind: k, value: v }) =>
+      (window as unknown as { __abilities__: HostHandle }).__abilities__.setStat(w, k, v),
+    { who, kind, value },
+  );
+}
+
+async function cooldownRemaining(page: Page, who: Who, id: string): Promise<number> {
+  return page.evaluate(
+    ({ who: w, id: abilityId }) =>
+      (
+        window as unknown as { __abilities__: HostHandle }
+      ).__abilities__.cooldownRemaining(w, abilityId),
+    { who, id },
   );
 }
 
@@ -176,5 +202,78 @@ test.describe("@yagejs-addons/abilities addon", () => {
     const player = await probe(page, "player");
     expect(player?.damagedCount).toBe(1);
     expect(player?.hp).toBe(90); // 100 max - 10 projectile damage
+  });
+});
+
+// The four numeric boundary hooks the stats slice wires up, each
+// exercised by mutating a game-side stat at runtime and observing the addon
+// side. Both combatants start neutral (atk=BASE_ATK, def=0, atkSpeed=1), so
+// the tests above see unchanged baseline numbers.
+test.describe("@yagejs-addons/abilities stats boundary", () => {
+  test("atk scales attack damage through the fire-time hit builder", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/abilities-addon.html");
+    await waitForClock(page);
+
+    // Double the player's attack stat before the swing fires.
+    await setStat(page, "player", "atk", 20);
+    await teleport(page, "enemy", 130, 150);
+    await stepFrames(page, 2);
+
+    expect(await play(page, "player", "slash")).toBe(true);
+    await stepFrames(page, 20);
+
+    const enemy = await probe(page, "enemy");
+    expect(enemy?.hp).toBe(14); // 50 max - (18 * 20/10 = 36) scaled damage
+  });
+
+  test("def reduces incoming damage through the game-authored fold stage", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/abilities-addon.html");
+    await waitForClock(page);
+
+    // Give the enemy 5 armor; the slash's 18 damage should arrive as 13.
+    await setStat(page, "enemy", "def", 5);
+    await teleport(page, "enemy", 130, 150);
+    await stepFrames(page, 2);
+
+    expect(await play(page, "player", "slash")).toBe(true);
+    await stepFrames(page, 20);
+
+    const enemy = await probe(page, "enemy");
+    expect(enemy?.hp).toBe(37); // 50 max - (18 - 5 armor = 13)
+  });
+
+  test("maxHp pushes into Health.max and heals the gained headroom", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/abilities-addon.html");
+    await waitForClock(page);
+
+    await setStat(page, "player", "maxHp", 150);
+
+    const player = await probe(page, "player");
+    expect(player?.maxHp).toBe(150); // the raised cap
+    expect(player?.hp).toBe(150); // full: 100 + the 50 gained headroom healed in
+  });
+
+  test("atkSpeed shrinks a Scalar cooldown, re-resolved per activation", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "/abilities-addon.html");
+    await waitForClock(page);
+
+    // Default attack speed: dash's 1.0s cooldown arms in full.
+    expect(await play(page, "player", "dash")).toBe(true);
+    expect(await cooldownRemaining(page, "player", "dash")).toBeCloseTo(1.0, 2);
+
+    // Let the dash and its cooldown finish, then double attack speed. The next
+    // activation re-resolves the Scalar, so the same def arms a 0.5s cooldown.
+    await stepFrames(page, 75);
+    await setStat(page, "player", "atkSpeed", 2);
+    expect(await play(page, "player", "dash")).toBe(true);
+    expect(await cooldownRemaining(page, "player", "dash")).toBeCloseTo(0.5, 2);
   });
 });

@@ -140,6 +140,7 @@ import {
   aimAt,
   block,
   createReportingDelivery,
+  defaultHitSteps,
   defineStep,
   hitbox,
   invulnerable,
@@ -152,7 +153,11 @@ import type {
   AbilityStep,
   Hit,
   HitResult,
+  HitSpec,
+  HitStage,
   ProjectileConfig,
+  Scalar,
+  StandardHitData,
   WindowStep,
 } from "@yagejs-addons/abilities";
 import { injectStyles, setupGameContainer } from "./shared.js";
@@ -1101,6 +1106,100 @@ function invulnerableWithFlash(args: {
 }
 
 // ---------------------------------------------------------------------------
+// Stats boundary demo — a deliberately game-side stat block, wired into the
+// abilities addon through its four integration hooks. This is NOT a portable
+// stats system: no formulas, no modifiers, no buff engine — those are a
+// separate future addon per the package charter. It exists to show where a
+// real stats package plugs in and how each addon numeric hook is reached.
+// Only the player carries `Stats`; enemies stay plain. Each stat drives one
+// hook:
+//   atk      -> fire-time `hit` builder (a `HitSpec`): `byAtk` scales a base
+//               attack's damage, snapshot when the hitbox fires.
+//   def      -> game-authored fold `HitStage`: `defenseStage` subtracts armor
+//               from a landed hit in place, ahead of the addon's damage step.
+//   maxHp    -> push into `Health.max`: `pushMaxHp` writes the derived cap and
+//               heals the headroom a raise opens. The addon reads the plain
+//               field — no provider protocol.
+//   atkSpeed -> `Scalar` cooldown: `hasten` divides a base cooldown by the
+//               stat, re-resolved each activation so the hotbar tracks it.
+// ---------------------------------------------------------------------------
+
+/** Attack damage is authored "at `BASE_ATK`"; `byAtk` scales relative to it. */
+const BASE_ATK = 10;
+
+type StatKind = "atk" | "def" | "maxHp" | "atkSpeed";
+
+/** Game-side derived stats. Plain mutable fields — a real stats addon would
+ *  compute these from equipment and buffs; here pickups and level-ups add to
+ *  them directly. */
+class Stats extends Component {
+  atk: number;
+  def: number;
+  maxHp: number;
+  atkSpeed: number; // 1 = base cooldowns; higher shortens them
+  level = 1;
+  kills = 0;
+
+  constructor(init: { atk: number; def: number; maxHp: number; atkSpeed?: number }) {
+    super();
+    this.atk = init.atk;
+    this.def = init.def;
+    this.maxHp = init.maxHp;
+    this.atkSpeed = init.atkSpeed ?? 1;
+  }
+}
+
+function statsOf(entity: Entity): Stats | undefined {
+  return entity.tryGet(Stats);
+}
+
+/** atk hook: a fire-time `hit` builder scaling `base.damage` by the caster's
+ *  atk relative to `BASE_ATK`; knockback/stun stay as authored. */
+function byAtk(base: StandardHitData): HitSpec {
+  return (ctx) => {
+    const atk = statsOf(ctx.entity)?.atk ?? BASE_ATK;
+    return { ...base, damage: Math.round((base.damage ?? 0) * (atk / BASE_ATK)) };
+  };
+}
+
+/** atkSpeed hook: a `Scalar` cooldown of `base` seconds divided by the
+ *  caster's attack-speed stat (1 = base), re-resolved at each activation. */
+function hasten(base: number): Scalar {
+  return (ctx) => base / (statsOf(ctx.entity)?.atkSpeed ?? 1);
+}
+
+/** def hook: a fold `HitStage` subtracting the receiver's armor from a landed
+ *  hit's damage, in place, before the addon's damage step. Blessed mutation —
+ *  the delivery has already copied `hit.data` per victim. */
+const defenseStage: HitStage<StandardHitData, HitReceiver> = (hit, receiver) => {
+  const def = statsOf(receiver.entity)?.def ?? 0;
+  if (def > 0 && hit.data.damage !== undefined) {
+    hit.data.damage = Math.max(0, hit.data.damage - def);
+  }
+  return undefined;
+};
+
+/** The player's apply-stage list: armor first, then the addon defaults
+ *  (damage, reaction). */
+const playerHitSteps: readonly HitStage<StandardHitData, HitReceiver>[] = [
+  defenseStage,
+  ...defaultHitSteps,
+];
+
+/** maxHp hook: push the derived cap into `Health.max`, healing the headroom a
+ *  raise opened (a level-up reads as a bigger, fuller bar) or clamping hp
+ *  under a lowered cap. The addon reads the plain field — nothing to notify. */
+function pushMaxHp(entity: Entity): void {
+  const stats = statsOf(entity);
+  const health = entity.tryGet(Health);
+  if (!stats || !health) return;
+  const gained = stats.maxHp - health.max;
+  health.max = stats.maxHp;
+  if (gained > 0) health.heal(gained);
+  else health.hp = Math.min(health.hp, health.max);
+}
+
+// ---------------------------------------------------------------------------
 // Ability defs — every timeline below is windup → active → recovery:
 // `duration` extends past the last hitbox/effect window so committing to an
 // attack leaves the lane busy (and the caster exposed) for a beat after the
@@ -1142,7 +1241,7 @@ const ATTACK_1: AbilityDef = {
       to: 0.246,
       shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
       offset: { x: 39, y: 0 },
-      hit: { damage: 10, knockback: 240, stun: 0.16 },
+      hit: byAtk({ damage: 10, knockback: 240, stun: 0.16 }),
     }),
   ],
 };
@@ -1164,7 +1263,7 @@ const ATTACK_2: AbilityDef = {
       to: 0.168,
       shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
       offset: { x: 37, y: 0 },
-      hit: { damage: 12, knockback: 265, stun: 0.18 },
+      hit: byAtk({ damage: 12, knockback: 265, stun: 0.18 }),
     }),
   ],
 };
@@ -1204,7 +1303,7 @@ const ATTACK_3: AbilityDef = {
       shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
       offset: { x: 46, y: 0 },
       follow: true,
-      hit: { damage: 26, knockback: 530, stun: 0.45 },
+      hit: byAtk({ damage: 26, knockback: 530, stun: 0.45 }),
     }),
   ],
 };
@@ -1258,7 +1357,7 @@ const CHARGE_RELEASE: AbilityDef = {
       shape: { type: "capsule", halfHeight: 34, radius: 24, axis: "x" },
       offset: { x: 60, y: 0 },
       follow: true,
-      hit: { damage: 32, knockback: 645, stun: 0.55 },
+      hit: byAtk({ damage: 32, knockback: 645, stun: 0.55 }),
     }),
   ],
 };
@@ -1293,14 +1392,14 @@ const COUNTER: AbilityDef = {
       to: 0.213,
       shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
       offset: { x: 42, y: 0 },
-      hit: { damage: 16, knockback: 420, stun: 0.35 },
+      hit: byAtk({ damage: 16, knockback: 420, stun: 0.35 }),
     }),
   ],
 };
 
 const DASH: AbilityDef = {
   id: "dash",
-  cooldown: 1.15,
+  cooldown: hasten(1.15),
   duration: 0.36,
   timeline: [
     spriteAnim({ at: 0, name: "dash" }),
@@ -1333,7 +1432,7 @@ const DASH: AbilityDef = {
 const GUARD_HOLD_ID = "guardHold";
 const GUARD_HOLD: AbilityDef = {
   id: GUARD_HOLD_ID,
-  cooldown: 0.4,
+  cooldown: hasten(0.4),
   timeline: [
     spriteHold({ from: 0, to: 999, name: "guard" }),
     block({ from: 0, to: 999, damageScale: 0.3, knockbackScale: 0.4 }),
@@ -1356,7 +1455,7 @@ const PARRY_ID = "parry";
 const PARRY_ACTIVE_WINDOW = 0.35;
 const PARRY: AbilityDef = {
   id: PARRY_ID,
-  cooldown: 0.85,
+  cooldown: hasten(0.85),
   duration: 0.44,
   timeline: [
     spriteHold({ from: 0, to: PARRY_ACTIVE_WINDOW, name: "guard" }),
@@ -1374,7 +1473,7 @@ const PARRY: AbilityDef = {
 const POTION: AbilityDef = {
   id: "potion",
   lane: "item",
-  cooldown: 5,
+  cooldown: hasten(5),
   duration: 0.85,
   timeline: [heal({ at: 0, amount: 30 }), spriteAnim({ at: 0, name: "potion" })],
 };
@@ -2117,9 +2216,12 @@ class PlayerEntity extends Entity {
     );
     this.add(new ProcessComponent());
     this.add(new Facing());
+    this.add(new Stats({ atk: BASE_ATK, def: 0, maxHp: 100 }));
     this.add(new Health({ max: 100 }));
     this.add(new Stagger());
-    this.add(new HitReceiver({ team: "player", iframes: 0.25 }));
+    this.add(
+      new HitReceiver({ team: "player", iframes: 0.25, steps: playerHitSteps }),
+    );
     this.add(
       new Abilities([ATTACK_1, ATTACK_2, ATTACK_3, DASH, GUARD_HOLD, PARRY, POTION]),
     );
@@ -2263,16 +2365,20 @@ class EnemyAI extends Component {
    *  running listener (`Entity.emit` iterates a snapshot). No API exists to
    *  change a `RigidBodyComponent`'s body type at runtime, so "static" is
    *  approximated by zeroing velocity and locking translation — physics can
-   *  no longer push the corpse around. */
+   *  no longer push the corpse around. The corpse destroys itself after
+   *  `CORPSE_LINGER` (scheduled on the still-attached `ProcessComponent`
+   *  before the AI detaches) so `GameDirector`'s respawns don't pile up. */
   private die(): void {
-    tokenOf(this.entity).clear(this.entity);
-    playBoxerAnim(this.entity, "death", { oneShot: true });
+    const entity = this.entity;
+    tokenOf(entity).clear(entity);
+    playBoxerAnim(entity, "death", { oneShot: true });
     this.rb.setVelocity(Vec2.ZERO);
     this.rb.setEnabledTranslations(false, false);
     this.gfx.graphics.clear(); // no HP bar on a corpse
-    this.entity.remove(EnemyAI);
-    cameraOf(this.entity).shake(8, 0.2, { decay: 0.8 });
-    playDeathSfx(this.entity);
+    this.pc.slot({ duration: CORPSE_LINGER, onComplete: () => entity.destroy() }).start();
+    entity.remove(EnemyAI);
+    cameraOf(entity).shake(8, 0.2, { decay: 0.8 });
+    playDeathSfx(entity);
   }
 
   private redraw(): void {
@@ -2320,6 +2426,161 @@ class EnemyEntity extends Entity {
 }
 
 // ---------------------------------------------------------------------------
+// Progression + pickups — the demand-generating half of the stats slice. A
+// scene-level `GameDirector` keeps the arena populated (respawns enemies),
+// drops stat gems the player collects by walking over them, and runs a
+// kill-fed level-up loop that raises the player's `Stats`. Everything here is
+// plain game code; the addon touch points are `statsOf`/`pushMaxHp` above.
+// ---------------------------------------------------------------------------
+
+interface PickupSpec {
+  kind: StatKind;
+  color: number;
+  gain: number;
+}
+
+const PICKUP_SPECS: readonly PickupSpec[] = [
+  { kind: "atk", color: 0xf87171, gain: 4 },
+  { kind: "def", color: 0x60a5fa, gain: 3 },
+  { kind: "maxHp", color: 0x4ade80, gain: 25 },
+  { kind: "atkSpeed", color: 0xfbbf24, gain: 0.3 },
+];
+
+const PICKUP_COLLECT_RANGE = 26;
+const PICKUP_SPAWN_INTERVAL = 6;
+const MAX_PICKUPS = 3;
+
+const TARGET_ENEMIES = 3;
+const ENEMY_RESPAWN_DELAY = 2.5;
+const KILLS_PER_LEVEL = 3;
+const CORPSE_LINGER = 3;
+
+/** Marks a collectible gem and carries the stat it grants. Behavior lives in
+ *  `GameDirector` (one poller, not one component per gem). */
+class Pickup extends Component {
+  constructor(readonly spec: PickupSpec) {
+    super();
+  }
+}
+
+/** Grant a collected/leveled stat, routing maxHp through the `Health.max`
+ *  push so the bar grows immediately. */
+function grantStat(player: Entity, stats: Stats, kind: StatKind, amount: number): void {
+  if (kind === "atk") stats.atk += amount;
+  else if (kind === "def") stats.def += amount;
+  else if (kind === "atkSpeed") stats.atkSpeed += amount;
+  else {
+    stats.maxHp += amount;
+    pushMaxHp(player);
+  }
+}
+
+class GameDirector extends Component {
+  private respawnTimer = ENEMY_RESPAWN_DELAY;
+  private pickupTimer = 2;
+
+  onAdd(): void {
+    this.listenScene(HealthDied, (_data, entity) => {
+      if (entity?.tags.has("enemy")) this.onEnemyKilled();
+    });
+  }
+
+  update(dt: number): void {
+    this.respawnTimer -= dt;
+    if (this.respawnTimer <= 0 && this.livingEnemies() < TARGET_ENEMIES) {
+      this.spawnEnemy();
+      this.respawnTimer = ENEMY_RESPAWN_DELAY;
+    }
+
+    this.pickupTimer -= dt;
+    if (this.pickupTimer <= 0 && this.pickupCount() < MAX_PICKUPS) {
+      this.spawnPickup();
+      this.pickupTimer = PICKUP_SPAWN_INTERVAL;
+    }
+
+    this.collectPickups();
+  }
+
+  /** A kill feeds the level-up loop: past the per-level threshold, the player
+   *  gains atk/def/maxHp (maxHp pushed into `Health`). */
+  private onEnemyKilled(): void {
+    const player = this.scene.findEntity("PlayerEntity");
+    const stats = player && statsOf(player);
+    if (!player || !stats) return;
+    stats.kills++;
+    if (stats.kills >= stats.level * KILLS_PER_LEVEL) {
+      stats.level++;
+      grantStat(player, stats, "atk", 2);
+      grantStat(player, stats, "def", 1);
+      grantStat(player, stats, "maxHp", 15);
+    }
+  }
+
+  private livingEnemies(): number {
+    let n = 0;
+    for (const e of this.scene.getEntities()) {
+      if (e.tags.has("enemy") && !(e.tryGet(Health)?.isDead ?? true)) n++;
+    }
+    return n;
+  }
+
+  private pickupCount(): number {
+    let n = 0;
+    for (const e of this.scene.getEntities()) if (e.tryGet(Pickup)) n++;
+    return n;
+  }
+
+  private spawnEnemy(): void {
+    this.scene.spawn(EnemyEntity, { position: this.randomArenaPoint(90) });
+  }
+
+  private spawnPickup(): void {
+    const spec = PICKUP_SPECS[Math.floor(Math.random() * PICKUP_SPECS.length)];
+    if (!spec) return;
+    const gem = this.scene.spawn("pickup");
+    gem.add(new Transform({ position: this.randomArenaPoint(60) }));
+    gem.add(
+      new GraphicsComponent().draw((g) => {
+        g.roundRect(-9, -9, 18, 18, 4)
+          .fill({ color: spec.color })
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.7 });
+      }),
+    );
+    gem.add(new Pickup(spec));
+  }
+
+  private collectPickups(): void {
+    const player = this.scene.findEntity("PlayerEntity");
+    const stats = player && statsOf(player);
+    const playerPos = player?.tryGet(Transform)?.worldPosition;
+    if (!player || !stats || !playerPos || (player.tryGet(Health)?.isDead ?? false)) return;
+    for (const e of this.scene.getEntities()) {
+      const pickup = e.tryGet(Pickup);
+      const pos = e.tryGet(Transform)?.worldPosition;
+      if (!pickup || !pos) continue;
+      if (pos.sub(playerPos).length() > PICKUP_COLLECT_RANGE) continue;
+      grantStat(player, stats, pickup.spec.kind, pickup.spec.gain);
+      e.destroy();
+    }
+  }
+
+  /** A random point inside the arena, kept `minPlayerDist` px off the player
+   *  so a spawn never lands on top of them. */
+  private randomArenaPoint(minPlayerDist: number): Vec2 {
+    const pad = ARENA_MARGIN + 40;
+    const playerPos = this.scene.findEntity("PlayerEntity")?.tryGet(Transform)?.worldPosition;
+    for (let i = 0; i < 8; i++) {
+      const p = new Vec2(
+        pad + Math.random() * (WIDTH - 2 * pad),
+        pad + Math.random() * (HEIGHT - 2 * pad),
+      );
+      if (!playerPos || p.sub(playerPos).length() >= minPlayerDist) return p;
+    }
+    return new Vec2(WIDTH / 2, ARENA_MARGIN + 60);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // HUD
 // ---------------------------------------------------------------------------
 
@@ -2336,11 +2597,16 @@ class Hud extends Component {
   update(): void {
     const player = this.scene.findEntity("PlayerEntity");
     const health = player?.tryGet(Health);
+    const stats = player && statsOf(player);
+    const statsLine = stats
+      ? `LVL ${stats.level} · ATK ${stats.atk} · DEF ${stats.def} · SPD ${stats.atkSpeed.toFixed(2)}x · kills ${stats.kills}`
+      : "";
     this.text.setText(
       [
         `HP ${health ? Math.ceil(health.hp) : 0} / ${health?.max ?? 0}`,
+        statsLine,
         "WASD/arrows move · Space attack (hold to charge) · Shift dash (buffers mid-attack) ·",
-        "F hold to block, tap to parry · Q potion · H hitbox debug · R reset",
+        "F hold to block, tap to parry · Q potion · walk over gems to boost stats · H hitbox debug · R reset",
         "",
         this.log.text,
       ].join("\n"),
@@ -2545,6 +2811,12 @@ class AbilitiesDemoScene extends Scene {
     this.spawn(EnemyEntity, { position: new Vec2(WIDTH / 2 - 200, HEIGHT / 2 - 110) });
     this.spawn(EnemyEntity, { position: new Vec2(WIDTH / 2 + 200, HEIGHT / 2 - 110) });
     this.spawn(EnemyEntity, { position: new Vec2(WIDTH / 2, HEIGHT / 2 + 170) });
+
+    // Drives the stats-boundary demo: respawns, stat-gem drops, and the
+    // kill-fed level-up loop (see `GameDirector`).
+    const director = this.spawn("game-director");
+    director.add(new Transform());
+    director.add(new GameDirector());
 
     const hudEntity = this.spawn("hud");
     hudEntity.add(new Transform({ position: new Vec2(16, 16) }));

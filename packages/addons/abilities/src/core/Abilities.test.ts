@@ -268,6 +268,53 @@ describe("Abilities — activation gating", () => {
     expect(abilities.cooldownRemaining("test")).toBe(0);
     expect(abilities.cooldownRatio("test")).toBe(1);
   });
+
+  it("resolves a Scalar cooldown once per activation, re-arming with the fresh value", () => {
+    let haste = 0; // 0 -> 0.4s cooldown, 1 -> 0.2s cooldown
+    const { pc, abilities } = setup([
+      {
+        id: "test",
+        cooldown: () => 0.4 - haste * 0.2,
+        timeline: [beep({ at: 0.1, id: "a" })],
+      },
+    ]);
+
+    abilities.play("test");
+    expect(abilities.cooldownRemaining("test")).toBeCloseTo(0.4);
+    pc._tick(0.4); // ability completes at 0.1, cooldown (0.4) elapses now
+    expect(abilities.cooldownRemaining("test")).toBe(0);
+
+    // A haste pickup shortens the next cooldown; the snapshot is taken at play.
+    haste = 1;
+    expect(abilities.play("test")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(abilities.cooldownRemaining("test")).toBeCloseTo(0.2);
+    pc._tick(0.2);
+    expect(abilities.cooldownRemaining("test")).toBe(0);
+    expect(abilities.play("test")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+  });
+
+  it("passes the activation's StepContext to a Scalar cooldown resolver", () => {
+    let seen: AbilityActivation | undefined;
+    const { abilities } = setup([
+      {
+        id: "test",
+        cooldown: (ctx) => {
+          seen = ctx.activation;
+          return 0.3;
+        },
+        timeline: [beep({ at: 0.1, id: "a" })],
+      },
+    ]);
+    const result = abilities.play("test");
+    expect(result.ok).toBe(true);
+    expect(seen).toBe(result.ok ? result.activation : undefined);
+  });
 });
 
 describe("Abilities — construction validation", () => {

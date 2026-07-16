@@ -23,6 +23,8 @@ export type {
   WindowStep,
   WindowStepHooks,
 } from "./core/types.js";
+export { resolveScalar } from "./core/scalar.js";
+export type { Scalar } from "./core/scalar.js";
 
 export { Hittable } from "./core/hit/types.js";
 export type {

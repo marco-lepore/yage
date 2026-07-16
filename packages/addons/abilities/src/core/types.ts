@@ -1,5 +1,6 @@
 import type { Entity } from "@yagejs/core";
 import type { Abilities } from "./Abilities.js";
+import type { Scalar } from "./scalar.js";
 
 /** Data passed to a step's hooks when its ability is active. */
 export interface StepContext {
@@ -96,8 +97,12 @@ export interface AbilityDef {
   lane?: string;
   /** Compared against the lane's active def to decide interrupts. Default 0. */
   priority?: number;
-  /** Seconds before `play(id)` can succeed again. Default 0 (no cooldown). */
-  cooldown?: number;
+  /**
+   * Seconds before `play(id)` can succeed again. Default 0 (no cooldown).
+   * A `Scalar` function is resolved once each time the ability fires
+   * (snapshot semantics), so a haste stat can shorten the next cooldown.
+   */
+  cooldown?: Scalar;
   /** Seconds the ability runs for. Defaults to the latest step end time (`at` or `to`). */
   duration?: number;
   timeline: readonly AbilityStep[];

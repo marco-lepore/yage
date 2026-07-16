@@ -14,6 +14,7 @@ import type {
   StepContext,
   WindowStep,
 } from "./types.js";
+import { resolveScalar } from "./scalar.js";
 
 function isPointStep(step: AbilityStep): step is PointStep {
   return "at" in step;
@@ -65,6 +66,16 @@ interface CompiledEvent {
 interface CompiledAbility {
   duration: number;
   events: CompiledEvent[];
+}
+
+/**
+ * A def's cooldown timer plus the duration it was last armed with. A
+ * `Scalar` cooldown resolves per activation, so the armed duration isn't
+ * `def.cooldown` — `cooldownRemaining` reads it here.
+ */
+interface Cooldown {
+  slot: ProcessSlot;
+  duration: number;
 }
 
 /**
@@ -144,7 +155,7 @@ export class Abilities extends Component {
   private readonly pc = this.sibling(ProcessComponent);
   private readonly defsById = new Map<string, AbilityDef>();
   private readonly compiledByDef = new WeakMap<AbilityDef, CompiledAbility>();
-  private readonly cooldownSlots = new Map<string, ProcessSlot>();
+  private readonly cooldowns = new Map<string, Cooldown>();
   private readonly lanes = new Map<string, ActivationHandle>();
 
   // Lifecycle-event ordering — see `runEntry`'s doc.
@@ -193,10 +204,10 @@ export class Abilities extends Component {
   play(id: string): PlayResult {
     return this.runEntry(() => {
       const def = this.mustGetDef(id);
-      const cooldown = this.cooldownSlots.get(id);
-      if (cooldown?.running) return { ok: false, reason: "cooldown" };
+      const cooldown = this.cooldowns.get(id);
+      if (cooldown?.slot.running) return { ok: false, reason: "cooldown" };
       const result = this.activate(def, false);
-      if (result.ok) this.armCooldown(def);
+      if (result.ok) this.armCooldown(def, result.activation);
       return result;
     });
   }
@@ -244,18 +255,18 @@ export class Abilities extends Component {
 
   /** Seconds remaining on `id`'s cooldown. 0 when ready. Throws for an unknown id. */
   cooldownRemaining(id: string): number {
-    const def = this.mustGetDef(id);
-    const slot = this.cooldownSlots.get(id);
-    if (!slot || slot.completed) return 0;
-    return Math.max(0, (def.cooldown ?? 0) - slot.elapsed);
+    this.mustGetDef(id);
+    const cooldown = this.cooldowns.get(id);
+    if (!cooldown || cooldown.slot.completed) return 0;
+    return Math.max(0, cooldown.duration - cooldown.slot.elapsed);
   }
 
   /** Cooldown progress ratio 0..1 (elapsed / cooldown). 1 when ready. Throws for an unknown id. */
   cooldownRatio(id: string): number {
     this.mustGetDef(id);
-    const slot = this.cooldownSlots.get(id);
-    if (!slot || slot.completed) return 1;
-    return slot.ratio;
+    const cooldown = this.cooldowns.get(id);
+    if (!cooldown || cooldown.slot.completed) return 1;
+    return cooldown.slot.ratio;
   }
 
   override onDestroy(): void {
@@ -438,15 +449,28 @@ export class Abilities extends Component {
     }
   }
 
-  private armCooldown(def: AbilityDef): void {
-    const cooldown = def.cooldown ?? 0;
-    if (cooldown <= 0) return;
-    let slot = this.cooldownSlots.get(def.id);
-    if (!slot) {
-      slot = this.pc.slot({ duration: cooldown });
-      this.cooldownSlots.set(def.id, slot);
+  /**
+   * Arm `def`'s cooldown, resolving a `Scalar` cooldown once here against the
+   * activation's context (snapshot semantics). The resolved duration can
+   * differ per activation, so the slot re-arms with it each time and the
+   * duration is cached for `cooldownRemaining`.
+   */
+  private armCooldown(def: AbilityDef, activation: AbilityActivation): void {
+    const duration = resolveScalar(def.cooldown ?? 0, {
+      entity: activation.entity,
+      def,
+      abilities: this,
+      activation,
+    });
+    if (duration <= 0) return;
+    let cooldown = this.cooldowns.get(def.id);
+    if (!cooldown) {
+      cooldown = { slot: this.pc.slot({ duration }), duration };
+      this.cooldowns.set(def.id, cooldown);
+    } else {
+      cooldown.duration = duration;
     }
-    slot.start();
+    cooldown.slot.start({ duration });
   }
 
   private mustGetDef(id: string): AbilityDef {

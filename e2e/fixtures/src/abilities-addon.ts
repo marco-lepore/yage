@@ -34,13 +34,22 @@ import {
   Projectile,
   Stagger,
   TouchDamage,
+  defaultHitSteps,
   defineStep,
   guard,
   hitbox,
   invulnerable,
   spawn,
 } from "@yagejs-addons/abilities";
-import type { AbilityDef, Hit, HitResult } from "@yagejs-addons/abilities";
+import type {
+  AbilityDef,
+  Hit,
+  HitResult,
+  HitSpec,
+  HitStage,
+  Scalar,
+  StandardHitData,
+} from "@yagejs-addons/abilities";
 import { injectStyles, setupContainer } from "./shared.js";
 
 injectStyles();
@@ -70,6 +79,67 @@ const heal = defineStep<{ amount: number }>("heal", {
 });
 
 // ---------------------------------------------------------------------------
+// Stats boundary — a game-side stat block wired into the addon's
+// four numeric hooks (see examples/src/abilities-addon.ts for the narrated
+// version). Both combatants start at neutral stats, so baseline damage/
+// cooldowns are unchanged; the `stats-boundary` tests mutate them at runtime
+// through `__abilities__.setStat` and assert each hook.
+//   atk -> byAtk (HitSpec) · def -> defenseStage (HitStage) ·
+//   maxHp -> pushMaxHp (Health.max push) · atkSpeed -> hasten (Scalar cooldown)
+// ---------------------------------------------------------------------------
+
+const BASE_ATK = 10;
+
+class Stats extends Component {
+  constructor(
+    public atk: number,
+    public def: number,
+    public maxHp: number,
+    public atkSpeed = 1,
+  ) {
+    super();
+  }
+}
+
+function statsOf(entity: Entity): Stats | undefined {
+  return entity.tryGet(Stats);
+}
+
+function byAtk(base: StandardHitData): HitSpec {
+  return (ctx) => {
+    const atk = statsOf(ctx.entity)?.atk ?? BASE_ATK;
+    return { ...base, damage: Math.round((base.damage ?? 0) * (atk / BASE_ATK)) };
+  };
+}
+
+function hasten(base: number): Scalar {
+  return (ctx) => base / (statsOf(ctx.entity)?.atkSpeed ?? 1);
+}
+
+const defenseStage: HitStage<StandardHitData, HitReceiver> = (hit, receiver) => {
+  const def = statsOf(receiver.entity)?.def ?? 0;
+  if (def > 0 && hit.data.damage !== undefined) {
+    hit.data.damage = Math.max(0, hit.data.damage - def);
+  }
+  return undefined;
+};
+
+const combatantHitSteps: readonly HitStage<StandardHitData, HitReceiver>[] = [
+  defenseStage,
+  ...defaultHitSteps,
+];
+
+function pushMaxHp(entity: Entity): void {
+  const stats = statsOf(entity);
+  const health = entity.tryGet(Health);
+  if (!stats || !health) return;
+  const gained = stats.maxHp - health.max;
+  health.max = stats.maxHp;
+  if (gained > 0) health.heal(gained);
+  else health.hp = Math.min(health.hp, health.max);
+}
+
+// ---------------------------------------------------------------------------
 // Ability defs — the polished example's numbers, except a wider guard window
 // (0.6s vs 0.35s) so frame-stepped tests can't race it shut. The receivers
 // below also drop i-frames to 0 so every delivery resolves on its own.
@@ -84,14 +154,14 @@ const SLASH: AbilityDef = {
       to: 0.16,
       shape: { type: "capsule", halfHeight: 16, radius: 9, axis: "x" },
       offset: { x: 26, y: 0 },
-      hit: { damage: 18, knockback: 260, stun: 0.3 },
+      hit: byAtk({ damage: 18, knockback: 260, stun: 0.3 }),
     }),
   ],
 };
 
 const DASH: AbilityDef = {
   id: "dash",
-  cooldown: 1.0,
+  cooldown: hasten(1.0),
   timeline: [
     invulnerable({ from: 0, to: 0.18 }),
     dashMove({ from: 0, to: 0.18, speed: 560 }),
@@ -219,9 +289,10 @@ class PlayerEntity extends Entity {
     this.add(new ColliderComponent({ shape: { type: "circle", radius: 14 } }));
     this.add(new ProcessComponent());
     this.add(new Facing());
+    this.add(new Stats(BASE_ATK, 0, 100));
     this.add(new Health({ max: 100 }));
     this.add(new Stagger());
-    this.add(new HitReceiver({ team: "player", iframes: 0 }));
+    this.add(new HitReceiver({ team: "player", iframes: 0, steps: combatantHitSteps }));
     this.add(new Abilities([SLASH, DASH, GUARD, POTION]));
     this.add(new CombatProbe());
   }
@@ -240,9 +311,10 @@ class EnemyEntity extends Entity {
     this.add(new RigidBodyComponent({ type: "dynamic", fixedRotation: true }));
     this.add(new ColliderComponent({ shape: { type: "circle", radius: 14 } }));
     this.add(new ProcessComponent());
+    this.add(new Stats(BASE_ATK, 0, 50));
     this.add(new Health({ max: 50 }));
     this.add(new Stagger());
-    this.add(new HitReceiver({ team: "enemy", iframes: 0 }));
+    this.add(new HitReceiver({ team: "enemy", iframes: 0, steps: combatantHitSteps }));
     this.add(
       new TouchDamage({ hit: { damage: 6, knockback: 140, stun: 0.25 }, interval: 0.8 }),
     );
@@ -266,9 +338,13 @@ class AbilitiesFixtureScene extends Scene {
 
 type Who = "player" | "enemy";
 
+type StatKind = "atk" | "def" | "maxHp" | "atkSpeed";
+
 interface AbilitiesHostHandle {
   play(who: Who, id: string): boolean;
   teleport(who: Who, x: number, y: number): void;
+  setStat(who: Who, kind: StatKind, value: number): void;
+  cooldownRemaining(who: Who, id: string): number;
 }
 
 function entityFor(scene: Scene, who: Who): Entity {
@@ -302,6 +378,20 @@ async function main(): Promise<void> {
     },
     teleport(who, x, y) {
       entityFor(scene, who).get(RigidBodyComponent).setPosition(x, y);
+    },
+    setStat(who, kind, value) {
+      const entity = entityFor(scene, who);
+      const stats = entity.get(Stats);
+      if (kind === "atk") stats.atk = value;
+      else if (kind === "def") stats.def = value;
+      else if (kind === "atkSpeed") stats.atkSpeed = value;
+      else {
+        stats.maxHp = value;
+        pushMaxHp(entity);
+      }
+    },
+    cooldownRemaining(who, id) {
+      return entityFor(scene, who).get(Abilities).cooldownRemaining(id);
     },
   };
   (window as unknown as { __abilities__: AbilitiesHostHandle }).__abilities__ = handle;
