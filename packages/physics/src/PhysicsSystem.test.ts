@@ -149,7 +149,7 @@ vi.mock("@dimforge/rapier2d", () => ({
   },
 }));
 
-import { Transform, Vec2, Phase } from "@yagejs/core";
+import { Transform, Vec2, Phase, SceneTime, SceneTimeKey } from "@yagejs/core";
 import { RigidBodyComponent } from "./RigidBodyComponent.js";
 import { PhysicsSystem } from "./PhysicsSystem.js";
 import { createPhysicsTestContext, createTestScene, spawnEntityInScene } from "./test-helpers.js";
@@ -401,6 +401,30 @@ describe("PhysicsSystem", () => {
       expect(mockWorld1.stepSpy).toHaveBeenCalledTimes(1);
       // Scene 2 at timeScale 2: accumulator = 33.34, two steps
       expect(mockWorld2.stepSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("steps under SceneTime.effectiveScale — a freeze stops the world", async () => {
+      const { scene, physicsWorld, context } = await createPhysicsTestContext();
+      const system = new PhysicsSystem();
+      system._setContext(context);
+      const time = new SceneTime(scene);
+      scene.registerScoped(SceneTimeKey, time);
+
+      const entity = spawnEntityInScene(scene, "test");
+      entity.add(new Transform());
+      entity.add(new RigidBodyComponent({ type: "dynamic" }));
+
+      const world = (physicsWorld as unknown as { world: InstanceType<typeof mocks.MockWorld> }).world;
+
+      // Frozen: accumulator never grows, no steps.
+      const handle = time.freezeFor(10);
+      system.update(16.67);
+      expect(world.stepSpy).not.toHaveBeenCalled();
+
+      // Released: stepping resumes at full speed.
+      handle.release();
+      system.update(16.67);
+      expect(world.stepSpy).toHaveBeenCalledTimes(1);
     });
 
     it("ignores entity.timeScale — step count is driven by scene.timeScale only", async () => {

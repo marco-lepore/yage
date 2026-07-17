@@ -1,4 +1,10 @@
-import { System, Phase, Transform, QueryCacheKey } from "@yagejs/core";
+import {
+  System,
+  Phase,
+  Transform,
+  QueryCacheKey,
+  SceneTimeKey,
+} from "@yagejs/core";
 import type { EngineContext, QueryResult } from "@yagejs/core";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
 
@@ -19,7 +25,11 @@ export class ParticleSystem extends System {
     for (const entity of this.query) {
       const scene = entity.tryScene;
       if (scene?.isPaused) continue;
-      const sceneTimeScale = scene?.timeScale ?? 1;
+      // Per-entity SceneTime scale so freeze/slow-mo requests (and their
+      // excludeUpdates exclusions) apply to emitters like component updates.
+      const time = scene?.tryResolveScoped(SceneTimeKey);
+      const sceneTimeScale =
+        time?.effectiveScaleForUpdates(entity) ?? scene?.timeScale ?? 1;
       const emitter = entity.get(ParticleEmitterComponent);
       if (!emitter.enabled) continue;
       const pos = entity.get(Transform).position;

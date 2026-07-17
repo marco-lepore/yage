@@ -19,6 +19,9 @@ class MockScene {
   getEntities(): ReadonlySet<Entity> {
     return this.entities;
   }
+  tryResolveScoped(): undefined {
+    return undefined;
+  }
   _queueDestroy(): void {}
 }
 

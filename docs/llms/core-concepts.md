@@ -115,10 +115,12 @@ parent.addChild("arm", childEntity);
 parent.getChild("arm");
 parent.removeChild("arm");
 
-// Per-entity time scale (composes with scene.timeScale; saved/restored)
-e.timeScale = 0.5; // components get dt * scene.timeScale * entity.timeScale
+// Per-entity time scale (composes with the scene's effective scale; saved/restored)
+e.timeScale = 0.5; // components get dt * sceneEffectiveScale * entity.timeScale
+// sceneEffectiveScale = scene.timeScale x active SceneTime requests (see SceneTime).
 // Affects component update/fixedUpdate, the entity's ProcessComponent, and its
-// particle emitters. NOT physics (shared Rapier world steps under scene scale only).
+// particle emitters. NOT physics (shared Rapier world steps under the scene's
+// effective scale only).
 
 // Destruction (deferred to EndOfFrame)
 e.destroy();
@@ -220,11 +222,11 @@ const svc = context.resolve(MyServiceKey); // throws if missing
 const svc2 = context.tryResolve(MyServiceKey); // undefined if missing
 ```
 
-Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`.
+Well-known keys: `EngineKey`, `EventBusKey`, `SceneManagerKey`, `LoggerKey`, `QueryCacheKey`, `ErrorBoundaryKey`, `GameLoopKey`, `InspectorKey`, `SystemSchedulerKey`, `ProcessSystemKey`, `AssetManagerKey`, `SceneTimeKey` (per-scene, registered by the engine itself).
 
 Plugin keys: `RendererKey`, `RendererAdapterKey` (cross-package pointer-input contract defined in core; registered by `RendererPlugin` or a foreign renderer, consumed by `InputPlugin`), `SceneRenderTreeKey`, `InputManagerKey`, `PhysicsWorldKey`, `PhysicsWorldManagerKey`, `AudioManagerKey`, `SaveServiceKey`.
 
-Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`) are per-scene —
+Some keys (`PhysicsWorldKey`, `SceneRenderTreeKey`, `SceneTimeKey`) are per-scene —
 `this.use(key)` resolves the correct scene's instance automatically. This
 works from both `Component` code and from a `Scene` subclass: `Scene.use(key)`
 / `Scene.service(key)` are scope-aware, so `this.use(SceneRenderTreeKey)`

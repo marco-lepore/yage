@@ -84,7 +84,8 @@ scene.timeScale = 1;     // normal speed
 scene.timeScale = 2;     // double speed
 ```
 
-Use it for slow-motion effects, speed-up power-ups, or post-goal replays.
+Use it as the scene's persistent speed knob: a game-wide speed setting, a
+speed-up power-up, or a post-goal replay.
 
 Time scale affects the scene's physics, processes, and tweens — everything that
 reads `dt` from the game loop.
@@ -95,6 +96,62 @@ if (keys.has("1")) scene.timeScale = 0.25;
 if (keys.has("2")) scene.timeScale = 1;
 if (keys.has("3")) scene.timeScale = 2;
 ```
+
+For *temporary* effects — hitstop, slow motion during an attack — use the
+`SceneTime` service below instead of writing `timeScale` from several places
+and losing track of the value to restore.
+
+### Hitstop, Slow Motion, and Freeze Frames
+
+Every scene gets a `SceneTime` service, resolvable through the scene-scoped
+`SceneTimeKey`. Each temporary effect is a *request* with its own handle, and
+the service computes the resulting scale from all active requests — two
+overlapping effects can never corrupt each other's restore.
+
+```typescript
+import { SceneTimeKey } from "@yagejs/core";
+
+const time = this.use(SceneTimeKey); // from a Component or Scene
+
+// Hitstop / freeze frame: stop the whole scene for 80ms of real time.
+time.freezeFor(0.08);
+
+// Bullet time: slow the world until released.
+const slow = time.scaleBy(0.25, { key: "slowmo" });
+slow.release();
+
+// Timed speed-up: auto-releases after 5 seconds.
+time.scaleBy(2, { for: 5, key: "haste" });
+
+// Slow everything except the player.
+time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
+```
+
+How requests combine:
+
+- `scene.timeScale` stays the persistent knob. The service reads it and never
+  writes it.
+- Each `key` names a channel. Within a channel the latest active request wins;
+  when it ends, an older still-active request applies again. A call without a
+  `key` gets its own private channel.
+- Across channels the winning factors multiply. A freeze is a ×0 factor, so it
+  wins over any slow or speed-up in another channel.
+- The result is `scene.timeScale × (channel winners)`, readable as
+  `time.effectiveScale` (with `time.isFrozen` for the ×0 case).
+
+Request durations (`for`, and the `freezeFor` duration) count real seconds:
+they are unaffected by the scaling itself, so a freeze reliably ends on time.
+A stack-paused scene holds its effects — opening a pause menu does not consume
+a running hitstop. All requests are released when the scene exits, and they are
+not saved; re-issue them after loading a snapshot.
+
+:::caution[Exclusions don't cover physics]
+`excludeUpdates` keeps an entity's component updates, `ProcessComponent`, and
+particle emitters at full speed, but its rigid body still integrates at the
+slowed world speed — one shared Rapier world per scene has no per-body time.
+Components that write physics (a movement controller applying forces) push
+them at the excluded rate into a slowed world.
+:::
 
 ### Per-Entity Time Scale
 
@@ -108,10 +165,12 @@ entity.timeScale = 2;    // ...or double it
 ```
 
 The engine feeds each entity's components the delta time
-`dt * scene.timeScale * entity.timeScale`. This affects the entity's component
-`update()` / `fixedUpdate()`, its `ProcessComponent` (tweens), and its particle
-emitters — handy for a single frozen boss, a hasted player, or a bullet-time
-target while everything else moves normally.
+`dt * effectiveScale * entity.timeScale`, where `effectiveScale` is
+`scene.timeScale` composed with any active `SceneTime` requests. The
+multiplier affects the entity's component `update()` / `fixedUpdate()`, its
+`ProcessComponent` (tweens), and its particle emitters — handy for a single
+frozen boss, a hasted player, or a bullet-time target while everything else
+moves normally.
 
 :::caution[Physics is not per-entity scaled]
 `entity.timeScale` does **not** affect physics. A scene shares one Rapier world

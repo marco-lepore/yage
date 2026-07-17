@@ -120,6 +120,13 @@ export type {
 export { Scene } from "./Scene.js";
 export type { SpawnOptions, SetupParams, ClassSpawnArgs } from "./Scene.js";
 
+export { SceneTime, SceneTimeKey } from "./SceneTime.js";
+export type {
+  TimeEffectHandle,
+  SceneTimeScaleOptions,
+  SceneTimeFreezeOptions,
+} from "./SceneTime.js";
+
 export { LoadingScene } from "./LoadingScene.js";
 
 export { SceneManager } from "./SceneManager.js";

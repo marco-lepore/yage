@@ -4,6 +4,7 @@ import {
   Transform,
   Vec2,
   SceneManagerKey,
+  SceneTimeKey,
 } from "@yagejs/core";
 import type { Scene, SceneManager } from "@yagejs/core";
 import { PhysicsWorldManagerKey } from "./types.js";
@@ -21,15 +22,18 @@ import type { PhysicsWorldManager } from "./PhysicsWorldManager.js";
  *
  * Runs in FixedUpdate at priority 0, before ComponentFixedUpdateSystem (priority 1000).
  *
- * Each active scene with physics gets its own sub-accumulator scaled by
- * `scene.timeScale`. Paused scenes are simply not stepped — no sleep/wake needed.
+ * Each active scene with physics gets its own sub-accumulator scaled by the
+ * scene's effective time scale (`SceneTime.effectiveScale` — the persistent
+ * `scene.timeScale` composed with active freeze/slow-mo requests). Paused
+ * scenes are simply not stepped — no sleep/wake needed.
  *
- * NOTE: `entity.timeScale` is intentionally NOT applied here. The whole scene
- * shares one Rapier world stepped once per (scaled) fixed tick, so there is no
- * per-body notion of time — a single entity cannot be individually slowed or
- * sped up. `entity.timeScale` only affects component `update`/`fixedUpdate`,
- * the entity's `ProcessComponent`, and its particle emitters. For per-body
- * time control, use a kinematic body or scale velocities manually.
+ * NOTE: `entity.timeScale` and SceneTime `excludeUpdates` exclusions are
+ * intentionally NOT applied here. The whole scene shares one Rapier world
+ * stepped once per (scaled) fixed tick, so there is no per-body notion of
+ * time — a single entity cannot be individually slowed or sped up. They only
+ * affect component `update`/`fixedUpdate`, the entity's `ProcessComponent`,
+ * and its particle emitters. For per-body time control, use a kinematic body
+ * or scale velocities manually.
  */
 export class PhysicsSystem extends System {
   readonly phase = Phase.FixedUpdate;
@@ -57,7 +61,8 @@ export class PhysicsSystem extends System {
     scene: Scene,
     ctx: ScenePhysicsContext,
   ): void {
-    const timeScale = scene.timeScale;
+    const timeScale =
+      scene.tryResolveScoped(SceneTimeKey)?.effectiveScale ?? scene.timeScale;
     const maxSteps = Math.min(Math.ceil(timeScale) + 1, 8);
     ctx.accumulator += dt * timeScale;
 
