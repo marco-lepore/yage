@@ -119,10 +119,7 @@ export function resolveFrames(source: FrameSource): Texture[] {
     const { sheet, ...options } = source;
     const base = Texture.from(sheet);
     base.source.scaleMode = "nearest";
-    if (
-      options.columns === undefined &&
-      Math.floor(base.width / options.frameWidth) === 0
-    ) {
+    if (Math.floor(base.width / options.frameWidth) === 0) {
       throw new Error(
         `resolveFrames: frameWidth (${options.frameWidth}) exceeds texture width (${base.width}) for sheet "${sheet}".`,
       );

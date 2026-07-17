@@ -136,9 +136,15 @@ describe("resolveFrames — sheet sources", () => {
     expect(frameAt(frames, 7)).toEqual({ x: 0, y: 132 });
   });
 
-  it("throws when frameWidth exceeds the texture and no columns are given", () => {
+  it("throws when frameWidth exceeds the texture width", () => {
     expect(() =>
       resolveFrames({ sheet: "player.png", frameWidth: 200 }),
+    ).toThrow(/exceeds texture width/);
+  });
+
+  it("throws for an over-wide frameWidth even with explicit columns", () => {
+    expect(() =>
+      resolveFrames({ sheet: "narrow.png", frameWidth: 200, columns: 2 }),
     ).toThrow(/exceeds texture width/);
   });
 });
