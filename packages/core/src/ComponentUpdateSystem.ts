@@ -4,6 +4,7 @@ import type { EngineContext } from "./EngineContext.js";
 import type { ErrorBoundary } from "./ErrorBoundary.js";
 import type { SceneManager } from "./SceneManager.js";
 import { SceneManagerKey, ErrorBoundaryKey } from "./EngineContext.js";
+import { SceneTimeKey } from "./SceneTime.js";
 
 /**
  * Built-in system that bridges the OOP and ECS worlds.
@@ -37,10 +38,17 @@ export class ComponentFixedUpdateSystem extends BaseComponentUpdateSystem {
 
   update(dt: number): void {
     for (const scene of this.sceneManager.activeScenes) {
-      const sceneDt = dt * scene.timeScale;
+      // SceneTime folds active freeze/slow-mo requests into the scene scale,
+      // per entity so excluded entities keep running. Falls back to the plain
+      // scene.timeScale when the scene has no SceneTime (scenes never
+      // entered through the engine's scene hooks).
+      const time = scene.tryResolveScoped(SceneTimeKey);
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed) continue;
-        const entityDt = sceneDt * entity.timeScale;
+        const entityDt =
+          dt *
+          (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
+          entity.timeScale;
         for (const component of entity.getAll()) {
           if (!component.enabled || !component.fixedUpdate) continue;
           const fixedUpdate = component.fixedUpdate;
@@ -59,10 +67,14 @@ export class ComponentUpdateSystem extends BaseComponentUpdateSystem {
 
   update(dt: number): void {
     for (const scene of this.sceneManager.activeScenes) {
-      const sceneDt = dt * scene.timeScale;
+      // Same per-entity SceneTime composition as the fixed-update pass above.
+      const time = scene.tryResolveScoped(SceneTimeKey);
       for (const entity of scene.getEntities()) {
         if (entity.isDestroyed) continue;
-        const entityDt = sceneDt * entity.timeScale;
+        const entityDt =
+          dt *
+          (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
+          entity.timeScale;
         for (const component of entity.getAll()) {
           if (!component.enabled || !component.update) continue;
           const update = component.update;

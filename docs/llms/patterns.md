@@ -490,18 +490,50 @@ class PauseScene extends Scene {
 ### Time scale
 
 ```ts
-scene.timeScale = 0.25; // slow-mo
+scene.timeScale = 0.25; // slow-mo (persistent knob)
 scene.timeScale = 2; // fast-forward
 
-// Per-entity multiplier, composes on top of scene.timeScale.
-// Components receive dt * scene.timeScale * entity.timeScale.
+// Per-entity multiplier, composes on top of the scene's effective scale.
+// Components receive dt * effectiveScale(entity) * entity.timeScale, where
+// effectiveScale = scene.timeScale x active SceneTime requests (below).
 entity.timeScale = 0; // freeze one entity while the scene runs
 entity.timeScale = 2; // ...or speed it up
 
 // Affects: component update/fixedUpdate, the entity's ProcessComponent
 // (tweens), and its particle emitters. NOT physics — the scene shares one
-// Rapier world stepped under scene.timeScale only; a rigid body cannot be
-// per-entity time-scaled. entity.timeScale is saved/restored.
+// Rapier world stepped under the scene's effective scale only; a rigid body
+// cannot be per-entity time-scaled. entity.timeScale is saved/restored.
+```
+
+### Hitstop, slow motion, bullet time, freeze frames (SceneTime)
+
+```ts
+import { SceneTimeKey } from "@yagejs/core";
+
+// Per-scene service; arbitrates competing time effects so callers never
+// write scene.timeScale directly (two writers lose the restore value).
+const time = this.use(SceneTimeKey); // Component or Scene; scene-scoped key
+
+time.freezeFor(0.08); // hitstop / freeze frame: x0 for 80ms real time
+const slow = time.scaleBy(0.25, { key: "slowmo" }); // bullet time until released
+slow.release(); // handles are idempotent; { active } reads state
+time.scaleBy(2, { for: 5, key: "haste" }); // speed-up, auto-releases after 5s
+
+// Exclude entities from a slow — their updates, processes, and particle
+// emitters keep full speed. Their physics bodies do NOT (shared world).
+time.scaleBy(0.25, { key: "slowmo", excludeUpdates: [player] });
+
+// Composition: each `key` is a channel. Within a channel the latest active
+// request wins (older still-active ones apply again when it ends); across
+// channels winners multiply; freeze is a x0 factor. scene.timeScale is
+// input-only: effectiveScale = scene.timeScale x channel winners.
+time.effectiveScale; // what physics and scene-pool processes run at
+time.isFrozen; // effectiveScale === 0
+time.effectiveScaleForUpdates(entity); // exclusion-aware, pre-entity.timeScale
+
+// Durations age on raw frame time but hold while the scene is stack-paused
+// (a pause menu does not consume a hitstop). Requests release on scene exit
+// and are not saved — re-issue after loading a snapshot.
 ```
 
 ### Cross-scene access

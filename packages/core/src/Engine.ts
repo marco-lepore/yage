@@ -33,6 +33,7 @@ import type { Plugin } from "./types.js";
 import { SceneHookRegistry, SceneHookRegistryKey } from "./SceneHooks.js";
 import type { SceneHooks } from "./SceneHooks.js";
 import { RandomKey } from "./Random.js";
+import { SceneTime, SceneTimeKey } from "./SceneTime.js";
 
 /** Engine configuration. */
 export interface EngineConfig {
@@ -111,9 +112,14 @@ export class Engine {
     this.sceneHooks.register({
       beforeEnter: (scene) => {
         scene._registerScoped(RandomKey, this.inspector.createSceneRandom());
+        scene._registerScoped(SceneTimeKey, new SceneTime(scene));
         this.inspector.attachSceneEventObserver(scene);
       },
       afterExit: (scene) => {
+        // Entities are already destroyed at this point, so entity-owned
+        // teardown (component onDestroy) has released its own requests;
+        // this catches the rest.
+        scene.tryResolveScoped(SceneTimeKey)?._releaseAll();
         this.inspector.detachSceneEventObserver(scene);
       },
     });
@@ -128,6 +134,14 @@ export class Engine {
     this.loop.setCallbacks({
       earlyUpdate: (dt) => {
         this.logger.setFrame(this.loop.frameCount);
+        // Age SceneTime request timers on raw frame time before any
+        // transition or system code runs — a request created later in the
+        // frame is first aged next frame, so it never loses its creation
+        // frame's dt. The activeScenes snapshot keeps scene-stack mutations
+        // out of this pass.
+        for (const scene of [...this.scenes.activeScenes]) {
+          scene.tryResolveScoped(SceneTimeKey)?._tick(dt);
+        }
         this.scenes._tickTransition(dt);
         this.scheduler.run(Phase.EarlyUpdate, dt);
       },

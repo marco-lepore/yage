@@ -631,11 +631,22 @@ export abstract class Scene {
   }
 
   /**
-   * Resolve a scene-scoped service, or `undefined` if none was registered.
+   * Resolve a scene-scoped service registered via `registerScoped`, or
+   * `undefined` if none is registered for this scene. Unlike `use()`, never
+   * falls back to engine scope and never throws — the read for systems that
+   * iterate scenes (e.g. physics and particles resolving `SceneTimeKey`).
+   */
+  tryResolveScoped<T>(key: ServiceKey<T>): T | undefined {
+    return this._scopedServices?.get(key.id) as T | undefined;
+  }
+
+  /**
+   * Internal alias for `tryResolveScoped`. Prefer `tryResolveScoped` in
+   * new code.
    * @internal
    */
   _resolveScoped<T>(key: ServiceKey<T>): T | undefined {
-    return this._scopedServices?.get(key.id) as T | undefined;
+    return this.tryResolveScoped(key);
   }
 
   /**

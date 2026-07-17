@@ -97,7 +97,22 @@ someEntity.emit(DamagedEvent, { amount: 10 });    // handler runs with entity = 
 
 `Scene.on` returns an unsubscribe function. The handler param is `(data, entity?)` regardless of which side emitted — game code should check `entity` to decide whether to read source state.
 
-`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)` — and via `Scene.use(key)` / `Scene.service(key)` from the scene itself, which are scope-aware (scene scope first, then engine). Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `_registerScoped` is a kept internal alias — prefer `registerScoped` in new code.
+`Scene.registerScoped<T>(key: ServiceKey<T>, value: T)` (public) attaches a scene-scoped service resolvable via `Component.use(key)` — and via `Scene.use(key)` / `Scene.service(key)` from the scene itself, which are scope-aware (scene scope first, then engine). Plugins call it from `beforeEnter`; game code can call it from `onEnter` for scene-local state. Every key registered this way is auto-unregistered on scene exit (after `onExit` and plugin `afterExit` hooks), so scenes don't leak services into one another. `Scene.tryResolveScoped<T>(key)` (public) reads a scene-scoped service without engine-scope fallback, returning `undefined` when absent — the read for systems that iterate scenes. `_registerScoped` / `_resolveScoped` are kept internal aliases — prefer the public names in new code.
+
+### SceneTime — hitstop, slow motion, bullet time, freeze frames
+
+Per-scene arbitration for competing time effects. The engine registers one instance per scene under the scene-scoped `SceneTimeKey`; resolve via `Component.use(SceneTimeKey)` / `Scene.use(SceneTimeKey)`, or `scene.tryResolveScoped(SceneTimeKey)` from a System.
+
+| Member | Purpose |
+|---|---|
+| `scaleBy(factor, { for?, key?, excludeUpdates?, label? })` | Add a scale request. `factor` finite and > 0 (> 1 = speed-up; physics catch-up capped at ~8 sub-steps/frame). Returns `TimeEffectHandle { active, release() }` (idempotent) |
+| `freezeFor(duration, { key?, label? })` | ×0 request for `duration` real-time seconds; same handle shape; takes no exclusions (whole-scene by design) |
+| `effectiveScale` | `scene.timeScale × Π(channel winners)` — what physics and scene-pool processes run at |
+| `effectiveScaleForUpdates(entity)` | Same, but a channel whose winner excludes `entity` contributes 1; `entity.timeScale` is composed on top by the update pipeline |
+| `isFrozen` | `effectiveScale === 0` |
+| `activeLabels` | Display labels of active requests (`label` option, defaults to `key`) |
+
+Composition: each `key` is a channel; within a channel the latest active request wins, and older still-active entries apply again when it ends; across channels winners multiply; an unkeyed call is its own anonymous channel. `scene.timeScale` is input-only — the service never writes it (nor `entity.timeScale`). Durations (`for`, `freezeFor`) age on raw frame time at the start of each frame, only while the scene is active — a stack-paused scene holds its effects, so pause-menu time does not consume a hitstop. `for: 0` / `freezeFor(0)` return an inactive handle without adding a request. All requests release on scene exit; effects are transient across save/load — games re-issue them after loading a snapshot. `excludeUpdates` covers component updates, the entity's `ProcessComponent`, and its particle emitters — NOT physics: the excluded entity's rigid body still integrates at world speed, and physics-writing components under exclusion push forces at the excluded rate into a slowed world. Inspector scene snapshots report `effectiveTimeScale` and `frozen`.
 
 ### Math
 

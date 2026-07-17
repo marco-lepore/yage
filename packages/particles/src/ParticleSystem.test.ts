@@ -66,7 +66,7 @@ vi.mock("pixi.js", () => ({
   Container: mocks.MockContainer,
 }));
 
-import { Transform, Vec2, Phase } from "@yagejs/core";
+import { Transform, Vec2, Phase, SceneTime, SceneTimeKey } from "@yagejs/core";
 import { createParticlesTestContext, spawnEntityInScene } from "./test-helpers.js";
 import { ParticleSystem } from "./ParticleSystem.js";
 import { ParticleEmitterComponent } from "./ParticleEmitterComponent.js";
@@ -151,5 +151,33 @@ describe("ParticleSystem", () => {
 
     expect(spy1).toHaveBeenCalledWith(0.05, 10, 20);
     expect(spy2).toHaveBeenCalledWith(0.05, 30, 40);
+  });
+
+  it("applies SceneTime per-entity scale, honoring excludeUpdates", () => {
+    const ctx = setup();
+    const time = new SceneTime(ctx.scene);
+    ctx.scene.registerScoped(SceneTimeKey, time);
+
+    const excluded = spawnEntityInScene(ctx.scene, "excluded");
+    excluded.add(new Transform());
+    const excludedEmitter = excluded.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
+
+    const other = spawnEntityInScene(ctx.scene, "other");
+    other.add(new Transform());
+    const otherEmitter = other.add(
+      new ParticleEmitterComponent({ texture: tex, lifetime: 1 }),
+    );
+    other.timeScale = 2; // entity.timeScale composes on top
+
+    time.scaleBy(0.5, { key: "slowmo", excludeUpdates: [excluded] });
+
+    const excludedSpy = vi.spyOn(excludedEmitter, "_update");
+    const otherSpy = vi.spyOn(otherEmitter, "_update");
+    system.update(0.1);
+
+    expect(excludedSpy).toHaveBeenCalledWith(0.1, 0, 0);
+    expect(otherSpy).toHaveBeenCalledWith(0.1 * 0.5 * 2, 0, 0);
   });
 });

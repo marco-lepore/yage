@@ -476,22 +476,20 @@ controller doesn't already.
 
 ### Hit-Pause (Time Freeze)
 
-A few frames of frozen time on a heavy impact. Drives the scene's
-`timeScale` rather than running a tween — the entire scene pauses, then
-resumes.
+A few frames of frozen time on a heavy impact. The scene's `SceneTime`
+service freezes the entire scene — components, processes, tweens, particles,
+and physics — and restores it on a real-time timer:
 
 ```typescript
-function hitPause(scene: Scene, duration = 80) {
-  scene.timeScale = 0;
-  setTimeout(() => (scene.timeScale = 1), duration);
-}
+import { SceneTimeKey } from "@yagejs/core";
+
+// From a Component:
+this.use(SceneTimeKey).freezeFor(0.08); // 80ms freeze frame
 ```
 
-A `Process.delay` won't work for this recipe — `timeScale = 0` freezes the
-scene's processes, so the delay never resolves. `setTimeout` runs against
-wall-clock time and is unaffected. If you'd rather avoid `setTimeout`,
-spawn the unfreezing timer in a *parent* scene whose `timeScale` is still
-1 (e.g. a paused-stack root scene).
+The duration counts real seconds, so the freeze cannot stall its own timer.
+Overlapping freezes (or a freeze during slow motion) compose safely — see
+[Hitstop, Slow Motion, and Freeze Frames](/patterns/scene-management/#hitstop-slow-motion-and-freeze-frames).
 
 ### Enemy Telegraph
 

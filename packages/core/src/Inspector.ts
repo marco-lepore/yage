@@ -19,6 +19,7 @@ import {
   type InternalRandomService,
   type RandomService,
 } from "./Random.js";
+import { SceneTimeKey } from "./SceneTime.js";
 
 // Duplicate service keys locally to avoid runtime deps on optional packages.
 const InputManagerRuntimeKey = new ServiceKey<InputManagerLike>("inputManager");
@@ -254,6 +255,14 @@ export interface WorldSceneSnapshot {
   name: string;
   paused: boolean;
   timeScale: number;
+  /**
+   * `scene.timeScale` composed with active `SceneTime` requests
+   * (freeze/slow-mo) — the default scale for non-excluded updates and
+   * scene-wide consumers such as physics.
+   */
+  effectiveTimeScale: number;
+  /** True while the effective scale is 0 (hitstop/freeze frame in force). */
+  frozen: boolean;
   seed: number;
   entities: WorldEntitySnapshot[];
   ui: UITreeSnapshot | null;
@@ -1001,6 +1010,7 @@ export class Inspector {
 
   private sceneToWorldSnapshot(scene: Scene): WorldSceneSnapshot {
     const random = scene._resolveScoped(RandomKey);
+    const time = scene.tryResolveScoped(SceneTimeKey);
     const physicsManager = this.engine.context.tryResolve(
       PhysicsWorldManagerRuntimeKey,
     );
@@ -1009,6 +1019,8 @@ export class Inspector {
       name: scene.name,
       paused: scene.isPaused,
       timeScale: scene.timeScale,
+      effectiveTimeScale: time?.effectiveScale ?? scene.timeScale,
+      frozen: time?.isFrozen ?? scene.timeScale === 0,
       seed: random?.getSeed() ?? 0,
       entities: this.getSceneEntities(scene),
       ui: this.buildUISnapshot(scene),

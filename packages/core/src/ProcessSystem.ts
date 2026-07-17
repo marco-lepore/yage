@@ -7,6 +7,7 @@ import type { Process } from "./Process.js";
 import { ProcessComponent } from "./ProcessComponent.js";
 import { SceneManagerKey } from "./EngineContext.js";
 import { SceneHookRegistryKey } from "./SceneHooks.js";
+import { SceneTimeKey } from "./SceneTime.js";
 
 /**
  * Built-in system that ticks all ProcessComponents on entities in non-paused
@@ -122,7 +123,15 @@ export class ProcessSystem extends System {
     // Both share the same activeScenes gating + per-scene timeScale, so a
     // layer-scope fade pauses with the scene exactly like an entity fade.
     for (const scene of this.sceneManager.activeScenes) {
-      const effectiveDt = globalScaledDt * scene.timeScale;
+      // SceneTime folds active freeze/slow-mo requests into the scene scale.
+      // The pool has no owning entity, so it runs at the full effective
+      // scale; entity ProcessComponents get the per-entity value so request
+      // exclusions apply. Falls back to the plain scene.timeScale when the
+      // scene has no SceneTime (scenes never entered through the engine's
+      // scene hooks).
+      const time = scene.tryResolveScoped(SceneTimeKey);
+      const effectiveDt =
+        globalScaledDt * (time?.effectiveScale ?? scene.timeScale);
 
       const pool = this.scenePools.get(scene);
       if (pool) {
@@ -138,9 +147,12 @@ export class ProcessSystem extends System {
         const pc = entity.tryGet(ProcessComponent);
         if (!pc) continue;
         // Entity ProcessComponents compose the per-entity timeScale on top of
-        // the global + per-scene scaling. Scene-scoped processes (the pool
-        // above) stay scene-only — they have no owning entity.
-        pc._tick(effectiveDt * entity.timeScale);
+        // the global + per-scene scaling.
+        const entityDt =
+          globalScaledDt *
+          (time?.effectiveScaleForUpdates(entity) ?? scene.timeScale) *
+          entity.timeScale;
+        pc._tick(entityDt);
       }
     }
   }
