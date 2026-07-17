@@ -139,13 +139,55 @@ describe("resolveFrames — sheet sources", () => {
   it("throws when frameWidth exceeds the texture width", () => {
     expect(() =>
       resolveFrames({ sheet: "player.png", frameWidth: 200 }),
-    ).toThrow(/exceeds texture width/);
+    ).toThrow(/exceeding/);
   });
 
   it("throws for an over-wide frameWidth even with explicit columns", () => {
     expect(() =>
       resolveFrames({ sheet: "narrow.png", frameWidth: 200, columns: 2 }),
-    ).toThrow(/exceeds texture width/);
+    ).toThrow(/exceeding/);
+  });
+
+  it("throws when explicit columns push the grid past the texture edge", () => {
+    // 96px wide: two 48px frames fit, a third column would start at x=96
+    expect(() =>
+      resolveFrames({ sheet: "player.png", frameWidth: 48, columns: 3, count: 3 }),
+    ).toThrow(/exceeding/);
+  });
+
+  it("throws when count implies more rows than the texture height", () => {
+    // 96×48: one 48px row exists, count 3 over 2 columns needs two rows
+    expect(() =>
+      resolveFrames({ sheet: "player.png", frameWidth: 48, columns: 2, count: 3 }),
+    ).toThrow(/exceeding/);
+  });
+
+  it("accepts a grid whose final row is partially used", () => {
+    state.width = 882; // 7 columns
+    state.height = 924; // 7 rows
+    const frames = resolveFrames({
+      sheet: "boxer.png",
+      frameWidth: 126,
+      frameHeight: 132,
+      count: 48, // uses 48 of the 49 cells
+    });
+    expect(frames).toHaveLength(48);
+  });
+
+  it("accepts offsets and gaps that stay inside the texture", () => {
+    state.width = 100;
+    state.height = 40;
+    const frames = resolveFrames({
+      sheet: "padded.png",
+      frameWidth: 40,
+      frameHeight: 30,
+      startX: 2,
+      startY: 4,
+      gapX: 10,
+      columns: 2,
+      count: 2,
+    });
+    expect(frames).toHaveLength(2); // extents: 2+40+10+40 = 92 ≤ 100, 4+30 ≤ 40
   });
 });
 

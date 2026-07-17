@@ -2,6 +2,35 @@ import { Texture, Rectangle, Assets } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type { TextureSliceOptions } from "./public-types.js";
 
+/** Grid options with defaults applied against a concrete texture. */
+interface GridLayout {
+  frameWidth: number;
+  frameHeight: number;
+  startX: number;
+  startY: number;
+  gapX: number;
+  gapY: number;
+  columns: number;
+  count: number;
+}
+
+function resolveGridLayout(
+  base: Texture,
+  options: TextureSliceOptions,
+): GridLayout {
+  const frameWidth = options.frameWidth;
+  const frameHeight = options.frameHeight ?? frameWidth;
+  const startX = options.startX ?? 0;
+  const startY = options.startY ?? 0;
+  const gapX = options.gapX ?? 0;
+  const gapY = options.gapY ?? 0;
+  const columns =
+    options.columns ??
+    Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
+  const count = options.count ?? columns;
+  return { frameWidth, frameHeight, startX, startY, gapX, gapY, columns, count };
+}
+
 /**
  * Slice a texture into frame Textures on a uniform grid.
  *
@@ -13,17 +42,8 @@ export function sliceGrid(
   base: Texture,
   options: TextureSliceOptions,
 ): Texture[] {
-  const frameWidth = options.frameWidth;
-  const frameHeight = options.frameHeight ?? frameWidth;
-  const startX = options.startX ?? 0;
-  const startY = options.startY ?? 0;
-  const gapX = options.gapX ?? 0;
-  const gapY = options.gapY ?? 0;
-
-  const columns =
-    options.columns ??
-    Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
-  const count = options.count ?? columns;
+  const { frameWidth, frameHeight, startX, startY, gapX, gapY, columns, count } =
+    resolveGridLayout(base, options);
   const frames: Texture[] = [];
 
   for (let index = 0; index < count; index++) {
@@ -119,9 +139,21 @@ export function resolveFrames(source: FrameSource): Texture[] {
     const { sheet, ...options } = source;
     const base = Texture.from(sheet);
     base.source.scaleMode = "nearest";
-    if (Math.floor(base.width / options.frameWidth) === 0) {
+    const layout = resolveGridLayout(base, options);
+    const usedColumns = Math.min(layout.count, layout.columns);
+    const rows = Math.ceil(layout.count / layout.columns);
+    const maxX =
+      layout.startX +
+      usedColumns * layout.frameWidth +
+      (usedColumns - 1) * layout.gapX;
+    const maxY =
+      layout.startY + rows * layout.frameHeight + (rows - 1) * layout.gapY;
+    if (maxX > base.width || maxY > base.height) {
       throw new Error(
-        `resolveFrames: frameWidth (${options.frameWidth}) exceeds texture width (${base.width}) for sheet "${sheet}".`,
+        `resolveFrames: the frame grid for sheet "${sheet}" extends to ` +
+          `${maxX}×${maxY}, exceeding the ${base.width}×${base.height} texture ` +
+          `(frameWidth ${layout.frameWidth}, frameHeight ${layout.frameHeight}, ` +
+          `columns ${layout.columns}, count ${layout.count}).`,
       );
     }
     return sliceGrid(base, options);
