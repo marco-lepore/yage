@@ -332,17 +332,22 @@ API: `chars` / `words` / `lines` (getters), `setText(v)`, `setStyle(s)`, `charAn
 
 ### AnimatedSpriteComponent
 
-`source` is required — there's no raw-`Texture[]` construction path, so every `AnimatedSpriteComponent` serializes fully.
+`source` is required — there's no raw-`Texture[]` construction path, so every `AnimatedSpriteComponent` serializes fully. A `FrameSource` is either a sheet (`SheetFrameSource`: `{ sheet, frameWidth, frameHeight?, count?, columns?, startX?, startY?, gapX?, gapY? }` — top row by default; `count` wraps rows every `columns` frames for multi-row grid sheets) or an atlas animation (`{ atlas, animation }`). `sliceGrid(texture, options)` is the underlying slicer for Texture-in-hand use.
 
 ```ts
 import { AnimatedSpriteComponent } from "@yagejs/renderer";
 
 const player = entity.add(new AnimatedSpriteComponent({
-  source: { sheet: "player_idle.png", frameWidth: 48 },
+  source: { sheet: "player_idle.png", frameWidth: 48 },          // single-row strip
   layer: "world",
   anchor: { x: 0.5, y: 1 },
   tint: 0xffffff,
 }));
+
+// multi-row grid sheet: 48 frames wrapped across width-derived columns
+new AnimatedSpriteComponent({
+  source: { sheet: "boxer_idle.png", frameWidth: 126, frameHeight: 132, count: 48 },
+});
 
 player.play({ speed: 0.15, loop: true });
 ```

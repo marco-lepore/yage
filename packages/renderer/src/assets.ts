@@ -5,11 +5,11 @@ import {
   BitmapFontManager,
   CanvasTextMetrics,
   NineSliceSprite as PixiNineSliceSprite,
-  Rectangle,
   Texture,
   TextStyle as PixiTextStyle,
 } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
+import { sliceGrid } from "./spritesheet.js";
 import {
   emphasisKey,
   registerBitmapFontVariant,
@@ -771,33 +771,5 @@ export function sliceTextureFrames(
   input: TextureInput,
   options: TextureSliceOptions,
 ): TextureResource[] {
-  const base = resolveTextureInput(input);
-  const frameWidth = options.frameWidth;
-  const frameHeight = options.frameHeight ?? frameWidth;
-  const startX = options.startX ?? 0;
-  const startY = options.startY ?? 0;
-  const gapX = options.gapX ?? 0;
-  const gapY = options.gapY ?? 0;
-
-  const computedColumns =
-    options.columns ??
-    Math.max(1, Math.floor((base.width - startX + gapX) / (frameWidth + gapX)));
-  const count = options.count ?? computedColumns;
-  const frames: TextureResource[] = [];
-
-  for (let index = 0; index < count; index++) {
-    const column = index % computedColumns;
-    const row = Math.floor(index / computedColumns);
-    const x = startX + column * (frameWidth + gapX);
-    const y = startY + row * (frameHeight + gapY);
-
-    frames.push(
-      new Texture({
-        source: base.source,
-        frame: new Rectangle(x, y, frameWidth, frameHeight),
-      }),
-    );
-  }
-
-  return frames;
+  return sliceGrid(resolveTextureInput(input), options);
 }
