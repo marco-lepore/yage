@@ -434,7 +434,7 @@ new DialogueController({
   avatar,                          // optional AvatarPresenter override
   i18n,                            // optional I18nAdapter
   storage, functions, commands, fallbackCommand,  // installed once (see Game state)
-  input,                           // optional InputBinding (default: dialogueControls() — keyboard + pointer)
+  input,                           // InputBinding | null (default: keyboard + pointer wired to the bundled choices; null = no device input)
   onEnded: () => {},
 });
 ```
@@ -795,19 +795,23 @@ hints within a variant.
 
 `KeyboardInputBinding(actions?, skipHold?)`, `PointerInputBinding(choiceTarget?)`,
 `CompositeInputBinding`, `dialogueControls(choiceTarget?, { actions?, skipHold? })`.
-Zero-config default (no `input` option) is `dialogueControls()` — keyboard + pointer
-(tap-to-advance), `FULL_DIALOGUE_ACTIONS`, no choice geometry (can't hit-test rows). Actions:
-`DEFAULT_DIALOGUE_ACTIONS` (advance/speed/up/down), `FULL_DIALOGUE_ACTIONS` (+ skip). Default keyboard
+The `input` option has three modes:
+- omitted: `dialogueControls(choices)` wired to the bundle's own choices presenter —
+  keyboard + pointer (tap to advance, tap/hover choice rows). A custom presenter
+  without `choiceAtPoint` degrades the pointer side to tap-to-advance only.
+- an `InputBinding`: your own device mapping — construct
+  `dialogueControls(choices, { actions, skipHold })` to rename actions or add
+  hold-to-skip.
+- `null`: NO device input — ambient/cutscene/host-driven mode; the host calls
+  `advance()`/`moveSelection()`/`choose()`/`skip()` itself (`setInputEnabled` is a no-op).
+Actions: `DEFAULT_DIALOGUE_ACTIONS` (advance/speed/up/down), `FULL_DIALOGUE_ACTIONS` (+ skip). Default keyboard
 action names are kebab-case (`interact`/`attack`/`move-up`/`move-down`/`skip`) — an
 unmapped name silently never fires; a FULL mismatch with the live `InputManager` map
-logs a dev-mode warning at startup. Wire a custom map by passing
-`input: dialogueControls(choices, { actions })`. `KeyboardInputBinding.actionNames()` and
+logs a dev-mode warning at startup. `KeyboardInputBinding.actionNames()` and
 `CompositeInputBinding.actionNames()` expose the polled names. `skipHold > 0` (seconds) is the
 classic hold-to-confirm skip (default `0` = fire on press); fast-forward is the
 `speed` action held. `PointerChoiceTarget` lets a pointer binding hit-test choice
-rows without owning geometry. There is no binding-free path; an
-ambient/auto-advancing conversation calls `setInputEnabled(false)` rather than
-omitting the binding.
+rows without owning geometry.
 
 ## Theming
 

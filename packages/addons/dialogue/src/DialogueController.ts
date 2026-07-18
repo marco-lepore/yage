@@ -81,14 +81,22 @@ export interface DialogueControllerOptions<TStorage extends VariableStorage = Va
   /** Catch-all for command types with no explicit handler. */
   readonly fallbackCommand?: CommandHandler | undefined;
   /**
-   * Device → session binding. Omit for the zero-config default,
-   * {@link dialogueControls} — keyboard/gamepad (over the `move-up`/`move-down`/
-   * `interact`/`attack`/`skip` action names) plus mouse/touch (tap to advance).
-   * The keyboard names must exist in the game's `InputManager` action map; an
-   * unmapped name silently never fires, so supply your own binding wired to the
-   * game's names when they differ. A full mismatch logs a dev-mode warning.
+   * Device → session binding. Three modes:
+   * - omit: the zero-config default, {@link dialogueControls} wired to this
+   *   controller's own choices presenter — keyboard/gamepad over the
+   *   `move-up`/`move-down`/`interact`/`attack`/`skip` action names PLUS
+   *   mouse/touch (tap to advance, tap/hover choice rows). Construct
+   *   `dialogueControls(choices, { actions, skipHold })` yourself only to
+   *   rename the actions or add a hold-to-skip.
+   * - an {@link InputBinding}: your own device mapping.
+   * - `null`: NO device input — the ambient/cutscene/host-driven mode, where
+   *   the host calls {@link DialogueController.advance}/
+   *   {@link DialogueController.moveSelection}/{@link DialogueController.choose}/
+   *   {@link DialogueController.skip} itself.
+   * Unmapped action names silently never fire; a full mismatch logs a
+   * dev-mode warning.
    */
-  readonly input?: InputBinding;
+  readonly input?: InputBinding | null | undefined;
   /**
    * Extra channels registered on the session at mount (Voice / Shop /
    * CameraEffects / History) — the open-ended companion to the presenter trio.
@@ -114,7 +122,7 @@ export class DialogueController<
   TStorage extends VariableStorage = VariableStorage,
 > extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly binding: InputBinding;
+  private readonly binding: InputBinding | undefined;
   private session!: DialogueSession;
   /** Captured at onAdd (the scene is gone by the time a stale play() arrives). */
   private logger: Logger | undefined;
@@ -140,10 +148,11 @@ export class DialogueController<
 
   constructor(private readonly opts: DialogueControllerOptions<TStorage>) {
     super();
-    // Zero-config: keyboard/gamepad + mouse/touch (tap to advance). No choice
-    // geometry is available at construction, so pointer hit-testing of rows is
-    // off; a game wires it by passing its own `dialogueControls(presenter)`.
-    this.binding = opts.input ?? dialogueControls();
+    // Zero-config: keyboard/gamepad + mouse/touch, with pointer choice
+    // hit-testing wired to the choices presenter this controller already
+    // holds. `input: null` = no device input at all (host-driven mode).
+    this.binding =
+      opts.input === null ? undefined : (opts.input ?? dialogueControls(opts.choices));
   }
 
   onAdd(): void {
@@ -208,7 +217,7 @@ export class DialogueController<
         onRevealTick: this.opts.onRevealTick,
       },
     );
-    this.binding.bind(this.input, this.session);
+    this.binding?.bind(this.input, this.session);
     this.warnIfActionsUnmapped(warn);
 
     // Re-apply any lifecycle lever a host set BEFORE the component was added:
@@ -235,7 +244,7 @@ export class DialogueController<
     // Tear down every registered extra channel — unregister + dispose, which
     // unmounts the Mountable ones. A snapshot copy: each disposer mutates the set.
     for (const dispose of [...this.channelDisposers]) dispose();
-    this.binding.dispose?.();
+    this.binding?.dispose?.();
     this.opts.text.dispose();
     this.opts.choices.dispose();
     this.opts.chrome.dispose();
@@ -375,6 +384,7 @@ export class DialogueController<
    * focus between two conversations with `a.setInputEnabled(true);
    * b.setInputEnabled(false)`. (YAGE input is non-consuming, so two *enabled*
    * controllers both advance on one press — focus is the game's policy.)
+   * A no-op under `input: null` — there is no binding to gate.
    */
   setInputEnabled(enabled: boolean): void {
     this.inputEnabled = enabled;
@@ -417,7 +427,7 @@ export class DialogueController<
     // paused. The binding is polled only when focused AND not paused, so a
     // backgrounded or frozen conversation consumes no device input.
     this.session?.update(dt);
-    if (this.inputEnabled && !this.paused) this.binding.poll();
+    if (this.inputEnabled && !this.paused) this.binding?.poll();
   }
 
   /**
@@ -429,8 +439,8 @@ export class DialogueController<
    */
   private warnIfActionsUnmapped(warn: (message: string) => void): void {
     if (!isDev()) return;
-    const names = this.binding.actionNames?.() ?? [];
-    if (names.length === 0) return; // pointer-only binding — nothing to validate
+    const names = this.binding?.actionNames?.() ?? [];
+    if (names.length === 0) return; // pointer-only or no binding — nothing to validate
     const mapped = new Set(this.input.getActionNames());
     if (names.some((a) => mapped.has(a))) return; // at least one is wired
     warn(

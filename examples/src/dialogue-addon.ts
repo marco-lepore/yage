@@ -54,8 +54,8 @@
  *                         id played as a real clip over `@yagejs/audio`, gating
  *                         auto-advance until the voice finishes.
  *   • Ann & Bert        — stand near them to **eavesdrop** an ambient gossip loop
- *                         (a second controller kept alive but input-disabled via
- *                         `setInputEnabled(false)` — the focus seam).
+ *                         (a second controller with `input: null` — it never
+ *                         takes device input; the game drives it).
  *   • Pip the Locksmith — the one NPC authored in the **compact DSL** (not YAML):
  *                         a conditional jump (`-> regreet if: pip_seen`) re-greets
  *                         a returning customer, with a `declare`d flag, line-driven
@@ -589,8 +589,9 @@ class DialogueProbe extends Component {
 // ── Lifecycle levers on two keys (both persist across plays) ───────────────────
 
 /**
- * P / H drive two of the three orthogonal lifecycle levers (the third —
- * `setInputEnabled` — focuses the ambient gossip below):
+ * P / H drive two of the three orthogonal lifecycle levers (the third,
+ * `setInputEnabled`, toggles a live binding at runtime; the ambient gossip
+ * below skips device input entirely with `input: null` instead):
  *   • **P → `setPaused`** — freezes every conversation (typewriter, auto-advance,
  *     caret, input) behind a dim overlay with no state loss; press again to
  *     resume exactly where it left off. `lifecycle.paused` freezes the player
@@ -1241,19 +1242,14 @@ class RoomScene extends Scene {
     const busy = (): boolean => interactive.isActive() || lifecycle.paused;
     player.add(new PlayerMover(bounds, busy));
 
-    // Ambient controller (bubble) for the eavesdropped gossip. It has a REAL
-    // polling binding, but focus is OFF (`setInputEnabled(false)`): the gossip
-    // stays alive and auto-advances while consuming no device input — the
-    // multi-instance "two conversations, one interactive" story. (This
-    // previously used an empty `CompositeInputBinding([])` workaround.)
+    // Ambient controller (bubble) for the eavesdropped gossip. `input: null`
+    // attaches no device binding at all: the gossip stays alive and
+    // auto-advances while the interactive conversation keeps the input —
+    // two conversations run, only one listens to the player.
     const ambientBundle = createBubbleDialogue(theme, bubbleOpts);
     const ambient = this.spawn("ambient-host").add(
-      new DialogueController({
-        ...ambientBundle,
-        input: dialogueControls(ambientBundle.choices),
-      }),
+      new DialogueController({ ...ambientBundle, input: null }),
     );
-    ambient.setInputEnabled(false);
 
     // P pause / H hide — apply the lifecycle levers to BOTH conversations.
     host.add(new LifecycleControls([interactive, ambient], lifecycle));

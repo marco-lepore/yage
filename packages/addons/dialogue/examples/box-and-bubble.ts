@@ -39,7 +39,6 @@ import {
   DialogueLineEvent,
   DialogueChoiceMadeEvent,
   DialogueEndedEvent,
-  dialogueControls,
   type DialogueScript,
 } from "@yagejs-addons/dialogue";
 import {
@@ -204,15 +203,10 @@ class DialogueScene extends Scene {
     const host: Entity = this.spawn("dialogue-host");
     const probe = host.add(new DialogueProbe());
 
-    // The controller is a Component. `dialogueControls(bundle.choices)` adds pointer
-    // hover/tap on top of the keyboard binding; passing the choices presenter
-    // lets it hit-test rows.
-    this.controller = host.add(
-      new DialogueController({
-        ...bundle,
-        input: dialogueControls(bundle.choices),
-      }),
-    );
+    // The controller is a Component. The zero-config default binding covers
+    // keyboard/gamepad AND pointer hover/tap, hit-testing rows against the
+    // bundle's own choices presenter.
+    this.controller = host.add(new DialogueController({ ...bundle }));
 
     // Observe the conversation. The host entity emits these; events bubble to
     // the scene, so `this.on(...)` would work too.

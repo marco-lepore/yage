@@ -6,6 +6,7 @@ import { DialogueController } from "./DialogueController.js";
 import { CompositeInputBinding, PointerInputBinding } from "./input/index.js";
 import {
   DialogueAutoAdvanceEvent,
+  DialogueChoiceMadeEvent,
   DialogueRevealCompletedEvent,
   DialogueRevealMarkerEvent,
   DialogueSelectionChangedEvent,
@@ -56,6 +57,8 @@ class StubText implements TextPresenter {
 
 class StubChoices implements ChoicePresenter {
   onChoiceChosen?: (position: number) => void;
+  /** Assignable per test — a presenter without it degrades the pointer side. */
+  choiceAtPoint?: (x: number, y: number) => number | undefined;
   mount(): void {}
   dispose(): void {}
   present(): void {}
@@ -460,17 +463,156 @@ describe("DialogueController — extra channels (ctor + addChannel)", () => {
 });
 
 describe("DialogueController — zero-config default binding", () => {
-  it("defaults to a composite that includes a PointerInputBinding (mouse/touch works out of the box)", () => {
+  it("defaults to a composite whose PointerInputBinding is wired to the bundle's own choices presenter", () => {
+    const choices = new StubChoices();
     const controller = new DialogueController({
       chrome: new StubChrome(),
       text: new StubText(),
-      choices: new StubChoices(),
+      choices,
       // no `input` → zero-config default
     });
     const binding = (controller as unknown as { binding: unknown }).binding;
     expect(binding).toBeInstanceOf(CompositeInputBinding);
     const children = (binding as unknown as { bindings: unknown[] }).bindings;
-    expect(children.some((b) => b instanceof PointerInputBinding)).toBe(true);
+    const pointer = children.find((b) => b instanceof PointerInputBinding);
+    expect(pointer).toBeDefined();
+    expect((pointer as unknown as { choices: unknown }).choices).toBe(choices);
+  });
+});
+
+describe("DialogueController — zero-config pointer input drives choices", () => {
+  /** Structural InputManager fake, registered on the mock scene's context so
+   *  the controller's default binding has a device to bind to. */
+  function fakeInput() {
+    let pointer = { x: -1, y: -1 };
+    const downHandlers: ((info: { button: number; id: number }) => void)[] = [];
+    const fake = {
+      isJustPressed: () => false,
+      isPressed: () => false,
+      isHeldFor: () => false,
+      onPointerDown: (fn: (info: { button: number; id: number }) => void) => {
+        downHandlers.push(fn);
+        return () => {};
+      },
+      isPointerConsumed: () => false,
+      getPointerScreenPosition: () => pointer,
+      getPointerPosition: () => pointer,
+      getActionNames: () => ["interact", "move-up", "move-down"],
+    };
+    return {
+      manager: fake as unknown as InputManager,
+      /** Number of live onPointerDown subscriptions. */
+      get subscriptions() {
+        return downHandlers.length;
+      },
+      move: (x: number, y: number) => {
+        pointer = { x, y };
+      },
+      click: (x: number, y: number) => {
+        pointer = { x, y };
+        for (const fn of downHandlers) fn({ button: 0, id: 1 });
+      },
+    };
+  }
+
+  const CHOICE_SCRIPT: DialogueScript = {
+    id: "pick",
+    start: "a",
+    nodes: {
+      a: {
+        id: "a",
+        steps: [{ kind: "choice", options: [{ text: "left" }, { text: "right" }] }],
+      },
+    },
+  };
+
+  function mountZeroConfig(choices: StubChoices, input?: null) {
+    const { scene, context } = createMockScene();
+    const device = fakeInput();
+    context.register(InputManagerKey, device.manager);
+    const host = scene.spawn("dlg");
+    const controller = host.add(
+      new DialogueController({
+        chrome: new StubChrome(),
+        text: new StubText(),
+        choices,
+        ...(input === null ? { input: null } : {}), // otherwise omitted → default
+      }),
+    );
+    return { host, controller, device };
+  }
+
+  it("omitting `input` wires the pointer to the bundle's choices presenter: a click confirms the hit row", async () => {
+    const choices = new StubChoices();
+    choices.choiceAtPoint = (x, y) => (x === 42 && y === 42 ? 1 : undefined);
+    const { host, controller, device } = mountZeroConfig(choices);
+    const made = vi.fn();
+    host.on(DialogueChoiceMadeEvent, made);
+
+    controller.play(CHOICE_SCRIPT);
+    await flush();
+    device.click(42, 42);
+    controller.update(0.016);
+    await flush();
+
+    expect(made).toHaveBeenCalledWith(expect.objectContaining({ text: "right" }));
+  });
+
+  it("hover with the default binding moves the selection to the row under the pointer", async () => {
+    const choices = new StubChoices();
+    choices.choiceAtPoint = (x, y) => (x === 10 && y === 20 ? 1 : undefined);
+    const { host, controller, device } = mountZeroConfig(choices);
+    const selected = vi.fn();
+    host.on(DialogueSelectionChangedEvent, selected);
+
+    controller.play(CHOICE_SCRIPT);
+    await flush();
+    device.move(10, 20);
+    controller.update(0.016);
+
+    expect(selected).toHaveBeenCalledWith({ index: 1, text: "right" });
+  });
+
+  it("a choices presenter without choiceAtPoint degrades: clicks pick no row (keyboard nav still available)", async () => {
+    const { host, controller, device } = mountZeroConfig(new StubChoices());
+    const made = vi.fn();
+    host.on(DialogueChoiceMadeEvent, made);
+
+    controller.play(CHOICE_SCRIPT);
+    await flush();
+    device.click(42, 42);
+    controller.update(0.016);
+    await flush();
+
+    expect(made).not.toHaveBeenCalled();
+    expect(controller.isChoosing()).toBe(true); // the choice is still up
+  });
+
+  it("a click during a line still advances when the presenter can't hit-test rows", async () => {
+    const { controller, device } = mountZeroConfig(new StubChoices());
+
+    controller.play(SCRIPT); // one say line, reveal already complete (StubText)
+    await flush();
+    expect(controller.isActive()).toBe(true);
+    device.click(5, 5);
+    controller.update(0.016);
+    await flush();
+
+    expect(controller.isActive()).toBe(false); // tap advanced past the only line
+  });
+
+  it("input: null attaches no binding — no pointer subscription, host-driven advance still works", async () => {
+    const { host, controller, device } = mountZeroConfig(new StubChoices(), null);
+    expect(device.subscriptions).toBe(0); // nothing listens to the device
+
+    controller.play(SCRIPT);
+    await flush();
+    expect(() => controller.update(0.016)).not.toThrow(); // update still pumps
+    controller.advance(); // the host drives the session itself
+    await flush();
+    expect(controller.isActive()).toBe(false);
+
+    expect(() => host.remove(DialogueController)).not.toThrow(); // clean destroy
   });
 });
 
