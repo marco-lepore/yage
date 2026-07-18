@@ -21,6 +21,7 @@ import {
   SceneManagerKey,
   LoggerKey,
 } from "./EngineContext.js";
+import { devWarn } from "./internal/dev.js";
 
 /**
  * Options accepted by the trailing argument of `Scene.spawn` and
@@ -164,6 +165,12 @@ export abstract class Scene {
    * flag, or that are masked by a stack pause, fire nothing. Writes before
    * the scene is pushed fire nothing either; the push itself fires `onPause`
    * for a scene entering paused.
+   *
+   * To start a scene paused, set `paused = true` before pushing it — the push
+   * fires `onPause` once. Do NOT write `paused` from inside a lifecycle hook
+   * (`onEnter`/`onExit`/`onPause`/`onResume`): that write races the stack
+   * transition's own pause diff, so `onPause`/`onResume` can fire twice or
+   * unpaired. A dev-mode warning flags this case.
    */
   get paused(): boolean {
     return this._paused;
@@ -178,9 +185,20 @@ export abstract class Scene {
     this._paused = value;
     if (!this._context) return;
     const isEffective = this.isPaused;
-    if (isEffective && !wasEffective) {
+    if (isEffective === wasEffective) return;
+    // A write from inside a lifecycle hook double-counts: the transition
+    // snapshots effective pause before the mutation and re-fires the hook
+    // after, so this synchronous fire duplicates or unpairs it.
+    if (this._context.tryResolve(SceneManagerKey)?._isMutating) {
+      devWarn(
+        "Scene.paused was set from inside a lifecycle hook; onPause/onResume " +
+          "may fire twice or unpaired. To start a scene paused, set " +
+          "`paused = true` before pushing it.",
+      );
+    }
+    if (isEffective) {
       this.onPause?.();
-    } else if (!isEffective && wasEffective) {
+    } else {
       this.onResume?.();
     }
   }

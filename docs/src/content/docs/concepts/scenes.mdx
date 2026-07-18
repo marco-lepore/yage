@@ -103,6 +103,12 @@ flipping the flag while the scene is already paused by a scene above)
 fires nothing. Ducking music or muting input in `onPause` therefore covers
 manual pauses and tab blur, not only pushed pause menus.
 
+To start a scene already paused, set `scene.paused = true` before pushing
+it — the push fires `onPause` once. Don't write `scene.paused` from inside a
+lifecycle hook (`onEnter`, `onExit`, `onPause`, `onResume`): that write races
+the stack transition's own pause diff, so the hooks can fire twice or
+unpaired. A dev-mode warning flags this case.
+
 ## Querying Entities
 
 Scenes provide helpers to find entities:

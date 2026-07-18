@@ -1114,6 +1114,25 @@ describe("SceneManager", () => {
       expect(onPause).toHaveBeenCalledOnce();
     });
 
+    it("warns when paused is written from inside a lifecycle hook", async () => {
+      const { manager } = setup();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      class SelfPausing extends GameScene {
+        override onEnter() {
+          super.onEnter();
+          this.paused = true;
+        }
+      }
+      const scene = new SelfPausing("a");
+
+      await manager.push(scene);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("set from inside a lifecycle hook"),
+      );
+      warnSpy.mockRestore();
+    });
+
     it("popping a paused scene fires onExit but not onResume on it", async () => {
       const { manager } = setup();
       const scene = new GameScene("a");

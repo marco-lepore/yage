@@ -146,6 +146,16 @@ export class SceneManager {
   }
 
   /**
+   * Whether a stack mutation (push/pop/replace/popAll) is running, including
+   * while its lifecycle hooks execute. Lets `Scene.paused` detect a reentrant
+   * write from inside a hook, which would race the transition's pause diff.
+   * @internal
+   */
+  get _isMutating(): boolean {
+    return this._mutationDepth > 0;
+  }
+
+  /**
    * Push a scene onto the stack. Scenes below may receive onPause().
    * If the scene declares a `preload` array, assets are loaded before onEnter().
    *
