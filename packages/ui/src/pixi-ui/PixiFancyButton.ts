@@ -42,6 +42,9 @@ export class PixiFancyButton extends PixiUIBase<FancyButton> {
       // Setting `.text` alone leaves the previous label's fit scale — re-fit so
       // a longer translation doesn't overflow.
       refitButtonText(this.view);
+      // A relabelled button can change footprint — re-measure the Yoga leaf so
+      // siblings reflow (matches PixiCheckbox / PixiRadioGroup).
+      this.invalidateMeasure();
     });
     this.localizers.push(this._textLocalizer);
     if (text !== undefined) this._textLocalizer.seed(text);
