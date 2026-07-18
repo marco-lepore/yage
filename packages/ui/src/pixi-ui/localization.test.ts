@@ -29,10 +29,13 @@ vi.mock("@pixi/ui", () => {
     width = 0;
     height = 0;
     visible = true;
+    destroyed = false;
     constructor(opts?: { text?: string }) {
       if (opts?.text !== undefined) this.text = opts.text;
     }
-    destroy(): void {}
+    destroy(): void {
+      this.destroyed = true;
+    }
   }
 
   class CheckBox {
@@ -260,6 +263,22 @@ describe("pixi-ui localization", () => {
     expect(onSelect).toHaveBeenLastCalledWith(0, "Rosso");
     expect(view.openButton.text).toBe("Rosso");
     expect(view.value).toBe(0);
+  });
+
+  it("PixiSelect.destroy() destroys the option buttons ScrollBox leaves behind", () => {
+    const select = new PixiSelect({
+      closedBG: 0x000000,
+      openBG: 0x000000,
+      items: ["Red", "Blue"],
+    });
+    const view = select as unknown as {
+      view: { scrollBox: { items: { destroyed: boolean }[] } };
+    };
+    const buttons = [...view.view.scrollBox.items];
+    select.destroy();
+    // @pixi/ui ScrollBox.destroy() detaches its List children without
+    // destroying them; the wrapper must finish the job.
+    expect(buttons.every((b) => b.destroyed)).toBe(true);
   });
 
   it("plain-string labels are inert across locale changes", async () => {
