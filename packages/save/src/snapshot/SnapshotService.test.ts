@@ -21,6 +21,7 @@ import {
 import type { EngineEvents } from "@yagejs/core";
 import type { SnapshotResolver } from "@yagejs/core";
 import { MemoryStorage } from "./test-helpers.js";
+import type { GameSnapshot } from "./types.js";
 import { SnapshotService } from "./SnapshotService.js";
 import { SnapshotServiceKey } from "./keys.js";
 
@@ -690,6 +691,204 @@ describe("SnapshotService", () => {
       service.unregisterSnapshotExtra("dropme");
       service.saveSnapshot("slot1");
       expect(serialize).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("component restore ordering", () => {
+    // onAdd() call log shared by the ordering test components below.
+    const addLog: string[] = [];
+
+    @serializable
+    class OrderEarly extends Component {
+      static restorePriority = 20;
+      onAdd() {
+        addLog.push("OrderEarly");
+      }
+      serialize() {
+        return {};
+      }
+      static fromSnapshot(): OrderEarly {
+        return new OrderEarly();
+      }
+    }
+
+    @serializable
+    class OrderLate extends Component {
+      static restorePriority = 200;
+      onAdd() {
+        addLog.push("OrderLate");
+      }
+      serialize() {
+        return {};
+      }
+      static fromSnapshot(): OrderLate {
+        return new OrderLate();
+      }
+    }
+
+    // No restorePriority — falls in the default (100) bucket.
+    @serializable
+    class OrderDefaultA extends Component {
+      onAdd() {
+        addLog.push("OrderDefaultA");
+      }
+      serialize() {
+        return {};
+      }
+      static fromSnapshot(): OrderDefaultA {
+        return new OrderDefaultA();
+      }
+    }
+
+    @serializable
+    class OrderDefaultB extends Component {
+      onAdd() {
+        addLog.push("OrderDefaultB");
+      }
+      serialize() {
+        return {};
+      }
+      static fromSnapshot(): OrderDefaultB {
+        return new OrderDefaultB();
+      }
+    }
+
+    @serializable
+    class OrderEntity extends Entity {
+      setup() {
+        // Deliberately added in descending priority so the serialized
+        // order disagrees with the declared restore order.
+        this.add(new OrderLate());
+        this.add(new OrderDefaultA());
+        this.add(new OrderEarly());
+      }
+    }
+
+    @serializable
+    class TieEntity extends Entity {
+      setup() {
+        this.add(new OrderDefaultB());
+        this.add(new OrderDefaultA());
+      }
+    }
+
+    @serializable
+    class DepConsumer extends Component {
+      sawProvider = false;
+      onAdd() {
+        this.sawProvider = this.entity.get(OrderEarly) instanceof OrderEarly;
+      }
+      serialize() {
+        return {};
+      }
+      static fromSnapshot(): DepConsumer {
+        return new DepConsumer();
+      }
+    }
+
+    @serializable
+    class DepEntity extends Entity {
+      setup() {
+        this.add(new OrderEarly());
+        this.add(new DepConsumer());
+      }
+    }
+
+    @serializable
+    class OrderScene extends Scene {
+      readonly name = "order";
+    }
+
+    async function roundTrip(EntityClass: new () => Entity) {
+      const { service, sceneManager } = createTestContext();
+      const scene = new OrderScene();
+      await sceneManager.push(scene);
+      scene.spawn(EntityClass);
+      service.saveSnapshot("slot1");
+      addLog.length = 0;
+      await service.loadSnapshot("slot1");
+      return { sceneManager };
+    }
+
+    it("restores components in ascending declared priority regardless of serialized order", async () => {
+      await roundTrip(OrderEntity);
+      expect(addLog).toEqual(["OrderEarly", "OrderDefaultA", "OrderLate"]);
+    });
+
+    it("restores an undeclared component between lower and higher declared priorities", async () => {
+      await roundTrip(OrderEntity);
+      expect(addLog.indexOf("OrderEarly")).toBeLessThan(
+        addLog.indexOf("OrderDefaultA"),
+      );
+      expect(addLog.indexOf("OrderDefaultA")).toBeLessThan(
+        addLog.indexOf("OrderLate"),
+      );
+    });
+
+    it("restores equal priorities in save-time add order", async () => {
+      await roundTrip(TieEntity);
+      expect(addLog).toEqual(["OrderDefaultB", "OrderDefaultA"]);
+    });
+
+    it("lets onAdd() read a lower-priority sibling", async () => {
+      const { service, sceneManager } = createTestContext();
+      // Serialized with the consumer FIRST — only the priority sort makes
+      // the provider available when the consumer's onAdd() runs.
+      const snapshot = {
+        version: 4,
+        timestamp: Date.now(),
+        scenes: [
+          {
+            type: "OrderScene",
+            paused: false,
+            entities: [
+              {
+                id: 1,
+                type: "DepEntity",
+                components: [
+                  { type: "DepConsumer", data: {} },
+                  { type: "OrderEarly", data: {} },
+                ],
+                userData: null,
+              },
+            ],
+          },
+        ],
+      };
+      await service.importSnapshot("slot1", snapshot as GameSnapshot);
+      const restored = [...sceneManager.active!.getEntities()].find(
+        (e) => e instanceof DepEntity,
+      ) as DepEntity;
+      expect(restored.get(DepConsumer).sawProvider).toBe(true);
+    });
+
+    it("skips a type missing from the registry without disturbing the order of the rest", async () => {
+      const { service } = createTestContext();
+      const snapshot = {
+        version: 4,
+        timestamp: Date.now(),
+        scenes: [
+          {
+            type: "OrderScene",
+            paused: false,
+            entities: [
+              {
+                id: 1,
+                type: "OrderEntity",
+                components: [
+                  { type: "OrderLate", data: {} },
+                  { type: "NotARegisteredComponent", data: {} },
+                  { type: "OrderEarly", data: {} },
+                ],
+                userData: null,
+              },
+            ],
+          },
+        ],
+      };
+      addLog.length = 0;
+      await service.importSnapshot("slot1", snapshot as GameSnapshot);
+      expect(addLog).toEqual(["OrderEarly", "OrderLate"]);
     });
   });
 });

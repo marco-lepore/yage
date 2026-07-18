@@ -70,6 +70,9 @@ interface ResolvedAnimDef {
 export class AnimationController<
   T extends string = string,
 > extends Component {
+  // onAdd() drives the sibling AnimatedSpriteComponent's sprite.
+  static restorePriority = 40;
+
   private readonly _anims: Record<T, ResolvedAnimDef>;
   private readonly _sprite = this.sibling(AnimatedSpriteComponent);
 

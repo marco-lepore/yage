@@ -24,6 +24,9 @@ export interface RigidBodyData {
  */
 @serializable
 export class RigidBodyComponent extends Component {
+  // onAdd() reads the sibling Transform's world position.
+  static restorePriority = 10;
+
   /** Body type (dynamic, static, kinematic). */
   readonly type: BodyType;
 

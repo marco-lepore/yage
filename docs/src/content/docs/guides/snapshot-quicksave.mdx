@@ -89,6 +89,31 @@ class MovingSpike extends Component {
 }
 ```
 
+## Restore order
+
+On load, each entity's components are re-added in ascending
+`static restorePriority`, declared on the component class. Undeclared
+components default to 100; the engine reserves 0-99 (`Transform` first),
+so every engine component exists before an undeclared game component's
+`onAdd()` runs. Components with equal priority restore in the order they
+were added at save time.
+
+Declare a priority only when your component's `onAdd()` reads a sibling —
+give it a number above that sibling's:
+
+```typescript
+@serializable
+class HealthBar extends Component {
+  // HealthComponent declares nothing, so it restores at 100.
+  static restorePriority = 110;
+
+  onAdd() {
+    // Safe on restore: HealthComponent was re-added first.
+    this.hp = this.entity.get(HealthComponent).hp;
+  }
+}
+```
+
 ## afterRestore hooks
 
 Re-create non-serializable state (draw callbacks, event listeners,

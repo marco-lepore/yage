@@ -38,6 +38,8 @@ interface ParticleState {
 /** Component that owns a PixiJS ParticleContainer and drives particle emission. */
 @serializable
 export class ParticleEmitterComponent extends Component {
+  static restorePriority = 50;
+
   readonly container: ParticleContainer;
   /** @internal */ readonly _pool: ParticlePool;
   /** @internal */ readonly _active: ParticleState[] = [];

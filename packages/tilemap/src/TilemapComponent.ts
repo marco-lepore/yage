@@ -50,6 +50,8 @@ export interface TilemapComponentData {
 /** Component that renders a Tiled map using @pixi/tilemap. */
 @serializable
 export class TilemapComponent extends Component {
+  static restorePriority = 50;
+
   readonly container: DisplayContainer;
   readonly data: TilemapData;
   /** Asset path of this map, or `null` if constructed from a raw `TiledMapData` without one. */
