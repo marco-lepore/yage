@@ -143,6 +143,16 @@ export class UIPanel implements UIContainerElement {
   }
 
   insertElementBefore(child: UIElement, before: UIElement): void {
+    // React's mutation-mode reconciler may move a still-mounted child to a
+    // new position via insertBefore. Detach it from its current slot first
+    // so the splice below doesn't duplicate it in _children / Yoga.
+    const existingIdx = this._children.indexOf(child);
+    if (existingIdx !== -1) {
+      this._children.splice(existingIdx, 1);
+      this.container.removeChild(child.displayObject);
+      this.yogaNode.removeChild(child.yogaNode);
+    }
+
     const beforeIdx = this._children.indexOf(before);
     if (beforeIdx === -1) {
       this.addElement(child);

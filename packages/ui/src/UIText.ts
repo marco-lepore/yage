@@ -172,8 +172,17 @@ export class UIText implements UIElement {
     if ("children" in p) {
       const next = p.children ?? "";
       // A binding can't be cheaply deduped by string equality — always retain
-      // it. A plain string keeps the guard so a no-op re-render doesn't remeasure.
-      if (typeof next !== "string" || next !== this._source) this.setText(next);
+      // it. A plain string keeps the guard so a no-op re-render doesn't
+      // remeasure — except while a binding is retained: a string equal to the
+      // binding's resolved value must still clear the binding, or the stale
+      // binding re-localizes on the next locale change.
+      if (
+        typeof next !== "string" ||
+        next !== this._source ||
+        this._localizer.binding !== undefined
+      ) {
+        this.setText(next);
+      }
     }
     if ("style" in p) {
       this.setStyle(p.style ?? {});

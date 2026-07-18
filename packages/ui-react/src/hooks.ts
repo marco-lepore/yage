@@ -214,10 +214,13 @@ export function useLocalization(): Localization | undefined {
  */
 export function useMessage(value: LocalizableText): string {
   const localization = useLocalization();
+  // A plain string never reacts to locale changes — skip the subscription so
+  // static labels don't register a listener (and re-run) on every locale swap.
+  const isDynamic = typeof value !== "string";
   const subscribe = useCallback(
     (onChange: () => void) =>
-      localization ? localization.subscribe(onChange) : () => {},
-    [localization],
+      isDynamic && localization ? localization.subscribe(onChange) : () => {},
+    [localization, isDynamic],
   );
   const getSnapshot = useCallback((): string => {
     if (typeof value === "string") return value;
