@@ -554,7 +554,12 @@ export interface PixiSelectProps extends LayoutProps, ConsumeInputProps {
   /** Dropdown options — literals, or {@link LocalizedBinding}s (via `msg`) that
    *  re-resolve on locale change (item text, the selected label, and each
    *  item's emitted `onSelect` text all update; open/selected/scroll state is
-   *  preserved). */
+   *  preserved).
+   *
+   *  Construction-only: the set of options is baked at construction. A later
+   *  `update({ items })` (e.g. a React reconciler swapping the array) is
+   *  ignored — only per-item localization refreshes labels in place. To change
+   *  which options exist, recreate the component. */
   items: LocalizableText[];
   selected?: number;
   textStyle?: Partial<TextStyle>;
