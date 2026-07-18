@@ -104,13 +104,14 @@ export type { LayeredAnimationControllerOptions } from "./LayeredAnimationContro
 // Spritesheet utilities
 export {
   sliceSheet,
+  sliceGrid,
   resolveFrames,
-  isStripSource,
+  isSheetSource,
   isAtlasSource,
 } from "./spritesheet.js";
 export type {
   FrameSource,
-  StripFrameSource,
+  SheetFrameSource,
   AtlasFrameSource,
 } from "./spritesheet.js";
 

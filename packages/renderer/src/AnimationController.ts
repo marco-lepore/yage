@@ -6,7 +6,7 @@ import type { FrameSource } from "./spritesheet.js";
 
 /** Definition for a single named animation. */
 export interface AnimationDef {
-  /** Serializable frame source (sprite strip or atlas). */
+  /** Serializable frame source (sheet grid or atlas animation). */
   source: FrameSource;
   /** PixiJS animationSpeed value (e.g. 0.15). */
   speed: number;

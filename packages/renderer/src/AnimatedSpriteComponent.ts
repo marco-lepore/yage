@@ -14,7 +14,7 @@ let animationTicker: Ticker | undefined;
 
 /** Options for creating an AnimatedSpriteComponent. */
 export interface AnimatedSpriteComponentOptions extends VisualComponentOptions {
-  /** Serializable frame source (sprite strip or atlas). */
+  /** Serializable frame source (sheet grid or atlas animation). */
   source: FrameSource;
   /**
    * Default sprite anchor (0,0 = top-left, 0.5,0.5 = center, 1,1 = bottom-right).

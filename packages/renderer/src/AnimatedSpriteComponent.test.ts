@@ -476,7 +476,7 @@ describe("AnimatedSpriteComponent", () => {
   });
 
   describe("serialization", () => {
-    it("construction with StripFrameSource resolves frames via sliceSheet", () => {
+    it("construction with a single-row SheetFrameSource resolves one row of frames", () => {
       const comp = new AnimatedSpriteComponent({
         source: { sheet: "player.png", frameWidth: 48 },
       });
