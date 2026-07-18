@@ -54,7 +54,8 @@ export class SceneManager {
    * Pause all non-paused scenes when `document.hidden` becomes `true`; restore
    * them on focus. Default: `false`. Only scenes paused by this mechanism are
    * restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow`
-   * cascade) are never touched.
+   * cascade) are never touched. Blur pause goes through the `paused` setter,
+   * so affected scenes get `onPause` on blur and `onResume` on focus.
    */
   get autoPauseOnBlur(): boolean {
     return this._autoPauseOnBlur;
@@ -142,6 +143,16 @@ export class SceneManager {
   /** Whether a scene transition is currently running. */
   get isTransitioning(): boolean {
     return this._currentRun !== undefined;
+  }
+
+  /**
+   * Whether a stack mutation (push/pop/replace/popAll) is running, including
+   * while its lifecycle hooks execute. Lets `Scene.paused` detect a reentrant
+   * write from inside a hook, which would race the transition's pause diff.
+   * @internal
+   */
+  get _isMutating(): boolean {
+    return this._mutationDepth > 0;
   }
 
   /**

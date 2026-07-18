@@ -200,6 +200,9 @@ type MockSprite = InstanceType<typeof mocks.MockAnimatedSprite>;
 function setupPlayback() {
   const { context, scene } = createRendererTestContext();
   context.register(SceneManagerKey, {
+    // The `paused` setter reads the stack via `isPaused`; an empty stack
+    // means "not stack-paused", which is right for a lone mock scene.
+    all: [],
     get activeScenes() {
       return scene.paused ? [] : [scene];
     },

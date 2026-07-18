@@ -1019,5 +1019,131 @@ describe("SceneManager", () => {
       };
       expect(internals._visibilityPausedScenes.size).toBe(0);
     });
+
+    it("fires onPause on blur and onResume on focus; user-paused scenes get neither", async () => {
+      const { manager } = setup();
+      manager.autoPauseOnBlur = true;
+      const userPaused = new GameScene("userPaused");
+      userPaused.paused = true;
+      const running = new OverlayScene();
+      await manager.push(userPaused);
+      await manager.push(running);
+      const userOnPause = vi.fn();
+      const userOnResume = vi.fn();
+      const runningOnPause = vi.fn();
+      const runningOnResume = vi.fn();
+      userPaused.onPause = userOnPause;
+      userPaused.onResume = userOnResume;
+      running.onPause = runningOnPause;
+      running.onResume = runningOnResume;
+
+      manager._handleVisibilityChange(true);
+      expect(runningOnPause).toHaveBeenCalledOnce();
+      expect(userOnPause).not.toHaveBeenCalled();
+
+      manager._handleVisibilityChange(false);
+      expect(runningOnResume).toHaveBeenCalledOnce();
+      expect(userOnResume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("manual pause", () => {
+    it("setting paused fires onPause and clearing it fires onResume", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      const onPause = vi.fn();
+      const onResume = vi.fn();
+      scene.onPause = onPause;
+      scene.onResume = onResume;
+
+      scene.paused = true;
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(onResume).not.toHaveBeenCalled();
+
+      scene.paused = false;
+      expect(onResume).toHaveBeenCalledOnce();
+    });
+
+    it("writing the same value twice fires each hook once", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      const onPause = vi.fn();
+      const onResume = vi.fn();
+      scene.onPause = onPause;
+      scene.onResume = onResume;
+
+      scene.paused = true;
+      scene.paused = true;
+      expect(onPause).toHaveBeenCalledOnce();
+
+      scene.paused = false;
+      scene.paused = false;
+      expect(onResume).toHaveBeenCalledOnce();
+    });
+
+    it("fires nothing when the scene is already stack-paused", async () => {
+      const { manager } = setup();
+      const below = new GameScene("below");
+      await manager.push(below);
+      await manager.push(new GameScene("top")); // pauseBelow default: true
+      expect(below.isPaused).toBe(true);
+      const onPause = vi.fn();
+      const onResume = vi.fn();
+      below.onPause = onPause;
+      below.onResume = onResume;
+
+      // Manual flag flips change nothing effective while stack-paused.
+      below.paused = true;
+      expect(onPause).not.toHaveBeenCalled();
+      below.paused = false;
+      expect(onResume).not.toHaveBeenCalled();
+    });
+
+    it("pre-push writes fire nothing; the push fires onPause once", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      const onPause = vi.fn();
+      scene.onPause = onPause;
+
+      scene.paused = true;
+      expect(onPause).not.toHaveBeenCalled();
+
+      await manager.push(scene);
+      expect(onPause).toHaveBeenCalledOnce();
+    });
+
+    it("warns when paused is written from inside a lifecycle hook", async () => {
+      const { manager } = setup();
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      class SelfPausing extends GameScene {
+        override onEnter() {
+          super.onEnter();
+          this.paused = true;
+        }
+      }
+      const scene = new SelfPausing("a");
+
+      await manager.push(scene);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("set from inside a lifecycle hook"),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("popping a paused scene fires onExit but not onResume on it", async () => {
+      const { manager } = setup();
+      const scene = new GameScene("a");
+      await manager.push(scene);
+      scene.paused = true;
+      const onResume = vi.fn();
+      scene.onResume = onResume;
+
+      await manager.pop();
+      expect(scene.exitCalled).toBe(true);
+      expect(onResume).not.toHaveBeenCalled();
+    });
   });
 });

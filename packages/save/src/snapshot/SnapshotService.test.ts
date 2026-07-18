@@ -140,6 +140,16 @@ class HierarchyScene extends Scene {
   }
 }
 
+@serializable
+class PauseTrackingScene extends Scene {
+  readonly name = "pauseTracking";
+  pauseCalls = 0;
+
+  onPause() {
+    this.pauseCalls++;
+  }
+}
+
 // ---- Helpers ----
 
 function createTestContext() {
@@ -352,6 +362,23 @@ describe("SnapshotService", () => {
         (e) => e instanceof SimpleEntity,
       ) as SimpleEntity;
       expect(simple.timeScale).toBe(1);
+    });
+
+    it("fires onPause on a scene restored in a paused state", async () => {
+      const { service, sceneManager } = createTestContext();
+
+      const original = new PauseTrackingScene();
+      await sceneManager.push(original);
+      original.paused = true;
+      expect(original.pauseCalls).toBe(1);
+
+      service.saveSnapshot("test");
+      await service.loadSnapshot("test");
+
+      const restored = sceneManager.active as PauseTrackingScene;
+      expect(restored).not.toBe(original);
+      expect(restored.paused).toBe(true);
+      expect(restored.pauseCalls).toBe(1);
     });
 
     it("omits a default entity.timeScale from the snapshot", async () => {
