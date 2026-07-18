@@ -308,9 +308,10 @@ end
 `"hidden"` filters the option out (the original behavior); `"disabled"` keeps it
 on screen greyed-out and non-selectable — the Disco-Elysium "[Strength 8] Force
 the door" pattern, so the player learns the gate exists. `disabledReason?: string`
-shows beside the row where the layout allows (i18n-resolved: `{token}`s
-interpolate; there is no separate i18n `key`). `PresentedChoice` carries
-`disabled?` / `disabledReason?` for presenters.
+shows beside the row where the layout allows (i18n-resolved under the
+`<lineId>.disabledReason` key when the choice carries a `#line:` id; `{token}`s
+interpolate). `PresentedChoice` carries `disabled?` / `disabledReason?` for
+presenters.
 
 - A spent `once` option is **always** hidden — `presentation` governs condition
   failures only, never a consumed one-shot.
@@ -432,7 +433,9 @@ must resolve to a handler/fallback, else play-time error. (There is **no**
 new DialogueController({
   ...createBoxDialogue(theme),    // DialogueBundle: { chrome, text, choices, avatar?, skipMultiplier? }
   avatar,                          // optional AvatarPresenter override
-  i18n,                            // optional I18nAdapter
+  i18n,                            // I18nAdapter, or `true` = bridge to the engine LocalizationPlugin
+                                   //   (#line:id = catalog key; locale switches retranslate the
+                                   //   on-screen line/choices live — the typewriter restarts)
   storage, functions, commands, fallbackCommand,  // installed once (see Game state)
   input,                           // InputBinding | null (default: keyboard + pointer wired to the bundled choices; null = no device input)
   onEnded: () => {},
@@ -443,8 +446,10 @@ new DialogueController({
 future storage-aware checking; `play()` is typed by the script's declared vars).
 Methods: `play(script, overrides?): DialogueHandle | undefined` (undefined if the
 component was removed), `isActive()`, `stop()`, `skip()`,
-`setAutoAdvance(seconds | null)`, `preview(nodeId): PreviewedLine[]`, plus the three
-lifecycle levers below. It is multi-instance friendly — several ambient
+`setAutoAdvance(seconds | null)`, `preview(nodeId): PreviewedLine[]`,
+`retranslate()` (re-resolve + re-present the on-screen line/choices in the
+current locale — automatic in `i18n: true` mode, call it yourself with a custom
+adapter after a language change), plus the three lifecycle levers below. It is multi-instance friendly — several ambient
 conversations can run at once; "which is interactive" and "does the world pause"
 are the game's policy (no global singleton).
 

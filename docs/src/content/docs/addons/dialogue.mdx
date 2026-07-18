@@ -411,8 +411,9 @@ By default an option whose `condition` is false is **filtered out** of the menu.
 Set `presentation: "disabled"` to keep it on screen instead — greyed-out and
 non-selectable, the Disco-Elysium "[Strength 8] Force the door" pattern that lets
 the player see a gate before they can pass it. `disabledReason` adds a short
-explanation shown beside the row (it runs through the i18n adapter, so `{token}`s
-interpolate; there is no separate translation key for it).
+explanation shown beside the row. It runs through the i18n adapter — `{token}`s
+interpolate, and when the choice carries a `#line:` id the reason translates
+under its own `<lineId>.disabledReason` key.
 
 ```ts
 {

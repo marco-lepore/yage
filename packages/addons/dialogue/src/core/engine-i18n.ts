@@ -3,14 +3,14 @@ import type { I18nAdapter } from "./i18n.js";
 
 /**
  * Bridge the engine's {@link Localization} service to the dialogue
- * {@link I18nAdapter} seam. A line's `#line:id` key drives the catalog lookup;
- * the authored text is the fallback; dialogue vars interpolate. Wire it by
- * passing `i18n: true` to the {@link DialogueController} (which resolves the
+ * {@link I18nAdapter} interface. A line's `#line:id` key drives the catalog
+ * lookup; the authored text is the fallback; dialogue vars interpolate. Wire it
+ * by passing `i18n: true` to the {@link DialogueController} (which resolves the
  * registered plugin), or construct it directly for a custom presenter.
  *
- * Resolution is at present time — new lines resolve in the current locale. A
- * live locale switch does not retro-update a line already on screen (that needs
- * a text-channel retranslate seam, deferred).
+ * Lines resolve in the current locale when presented; a locale switch
+ * re-presents the on-screen text via {@link DialogueSession.retranslate}
+ * (automatic in `i18n: true` mode).
  */
 export function engineI18nAdapter(localization: Localization): I18nAdapter {
   return {

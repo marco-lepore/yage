@@ -1094,17 +1094,23 @@ export class DialogueSession {
       // retranslated line's own reveal-completion re-arms both.
       this.channels.chrome?.setContinueVisible(false);
       this.autoTimer = undefined;
+      // Current-line fields BEFORE presenting: an immediate-reveal presenter
+      // fires the reveal listener synchronously from present(), and the
+      // completion hooks must carry the retranslated line, not the old one.
+      this.currentPresented = line;
+      this.currentLine = {
+        speaker: this.speakerName(speaker, view),
+        text: stripMarkup(resolved),
+      };
       this.channels.chrome?.setNameplate(
         this.speakerName(speaker, view),
         speaker?.color,
       );
       this.channels.chrome?.present?.(line);
       this.channels.text.present(line);
-      this.currentPresented = line;
-      this.currentLine = {
-        speaker: this.speakerName(speaker, view),
-        text: stripMarkup(resolved),
-      };
+      // Presenting may rebuild visible objects in a custom presenter — re-apply
+      // the host-hidden lever so a hidden conversation stays hidden.
+      this.applyVisibility();
       return;
     }
     if (this.mode === "choosing" && this.choosingStep) {
@@ -1156,6 +1162,9 @@ export class DialogueSession {
       }));
       this.channels.choices.present(presented, ctx);
       this.channels.choices.highlight(this.selected);
+      // Presenting may rebuild visible objects in a custom presenter — re-apply
+      // the host-hidden lever so a hidden conversation stays hidden.
+      this.applyVisibility();
     }
   }
 
@@ -1374,6 +1383,12 @@ export class DialogueSession {
     // Bail if stop()/play() swapped the conversation while we awaited, else we'd
     // show the continue caret on the new conversation's still-revealing line.
     if (gen !== this.generation || this.mode !== "saying") return;
+    // Also bail if the reveal restarted underneath the await (retranslate() or
+    // a new present) — completing it here would show the caret and fire the
+    // completion hooks while the text is still typing. The restarted reveal's
+    // own completion re-enters this handler; the afterRevealFired latch keeps
+    // the commands single-fire.
+    if (!this.channels.text.isRevealComplete()) return;
     this.channels.chrome?.setContinueVisible(true);
     // The "typing finished" hook — after afterReveal commands settle, as the
     // continue caret appears. Carries the line so a game needn't track it.

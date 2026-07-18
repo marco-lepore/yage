@@ -2137,6 +2137,93 @@ describe("DialogueSession — retranslate", () => {
     expect(onChoiceShown).toHaveBeenCalledTimes(1); // not re-emitted
   });
 
+  it("does not let a pending afterReveal continuation complete the restarted reveal", async () => {
+    let resolveCmd!: () => void;
+    const gate = new Promise<void>((r) => (resolveCmd = r));
+    const onRevealCompleted = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n, onRevealCompleted });
+    h.session.play(
+      {
+        id: "rt-block",
+        start: "a",
+        nodes: {
+          a: {
+            id: "a",
+            steps: [
+              {
+                kind: "say",
+                key: "greet",
+                text: "Hello",
+                commands: [{ type: "wait", at: "afterReveal", blocking: true }],
+              },
+            ],
+          },
+        },
+      },
+      { fallbackCommand: () => gate },
+    );
+    h.text.finishReveal(); // handleRevealComplete awaits the blocking command
+    await Promise.resolve();
+    i18n.locale = "it";
+    h.session.retranslate(); // restarts the reveal underneath the await
+    resolveCmd();
+    await gate;
+    await flush();
+    // The stale continuation must not show the caret or fire completion hooks
+    // while the retranslated line is still revealing.
+    expect(onRevealCompleted).not.toHaveBeenCalled();
+    expect(h.chrome.continueVisible).not.toContain(true);
+    h.text.finishReveal(); // the retranslated line's own completion
+    await flush();
+    expect(onRevealCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Ciao" }),
+    );
+    expect(h.chrome.continueVisible.at(-1)).toBe(true);
+  });
+
+  it("hands the retranslated line to a synchronous immediate-reveal presenter", async () => {
+    const onRevealCompleted = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    let listener: (() => void) | undefined;
+    const text: TextChannel = {
+      // Immediate reveal: completes synchronously from present().
+      present: () => listener?.(),
+      completeReveal: () => {},
+      isRevealComplete: () => true,
+      isRevealing: () => false,
+      setSpeedMultiplier: () => {},
+      setVisible: () => {},
+      update: () => {},
+      clear: () => {},
+      setRevealListener: (l) => (listener = l),
+      setBeatListener: () => {},
+    };
+    const session = new DialogueSession(
+      { text, choices: new StubChoices() },
+      { i18n, onRevealCompleted },
+    );
+    session.play(sayScript);
+    await flush(); // settle the first line's completion ("Hello")
+    i18n.locale = "it";
+    session.retranslate();
+    // The synchronous completion must carry the retranslated text.
+    expect(onRevealCompleted).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: "Ciao" }),
+    );
+  });
+
+  it("keeps a hidden conversation hidden across retranslate", () => {
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ i18n });
+    h.session.play(sayScript);
+    h.session.setHidden(true);
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.text.visible).toBe(false);
+    expect(h.chrome.visibles.at(-1)).toBe(false);
+  });
+
   it("is a no-op while idle", () => {
     const h = makeHarness();
     h.session.retranslate();
