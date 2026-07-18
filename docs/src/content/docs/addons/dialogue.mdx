@@ -1021,23 +1021,32 @@ deferred to v1.1 — nothing to build for it now.)
 
 ## Input
 
-With no `input` option the controller attaches `dialogueControls()` — keyboard/gamepad
-**and** mouse/touch (tap to advance). The keyboard side polls the action names in
-`FULL_DIALOGUE_ACTIONS` (`interact`, `attack`, `move-up`, `move-down`, `skip`), so those
-names must exist in your game's `InputManager` action map. An unmapped action name
-silently never fires; if **none** of the default names are mapped, keyboard/gamepad
-nav does nothing and the controller logs a dev-mode warning at startup. The
-zero-config pointer binding has no choice geometry, so it can tap-to-advance but
-can't hit-test choice rows — pass your own `dialogueControls(choices)` for that.
+The `input` option has three modes:
 
-When your action map uses different names (e.g. camelCase `moveUp`/`moveDown`),
-supply an `input` binding wired to them:
+- **Omitted** — the zero-config default: keyboard/gamepad **and** mouse/touch,
+  with pointer hit-testing wired to the bundle's own choices presenter — a tap
+  advances lines, and tap/hover picks or highlights choice rows out of the box.
+  (A custom choices presenter without `choiceAtPoint` degrades the pointer side
+  to tap-to-advance only.) The keyboard side polls the action names in
+  `FULL_DIALOGUE_ACTIONS` (`interact`, `attack`, `move-up`, `move-down`, `skip`), so those
+  names must exist in your game's `InputManager` action map. An unmapped action name
+  silently never fires; if **none** of the default names are mapped, keyboard/gamepad
+  nav does nothing and the controller logs a dev-mode warning at startup.
+- **An `InputBinding`** — your own device mapping (see the example below).
+- **`null`** — NO device input: the ambient/cutscene/host-driven mode. The host
+  calls `advance()`/`moveSelection()`/`choose()`/`skip()` itself, and
+  `setInputEnabled` is a no-op (there is no binding to gate).
+
+Construct the binding yourself when your action map uses different names (e.g.
+camelCase `moveUp`/`moveDown`) or you want a hold-to-skip:
 
 ```ts
 import { dialogueControls } from "@yagejs-addons/dialogue";
 
+const bundle = createBoxDialogue();
+
 new DialogueController({
-  ...createBoxDialogue(),
+  ...bundle,
   // choice presenter for pointer hit-testing; hold X ~0.6s to skip;
   // remap the action names to match the game's InputManager map
   input: dialogueControls(bundle.choices, {
@@ -1063,7 +1072,7 @@ new DialogueController({
 
 For a VN-style **auto-advance** toggle, call `controller.setAutoAdvance(seconds)` (and
 `setAutoAdvance(null)` to turn it off); a per-line `autoAdvance` still overrides
-it. An ambient (always auto-advancing) conversation simply attaches no binding.
+it. An ambient (always auto-advancing) conversation passes `input: null`.
 
 ## Theming
 

@@ -1241,17 +1241,13 @@ class RoomScene extends Scene {
     const busy = (): boolean => interactive.isActive() || lifecycle.paused;
     player.add(new PlayerMover(bounds, busy));
 
-    // Ambient controller (bubble) for the eavesdropped gossip. It has a REAL
-    // polling binding, but focus is OFF (`setInputEnabled(false)`): the gossip
-    // stays alive and auto-advances while consuming no device input — the
-    // multi-instance "two conversations, one interactive" story. (This
-    // previously used an empty `CompositeInputBinding([])` workaround.)
+    // Ambient controller (bubble) for the eavesdropped gossip. The zero-config
+    // binding polls, but focus is OFF (`setInputEnabled(false)`): the gossip
+    // stays alive and auto-advances while consuming no device input — two
+    // conversations run, only the interactive one takes input.
     const ambientBundle = createBubbleDialogue(theme, bubbleOpts);
     const ambient = this.spawn("ambient-host").add(
-      new DialogueController({
-        ...ambientBundle,
-        input: dialogueControls(ambientBundle.choices),
-      }),
+      new DialogueController({ ...ambientBundle }),
     );
     ambient.setInputEnabled(false);
 

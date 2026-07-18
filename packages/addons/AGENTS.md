@@ -199,6 +199,25 @@ reuse, to avoid sprawl.
   path), `tsup.config.ts`, `vitest.config.ts` (keep the oxc legacy-decorator
   flag for future `@serializable`; add `@vitest/coverage-v8` as a devDep).
 
+## Controller `input` contract
+
+Every controller that accepts device input declares the same option:
+`input?: InputBinding | null`, with three modes:
+
+- **omitted** — the zero-config default: full device wiring (keyboard/gamepad
+  action polling PLUS pointer), with pointer hit-testing wired to the
+  controller's **own bundled presenters**. The 5-minute path must include
+  working mouse/touch; a presenter without the optional hit-test method
+  degrades the pointer side gracefully.
+- **an `InputBinding`** — replaces the default entirely (custom action names,
+  hold thresholds, extra devices).
+- **`null`** — NO device input: the embedded/host-driven mode; the host calls
+  the controller's public methods itself, and the controller constructs no
+  binding (no pointer subscription, no action polling).
+
+Reference implementations: `packages/addons/inventory/src/InventoryController.ts`
+and `packages/addons/dialogue/src/DialogueController.ts`.
+
 ## Package structure
 
 ```
