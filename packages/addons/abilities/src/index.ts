@@ -76,11 +76,14 @@ export {
   HitDealt,
   createReportingDelivery,
 } from "./components/reportedDelivery.js";
+export type { DeliveryProvenance } from "./components/reportedDelivery.js";
 export { aimAt, resolveAim } from "./components/aim.js";
 export type { Aim } from "./components/aim.js";
 export { anim } from "./components/steps/anim.js";
 export { block, guard, parry } from "./components/steps/guard.js";
 export { invulnerable } from "./components/steps/invulnerable.js";
+export { slowmo } from "./components/steps/slowmo.js";
+export type { SlowmoParams } from "./components/steps/slowmo.js";
 export {
   REACTION_PRIORITY,
   staggerMotion,

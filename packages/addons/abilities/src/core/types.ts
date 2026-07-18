@@ -1,4 +1,4 @@
-import type { Entity } from "@yagejs/core";
+import type { Entity, SceneTime } from "@yagejs/core";
 import type { Abilities } from "./Abilities.js";
 import type { Scalar } from "./scalar.js";
 
@@ -9,6 +9,8 @@ export interface StepContext {
   abilities: Abilities;
   /** The run this step belongs to — same object as `Abilities.active(lane)` while it's active. */
   activation: AbilityActivation;
+  /** The owning scene's time-effect service, for steps that dilate or freeze time (see `slowmo`). */
+  time: SceneTime;
 }
 
 /**

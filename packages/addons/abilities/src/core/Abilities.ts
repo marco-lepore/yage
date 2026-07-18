@@ -1,6 +1,7 @@
 import {
   Component,
   ProcessComponent,
+  SceneTimeKey,
   createKeyframeTrack,
   defineEvent,
 } from "@yagejs/core";
@@ -322,6 +323,7 @@ export class Abilities extends Component {
       def,
       abilities: this,
       activation,
+      time: this.use(SceneTimeKey),
     };
 
     // Each event is wrapped with an identity guard: if this lane no longer
@@ -461,6 +463,7 @@ export class Abilities extends Component {
       def,
       abilities: this,
       activation,
+      time: this.use(SceneTimeKey),
     });
     if (duration <= 0) return;
     let cooldown = this.cooldowns.get(def.id);

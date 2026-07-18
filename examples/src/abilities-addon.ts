@@ -47,15 +47,17 @@
  *   `from`/`to` as their `invulnerable` steps) and the post-hit i-frames
  *   `HitReceiver` arms automatically (`runInvulnFlash`, triggered off
  *   `HitReceived`, reading `HitReceiver.iframesRemaining`).
- * - Feedback: hitstop and camera shake scale with the landed ability's
- *   weight (`ABILITY_WEIGHTS`/`HITSTOP_BY_WEIGHT`/`SHAKE_BY_WEIGHT`), every
+ * - Feedback: each attack def declares its own `hit.hitstop`; the attacker's
+ *   `HitDealt` listener reads it off the payload and freezes the whole scene
+ *   through `SceneTime.freezeFor` (the addon's arbitration primitive — no
+ *   hand-rolled `scene.timeScale` toggle). Camera shake stays game-side,
+ *   sized by the landed hit's damage (`damageWeight`/`SHAKE_BY_WEIGHT`). Every
  *   landed hit bursts impact particles sized by damage and plays a thock, a
  *   parry sparks and rings, a blocked hit thuds, death booms, and the charge
  *   attack draws a hand-rolled ring of sparks converging on the caster
  *   (`ChargeSpark` — `@yagejs/particles`' emitter config can't correlate a
  *   particle's spawn position with its travel direction, so a converging
- *   effect isn't expressible through it) — see `VfxHub`, the SFX section,
- *   and `PlayerController.triggerHitstop`.
+ *   effect isn't expressible through it) — see `VfxHub` and the SFX section.
  * - A `CameraEntity` zoomed in and softly following the player, clamped to
  *   the arena; the hotbar/HP/log HUD lives on its own screen-space layer
  *   (`HUD_LAYER`) so it stays viewport-fixed under the zoom/follow — see
@@ -89,13 +91,13 @@ import {
   Entity,
   Process,
   ProcessComponent,
-  ProcessSystemKey,
+  SceneTimeKey,
   Scene,
   Transform,
   Vec2,
   trait,
 } from "@yagejs/core";
-import type { Vec2Like } from "@yagejs/core";
+import type { SceneTime, Vec2Like } from "@yagejs/core";
 import {
   AnimatedSpriteComponent,
   AnimationController,
@@ -104,10 +106,14 @@ import {
   RendererKey,
   RendererPlugin,
   TextComponent,
-  sliceTextureFrames,
   texture,
 } from "@yagejs/renderer";
-import type { AnimationDef, LayerDef, TextureHandle } from "@yagejs/renderer";
+import type {
+  AnimationDef,
+  LayerDef,
+  SheetFrameSource,
+  TextureHandle,
+} from "@yagejs/renderer";
 import {
   ColliderComponent,
   PhysicsPlugin,
@@ -390,24 +396,17 @@ const BOXER_PRELOAD = (Object.keys(BOXER_ANIM_SPECS) as BoxerAnim[]).flatMap(
   (anim) => handlesFor(BOXER_ANIM_SPECS[anim].sheet),
 );
 
-const boxerFrameCache = new Map<string, ReturnType<typeof sliceTextureFrames>>();
-
-/** Sliced frame textures for one (animation, direction) pair, cached — assets
- *  must already be loaded (via `preload`) before this is called. */
-function framesFor(anim: BoxerAnim, dir: number) {
-  const key = boxerKey(anim, dir);
-  let frames = boxerFrameCache.get(key);
-  if (!frames) {
-    const spec = BOXER_ANIM_SPECS[anim];
-    const handle = handlesFor(spec.sheet)[dir - 1]!;
-    frames = sliceTextureFrames(handle, {
-      frameWidth: FRAME_W,
-      frameHeight: FRAME_H,
-      count: spec.frames,
-    });
-    boxerFrameCache.set(key, frames);
-  }
-  return frames;
+/** The serializable frame source for one (animation, direction) pair — a
+ *  single-row grid slice of that direction's sheet. Assets must already be
+ *  loaded (via `preload`) before the frames resolve. */
+function sourceFor(anim: BoxerAnim, dir: number): SheetFrameSource {
+  const spec = BOXER_ANIM_SPECS[anim];
+  return {
+    sheet: handlesFor(spec.sheet)[dir - 1]!.path,
+    frameWidth: FRAME_W,
+    frameHeight: FRAME_H,
+    count: spec.frames,
+  };
 }
 
 /** Builds the `AnimationController` defs for the given animation subset,
@@ -420,7 +419,7 @@ function buildBoxerAnimDefs(anims: readonly BoxerAnim[]): Record<string, Animati
     const spec = BOXER_ANIM_SPECS[anim];
     for (let dir = 1; dir <= DIR_COUNT; dir++) {
       defs[boxerKey(anim, dir)] = {
-        frames: framesFor(anim, dir),
+        source: sourceFor(anim, dir),
         speed: spec.speed,
         loop: spec.loop,
       };
@@ -641,13 +640,14 @@ const FLASH_DURATION = 0.08;
 const ATTACKER_FLASH_TINT = 0xffffff;
 const ATTACKER_FLASH_DURATION = 0.06;
 
-/** Coarse weight classes driving hitstop length, camera shake, the attacker
- *  flash, and impact-burst size — see `ABILITY_WEIGHTS`/`damageWeight`. */
+/** Coarse weight classes driving camera shake, the attacker flash, and
+ *  impact-burst size, all derived from the landed hit's damage — see
+ *  `damageWeight`. */
 type HitWeight = "light" | "medium" | "heavy";
 
-/** Impact-burst particle count by the landed hit's raw damage — used on the
- *  *victim* side, where the only signal available is the hit itself (not
- *  which specific ability the attacker used). */
+/** Weight class from the landed hit's raw damage — the single "how hard did
+ *  this land" signal, read both victim-side (impact-burst size) and
+ *  attacker-side (camera shake / flash). */
 function damageWeight(damage: number): HitWeight {
   if (damage >= 25) return "heavy";
   if (damage >= 14) return "medium";
@@ -974,6 +974,19 @@ function playDeathSfx(entity: Entity): void {
 // the enemy windup tell is bespoke game feel.
 // ---------------------------------------------------------------------------
 
+/** Physics has no per-entity time exclusions (one shared Rapier world), so
+ *  an entity excluded from a slowmo channel still integrates its velocity at
+ *  the slowed world rate. Velocity writes multiply by this ratio — the
+ *  entity's update speed over the world's physics speed — so an excluded
+ *  entity covers ground at its own unslowed pace. 1 for entities the slowmo
+ *  applies to and whenever no slowmo is active; 1 while frozen too (nothing
+ *  integrates, and it avoids dividing by zero). */
+function slowmoVelocityCompensation(time: SceneTime, entity: Entity): number {
+  const world = time.effectiveScale;
+  if (world <= 0) return 1;
+  return time.effectiveScaleForUpdates(entity) / world;
+}
+
 /** Entities with a step currently owning their body's velocity — `dashMove`
  *  (the dash roll), `lungeMove` (the combo finisher's forward kick), and
  *  `punchMove` (the jabs' forward step) all add themselves for their
@@ -992,7 +1005,9 @@ function velocityStep(kind: string) {
     enter(params, ctx) {
       velocityOwnedByStep.add(ctx.entity);
       const facing = ctx.entity.get(Facing);
-      ctx.entity.get(RigidBodyComponent).setVelocity(facing.unit.scale(params.speed));
+      const speed =
+        params.speed * slowmoVelocityCompensation(ctx.time, ctx.entity);
+      ctx.entity.get(RigidBodyComponent).setVelocity(facing.unit.scale(speed));
     },
     exit(_params, ctx) {
       velocityOwnedByStep.delete(ctx.entity);
@@ -1241,7 +1256,7 @@ const ATTACK_1: AbilityDef = {
       to: 0.246,
       shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
       offset: { x: 39, y: 0 },
-      hit: byAtk({ damage: 10, knockback: 240, stun: 0.16 }),
+      hit: byAtk({ damage: 10, knockback: 240, stun: 0.16, hitstop: 0.05 }),
     }),
   ],
 };
@@ -1263,7 +1278,7 @@ const ATTACK_2: AbilityDef = {
       to: 0.168,
       shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
       offset: { x: 37, y: 0 },
-      hit: byAtk({ damage: 12, knockback: 265, stun: 0.18 }),
+      hit: byAtk({ damage: 12, knockback: 265, stun: 0.18, hitstop: 0.05 }),
     }),
   ],
 };
@@ -1303,7 +1318,7 @@ const ATTACK_3: AbilityDef = {
       shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
       offset: { x: 46, y: 0 },
       follow: true,
-      hit: byAtk({ damage: 26, knockback: 530, stun: 0.45 }),
+      hit: byAtk({ damage: 26, knockback: 530, stun: 0.45, hitstop: 0.12 }),
     }),
   ],
 };
@@ -1323,7 +1338,7 @@ const CHARGE_HOLD: AbilityDef = {
  *  longest recovery in the kit (~0.41s past the hit). Force-only, fired by
  *  `PlayerController` on key-up once the hold threshold is met.
  *
- *  The hold itself (`CHARGE_HOLD`, held for the ≥500ms `CHARGE_HOLD_MS`
+ *  The hold itself (`CHARGE_HOLD`, held past the `CHARGE_HOLD_TIME`
  *  threshold before this fires) already reads as the windup, so this
  *  shouldn't wind up a second time — `spriteAnim`'s `startFrame: 6` opens
  *  HighKick already 6 frames into its own coil (~0.18s of the sheet's real
@@ -1357,7 +1372,7 @@ const CHARGE_RELEASE: AbilityDef = {
       shape: { type: "capsule", halfHeight: 34, radius: 24, axis: "x" },
       offset: { x: 60, y: 0 },
       follow: true,
-      hit: byAtk({ damage: 32, knockback: 645, stun: 0.55 }),
+      hit: byAtk({ damage: 32, knockback: 645, stun: 0.55, hitstop: 0.12 }),
     }),
   ],
 };
@@ -1392,7 +1407,7 @@ const COUNTER: AbilityDef = {
       to: 0.213,
       shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
       offset: { x: 42, y: 0 },
-      hit: byAtk({ damage: 16, knockback: 420, stun: 0.35 }),
+      hit: byAtk({ damage: 16, knockback: 420, stun: 0.35, hitstop: 0.08 }),
     }),
   ],
 };
@@ -1564,25 +1579,11 @@ const PLAYER_MAIN_DEFS: Readonly<Record<string, AbilityDef>> = {
   counter: COUNTER,
 };
 
-/** Ability id -> feedback weight, read off the *attacker's* own active def
- *  (`Abilities.activeId("main")` at hit time) — drives hitstop length,
- *  camera shake, and whether the attacker itself flashes. Ids with no entry
- *  (the enemy's `melee`/`shoot`) default to `"light"`, since only the
- *  player currently gets attacker-side feedback on landing a hit. */
-const ABILITY_WEIGHTS: Partial<Record<string, HitWeight>> = {
-  attack1: "light",
-  attack2: "light",
-  attack3: "heavy",
-  chargeRelease: "heavy",
-  counter: "medium",
-};
-
-function weightFor(abilities: Abilities): HitWeight {
-  const id = abilities.activeId("main");
-  return (id ? ABILITY_WEIGHTS[id] : undefined) ?? "light";
-}
-
-const HITSTOP_BY_WEIGHT: Record<HitWeight, number> = { light: 0.05, medium: 0.08, heavy: 0.12 };
+/** Camera-shake profile per landed-hit weight — a heavier hit shakes harder
+ *  and longer. Keyed off `damageWeight(hit.damage)` in the attacker's
+ *  `HitDealt` listener; light taps skip the shake entirely (no `"light"`
+ *  entry). Camera shake stays game-side feedback — the addon ships only the
+ *  freeze frame (`hit.hitstop` → `SceneTime.freezeFor`). */
 const SHAKE_BY_WEIGHT: Record<"medium" | "heavy", { intensity: number; duration: number }> = {
   medium: { intensity: 5, duration: 0.12 },
   heavy: { intensity: 9, duration: 0.18 },
@@ -1677,9 +1678,15 @@ function activeCloseTime(def: AbilityDef): number {
  *  `BOXER_ANIM_SPECS`) stretch the whole combo's pace, and this window
  *  didn't scale with them the way in-swing timings did. */
 const COMBO_WINDOW = 0.6;
-/** Milliseconds the attack key must be held before it's a charge rather
- *  than a tap. */
-const CHARGE_HOLD_MS = 500;
+/** Seconds the attack key must be held before it's a charge rather than a
+ *  tap. */
+const CHARGE_HOLD_TIME = 0.5;
+/** Bullet-time tail on a charge release: from the moment the release fires,
+ *  the world runs at this scale for `CHARGE_SLOWMO_DURATION` seconds with
+ *  the player excluded — so once the release's own recovery ends, the
+ *  player acts at full speed inside the slowed world. */
+const CHARGE_SLOWMO_SCALE = 0.3;
+const CHARGE_SLOWMO_DURATION = 1.5;
 /** Player melee reach for the parry counter — comfortably past contact
  *  range but short of the enemy's ranged stand-off distance, so a parried
  *  touch hit counters in melee and a parried fireball (whose source is far
@@ -1728,7 +1735,7 @@ function spawnChargeSpark(): ChargeSpark {
 
 class PlayerController extends Component {
   private readonly input = this.service(InputManagerKey);
-  private readonly processes = this.service(ProcessSystemKey);
+  private readonly time = this.service(SceneTimeKey);
   private readonly rb = this.sibling(RigidBodyComponent);
   private readonly facing = this.sibling(Facing);
   private readonly abilities = this.sibling(Abilities);
@@ -1783,10 +1790,18 @@ class PlayerController extends Component {
         reactToHit(this.entity, this.pc, PLAYER_TINT, hit);
       }
     });
-    this.listen(this.entity, HitDealt, ({ result, target }) => {
+    this.listen(this.entity, HitDealt, ({ result, data }) => {
       if (result !== "hit") return;
-      const weight = weightFor(this.abilities);
-      this.triggerHitstop(target, HITSTOP_BY_WEIGHT[weight]);
+      // `HitDealt.data` rides as `unknown` (the event token is unparameterized);
+      // this game runs one hit vocabulary, so it narrows to `StandardHitData`.
+      const hit = data as StandardHitData;
+      // Freeze frame: the ability def declares its own hitstop next to its
+      // damage numbers (see the attack defs' `hit.hitstop`), so the arbitration
+      // primitive freezes the whole scene without a parallel id->weight table.
+      if (hit.hitstop) this.time.freezeFor(hit.hitstop);
+      // Camera shake / attacker flash stay game-side (feedback, not
+      // arbitration), keyed off how hard the hit landed.
+      const weight = damageWeight(hit.damage ?? 0);
       if (weight !== "light") {
         flashAttacker(this.entity, this.pc, PLAYER_TINT);
         const shake = SHAKE_BY_WEIGHT[weight];
@@ -1831,7 +1846,9 @@ class PlayerController extends Component {
       const moving = dx !== 0 || dy !== 0;
       if (moving) {
         this.facing.set(dx, dy);
-        this.rb.setVelocity(new Vec2(dx, dy).normalize().scale(PLAYER_SPEED));
+        const speed =
+          PLAYER_SPEED * slowmoVelocityCompensation(this.time, this.entity);
+        this.rb.setVelocity(new Vec2(dx, dy).normalize().scale(speed));
       } else {
         this.rb.setVelocity(Vec2.ZERO);
       }
@@ -1914,6 +1931,16 @@ class PlayerController extends Component {
         this.abilities.cancel("main"); // closes the indefinite chargeHold window
         this.resampleFacing();
         this.abilities.force(CHARGE_RELEASE);
+        // Bullet-time tail as a timed request, not a `slowmo` step on
+        // `CHARGE_RELEASE`: a window step cannot end past its def's
+        // duration, and stretching the def to cover the tail would keep the
+        // attack lane locked (busy) through it. Ages on raw time and
+        // releases itself, so a cancelled release can't strand it.
+        this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
+          for: CHARGE_SLOWMO_DURATION,
+          key: "charge-bullet-time",
+          excludeUpdates: [this.entity],
+        });
         this.resetCombo();
       }
       return;
@@ -1946,7 +1973,7 @@ class PlayerController extends Component {
       } else if (
         !this.attackPendingStartedBusy &&
         !mainBusy &&
-        this.input.isHeldFor("attack", CHARGE_HOLD_MS)
+        this.input.isHeldFor("attack", CHARGE_HOLD_TIME)
       ) {
         this.attackPending = false;
         this.charging = true;
@@ -2148,37 +2175,6 @@ class PlayerController extends Component {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // Hitstop — hand-rolled: `scene.timeScale = 0` freezes physics and every
-  // component's scaled `update(dt)` engine-wide, but does NOT freeze sprite
-  // playback (PixiJS `AnimatedSprite` ticks off `Ticker.shared`, independent
-  // of scene timeScale), and does NOT provide an unfreeze timer of its own —
-  // a timer driven by a scene-scoped `ProcessComponent` would freeze right
-  // alongside everything else and never fire. The engine-global
-  // `ProcessSystem` pool (`ProcessSystemKey`) is the documented escape
-  // hatch: it ticks on raw, unscaled engine time regardless of any scene's
-  // timeScale (the same mechanism `SceneTransition`/`LoadingScene` use for
-  // their own real-time timers), so it's what restores `timeScale` here.
-  // Duration scales with the landed ability's weight — see `weightFor`.
-  // -------------------------------------------------------------------------
-
-  private triggerHitstop(victim: Entity, duration: number): void {
-    if (this.scene.timeScale === 0) return; // already mid-hitstop
-    const victimSprite = victim.tryGet(AnimatedSpriteComponent)?.animatedSprite;
-    const attackerSprite = this.entity.tryGet(AnimatedSpriteComponent)?.animatedSprite;
-    victimSprite?.stop();
-    attackerSprite?.stop();
-    const scene = this.scene;
-    scene.timeScale = 0;
-    this.processes.add(
-      Process.delay(duration, () => {
-        scene.timeScale = 1;
-        victimSprite?.play();
-        attackerSprite?.play();
-      }),
-    );
-  }
-
   /** HP bar plus the charge-hold convergence sparks while charging — the
    *  sprite animation itself conveys guard/dash/stun/dead. */
   private redraw(): void {
@@ -2201,7 +2197,7 @@ class PlayerEntity extends Entity {
     transform.setScale(SPRITE_SCALE, SPRITE_SCALE);
     this.add(
       new AnimatedSpriteComponent({
-        textures: framesFor("idle", DEFAULT_DIR),
+        source: sourceFor("idle", DEFAULT_DIR),
         anchor: SPRITE_ANCHOR,
       }),
     );
@@ -2400,7 +2396,7 @@ class EnemyEntity extends Entity {
     transform.setScale(SPRITE_SCALE, SPRITE_SCALE);
     this.add(
       new AnimatedSpriteComponent({
-        textures: framesFor("idle", DEFAULT_DIR),
+        source: sourceFor("idle", DEFAULT_DIR),
         anchor: SPRITE_ANCHOR,
         // Tinted so the same sheets read as a distinct combatant.
         tint: ENEMY_TINT,

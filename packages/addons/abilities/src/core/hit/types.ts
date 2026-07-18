@@ -39,6 +39,13 @@ export interface StandardHitData {
   knockback?: number;
   /** Seconds of hit-stun driven by `Stagger`. */
   stun?: number;
+  /**
+   * Seconds of hitstop (freeze frame) an attacker may apply on landing this
+   * hit. The delivery machinery never reads it — it is carried in the
+   * `HitDealt` payload so an attacker's own listener can `SceneTime.freezeFor` it,
+   * keeping the freeze duration declared next to the hit's damage numbers.
+   */
+  hitstop?: number;
 }
 
 /**

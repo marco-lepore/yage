@@ -66,11 +66,14 @@ export function resolveAbilitySpawn<TData = StandardHitData>(
   const delivery =
     args.hit === undefined
       ? undefined
-      : createReportingDelivery<TData>({
-          source: caster,
-          data: resolveHitSpec(args.hit, ctx),
-          ...(team !== undefined ? { team } : {}),
-          ...(args.tags ? { tags: args.tags } : {}),
-        });
+      : createReportingDelivery<TData>(
+          {
+            source: caster,
+            data: resolveHitSpec(args.hit, ctx),
+            ...(team !== undefined ? { team } : {}),
+            ...(args.tags ? { tags: args.tags } : {}),
+          },
+          { ability: ctx.def },
+        );
   return { caster, aim, transform, team, delivery };
 }

@@ -34,7 +34,7 @@ describe("createReportingDelivery", () => {
     const result = delivery.deliver(target, new Vec2(0, 0));
 
     expect(result).toBe("hit");
-    expect(events).toEqual([{ target, result: "hit" }]);
+    expect(events).toEqual([{ target, result: "hit", data: {} }]);
   });
 
   it("emits with result 'blocked'/'parried' when the receiver reports a guard outcome", () => {
@@ -99,5 +99,55 @@ describe("createReportingDelivery", () => {
     expect(reporting.deliver(target, new Vec2(0, 0))).toBe(
       bare.deliver(target, new Vec2(0, 0)),
     );
+  });
+
+  it("carries the resolved hit data in the payload", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("attacker");
+    const target = spawnTarget(scene, 10, 0);
+    const events: unknown[] = [];
+    source.on(HitDealt, (payload) => events.push(payload.data));
+    const delivery = createReportingDelivery({
+      source,
+      data: { damage: 7, hitstop: 0.12 },
+    });
+
+    delivery.deliver(target, new Vec2(0, 0));
+
+    expect(events).toEqual([{ damage: 7, hitstop: 0.12 }]);
+  });
+
+  it("emits a fire-time copy of the data, independent of the per-victim payload", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("attacker");
+    const authored = { damage: 5 };
+    const dealt: Record<string, unknown>[] = [];
+    source.on(HitDealt, (payload) =>
+      dealt.push(payload.data as Record<string, unknown>),
+    );
+    const delivery = createReportingDelivery({ source, data: authored });
+
+    const target = spawnTarget(scene, 10, 0);
+    delivery.deliver(target, new Vec2(0, 0));
+
+    // The reported data is a copy, not the authored object.
+    expect(dealt[0]).not.toBe(authored);
+    expect(dealt[0]).toEqual({ damage: 5 });
+  });
+
+  it("stamps the ability provenance when given, omits it otherwise", () => {
+    const { scene } = createMockScene();
+    const source = scene.spawn("attacker");
+    const withProv: { ability?: unknown }[] = [];
+    source.on(HitDealt, (payload) => withProv.push(payload));
+
+    const def = { id: "swing", timeline: [] };
+    const reporting = createReportingDelivery({ source }, { ability: def });
+    reporting.deliver(spawnTarget(scene, 10, 0), new Vec2(0, 0));
+    expect(withProv[0]!.ability).toBe(def);
+
+    const plain = createReportingDelivery({ source });
+    plain.deliver(spawnTarget(scene, 10, 0), new Vec2(0, 0));
+    expect("ability" in withProv[1]!).toBe(false);
   });
 });
