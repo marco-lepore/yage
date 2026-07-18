@@ -32,11 +32,13 @@ class GameplayScene extends Scene {
   }
 
   onPause() {
-    // another scene was pushed on top
+    // the scene became paused: a scene was pushed on top,
+    // `paused` was set, or the tab blurred with autoPauseOnBlur
   }
 
   onResume() {
-    // the scene on top was popped, this scene is active again
+    // the scene is running again: the scene on top was popped,
+    // `paused` was cleared, or focus returned
   }
 }
 ```
@@ -90,6 +92,16 @@ push(B)      → A.onPause()  → B.onEnter()
 pop()        → B.onExit()   → A.onResume()
 replace(C)   → B.onExit()   → C.onEnter()
 ```
+
+`onPause` and `onResume` fire on **every** effective pause transition, not
+just stack changes: setting `scene.paused = true` from game code, the
+manager's `autoPauseOnBlur` pausing scenes on tab blur, and a snapshot
+restoring a scene that was saved paused all fire `onPause`; the matching
+un-pause fires `onResume`. The hooks track `scene.isPaused` — a write that
+does not change the effective state (re-assigning the same value, or
+flipping the flag while the scene is already paused by a scene above)
+fires nothing. Ducking music or muting input in `onPause` therefore covers
+manual pauses and tab blur, not only pushed pause menus.
 
 ## Querying Entities
 

@@ -117,6 +117,15 @@ scene.destroyEntity(bullet);
 This prevents iterator invalidation and lets other systems react to the
 destruction during the same frame.
 
+Entities also die when their scene leaves the stack (`pop`, `replace`, or
+engine shutdown). Scene teardown applies the same contract as the
+end-of-frame flush: every entity is marked destroyed (`isDestroyed`
+becomes `true` before any component `onDestroy` runs), components are torn
+down, and the engine bus emits `entity:destroyed` once per entity. After
+destruction — on either path — `entity.scene` throws and `entity.tryScene`
+returns `null`; use `tryScene` when a cached reference may outlive its
+entity.
+
 ## Components
 
 Components hold state and game logic. Extend the `Component` base class:

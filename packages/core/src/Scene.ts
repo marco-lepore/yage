@@ -157,8 +157,35 @@ export abstract class Scene {
   /** Default transition used when this scene is the destination of a push/pop/replace. */
   readonly defaultTransition?: SceneTransition;
 
-  /** Manual pause flag. Set by game code to pause this scene regardless of stack position. */
-  paused = false;
+  /**
+   * Manual pause flag. Set by game code to pause this scene regardless of
+   * stack position. Assigning it fires `onPause`/`onResume` when the
+   * effective pause state (`isPaused`) flips — writes that don't change the
+   * flag, or that are masked by a stack pause, fire nothing. Writes before
+   * the scene is pushed fire nothing either; the push itself fires `onPause`
+   * for a scene entering paused.
+   */
+  get paused(): boolean {
+    return this._paused;
+  }
+
+  set paused(value: boolean) {
+    if (value === this._paused) return;
+    // Diff the effective state across the write, mirroring the stack-
+    // transition diff in SceneManager: the hooks track isPaused, not the
+    // raw flag.
+    const wasEffective = this.isPaused;
+    this._paused = value;
+    if (!this._context) return;
+    const isEffective = this.isPaused;
+    if (isEffective && !wasEffective) {
+      this.onPause?.();
+    } else if (!isEffective && wasEffective) {
+      this.onResume?.();
+    }
+  }
+
+  private _paused = false;
 
   /** Time scale multiplier for this scene. 1.0 = normal, 0.5 = half speed. Default: 1. */
   timeScale = 1;
@@ -583,10 +610,19 @@ export abstract class Scene {
   /** Called when the scene is exited (popped or replaced). */
   onExit?(): void;
 
-  /** Called when a scene is pushed on top of this one. */
+  /**
+   * Called when the scene becomes effectively paused (`isPaused` flips to
+   * true), whatever the source: a `pauseBelow` scene pushed on top, a manual
+   * `paused = true`, the manager's blur auto-pause, or a snapshot restoring
+   * the scene paused.
+   */
   onPause?(): void;
 
-  /** Called when the scene above is popped, restoring this scene. */
+  /**
+   * Called when the scene stops being effectively paused (`isPaused` flips
+   * to false): the scene above is popped, `paused` is cleared, or focus
+   * returns after a blur auto-pause.
+   */
   onResume?(): void;
 
   /** Return a JSON-serializable snapshot of this scene's custom state. Used by the save system. */
@@ -712,15 +748,25 @@ export abstract class Scene {
   }
 
   /**
-   * Destroy all entities — used during scene exit. Clears the identity
-   * index in bulk; per-entity key removal in `_flushDestroyQueue` is the
-   * in-game path.
+   * Destroy all entities — used during scene exit. Applies the same destroy
+   * contract as `_flushDestroyQueue`: entities are marked destroyed, torn
+   * down, detached from the scene, and `entity:destroyed` is emitted once
+   * per entity (including entities queued but not yet flushed). Clears the
+   * identity index in bulk; per-entity key removal in `_flushDestroyQueue`
+   * is the in-game path.
    * @internal
    */
   _destroyAllEntities(): void {
+    // Mark everything first, so a component's onDestroy never observes a
+    // half-alive sibling: by the time any teardown runs, every entity in
+    // the scene already reads isDestroyed === true.
+    for (const entity of this.entities) {
+      entity._markDestroyed();
+    }
     for (const entity of this.entities) {
       entity._performDestroy();
       this.queryCache?.onEntityDestroyed(entity);
+      this.bus?.emit("entity:destroyed", { entity });
     }
     this.entities.clear();
     this.destroyQueue.length = 0;

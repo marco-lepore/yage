@@ -54,7 +54,8 @@ export class SceneManager {
    * Pause all non-paused scenes when `document.hidden` becomes `true`; restore
    * them on focus. Default: `false`. Only scenes paused by this mechanism are
    * restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow`
-   * cascade) are never touched.
+   * cascade) are never touched. Blur pause goes through the `paused` setter,
+   * so affected scenes get `onPause` on blur and `onResume` on focus.
    */
   get autoPauseOnBlur(): boolean {
     return this._autoPauseOnBlur;

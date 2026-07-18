@@ -44,7 +44,8 @@ class Entity {
 }
 ```
 
-- `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already removed). Prefer it in user code — failing loud beats a silent `null` propagation. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
+- `entity.scene` throws with a clear error when the entity is detached (not yet spawned, or already destroyed — both the end-of-frame flush and scene teardown null it). Prefer it in user code — failing loud beats a silent `null` propagation. Use `entity.tryScene` only in defensive paths (e.g. systems iterating query results during teardown) where detachment is expected.
+- `entity.isDestroyed` is true after `destroy()` and for entities torn down with their scene on exit. Teardown also emits `entity:destroyed` once per entity, so listeners that track entity lifetimes see every death, including deaths caused by scene exit.
 - `entity.spawnChild(name, Class, params?)` combines `scene.spawn(...)` + `this.addChild(name, ...)`. Child is auto-added to the parent's scene. Use for sub-entities owned by a parent (enemy body + health bar, player + weapon, etc.).
 
 ### Events
@@ -59,7 +60,7 @@ class Entity {
 
 | Event | Payload |
 |---|---|
-| `entity:created` / `entity:destroyed` | `{ entity }` |
+| `entity:created` / `entity:destroyed` | `{ entity }` — `entity:destroyed` fires on the end-of-frame flush after `destroy()` and once per entity on scene teardown, before `scene:popped`/`scene:replaced` |
 | `component:added` | `{ entity; component }` |
 | `component:removed` | `{ entity; componentClass }` |
 | `scene:pushed` / `scene:popped` | `{ scene }` |
@@ -267,7 +268,9 @@ const scenes = this.context.resolve(SceneManagerKey);
 scenes.autoPauseOnBlur = true;  // default: false
 ```
 
-When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activeScenes` on `document.hidden === true`, and restores them on `hidden === false`. Only scenes paused by this mechanism are restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow` cascade) are never touched. Toggling the flag off mid-blur unpauses immediately. No-op in non-browser environments.
+When enabled, `SceneManager` sets `scene.paused = true` on every scene in `activeScenes` on `document.hidden === true`, and restores them on `hidden === false`. Affected scenes get `onPause` on blur and `onResume` on focus. Only scenes paused by this mechanism are restored — user-paused scenes (manual `scene.paused = true` or `pauseBelow` cascade) are never touched, and get neither hook. Toggling the flag off mid-blur unpauses immediately. No-op in non-browser environments.
+
+`onPause`/`onResume` fire on every effective pause transition, i.e. whenever `scene.isPaused` flips, whatever the source: a `pauseBelow` scene pushed above, manual `scene.paused = true`/`false`, blur auto-pause, or a snapshot restoring the scene paused. Writes that don't change the effective state fire nothing: repeated assignments, flag flips masked by a stack pause, and writes before the scene is pushed. Pushing a scene whose `paused` flag is already true fires `onPause` on entry.
 
 ### Scene Transitions
 

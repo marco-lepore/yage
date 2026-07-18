@@ -174,9 +174,9 @@ await engine.scenes.popAll();                // exits all (queued)
 All four are async and queued — they await `beforeEnter` hooks,
 `scene.preload`, and any in-flight transition before applying.
 
-Scene hooks: `onEnter`, `onExit`, `onPause` (scene pushed on top), `onResume` (scene above popped).
+Scene hooks: `onEnter`, `onExit`, `onPause` (scene became effectively paused — covered by a pushed `pauseBelow` scene, manual `paused = true`, or blur auto-pause), `onResume` (scene became effectively unpaused).
 
-Properties: `pauseBelow` (default true), `transparentBelow` (default false), `paused`, `timeScale`.
+Properties: `pauseBelow` (default true), `transparentBelow` (default false), `paused` (setting it fires `onPause`/`onResume` when `isPaused` flips), `timeScale`.
 
 `transparentBelow` controls whether scenes below this one render. `false` (default) hides below-stack scene trees — world AND screen-space (UI/HUD). `true` keeps them visible (pause menus, dialog overlays). The flag composes: a below scene stays visible only while every scene above it is `transparentBelow: true`. During a `SceneManager` transition both outgoing and incoming scenes render regardless (so e.g. `crossFade` works); the chain is reapplied when the transition ends. Detached trees mounted via `_mountDetached` (e.g. the debug overlay) are NOT affected — their visibility is owned by whoever mounted them.
 

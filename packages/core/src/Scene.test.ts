@@ -142,17 +142,83 @@ describe("Scene", () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it("_destroyAllEntities cleans up all entities", () => {
+  it("_flushDestroyQueue detaches the entity from its scene", () => {
     const { ctx } = createContext();
     const scene = new TestScene();
     scene._setContext(ctx);
+    const e = scene.spawn("doomed");
+    e.destroy();
+    scene._flushDestroyQueue();
+    expect(e.tryScene).toBeNull();
+    expect(() => e.scene).toThrow(/not attached/);
+  });
+
+  it("_destroyAllEntities marks entities destroyed, detaches them, and emits entity:destroyed per entity", () => {
+    const { ctx, bus } = createContext();
+    const destroyed: unknown[] = [];
+    bus.on("entity:destroyed", ({ entity }) => destroyed.push(entity));
+    const scene = new TestScene();
+    scene._setContext(ctx);
     const comp = new TestComponent();
-    const e = scene.spawn("test");
-    e.add(comp);
-    scene.spawn("test2");
+    const e1 = scene.spawn("test");
+    e1.add(comp);
+    const e2 = scene.spawn("test2");
     scene._destroyAllEntities();
     expect(scene.getEntities().size).toBe(0);
     expect(comp.removeCalled).toBe(true);
+    expect(e1.isDestroyed).toBe(true);
+    expect(e2.isDestroyed).toBe(true);
+    expect(e1.tryScene).toBeNull();
+    expect(() => e1.scene).toThrow(/not attached/);
+    expect(destroyed).toHaveLength(2);
+    expect(destroyed[0]).toBe(e1);
+    expect(destroyed[1]).toBe(e2);
+  });
+
+  it("_destroyAllEntities lets onDestroy observe siblings already marked destroyed", () => {
+    const { ctx } = createContext();
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const e1 = scene.spawn("a");
+    const e2 = scene.spawn("b");
+    let siblingDestroyedDuringTeardown: boolean | undefined;
+    class ObserverComponent extends Component {
+      onDestroy() {
+        siblingDestroyedDuringTeardown = e2.isDestroyed;
+      }
+    }
+    e1.add(new ObserverComponent());
+    scene._destroyAllEntities();
+    expect(siblingDestroyedDuringTeardown).toBe(true);
+  });
+
+  it("_destroyAllEntities emits entity:destroyed after the entity's components are torn down", () => {
+    const { ctx, bus } = createContext();
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const e = scene.spawn("test");
+    const comp = new TestComponent();
+    e.add(comp);
+    let destroyCalledAtEmit: boolean | undefined;
+    bus.on("entity:destroyed", () => {
+      destroyCalledAtEmit = comp.destroyCalled;
+    });
+    scene._destroyAllEntities();
+    expect(destroyCalledAtEmit).toBe(true);
+  });
+
+  it("_destroyAllEntities emits exactly once for an entity destroyed but not yet flushed", () => {
+    const { ctx, bus } = createContext();
+    const handler = vi.fn();
+    bus.on("entity:destroyed", handler);
+    const scene = new TestScene();
+    scene._setContext(ctx);
+    const e = scene.spawn("doomed");
+    e.destroy();
+    // No flush before scene exit — teardown handles the queued entity.
+    scene._destroyAllEntities();
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith({ entity: e });
   });
 
   it("notifies QueryCache on component add/remove", () => {

@@ -78,9 +78,10 @@ export class Entity {
   /**
    * The scene this entity belongs to. Throws if the entity is not attached
    * to a scene — which in practice only happens before `scene.spawn` /
-   * `addChild` wires it up, or after `destroy()` tears it down. Inside
-   * lifecycle methods (`setup`, component `onAdd`, `update`, etc.) this is
-   * always safe to access.
+   * `addChild` wires it up, or after the entity is destroyed (end-of-frame
+   * flush after `destroy()`, or scene teardown on exit). Inside lifecycle
+   * methods (`setup`, component `onAdd`, `update`, and component
+   * `onDestroy` during destruction) this is always safe to access.
    *
    * For the rare case where you genuinely need to inspect whether an
    * entity has a scene (e.g. defensive code in systems iterating a query
@@ -100,7 +101,10 @@ export class Entity {
     return this._scene;
   }
 
-  /** True if destroy() has been called. */
+  /**
+   * True once the entity is dead — after `destroy()` is called, or once its
+   * scene starts tearing it down on scene exit.
+   */
   get isDestroyed(): boolean {
     return this._destroyed;
   }
@@ -347,6 +351,16 @@ export class Entity {
   }
 
   /**
+   * Internal: mark the entity destroyed without queueing it. Called by Scene
+   * during teardown so every entity reads `isDestroyed === true` before any
+   * component `onDestroy` runs. Idempotent.
+   * @internal
+   */
+  _markDestroyed(): void {
+    this._destroyed = true;
+  }
+
+  /**
    * Internal: perform actual destruction — remove all components and clear state.
    * Called by Scene during endOfFrame flush.
    * @internal
@@ -374,6 +388,11 @@ export class Entity {
     }
     this.components.clear();
     this._eventHandlers?.clear();
+
+    // Detach from the scene last, so component onDestroy hooks above can
+    // still read `entity.scene`. After this, `scene` throws and `tryScene`
+    // returns null.
+    this._setScene(null, null);
   }
 
   /**
