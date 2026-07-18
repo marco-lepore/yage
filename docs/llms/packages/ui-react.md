@@ -30,7 +30,7 @@ entity.add(root);
 root.render(<MyComponent />);
 ```
 
-Positioning modes (mirror `@yagejs/ui`'s `UIPanel`):
+Positioning modes (mirror `@yagejs/ui`'s `UISurface`):
 - `positioning: "anchor"` (default) — `anchor` resolves against the viewport.
 - `positioning: "transform"` — tree is pinned to `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is the pivot on the rendered tree. Throws at add time if the entity has no `Transform`.
 
@@ -97,7 +97,7 @@ function OrdersPanel({ orders, fulfill, endDay }: OrdersProps) {
 }
 ```
 
-Size the viewport with `LayoutProps` (`height` / `flexGrow`); content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. The same node is available without React via the `PanelNode` / `UIPanel` `.scrollView(opts)` builder, and exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`.
+Size the viewport with `LayoutProps` (`height` / `flexGrow`); content overflowing the scroll axis is clipped and pannable (wheel + drag work anywhere over the box, including gaps and the gutter). Props: `direction` (`"vertical"` default / `"horizontal"`), `gap`, `padding`, `bg`, `onScroll(offset)`, and `scrollbar` — `true` (default) / `false`, or a `ScrollbarOptions` object (`thickness`, `color`, `alpha`, `radius`, `minThumbLength`, `margin`). When the scrollbar is shown a gutter equal to the thumb footprint is auto-reserved so content never sits under it (`node.scrollbarGutter` is the px). Keep fixed elements (a footer button, a header) as **siblings** of `<ScrollView>`, not children. The same node is available without React via the `UIPanel` / `UISurface` `.scrollView(opts)` builder, and exposes `scrollBy()` / `scrollTo()` / `scrollOffset` / `maxScroll`.
 
 > Appending JSX children to a layout-leaf element (one with no `addElement`, e.g. `<PixiSelect>`) silently drops them; the reconciler now emits a one-shot dev `console.warn` pointing you at `<ScrollView>` / a container.
 

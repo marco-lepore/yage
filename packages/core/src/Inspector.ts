@@ -1144,13 +1144,13 @@ export class Inspector {
         [...entity.getAll()]
           .filter(
             (component) =>
-              component.constructor.name === "UIPanel" &&
-              "_node" in (component as object),
+              component.constructor.name === "UISurface" &&
+              "root" in (component as object),
           )
           .map((component, index) =>
             this.buildUINodeSnapshot(
-              (component as Component & { _node: UIElementLike })._node,
-              `entity-${entity.id}:UIPanel:${index}`,
+              (component as Component & { root: UIElementLike }).root,
+              `entity-${entity.id}:UISurface:${index}`,
             ),
           ),
       );
@@ -1330,7 +1330,7 @@ export class Inspector {
     for (const key of Object.getOwnPropertyNames(comp)) {
       if (key === "entity") continue;
       // Skip private-by-convention fields. Components hold pixi/rapier handles
-      // (e.g. _node, _body) on underscore-prefixed slots; exposing them in
+      // (e.g. _body) on underscore-prefixed slots; exposing them in
       // snapshots would either crash JSON.stringify on cycles or leak
       // meaningless object identities.
       if (key.startsWith("_")) continue;

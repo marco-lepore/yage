@@ -6,7 +6,7 @@ import {
 } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -77,7 +77,7 @@ class ConsumeScene extends Scene {
     // Default-consume UI panel covering the top-left quadrant.
     // Default `consumeInput: true` — clicks here MUST NOT fire `fire`.
     this.spawn("ui-default").add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 0, y: 0 },
         width: 100,
@@ -89,7 +89,7 @@ class ConsumeScene extends Scene {
     // Escape-hatch panel in the top-right. `consumeInput: false` makes the
     // panel transparent to the action map — clicks here SHOULD fire `fire`.
     this.spawn("ui-passthrough").add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopRight,
         offset: { x: 0, y: 0 },
         width: 100,

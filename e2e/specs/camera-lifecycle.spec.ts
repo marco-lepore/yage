@@ -139,7 +139,7 @@ test.describe("Camera lifecycle", () => {
     );
     expect(
       ui,
-      "ui layer should exist — UIPanel auto-provisions it",
+      "ui layer should exist — UISurface auto-provisions it",
     ).not.toBeNull();
     expect(ui!.x).toBe(0);
     expect(ui!.y).toBe(0);

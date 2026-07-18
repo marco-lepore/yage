@@ -173,7 +173,7 @@ export class Paddle extends Entity {
 ```typescript
 import { Entity, Transform, Vec2 } from "@yagejs/core";
 import { RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
-import { UIPanel, Anchor } from "@yagejs/ui";
+import { UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { GoalEvent, type Side } from "./types";
 
@@ -213,7 +213,7 @@ export class Scoreboard extends Entity {
   setup() {
     const style = { fontSize: 48, fill: 0xffffff, fontFamily: "monospace" };
     const panel = this.add(
-      new UIPanel({ anchor: Anchor.TopCenter, offset: { x: 0, y: 16 }, direction: "row", gap: 60 }),
+      new UISurface({ anchor: Anchor.TopCenter, offset: { x: 0, y: 16 }, direction: "row", gap: 60 }),
     );
     this.leftText = panel.text("0", style);
     this.rightText = panel.text("0", style);

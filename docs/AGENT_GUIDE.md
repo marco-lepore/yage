@@ -205,7 +205,8 @@ If you change a leaf package (e.g., `@yagejs/particles`):
 | File                        | Purpose                                               |
 | --------------------------- | ----------------------------------------------------- |
 | `src/UIPlugin.ts`           | Plugin entry, loads Yoga + wires AssetManager         |
-| `src/UIPanel.ts`            | Layout container with Yoga flexbox                    |
+| `src/UISurface.ts`          | Root component mounting a UI tree on an entity        |
+| `src/UIPanel.ts`            | Layout container element with Yoga flexbox            |
 | `src/UIText.ts`             | Text rendering                                        |
 | `src/UIButton.ts`           | Interactive button                                    |
 | `src/UIImage.ts`            | Texture display                                       |
@@ -642,7 +643,7 @@ new SpriteComponent({ texture: myTexture });
 | `SoundComponent`           | Full                                       | `alias` is already a string                               |
 | `ParticleEmitterComponent` | Full when using `textureKey`               | `textureKey: "particle.png"`                              |
 | `TilemapComponent`         | Full when using `mapKey`                   | `mapKey: "dungeon.json"`                                  |
-| `UIPanel` / `UIRoot`       | Not serializable                           | State belongs in owning component/entity                  |
+| `UISurface` / `UIRoot`     | Options snapshot (construction options only) | Runtime tree state belongs in owning component/entity   |
 
 ### Make an Entity Serializable
 
@@ -770,7 +771,7 @@ class InventoryUI extends Component {
   private tabButtons: UIButton[] = [];
 
   onAdd() {
-    const panel = this.entity.add(new UIPanel({ width: 300, height: 400 }));
+    const panel = this.entity.add(new UISurface({ width: 300, height: 400 }));
     const tabs = ["Weapons", "Armor", "Items"];
     for (let i = 0; i < tabs.length; i++) {
       const btn = new UIButton({

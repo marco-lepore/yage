@@ -168,7 +168,7 @@ case, see [`ScreenFollow`](#screenfollow-entity-anchored-ui) below.
 
 `ScreenFollow` projects a world source through a camera and writes the
 resulting screen coord to its entity's `Transform` each frame. Paired
-with a `UIPanel` (or `UIRoot`) on a screen-space layer using
+with a `UISurface` (or `UIRoot`) on a screen-space layer using
 `positioning: "transform"`, it produces UI that tracks a target entity
 but stays axis-aligned and constant-size regardless of camera zoom or
 rotation — the canonical "billboard" primitive for nameplates, health
@@ -176,7 +176,7 @@ bars, damage numbers, and interaction prompts.
 
 ```typescript
 import { ScreenFollow } from "@yagejs/renderer";
-import { UIPanel, Anchor } from "@yagejs/ui";
+import { UISurface, Anchor } from "@yagejs/ui";
 
 class EnemyNameplate extends Entity {
   setup(params: { target: Entity; camera: CameraEntity; label: string }) {
@@ -186,7 +186,7 @@ class EnemyNameplate extends Entity {
       camera: params.camera,
       offset: new Vec2(0, -40), // 40 screen pixels above the target, at any zoom
     }));
-    const panel = this.add(new UIPanel({
+    const panel = this.add(new UISurface({
       positioning: "transform",  // read Transform.worldPosition
       anchor: Anchor.BottomCenter, // pivot on the panel
       padding: 4,
@@ -260,11 +260,11 @@ that controls whether cameras transform it:
   in `bindings`.
 
 If no `"ui"` layer is declared, `@yagejs/ui` auto-provisions one as
-`space: "screen"` the first time a `UIPanel` is added, so HUDs just
+`space: "screen"` the first time a `UISurface` is added, so HUDs just
 work without any layer wiring.
 
 See the [UI guide](/guides/ui/#layer-space-and-positioning) for how
-`UIPanel`/`UIRoot` pick between viewport-anchored and Transform-pinned
+`UISurface`/`UIRoot` pick between viewport-anchored and Transform-pinned
 positioning.
 
 ### Per-frame paint order with `sort`

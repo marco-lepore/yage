@@ -29,7 +29,7 @@ import {
   linearGradient,
 } from "@yagejs/renderer";
 import type { GradientFill, LayerDef } from "@yagejs/renderer";
-import { Anchor, UIPanel, UIPlugin } from "@yagejs/ui";
+import { Anchor, UISurface, UIPlugin } from "@yagejs/ui";
 import { injectStyles, getContainer, installDebugFromUrl } from "./shared.js";
 
 injectStyles(`
@@ -352,7 +352,7 @@ class ResponsiveUIScene extends Scene {
     fog.add(new FogOverlay());
 
     // HUD corners anchored to the canvas corners (in virtual coords). Each
-    // card is a UIPanel with `positioning: "transform"` — `HudAnchor` writes
+    // card is a UISurface with `positioning: "transform"` — `HudAnchor` writes
     // the canvas-corner position to the entity's Transform each frame, and
     // the panel's `anchor` reinterprets as a pivot on the panel itself, so
     // a card anchored TopRight grows down-and-to-the-left from the corner.
@@ -372,7 +372,7 @@ class ResponsiveUIScene extends Scene {
       card.add(new HudAnchor(corner));
 
       const panel = card.add(
-        new UIPanel({
+        new UISurface({
           layer: "hud",
           positioning: "transform",
           anchor: CORNER_TO_ANCHOR[corner],

@@ -66,7 +66,7 @@ export interface ScreenFollowData {
  * Each frame, projects a world source through a camera and writes the
  * resulting screen coord to this entity's `Transform.worldPosition`.
  *
- * The canonical "billboard" primitive: pair with a `UIPanel` (or `UIRoot`)
+ * The canonical "billboard" primitive: pair with a `UISurface` (or `UIRoot`)
  * on a screen-space layer using `positioning: "transform"` to produce UI
  * that tracks a target entity but stays axis-aligned and constant-size
  * regardless of camera zoom or rotation — nameplates, health bars,
@@ -84,7 +84,7 @@ export interface ScreenFollowData {
  *       camera: this.camera,
  *       offset: new Vec2(0, -40),      // 40 screen px above the target
  *     }));
- *     const panel = this.add(new UIPanel({
+ *     const panel = this.add(new UISurface({
  *       positioning: "transform",      // reads Transform.worldPosition
  *       anchor: Anchor.BottomCenter,   // pivot on the panel
  *     }));

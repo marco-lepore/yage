@@ -118,8 +118,8 @@ vi.mock("pixi.js", () => ({
 
 import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
-import { ScrollViewNode } from "./ScrollView.js";
-import { PanelNode } from "./UIPanel.js";
+import { UIScrollView } from "./UIScrollView.js";
+import { UIPanel } from "./UIPanel.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -129,13 +129,13 @@ beforeAll(() => {
 function buildScrollView(
   rows: number,
   opts: { height?: number; rowHeight?: number } = {},
-): { sv: ScrollViewNode; rowsArr: PanelNode[] } {
+): { sv: UIScrollView; rowsArr: UIPanel[] } {
   const height = opts.height ?? 100;
   const rowHeight = opts.rowHeight ?? 30;
-  const sv = new ScrollViewNode({ width: 200, height });
-  const rowsArr: PanelNode[] = [];
+  const sv = new UIScrollView({ width: 200, height });
+  const rowsArr: UIPanel[] = [];
   for (let i = 0; i < rows; i++) {
-    const row = new PanelNode({ height: rowHeight, width: 200 });
+    const row = new UIPanel({ height: rowHeight, width: 200 });
     rowsArr.push(row);
     sv.addElement(row);
   }
@@ -143,12 +143,12 @@ function buildScrollView(
   return { sv, rowsArr };
 }
 
-function layout(sv: ScrollViewNode): void {
+function layout(sv: UIScrollView): void {
   sv.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
   sv.applyLayout();
 }
 
-describe("ScrollViewNode", () => {
+describe("UIScrollView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -178,7 +178,7 @@ describe("ScrollViewNode", () => {
 
   it("scrollBy clamps within [0, maxScroll] and pans content", () => {
     const { sv } = buildScrollView(5, { height: 100, rowHeight: 30 });
-    const content = (sv as unknown as { content: PanelNode }).content;
+    const content = (sv as unknown as { content: UIPanel }).content;
 
     sv.scrollBy(20);
     expect(sv.scrollOffset).toBe(20);
@@ -222,11 +222,11 @@ describe("ScrollViewNode", () => {
   });
 
   it("add / remove / insertElementBefore reorder children", () => {
-    const sv = new ScrollViewNode({ width: 200, height: 100 });
-    const a = new PanelNode({ height: 30 });
-    const b = new PanelNode({ height: 30 });
-    const c = new PanelNode({ height: 30 });
-    const d = new PanelNode({ height: 30 });
+    const sv = new UIScrollView({ width: 200, height: 100 });
+    const a = new UIPanel({ height: 30 });
+    const b = new UIPanel({ height: 30 });
+    const c = new UIPanel({ height: 30 });
+    const d = new UIPanel({ height: 30 });
     sv.addElement(a);
     sv.addElement(b);
     sv.addElement(c);
@@ -247,8 +247,8 @@ describe("ScrollViewNode", () => {
 
   it("fires onScroll only when the offset changes", () => {
     const onScroll = vi.fn();
-    const sv = new ScrollViewNode({ width: 200, height: 100, onScroll });
-    for (let i = 0; i < 5; i++) sv.addElement(new PanelNode({ height: 30 }));
+    const sv = new UIScrollView({ width: 200, height: 100, onScroll });
+    for (let i = 0; i < 5; i++) sv.addElement(new UIPanel({ height: 30 }));
     layout(sv);
 
     sv.scrollTo(20);
@@ -259,7 +259,7 @@ describe("ScrollViewNode", () => {
 
   it("update({ direction }) flips the scroll axis and resets the offset", () => {
     const { sv } = buildScrollView(5, { height: 100, rowHeight: 30 });
-    const content = (sv as unknown as { content: PanelNode }).content;
+    const content = (sv as unknown as { content: UIPanel }).content;
     sv.scrollTo(30);
     expect(sv.scrollOffset).toBe(30);
 
@@ -279,8 +279,8 @@ describe("ScrollViewNode", () => {
 
   it("notifies onScroll(0) when a direction flip resets the offset", () => {
     const onScroll = vi.fn();
-    const sv = new ScrollViewNode({ width: 200, height: 100, onScroll });
-    for (let i = 0; i < 5; i++) sv.addElement(new PanelNode({ height: 30 }));
+    const sv = new UIScrollView({ width: 200, height: 100, onScroll });
+    for (let i = 0; i < 5; i++) sv.addElement(new UIPanel({ height: 30 }));
     layout(sv);
 
     sv.scrollTo(30);
@@ -311,28 +311,28 @@ describe("ScrollViewNode", () => {
 
   it("reserves a scrollbar gutter that insets content; none when disabled", () => {
     const { sv } = buildScrollView(5, { height: 100 });
-    const content = (sv as unknown as { content: PanelNode }).content;
+    const content = (sv as unknown as { content: UIPanel }).content;
     // Default thumb: thickness 4 + margin 2*2 = 8.
     expect(sv.scrollbarGutter).toBe(8);
     expect(content.yogaNode.getComputedWidth()).toBe(192); // 200 - gutter
 
-    const off = new ScrollViewNode({ width: 200, height: 100, scrollbar: false });
-    for (let i = 0; i < 5; i++) off.addElement(new PanelNode({ height: 30 }));
+    const off = new UIScrollView({ width: 200, height: 100, scrollbar: false });
+    for (let i = 0; i < 5; i++) off.addElement(new UIPanel({ height: 30 }));
     layout(off);
-    const offContent = (off as unknown as { content: PanelNode }).content;
+    const offContent = (off as unknown as { content: UIPanel }).content;
     expect(off.scrollbarGutter).toBe(0);
     expect(offContent.yogaNode.getComputedWidth()).toBe(200);
   });
 
   it("honors custom scrollbar size and reconfigures on update()", () => {
-    const sv = new ScrollViewNode({
+    const sv = new UIScrollView({
       width: 200,
       height: 100,
       scrollbar: { thickness: 10, margin: 3 },
     });
-    for (let i = 0; i < 5; i++) sv.addElement(new PanelNode({ height: 30 }));
+    for (let i = 0; i < 5; i++) sv.addElement(new UIPanel({ height: 30 }));
     layout(sv);
-    const content = (sv as unknown as { content: PanelNode }).content;
+    const content = (sv as unknown as { content: UIPanel }).content;
     expect(sv.scrollbarGutter).toBe(16); // 10 + 3*2
     expect(content.yogaNode.getComputedWidth()).toBe(184);
 
@@ -346,17 +346,17 @@ describe("ScrollViewNode", () => {
     // Regression: the viewport is a flex child of a fixed-height panel and
     // its own content (flexShrink:0) overflows. Without min-size 0 +
     // flexShrink:1 the viewport grows to the content and maxScroll === 0.
-    const parent = new PanelNode({
+    const parent = new UIPanel({
       direction: "column",
       width: 200,
       height: 100,
     });
-    const sv = new ScrollViewNode({ flexGrow: 1 });
+    const sv = new UIScrollView({ flexGrow: 1 });
     for (let i = 0; i < 8; i++) {
-      sv.addElement(new PanelNode({ height: 30, width: 200 })); // 240 total
+      sv.addElement(new UIPanel({ height: 30, width: 200 })); // 240 total
     }
     parent.addElement(sv);
-    const footer = new PanelNode({ height: 20 }); // fixed footer sibling
+    const footer = new UIPanel({ height: 20 }); // fixed footer sibling
     parent.addElement(footer);
     parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     parent.applyLayout();
@@ -375,9 +375,9 @@ describe("ScrollViewNode", () => {
     // auto-height (content-sized / maxHeight) parent must size to its content,
     // not collapse to 0. A forced `flex-basis: 0` here would have nothing to
     // grow into and the viewport would vanish.
-    const parent = new PanelNode({ direction: "column", width: 200 }); // no height
-    const sv = new ScrollViewNode({ flexGrow: 1 });
-    for (let i = 0; i < 4; i++) sv.addElement(new PanelNode({ height: 30 })); // 120
+    const parent = new UIPanel({ direction: "column", width: 200 }); // no height
+    const sv = new UIScrollView({ flexGrow: 1 });
+    for (let i = 0; i < 4; i++) sv.addElement(new UIPanel({ height: 30 })); // 120
     parent.addElement(sv);
     parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     parent.applyLayout();
@@ -387,9 +387,9 @@ describe("ScrollViewNode", () => {
   });
 
   it("an explicit-height viewport keeps its height", () => {
-    const parent = new PanelNode({ direction: "column", width: 200, height: 200 });
-    const sv = new ScrollViewNode({ height: 120 });
-    for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 }));
+    const parent = new UIPanel({ direction: "column", width: 200, height: 200 });
+    const sv = new UIScrollView({ height: 120 });
+    for (let i = 0; i < 8; i++) sv.addElement(new UIPanel({ height: 30 }));
     parent.addElement(sv);
     parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     parent.applyLayout();
@@ -402,9 +402,9 @@ describe("ScrollViewNode", () => {
   it("respects an explicit flexBasis prop", () => {
     // With basis 60 (and no grow), the viewport's main size resolves to 60, not
     // its content size (240) — the caller's flexBasis is applied verbatim.
-    const parent = new PanelNode({ direction: "column", width: 200, height: 300 });
-    const sv = new ScrollViewNode({ flexBasis: 60 });
-    for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 }));
+    const parent = new UIPanel({ direction: "column", width: 200, height: 300 });
+    const sv = new UIScrollView({ flexBasis: 60 });
+    for (let i = 0; i < 8; i++) sv.addElement(new UIPanel({ height: 30 }));
     parent.addElement(sv);
     parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     parent.applyLayout();
@@ -418,15 +418,15 @@ describe("ScrollViewNode", () => {
     // `flex: 1` expands to grow:1 / shrink:1 / basis:0, so the viewport grows
     // from a 0 basis into the column's free space and the fixed footer keeps
     // its height — the web `flex: 1` scroll idiom.
-    const parent = new PanelNode({
+    const parent = new UIPanel({
       direction: "column",
       width: 200,
       height: 100,
     });
-    const sv = new ScrollViewNode({ flex: 1 });
-    for (let i = 0; i < 8; i++) sv.addElement(new PanelNode({ height: 30 })); // 240
+    const sv = new UIScrollView({ flex: 1 });
+    for (let i = 0; i < 8; i++) sv.addElement(new UIPanel({ height: 30 })); // 240
     parent.addElement(sv);
-    const footer = new PanelNode({ height: 20 });
+    const footer = new UIPanel({ height: 20 });
     parent.addElement(footer);
     parent.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
     parent.applyLayout();

@@ -15,7 +15,7 @@ import {
   RigidBodyComponent,
   ColliderComponent,
 } from "@yagejs/physics";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 
 // -- Types & Events -----------------------------------------------------------
@@ -198,7 +198,7 @@ class Scoreboard extends Entity {
 
   setup() {
     const panel = this.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopCenter,
         offset: { x: 0, y: 16 },
         direction: "row",

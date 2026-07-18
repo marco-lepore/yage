@@ -1,6 +1,6 @@
 import { Engine, Component, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -18,7 +18,7 @@ class UIButtonScene extends Scene {
     const entity = this.spawn("ui-state");
     const tracker = entity.add(new ClickTracker());
     const panel = entity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 20, y: 20 },
         width: 220,

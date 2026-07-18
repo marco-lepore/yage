@@ -11,7 +11,7 @@ export type {
   BackgroundOptions,
   ColorBackground,
   TextureBackground,
-  UIPanelOptions,
+  UISurfaceOptions,
   UIPositioning,
   UIElement,
   UIContainerElement,
@@ -27,8 +27,8 @@ export type {
   UINineSliceProps,
   UIProgressBarProps,
   UICheckboxProps,
-  PanelProps,
-  ScrollViewProps,
+  UIPanelProps,
+  UIScrollViewProps,
   ScrollbarOptions,
   PixiFancyButtonProps,
   PixiCheckboxProps,
@@ -60,7 +60,8 @@ export { PointerEvents } from "./pointer-events.js";
 export { UIPlugin } from "./UIPlugin.js";
 
 // Components & elements
-export { UIPanel, PanelNode } from "./UIPanel.js";
+export { UISurface } from "./UISurface.js";
+export { UIPanel } from "./UIPanel.js";
 export { UIText } from "./UIText.js";
 export { UISplitText } from "./UISplitText.js";
 export type { TextSegments, SplitListener } from "./UISplitText.js";
@@ -69,7 +70,7 @@ export { UIImage } from "./UIImage.js";
 export { UINineSlice } from "./UINineSlice.js";
 export { UIProgressBar } from "./UIProgressBar.js";
 export { UICheckbox } from "./UICheckbox.js";
-export { ScrollViewNode } from "./ScrollView.js";
+export { UIScrollView } from "./UIScrollView.js";
 export { LoadingSceneProgressBar } from "./LoadingSceneProgressBar.js";
 export type { LoadingSceneProgressBarOptions } from "./LoadingSceneProgressBar.js";
 

@@ -19,8 +19,8 @@ import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
   Anchor,
   attachTooltip,
-  PanelNode,
   UIPanel,
+  UISurface,
   UIPlugin,
   UIProgressBar,
   UIText,
@@ -120,7 +120,7 @@ class EnemyCrystal extends Entity {
 // ---------------------------------------------------------------------------
 // Enemy nameplate — independent entity, sits above the enemy via ScreenFollow.
 // ScreenFollow writes camera.worldToScreen(target + offset) to this entity's
-// Transform each frame; UIPanel with positioning: "transform" reads that
+// Transform each frame; UISurface with positioning: "transform" reads that
 // position on the auto-provisioned screen-space "ui" layer.
 // ---------------------------------------------------------------------------
 class EnemyNameplate extends Entity {
@@ -139,7 +139,7 @@ class EnemyNameplate extends Entity {
       }),
     );
     const panel = this.add(
-      new UIPanel({
+      new UISurface({
         positioning: "transform",
         anchor: Anchor.BottomCenter,
         padding: 4,
@@ -174,19 +174,19 @@ class NameplateTooltip extends Component {
   private lastHp = -1;
 
   constructor(
-    private readonly panel: UIPanel,
+    private readonly panel: UISurface,
     private readonly params: { label: string; color: number; target: Entity },
   ) {
     super();
   }
 
   onAdd(): void {
-    const tip = attachTooltip(this.panel, this.scene, {
+    const tip = attachTooltip(this.panel.root, this.scene, {
       placement: "top",
       offset: 8,
       maxWidth: 200,
       content: () => {
-        const card = new PanelNode({
+        const card = new UIPanel({
           padding: 6,
           gap: 4,
           background: { color: 0x111827, alpha: 0.95, radius: 6 },
@@ -253,7 +253,7 @@ class EnemyHealthBar extends Entity {
       }),
     );
     const panel = this.add(
-      new UIPanel({
+      new UISurface({
         positioning: "transform",
         anchor: Anchor.BottomCenter,
         padding: 1,

@@ -130,7 +130,7 @@ vi.mock("pixi.js", () => ({
 }));
 
 import Yoga from "yoga-layout";
-import { setYoga, createYogaNode, PanelNode, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
+import { setYoga, createYogaNode, UIPanel, UIText as UITextNode, UIButton as UIButtonNode } from "@yagejs/ui";
 import { createElement } from "react";
 import { createRoot, getRootInstances, addOnCommit, removeOnCommit } from "./reconciler.js";
 import { Button, Checkbox, Panel, ScrollView, Tooltip, UIText as Text } from "./components.js";
@@ -155,7 +155,7 @@ describe("reconciler", () => {
 
   it("renders a panel element into the container", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: PanelNode, direction: "column" }));
+    root.render(createElement("ui-element", { _ctor: UIPanel, direction: "column" }));
 
     // React reconciler is synchronous for our config
     expect(container.children.length).toBe(1);
@@ -179,7 +179,7 @@ describe("reconciler", () => {
 
   it("unmount removes all children", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: PanelNode }));
+    root.render(createElement("ui-element", { _ctor: UIPanel }));
 
     expect(container.children.length).toBe(1);
 
@@ -192,8 +192,8 @@ describe("reconciler", () => {
     root.render(
       createElement(
         "ui-element",
-        { _ctor: PanelNode },
-        createElement("ui-element", { _ctor: PanelNode, key: "child" }),
+        { _ctor: UIPanel },
+        createElement("ui-element", { _ctor: UIPanel, key: "child" }),
       ),
     );
     const rootInstance = getRootInstances(container as never)![0] as unknown as {
@@ -214,8 +214,8 @@ describe("reconciler", () => {
     const tree = (open: boolean) =>
       createElement(
         "ui-element",
-        { _ctor: PanelNode },
-        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+        { _ctor: UIPanel },
+        open ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" }) : null,
       );
 
     root.render(tree(true));
@@ -235,8 +235,8 @@ describe("reconciler", () => {
     const tree = (open: boolean) =>
       createElement(
         "ui-element",
-        { _ctor: PanelNode },
-        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+        { _ctor: UIPanel },
+        open ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" }) : null,
       );
 
     root.render(tree(true));
@@ -257,7 +257,7 @@ describe("reconciler", () => {
 
   it("tracks root instances for layout", () => {
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: PanelNode, direction: "column" }));
+    root.render(createElement("ui-element", { _ctor: UIPanel, direction: "column" }));
 
     const instances = getRootInstances(container as never);
     expect(instances).toBeDefined();
@@ -269,7 +269,7 @@ describe("reconciler", () => {
     addOnCommit(cb);
 
     const root = createRoot(container as never);
-    root.render(createElement("ui-element", { _ctor: PanelNode }));
+    root.render(createElement("ui-element", { _ctor: UIPanel }));
 
     expect(cb).toHaveBeenCalled();
     removeOnCommit(cb);
@@ -280,7 +280,7 @@ describe("reconciler", () => {
     root.render(
       createElement(
         "ui-element",
-        { _ctor: PanelNode, direction: "column" },
+        { _ctor: UIPanel, direction: "column" },
         createElement("ui-element", { _ctor: UITextNode, _consumesText: true }, "Hello"),
         createElement("ui-element", { _ctor: UIButtonNode, _consumesText: true, width: 80, height: 30 }, "OK"),
       ),
@@ -288,7 +288,7 @@ describe("reconciler", () => {
 
     const instances = getRootInstances(container as never);
     const panel = instances![0]!;
-    // Panel is a PanelNode with UIContainerElement children
+    // Panel is a UIPanel with UIContainerElement children
     expect("children" in panel).toBe(true);
     const panelChildren = (panel as { children: unknown[] }).children;
     expect(panelChildren.length).toBe(2);
@@ -373,7 +373,7 @@ describe("reconciler", () => {
   });
 
   it("forwards onHover through the reconciler to the underlying node", () => {
-    // End-to-end: React prop → generic reconciler → PanelNode →
+    // End-to-end: React prop → generic reconciler → UIPanel →
     // PointerEvents → callback. Emitting on the node's own container
     // exercises the whole chain.
     const onHover = vi.fn();
@@ -475,8 +475,8 @@ describe("reconciler dev-warnings", () => {
       createElement(
         "ui-element",
         { _ctor: SilentLeafWidget },
-        createElement("ui-element", { _ctor: PanelNode }),
-        createElement("ui-element", { _ctor: PanelNode }),
+        createElement("ui-element", { _ctor: UIPanel }),
+        createElement("ui-element", { _ctor: UIPanel }),
       ),
     );
 
@@ -492,7 +492,7 @@ describe("reconciler dev-warnings", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const container = new mocks.MockContainer();
     const root = createRoot(container as never);
-    const destroySpy = vi.spyOn(PanelNode.prototype, "destroy");
+    const destroySpy = vi.spyOn(UIPanel.prototype, "destroy");
 
     // The child's append onto the leaf parent is warned-and-ignored (never
     // reaches the display tree), so it can't be found via the parent's own
@@ -501,7 +501,7 @@ describe("reconciler dev-warnings", () => {
       createElement(
         "ui-element",
         { _ctor: SilentLeafWidget },
-        open ? createElement("ui-element", { _ctor: PanelNode, key: "conditional" }) : null,
+        open ? createElement("ui-element", { _ctor: UIPanel, key: "conditional" }) : null,
       );
 
     root.render(tree(true));
@@ -518,7 +518,7 @@ describe("reconciler dev-warnings", () => {
       const root = createRoot(container as never);
 
       const withBg = createElement("ui-element", {
-        _ctor: PanelNode,
+        _ctor: UIPanel,
         background: { color: 0xff0000 },
       });
       root.render(withBg);
@@ -528,12 +528,12 @@ describe("reconciler dev-warnings", () => {
 
       // Next render omits `background` entirely (conditional-spread pattern:
       // `background={selected ? hl : undefined}` / `{...(cond ? {bg} : {})}`).
-      const withoutBg = createElement("ui-element", { _ctor: PanelNode });
+      const withoutBg = createElement("ui-element", { _ctor: UIPanel });
       root.render(withoutBg);
 
       // The panel instance is stable across the update (same host instance).
       expect(getRootInstances(container as never)![0]).toBe(panel);
-      // No direct "has background" getter on PanelNode; assert indirectly via
+      // No direct "has background" getter on UIPanel; assert indirectly via
       // the background-renderer's absence — background: undefined must have
       // reached update() as an explicit reset, not been skipped.
       const bgRenderer = (panel as unknown as { bgRenderer: unknown }).bgRenderer;
@@ -565,7 +565,7 @@ describe("reconciler dev-warnings", () => {
       // fiber — createTextInstance() itself is what returns null; drive it
       // directly the way React would for a `{"Score: " + score}` child.
       root.render(
-        createElement("ui-element", { _ctor: PanelNode }, "a raw text child"),
+        createElement("ui-element", { _ctor: UIPanel }, "a raw text child"),
       );
 
       const messages = warn.mock.calls.map((c) => String(c.join(" ")));
@@ -628,7 +628,7 @@ describe("reconciler dev-warnings", () => {
 
       root.render(
         createElement("ui-element", {
-          _ctor: PanelNode, // stand-in ctor; only checking prop plumbing, not @pixi/ui internals
+          _ctor: UIPanel, // stand-in ctor; only checking prop plumbing, not @pixi/ui internals
           bg: bgView,
         }),
       );
@@ -637,7 +637,7 @@ describe("reconciler dev-warnings", () => {
         bgRenderer: unknown;
       };
       // No `_bgAlias` marker was set, so `bg` was never expanded to
-      // `background` — PanelNode's own background stays unset.
+      // `background` — UIPanel's own background stays unset.
       expect(instance.bgRenderer).toBeUndefined();
     });
   });

@@ -12,7 +12,7 @@
 import { Engine, Scene, Component, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/physics";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
@@ -59,7 +59,7 @@ class GameScene extends Scene {
     // HUD (part of GameScene — renders even when paused)
     const hudEntity = this.spawn("hud");
     const hud = hudEntity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 16, y: 16 },
         direction: "column",
@@ -160,7 +160,7 @@ class PauseScene extends Scene {
     // content width, and the shorter buttons stretch to match — uniform
     // stack without picking an explicit width that risks overflowing.
     const panel = entity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.Center,
         direction: "column",
         gap: 12,
@@ -254,7 +254,7 @@ class SettingsScene extends Scene {
   onEnter(): void {
     const entity = this.spawn("settings-ui");
     const panel = entity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.Center,
         direction: "column",
         gap: 12,

@@ -22,7 +22,7 @@ export type PixiViewType =
 
 /**
  * Default UI layer name, auto-provisioned on the active scene's render tree
- * when a UIPanel is added without a layer of its own.
+ * when a UISurface is added without a layer of its own.
  */
 export const UI_DEFAULT_LAYER = "ui";
 /** Default draw order for the auto-provisioned UI layer. */
@@ -320,8 +320,8 @@ export interface UIButtonProps
   disabled?: boolean;
 }
 
-/** Props for PanelNode (used by reconciler and props-driven constructor). */
-export interface PanelProps
+/** Props for UIPanel (used by reconciler and props-driven constructor). */
+export interface UIPanelProps
   extends LayoutProps,
     ConsumeInputProps,
     PointerEventProps {
@@ -491,13 +491,13 @@ export interface ScrollbarOptions {
 }
 
 /**
- * Props for `ScrollViewNode` / `<ScrollView>`.
+ * Props for `UIScrollView` / `<ScrollView>`.
  *
  * The viewport box is sized via the inherited `LayoutProps` (`width` /
  * `height` / `flexGrow` …). Content overflowing the scroll axis is clipped
  * and pannable. `gap` / `padding` apply to the inner content stack.
  */
-export interface ScrollViewProps extends LayoutProps, ConsumeInputProps {
+export interface UIScrollViewProps extends LayoutProps, ConsumeInputProps {
   /** Scroll/stack axis. Default `"vertical"`. */
   direction?: "vertical" | "horizontal";
   /** Gap between child cards (forwarded to the content stack). */
@@ -547,11 +547,11 @@ export interface PixiRadioGroupProps extends LayoutProps, ConsumeInputProps {
 // Component options
 // ---------------------------------------------------------------------------
 
-/** Positioning mode for a root panel. */
+/** Positioning mode for a surface's root panel. */
 export type UIPositioning = "anchor" | "transform";
 
-/** Options for creating a root UIPanel (attached to an entity as a Component). */
-export interface UIPanelOptions extends PanelProps {
+/** Options for creating a UISurface (the Component that mounts a UI tree on an entity). */
+export interface UISurfaceOptions extends UIPanelProps {
   anchor?: Anchor;
   offset?: { x: number; y: number };
   /**
@@ -559,11 +559,11 @@ export interface UIPanelOptions extends PanelProps {
    * `UI_DEFAULT_LAYER` (`"ui"`), which is auto-provisioned as a
    * screen-space layer via `SceneRenderTreeKey.ensureLayer(...)` on first
    * use. Any other explicit name must be declared on the scene's
-   * `readonly layers` or the panel throws on add.
+   * `readonly layers` or the component throws on add.
    */
   layer?: string;
   /**
-   * How the panel's root container is positioned each frame.
+   * How the surface's root container is positioned each frame.
    *
    * - `"anchor"` (default) — resolve `anchor` against the viewport
    *   (`virtualSize`). Classic HUD/menu behavior.

@@ -14,7 +14,7 @@ Built on [Yoga](https://yogalayout.dev/) for Flexbox layout and [@pixi/ui](https
 
 ```ts
 import { Engine } from "@yagejs/core";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 
 const engine = new Engine();
 engine.use(new UIPlugin());
@@ -23,7 +23,7 @@ engine.use(new UIPlugin());
 Build panels, text, buttons, and images with Flexbox:
 
 ```ts
-entity.add(new UIPanel({
+entity.add(new UISurface({
   anchor: Anchor.TopCenter,
   direction: "row",
   gap: 16,
@@ -33,6 +33,7 @@ entity.add(new UIPanel({
 ## What's in the box
 
 - **UIPlugin** - UI layer management
+- **UISurface** - root component mounting a UI tree on an entity
 - **UIPanel** - Flexbox container with Yoga layout
 - **UIText / UIButton / UIImage / UINineSlice** - basic widgets
 - **UIProgressBar / UICheckbox** - interactive widgets

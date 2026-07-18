@@ -3,24 +3,24 @@ import type { EngineContext, QueryResult } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
 import { Direction } from "yoga-layout";
 import { Anchor } from "./types.js";
-import { UIPanel } from "./UIPanel.js";
+import { UISurface } from "./UISurface.js";
 import { setViewport } from "./yoga-helpers.js";
 
 /**
- * Resolves anchor positions and runs Yoga layout for all UIPanel components.
+ * Resolves anchor positions and runs Yoga layout for all UISurface components.
  * Runs in LateUpdate (after game logic, before render).
  */
 export class UILayoutSystem extends System {
   readonly phase = Phase.LateUpdate;
   readonly priority = 200;
 
-  private panelQuery!: QueryResult;
+  private surfaceQuery!: QueryResult;
   private virtualWidth = 0;
   private virtualHeight = 0;
 
   onRegister(context: EngineContext): void {
     const queryCache = context.resolve(QueryCacheKey);
-    this.panelQuery = queryCache.register([UIPanel]);
+    this.surfaceQuery = queryCache.register([UISurface]);
 
     const renderer = context.resolve(RendererKey);
     const size = renderer.virtualSize;
@@ -31,11 +31,11 @@ export class UILayoutSystem extends System {
   }
 
   update(): void {
-    for (const entity of this.panelQuery) {
-      const panel = entity.get(UIPanel);
-      if (!panel.enabled || !panel.visible) continue;
+    for (const entity of this.surfaceQuery) {
+      const surface = entity.get(UISurface);
+      if (!surface.enabled || !surface.visible) continue;
 
-      const node = panel._node;
+      const node = surface.root;
 
       // 1. Run Yoga layout (NaN = shrink-to-content; explicit sizes still work)
       node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
@@ -58,20 +58,20 @@ export class UILayoutSystem extends System {
       //    to screen coords (pair with a `ScreenFollow` component that
       //    writes projected coords each frame for constant-size
       //    billboards).
-      const anchor = panel._anchor;
+      const anchor = surface._anchor;
 
-      if (panel._positioning === "transform") {
+      if (surface._positioning === "transform") {
         const source = entity.get(Transform).worldPosition;
         if (anchor !== undefined) {
           const pivot = pivotOffsetFromAnchor(anchor, pw, ph);
-          panel.container.position.set(
-            source.x + pivot.x + panel._offset.x,
-            source.y + pivot.y + panel._offset.y,
+          surface.container.position.set(
+            source.x + pivot.x + surface._offset.x,
+            source.y + pivot.y + surface._offset.y,
           );
         } else {
-          panel.container.position.set(
-            source.x + panel._offset.x,
-            source.y + panel._offset.y,
+          surface.container.position.set(
+            source.x + surface._offset.x,
+            source.y + surface._offset.y,
           );
         }
       } else if (anchor !== undefined) {
@@ -82,12 +82,12 @@ export class UILayoutSystem extends System {
           pw,
           ph,
         );
-        panel.container.position.set(
-          pos.x + panel._offset.x,
-          pos.y + panel._offset.y,
+        surface.container.position.set(
+          pos.x + surface._offset.x,
+          pos.y + surface._offset.y,
         );
       } else {
-        panel.container.position.set(panel._offset.x, panel._offset.y);
+        surface.container.position.set(surface._offset.x, surface._offset.y);
       }
     }
   }

@@ -36,7 +36,7 @@ export type LayerSortFn = (c: DisplayContainer) => number;
  *   anchored to the screen.
  *
  * UI plugins auto-provision a screen-space `"ui"` layer when no layer is
- * explicitly declared, so a single `new UIPanel(...)` keeps working with
+ * explicitly declared, so a single `new UISurface(...)` keeps working with
  * zero layer wiring.
  */
 export interface LayerDef {

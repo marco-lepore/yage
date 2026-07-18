@@ -168,7 +168,7 @@ import Yoga, { Direction } from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
 import { UIButton } from "./UIButton.js";
 import { UIText } from "./UIText.js";
-import { PanelNode } from "./UIPanel.js";
+import { UIPanel } from "./UIPanel.js";
 
 beforeAll(() => {
   setYoga(Yoga);
@@ -432,7 +432,7 @@ describe("UIButton", () => {
       // `width: "100%"` is concrete enough that the caller owns the box —
       // surprise padding inside a 100%-stretch button would shrink the
       // content area, which is the same footgun explicit pixels avoid.
-      const parent = new PanelNode({
+      const parent = new UIPanel({
         direction: "column",
         width: 200,
         height: 60,

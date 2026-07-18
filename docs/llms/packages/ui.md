@@ -14,9 +14,9 @@ engine.use(new UIPlugin());
 engine.use(new UIPlugin({ defaultTextStyle: { fontFamily: "Inter", fill: 0xffffff } }));
 ```
 
-## UIPanel
+## UISurface
 
-Root UI component. Positioning is chosen explicitly via the `positioning` option (default `"anchor"`):
+Root UI component — mounts a UI tree on an entity. Its public `root` is the tree's root `UIPanel` element (`surface.root`); the builder methods below forward to it. Positioning is chosen explicitly via the `positioning` option (default `"anchor"`):
 
 - `positioning: "anchor"` — `anchor` resolves against the viewport (`virtualSize`), `offset` is a pixel nudge. Classic HUD. No Transform required.
 - `positioning: "transform"` — panel is positioned at `entity.get(Transform).worldPosition` in the target layer's local coord space; `anchor` is reinterpreted as the pivot on the panel itself (e.g. `Anchor.BottomCenter` → panel's bottom-center sits at the Transform). `offset` is still a pixel nudge. Throws at add time if the entity has no `Transform`.
@@ -26,10 +26,10 @@ The positioning mode is independent of the target layer's `space`:
 - **World-space layer + `positioning: "transform"`** = genuinely diegetic UI. Transform holds a world coord; layer scales/rotates the UI like any other world object.
 
 ```ts
-import { UIPanel, Anchor } from "@yagejs/ui";
+import { UISurface, Anchor } from "@yagejs/ui";
 
 // Screen-space HUD (default)
-entity.add(new UIPanel({
+entity.add(new UISurface({
   anchor: Anchor.TopLeft,
   offset: { x: 16, y: 16 },
   direction: "column",
@@ -46,7 +46,7 @@ entity.add(new UIPanel({
 // Billboard nameplate (paired with ScreenFollow elsewhere)
 entity.add(new Transform());
 entity.add(new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }));
-entity.add(new UIPanel({
+entity.add(new UISurface({
   positioning: "transform",
   anchor: Anchor.BottomCenter, // pivot on the panel
 }));
@@ -57,7 +57,7 @@ Anchor enum: `TopLeft`, `TopCenter`, `TopRight`, `CenterLeft`, `Center`, `Center
 ## Builder API
 
 ```ts
-const panel = entity.get(UIPanel);
+const panel = entity.get(UISurface);
 
 // Text
 const label = panel.text("Score: 0", { fontSize: 24, fill: 0xffffff });
@@ -257,7 +257,7 @@ tooltips without measuring). Omit unused edges.
 
 ## Hover / pointer events
 
-`UIButton`, `PanelNode` / `UIPanel`, `UIText`, `UIImage`, `UINineSlice`,
+`UIButton`, `UIPanel`, `UIText`, `UIImage`, `UINineSlice`,
 `UIProgressBar` accept `PointerEventProps` (shared, exported): independent,
 combinable `onPointerOver?()` / `onPointerOut?()` and a convenience
 `onHover?(hovering: boolean)` (`true` on enter, `false` on leave). Every UI
@@ -289,11 +289,11 @@ is required** — this works in a pure imperative scene.
 ### attachTooltip (imperative, headless)
 
 ```ts
-import { attachTooltip, PanelNode, UIText } from "@yagejs/ui";
+import { attachTooltip, UIPanel, UIText } from "@yagejs/ui";
 
-const tip = attachTooltip(panel, scene, { // a root UIPanel, or any UIElement
+const tip = attachTooltip(surface.root, scene, { // any UIElement
   content: () => {
-    const card = new PanelNode({
+    const card = new UIPanel({
       padding: 6,
       gap: 4,
       background: { color: 0x111827, alpha: 0.95, radius: 6 },
@@ -307,18 +307,19 @@ const tip = attachTooltip(panel, scene, { // a root UIPanel, or any UIElement
   maxWidth: 200,    // px; content wraps + clamps to available space
 });
 // Activation is yours — wire it on hover (the usual case):
-panel.setPointerHandlers({ onHover: tip.setActive }); // root UIPanel
+surface.setPointerHandlers({ onHover: tip.setActive }); // entity-mounted surface
 // a child element instead? element.update({ onHover: tip.setActive })
 // later: tip.dispose();  // releases the overlay slot
 ```
 
 `attachTooltip` builds the floating parts and returns a `{ setActive, dispose }`
 controller — it wires **no input itself**, so it can't clobber the anchor's
-handlers. `anchor` is a root `UIPanel` or any `UIElement` (`UIButton`,
-`UIImage`, a nested `PanelNode`, …), read only for positioning. Drive it
-yourself: set `onHover` on a panel via `panel.setPointerHandlers({ onHover:
-tip.setActive })`, or on an element via `element.update({ onHover:
-tip.setActive })` — or trigger from focus / long-press / a programmatic call.
+handlers. `anchor` is any `UIElement` (`UIButton`, `UIImage`, a nested
+`UIPanel`, …), read only for positioning; for an entity-mounted surface pass
+`surface.root`. Drive it yourself: set `onHover` on a surface via
+`surface.setPointerHandlers({ onHover: tip.setActive })`, or on an element
+via `element.update({ onHover: tip.setActive })` — or trigger from focus /
+long-press / a programmatic call.
 Setting `onHover` *replaces* that single slot (which is what you want when the
 anchor has none); if it already handles hover, compose (`onHover: (h) => {
 existing(h); tip.setActive(h); }`). `content` is a factory (called once); **headless** — return a

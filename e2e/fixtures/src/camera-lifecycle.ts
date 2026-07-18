@@ -17,7 +17,7 @@ import {
   CameraComponent,
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -49,7 +49,7 @@ class BaseScene extends Scene {
 
     // Force UI-layer auto-provisioning (space: "screen").
     const hud = this.spawn("hud");
-    hud.add(new UIPanel({ anchor: Anchor.TopLeft, padding: 8 })).text("HUD");
+    hud.add(new UISurface({ anchor: Anchor.TopLeft, padding: 8 })).text("HUD");
   }
 }
 

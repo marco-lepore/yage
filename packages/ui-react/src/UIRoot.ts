@@ -184,7 +184,7 @@ export class UIRoot extends Component {
     const instances = getRootInstances(this._container);
     if (!instances || instances.length === 0) return;
 
-    // For each root instance that is a PanelNode, run Yoga layout
+    // For each root instance that is a UIPanel, run Yoga layout
     let totalHeight = 0;
     let maxWidth = 0;
 

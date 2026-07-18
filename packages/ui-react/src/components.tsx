@@ -2,7 +2,7 @@ import { useState, forwardRef } from "react";
 import type { PropsWithChildren, ReactNode } from "react";
 import type { TextStyle } from "@yagejs/renderer";
 import {
-  PanelNode,
+  UIPanel,
   UIText as UITextNode,
   UISplitText as UISplitTextNode,
   UIButton as UIButtonNode,
@@ -15,7 +15,7 @@ import {
   PixiProgressBar as PixiProgressBarNode,
   PixiSlider as PixiSliderNode,
   PixiInput as PixiInputNode,
-  ScrollViewNode,
+  UIScrollView,
   PixiSelect as PixiSelectNode,
   PixiRadioGroup as PixiRadioGroupNode,
 } from "@yagejs/ui";
@@ -24,7 +24,7 @@ import type {
   Padding,
   Placement,
   UIElement,
-  PanelProps as UIElementPanelProps,
+  UIPanelProps as UIElementPanelProps,
   UITextProps as UIElementTextProps,
   UISplitTextProps as UIElementSplitTextProps,
   UIButtonProps as UIElementButtonProps,
@@ -32,7 +32,7 @@ import type {
   UINineSliceProps as UIElementNineSliceProps,
   UIProgressBarProps as UIElementProgressBarProps,
   UICheckboxProps as UIElementCheckboxProps,
-  ScrollViewProps as UIElementScrollViewProps,
+  UIScrollViewProps as UIElementScrollViewProps,
   PixiFancyButtonProps as UIElementPixiFancyButtonProps,
   PixiCheckboxProps as UIElementPixiCheckboxProps,
   PixiProgressBarProps as UIElementPixiProgressBarProps,
@@ -109,11 +109,11 @@ export function Panel(props: PropsWithChildren<PanelProps>): React.JSX.Element {
   const { children, ...rest } = props;
   // `_bgAlias` tells the reconciler to expand a `bg` prop to `background`;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={PanelNode} _bgAlias {...rest}>{children}</ui-element>;
+  return <ui-element _ctor={UIPanel} _bgAlias {...rest}>{children}</ui-element>;
 }
 
 /**
- * @internal A `Panel` that forwards a ref to its underlying `PanelNode`
+ * @internal A `Panel` that forwards a ref to its underlying `UIPanel`
  * (the reconciler returns the `UIElement` instance via `getPublicInstance`).
  * Used by `Tooltip` to read the trigger's post-layout geometry and by the
  * overlay host to position each bubble.
@@ -122,7 +122,7 @@ const RefPanel = forwardRef<UIElement, PropsWithChildren<PanelProps>>(
   function RefPanel(props, ref) {
     const { children, ...rest } = props;
     // @ts-expect-error — custom reconciler element type
-    return <ui-element _ctor={PanelNode} _bgAlias {...rest} ref={ref}>{children}</ui-element>;
+    return <ui-element _ctor={UIPanel} _bgAlias {...rest} ref={ref}>{children}</ui-element>;
   },
 );
 
@@ -437,7 +437,7 @@ export function ScrollView(
 ): React.JSX.Element {
   const { children, ...rest } = props;
   // @ts-expect-error — custom reconciler element type
-  return <ui-element _ctor={ScrollViewNode} _bgAlias {...rest}>{children}</ui-element>;
+  return <ui-element _ctor={UIScrollView} _bgAlias {...rest}>{children}</ui-element>;
 }
 
 export type PixiSelectReactProps = UIElementPixiSelectProps;

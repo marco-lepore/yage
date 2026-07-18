@@ -15,7 +15,7 @@ import { InputManagerKey, InputPlugin } from "@yagejs/input";
 import {
   Anchor,
   LoadingSceneProgressBar,
-  UIPanel,
+  UISurface,
   UIPlugin,
 } from "@yagejs/ui";
 import { setupGameContainer, injectStyles, installDebugFromUrl } from "./shared.js";
@@ -181,7 +181,7 @@ class PressAnyKeyLogic extends Component {
   private showPromptLabel(): void {
     const labelEntity = this.scene.spawn("press-any-key-label");
     const panel = labelEntity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.BottomCenter,
         offset: { x: 0, y: -40 },
       }),

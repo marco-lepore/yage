@@ -218,9 +218,9 @@ or any custom binding to those codes) are suppressed, while the UI element's
 own handler still fires:
 
 ```tsx
-<UIPanel>
+<Panel>
   <Button onClick={openMenu}>Settings</Button>
-</UIPanel>
+</Panel>
 ```
 
 Clicking "Settings" calls `openMenu` and **does not** fire any
@@ -238,9 +238,9 @@ For overlays that should let clicks through (decorative HUD borders,
 full-screen filters, see-through frames), pass `consumeInput={false}`:
 
 ```tsx
-<UIPanel consumeInput={false}>
+<Panel consumeInput={false}>
   <Image texture="hud-frame" />
-</UIPanel>
+</Panel>
 ```
 
 The element still renders normally — it just becomes transparent to the

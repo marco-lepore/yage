@@ -106,7 +106,7 @@ vi.mock("pixi.js", () => ({
 
 import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
-import { UIPanel } from "./UIPanel.js";
+import { UISurface } from "./UISurface.js";
 import { Transform, Vec2 } from "@yagejs/core";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { UILayoutSystem } from "./UILayoutSystem.js";
@@ -136,7 +136,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at TopLeft (0,0)", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.TopLeft }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.TopLeft }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -148,7 +148,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at Center", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.Center }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.Center }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -163,7 +163,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at BottomRight", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.BottomRight }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.BottomRight }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -175,7 +175,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at TopCenter", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.TopCenter }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.TopCenter }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -187,7 +187,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at BottomCenter", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.BottomCenter }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.BottomCenter }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -199,7 +199,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at CenterLeft", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.CenterLeft }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.CenterLeft }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -211,7 +211,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at CenterRight", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.CenterRight }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.CenterRight }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -223,7 +223,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at TopRight", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.TopRight }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.TopRight }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -235,7 +235,7 @@ describe("UILayoutSystem", () => {
     it("positions panel at BottomLeft", () => {
       const { scene } = setup();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel({ anchor: Anchor.BottomLeft }));
+      const panel = entity.add(new UISurface({ anchor: Anchor.BottomLeft }));
       panel.button("A", { width: 100, height: 30 });
 
       system.update(16);
@@ -248,7 +248,7 @@ describe("UILayoutSystem", () => {
   it("applies offset to anchor position", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
-    const panel = entity.add(new UIPanel({ anchor: Anchor.TopLeft, offset: { x: 10, y: 20 } }));
+    const panel = entity.add(new UISurface({ anchor: Anchor.TopLeft, offset: { x: 10, y: 20 } }));
     panel.button("A", { width: 100, height: 30 });
 
     system.update(16);
@@ -260,7 +260,7 @@ describe("UILayoutSystem", () => {
   it("uses offset as position when no anchor specified", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
-    const panel = entity.add(new UIPanel({ offset: { x: 50, y: 100 } }));
+    const panel = entity.add(new UISurface({ offset: { x: 50, y: 100 } }));
     panel.button("A", { width: 100, height: 30 });
 
     system.update(16);
@@ -272,7 +272,7 @@ describe("UILayoutSystem", () => {
   it("skips disabled panels", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
-    const panel = entity.add(new UIPanel({ anchor: Anchor.Center }));
+    const panel = entity.add(new UISurface({ anchor: Anchor.Center }));
     panel.button("A", { width: 100, height: 30 });
     panel.enabled = false;
 
@@ -286,7 +286,7 @@ describe("UILayoutSystem", () => {
   it("skips hidden panels", () => {
     const { scene } = setup();
     const entity = spawnEntityInScene(scene);
-    const panel = entity.add(new UIPanel({ anchor: Anchor.Center, visible: false }));
+    const panel = entity.add(new UISurface({ anchor: Anchor.Center, visible: false }));
     panel.button("A", { width: 100, height: 30 });
 
     system.update(16);
@@ -298,11 +298,11 @@ describe("UILayoutSystem", () => {
   it("handles multiple panels", () => {
     const { scene } = setup();
     const e1 = spawnEntityInScene(scene, "e1");
-    const p1 = e1.add(new UIPanel({ anchor: Anchor.TopLeft }));
+    const p1 = e1.add(new UISurface({ anchor: Anchor.TopLeft }));
     p1.button("A", { width: 100, height: 30 });
 
     const e2 = spawnEntityInScene(scene, "e2");
-    const p2 = e2.add(new UIPanel({ anchor: Anchor.BottomRight }));
+    const p2 = e2.add(new UISurface({ anchor: Anchor.BottomRight }));
     p2.button("B", { width: 80, height: 25 });
 
     system.update(16);
@@ -319,7 +319,7 @@ describe("UILayoutSystem", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform({ position: new Vec2(500, 300) }));
       const panel = entity.add(
-        new UIPanel({ positioning: "transform", anchor: Anchor.Center }),
+        new UISurface({ positioning: "transform", anchor: Anchor.Center }),
       );
       panel.button("A", { width: 100, height: 30 });
 
@@ -335,7 +335,7 @@ describe("UILayoutSystem", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform({ position: new Vec2(200, 150) }));
       const panel = entity.add(
-        new UIPanel({
+        new UISurface({
           positioning: "transform",
           anchor: Anchor.BottomCenter,
         }),
@@ -354,7 +354,7 @@ describe("UILayoutSystem", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform({ position: new Vec2(100, 100) }));
       const panel = entity.add(
-        new UIPanel({
+        new UISurface({
           positioning: "transform",
           anchor: Anchor.BottomCenter,
           offset: { x: 0, y: -8 },
@@ -374,7 +374,7 @@ describe("UILayoutSystem", () => {
       const entity = spawnEntityInScene(scene);
       entity.add(new Transform({ position: new Vec2(50, 75) }));
       const panel = entity.add(
-        new UIPanel({ positioning: "transform", offset: { x: 5, y: 5 } }),
+        new UISurface({ positioning: "transform", offset: { x: 5, y: 5 } }),
       );
       panel.button("A", { width: 30, height: 10 });
 
@@ -393,7 +393,7 @@ describe("UILayoutSystem", () => {
       child.add(new Transform({ position: new Vec2(0, -24) }));
       parent.addChild("ui", child);
       const panel = child.add(
-        new UIPanel({
+        new UISurface({
           positioning: "transform",
           anchor: Anchor.BottomCenter,
         }),
@@ -414,7 +414,7 @@ describe("UILayoutSystem", () => {
 
       expect(() =>
         entity.add(
-          new UIPanel({ positioning: "transform", anchor: Anchor.Center }),
+          new UISurface({ positioning: "transform", anchor: Anchor.Center }),
         ),
       ).toThrow(/requires a Transform/);
     });
@@ -425,7 +425,7 @@ describe("UILayoutSystem", () => {
       tree.ensureLayer({ name: "world-ui", order: 500 });
       const entity = spawnEntityInScene(scene);
       const panel = entity.add(
-        new UIPanel({ layer: "world-ui", anchor: Anchor.Center }),
+        new UISurface({ layer: "world-ui", anchor: Anchor.Center }),
       );
       panel.button("A", { width: 100, height: 30 });
 

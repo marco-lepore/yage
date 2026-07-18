@@ -13,8 +13,8 @@ import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
 import { RendererPlugin, CameraEntity, ScreenFollow } from "@yagejs/renderer";
 import {
   UIPlugin,
+  UISurface,
   UIPanel,
-  PanelNode,
   UIText,
   attachTooltip,
   FloatingOverlayKey,
@@ -52,7 +52,7 @@ class TooltipScene extends Scene {
       new ScreenFollow({ target, camera, offset: new Vec2(0, -40) }),
     );
     const panel = nameplate.add(
-      new UIPanel({
+      new UISurface({
         positioning: "transform",
         padding: 4,
         background: { color: 0x000000, alpha: 0.6, radius: 4 },
@@ -60,12 +60,12 @@ class TooltipScene extends Scene {
     );
     panel.text("Goblin", { fontSize: 11, fill: 0xffffff });
 
-    const tip = attachTooltip(panel, this, {
+    const tip = attachTooltip(panel.root, this, {
       placement: "top",
       offset: 8,
       maxWidth: 200,
       content: () => {
-        const card = new PanelNode({
+        const card = new UIPanel({
           padding: 6,
           gap: 4,
           background: { color: 0x111827, alpha: 0.95, radius: 6 },
@@ -104,9 +104,9 @@ class TooltipScene extends Scene {
           toLocal(p: { x: number; y: number }, from: unknown): { x: number; y: number };
         };
         const bubble = layer.children.find((c) => c.visible) ?? null;
-        const triggerDO = panel._node.displayObject;
-        const w = panel._node.yogaNode.getComputedWidth();
-        const h = panel._node.yogaNode.getComputedHeight();
+        const triggerDO = panel.root.displayObject;
+        const w = panel.root.yogaNode.getComputedWidth();
+        const h = panel.root.yogaNode.getComputedHeight();
         const a = layer.toLocal({ x: 0, y: 0 }, triggerDO);
         const b = layer.toLocal({ x: w, y: h }, triggerDO);
         const trigger = {

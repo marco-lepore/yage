@@ -217,7 +217,9 @@ vi.mock("pixi.js", () => ({
 
 import Yoga from "yoga-layout";
 import { setYoga } from "./yoga-helpers.js";
+import { UISurface } from "./UISurface.js";
 import { UIPanel } from "./UIPanel.js";
+import { SerializableRegistry, getSerializableType } from "@yagejs/core";
 import { Anchor } from "./types.js";
 import { SceneRenderTreeKey } from "@yagejs/renderer";
 import { createUITestContext, spawnEntityInScene } from "./test-helpers.js";
@@ -226,24 +228,24 @@ beforeAll(() => {
   setYoga(Yoga);
 });
 
-describe("UIPanel", () => {
+describe("UISurface", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("creates a panel with default options", () => {
-    const panel = new UIPanel();
+    const panel = new UISurface();
     expect(panel.container).toBeDefined();
     expect(panel.visible).toBe(true);
   });
 
   it("respects visible: false option", () => {
-    const panel = new UIPanel({ visible: false });
+    const panel = new UISurface({ visible: false });
     expect(panel.visible).toBe(false);
   });
 
   it("stores anchor and offset", () => {
-    const panel = new UIPanel({
+    const panel = new UISurface({
       anchor: Anchor.Center,
       offset: { x: 10, y: 20 },
     });
@@ -252,13 +254,13 @@ describe("UIPanel", () => {
   });
 
   it("defaults offset to {0,0}", () => {
-    const panel = new UIPanel();
+    const panel = new UISurface();
     expect(panel._offset).toEqual({ x: 0, y: 0 });
   });
 
   describe("builder methods", () => {
     it(".text() adds a UIText child", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const text = panel.text("Hello", { fontSize: 24 });
       expect(text).toBeDefined();
       expect(text.visible).toBe(true);
@@ -266,21 +268,21 @@ describe("UIPanel", () => {
 
     it(".button() adds a UIButton child", () => {
       const onClick = vi.fn();
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const btn = panel.button("Click Me", { width: 100, height: 40, onClick });
       expect(btn).toBeDefined();
       expect(btn.visible).toBe(true);
     });
 
     it(".panel() adds a nested child panel", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const child = panel.panel({ direction: "row", gap: 4 });
       expect(child).toBeDefined();
       expect(child.visible).toBe(true);
     });
 
     it("nested panels can have their own children", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const child = panel.panel({ direction: "column" });
       child.text("Nested Text");
       child.button("Nested Btn", { width: 80, height: 30 });
@@ -288,14 +290,52 @@ describe("UIPanel", () => {
     });
   });
 
+  describe("root", () => {
+    it("is a UIPanel instance, identity-stable across accesses", () => {
+      const surface = new UISurface();
+      expect(surface.root).toBeInstanceOf(UIPanel);
+      expect(surface.root).toBe(surface.root);
+    });
+
+    it("container is the root panel's container", () => {
+      const surface = new UISurface();
+      expect(surface.container).toBe(surface.root.container);
+    });
+  });
+
+  describe("serialization", () => {
+    it('registers as "UISurface" and round-trips options through the registry', () => {
+      expect(getSerializableType(UISurface)).toBe("UISurface");
+      expect(SerializableRegistry.get("UISurface")).toBe(UISurface);
+
+      const opts = {
+        anchor: Anchor.Center,
+        offset: { x: 10, y: 20 },
+        gap: 4,
+        padding: { top: 2, left: 3 },
+      };
+      const surface = new UISurface(opts);
+      const snapshot = surface.serialize();
+      expect(snapshot).toEqual(opts);
+      expect(snapshot).not.toBe(opts);
+
+      const ctor = SerializableRegistry.get("UISurface") as typeof UISurface;
+      const restored = ctor.fromSnapshot(snapshot);
+      expect(restored).toBeInstanceOf(UISurface);
+      expect(restored.serialize()).toEqual(opts);
+      expect(restored._anchor).toBe(Anchor.Center);
+      expect(restored._offset).toEqual({ x: 10, y: 20 });
+    });
+  });
+
   describe("setPointerHandlers", () => {
     it("forwards pointer/hover handlers to the underlying node", () => {
-      const panel = new UIPanel();
-      const update = vi.spyOn(panel._node, "update");
+      const panel = new UISurface();
+      const update = vi.spyOn(panel.root, "update");
       const onHover = vi.fn();
       panel.setPointerHandlers({ onHover });
       // Delegates to the node's element `update` (where PointerEvents picks the
-      // handler up). `UIPanel.update` can't be used for this — on a Component
+      // handler up). `UISurface.update` can't be used for this — on a Component
       // it's the per-frame lifecycle hook the engine calls.
       expect(update).toHaveBeenCalledWith({ onHover });
     });
@@ -303,7 +343,7 @@ describe("UIPanel", () => {
 
   describe("visibility toggle", () => {
     it("toggling visible property works", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       panel.visible = false;
       expect(panel.visible).toBe(false);
       panel.visible = true;
@@ -311,7 +351,7 @@ describe("UIPanel", () => {
     });
 
     it("nested panel visibility can be toggled", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const child = panel.panel({ visible: false });
       expect(child.visible).toBe(false);
       child.visible = true;
@@ -324,7 +364,7 @@ describe("UIPanel", () => {
       const { scene } = createUITestContext();
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       const entity = spawnEntityInScene(scene);
-      entity.add(new UIPanel());
+      entity.add(new UISurface());
 
       const uiLayer = tree.tryGet("ui");
       expect(uiLayer).toBeDefined();
@@ -337,7 +377,7 @@ describe("UIPanel", () => {
     it("onDestroy removes container from parent", () => {
       const { scene } = createUITestContext();
       const entity = spawnEntityInScene(scene);
-      const panel = entity.add(new UIPanel());
+      const panel = entity.add(new UISurface());
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       const uiLayer = tree.tryGet("ui");
       const container = (
@@ -353,7 +393,7 @@ describe("UIPanel", () => {
       const { scene } = createUITestContext();
       const tree = scene._resolveScoped(SceneRenderTreeKey)!;
       const entity = spawnEntityInScene(scene);
-      entity.add(new UIPanel());
+      entity.add(new UISurface());
       const uiLayer = tree.get("ui");
       expect(uiLayer.space).toBe("screen");
     });
@@ -364,7 +404,7 @@ describe("UIPanel", () => {
       tree.ensureLayer({ name: "ui", order: 1000 }, { space: "screen" });
       const entity = spawnEntityInScene(scene);
 
-      entity.add(new UIPanel());
+      entity.add(new UISurface());
 
       expect(tree.get("ui").container.eventMode).toBe("static");
     });
@@ -377,7 +417,7 @@ describe("UIPanel", () => {
       tree.ensureLayer({ name: "world-ui", order: 500 });
       const entity = spawnEntityInScene(scene);
 
-      entity.add(new UIPanel({ layer: "world-ui" }));
+      entity.add(new UISurface({ layer: "world-ui" }));
 
       const layer = tree.get("world-ui");
       expect(layer.space).toBe("world");
@@ -392,55 +432,55 @@ describe("UIPanel", () => {
       const entity = spawnEntityInScene(scene);
 
       expect(() =>
-        entity.add(new UIPanel({ positioning: "transform" })),
+        entity.add(new UISurface({ positioning: "transform" })),
       ).toThrow(/requires a Transform/);
     });
   });
 
   describe("layout", () => {
     it("column layout positions children vertically with gap", () => {
-      const panel = new UIPanel({ direction: "column", gap: 10 });
+      const panel = new UISurface({ direction: "column", gap: 10 });
       panel.button("A", { width: 100, height: 30 });
       panel.button("B", { width: 100, height: 30 });
 
       // Run Yoga layout (undefined = shrink-to-content)
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
-      const children = panel._node.children;
+      const children = panel.root.children;
       expect(children[0]!.displayObject.position.y).toBe(0);
       expect(children[1]!.displayObject.position.y).toBe(40);
-      expect(panel._node.yogaNode.getComputedHeight()).toBe(70);
+      expect(panel.root.yogaNode.getComputedHeight()).toBe(70);
     });
 
     it("row layout positions children horizontally with gap", () => {
-      const panel = new UIPanel({ direction: "row", gap: 8 });
+      const panel = new UISurface({ direction: "row", gap: 8 });
       panel.button("A", { width: 60, height: 30 });
       panel.button("B", { width: 60, height: 30 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
-      const children = panel._node.children;
+      const children = panel.root.children;
       expect(children[0]!.displayObject.position.x).toBe(0);
       expect(children[1]!.displayObject.position.x).toBe(68);
-      expect(panel._node.yogaNode.getComputedWidth()).toBe(128);
+      expect(panel.root.yogaNode.getComputedWidth()).toBe(128);
     });
 
     it("padding offsets children", () => {
-      const panel = new UIPanel({ direction: "column", padding: 20 });
+      const panel = new UISurface({ direction: "column", padding: 20 });
       panel.button("A", { width: 100, height: 30 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
-      const children = panel._node.children;
+      const children = panel.root.children;
       expect(children[0]!.displayObject.position.x).toBe(20);
       expect(children[0]!.displayObject.position.y).toBe(20);
     });
 
     it("absolute-positioned child resolves against the parent (left/top)", () => {
-      const parent = new UIPanel({
+      const parent = new UISurface({
         direction: "column",
         width: 200,
         height: 200,
@@ -453,8 +493,8 @@ describe("UIPanel", () => {
         height: 30,
       });
 
-      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      parent._node.applyLayout();
+      parent.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.root.applyLayout();
 
       expect(child.displayObject.position.x).toBe(10);
       expect(child.displayObject.position.y).toBe(20);
@@ -467,7 +507,7 @@ describe("UIPanel", () => {
       // absolute child pins it flush against the parent's far edge with no
       // size measurement. `top: "100%"` ⇒ child's top at the parent's
       // bottom; `right: "100%"` ⇒ child's right at the parent's left.
-      const parent = new UIPanel({
+      const parent = new UISurface({
         direction: "column",
         width: 200,
         height: 120,
@@ -485,8 +525,8 @@ describe("UIPanel", () => {
         height: 16,
       });
 
-      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      parent._node.applyLayout();
+      parent.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.root.applyLayout();
 
       // `top: 100%` of the 120px-tall parent ⇒ y == 120 (flush under it).
       expect(below.displayObject.position.y).toBe(120);
@@ -500,7 +540,7 @@ describe("UIPanel", () => {
       // button auto-sizes to its label. The widest button defines the
       // panel's content width and the shorter ones grow to match — clean
       // uniform stack without the caller pinning a width.
-      const panel = new UIPanel({
+      const panel = new UISurface({
         direction: "column",
         gap: 4,
         alignItems: "stretch",
@@ -508,22 +548,22 @@ describe("UIPanel", () => {
       const short = panel.button("OK", {});
       const longer = panel.button("Settings (transparentBelow=false)", {});
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       const longerW = longer.yogaNode.getComputedWidth();
       const shortW = short.yogaNode.getComputedWidth();
       // Both children share the same width — driven by the longer label.
       expect(shortW).toBe(longerW);
       // The panel itself shrank to fit that widest natural width.
-      expect(panel._node.yogaNode.getComputedWidth()).toBe(longerW);
+      expect(panel.root.yogaNode.getComputedWidth()).toBe(longerW);
     });
 
     it("partial imperative update on an already-absolute node moves it", () => {
       // Animation / repositioning code typically pokes a single edge
       // without re-specifying `position` each frame. The Yoga node is
       // already Absolute, so the new edge value must still take effect.
-      const parent = new UIPanel({
+      const parent = new UISurface({
         direction: "column",
         width: 200,
         height: 200,
@@ -537,15 +577,15 @@ describe("UIPanel", () => {
       });
 
       child.update({ top: 80 });
-      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      parent._node.applyLayout();
+      parent.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.root.applyLayout();
 
       expect(child.displayObject.position.x).toBe(10);
       expect(child.displayObject.position.y).toBe(80);
     });
 
     it("clears stale edge offsets when transitioning from absolute to relative", () => {
-      const parent = new UIPanel({
+      const parent = new UISurface({
         direction: "column",
         width: 200,
         height: 200,
@@ -559,22 +599,22 @@ describe("UIPanel", () => {
       });
 
       // First layout — child pinned via absolute positioning.
-      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      parent._node.applyLayout();
+      parent.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.root.applyLayout();
       expect(child.displayObject.position.x).toBe(100);
       expect(child.displayObject.position.y).toBe(50);
 
       // Demote to relative. The stale left/top must NOT linger — Yoga
       // applies them as CSS-style flow nudges on a Relative node.
       child.update({ position: "relative" });
-      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      parent._node.applyLayout();
+      parent.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.root.applyLayout();
       expect(child.displayObject.position.x).toBe(0);
       expect(child.displayObject.position.y).toBe(0);
     });
 
     it("absolute-positioned child is lifted out of flex flow", () => {
-      const parent = new UIPanel({
+      const parent = new UISurface({
         direction: "column",
         gap: 10,
         width: 200,
@@ -591,10 +631,10 @@ describe("UIPanel", () => {
         height: 200,
       });
 
-      parent._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      parent._node.applyLayout();
+      parent.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      parent.root.applyLayout();
 
-      const children = parent._node.children;
+      const children = parent.root.children;
       // The flex-flow children remain stacked vertically with the original
       // 10px gap — the absolute overlay does not push them around.
       expect(children[0]!.displayObject.position.y).toBe(0);
@@ -608,7 +648,7 @@ describe("UIPanel", () => {
       // with hover/click handlers must be hit-testable over its whole box —
       // gaps, padding, the space around shrink-wrapped children — not just
       // where a child actually paints.
-      const panel = new UIPanel({
+      const panel = new UISurface({
         direction: "column",
         gap: 10,
         padding: 5,
@@ -617,8 +657,8 @@ describe("UIPanel", () => {
       panel.button("A", { width: 100, height: 30 });
       panel.button("B", { width: 100, height: 30 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       const hit = (
         panel.container as unknown as {
@@ -630,14 +670,14 @@ describe("UIPanel", () => {
       expect(hit.y).toBe(0);
       // 100 wide content + 5px padding each side; two 30px rows + 10px gap +
       // 5px padding each side — the gap/padding region is now inside the box.
-      expect(hit.width).toBe(panel._node.yogaNode.getComputedWidth());
-      expect(hit.height).toBe(panel._node.yogaNode.getComputedHeight());
+      expect(hit.width).toBe(panel.root.yogaNode.getComputedWidth());
+      expect(hit.height).toBe(panel.root.yogaNode.getComputedHeight());
       expect(hit.width).toBe(110);
       expect(hit.height).toBe(80);
     });
 
     it("hidden elements are skipped in layout (collapse)", () => {
-      const panel = new UIPanel({ direction: "column", gap: 10 });
+      const panel = new UISurface({ direction: "column", gap: 10 });
       const a = panel.button("A", { width: 100, height: 30 });
       panel.button("B", { width: 100, height: 30 });
       panel.button("C", { width: 100, height: 30 });
@@ -645,10 +685,10 @@ describe("UIPanel", () => {
       // Hide the first button
       a.visible = false;
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
-      const children = panel._node.children;
+      const children = panel.root.children;
       // B should be at y=0 (A is hidden via Display.None), C at y=40
       expect(children[1]!.displayObject.position.y).toBe(0);
       expect(children[2]!.displayObject.position.y).toBe(40);
@@ -657,42 +697,42 @@ describe("UIPanel", () => {
 
   describe("addElement / removeElement", () => {
     it("addElement adds child to both Pixi and Yoga tree", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const btn = panel.button("A", { width: 100, height: 30 });
-      expect(panel._node.children).toContain(btn);
-      expect(panel._node.yogaNode.getChildCount()).toBe(1);
+      expect(panel.root.children).toContain(btn);
+      expect(panel.root.yogaNode.getChildCount()).toBe(1);
     });
 
     it("removeElement removes child from both trees", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const btn = panel.button("A", { width: 100, height: 30 });
       panel.removeElement(btn);
-      expect(panel._node.children).not.toContain(btn);
-      expect(panel._node.yogaNode.getChildCount()).toBe(0);
+      expect(panel.root.children).not.toContain(btn);
+      expect(panel.root.yogaNode.getChildCount()).toBe(0);
     });
   });
 
   describe("destroy", () => {
     it("frees the yoga node and recurses into children exactly once", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const child = panel.panel();
-      const rootFree = vi.spyOn(panel._node.yogaNode, "free");
+      const rootFree = vi.spyOn(panel.root.yogaNode, "free");
       const childFree = vi.spyOn(child.yogaNode, "free");
 
-      panel._node.destroy();
+      panel.root.destroy();
 
       expect(rootFree).toHaveBeenCalledTimes(1);
       expect(childFree).toHaveBeenCalledTimes(1);
     });
 
     it("is idempotent — a second call is a no-op", () => {
-      const panel = new UIPanel();
+      const panel = new UISurface();
       const child = panel.panel();
-      const rootFree = vi.spyOn(panel._node.yogaNode, "free");
+      const rootFree = vi.spyOn(panel.root.yogaNode, "free");
       const childFree = vi.spyOn(child.yogaNode, "free");
 
-      panel._node.destroy();
-      panel._node.destroy();
+      panel.root.destroy();
+      panel.root.destroy();
 
       expect(rootFree).toHaveBeenCalledTimes(1);
       expect(childFree).toHaveBeenCalledTimes(1);
@@ -704,24 +744,24 @@ describe("UIPanel", () => {
       // Two 80px children in a 100px row want 160px total. With Yoga's raw
       // `flexShrink: 0` default they keep their 80px and overflow the row
       // rather than being crushed — shrinking is opt-in (see below).
-      const panel = new UIPanel({ direction: "row", width: 100 });
+      const panel = new UISurface({ direction: "row", width: 100 });
       const a = panel.panel({ width: 80, height: 20 });
       const b = panel.panel({ width: 80, height: 20 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       expect(a.yogaNode.getComputedWidth()).toBe(80);
       expect(b.yogaNode.getComputedWidth()).toBe(80);
     });
 
     it("shrinks only the child that opts in with flexShrink: 1", () => {
-      const panel = new UIPanel({ direction: "row", width: 100 });
+      const panel = new UISurface({ direction: "row", width: 100 });
       const fixed = panel.panel({ width: 80, height: 20 }); // default: no shrink
       const flex = panel.panel({ width: 80, height: 20, flexShrink: 1 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       // `fixed` keeps its 80px; only `flex` absorbs the overflow → 20px.
       expect(fixed.yogaNode.getComputedWidth()).toBe(80);
@@ -731,12 +771,12 @@ describe("UIPanel", () => {
     it("flex shorthand fills the remaining space (grow + shrink:1 + basis:0)", () => {
       // `flex: 1` sizes from a 0 basis, so it takes exactly the space the fixed
       // sibling leaves instead of claiming any content width of its own.
-      const panel = new UIPanel({ direction: "row", width: 100 });
+      const panel = new UISurface({ direction: "row", width: 100 });
       const fixed = panel.panel({ width: 30, height: 20 });
       const grow = panel.panel({ height: 20, flex: 1 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       expect(fixed.yogaNode.getComputedWidth()).toBe(30);
       expect(grow.yogaNode.getComputedWidth()).toBe(70); // 100 − 30
@@ -746,13 +786,13 @@ describe("UIPanel", () => {
   describe("dev-mode overflow warning", () => {
     it("warns once when an in-flow child overflows the content box", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const panel = new UIPanel({ direction: "row", width: 100 });
+      const panel = new UISurface({ direction: "row", width: 100 });
       // flexShrink: 0 + width 200 → can't fit the 100px row, overflows by 100.
       panel.panel({ width: 200, height: 20, flexShrink: 0 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
-      panel._node.applyLayout(); // second pass must not re-warn the same node
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
+      panel.root.applyLayout(); // second pass must not re-warn the same node
 
       const overflowWarns = warn.mock.calls.filter((c) =>
         String(c[0]).includes("overflows its container"),
@@ -763,15 +803,15 @@ describe("UIPanel", () => {
 
     it("does not warn when the container clips with overflow: hidden", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const panel = new UIPanel({
+      const panel = new UISurface({
         direction: "row",
         width: 100,
         overflow: "hidden",
       });
       panel.panel({ width: 200, height: 20, flexShrink: 0 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       const overflowWarns = warn.mock.calls.filter((c) =>
         String(c[0]).includes("overflows its container"),
@@ -782,11 +822,11 @@ describe("UIPanel", () => {
 
     it("does not warn for an absolute-positioned child outside the box", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const panel = new UIPanel({ direction: "row", width: 100, height: 50 });
+      const panel = new UISurface({ direction: "row", width: 100, height: 50 });
       panel.panel({ position: "absolute", left: 90, width: 80, height: 20 });
 
-      panel._node.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
-      panel._node.applyLayout();
+      panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
+      panel.root.applyLayout();
 
       const overflowWarns = warn.mock.calls.filter((c) =>
         String(c[0]).includes("overflows its container"),
