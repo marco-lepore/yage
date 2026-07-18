@@ -140,6 +140,23 @@ export function resolveFrames(source: FrameSource): Texture[] {
     const base = Texture.from(sheet);
     base.source.scaleMode = "nearest";
     const layout = resolveGridLayout(base, options);
+    for (const [name, value, min] of [
+      ["frameWidth", layout.frameWidth, 1],
+      ["frameHeight", layout.frameHeight, 1],
+      ["startX", layout.startX, 0],
+      ["startY", layout.startY, 0],
+      ["gapX", layout.gapX, 0],
+      ["gapY", layout.gapY, 0],
+      ["columns", layout.columns, 1],
+      ["count", layout.count, 1],
+    ] as const) {
+      if (!Number.isFinite(value) || value < min) {
+        throw new Error(
+          `resolveFrames: invalid ${name} (${value}) for sheet "${sheet}" — ` +
+            `expected a finite number >= ${min}.`,
+        );
+      }
+    }
     const usedColumns = Math.min(layout.count, layout.columns);
     const rows = Math.ceil(layout.count / layout.columns);
     const maxX =

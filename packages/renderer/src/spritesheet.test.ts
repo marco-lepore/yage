@@ -174,6 +174,24 @@ describe("resolveFrames — sheet sources", () => {
     expect(frames).toHaveLength(48);
   });
 
+  it("rejects negative offsets and gaps", () => {
+    expect(() =>
+      resolveFrames({ sheet: "s.png", frameWidth: 48, startX: -100, columns: 1, count: 1 }),
+    ).toThrow(/invalid startX/);
+    expect(() =>
+      resolveFrames({ sheet: "s.png", frameWidth: 48, gapX: -100, columns: 2, count: 2 }),
+    ).toThrow(/invalid gapX/);
+  });
+
+  it("rejects non-positive frame sizes and counts", () => {
+    expect(() => resolveFrames({ sheet: "s.png", frameWidth: 0 })).toThrow(
+      /invalid frameWidth/,
+    );
+    expect(() =>
+      resolveFrames({ sheet: "s.png", frameWidth: 48, count: 0 }),
+    ).toThrow(/invalid count/);
+  });
+
   it("accepts offsets and gaps that stay inside the texture", () => {
     state.width = 100;
     state.height = 40;
