@@ -18,7 +18,7 @@ import { SpriteComponent } from "@yagejs/renderer";
 
 entity.add(
   new SpriteComponent({
-    texture: playerTexture,
+    texture: "assets/player.png",
     anchor: { x: 0.5, y: 0.5 },
     layer: "characters",
     tint: 0xffffff,
@@ -27,8 +27,12 @@ entity.add(
 );
 ```
 
-All properties are optional except `texture`. The `layer` property controls
-z-ordering — see [Camera & Layers](/guides/rendering/camera/#render-layers).
+All properties are optional except `texture`. `texture` is an asset key or a
+typed handle (`TextureRef`) — never a raw `Texture` object — so every sprite
+serializes fully for save/load. A key that isn't preloaded (or registered,
+see [Runtime-generated textures](#runtime-generated-textures)) throws an
+error naming the key. The `layer` property controls z-ordering — see
+[Camera & Layers](/guides/rendering/camera/#render-layers).
 
 :::tip[`tint` multiplies — for replace-style recolour, use the `colorize` effect]
 `sprite.tint` is the cheap built-in way to tint a sprite, but it
@@ -234,3 +238,56 @@ const asset = renderAsset("assets/tileset.png");
 
 These return handles that are resolved during scene loading, so textures are
 available by the time `setup()` runs.
+
+## Runtime-generated textures
+
+Textures created at runtime (procedural art, dynamically baked frames) have
+no asset path, so they can't be preloaded. Register them under a key of your
+choosing with `registerTexture` and every key-based surface — sprite
+`texture`, animation `FrameSource`, particle `textureKey` — resolves them
+exactly like a preloaded asset:
+
+```typescript
+import {
+  AnimatedSpriteComponent,
+  registerTexture,
+  RendererKey,
+  SpriteComponent,
+} from "@yagejs/renderer";
+
+// Inside a Scene: draw a texture, register it, reference it by key.
+const renderer = this.context.resolve(RendererKey);
+registerTexture(
+  "marker",
+  renderer.createTexture((g) => g.circle(8, 8, 8).fill(0xff0000)),
+);
+entity.add(new SpriteComponent({ texture: "marker" }));
+
+// Runtime animation: bake the frames as ONE horizontal strip
+// (frame i at x = i * frameWidth), then reference it as a strip source.
+const strip = renderer.createTexture((g) => {
+  for (let i = 0; i < 4; i++) {
+    g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
+  }
+});
+registerTexture("boss-idle", strip);
+boss.add(
+  new AnimatedSpriteComponent({
+    source: { sheet: "boss-idle", frameWidth: 32 },
+  }),
+);
+```
+
+The rules that make this safe:
+
+- **Save/load**: snapshots store only the key. Re-register the texture under
+  the same key at boot, before restoring — the same code that registered it
+  on the first run. For sprites and animations, restoring with a missing key
+  throws an error naming the key, so nothing silently disappears from a save.
+  (Particle emitters resolve `textureKey` without this guard.)
+- Registered keys are engine-global and live until `unregisterTexture(key)`.
+  Unregistering never destroys the texture — you created it, so call
+  `texture.destroy()` when nothing draws it anymore.
+- Registering a key that collides with a loaded asset's path throws;
+  re-registering your own key replaces the entry (components built earlier
+  keep the old texture instance).

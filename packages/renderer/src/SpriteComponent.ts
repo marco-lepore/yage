@@ -1,7 +1,7 @@
-import { AssetHandle, serializable } from "@yagejs/core";
+import { serializable } from "@yagejs/core";
 import { Sprite } from "pixi.js";
 import { resolveTextureInput } from "./assets.js";
-import type { DisplaySprite, TextureInput } from "./public-types.js";
+import type { DisplaySprite, TextureRef } from "./public-types.js";
 import {
   VisualComponent,
   type VisualComponentData,
@@ -10,15 +10,18 @@ import {
 
 /** Options for creating a SpriteComponent. */
 export interface SpriteComponentOptions extends VisualComponentOptions {
-  /** Texture or texture key string. */
-  texture: TextureInput;
+  /**
+   * Texture asset key or typed handle. Runtime-created textures are
+   * referenced by registering them under a key first (`registerTexture`).
+   */
+  texture: TextureRef;
   /** Anchor point (0-1). */
   anchor?: { x: number; y: number };
 }
 
 /** Serialisable snapshot of a SpriteComponent. */
 export interface SpriteData extends VisualComponentData {
-  textureKey: string | null;
+  textureKey: string;
   anchor?: { x: number; y: number };
 }
 
@@ -26,7 +29,7 @@ export interface SpriteData extends VisualComponentData {
 @serializable
 export class SpriteComponent extends VisualComponent {
   readonly sprite: DisplaySprite;
-  private _textureKey: string | null;
+  private _textureKey: string;
 
   constructor(options: SpriteComponentOptions) {
     super(options.layer);
@@ -34,9 +37,7 @@ export class SpriteComponent extends VisualComponent {
     this._textureKey =
       typeof options.texture === "string"
         ? options.texture
-        : options.texture instanceof AssetHandle
-          ? options.texture.path
-          : null;
+        : options.texture.path;
 
     if (options.anchor) {
       this.sprite.anchor.set(options.anchor.x, options.anchor.y);
@@ -50,25 +51,14 @@ export class SpriteComponent extends VisualComponent {
   }
 
   /** Replace the sprite's texture. */
-  setTexture(texture: TextureInput): void {
+  setTexture(texture: TextureRef): void {
     this._textureKey =
-      typeof texture === "string"
-        ? texture
-        : texture instanceof AssetHandle
-          ? texture.path
-          : null;
+      typeof texture === "string" ? texture : texture.path;
     this.sprite.texture = resolveTextureInput(texture);
   }
 
   /** Serialise to a plain object for save/load. */
-  serialize(): SpriteData | null {
-    if (!this._textureKey) {
-      console.warn(
-        `SpriteComponent on "${this.entity?.name}": created with a Texture object. ` +
-          `Use a string path or texture handle for save/load support.`,
-      );
-      return null;
-    }
+  serialize(): SpriteData {
     return {
       ...this.serializeVisual(),
       textureKey: this._textureKey,
@@ -84,7 +74,7 @@ export class SpriteComponent extends VisualComponent {
   /** Create a SpriteComponent from a serialised snapshot. */
   static fromSnapshot(data: SpriteData): SpriteComponent {
     const opts: SpriteComponentOptions = {
-      texture: data.textureKey ?? "",
+      texture: data.textureKey,
       layer: data.layer,
     };
     if (data.tint !== undefined) opts.tint = data.tint;

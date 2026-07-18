@@ -608,14 +608,13 @@ class MyComponent extends Component {
 }
 ```
 
-**Partial serialization** (contains Textures or other non-serializable objects):
-
-Use string-based alternatives (`source: FrameSource`, `textureKey: string`) when available. `AnimatedSpriteComponent` and `AnimationController` require `source` — there's no raw-texture construction path, so both always serialize fully. `SpriteComponent` still accepts a raw `Texture` object; when it's given one instead of a string/handle, `serialize()` returns `null` and the entity must reconstruct in `afterRestore()`.
+**Texture-dependent components** reference textures by string key, never by raw `Texture` object — `SpriteComponent.texture` is a `TextureRef` (key or handle), animations take a `FrameSource`, so both always serialize fully. Runtime-created textures get a key via `registerTexture`:
 
 ```typescript
-import { AnimatedSpriteComponent, AnimationController, SpriteComponent } from "@yagejs/renderer";
+import { AnimatedSpriteComponent, AnimationController, SpriteComponent, registerTexture } from "@yagejs/renderer";
 
-// Serializable — uses FrameSource (string key + frame dimensions)
+// Preloaded assets — reference by path key
+new SpriteComponent({ texture: "player.png", layer: "player" });
 new AnimatedSpriteComponent({
   source: { sheet: "player_idle.png", frameWidth: 48 },
   layer: "player",
@@ -625,16 +624,19 @@ new AnimationController<PlayerAnim>({
   walk: { source: { sheet: "player_walk.png", frameWidth: 48 }, speed: 0.2 },
 });
 
-// NOT serializable — a raw Texture object instead of a string/handle
-new SpriteComponent({ texture: myTexture });
+// Runtime-created texture — register it under a key, then reference the key
+registerTexture("marker", renderer.createTexture((g) => g.circle(8, 8, 8).fill(0xff0000)));
+new SpriteComponent({ texture: "marker" });
 ```
+
+Snapshots store only the key. The register-before-restore contract: a game that registers runtime textures must run the same registration at boot before restoring a save — resolving a key that is neither preloaded nor registered throws, naming the key.
 
 **Serialization status by component:**
 
 | Component                  | Pattern                                    | String key                                                |
 | -------------------------- | ------------------------------------------ | --------------------------------------------------------- |
 | `Transform`                | Full                                       | N/A (all primitives)                                      |
-| `SpriteComponent`          | Full when using string texture key         | `texture: "sprite.png"`                                   |
+| `SpriteComponent`          | Full                                       | `texture: "sprite.png"`                                   |
 | `GraphicsComponent`        | Partial (layer/visual options only, draw in afterRestore) | N/A                                          |
 | `RigidBodyComponent`       | Full                                       | N/A (all primitives)                                      |
 | `ColliderComponent`        | Full                                       | N/A (all primitives)                                      |
@@ -953,7 +955,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **AssetHandle factories**          | Each plugin exports a factory (e.g., `texture()`, `spritesheet()`, `sound()`) that returns `AssetHandle<T>`. Define handles at module scope, load in scene lifecycle.                               |
 | **Entity subclass over Blueprint** | Prefer `class Foo extends Entity` with `setup()` for entity types. Use `@trait()` decorator for discoverable capabilities. Blueprints are deprecated but still work.                                |
 | **Entity events for game logic**   | Use `defineEvent()` / `entity.on()` / `entity.emit()` for entity-scoped events. Use `EventBus` for global engine events.                                                                            |
-| **`@serializable` for save/load**  | Decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()`. Use string keys (`FrameSource`, `textureKey`) instead of raw PixiJS objects for full serialization.  |
+| **`@serializable` for save/load**  | Decorate Component/Entity/Scene subclasses. Implement `serialize()` + `static fromSnapshot()`. Textures are referenced by string key (`TextureRef`, `FrameSource`, `textureKey`); runtime-created textures get a key via `registerTexture`.  |
 
 ### Pitfalls to Avoid
 
@@ -971,7 +973,7 @@ If you modify lifecycle ordering, update tests in all of these files and run E2E
 | **Using `setTimeout` or `setInterval` in game logic**         | Breaks deterministic frame execution. Timers drift and don't respect pause.                                                                                                                       | Use `ProcessComponent` with slots for cooldowns/timers, `pc.run()` for one-offs, or `TimerEntity` for scene-level timing.   |
 | **Using boolean flags for cooldown state**                    | Manual booleans + `Process.delay` to reset them is error-prone and verbose.                                                                                                                       | Use `ProcessSlot` — `slot.completed` IS the state. No separate boolean needed.                                              |
 | **Assuming render order = spawn order**                       | Render order is controlled by `RenderLayer` and draw priority, not entity creation order.                                                                                                         | Use layers for explicit draw ordering.                                                                                      |
-| **Passing raw `Texture` objects to serializable components**  | `Texture` is a PixiJS runtime object — not JSON-serializable. `serialize()` returns `null` and the entity must handle reconstruction manually.                                                    | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` for particles, `texture: "path"` for sprites. |
+| **Passing raw `Texture` objects to serializable components**  | `Texture` is a PixiJS runtime object — not JSON-serializable. Sprites and animations reject it at the type level; `ParticleEmitterComponent`'s raw `texture` option still compiles but makes `serialize()` return `null`.                    | Use string keys: `source: { sheet, frameWidth }` for animations, `textureKey` for particles, `texture: "path"` for sprites. Runtime-created textures get a key via `registerTexture(key, texture)`. |
 
 ### Type Safety Checklist
 

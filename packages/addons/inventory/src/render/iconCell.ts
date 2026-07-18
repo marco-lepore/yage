@@ -58,7 +58,8 @@ class IconCellPresenter implements CellPresenter {
   /** Resolved theme values, held as a plain object so a theme drift-guard can
    *  see every field reached a config leaf. */
   private readonly cfg: IconCellConfig;
-  private readonly textures = new Map<string, TextureResource | null>();
+  /** Icon keys that failed to resolve — warned once, then tile-fallback. */
+  private readonly missingIcons = new Set<string>();
   private warn: DiagnosticSink | undefined;
 
   constructor(theme: InventoryTheme) {
@@ -122,8 +123,9 @@ class IconCellPresenter implements CellPresenter {
     const entities: Entity[] = [];
     const displays: { visible: boolean }[] = [];
     if (view.stack && view.def) {
-      const texture = this.iconFor(view.def.icon);
-      if (texture) {
+      const iconKey = view.def.icon;
+      const texture = this.iconFor(iconKey);
+      if (texture && iconKey !== undefined) {
         const icon = scene.spawn("inv-cell-icon");
         const size = r.width - 14;
         const t = icon.add(new Transform());
@@ -131,7 +133,9 @@ class IconCellPresenter implements CellPresenter {
         const scale = texture.width > 0 ? size / texture.width : 1;
         t.setScale(scale, scale);
         const sprite = icon.add(
-          new SpriteComponent({ texture, layer: this.cfg.layerContent, anchor: { x: 0.5, y: 0.5 } }),
+          // The key (resolved above) keeps the sprite serializable; the
+          // component re-resolves the same cached texture from it.
+          new SpriteComponent({ texture: iconKey, layer: this.cfg.layerContent, anchor: { x: 0.5, y: 0.5 } }),
         );
         entities.push(icon);
         displays.push(sprite.sprite);
@@ -187,20 +191,19 @@ class IconCellPresenter implements CellPresenter {
     };
   }
 
-  /** Resolve (and cache) an icon texture; a bad key warns once and falls back
-   *  to the colored tile. */
+  /** Resolve an icon texture, fresh per call, so the scale math reads the
+   *  same cache entry the sprite resolves at construction (a re-registered
+   *  key is never scaled by a stale instance). A bad key warns once and
+   *  permanently falls back to the colored tile. */
   private iconFor(icon: string | undefined): TextureResource | null {
-    if (!icon) return null;
-    const cached = this.textures.get(icon);
-    if (cached !== undefined) return cached;
-    let resolved: TextureResource | null = null;
+    if (!icon || this.missingIcons.has(icon)) return null;
     try {
-      resolved = resolveTextureInput(icon);
+      return resolveTextureInput(icon);
     } catch {
       this.warn?.(`inventory icon "${icon}" did not resolve to a texture — using the tile fallback`);
+      this.missingIcons.add(icon);
+      return null;
     }
-    this.textures.set(icon, resolved);
-    return resolved;
   }
 
   /** Stable palette pick per item id (icon-less items keep their color). */

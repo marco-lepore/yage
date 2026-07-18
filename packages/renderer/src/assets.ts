@@ -450,6 +450,73 @@ export function uninstallBitmapFont(name: string): void {
 }
 
 /**
+ * Keys currently held by {@link registerTexture}, so registration can tell its
+ * own cache entries apart from loaded-asset entries (which it must never
+ * shadow) and re-registration can replace without Pixi's duplicate-key warn.
+ *
+ * @internal
+ */
+const registeredTextureKeys = new Set<string>();
+
+/**
+ * Register a runtime-created texture under an asset key, so every key-based
+ * surface resolves it exactly like a preloaded asset: `texture: key` on
+ * `SpriteComponent`, `{ sheet: key, frameWidth }` on a `FrameSource`, and
+ * `textureKey: key` on particle emitters.
+ *
+ * Registered keys are engine-global and live until {@link unregisterTexture} —
+ * registration is a boot-scoped act, outside the asset manager's ref counts
+ * and unloads. Snapshots store only the key, so for save/load the game
+ * re-registers its runtime textures under the same keys before restoring (the
+ * same boot code that registered them on first run); resolving a missing key
+ * throws, naming the key.
+ *
+ * Re-registering a key this API already holds replaces the cache entry;
+ * components constructed before the replacement keep the old texture instance
+ * (resolution happens at construction). A key already present in the cache
+ * but not registered here — a loaded asset's path, a Pixi-derived entry —
+ * throws: shadowing a loaded asset would let that asset's unload destroy the
+ * registered texture later.
+ *
+ * ```ts
+ * const strip = renderer.createTexture((g) => {
+ *   for (let i = 0; i < 4; i++) g.circle(i * 32 + 16, 16, 4 + i * 3).fill(0xffcc00);
+ * });
+ * registerTexture("boss-idle", strip);
+ * entity.add(new AnimatedSpriteComponent({ source: { sheet: "boss-idle", frameWidth: 32 } }));
+ * ```
+ */
+export function registerTexture(key: string, texture: TextureResource): void {
+  if (registeredTextureKeys.has(key)) {
+    Assets.cache.remove(key);
+  } else if (Assets.cache.has(key)) {
+    throw new Error(
+      `registerTexture("${key}"): the key is already used by a loaded asset — ` +
+        `pick a key that doesn't collide with an asset path.`,
+    );
+  }
+  Assets.cache.set(key, texture);
+  registeredTextureKeys.add(key);
+}
+
+/**
+ * Remove a texture registered by {@link registerTexture}. A no-op for keys
+ * this API never registered. Never destroys the texture — the creator owns
+ * the GPU resource; call `texture.destroy()` once nothing draws it anymore.
+ */
+export function unregisterTexture(key: string): void {
+  if (!registeredTextureKeys.has(key)) return;
+  Assets.cache.remove(key);
+  registeredTextureKeys.delete(key);
+}
+
+/** Drop every registered texture entry — test isolation only. @internal */
+export function clearRegisteredTextures(): void {
+  for (const key of registeredTextureKeys) Assets.cache.remove(key);
+  registeredTextureKeys.clear();
+}
+
+/**
  * Bake the base atlas for `name` from an already-loaded `family` face, plus
  * any declared emphasis variants, registering each so a `BitmapText` resolves
  * the right sibling. Returns every installed font name (base first) so the
@@ -607,13 +674,22 @@ function bakeBitmapFont(params: BakeBitmapFontParams): BakedFontMetrics {
   return font;
 }
 
-/** Resolve a texture input into a concrete texture resource. */
+/**
+ * Resolve a texture input into a concrete texture resource. Keys and handles
+ * resolve from the global asset cache — preloaded assets and
+ * {@link registerTexture} entries; an unresolvable key throws rather than
+ * handing the caller an empty texture.
+ */
 export function resolveTextureInput(input: TextureInput): TextureResource {
-  if (input instanceof AssetHandle) {
-    return Texture.from(input.path);
-  }
-  if (typeof input === "string") {
-    return Texture.from(input);
+  if (input instanceof AssetHandle || typeof input === "string") {
+    const key = typeof input === "string" ? input : input.path;
+    const resolved = Texture.from(key) as TextureResource | undefined;
+    if (!resolved) {
+      throw new Error(
+        `Texture "${key}" is not loaded — preload it or register it with registerTexture().`,
+      );
+    }
+    return resolved;
   }
   return input;
 }

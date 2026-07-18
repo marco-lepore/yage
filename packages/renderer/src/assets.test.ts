@@ -24,22 +24,68 @@ const { mocks } = vi.hoisted(() => {
   );
   const assetsUnload = vi.fn(() => undefined);
   const bitmapFontUninstall = vi.fn((name: string) => void name);
+
+  // Map-backed stand-in for Pixi's global asset cache — the store both
+  // `Assets.cache` and `Texture.from(string)` read, mirroring installed Pixi
+  // where `Texture.from(key)` is a plain cache lookup.
+  const cacheMap = new Map<string, unknown>();
+  const cache = {
+    has: (key: string) => cacheMap.has(key),
+    get: (key: string) => cacheMap.get(key),
+    set: (key: string, value: unknown) => void cacheMap.set(key, value),
+    remove: (key: string) => void cacheMap.delete(key),
+  };
+
+  class MockRectangle {
+    constructor(
+      public x: number,
+      public y: number,
+      public width: number,
+      public height: number,
+    ) {}
+  }
+
+  class MockTexture {
+    source: { scaleMode?: string };
+    width: number;
+    height: number;
+    frame: MockRectangle | undefined;
+    destroy = vi.fn();
+    constructor(opts?: { source?: MockTexture["source"]; frame?: MockRectangle }) {
+      this.source = opts?.source ?? {};
+      this.frame = opts?.frame;
+      this.width = opts?.frame?.width ?? 0;
+      this.height = opts?.frame?.height ?? 0;
+    }
+    static from = vi.fn((key: string) => cacheMap.get(key));
+  }
+
   return {
-    mocks: { assetsLoad, assetsUnload, bitmapFontInstall, bitmapFontUninstall },
+    mocks: {
+      assetsLoad,
+      assetsUnload,
+      bitmapFontInstall,
+      bitmapFontUninstall,
+      cacheMap,
+      cache,
+      MockRectangle,
+      MockTexture,
+    },
   };
 });
 
-// `Rectangle` / `Texture` are imported by assets.ts but only used by the
-// texture-slicing helpers, which these tests don't exercise — stub them as
-// inert values so the named imports resolve.
 vi.mock("pixi.js", () => ({
-  Assets: { load: mocks.assetsLoad, unload: mocks.assetsUnload },
+  Assets: {
+    load: mocks.assetsLoad,
+    unload: mocks.assetsUnload,
+    cache: mocks.cache,
+  },
   BitmapFont: {
     install: mocks.bitmapFontInstall,
     uninstall: mocks.bitmapFontUninstall,
   },
-  Rectangle: {},
-  Texture: {},
+  Rectangle: mocks.MockRectangle,
+  Texture: mocks.MockTexture,
 }));
 
 import { AssetHandle } from "@yagejs/core";
@@ -47,12 +93,18 @@ import {
   bitmapFont,
   clearBakedWebFontFamilies,
   clearInstalledBitmapFontSources,
+  clearRegisteredTextures,
   installBitmapFont,
   loadWebFont,
+  registerTexture,
+  resolveTextureInput,
   uninstallBitmapFont,
   unloadWebFont,
+  unregisterTexture,
   webFont,
 } from "./assets.js";
+import { resolveFrames } from "./spritesheet.js";
+import type { TextureResource } from "./public-types.js";
 import {
   clearBitmapFontVariants,
   resolveBitmapFontVariant,
@@ -513,5 +565,82 @@ describe("bitmap-font teardown (ref-counted)", () => {
 
     unloadWebFont("b.woff2");
     expect(mocks.bitmapFontUninstall).toHaveBeenCalledWith("Shared");
+  });
+});
+
+describe("registerTexture() / unregisterTexture()", () => {
+  /** Build a mock texture the register API accepts. */
+  function makeTexture(width = 96, height = 32): TextureResource {
+    const tex = new mocks.MockTexture();
+    tex.width = width;
+    tex.height = height;
+    return tex as unknown as TextureResource;
+  }
+
+  beforeEach(() => {
+    clearRegisteredTextures();
+    mocks.cacheMap.clear();
+    mocks.MockTexture.from.mockClear();
+  });
+
+  it("register makes the key resolve to the exact texture instance", () => {
+    const tex = makeTexture();
+    registerTexture("boss-idle", tex);
+    expect(resolveTextureInput("boss-idle")).toBe(tex);
+  });
+
+  it("re-registering a key replaces the entry", () => {
+    const first = makeTexture();
+    const second = makeTexture();
+    registerTexture("boss-idle", first);
+    registerTexture("boss-idle", second);
+    expect(resolveTextureInput("boss-idle")).toBe(second);
+  });
+
+  it("registering over a cache key it doesn't own throws, naming the key", () => {
+    // A loaded asset's cache entry (put there by the asset pipeline, not by
+    // registerTexture) must not be shadowed — its unload would destroy the
+    // registered texture later.
+    mocks.cacheMap.set("hero.png", makeTexture());
+    expect(() => registerTexture("hero.png", makeTexture())).toThrowError(
+      /hero\.png/,
+    );
+  });
+
+  it("unregister removes the entry and never destroys the texture", () => {
+    const tex = makeTexture();
+    registerTexture("boss-idle", tex);
+    unregisterTexture("boss-idle");
+    expect(mocks.cacheMap.has("boss-idle")).toBe(false);
+    expect(
+      (tex as unknown as InstanceType<typeof mocks.MockTexture>).destroy,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("unregister is a no-op for keys it never registered", () => {
+    // Including a loaded asset's entry — unregister must not evict it.
+    mocks.cacheMap.set("hero.png", makeTexture());
+    expect(() => unregisterTexture("hero.png")).not.toThrow();
+    expect(() => unregisterTexture("never-registered")).not.toThrow();
+    expect(mocks.cacheMap.has("hero.png")).toBe(true);
+  });
+
+  it("resolveTextureInput throws on a missing string key, naming the key", () => {
+    expect(() => resolveTextureInput("missing-key")).toThrowError(
+      /Texture "missing-key" is not loaded/,
+    );
+  });
+
+  it("resolveFrames slices a registered strip texture", () => {
+    registerTexture("run-strip", makeTexture(96));
+    const frames = resolveFrames({ sheet: "run-strip", frameWidth: 32 });
+    expect(frames).toHaveLength(3);
+    expect(frames.every((f) => f.width === 32)).toBe(true);
+  });
+
+  it("resolveFrames on an unregistered strip key throws, naming the key", () => {
+    expect(() =>
+      resolveFrames({ sheet: "gone-strip", frameWidth: 32 }),
+    ).toThrowError(/gone-strip/);
   });
 });
