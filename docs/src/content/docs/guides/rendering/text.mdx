@@ -46,16 +46,16 @@ text.mergeStyle({ fill: 0xff0000 }); // patches: keeps the current font/size
 
 For most "text on screen" cases — HUD cards, score readouts with a
 backdrop, dialog boxes, nameplates above an enemy, floating damage numbers
-that should stay axis-aligned at any zoom — `UIPanel` + `UIText` from
+that should stay axis-aligned at any zoom — `UISurface` + `UIText` from
 `@yagejs/ui` is the right answer. You get flexbox layout (padding, gap,
 alignment), a styled background fill, and child stacking, all of which
 `TextComponent` deliberately doesn't try to provide.
 
 Specifically:
 
-- **Text widget with layout / padding / backdrop** → [`UIPanel` + `UIText`](/guides/ui/).
+- **Text widget with layout / padding / backdrop** → [`UISurface` + `UIText`](/guides/ui/).
 - **Entity-tracked text that stays constant-size at any zoom** (nameplates,
-  damage numbers, interaction prompts) → [`ScreenFollow` + `UIPanel({ positioning: "transform" })`](/guides/rendering/camera/#screenfollow-entity-anchored-ui).
+  damage numbers, interaction prompts) → [`ScreenFollow` + `UISurface({ positioning: "transform" })`](/guides/rendering/camera/#screenfollow-entity-anchored-ui).
 - **Free string with no layout, that should follow camera transforms**
   (diegetic floor label, debug overlay, world-pinned billboard text) →
   `TextComponent`.

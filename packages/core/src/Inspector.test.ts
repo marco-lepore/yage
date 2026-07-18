@@ -88,6 +88,32 @@ describe("Inspector", () => {
     expect(snap.systemCount).toBe(1);
   });
 
+  it("snapshots the UI tree of a component named UISurface with a root element", async () => {
+    const { inspector, scenes } = setup();
+    const scene = new TestScene("game");
+    await scenes.push(scene);
+    const entity = scene.spawn("hud");
+
+    // Local stand-in mirroring @yagejs/ui's UISurface shape. Core imports
+    // nothing from ui — the Inspector matches by class name plus a `root`
+    // field, so this name+field match breaks silently if either string drifts.
+    const rootElement = {
+      yogaNode: {
+        getComputedLayout: () => ({ left: 1, top: 2, width: 30, height: 40 }),
+      },
+      children: [],
+    };
+    class UISurface extends Component {
+      readonly root = rootElement;
+    }
+    entity.add(new UISurface());
+
+    const ui = inspector.snapshot().scenes[0]?.ui;
+    expect(ui).not.toBeNull();
+    expect(ui?.root.id).toBe(`entity-${entity.id}:UISurface:0`);
+    expect(ui?.root.layout).toEqual({ x: 1, y: 2, width: 30, height: 40 });
+  });
+
   it("registers and resolves inspector extensions by namespace", () => {
     const { inspector } = setup();
     const inventory = {

@@ -36,7 +36,7 @@ class PauseScene extends Scene {
 
   onEnter(): void {
     const entity = this.spawn("pause-ui");
-    const panel = entity.add(new UIPanel({
+    const panel = entity.add(new UISurface({
       anchor: Anchor.Center,
       direction: "column",
       gap: 12,

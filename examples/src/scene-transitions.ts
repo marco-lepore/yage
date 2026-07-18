@@ -24,7 +24,7 @@ import {
 import {
   Anchor,
   LoadingSceneProgressBar,
-  UIPanel,
+  UISurface,
   UIPlugin,
 } from "@yagejs/ui";
 import type { Container } from "pixi.js";
@@ -119,7 +119,7 @@ abstract class LabeledScene extends Scene {
     );
 
     const label = this.spawn("label");
-    const panel = label.add(new UIPanel({ anchor: Anchor.Center }));
+    const panel = label.add(new UISurface({ anchor: Anchor.Center }));
     panel.text(this.label, {
       fontSize: 64,
       fontWeight: "bold",

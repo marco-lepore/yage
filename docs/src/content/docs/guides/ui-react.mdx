@@ -341,7 +341,7 @@ type are also exported for fully custom floating layers.
 
 The scene overlay is owned by `UIPlugin` (not `UIReactPlugin`), so the same
 floating system is available without React — see `attachTooltip` in the
-[imperative UI guide](/guides/ui/) for tooltips on a non-React `UIPanel`.
+[imperative UI guide](/guides/ui/) for tooltips in the imperative layer.
 
 ### PixiUI Components
 
@@ -422,7 +422,7 @@ anything that should stay fixed — a header, a footer button — as a
 For imperative control, a `ref` to the node exposes `scrollBy()`,
 `scrollTo()`, `scrollOffset`, and `maxScroll`. The same element is
 available outside React via the `panel.scrollView(opts)` builder on
-`UIPanel` / `PanelNode`.
+`UISurface` / `UIPanel`.
 
 :::note
 Appending JSX children to a layout *leaf* (an element with no

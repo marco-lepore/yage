@@ -190,8 +190,8 @@ Listeners are wired in `install()` (gated by `typeof document/window !== "undefi
 | Render an asset / texture | `SpriteComponent` |
 | Frame-based animation | `AnimatedSpriteComponent` (+ `AnimationController`) |
 | Procedural shapes (debug, prototypes, gradient overlays, custom drawing) | `GraphicsComponent` |
-| Text with layout, padding, backdrop, "card" widget | `UIText` + `UIPanel` from `@yagejs/ui` |
-| Entity-tracked text that stays axis-aligned at any zoom (nameplates, damage numbers) | `ScreenFollow` + `UIPanel({ positioning: "transform" })` from `@yagejs/ui` |
+| Text with layout, padding, backdrop, "card" widget | `UIText` + `UISurface` from `@yagejs/ui` |
+| Entity-tracked text that stays axis-aligned at any zoom (nameplates, damage numbers) | `ScreenFollow` + `UISurface({ positioning: "transform" })` from `@yagejs/ui` |
 | Free-positioned single string (debug HUD, diegetic world-space label) | `TextComponent` |
 
 Default to `@yagejs/ui` for any text that lives inside a widget, has padding, or stacks with other rows. `TextComponent` is the narrow case where the text is its own world-space primitive with no layout.
@@ -254,7 +254,7 @@ Gradient fills: use `linearGradient` / `radialGradient` (see below) instead of r
 
 ### TextComponent
 
-Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UIPanel` + `UIText` from `@yagejs/ui` (see decision tree above).
+Renders text on a layer, Transform-synced like sprites. For free-positioned strings only — for laid-out text widgets, use `UISurface` + `UIText` from `@yagejs/ui` (see decision tree above).
 
 ```ts
 import { TextComponent } from "@yagejs/renderer";
@@ -590,12 +590,12 @@ readonly layers: readonly LayerDef[] = [
 Plugins auto-provision screen-space layers via
 `tree.ensureLayer(def, { space: "screen" })`. The UI packages
 (`@yagejs/ui`, `@yagejs/ui-react`) do this for their `"ui"` layer, so a
-bare `new UIPanel()` stays pinned to the viewport under the default
+bare `new UISurface()` stays pinned to the viewport under the default
 camera.
 
 Diegetic UI (entity-anchored prompts, health bars, damage numbers) is a
 legitimate use case: declare a world-space layer and parent a
-`UIPanel({ layer: "..." })` into it — the panel's container scrolls and
+`UISurface({ layer: "..." })` into it — the panel's container scrolls and
 zooms with the camera.
 
 To override: pass explicit `bindings` on the camera. Explicit bindings
@@ -723,11 +723,11 @@ Recipes:
 
 ## ScreenFollow
 
-Component. Each frame projects a world source through a camera and writes the resulting screen coord to this entity's `Transform.worldPosition`. The canonical billboard primitive — pair with `UIPanel`/`UIRoot` on a screen-space layer using `positioning: "transform"` and the UI tracks the target while staying axis-aligned and constant-size under any camera zoom or rotation.
+Component. Each frame projects a world source through a camera and writes the resulting screen coord to this entity's `Transform.worldPosition`. The canonical billboard primitive — pair with `UISurface`/`UIRoot` on a screen-space layer using `positioning: "transform"` and the UI tracks the target while staying axis-aligned and constant-size under any camera zoom or rotation.
 
 ```ts
 import { ScreenFollow } from "@yagejs/renderer";
-import { UIPanel, Anchor } from "@yagejs/ui";
+import { UISurface, Anchor } from "@yagejs/ui";
 
 class Nameplate extends Entity {
   constructor(private readonly target: Entity, private readonly camera: CameraEntity) {
@@ -741,7 +741,7 @@ class Nameplate extends Entity {
       offset: new Vec2(0, -40),        // screen-pixel offset (applied after projection)
       trackRotation: false,            // default: don't copy target's rotation
     }));
-    const panel = this.add(new UIPanel({
+    const panel = this.add(new UISurface({
       positioning: "transform",        // reads Transform.worldPosition each frame
       anchor: Anchor.BottomCenter,     // pivot on the panel
     }));

@@ -56,7 +56,7 @@ vi.mock("pixi.js", () => ({ Container: mocks.MockContainer }));
 
 import { FloatingOverlay, FloatingOverlayKey } from "./floating.js";
 import { attachTooltip } from "./attachTooltip.js";
-import { UIPanel } from "./UIPanel.js";
+import { UISurface } from "./UISurface.js";
 import type { UIElement } from "./types.js";
 
 // A UIElement standing in for the laid-out tooltip content. Its yoga node
@@ -186,17 +186,18 @@ describe("attachTooltip", () => {
     expect(anchor.updateCalls).toBe(0);
   });
 
-  it("accepts a root UIPanel and anchors to its node", () => {
+  it("anchors an entity-mounted surface via its root panel", () => {
     const { scene } = makeScene(overlay);
-    // A UIPanel is a Component wrapping a PanelNode. Stand one in without a
-    // real Yoga/Pixi build (Object.create skips the constructor), then point
-    // its `_node` at our geometry stub so we can assert attachTooltip unwraps.
+    // A UISurface is a Component owning a root UIPanel element. Stand one in
+    // without a real Yoga/Pixi build (Object.create skips the constructor),
+    // then point its `root` at our geometry stub — a caller holding a
+    // surface passes `surface.root` as the anchor.
     const node = makeAnchor();
-    const panel = Object.create(UIPanel.prototype) as UIPanel;
-    (panel as unknown as { _node: UIElement })._node = node;
+    const surface = Object.create(UISurface.prototype) as UISurface;
+    (surface as unknown as { root: UIElement }).root = node;
     const content = makeContent(80, 24);
 
-    const tip = attachTooltip(panel, scene, {
+    const tip = attachTooltip(surface.root, scene, {
       content: () => content,
       placement: "bottom",
       offset: 6,
@@ -206,7 +207,7 @@ describe("attachTooltip", () => {
 
     const bubble = content.displayObject.parent!;
     expect(bubble.visible).toBe(true);
-    // Positioned from the node's 40×40 geometry — proof the panel was unwrapped:
+    // Positioned from the root's 40×40 geometry:
     // bottom placement y = ref.y(0) + ref.h(40) + offset(6) = 46.
     expect(bubble.position.y).toBe(46);
   });

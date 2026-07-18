@@ -2,7 +2,7 @@ import { Engine, Scene, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent, texture } from "@yagejs/renderer";
 import {
   UIPlugin,
-  UIPanel,
+  UISurface,
   UIImage,
   UIProgressBar,
   UICheckbox,
@@ -43,7 +43,7 @@ class UIExampleScene extends Scene {
     // ---- Main menu panel (builder API) ----
     const menuEntity = this.spawn("menu");
     const menu = menuEntity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.Center,
         direction: "column",
         gap: 12,
@@ -138,7 +138,7 @@ class UIExampleScene extends Scene {
     // ---- HUD panel in top-left ----
     const hudEntity = this.spawn("hud");
     const hud = hudEntity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 16, y: 16 },
         direction: "column",
@@ -206,7 +206,7 @@ class UIExampleScene extends Scene {
 
     const overflowEntity = this.spawn("overflow-demo");
     const overflowPanel = overflowEntity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.BottomRight,
         offset: { x: -16, y: -16 },
         direction: "column",

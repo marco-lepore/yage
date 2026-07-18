@@ -1,7 +1,7 @@
 import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./ui-theme.js";
 
@@ -55,7 +55,7 @@ class UILayersScene extends Scene {
 
     const hudEntity = this.spawn("hud-panel");
     const hud = hudEntity.add(
-      new UIPanel({
+      new UISurface({
         layer: "hud",
         anchor: Anchor.TopLeft,
         offset: { x: 16, y: 16 },
@@ -92,7 +92,7 @@ class UILayersScene extends Scene {
     // ---- Menu layer ----
     const menuEntity = this.spawn("menu-panel");
     const menuPanel = menuEntity.add(
-      new UIPanel({
+      new UISurface({
         layer: "menu",
         anchor: Anchor.Center,
         direction: "column",
@@ -132,7 +132,7 @@ class UILayersScene extends Scene {
     // ---- Dialog layer (highest z-order) ----
     const dialogEntity = this.spawn("dialog-panel");
     const dialogPanel = dialogEntity.add(
-      new UIPanel({
+      new UISurface({
         layer: "dialog",
         anchor: Anchor.Center,
         offset: { x: 0, y: -40 },

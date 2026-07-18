@@ -3,7 +3,7 @@
  *
  *   - Parallax via CameraBinding.translateRatio per layer.
  *   - World-space Scene.layers follow the camera; the "ui" layer (auto-
- *     provisioned by UIPanel as `space: "screen"`) stays fixed to the viewport.
+ *     provisioned by UISurface as `space: "screen"`) stays fixed to the viewport.
  *   - Stacked scene with its own CameraEntity — demonstrates that the debug
  *     overlay follows the topmost camera and that removing cameras resets
  *     layer transforms (no stale pan/zoom).
@@ -22,7 +22,7 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { UIPlugin, UIPanel, Anchor } from "@yagejs/ui";
+import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
 
@@ -125,11 +125,11 @@ class WorldScene extends Scene {
       }),
     );
 
-    // HUD — UIPanel auto-provisions the "ui" layer as `space: "screen"`,
+    // HUD — UISurface auto-provisions the "ui" layer as `space: "screen"`,
     // so it stays pinned to top-left as the world scrolls underneath.
     const hud = this.spawn("hud");
     const panel = hud.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 16, y: 16 },
         direction: "column",
@@ -255,7 +255,7 @@ class PauseScene extends Scene {
 
     const overlay = this.spawn("pause-overlay");
     const panel = overlay.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.Center,
         direction: "column",
         gap: 8,

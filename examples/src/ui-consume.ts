@@ -1,6 +1,6 @@
 /**
  * UI auto-consume demo: a `MouseLeft`-bound gameplay action firing in the
- * play area, with two UIPanels overlaid — one with the default
+ * play area, with two UISurfaces overlaid — one with the default
  * `consumeInput: true` (suppresses the action), one with
  * `consumeInput: false` (lets clicks pass through).
  *
@@ -30,7 +30,7 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputManagerKey, InputPlugin } from "@yagejs/input";
-import { Anchor, UIPanel, UIPlugin, UIText } from "@yagejs/ui";
+import { Anchor, UISurface, UIPlugin, UIText } from "@yagejs/ui";
 import { installDebugFromUrl, setupGameContainer } from "./shared.js";
 
 const WIDTH = 800;
@@ -165,7 +165,7 @@ class DemoScene extends Scene {
 
     // -- HUD --
     const hudPanel = this.spawn("hud").add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.BottomCenter,
         offset: { x: 0, y: -20 },
         padding: 10,
@@ -181,7 +181,7 @@ class DemoScene extends Scene {
 
     // -- Consume panel (top-left, default `consumeInput: true`) --
     const consumePanel = this.spawn("ui-consume").add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopLeft,
         offset: { x: 20, y: 20 },
         width: 220,
@@ -205,7 +205,7 @@ class DemoScene extends Scene {
 
     // -- Passthrough panel (top-right, `consumeInput: false`) --
     const passthroughPanel = this.spawn("ui-passthrough").add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.TopRight,
         offset: { x: -20, y: 20 },
         width: 220,

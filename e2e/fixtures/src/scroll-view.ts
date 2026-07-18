@@ -1,7 +1,7 @@
 import { Engine, Component, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
-import { UIPlugin, UIPanel, UIButton, Anchor } from "@yagejs/ui";
-import type { ScrollViewNode } from "@yagejs/ui";
+import { UIPlugin, UISurface, UIButton, Anchor } from "@yagejs/ui";
+import type { UIScrollView } from "@yagejs/ui";
 import { DebugPlugin } from "@yagejs/debug";
 import { injectStyles, setupContainer } from "./shared.js";
 
@@ -12,7 +12,7 @@ const container = setupContainer(360, 260);
 // driven by clicking the control buttons (federated pointer/click events are
 // the proven-reliable e2e input path — see ui-button.spec) rather than
 // synthetic wheel/drag; the wheel/drag handlers are unit-tested directly.
-let svNode: ScrollViewNode | null = null;
+let svNode: UIScrollView | null = null;
 let scrollBtn: UIButton | null = null;
 let endBtn: UIButton | null = null;
 let orderSeq = 0;
@@ -20,7 +20,7 @@ let orderSeq = 0;
 const CTRL_W = 110;
 const CTRL_H = 32;
 
-function fillOrders(sv: ScrollViewNode, n: number): void {
+function fillOrders(sv: UIScrollView, n: number): void {
   for (const c of [...sv.children]) sv.removeElement(c);
   for (let i = 0; i < n; i++) {
     orderSeq += 1;
@@ -71,7 +71,7 @@ class ScrollViewScene extends Scene {
     entity.add(new ScrollProbe());
 
     const panel = entity.add(
-      new UIPanel({
+      new UISurface({
         anchor: Anchor.Center,
         direction: "column",
         width: 260,

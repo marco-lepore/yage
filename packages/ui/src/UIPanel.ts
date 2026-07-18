@@ -1,4 +1,3 @@
-import { Component, Transform, serializable } from "@yagejs/core";
 import { Container, Rectangle } from "pixi.js";
 import type { TextStyle } from "@yagejs/renderer";
 import type { Node as YogaNode } from "yoga-layout";
@@ -10,31 +9,20 @@ import {
   Display,
 } from "yoga-layout";
 import { Align, Justify } from "yoga-layout";
-import {
-  SceneRenderTreeKey,
-  attachMask,
-  graphicsMask,
-} from "@yagejs/renderer";
+import { attachMask, graphicsMask } from "@yagejs/renderer";
 import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import { UIText } from "./UIText.js";
 import { UIButton } from "./UIButton.js";
-import { ScrollViewNode } from "./ScrollView.js";
-import {
-  UI_DEFAULT_LAYER,
-  UI_DEFAULT_LAYER_ORDER,
-  resolvePadding,
-} from "./types.js";
+import { UIScrollView } from "./UIScrollView.js";
+import { resolvePadding } from "./types.js";
 import type {
   BackgroundOptions,
   UIElement,
   UIContainerElement,
-  UIPanelOptions,
   UIButtonProps,
-  PanelProps,
-  PointerEventProps,
-  ScrollViewProps,
+  UIPanelProps,
+  UIScrollViewProps,
 } from "./types.js";
-import type { Anchor } from "./types.js";
 import {
   createYogaNode,
   applyLayoutProps,
@@ -66,15 +54,15 @@ const ALIGN_ITEMS_MAP: Record<string, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// PanelNode — Yoga-powered flex container
+// UIPanel — Yoga-powered flex container
 // ---------------------------------------------------------------------------
 
 /**
- * Internal panel node used by both root UIPanel (Component) and nested child panels.
- * Manages a Yoga container node, a PixiJS Container, optional background, and
- * an ordered list of UIElement children.
+ * Flex container element — both the root of a `UISurface`'s mounted tree and
+ * any nested child panel. Manages a Yoga container node, a PixiJS Container,
+ * optional background, and an ordered list of UIElement children.
  */
-export class PanelNode implements UIContainerElement {
+export class UIPanel implements UIContainerElement {
   readonly container: DisplayContainer;
   readonly yogaNode: YogaNode;
 
@@ -94,11 +82,11 @@ export class PanelNode implements UIContainerElement {
   // Container is only hit-tested where a descendant actually paints, so
   // without this `onHover`/`onClick`/`<Tooltip>` would silently die over any
   // region a child isn't covering (unless a full-bleed `background` happens
-  // to). Mirrors `ScrollViewNode`'s viewport hitArea. Reused, synced in
+  // to). Mirrors `UIScrollView`'s viewport hitArea. Reused, synced in
   // `applyLayout()`.
   private readonly _hitArea = new Rectangle(0, 0, 0, 0);
 
-  constructor(opts: PanelProps) {
+  constructor(opts: UIPanelProps) {
     this.container = new Container();
     this.container.hitArea = this._hitArea;
     this.yogaNode = createYogaNode();
@@ -169,15 +157,15 @@ export class PanelNode implements UIContainerElement {
   }
 
   /** Add a nested child panel. */
-  panel(opts?: PanelProps): PanelNode {
-    const p = new PanelNode(opts ?? {});
+  panel(opts?: UIPanelProps): UIPanel {
+    const p = new UIPanel(opts ?? {});
     this.addElement(p);
     return p;
   }
 
   /** Add a nested scrollable viewport. */
-  scrollView(opts?: ScrollViewProps): ScrollViewNode {
-    const sv = new ScrollViewNode(opts ?? {});
+  scrollView(opts?: UIScrollViewProps): UIScrollView {
+    const sv = new UIScrollView(opts ?? {});
     this.addElement(sv);
     return sv;
   }
@@ -231,7 +219,7 @@ export class PanelNode implements UIContainerElement {
   // Props-driven update (for reconciler)
   // ---------------------------------------------------------------------------
 
-  update(props: Partial<PanelProps>): void {
+  update(props: Partial<UIPanelProps>): void {
     this._applyProps(props);
     this.pointerEvents.set(props);
   }
@@ -248,7 +236,7 @@ export class PanelNode implements UIContainerElement {
    * visible overflow, no background, default input-consume) rather than
    * leaving the previous value in place.
    */
-  private _applyProps(p: Partial<PanelProps>): void {
+  private _applyProps(p: Partial<UIPanelProps>): void {
     if ("direction" in p) {
       this.yogaNode.setFlexDirection(
         p.direction === "row"
@@ -351,173 +339,4 @@ export class PanelNode implements UIContainerElement {
     this.yogaNode.free();
     this.container.destroy();
   }
-}
-
-// ---------------------------------------------------------------------------
-// UIPanel Component (root panel, attached to an entity)
-// ---------------------------------------------------------------------------
-
-/**
- * Root UI panel component. Added to an entity via entity.add(new UIPanel({...})).
- * Provides builder methods (.text(), .button(), .panel()) for constructing UI trees.
- * Layout is driven by UILayoutSystem each frame.
- */
-@serializable
-export class UIPanel extends Component {
-  /** @internal */ readonly _node: PanelNode;
-  /** @internal */ readonly _anchor: Anchor | undefined;
-  /** @internal */ readonly _offset: { x: number; y: number };
-  /** @internal */ readonly _layer: string | undefined;
-  /** @internal */ readonly _positioning: "anchor" | "transform";
-  private readonly _snapshot: UIPanelOptions;
-
-  constructor(opts?: UIPanelOptions) {
-    super();
-    this._node = new PanelNode(opts ?? {});
-    this._anchor = opts?.anchor;
-    this._offset = opts?.offset ?? { x: 0, y: 0 };
-    this._layer = opts?.layer;
-    this._positioning = opts?.positioning ?? "anchor";
-    this._snapshot = cloneUIPanelOptions(opts);
-  }
-
-  /** The PixiJS Container for this panel. */
-  get container(): DisplayContainer {
-    return this._node.container;
-  }
-
-  /**
-   * Set this panel's pointer / hover handlers (`onHover`, `onPointerOver`,
-   * `onPointerOut`) after construction — forwarded to the underlying node.
-   * (`update()` can't double as the prop setter here: on a `Component` it's
-   * the per-frame lifecycle hook the engine calls.) Like the element `update`,
-   * a present key replaces that handler and an absent key leaves it intact, so
-   * a partial `setPointerHandlers({ onHover })` won't drop the others. Handy
-   * for wiring `attachTooltip`: `panel.setPointerHandlers({ onHover: tip.setActive })`.
-   */
-  setPointerHandlers(handlers: PointerEventProps): void {
-    this._node.update(handlers);
-  }
-
-  /** Add a text element. */
-  text(content: string, style?: Partial<TextStyle>): UIText {
-    return this._node.text(content, style);
-  }
-
-  /** Add a button element. */
-  button(label: string, opts: Omit<UIButtonProps, "children">): UIButton {
-    return this._node.button(label, opts);
-  }
-
-  /** Add a nested child panel. */
-  panel(opts?: PanelProps): PanelNode {
-    return this._node.panel(opts);
-  }
-
-  /** Add a nested scrollable viewport. */
-  scrollView(opts?: ScrollViewProps): ScrollViewNode {
-    return this._node.scrollView(opts);
-  }
-
-  /**
-   * Append an arbitrary `UIElement` (e.g. `UIImage`, `UIProgressBar`,
-   * `UICheckbox`) as the last child. Prefer the `.text()`, `.button()`,
-   * and `.panel()` builders for those element types — they're shorter.
-   */
-  addElement(child: UIElement): void {
-    this._node.addElement(child);
-  }
-
-  /** Remove a previously added element. No-op if the element isn't a child. */
-  removeElement(child: UIElement): void {
-    this._node.removeElement(child);
-  }
-
-  /**
-   * Insert `child` immediately before `before` in this panel's child list.
-   * Falls back to append if `before` isn't a current child.
-   */
-  insertElementBefore(child: UIElement, before: UIElement): void {
-    this._node.insertElementBefore(child, before);
-  }
-
-  /** Whether this panel is visible. */
-  get visible(): boolean {
-    return this._node.visible;
-  }
-
-  set visible(v: boolean) {
-    this._node.visible = v;
-  }
-
-  onAdd(): void {
-    const tree = this.use(SceneRenderTreeKey);
-    const layerName = this._layer ?? UI_DEFAULT_LAYER;
-    let layer = tree.tryGet(layerName);
-    if (!layer) {
-      if (this._layer && this._layer !== UI_DEFAULT_LAYER) {
-        throw new Error(
-          `UIPanel: layer "${this._layer}" not declared on scene "${this.scene.name}".`,
-        );
-      }
-      // Auto-provision the default "ui" layer on first use so a bare
-      // `new UIPanel()` works without any scene layer wiring. Screen-space
-      // keeps the HUD fixed under the default camera.
-      layer = tree.ensureLayer(
-        { name: UI_DEFAULT_LAYER, order: UI_DEFAULT_LAYER_ORDER },
-        { space: "screen" },
-      );
-    }
-
-    // `positioning: "transform"` reads `entity.get(Transform).worldPosition`
-    // each frame — fail fast if the entity doesn't have one.
-    if (this._positioning === "transform" && !this.entity.tryGet(Transform)) {
-      throw new Error(
-        `UIPanel with positioning: "transform" requires a Transform on the entity.`,
-      );
-    }
-
-    layer.container.eventMode = "static";
-    layer.container.addChild(this._node.container);
-  }
-
-  onDestroy(): void {
-    this._node.container.removeFromParent();
-    this._node.destroy();
-  }
-
-  serialize(): UIPanelOptions {
-    return cloneUIPanelOptions(this._snapshot);
-  }
-
-  static fromSnapshot(data: UIPanelOptions): UIPanel {
-    return new UIPanel(cloneUIPanelOptions(data));
-  }
-}
-
-function cloneUIPanelOptions(opts?: UIPanelOptions): UIPanelOptions {
-  if (!opts) return {};
-  const clone: UIPanelOptions = { ...opts };
-  if (opts.offset) clone.offset = { ...opts.offset };
-  if (opts.padding !== undefined) {
-    clone.padding =
-      typeof opts.padding === "number" ? opts.padding : { ...opts.padding };
-  }
-  if (opts.margin !== undefined) {
-    clone.margin =
-      typeof opts.margin === "number" ? opts.margin : { ...opts.margin };
-  }
-  if (opts.background) {
-    const bg = { ...opts.background };
-    // TextureBackground.nineSlice / tileScale can be objects; deep-copy them
-    // so mutations to the clone don't leak back into the original options.
-    if ("nineSlice" in bg && bg.nineSlice && typeof bg.nineSlice === "object") {
-      bg.nineSlice = { ...bg.nineSlice };
-    }
-    if ("tileScale" in bg && bg.tileScale && typeof bg.tileScale === "object") {
-      bg.tileScale = { ...bg.tileScale };
-    }
-    clone.background = bg;
-  }
-  return clone;
 }

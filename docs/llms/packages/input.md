@@ -237,9 +237,9 @@ Per-component escape hatch via `consumeInput?: boolean` (default `true`):
 
 ```tsx
 // React
-<UIPanel consumeInput={false}>
+<Panel consumeInput={false}>
   {/* This panel is transparent to the action map; clicks pass through. */}
-</UIPanel>
+</Panel>
 
 // Imperative
 new UIPanel({ consumeInput: false, /* … */ });

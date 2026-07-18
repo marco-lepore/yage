@@ -25,7 +25,7 @@ export interface FloatConfig {
  * the overlay re-anchors it to `getReference()` every frame and asks the
  * owner-supplied `setLayout` callback for the content's shrink-to-content
  * size — so the overlay stays agnostic of how that content is built (React
- * reconciler tree, hand-built `PanelNode`s, …).
+ * reconciler tree, hand-built `UIPanel`s, …).
  */
 export interface FloatingHandle {
   readonly container: DisplayContainer;

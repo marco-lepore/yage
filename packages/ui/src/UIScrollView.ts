@@ -7,9 +7,9 @@ import type { DisplayContainer, MaskHandle } from "@yagejs/renderer";
 import type {
   BackgroundOptions,
   Padding,
-  PanelProps,
+  UIPanelProps,
   ScrollbarOptions,
-  ScrollViewProps,
+  UIScrollViewProps,
   UIContainerElement,
   UIElement,
 } from "./types.js";
@@ -18,7 +18,7 @@ import {
   applyLayoutProps,
   exemptFromOverflowWarning,
 } from "./yoga-helpers.js";
-import { PanelNode } from "./UIPanel.js";
+import { UIPanel } from "./UIPanel.js";
 import { BackgroundRenderer } from "./background-renderer.js";
 import { applyConsumeInput, clearConsumeInput } from "./consume-input.js";
 
@@ -64,15 +64,15 @@ function resolveScrollbar(
  * Unlike the imperative `@pixi/ui` wrappers, this is a true
  * `UIContainerElement`: children are first-class Yoga nodes laid out by the
  * existing layout pass, so it works identically via the React reconciler
- * (`<ScrollView>`), the `PanelNode` builder (`.scrollView()`), or direct
+ * (`<ScrollView>`), the `UIPanel` builder (`.scrollView()`), or direct
  * `addElement`. Content overflowing the viewport on the scroll axis is
  * clipped by a mask and panned by a wheel/drag-driven offset that survives
  * re-renders (the node instance is stable; only children are diffed).
  */
-export class ScrollViewNode implements UIContainerElement {
+export class UIScrollView implements UIContainerElement {
   readonly yogaNode: YogaNode;
   private readonly viewport: Container;
-  private readonly content: PanelNode;
+  private readonly content: UIPanel;
   private vertical: boolean;
   private scrollbarGfx: Graphics | undefined;
   private _sb: ResolvedScrollbar;
@@ -107,7 +107,7 @@ export class ScrollViewNode implements UIContainerElement {
     return this.viewport;
   }
 
-  constructor(props: ScrollViewProps) {
+  constructor(props: UIScrollViewProps) {
     this.vertical = (props.direction ?? "vertical") === "vertical";
     this._sb = resolveScrollbar(props.scrollbar);
     this.onScroll = props.onScroll;
@@ -138,7 +138,7 @@ export class ScrollViewNode implements UIContainerElement {
     );
     this._applyGutter();
 
-    this.content = new PanelNode({
+    this.content = new UIPanel({
       direction: this.vertical ? "column" : "row",
       ...(props.gap !== undefined ? { gap: props.gap } : {}),
       ...(props.padding !== undefined ? { padding: props.padding } : {}),
@@ -399,7 +399,7 @@ export class ScrollViewNode implements UIContainerElement {
     this.yogaNode.setDisplay(v ? Display.Flex : Display.None);
   }
 
-  update(props: Partial<ScrollViewProps>): void {
+  update(props: Partial<UIScrollViewProps>): void {
     if ("onScroll" in props) this.onScroll = props.onScroll;
     if ("scrollbar" in props) {
       this._sb = resolveScrollbar(props.scrollbar);
@@ -440,9 +440,9 @@ export class ScrollViewNode implements UIContainerElement {
     if (Object.keys(contentUpdate).length > 0) {
       // Cast: `contentUpdate` may carry an explicit `undefined` (a removed
       // gap/padding, forwarded as a reset) which `exactOptionalPropertyTypes`
-      // doesn't allow through `Partial<PanelProps>`'s plain `gap?: number`.
-      // PanelNode.update() reads presence, not the static type, so this is safe.
-      this.content.update(contentUpdate as Partial<PanelProps>);
+      // doesn't allow through `Partial<UIPanelProps>`'s plain `gap?: number`.
+      // UIPanel.update() reads presence, not the static type, so this is safe.
+      this.content.update(contentUpdate as Partial<UIPanelProps>);
     }
 
     applyLayoutProps(this.yogaNode, props);

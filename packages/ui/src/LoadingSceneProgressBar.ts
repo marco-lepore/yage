@@ -6,7 +6,7 @@ import {
   serializable,
 } from "@yagejs/core";
 import { RendererKey } from "@yagejs/renderer";
-import { UIPanel } from "./UIPanel.js";
+import { UISurface } from "./UISurface.js";
 import { UIProgressBar } from "./UIProgressBar.js";
 import { Anchor } from "./types.js";
 import type { BackgroundOptions } from "./types.js";
@@ -84,7 +84,7 @@ export class LoadingSceneProgressBar extends Entity {
         .virtualSize;
       backdropEntity = scene.spawn("__loading-backdrop__");
       backdropEntity.add(
-        new UIPanel({
+        new UISurface({
           anchor: Anchor.TopLeft,
           width: vw,
           height: vh,
@@ -95,7 +95,7 @@ export class LoadingSceneProgressBar extends Entity {
     }
 
     const panel = this.add(
-      new UIPanel({
+      new UISurface({
         anchor: opts.anchor ?? Anchor.Center,
         ...(opts.offset ? { offset: opts.offset } : {}),
         ...(opts.layer ? { layer: opts.layer } : {}),

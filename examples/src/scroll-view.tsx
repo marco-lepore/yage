@@ -150,9 +150,9 @@ main().catch(console.error);
 
 // ---------------------------------------------------------------------------
 // Non-React (imperative) equivalent — the same node is available without the
-// reconciler via the PanelNode `.scrollView()` builder:
+// reconciler via the UIPanel `.scrollView()` builder:
 //
-//   const panel = entity.add(new UIPanel({ width: 300, height: 220 }));
+//   const panel = entity.add(new UISurface({ width: 300, height: 220 }));
 //   const list = panel.scrollView({ gap: 6, flexGrow: 1 });
 //   for (const o of orders) {
 //     const row = new UIButton({ children: o.label, height: 36 });

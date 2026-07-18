@@ -39,9 +39,9 @@ import type { EffectHandle, MaskHandle } from "@yagejs/renderer";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
 import {
   UIPlugin,
-  UIPanel,
+  UISurface,
   UIButton,
-  PanelNode,
+  UIPanel,
   Anchor,
   type ColorBackground,
 } from "@yagejs/ui";
@@ -387,13 +387,13 @@ class ShowcaseScene extends Scene {
     if (!tree) throw new Error("scene render tree not yet attached");
     const renderer = this.context.resolve(RendererKey);
 
-    // The sidebar entity carries the root UIPanel. We rebuild it on every
+    // The sidebar entity carries the root UISurface. We rebuild it on every
     // call (initial + afterRestore) — entities and their UI are scene-owned
     // so they're already recreated by the snapshot pipeline; we just need
     // to repopulate the toggle handle map.
     const sidebarEntity = this.spawn("effects-sidebar");
     const sidebar = sidebarEntity.add(
-      new UIPanel({
+      new UISurface({
         layer: "ui",
         anchor: Anchor.TopRight,
         offset: { x: -8, y: 8 },
@@ -422,7 +422,7 @@ class ShowcaseScene extends Scene {
       gap: 4,
     });
     activeScroller = scroller;
-    activeSidebar = sidebar._node;
+    activeSidebar = sidebar.root;
     // After a rebuild (initial spawn or afterRestore), reset scroll so the
     // newly-built panel starts at the top.
     sidebarScrollY = 0;
@@ -433,7 +433,7 @@ class ShowcaseScene extends Scene {
     // visibility. Without this the full preset list overflows the canvas.
     // `defaultOpen=false` for everything except the first section keeps the
     // initial paint short; users expand whichever scope they want.
-    const section = (title: string, defaultOpen = false): PanelNode => {
+    const section = (title: string, defaultOpen = false): UIPanel => {
       let isOpen = defaultOpen;
       const headerBtn = scroller.button(`${isOpen ? "▼" : "▶"} ${title}`, {
         height: 22,
@@ -454,11 +454,11 @@ class ShowcaseScene extends Scene {
         padding: { left: 4 },
         visible: isOpen,
       });
-      return inner as PanelNode;
+      return inner as UIPanel;
     };
 
     const mkToggle = (
-      host: PanelNode,
+      host: UIPanel,
       label: string,
       key: string,
       attach: () => EffectHandle,
@@ -486,7 +486,7 @@ class ShowcaseScene extends Scene {
     };
 
     const mkAction = (
-      host: PanelNode,
+      host: UIPanel,
       label: string,
       onClick: () => void,
       bg: ColorBackground = BTN_ACCENT,
@@ -768,10 +768,10 @@ class ShowcaseScene extends Scene {
 
 // Module-level state for the sidebar scroller. `buildPanel` rewires these
 // each time it runs (initial spawn + every load), so the wheel handler in
-// `main()` always operates on the live PanelNodes — no per-scene listener
+// `main()` always operates on the live UIPanels — no per-scene listener
 // teardown needed across save/load.
-let activeScroller: PanelNode | null = null;
-let activeSidebar: PanelNode | null = null;
+let activeScroller: UIPanel | null = null;
+let activeSidebar: UIPanel | null = null;
 let sidebarScrollY = 0;
 
 async function main(): Promise<void> {
