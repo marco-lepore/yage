@@ -401,6 +401,12 @@ export class DialogueSession {
   /** The full {@link PresentedLine} on screen — handed to an extra channel's
    *  `revealComplete` (the session discards the local `line` after present). */
   private currentPresented: PresentedLine | undefined;
+  /** Speaker of the on-screen line/choice — retained so {@link retranslate}
+   *  can re-resolve the nameplate (speaker names are i18n-resolved too). */
+  private currentSpeaker: LoadedSpeaker | undefined;
+  /** The {@link ChoiceStep} on screen while choosing — retained so
+   *  {@link retranslate} can re-resolve the prompt. */
+  private choosingStep: ChoiceStep | undefined;
 
   /** Host-registered extra channels (Voice / Shop / CameraEffects / History).
    *  The session fans its cross-cutting stream to these alongside the typed trio
@@ -1058,11 +1064,107 @@ export class DialogueSession {
     }
   }
 
+  /**
+   * Re-resolve the on-screen text through the i18n adapter and re-present it —
+   * the locale-change hook (the controller wires it to the engine localization
+   * revision; a game with a custom adapter calls it after switching language).
+   *
+   * Semantics: the say-line typewriter restarts on the retranslated text (and
+   * reveal-completion hooks fire again when it finishes); the afterReveal
+   * command latch is NOT reset, so line commands never re-fire; no
+   * `onLine`/`onChoiceShown` observation is re-emitted; extras (voice /
+   * history) are not re-presented, so audio keeps playing; a choice keeps its
+   * highlighted row. Idle is a no-op.
+   */
+  retranslate(): void {
+    if (this.mode === "saying" && this.saying) {
+      const step = this.saying;
+      const speaker = this.currentSpeaker;
+      const view = this.readView();
+      const resolved = this.i18n.t(step.key, step.text, view);
+      const line: PresentedLine = {
+        speaker: this.speakerView(speaker, view),
+        text: parseMarkup(resolved),
+        speed: step.speed ?? 1,
+        view: step.view,
+        meta: step.meta,
+        voice: step.voice,
+      };
+      // Restarting the reveal: hide the caret and disarm auto-advance; the
+      // retranslated line's own reveal-completion re-arms both.
+      this.channels.chrome?.setContinueVisible(false);
+      this.autoTimer = undefined;
+      this.channels.chrome?.setNameplate(
+        this.speakerName(speaker, view),
+        speaker?.color,
+      );
+      this.channels.chrome?.present?.(line);
+      this.channels.text.present(line);
+      this.currentPresented = line;
+      this.currentLine = {
+        speaker: this.speakerName(speaker, view),
+        text: stripMarkup(resolved),
+      };
+      return;
+    }
+    if (this.mode === "choosing" && this.choosingStep) {
+      const step = this.choosingStep;
+      const speaker = this.currentSpeaker;
+      const view = this.readView();
+      const line: PresentedLine = {
+        speaker: this.speakerView(speaker, view),
+        text: step.text
+          ? parseMarkup(this.i18n.t(step.key, step.text, view))
+          : EMPTY_PARSED,
+        speed: 1,
+        view: step.view,
+        meta: step.meta,
+      };
+      const ctx: ChoiceContext = {
+        view: step.view,
+        speaker: line.speaker,
+        prompt: line.text,
+        meta: step.meta,
+      };
+      // Reuse the layout decision recorded by handleChoice (ownsPrompt may be
+      // stateful — don't re-ask). A presenter-owned prompt reaches the
+      // presenter through ctx.prompt below.
+      if (this.choiceShowsChrome) {
+        this.channels.chrome?.setNameplate(
+          this.speakerName(speaker, view),
+          speaker?.color,
+        );
+        this.channels.chrome?.present?.(line);
+        if (this.choiceShowsBody) this.channels.text.present(line);
+      }
+      const presented: PresentedChoice[] = this.resolved.map((c) => ({
+        label: stripMarkup(this.i18n.t(c.option.key, c.option.text, view)),
+        meta: c.option.meta,
+        disabled: c.disabled,
+        disabledReason:
+          c.disabled && c.option.disabledReason !== undefined
+            ? stripMarkup(
+                this.i18n.t(
+                  c.option.key !== undefined
+                    ? `${c.option.key}.disabledReason`
+                    : undefined,
+                  c.option.disabledReason,
+                  view,
+                ),
+              )
+            : undefined,
+      }));
+      this.channels.choices.present(presented, ctx);
+      this.channels.choices.highlight(this.selected);
+    }
+  }
+
   // ── runner handlers ─────────────────────────────────────────────────────
 
   private handleSay(step: SayStep, speaker: LoadedSpeaker | undefined): void {
     this.mode = "saying";
     this.saying = step;
+    this.currentSpeaker = speaker;
     this.autoTimer = undefined;
     this.advanceFired = false;
     this.afterRevealFired = false;
@@ -1129,6 +1231,8 @@ export class DialogueSession {
   ): void {
     this.mode = "choosing";
     this.resolved = choices;
+    this.choosingStep = step;
+    this.currentSpeaker = speaker;
     // Start on the first ENABLED row. The runner skips a step with zero
     // selectable rows, so one always exists — assert it rather than silently
     // masking a regression (a -1 would seed the highlight on a disabled row).

@@ -2059,3 +2059,88 @@ describe("DialogueSession — line-driven avatar", () => {
     expect(h.avatar.presents.at(-1)).toBeUndefined(); // cleared its inset
   });
 });
+
+describe("DialogueSession — retranslate", () => {
+  /** Adapter with a switchable locale over per-locale key tables. */
+  function switchableI18n(tables: Record<string, Record<string, string>>) {
+    const adapter = {
+      locale: "en",
+      t(
+        key: string | undefined,
+        fallback: string,
+        params?: Readonly<Record<string, unknown>>,
+      ): string {
+        void params;
+        return (key && tables[adapter.locale]?.[key]) || fallback;
+      },
+    };
+    return adapter;
+  }
+
+  const sayScript: DialogueScript = {
+    id: "rt-say",
+    start: "a",
+    nodes: {
+      a: { id: "a", steps: [{ kind: "say", key: "greet", text: "Hello" }] },
+    },
+  };
+
+  it("re-presents the current say line in the new locale without re-emitting onLine", () => {
+    const onLine = vi.fn();
+    const i18n = switchableI18n({ it: { greet: "Ciao" } });
+    const h = makeHarness({ onLine, i18n });
+    h.session.play(sayScript);
+    expect(h.text.lastText).toBe("Hello");
+    expect(onLine).toHaveBeenCalledTimes(1);
+
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.text.lastText).toBe("Ciao");
+    // Observation is not re-emitted; the reveal restarts (caret re-hidden).
+    expect(onLine).toHaveBeenCalledTimes(1);
+    expect(h.chrome.continueVisible.at(-1)).toBe(false);
+  });
+
+  it("re-presents choices in the new locale preserving the highlighted row", () => {
+    const onChoiceShown = vi.fn();
+    const i18n = switchableI18n({
+      it: { l: "Sinistra", r: "Destra", "r.disabledReason": "Serve la chiave" },
+    });
+    const h = makeHarness({ onChoiceShown, i18n });
+    h.session.play({
+      id: "rt-choice",
+      start: "a",
+      nodes: {
+        a: {
+          id: "a",
+          steps: [
+            {
+              kind: "choice",
+              options: [
+                { key: "l", text: "Left", target: "L" },
+                { key: "r", text: "Right", target: "L" },
+              ],
+            },
+          ],
+        },
+        L: { id: "L", steps: [{ kind: "say", text: "done" }] },
+      },
+    });
+    h.session.moveSelection(1);
+    expect(h.choices.lastLabels).toEqual(["Left", "Right"]);
+    expect(onChoiceShown).toHaveBeenCalledTimes(1);
+
+    i18n.locale = "it";
+    h.session.retranslate();
+    expect(h.choices.lastLabels).toEqual(["Sinistra", "Destra"]);
+    expect(h.choices.highlights.at(-1)).toBe(1); // selection preserved
+    expect(onChoiceShown).toHaveBeenCalledTimes(1); // not re-emitted
+  });
+
+  it("is a no-op while idle", () => {
+    const h = makeHarness();
+    h.session.retranslate();
+    expect(h.text.presented).toHaveLength(0);
+    expect(h.choices.presented).toHaveLength(0);
+  });
+});
