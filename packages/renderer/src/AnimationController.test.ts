@@ -395,4 +395,12 @@ describe("AnimationController", () => {
       expect(restored.speed).toBe(1.5);
     });
   });
+
+  describe("restore ordering", () => {
+    it("restores the sprite before the controller whose onAdd() drives it", () => {
+      expect(AnimatedSpriteComponent.restorePriority).toBeLessThan(
+        AnimationController.restorePriority,
+      );
+    });
+  });
 });

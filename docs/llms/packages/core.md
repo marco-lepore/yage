@@ -322,6 +322,8 @@ a dropped promise can hide errors). Production builds suppress the warning.
 | `SerializableRegistry` | Auto-populated registry of decorated classes |
 | `SnapshotResolver` | Maps old entity IDs to restored instances in `afterRestore()` |
 
+`static restorePriority?: number` on a Component subclass sets its snapshot restore order: components are re-added in ascending priority on load (undeclared = 100, the engine reserves 0-99), so an `onAdd()` that reads a sibling declares a higher number than that sibling. Ties restore in save-time add order; subclasses inherit the base class's value.
+
 ### Traits
 
 | Export | Purpose |

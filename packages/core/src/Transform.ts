@@ -13,6 +13,8 @@ export interface TransformData {
 /** Mutable transform component for entity positioning. */
 @serializable
 export class Transform extends Component {
+  static restorePriority = 0;
+
   // Private backing fields
   private _position: Vec2;
   private _rotation: number;

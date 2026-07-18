@@ -228,6 +228,10 @@ without knowing internals.
 resurrects spent "once"-choices after a load. Restoring mid-line re-presents the
 current line.
 
+An addon `@serializable` Component whose `onAdd()` depends on a sibling declares
+`static restorePriority` above the sibling's (undeclared = 100; the engine
+reserves 0-99) so the sibling is re-added first on snapshot restore.
+
 For the dialogue addon this is **deferred to v1.1**: do not build snapshot/restore
 now, but keep the runner cursor reachable through read-only getters (`getVars`
 exists; `getNodeId`/`getStepIndex`/`getChosenOnce`) so the contributor is purely

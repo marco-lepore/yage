@@ -354,6 +354,20 @@ class MovingSpike extends Component {
 }
 ```
 
+## Restore order
+
+On load, each entity's components are re-added in ascending `static restorePriority` (declared on the component class; undeclared = 100, and the engine reserves 0-99). Engine bands: `Transform` 0, `RigidBodyComponent` 10, `ColliderComponent` 20, visual components 30, `AnimationController` 40, `SoundComponent`/`ParticleEmitterComponent`/`TilemapComponent` 50 — so engine components exist before an undeclared game component's `onAdd()` runs. Ties restore in save-time add order. A game component whose `onAdd()` reads a sibling declares a number above that sibling's:
+
+```ts
+@serializable
+class HealthBar extends Component {
+  static restorePriority = 110; // after the default band (100)
+  onAdd() {
+    this.entity.get(HealthComponent); // safe: restored earlier
+  }
+}
+```
+
 ## afterRestore hooks
 
 Re-create non-serializable state (draw callbacks, event listeners):

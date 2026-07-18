@@ -89,6 +89,9 @@ export interface VisualComponentData {
  * constructor since `renderObject` isn't assigned yet at that point.
  */
 export abstract class VisualComponent extends Component {
+  // Inherited by every visual subclass.
+  static restorePriority = 30;
+
   /** The underlying Pixi display object. */
   abstract readonly renderObject: DisplayContainer;
   readonly layerName: string;

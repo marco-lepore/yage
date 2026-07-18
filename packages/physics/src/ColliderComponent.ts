@@ -17,6 +17,9 @@ export interface ColliderData {
  */
 @serializable
 export class ColliderComponent extends Component {
+  // onAdd() attaches to the sibling RigidBodyComponent's body handle.
+  static restorePriority = 20;
+
   /** Collider configuration (shape, sensor, etc.). */
   readonly config: ColliderConfig;
 

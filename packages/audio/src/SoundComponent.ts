@@ -5,6 +5,8 @@ import { AudioManagerKey, type SoundComponentOptions, type SoundData } from "./t
 /** Entity-bound audio component that delegates playback to AudioManager. */
 @serializable
 export class SoundComponent extends Component {
+  static restorePriority = 50;
+
   private readonly _alias: string;
   private readonly _channel: string;
   private readonly _loop: boolean;

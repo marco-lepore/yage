@@ -19,22 +19,8 @@ import type {
 /** Current snapshot format version. */
 const SNAPSHOT_VERSION = 4;
 
-/**
- * Component restoration priority. Components listed here are added first
- * (in order) to satisfy onAdd() dependencies.
- */
-const COMPONENT_ORDER = [
-  "Transform",
-  "RigidBodyComponent",
-  "ColliderComponent",
-  "SpriteComponent",
-  "GraphicsComponent",
-  "AnimatedSpriteComponent",
-  "AnimationController",
-  "SoundComponent",
-  "ParticleEmitterComponent",
-  "TilemapComponent",
-];
+/** Restore priority for components whose class declares no `restorePriority`. */
+const DEFAULT_RESTORE_PRIORITY = 100;
 
 /** Orchestrates full game-state serialization and hydration. */
 export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
@@ -434,11 +420,20 @@ export class SnapshotService<TSlots extends UntypedSlots = UntypedSlots> {
     entity: Entity,
     snapshots: ComponentSnapshot[],
   ): Array<{ component: Component; data: unknown }> {
-    const sorted = [...snapshots].sort((a, b) => {
-      const ai = COMPONENT_ORDER.indexOf(a.type);
-      const bi = COMPONENT_ORDER.indexOf(b.type);
-      return (ai >= 0 ? ai : 999) - (bi >= 0 ? bi : 999);
-    });
+    // Sort by each component class's declared `restorePriority` so that a
+    // component's onAdd() can rely on lower-priority siblings being present.
+    // The stable sort keeps equal priorities in save-time add order.
+    const withPriority = snapshots.map((snap) => ({
+      snap,
+      priority:
+        (
+          SerializableRegistry.get(snap.type) as
+            | Pick<typeof Component, "restorePriority">
+            | undefined
+        )?.restorePriority ?? DEFAULT_RESTORE_PRIORITY,
+    }));
+    withPriority.sort((a, b) => a.priority - b.priority);
+    const sorted = withPriority.map((entry) => entry.snap);
 
     const restored: Array<{ component: Component; data: unknown }> = [];
 

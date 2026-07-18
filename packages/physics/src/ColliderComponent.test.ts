@@ -553,4 +553,15 @@ describe("ColliderComponent", () => {
       expect(entity.has(GroundSensor)).toBe(true);
     });
   });
+
+  describe("restore ordering", () => {
+    it("declares priorities matching the Transform → RigidBody → Collider onAdd() chain", () => {
+      expect(Transform.restorePriority).toBeLessThan(
+        RigidBodyComponent.restorePriority,
+      );
+      expect(RigidBodyComponent.restorePriority).toBeLessThan(
+        ColliderComponent.restorePriority,
+      );
+    });
+  });
 });

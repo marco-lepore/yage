@@ -216,6 +216,18 @@ export abstract class Component {
    */
   fixedUpdate?(dt: number): void;
 
+  /**
+   * Snapshot restore order. On load, an entity's components are re-added in
+   * ascending priority, so a component whose `onAdd()` reads a sibling can
+   * rely on lower-priority siblings being present and initialized.
+   * Undeclared = 100. Engine components reserve 0-99; game and addon
+   * components declare a value only when a sibling `onAdd()` dependency
+   * requires it. Equal priorities restore in save-time add order.
+   * Subclasses inherit their base class's priority unless they declare
+   * their own.
+   */
+  declare static restorePriority?: number;
+
   /** Return a JSON-serializable snapshot of this component's state. Used by the save system. */
   serialize?(): unknown;
 
