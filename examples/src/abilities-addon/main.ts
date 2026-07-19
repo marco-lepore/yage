@@ -100,6 +100,7 @@ import {
   Entity,
   Process,
   ProcessComponent,
+  SceneManagerKey,
   SceneTimeKey,
   Scene,
   Transform,
@@ -2231,7 +2232,9 @@ class PlayerController extends Component {
    *  beyond what `SceneManager.replace` already guarantees (old scene
    *  `onExit` + every entity destroyed before the new scene enters). */
   private resetDemo(): void {
-    engine.scenes.replace(new AbilitiesDemoScene()).catch(() => {});
+    this.use(SceneManagerKey)
+      .replace(new AbilitiesDemoScene())
+      .catch(() => {});
   }
 
   /** Replace the definitions and the input driver as one game-owned loadout. */
@@ -3103,13 +3106,8 @@ const deadBanner = document.createElement("div");
 deadBanner.id = "dead-banner";
 deadBanner.innerHTML = `You Died<div style="font-size:0.9rem;color:#94a3b8;margin-top:0.4rem">Reload to try again</div>`;
 
-// Module-scope so `PlayerController.resetDemo` (a class declared above this
-// point, closing over `engine` only at call time — after `main` has already
-// assigned it) can reach `engine.scenes.replace(...)`.
-let engine: Engine;
-
 async function main(): Promise<void> {
-  engine = new Engine({ debug: true });
+  const engine = new Engine({ debug: true });
 
   const container = setupGameContainer(WIDTH, HEIGHT);
   container.appendChild(deadBanner);
