@@ -34,9 +34,13 @@ class PortalSelect extends Select {
   /** Notified after every open/close with the resulting open state. */
   onOpenChange: ((open: boolean) => void) | undefined;
   private _portalHost: Container | null = null;
+  /** The dropdown's child index in the Select, captured before portaling. */
+  private _originalIndex = 0;
 
-  // The buttons call `toggle()` directly (not `open`/`close`), so hook all
-  // three to catch every path to a state change.
+  // `Select.toggle()` sets `view.visible` directly and doesn't delegate to
+  // `open`/`close`, so all three are hooked to catch every path. If a future
+  // `toggle()` ever delegated, `onOpenChange` would fire twice — harmless,
+  // since `portalDropdown`/`restoreDropdown` are idempotent.
   override toggle(): void {
     super.toggle();
     this.onOpenChange?.(this.view.visible);
@@ -63,7 +67,11 @@ class PortalSelect extends Select {
       .clone()
       .invert()
       .append(this.worldTransform);
-    host.sortableChildren = true;
+    // Appended last, `view` already draws on top of the stage's other children;
+    // the high zIndex only matters if something else put the stage in sorted
+    // mode. Don't force `sortableChildren` — that would leave the stage sorting
+    // on every tick for the app's lifetime.
+    this._originalIndex = this.getChildIndex(this.view);
     this.view.zIndex = DROPDOWN_Z;
     host.addChild(this.view);
     this.view.setFromMatrix(local);
@@ -80,8 +88,7 @@ class PortalSelect extends Select {
     this.view.position.set(0, 0);
     this.view.scale.set(1, 1);
     this.view.rotation = 0;
-    // `view` is the Select's first child (added before `openButton`).
-    this.addChildAt(this.view, 0);
+    this.addChildAt(this.view, this._originalIndex);
   }
 }
 
