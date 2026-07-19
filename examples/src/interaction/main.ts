@@ -37,9 +37,8 @@ import {
   InteractionInRangeChangedEvent,
   Interactor,
 } from "@yagejs-addons/interaction";
-import { injectStyles, setupGameContainer } from "../shared/bootstrap.js";
+import { setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;

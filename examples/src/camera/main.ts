@@ -6,9 +6,8 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 // ---------------------------------------------------------------------------
 // PlayerController — moves with WASD, triggers shake/zoom

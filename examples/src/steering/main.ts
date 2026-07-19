@@ -23,9 +23,8 @@ import {
 } from "@yagejs-addons/steering";
 import { avoidColliders, PhysicsSteeringAgent } from "@yagejs-addons/steering/physics";
 import type { Kinematic, SteeringAgentOptions, SteeringBehavior } from "@yagejs-addons/steering";
-import { injectStyles, setupGameContainer } from "../shared/bootstrap.js";
+import { setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 const WIDTH = 900;
 const HEIGHT = 600;

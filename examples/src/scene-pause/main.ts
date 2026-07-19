@@ -15,10 +15,9 @@ import { PhysicsPlugin, RigidBodyComponent, ColliderComponent } from "@yagejs/ph
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "../shared/ui-theme.js";
 
-injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;

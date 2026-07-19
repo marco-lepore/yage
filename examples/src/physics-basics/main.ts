@@ -8,9 +8,8 @@ import {
 } from "@yagejs/physics";
 import type { PhysicsWorld } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;

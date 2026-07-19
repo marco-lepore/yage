@@ -17,13 +17,12 @@ import {
   Anchor,
 } from "@yagejs/ui-react";
 import type { Placement } from "@yagejs/ui-react";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 import {
   textStyle, allAssets, defaultTextStyle, nineSliceBtnReact, panelBg,
   sprites as S, nineSlice,
 } from "../shared/ui-theme";
 
-injectStyles();
 
 // ---------------------------------------------------------------------------
 // Additional assets for this example

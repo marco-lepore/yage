@@ -1,8 +1,7 @@
 import { Engine, Component, Scene, Transform, Vec2 } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 // ---------------------------------------------------------------------------
 // Spin — rotates an entity at a constant rate

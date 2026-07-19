@@ -7,9 +7,8 @@ import {
 } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "../shared/bootstrap.js";
+import { setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;

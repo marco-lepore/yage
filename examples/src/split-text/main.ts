@@ -10,12 +10,11 @@ import {
   SplitTextComponent,
   TextComponent,
 } from "@yagejs/renderer";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
 
-injectStyles();
 
 // ---------------------------------------------------------------------------
 // Helpers

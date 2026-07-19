@@ -16,13 +16,12 @@ import {
   PixiSelect,
   PixiRadioGroup,
 } from "@yagejs/ui-react";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 import {
   textStyle, loadFonts, assets, allAssets,
   nineSlice, btnTextOffset, panelBg,
 } from "../shared/ui-theme";
 
-injectStyles();
 
 /** Create a NineSliceSprite at a specific size (for composite widgets like Select
  *  where we can't rely on applyLayout to resize). */

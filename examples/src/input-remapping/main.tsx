@@ -31,9 +31,8 @@ import {
 } from "@yagejs/ui-react";
 import { createRecord } from "@yagejs/core";
 import type { ReactiveRecord } from "@yagejs/core";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 
-injectStyles();
 
 // ---------------------------------------------------------------------------
 // Configuration

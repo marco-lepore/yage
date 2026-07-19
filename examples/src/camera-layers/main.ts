@@ -24,9 +24,8 @@ import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
 import type { UIText } from "@yagejs/ui";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
-injectStyles();
 
 const WIDTH = 800;
 const HEIGHT = 600;
