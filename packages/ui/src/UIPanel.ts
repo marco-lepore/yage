@@ -76,20 +76,30 @@ export class UIPanel implements UIContainerElement {
   private _destroyed = false;
   private bgOpts: BackgroundOptions | undefined;
   private readonly pointerEvents: PointerEvents;
-  // Explicit hit area so pointer/hover events (and the consume-input
-  // fallback) cover the panel's whole computed box — gaps, padding, and the
-  // empty space around shrink-wrapped children. A bare `eventMode:"static"`
-  // Container is only hit-tested where a descendant actually paints, so
-  // without this `onHover`/`onClick`/`<Tooltip>` would silently die over any
-  // region a child isn't covering (unless a full-bleed `background` happens
-  // to). Mirrors `UIScrollView`'s viewport hitArea. Reused, synced in
-  // `applyLayout()`.
+  // Transparent child that catches pointer/hover events (and the consume-input
+  // fallback) across the panel's whole computed box — gaps, padding, and the
+  // empty space around shrink-wrapped children, where no descendant paints.
+  //
+  // The box-sized hitArea lives on this childless leaf, NOT on `container`:
+  // Pixi treats a container's hitArea as a subtree prune gate (see
+  // EventBoundary.hitTestRecursive), so a point outside the box skips the
+  // container AND every descendant. Putting it on `container` makes any child
+  // that renders outside the box — an open `PixiSelect` dropdown, a
+  // popover — unhittable. On a leaf the gate prunes nothing.
+  //
+  // Kept at the bottom of the z-order so real children (and the background)
+  // win the hit test where they paint; events bubble up to `container`, and
+  // the consume walk climbs from the leaf to the marked `container`.
   private readonly _hitArea = new Rectangle(0, 0, 0, 0);
+  private readonly _hitCatcher: Container;
 
   constructor(opts: UIPanelProps) {
     this.container = new Container();
-    this.container.hitArea = this._hitArea;
     this.yogaNode = createYogaNode();
+    this._hitCatcher = new Container();
+    this._hitCatcher.eventMode = "static";
+    this._hitCatcher.hitArea = this._hitArea;
+    this.container.addChild(this._hitCatcher);
     applyConsumeInput(this.container, opts.consumeInput);
     this.pointerEvents = new PointerEvents(this.container, opts);
     this._applyProps({ direction: "column", ...opts });
@@ -335,6 +345,7 @@ export class UIPanel implements UIContainerElement {
     }
     this._children.length = 0;
     this.bgRenderer?.destroy();
+    this._hitCatcher.destroy();
     this.maskHandle?.remove();
     this.yogaNode.free();
     this.container.destroy();
