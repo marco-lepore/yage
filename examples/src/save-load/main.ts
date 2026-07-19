@@ -179,7 +179,7 @@ class PlayerController extends Component {
     });
     if (hit) {
       this.grounded = true;
-      this.coyoteTimer = 80;
+      this.coyoteTimer = 0.1;
     } else {
       this.coyoteTimer -= dt;
       if (this.coyoteTimer <= 0) this.grounded = false;
