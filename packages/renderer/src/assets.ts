@@ -471,12 +471,12 @@ const registeredTextures = new Map<string, TextureResource>();
  * same boot code that registered them on first run); resolving a missing key
  * throws, naming the key.
  *
- * Re-registering a key this API already holds replaces the cache entry;
+ * Re-registering a key this API still owns replaces the cache entry;
  * components constructed before the replacement keep the old texture instance
- * (resolution happens at construction). A key already present in the cache
- * but not registered here — a loaded asset's path, a Pixi-derived entry —
- * throws: shadowing a loaded asset would let that asset's unload destroy the
- * registered texture later.
+ * (resolution happens at construction). A key present in the cache but owned
+ * by the asset pipeline — a loaded asset's path, or an asset that overwrote a
+ * stale registration — throws: shadowing a loaded asset would let that asset's
+ * unload destroy the registered texture later.
  *
  * ```ts
  * const strip = renderer.createTexture((g) => {
@@ -487,9 +487,14 @@ const registeredTextures = new Map<string, TextureResource>();
  * ```
  */
 export function registerTexture(key: string, texture: TextureResource): void {
-  if (registeredTextures.has(key)) {
+  const registered = registeredTextures.get(key);
+  if (registered !== undefined && Assets.cache.get(key) === registered) {
+    // Replacing our own prior registration.
     Assets.cache.remove(key);
   } else if (Assets.cache.has(key)) {
+    // A loaded asset's key, or an asset that overwrote a stale registration —
+    // foreign either way: shadowing it would let the asset's unload destroy
+    // the registered texture later.
     throw new Error(
       `registerTexture("${key}"): the key is already used by a loaded asset — ` +
         `pick a key that doesn't collide with an asset path.`,

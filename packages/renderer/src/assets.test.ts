@@ -607,6 +607,18 @@ describe("registerTexture() / unregisterTexture()", () => {
     );
   });
 
+  it("re-register throws and preserves an asset entry that overwrote the key", () => {
+    registerTexture("shared", makeTexture());
+    // A later preload of the same key: the asset pipeline overwrites the cache
+    // entry, so re-register now faces a foreign entry and must not evict it.
+    const assetTex = makeTexture();
+    mocks.cacheMap.set("shared", assetTex);
+    expect(() => registerTexture("shared", makeTexture())).toThrowError(
+      /shared/,
+    );
+    expect(mocks.cacheMap.get("shared")).toBe(assetTex);
+  });
+
   it("unregister removes the entry and never destroys the texture", () => {
     const tex = makeTexture();
     registerTexture("boss-idle", tex);
