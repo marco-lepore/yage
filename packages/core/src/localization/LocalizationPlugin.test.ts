@@ -193,6 +193,27 @@ describe("LocalizationPlugin.setLocale", () => {
     expect(plugin.revision()).toBe(1);
   });
 
+  it("publishes the adapter's canonical locale, not the requested tag", async () => {
+    // A library-backed adapter may canonicalize the request (here `en-US` →
+    // `en`). `locale` must report what `resolve()` actually uses.
+    let locale = "en";
+    const adapter: LocalizationAdapter = {
+      get locale() {
+        return locale;
+      },
+      t: (id, fallback) => fallback ?? id,
+      subscribe: () => () => {},
+      setLocale(next: string): void {
+        locale = next === "en-US" ? "en" : next;
+      },
+    };
+    const { plugin } = installed(adapter);
+
+    await plugin.setLocale("en-US");
+
+    expect(plugin.locale).toBe("en");
+  });
+
   it("keeps the old locale and publishes nothing when the adapter rejects", async () => {
     const adapter = new MockAdapter();
     adapter.setLocaleImpl = () => Promise.reject(new Error("load failed"));

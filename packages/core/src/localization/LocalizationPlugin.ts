@@ -125,7 +125,11 @@ export class LocalizationPlugin implements Plugin, Localization {
     // Superseded by a newer setLocale — commit nothing.
     if (generation !== this._generation) return;
     this._switching = false;
-    this._locale.set(next);
+    // Publish the adapter's active locale, not the requested one — a
+    // library-backed adapter may canonicalize or fall back (e.g. `en-US` → `en`
+    // when only `en` is loaded), and `resolve()` reads against that. A static
+    // adapter (no `setLocale`) can't switch, so keep reporting the request.
+    this._locale.set(this._adapter.setLocale ? this._adapter.locale : next);
     this._revision.increment();
   }
 }

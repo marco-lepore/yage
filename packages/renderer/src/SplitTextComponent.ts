@@ -229,12 +229,18 @@ export class SplitTextComponent extends VisualComponent {
   onAdd(): void {
     super.onAdd();
     this._localizer.attach(this.context.tryResolve(LocalizationKey));
-    this.addCleanup(() => {
-      this._localizer.detach();
-      // Drop split listeners so a retained component reference can't keep
-      // their captured closures alive (mirrors UISplitText.destroy()).
-      this._splitListeners.clear();
-    });
+    // Release the locale subscription on removal, not just destruction — a
+    // removed-but-kept component would otherwise leak it (and double it on
+    // re-add). `onAdd` re-attaches.
+    this.addCleanup(() => this._localizer.detach());
+  }
+
+  onDestroy(): void {
+    super.onDestroy();
+    // Drop split listeners so a retained component reference can't keep their
+    // captured closures alive (mirrors UISplitText.destroy()). Destruction, not
+    // removal: a removed-then-re-added component keeps its listeners.
+    this._splitListeners.clear();
   }
 
   /** The current segments as one object — handy for {@link onSplit} callbacks. */
