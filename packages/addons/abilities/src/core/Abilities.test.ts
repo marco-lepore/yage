@@ -7,7 +7,11 @@ import {
 import { Abilities, AbilityEnded, AbilityStarted } from "./Abilities.js";
 import { defineStep } from "./defineStep.js";
 import { anim } from "../components/steps/anim.js";
-import type { AbilityActivation, AbilityDef } from "./types.js";
+import type {
+  AbilitiesOptions,
+  AbilityActivation,
+  AbilityDef,
+} from "./types.js";
 
 const beep = defineStep<{ id: string }>("beep", {
   fire: (params, ctx) => {
@@ -35,10 +39,10 @@ function log(ctx: { abilities: object }): string[] {
   return entries;
 }
 
-function setup(defs: readonly AbilityDef[]) {
+function setup(defs: readonly AbilityDef[], options?: AbilitiesOptions) {
   const { entity, scene } = createMockEntity("abilities-host");
   const pc = entity.add(new ProcessComponent());
-  const abilities = entity.add(new Abilities(defs));
+  const abilities = entity.add(new Abilities(defs, options));
   return { entity, scene, pc, abilities, log: log({ abilities }) };
 }
 
@@ -1016,5 +1020,416 @@ describe("Abilities — cancelAll re-reads lanes", () => {
     expect(cActivation).toBeDefined();
     expect(cActivation!.state).toBe("cancelled"); // picked up by cancelAll's own re-read, not orphaned
     expect(abilities.active()).toBeNull();
+  });
+});
+
+describe("Abilities — hold windows (to: 'release')", () => {
+  it("runs open-ended until release, then completes with cancelled=false", () => {
+    const { pc, abilities, log } = setup([
+      { id: "guard", timeline: [zone({ from: 0, to: "release", id: "g" })] },
+    ]);
+    abilities.play("guard");
+    pc._tick(0.05);
+    expect(log).toEqual(["enter:g"]);
+    pc._tick(5); // would end any finite ability; a hold stays active
+    expect(abilities.isActive()).toBe(true);
+    expect(abilities.active()?.duration).toBe(Infinity);
+
+    abilities.release();
+    expect(log).toEqual(["enter:g", "exit:g:false"]);
+    expect(abilities.isActive()).toBe(false);
+  });
+
+  it("release emits AbilityEnded(cancelled: false) and leaves state completed", () => {
+    const { entity, pc, abilities } = setup([
+      { id: "guard", timeline: [zone({ from: 0, to: "release", id: "g" })] },
+    ]);
+    const ended: boolean[] = [];
+    entity.on(AbilityEnded, ({ cancelled }) => ended.push(cancelled));
+    abilities.play("guard");
+    const activation = abilities.active()!;
+    pc._tick(0.1);
+    abilities.release();
+    expect(ended).toEqual([false]);
+    expect(activation.state).toBe("completed");
+  });
+
+  it("release is a no-op when the lane is idle or its active ability has no open hold window", () => {
+    const { pc, abilities } = setup([
+      { id: "swing", timeline: [zone({ from: 0, to: 0.5, id: "s" })] },
+    ]);
+    expect(() => abilities.release()).not.toThrow();
+    abilities.play("swing");
+    pc._tick(0.1);
+    abilities.release(); // no hold window → untouched
+    expect(abilities.isActive()).toBe(true);
+    expect(abilities.activeId()).toBe("swing");
+  });
+
+  it("cancel on a hold ability closes it with cancelled=true", () => {
+    const { pc, abilities, log } = setup([
+      { id: "guard", timeline: [zone({ from: 0, to: "release", id: "g" })] },
+    ]);
+    abilities.play("guard");
+    pc._tick(0.1);
+    abilities.cancel();
+    expect(log).toEqual(["enter:g", "exit:g:true"]);
+    expect(abilities.active()).toBeNull();
+  });
+
+  it("every ticks the hold window at its interval while held", () => {
+    const { pc, abilities, log } = setup([
+      {
+        id: "charge",
+        timeline: [zone({ from: 0, to: "release", every: 0.1, id: "c" })],
+      },
+    ]);
+    abilities.play("charge");
+    pc._tick(0.1); // enter + tick@0.1
+    pc._tick(0.1); // tick@0.2
+    pc._tick(0.1); // tick@0.3
+    pc._tick(0.05); // 0.35 — no tick
+    expect(log).toEqual(["enter:c", "tick:c", "tick:c", "tick:c"]);
+    abilities.release();
+    expect(log).toContain("exit:c:false");
+    pc._tick(0.2); // released — no further ticks
+    expect(log.filter((e) => e === "tick:c")).toHaveLength(3);
+  });
+
+  it("throws on a hold window combined with an explicit duration", () => {
+    expect(
+      () =>
+        new Abilities([
+          {
+            id: "bad",
+            duration: 1,
+            timeline: [zone({ from: 0, to: "release", id: "g" })],
+          },
+        ]),
+    ).toThrow(/"release" hold window and an explicit duration/);
+  });
+});
+
+describe("Abilities — cancel windows", () => {
+  const swingWithCancel = (cancels: object[]): AbilityDef => ({
+    id: "swing",
+    timeline: [zone({ from: 0, to: 0.4, id: "s" })],
+    cancels: cancels as never,
+  });
+
+  it("admits a play() inside the window, ending the predecessor as chained", () => {
+    const { entity, pc, abilities } = setup([
+      swingWithCancel([{ from: 0.2, into: ["dash"] }]),
+      { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
+    ]);
+    const ended: Array<{ id: string; cancelled: boolean }> = [];
+    entity.on(AbilityEnded, ({ activation, cancelled }) =>
+      ended.push({ id: activation.def.id, cancelled }),
+    );
+    abilities.play("swing");
+    const swing = abilities.active()!;
+    pc._tick(0.1); // elapsed 0.1 — before the window
+    expect(abilities.play("dash")).toEqual({ ok: false, reason: "busy" });
+    pc._tick(0.15); // elapsed 0.25 — inside [0.2, end]
+    expect(abilities.play("dash")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(abilities.activeId()).toBe("dash");
+    expect(swing.state).toBe("chained");
+    expect(ended).toEqual([{ id: "swing", cancelled: false }]);
+  });
+
+  it("chained end runs the predecessor's exit hooks with cancelled=true", () => {
+    const { pc, abilities, log } = setup([
+      swingWithCancel([{ from: 0 }]), // omitted `into` = admits any
+      { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
+    ]);
+    abilities.play("swing");
+    pc._tick(0.1);
+    abilities.play("dash");
+    expect(log).toEqual(["enter:s", "exit:s:true"]);
+  });
+
+  it("only admits ids in `into`; others stay busy", () => {
+    const { pc, abilities } = setup([
+      swingWithCancel([{ from: 0, into: ["dash"] }]),
+      { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
+      { id: "roll", timeline: [beep({ at: 0, id: "r" })] },
+    ]);
+    abilities.play("swing");
+    pc._tick(0.1);
+    expect(abilities.play("roll")).toEqual({ ok: false, reason: "busy" });
+    expect(abilities.play("dash")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+  });
+
+  it("omitted / ['*'] into admits any id including the def itself (mash-restart)", () => {
+    const { pc, abilities } = setup([swingWithCancel([{ from: 0, to: 0.4 }])]);
+    abilities.play("swing");
+    const first = abilities.active()!;
+    pc._tick(0.1);
+    expect(abilities.play("swing")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(first.state).toBe("chained");
+    expect(abilities.active()).not.toBe(first);
+    expect(abilities.activeId()).toBe("swing");
+  });
+
+  it("stays busy outside the window's [from, to] bounds", () => {
+    const { pc, abilities } = setup([
+      swingWithCancel([{ from: 0.1, to: 0.2, into: ["dash"] }]),
+      { id: "dash", timeline: [beep({ at: 0, id: "d" })] },
+    ]);
+    abilities.play("swing");
+    pc._tick(0.3); // elapsed 0.3 — past to=0.2
+    expect(abilities.play("dash")).toEqual({ ok: false, reason: "busy" });
+  });
+
+  it("admits a force() inside the window even when priority does not outrank", () => {
+    const { pc, abilities } = setup([
+      swingWithCancel([{ from: 0, into: ["dash"] }]),
+    ]);
+    const dash: AbilityDef = {
+      id: "dash",
+      priority: 0,
+      timeline: [beep({ at: 0, id: "d" })],
+    };
+    abilities.play("swing");
+    const swing = abilities.active()!;
+    pc._tick(0.1);
+    expect(abilities.force(dash)).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(swing.state).toBe("chained");
+    expect(abilities.activeId()).toBe("dash");
+  });
+
+  it("a priority interrupt still ends the predecessor as cancelled, not chained", () => {
+    const { pc, abilities } = setup([
+      swingWithCancel([{ from: 0, into: ["dash"] }]),
+      { id: "big", priority: 10, timeline: [beep({ at: 0, id: "b" })] },
+    ]);
+    abilities.play("swing");
+    const swing = abilities.active()!;
+    pc._tick(0.1);
+    abilities.play("big");
+    expect(swing.state).toBe("cancelled");
+  });
+});
+
+describe("Abilities — chain windows + chainWith", () => {
+  const comboDefs = (): AbilityDef[] => [
+    {
+      id: "attack1",
+      timeline: [zone({ from: 0, to: 0.3, id: "a1" })],
+      chains: [{ on: "light", to: "attack2", from: 0.1 }],
+    },
+    {
+      id: "attack2",
+      timeline: [zone({ from: 0, to: 0.3, id: "a2" })],
+      chains: [{ on: "light", to: "attack3", from: 0.1 }],
+    },
+    { id: "attack3", timeline: [zone({ from: 0, to: 0.3, id: "a3" })] },
+  ];
+
+  it("the idle map resolves a label to its entry ability when the lane is idle", () => {
+    const { abilities } = setup(comboDefs(), { idle: { light: "attack1" } });
+    expect(abilities.canChainWith("light")).toBe(true);
+    expect(abilities.chainWith("light")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(abilities.activeId()).toBe("attack1");
+  });
+
+  it("the idle map is lane-scoped: a target resolves only from its own lane", () => {
+    const defs: AbilityDef[] = [
+      { id: "jab", timeline: [beep({ at: 0.1, id: "j" })] },
+      {
+        id: "roll",
+        lane: "movement",
+        timeline: [zone({ from: 0, to: 0.3, id: "r" })],
+      },
+    ];
+    const { pc, abilities } = setup(defs, { idle: { evade: "roll" } });
+    // A live run on "movement" is not replaced by a "main"-lane query.
+    abilities.play("roll");
+    pc._tick(0.1);
+    expect(abilities.canChainWith("evade")).toBe(false); // queried "main"
+    expect(abilities.chainWith("evade")).toEqual({ ok: false, reason: "noMatch" });
+    expect(abilities.activeId("movement")).toBe("roll");
+    abilities.cancel("movement");
+    // From the target's own lane the entry resolves.
+    expect(abilities.canChainWith("evade", "movement")).toBe(true);
+    expect(abilities.chainWith("evade", "movement")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(abilities.activeId("movement")).toBe("roll");
+  });
+
+  it("resolves the active def's chain window, ending the predecessor as chained", () => {
+    const { pc, abilities } = setup(comboDefs(), { idle: { light: "attack1" } });
+    abilities.chainWith("light"); // idle → attack1
+    const a1 = abilities.active()!;
+    pc._tick(0.15); // inside [0.1, 0.3]
+    expect(abilities.chainWith("light")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(a1.state).toBe("chained");
+    expect(abilities.activeId()).toBe("attack2");
+  });
+
+  it("returns noMatch while active but outside a chain window — no idle-map fallthrough", () => {
+    const { pc, abilities } = setup(comboDefs(), { idle: { light: "attack1" } });
+    abilities.chainWith("light");
+    pc._tick(0.05); // elapsed 0.05 < from 0.1
+    expect(abilities.canChainWith("light")).toBe(false);
+    expect(abilities.chainWith("light")).toEqual({
+      ok: false,
+      reason: "noMatch",
+    });
+    expect(abilities.activeId()).toBe("attack1"); // not restarted by the idle map
+  });
+
+  it("post-end memory resolves a chain window whose until extends past duration", () => {
+    const defs: AbilityDef[] = [
+      {
+        id: "attack3",
+        duration: 0.3,
+        timeline: [zone({ from: 0, to: 0.3, id: "a3" })],
+        chains: [{ on: "light", to: "finisher", from: 0.1, until: 0.6 }],
+      },
+      { id: "finisher", timeline: [beep({ at: 0, id: "f" })] },
+    ];
+    const { pc, abilities } = setup(defs);
+    abilities.play("attack3");
+    pc._tick(0.3); // completes; lane idle, post-end memory armed for 0.3s
+    expect(abilities.isActive()).toBe(false);
+    pc._tick(0.1); // effective elapsed 0.4 — inside [0.1, 0.6]
+    expect(abilities.canChainWith("light")).toBe(true);
+    expect(abilities.chainWith("light")).toEqual({
+      ok: true,
+      activation: expect.any(Object),
+    });
+    expect(abilities.activeId()).toBe("finisher");
+  });
+
+  it("post-end memory lapses once its window closes", () => {
+    const defs: AbilityDef[] = [
+      {
+        id: "attack3",
+        duration: 0.3,
+        timeline: [zone({ from: 0, to: 0.3, id: "a3" })],
+        chains: [{ on: "light", to: "finisher", from: 0.1, until: 0.5 }],
+      },
+      { id: "finisher", timeline: [beep({ at: 0, id: "f" })] },
+    ];
+    const { pc, abilities } = setup(defs);
+    abilities.play("attack3");
+    pc._tick(0.3); // completes; memory armed for until-duration = 0.2s
+    pc._tick(0.25); // effective elapsed 0.55 > until 0.5
+    expect(abilities.canChainWith("light")).toBe(false);
+    expect(abilities.chainWith("light")).toEqual({
+      ok: false,
+      reason: "noMatch",
+    });
+  });
+
+  it("starting an ability clears the lane's post-end memory", () => {
+    const defs: AbilityDef[] = [
+      {
+        id: "attack3",
+        duration: 0.3,
+        timeline: [zone({ from: 0, to: 0.3, id: "a3" })],
+        chains: [{ on: "light", to: "finisher", from: 0.1, until: 0.6 }],
+      },
+      { id: "finisher", timeline: [beep({ at: 0, id: "f" })] },
+      { id: "other", timeline: [zone({ from: 0, to: 0.2, id: "o" })] },
+    ];
+    const { pc, abilities } = setup(defs);
+    abilities.play("attack3");
+    pc._tick(0.3);
+    abilities.play("other"); // a fresh start resets chain state
+    pc._tick(0.05);
+    expect(abilities.chainWith("light")).toEqual({
+      ok: false,
+      reason: "noMatch",
+    });
+  });
+
+  it("chainWith target still pays its own cooldown", () => {
+    const defs: AbilityDef[] = [
+      {
+        id: "attack1",
+        timeline: [zone({ from: 0, to: 0.3, id: "a1" })],
+        chains: [{ on: "light", to: "special", from: 0 }],
+      },
+      { id: "special", cooldown: 0.5, timeline: [beep({ at: 0, id: "s" })] },
+    ];
+    const { pc, abilities } = setup(defs, { idle: { light: "attack1" } });
+    abilities.chainWith("light"); // attack1
+    pc._tick(0.05);
+    abilities.chainWith("light"); // → special, arms its cooldown
+    pc._tick(0.05); // special completes
+    // Replay attack1, chain again while special is on cooldown.
+    abilities.play("attack1");
+    pc._tick(0.05);
+    expect(abilities.canChainWith("light")).toBe(false);
+    expect(abilities.chainWith("light")).toEqual({
+      ok: false,
+      reason: "cooldown",
+    });
+    expect(abilities.activeId()).toBe("attack1"); // predecessor untouched on refusal
+  });
+
+  it("canChainWith is a pure dry-run — it starts nothing", () => {
+    const { abilities } = setup(comboDefs(), { idle: { light: "attack1" } });
+    expect(abilities.canChainWith("light")).toBe(true);
+    expect(abilities.isActive()).toBe(false); // still idle
+    expect(abilities.canChainWith("nope")).toBe(false);
+  });
+
+  it("throws when a chain targets an unknown id", () => {
+    expect(
+      () =>
+        setup([
+          {
+            id: "a",
+            timeline: [beep({ at: 0, id: "a" })],
+            chains: [{ on: "light", to: "ghost", from: 0 }],
+          },
+        ]),
+    ).toThrow(/chains on "light" into unknown ability id "ghost"/);
+  });
+
+  it("throws when a chain crosses lanes", () => {
+    expect(
+      () =>
+        setup([
+          {
+            id: "a",
+            lane: "main",
+            timeline: [beep({ at: 0, id: "a" })],
+            chains: [{ on: "light", to: "b", from: 0 }],
+          },
+          { id: "b", lane: "side", timeline: [beep({ at: 0, id: "b" })] },
+        ]),
+    ).toThrow(/chains into "b" on a different lane "side"/);
+  });
+
+  it("throws when the idle map targets an unknown id", () => {
+    expect(() =>
+      setup([{ id: "a", timeline: [beep({ at: 0, id: "a" })] }], {
+        idle: { light: "ghost" },
+      }),
+    ).toThrow(/idle chain label "light" targets unknown ability id "ghost"/);
   });
 });

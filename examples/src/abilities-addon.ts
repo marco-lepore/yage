@@ -156,7 +156,6 @@ import {
 import type {
   AbilityDef,
   AbilitySpawnContext,
-  AbilityStep,
   Hit,
   HitResult,
   HitSpec,
@@ -1237,6 +1236,12 @@ function pushMaxHp(entity: Entity): void {
 
 const SUPER_ARMOR_PRIORITY = REACTION_PRIORITY + 10;
 
+/** Seconds a combo chain window stays open past the swing's own end (its
+ *  `ChainWindow.until` = the stage's duration plus this), so a tap landing in
+ *  the recovery gap still advances the combo before it resets to the idle
+ *  entry. A touch more forgiving than the animations' in-swing pace. */
+const COMBO_WINDOW = 0.6;
+
 /** 1-2-3 combo, stage 1: a quick opening jab. Chained/buffered by the
  *  hand-rolled combo state machine in `PlayerController` — see the section
  *  below `PlayerController.updateCombat`. LeftJab's one-shot at this speed
@@ -1248,6 +1253,13 @@ const ATTACK_1: AbilityDef = {
   id: "attack1",
   priority: SUPER_ARMOR_PRIORITY,
   duration: 0.448,
+  // Chain into stage 2 on another "attack": a fully post-end window (`from` =
+  // this stage's own duration) that runs `COMBO_WINDOW` past the swing's end,
+  // so a tap chains the instant the swing finishes and through the recovery
+  // gap after it (the runner's post-end memory; `PlayerController.updateCombat`).
+  chains: [{ on: "attack", to: "attack2", from: 0.448, until: 0.448 + COMBO_WINDOW }],
+  // A buffered dash may cancel the recovery once the hit has landed.
+  cancels: [{ from: 0.246, into: ["dash"] }],
   timeline: [
     spriteAnim({ at: 0, name: "attack1" }),
     punchMove({ from: 0.123, to: 0.246, speed: 250 }),
@@ -1270,6 +1282,8 @@ const ATTACK_2: AbilityDef = {
   id: "attack2",
   priority: SUPER_ARMOR_PRIORITY,
   duration: 0.358,
+  chains: [{ on: "attack", to: "attack3", from: 0.358, until: 0.358 + COMBO_WINDOW }],
+  cancels: [{ from: 0.168, into: ["dash"] }],
   timeline: [
     spriteAnim({ at: 0, name: "attack2" }),
     punchMove({ from: 0.078, to: 0.168, speed: 310 }),
@@ -1309,6 +1323,9 @@ const ATTACK_3: AbilityDef = {
   id: "attack3",
   priority: SUPER_ARMOR_PRIORITY,
   duration: 1.12,
+  // The finisher declares no chain (a completed combo resets to the idle
+  // entry map), only the shared dash-cancel window.
+  cancels: [{ from: 0.515, into: ["dash"] }],
   timeline: [
     spriteAnim({ at: 0, name: "attack3" }),
     lungeMove({ from: 0.32, to: 0.54, speed: 820 }),
@@ -1323,14 +1340,14 @@ const ATTACK_3: AbilityDef = {
   ],
 };
 
-/** Charge windup: an indefinite hold — `chargeHold`'s single-frame sprite
- *  sits until `PlayerController` closes the window with `abilities.cancel()`
- *  on key-up. The large `to` is the addon's own documented workaround for a
- *  window step with no natural duration (see the friction log). Force-only:
- *  never registered by id, only ever `force()`d. */
+/** Charge windup: a hold window — `chargeHold`'s single-frame sprite sits
+ *  until `PlayerController` completes the window with `abilities.release()`
+ *  on key-up. `to: "release"` is the addon's open-ended hold window (the run
+ *  stays active until released/cancelled/interrupted). Force-only: never
+ *  registered by id, only ever `force()`d. */
 const CHARGE_HOLD: AbilityDef = {
   id: "chargeHold",
-  timeline: [spriteHold({ from: 0, to: 999, name: "chargeHold" })],
+  timeline: [spriteHold({ from: 0, to: "release", name: "chargeHold" })],
 };
 
 /** The heavy attack a completed charge releases: a bigger hitbox, more
@@ -1363,6 +1380,7 @@ const CHARGE_RELEASE: AbilityDef = {
   id: "chargeRelease",
   priority: SUPER_ARMOR_PRIORITY,
   duration: 0.751,
+  cancels: [{ from: 0.337, into: ["dash"] }],
   timeline: [
     spriteAnim({ at: 0, name: "chargeRelease", startFrame: 6, lockDuration: 0.751 }),
     lungeMove({ from: 0.08, to: 0.32, speed: 300 }),
@@ -1434,8 +1452,8 @@ const DASH: AbilityDef = {
 };
 
 /** Hold-block: starts the instant the guard key is pressed and stays open
- *  for as long as it's held (the same large-`to`-plus-`cancel()`-on-release
- *  pattern `CHARGE_HOLD` uses) — nothing in this def ever forces a
+ *  for as long as it's held (`to: "release"` hold windows, completed by
+ *  `abilities.release()` on key-up) — nothing in this def ever forces a
  *  higher-priority activation onto the lane, so the window stays open across
  *  as many hits as land while the key is down. `block` reduces every landed
  *  hit in place rather than negating it: damage and knockback both survive
@@ -1449,8 +1467,8 @@ const GUARD_HOLD: AbilityDef = {
   id: GUARD_HOLD_ID,
   cooldown: hasten(0.4),
   timeline: [
-    spriteHold({ from: 0, to: 999, name: "guard" }),
-    block({ from: 0, to: 999, damageScale: 0.3, knockbackScale: 0.4 }),
+    spriteHold({ from: 0, to: "release", name: "guard" }),
+    block({ from: 0, to: "release", damageScale: 0.3, knockbackScale: 0.4 }),
   ],
 };
 
@@ -1565,12 +1583,9 @@ const SHOOT: AbilityDef = {
   ],
 };
 
-/** The player abilities that occupy the `"main"` lane, keyed by id.
- *  `PlayerController.updateCombat`'s buffered dash-cancel looks a def up by
- *  id here to scan its hitbox window's close time (`activeCloseTime`).
- *  `attackSlotState` below only checks id membership against this table; it
- *  reads the active def's own `duration`/`elapsed` off
- *  `Abilities.active("main")`. */
+/** The player abilities that share the attack/charge hotbar slot, keyed by id.
+ *  `attackSlotState` only checks id membership against this table; it reads
+ *  the active def's own `duration`/`elapsed` off `Abilities.active("main")`. */
 const PLAYER_MAIN_DEFS: Readonly<Record<string, AbilityDef>> = {
   attack1: ATTACK_1,
   attack2: ATTACK_2,
@@ -1644,43 +1659,12 @@ function drawHealthBar(gfx: GraphicsComponent, hpFrac: number, color: number): v
 // Player
 // ---------------------------------------------------------------------------
 
-/** 1-2-3 combo stages, in order — ids match the `AbilityDef`s above. */
-const COMBO_STAGES = ["attack1", "attack2", "attack3"] as const;
-const COMBO_STAGE_IDS: ReadonlySet<string> = new Set(COMBO_STAGES);
-
-/** The attacks a buffered dash may cancel out of — the three combo stages
- *  plus the charge release (not `counter`: a parry reward hit is already
- *  short and snappy, and cancelling a punish felt like it undercut the
- *  reward). See `PlayerController.updateCombat`'s dash-buffer handling. */
-const DASH_CANCELLABLE_IDS: ReadonlySet<string> = new Set([
-  ...COMBO_STAGES,
-  "chargeRelease",
-]);
-
-/** The point in `def`'s timeline (seconds from ability start) after which a
- *  buffered dash may cancel it — the moment its last `hitbox` window closes,
- *  so the cancel always lands after the hit and skips only the recovery
- *  tail. Scans the timeline instead of a hardcoded table so it stays correct
- *  whenever an attack's hitbox window is re-timed (see the ability defs
- *  above). Falls back to 0 (immediately cancellable) for a def with no
- *  hitbox step. */
-function activeCloseTime(def: AbilityDef): number {
-  let close = 0;
-  for (const step of def.timeline as readonly AbilityStep[]) {
-    if (step.kind === "hitbox" && "to" in step) close = Math.max(close, step.to);
-  }
-  return close;
-}
-
-/** Seconds after a non-finisher stage lands to accept the next press before
- *  the chain resets to stage 1. A touch more forgiving than the combo's
- *  original tuning — the ~12% slower attack animations (see
- *  `BOXER_ANIM_SPECS`) stretch the whole combo's pace, and this window
- *  didn't scale with them the way in-swing timings did. */
-const COMBO_WINDOW = 0.6;
 /** Seconds the attack key must be held before it's a charge rather than a
- *  tap. */
+ *  tap. Doubles as the combo tap-buffer window — a press shorter than this
+ *  (a tap, never a charge) stays claimable that long. */
 const CHARGE_HOLD_TIME = 0.5;
+/** Seconds a mid-attack dash press keeps retrying its cancel before it lapses. */
+const DASH_BUFFER_WINDOW = 0.3;
 /** Bullet-time tail on a charge release: from the moment the release fires,
  *  the world runs at this scale for `CHARGE_SLOWMO_DURATION` seconds with
  *  the player excluded — so once the release's own recovery ends, the
@@ -1746,22 +1730,18 @@ class PlayerController extends Component {
   private readonly stagger = this.sibling(Stagger);
   dead = false;
 
-  // Hand-rolled combo/charge state — read by the hotbar, otherwise private
-  // to `updateCombat` below.
-  comboStage = 0; // 0 = no chain memory; 1-3 = last landed stage
   charging = false;
-  private comboWindow = 0; // seconds left to chain before resetting to stage 1
-  private attackBuffered = false; // a press landed while the current swing was still in flight
-  private dashBuffered = false; // dash pressed mid-attack; fires the instant the active window closes
-  private wasComboSwinging = false; // last frame's "a combo stage specifically is running", to edge-detect a swing ending
   private chargeSparks: ChargeSpark[] = [];
-  // Attack tap-vs-hold tracking — see `updateCombat`'s attack-input section.
-  private attackPending = false; // attack is held, not yet resolved into a tap or a charge
-  private attackPendingStartedBusy = false; // whether the main lane was busy at the moment this press began — a mid-swing press can never become a charge
+  // Only a press that began from a free lane may grow into a charge — a press
+  // begun mid-swing stays a tap (see `updateCombat`).
+  private attackPressNeutral = false;
+  // Dash pressed mid-attack: retries `play("dash")` until a cancel window
+  // admits it or the buffer lapses.
+  private dashBuffered = false;
+  private dashBufferAge = 0;
 
   // Hand-rolled guard/parry press/hold/release state — see `updateGuard`.
   private guardHeld = false;
-  private guardHoldElapsed = 0; // seconds since the guard key went down, while held
 
   onAdd(): void {
     this.listen(this.entity, HealthDied, () => {
@@ -1770,7 +1750,7 @@ class PlayerController extends Component {
         this.charging = false;
         this.stopChargeSparks();
       }
-      this.attackPending = false;
+      this.dashBuffered = false;
       this.guardHeld = false;
       this.rb.setVelocity(Vec2.ZERO);
       this.rb.setEnabledTranslations(false, false); // corpse: physics can't push it
@@ -1838,7 +1818,7 @@ class PlayerController extends Component {
     }
 
     this.updateCombat(dt);
-    this.updateGuard(dt);
+    this.updateGuard();
 
     if (!this.abilities.isActive("main")) {
       const dx = this.input.getAxis("left", "right");
@@ -1855,8 +1835,6 @@ class PlayerController extends Component {
       if (!this.anim.locked) {
         playBoxerAnim(this.entity, moving ? "run" : "idle", { oneShot: false });
       }
-
-      if (this.input.isJustPressed("dash")) this.abilities.play("dash");
     } else if (!velocityOwnedByStep.has(this.entity) && !this.stagger.active) {
       // Movement is gated by an ability (attack/guard/charge/counter) with
       // no movement step of its own — a hard stop instead of coasting on
@@ -1900,26 +1878,22 @@ class PlayerController extends Component {
   }
 
   // -------------------------------------------------------------------------
-  // 1-2-3 combo + charge attack — hand-rolled game logic layered on top of
-  // `Abilities.play`/`force`/`cancel`. The addon has no chain, tap-vs-hold,
-  // or input-buffering concept by design (a pending queue item, see the
-  // friction log) — everything below is plain game-state-machine code, not
-  // an addon feature. The buffered dash-cancel below is the same shape as
-  // the attack buffer, one section down.
+  // 1-2-3 combo + charge attack. The combo itself is the addon's chain layer:
+  // the attack defs declare `chains`/`cancels` windows (and the runner's
+  // `idle` map holds the entry), so `chainWith`/`canChainWith`/`play` own
+  // stage resolution, the chain-reset memory, and the dash-cancel timing.
+  // What stays hand-rolled here is only the gesture layer (still #22's job):
+  // classifying a press as tap vs charge-hold (`isJustHeldFor` /
+  // `consumeBufferedPress`), the small per-binding buffers, and
+  // `resampleFacing` at each firing site.
   //
-  // Attack is release-triggered, the same tap-vs-hold shape `updateGuard`
-  // uses for guard/parry: a press never fires anything by itself, only
-  // `attackPending`. Releasing before the charge threshold resolves the tap
-  // (fire now if the lane is free, buffer it otherwise); crossing the
-  // threshold while still held enters the charge — no punch is ever thrown
-  // before a charge. `attackPendingStartedBusy` (latched at press time) is
-  // the "no leading punch" rule's other half: a press that began mid-swing
-  // can never resolve into a charge, no matter how long it's held or
-  // whether the swing frees up before release — charging only initiates
-  // from a neutral (not-yet-busy) press. This keeps the rule simple: the
-  // alternative (letting a mid-swing hold convert once the lane frees up)
-  // would make a charge's start time depend on when an unrelated swing
-  // happens to end, which reads as unpredictable rather than a clean tap.
+  // Tap vs charge, both on the attack key: a neutral press held past
+  // `CHARGE_HOLD_TIME` becomes a charge (no leading punch — `isJustHeldFor`
+  // only fires mid-hold, never on the initial press). Any shorter press is a
+  // tap; `consumeBufferedPress` claims it once, and the `!isPressed` guard
+  // keeps an ongoing charge-hold from being read as a chain tap.
+  // `attackPressNeutral` (latched at press time) keeps a press begun mid-swing
+  // from ever becoming a charge, even if the lane frees before release.
   // -------------------------------------------------------------------------
 
   private updateCombat(dt: number): void {
@@ -1928,108 +1902,75 @@ class PlayerController extends Component {
       if (!this.input.isPressed("attack")) {
         this.charging = false;
         this.stopChargeSparks();
-        this.abilities.cancel("main"); // closes the indefinite chargeHold window
+        this.abilities.release("main"); // completes the chargeHold window
         this.resampleFacing();
         this.abilities.force(CHARGE_RELEASE);
         // Bullet-time tail as a timed request, not a `slowmo` step on
-        // `CHARGE_RELEASE`: a window step cannot end past its def's
-        // duration, and stretching the def to cover the tail would keep the
-        // attack lane locked (busy) through it. Ages on raw time and
-        // releases itself, so a cancelled release can't strand it.
+        // `CHARGE_RELEASE`: a hold window would keep the attack lane locked,
+        // and a finite one cannot end past the def's duration. Ages on raw
+        // time and releases itself, so a cancelled release can't strand it.
         this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
           for: CHARGE_SLOWMO_DURATION,
           key: "charge-bullet-time",
           excludeUpdates: [this.entity],
         });
-        this.resetCombo();
       }
       return;
     }
 
-    // `mainBusy` gates new input generically (can't start an attack/charge
-    // over anything else on the lane); `comboSwinging` is narrower — true
-    // only while one of MY OWN combo stages is the active def. The window/
-    // reset bookkeeping below must key off the latter: `abilities.isActive`
-    // alone doesn't distinguish a combo stage from a dash, a guard, or a
-    // forced stagger reaction sharing the same lane, so using it for the
-    // "did a swing just end" edge would let dashing or getting hit
-    // reopen (or silently advance) the combo chain.
-    const activeId = this.abilities.activeId("main");
-    const mainBusy = activeId !== null;
-    const comboSwinging = activeId !== null && COMBO_STAGE_IDS.has(activeId);
+    const mainBusy = this.abilities.isActive("main");
+    if (this.input.isJustPressed("attack")) this.attackPressNeutral = !mainBusy;
 
-    if (this.input.isJustPressed("attack")) {
-      this.attackPending = true;
-      this.attackPendingStartedBusy = mainBusy;
-    } else if (this.attackPending) {
-      if (this.input.isJustReleased("attack")) {
-        // Resolved as a tap: fire now if the lane is free (idle, or within
-        // the post-swing combo window), buffer it otherwise — same
-        // buffer-vs-fire split the old press-triggered code used, just
-        // evaluated at release instead of press.
-        this.attackPending = false;
-        if (mainBusy) this.attackBuffered = true;
-        else this.playComboStage();
-      } else if (
-        !this.attackPendingStartedBusy &&
-        !mainBusy &&
-        this.input.isHeldFor("attack", CHARGE_HOLD_TIME)
-      ) {
-        this.attackPending = false;
-        this.charging = true;
-        this.startChargeSparks();
-        this.abilities.force(CHARGE_HOLD);
-        return;
-      }
-    }
-
-    // Buffered dash-cancel: a dash press mid-attack (windup/active/recovery)
-    // queues instead of dropping, and fires the instant the attack's own
-    // hitbox window closes — see `activeCloseTime`/`DASH_CANCELLABLE_IDS`
-    // above — never mid-hit, cancelling whatever recovery is left. Dropped
-    // (not fired) if something else takes the lane first (e.g. a forced
-    // stagger — super armor already keeps that from happening to a landed
-    // hit, but the buffer must not misfire against an unrelated activation
-    // either way). Wins over a buffered next combo stage, cleared below.
-    // `resampleFacing` right before the dash plays means it rolls in
-    // whatever direction is held at that instant — holding back through a
-    // combo with a dash buffered fires the roll backward, not forward.
+    // Charge: a neutral press crossing the hold threshold. Claim the buffered
+    // press so it can't later resolve into a chain tap.
     if (
-      this.input.isJustPressed("dash") &&
-      activeId !== null &&
-      DASH_CANCELLABLE_IDS.has(activeId)
+      this.attackPressNeutral &&
+      !mainBusy &&
+      this.input.isJustHeldFor("attack", CHARGE_HOLD_TIME)
     ) {
-      this.dashBuffered = true;
+      this.input.consumeBufferedPress("attack", CHARGE_HOLD_TIME);
+      this.charging = true;
+      this.startChargeSparks();
+      this.abilities.force(CHARGE_HOLD);
+      return;
     }
-    if (this.dashBuffered) {
-      if (activeId === null || !DASH_CANCELLABLE_IDS.has(activeId)) {
-        this.dashBuffered = false;
-      } else if (
-        (this.abilities.elapsed("main") ?? 0) >= activeCloseTime(PLAYER_MAIN_DEFS[activeId]!)
-      ) {
-        this.dashBuffered = false;
-        this.attackBuffered = false; // dash buffer wins over a buffered next combo stage
-        this.resetCombo();
-        this.abilities.cancel("main");
+
+    // Tap → combo chain: the attack defs' chain windows (and the idle map)
+    // resolve which stage; the claim-once buffered press fires it the instant
+    // a chain opens. `!isPressed` keeps an ongoing charge-hold out.
+    if (
+      !this.input.isPressed("attack") &&
+      this.abilities.canChainWith("attack", "main") &&
+      this.input.consumeBufferedPress("attack", CHARGE_HOLD_TIME)
+    ) {
+      this.resampleFacing();
+      this.abilities.chainWith("attack", "main");
+    }
+
+    // Dash: immediate from a free lane; buffered mid-attack, where it retries
+    // `play("dash")` every frame until an attack's `cancels` window admits it
+    // (cancelling the recovery) or the buffer lapses. `play` is side-effect-
+    // free on refusal, so the retry can't misfire against an unrelated lane
+    // occupant. `resampleFacing` before each attempt rolls it in the
+    // currently-held direction.
+    if (this.input.isJustPressed("dash")) {
+      if (!mainBusy) {
         this.resampleFacing();
         this.abilities.play("dash");
-        this.wasComboSwinging = false;
-        return;
+      } else {
+        this.dashBuffered = true;
+        this.dashBufferAge = 0;
       }
     }
-
-    if (!comboSwinging && this.wasComboSwinging && this.comboStage >= COMBO_STAGES.length) {
-      this.resetCombo(); // the finisher always resets, buffered press included
-    } else if (!mainBusy && this.attackBuffered) {
-      this.attackBuffered = false;
-      this.playComboStage();
-    } else if (!comboSwinging && this.wasComboSwinging && this.comboStage > 0) {
-      this.comboWindow = COMBO_WINDOW; // a non-finisher combo stage just ended: open the chain window
-    } else if (!mainBusy && this.comboWindow > 0) {
-      this.comboWindow = Math.max(0, this.comboWindow - dt);
-      if (this.comboWindow === 0) this.resetCombo();
+    if (this.dashBuffered) {
+      this.dashBufferAge += dt;
+      if (this.dashBufferAge >= DASH_BUFFER_WINDOW) {
+        this.dashBuffered = false;
+      } else {
+        this.resampleFacing();
+        if (this.abilities.play("dash").ok) this.dashBuffered = false;
+      }
     }
-    this.wasComboSwinging = comboSwinging;
   }
 
   // -------------------------------------------------------------------------
@@ -2068,26 +2009,27 @@ class PlayerController extends Component {
   }
 
   // -------------------------------------------------------------------------
-  // Guard/parry — hand-rolled press/hold/release state machine, the same
-  // hold-until-release shape `updateCombat`'s charge branch uses. Pressing
-  // guard starts `GUARD_HOLD` immediately, open for as long as the key stays
-  // down; releasing at or before `PARRY_TAP_WINDOW` cancels the hold into
-  // `PARRY` instead of letting it run — a tap parries, a hold blocks, a long
-  // hold never parries. See `06-guard-resolution.md`'s evidence note for why
-  // the split (rather than the old single `guard` def) is what actually
-  // fixes multi-hit blocking.
+  // Guard/parry — hand-rolled press/hold/release gesture on top of the
+  // `GUARD_HOLD` hold window. Pressing guard starts it immediately, open for
+  // as long as the key stays down; a quick tap-release (`isJustTapped` within
+  // `PARRY_TAP_WINDOW`) completes the block via `release("main")` and plays
+  // `PARRY` instead — a tap parries, a hold blocks, a long hold never parries.
+  // See `06-guard-resolution.md`'s evidence note for why the split (rather
+  // than the old single `guard` def) is what actually fixes multi-hit
+  // blocking.
   // -------------------------------------------------------------------------
 
-  private updateGuard(dt: number): void {
+  private updateGuard(): void {
     if (this.guardHeld) {
       // If something else already ended the hold (e.g. death forcing a
       // stagger reaction), the `AbilityEnded` listener in `onAdd` has
       // already cleared `guardHeld` by the time this runs.
-      this.guardHoldElapsed += dt;
       if (this.input.isJustReleased("guard")) {
         this.guardHeld = false;
-        this.abilities.cancel("main"); // closes the indefinite guardHold window
-        if (this.guardHoldElapsed <= PARRY_TAP_WINDOW) {
+        // A quick tap-release parries; a longer hold just ends the block.
+        const parryTap = this.input.isJustTapped("guard", PARRY_TAP_WINDOW);
+        this.abilities.release("main"); // completes the guardHold window
+        if (parryTap) {
           this.resampleFacing();
           this.abilities.play(PARRY_ID);
         }
@@ -2095,19 +2037,7 @@ class PlayerController extends Component {
       return;
     }
     if (!this.abilities.isActive("main") && this.input.isJustPressed("guard")) {
-      if (this.abilities.play(GUARD_HOLD_ID).ok) {
-        this.guardHeld = true;
-        this.guardHoldElapsed = 0;
-      }
-    }
-  }
-
-  private playComboStage(): void {
-    this.resampleFacing();
-    const next = this.comboStage >= COMBO_STAGES.length ? 1 : this.comboStage + 1;
-    if (this.abilities.play(COMBO_STAGES[next - 1]!).ok) {
-      this.comboStage = next;
-      this.comboWindow = 0;
+      if (this.abilities.play(GUARD_HOLD_ID).ok) this.guardHeld = true;
     }
   }
 
@@ -2124,12 +2054,6 @@ class PlayerController extends Component {
    *  gated) is otherwise unaffected. */
   private resampleFacing(): void {
     this.facing.set(this.input.getAxis("left", "right"), this.input.getAxis("up", "down"));
-  }
-
-  private resetCombo(): void {
-    this.comboStage = 0;
-    this.comboWindow = 0;
-    this.attackBuffered = false;
   }
 
   // -------------------------------------------------------------------------
@@ -2219,7 +2143,10 @@ class PlayerEntity extends Entity {
       new HitReceiver({ team: "player", iframes: 0.25, steps: playerHitSteps }),
     );
     this.add(
-      new Abilities([ATTACK_1, ATTACK_2, ATTACK_3, DASH, GUARD_HOLD, PARRY, POTION]),
+      new Abilities(
+        [ATTACK_1, ATTACK_2, ATTACK_3, DASH, GUARD_HOLD, PARRY, POTION],
+        { idle: { attack: "attack1" } },
+      ),
     );
     this.add(new PlayerController());
   }

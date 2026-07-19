@@ -1,12 +1,14 @@
 import {
   Component,
+  Process,
   ProcessComponent,
   SceneTimeKey,
   createKeyframeTrack,
   defineEvent,
 } from "@yagejs/core";
-import type { Entity, Keyframe, Process, ProcessSlot } from "@yagejs/core";
+import type { Entity, Keyframe, ProcessSlot } from "@yagejs/core";
 import type {
+  AbilitiesOptions,
   AbilityActivation,
   AbilityDef,
   AbilityStep,
@@ -23,6 +25,24 @@ function isPointStep(step: AbilityStep): step is PointStep {
 
 function isWindowStep(step: AbilityStep): step is WindowStep {
   return "from" in step;
+}
+
+/** How an activation ended — drives both terminal states and the exit-hook `cancelled` flag. */
+type EndKind = "completed" | "cancelled" | "chained";
+
+/**
+ * Per-lane record of the last ability to complete there. `chainWith` reads it
+ * to resolve a chain that fires after the ability ends but before its window
+ * lapses (see `ChainWindow.until`): the effective activation-clock position is
+ * `duration + age`. `process` ages `age` in scaled time until the reach lapses
+ * (then it self-completes and `ProcessComponent` drops it). Armed only by a
+ * completed end, cleared when any ability starts on the lane.
+ */
+interface LaneMemory {
+  def: AbilityDef;
+  duration: number;
+  age: number;
+  process: Process;
 }
 
 /** Emitted on the owning entity when an ability run starts, via `play` or `force`. */
@@ -92,7 +112,7 @@ class ActivationHandle implements AbilityActivation {
   ctx!: StepContext;
   process!: Process;
   readonly openWindows = new Set<WindowStep>();
-  private _state: "active" | "completed" | "cancelled" = "active";
+  private _state: "active" | EndKind = "active";
 
   constructor(
     readonly def: AbilityDef,
@@ -102,18 +122,18 @@ class ActivationHandle implements AbilityActivation {
     readonly forced: boolean,
   ) {}
 
-  /** Clamped to `duration`; stops changing once `process` is cancelled/completed. */
+  /** Clamped to `duration`; stops changing once `process` is cancelled/completed. `Infinity` duration (a hold ability) never clamps. */
   get elapsed(): number {
     return Math.min(this.process.elapsed, this.duration);
   }
 
-  get state(): "active" | "completed" | "cancelled" {
+  get state(): "active" | EndKind {
     return this._state;
   }
 
   /** Flip to a terminal state. Called exactly once, from `Abilities.finishLane`. */
-  finish(cancelled: boolean): void {
-    this._state = cancelled ? "cancelled" : "completed";
+  finish(end: EndKind): void {
+    this._state = end;
   }
 }
 
@@ -158,13 +178,19 @@ export class Abilities extends Component {
   private readonly compiledByDef = new WeakMap<AbilityDef, CompiledAbility>();
   private readonly cooldowns = new Map<string, Cooldown>();
   private readonly lanes = new Map<string, ActivationHandle>();
+  /** Idle-lane chain entry map (`chainWith` label → ability id). */
+  private readonly idleMap: Map<string, string>;
+  /** Per-lane record of the last completed ability, for post-end chain windows. */
+  private readonly lastEnded = new Map<string, LaneMemory>();
+  /** Reused per hold-window-step slot driving its periodic `every` ticks while held. */
+  private readonly holdTickSlots = new WeakMap<WindowStep, ProcessSlot>();
 
   // Lifecycle-event ordering — see `runEntry`'s doc.
   private entryDepth = 0;
   private draining = false;
   private readonly emissionQueue: Array<() => void> = [];
 
-  constructor(defs: readonly AbilityDef[]) {
+  constructor(defs: readonly AbilityDef[], options?: AbilitiesOptions) {
     super();
     for (const def of defs) {
       if (this.defsById.has(def.id)) {
@@ -172,6 +198,36 @@ export class Abilities extends Component {
       }
       this.defsById.set(def.id, def);
       this.getCompiled(def); // compile eagerly so a malformed def fails at construction, not first play
+    }
+    // All ids are known now — validate chain targets against them.
+    for (const def of defs) this.validateChains(def);
+    this.idleMap = new Map(Object.entries(options?.idle ?? {}));
+    for (const [label, targetId] of this.idleMap) {
+      if (!this.defsById.has(targetId)) {
+        throw new Error(
+          `Abilities: idle chain label "${label}" targets unknown ability id "${targetId}".`,
+        );
+      }
+    }
+  }
+
+  /** Reject chain windows that target an unknown id or cross the declaring def's lane. */
+  private validateChains(def: AbilityDef): void {
+    if (!def.chains) return;
+    const lane = def.lane ?? "main";
+    for (const window of def.chains) {
+      const target = this.defsById.get(window.to);
+      if (!target) {
+        throw new Error(
+          `Abilities: ability "${def.id}" chains on "${window.on}" into unknown ability id "${window.to}".`,
+        );
+      }
+      const targetLane = target.lane ?? "main";
+      if (targetLane !== lane) {
+        throw new Error(
+          `Abilities: ability "${def.id}" (lane "${lane}") chains into "${window.to}" on a different lane "${targetLane}".`,
+        );
+      }
     }
   }
 
@@ -232,7 +288,7 @@ export class Abilities extends Component {
     this.runEntry(() => {
       const activation = this.lanes.get(lane);
       if (!activation) return;
-      this.cancelActivation(lane, activation);
+      this.endActivation(lane, activation, "cancelled");
     });
   }
 
@@ -249,9 +305,116 @@ export class Abilities extends Component {
     this.runEntry(() => {
       while (this.lanes.size > 0) {
         const [lane, activation] = this.lanes.entries().next().value!;
-        this.cancelActivation(lane, activation);
+        this.endActivation(lane, activation, "cancelled");
       }
     });
+  }
+
+  /**
+   * Complete a hold ability: if the lane's active def has a `to: "release"`
+   * window currently open, close all its open windows with `cancelled: false`
+   * and end the run as `"completed"`. No-op when the lane is idle or its
+   * active ability has no open hold window (so a normal ability is untouched).
+   * The release counterpart to a `to: "release"` window opened on key-down.
+   */
+  release(lane = "main"): void {
+    this.runEntry(() => {
+      const activation = this.lanes.get(lane);
+      if (!activation) return;
+      let holdOpen = false;
+      for (const step of activation.openWindows) {
+        if (step.to === "release") {
+          holdOpen = true;
+          break;
+        }
+      }
+      if (!holdOpen) return;
+      this.endActivation(lane, activation, "completed");
+    });
+  }
+
+  /**
+   * Hand off to the successor a chain `label` resolves to, on `lane`. Resolves
+   * in order: the active def's chain windows (`elapsed` within `[from,
+   * until]`) → the post-end memory of the last completed ability (a window
+   * whose `until` extends past its `duration`) → the idle-map entry (only
+   * when the target's own lane is the queried `lane`). A match
+   * ends the current run as `"chained"` and starts the target, which still
+   * pays its own cooldown (so `"cooldown"` is possible). `"noMatch"` when no
+   * source resolves the label for the lane's current state. Early presses are
+   * the caller's to buffer:
+   *
+   * ```ts
+   * if (abilities.canChainWith("light") && input.consumeBufferedPress("attack", 0.15))
+   *   abilities.chainWith("light");
+   * ```
+   *
+   * An idle-map handoff isn't literally a chain, but chain labels exist only
+   * for this system — plain abilities keep `play(id)`, and cancel windows key
+   * on ids.
+   */
+  chainWith(label: string, lane = "main"): PlayResult {
+    return this.runEntry(() => {
+      const targetId = this.resolveChainLabel(label, lane);
+      if (targetId === null) return { ok: false, reason: "noMatch" };
+      const cooldown = this.cooldowns.get(targetId);
+      if (cooldown?.slot.running) return { ok: false, reason: "cooldown" };
+      const def = this.mustGetDef(targetId);
+      const active = this.lanes.get(lane);
+      if (active) this.endActivation(lane, active, "chained");
+      const activation = this.start(def, def.lane ?? "main", false);
+      this.armCooldown(def, activation);
+      return { ok: true, activation };
+    });
+  }
+
+  /**
+   * Whether `chainWith(label, lane)` would succeed right now — the full
+   * dry-run, window AND cooldown, with no side effects. Pair it with a
+   * claim-once buffered press so an early tap fires the frame the chain opens.
+   */
+  canChainWith(label: string, lane = "main"): boolean {
+    const targetId = this.resolveChainLabel(label, lane);
+    if (targetId === null) return false;
+    return !this.cooldowns.get(targetId)?.slot.running;
+  }
+
+  /**
+   * Resolve a chain `label` to a target ability id for `lane`, or null.
+   * While the lane is active, only the active def's chain windows resolve —
+   * the idle map and post-end memory are idle-only, so a mistimed press
+   * refuses rather than restarting the idle entry mid-ability.
+   */
+  private resolveChainLabel(label: string, lane: string): string | null {
+    const active = this.lanes.get(lane);
+    if (active) {
+      const chains = active.def.chains;
+      if (chains) {
+        const elapsed = active.elapsed;
+        for (const window of chains) {
+          if (window.on !== label) continue;
+          const until = window.until ?? active.duration;
+          if (elapsed >= window.from && elapsed <= until) return window.to;
+        }
+      }
+      return null;
+    }
+    const memory = this.lastEnded.get(lane);
+    if (memory && !memory.process.completed && memory.def.chains) {
+      const effectiveElapsed = memory.duration + memory.age;
+      for (const window of memory.def.chains) {
+        if (window.on !== label || window.until === undefined) continue;
+        if (effectiveElapsed >= window.from && effectiveElapsed <= window.until)
+          return window.to;
+      }
+    }
+    // Idle-map entries are lane-scoped like chain windows: a target resolves
+    // only from its own lane, so a handoff never starts on a lane the caller
+    // didn't query.
+    const idleTarget = this.idleMap.get(label);
+    if (idleTarget === undefined) return null;
+    const targetLane = this.mustGetDef(idleTarget).lane ?? "main";
+    return targetLane === lane ? idleTarget : null;
   }
 
   /** Seconds remaining on `id`'s cooldown. 0 when ready. Throws for an unknown id. */
@@ -279,14 +442,14 @@ export class Abilities extends Component {
    * proceeds; a busy lane restarts on the same forced def, interrupts on
    * strictly higher priority, otherwise refuses.
    *
-   * Loops instead of contesting the lane once: `cancelActivation` runs the
+   * Loops instead of contesting the lane once: `endActivation` runs the
    * loser's exit hooks, and an exit hook can itself `play`/`force` a
    * replacement into this same lane before this call resumes (an
    * interrupt-from-inside-cancel). Re-reading `this.lanes.get(lane)` after
    * every cancellation re-applies the rule against whatever is actually
    * there now, so `def` gets contested against the real current occupant
    * instead of blindly overwriting it — every occupant that loses goes
-   * through `cancelActivation` and gets exactly one `AbilityEnded`. A
+   * through `endActivation` and gets exactly one `AbilityEnded`. A
    * refusal reached this way (busy against the *replacement*, not the
    * original occupant) is accepted: the first occupant is still gone.
    */
@@ -299,9 +462,36 @@ export class Abilities extends Component {
       }
       const restart = forced && active.def === def;
       const interrupt = (def.priority ?? 0) > (active.def.priority ?? 0);
-      if (!restart && !interrupt) return { ok: false, reason: "busy" };
-      this.cancelActivation(lane, active);
+      if (restart || interrupt) {
+        this.endActivation(lane, active, "cancelled");
+        continue;
+      }
+      // A cancel window on the active def lets a def it admits take the lane
+      // as combat flow (state "chained"), before the busy refusal.
+      if (this.cancelWindowAdmits(active, def.id)) {
+        this.endActivation(lane, active, "chained");
+        continue;
+      }
+      return { ok: false, reason: "busy" };
     }
+  }
+
+  /** Whether `active`'s current `elapsed` sits in a cancel window that admits `incomingId`. */
+  private cancelWindowAdmits(
+    active: ActivationHandle,
+    incomingId: string,
+  ): boolean {
+    const cancels = active.def.cancels;
+    if (!cancels) return false;
+    const elapsed = active.elapsed;
+    for (const window of cancels) {
+      if (elapsed < window.from) continue;
+      if (window.to !== undefined && elapsed > window.to) continue;
+      const into = window.into;
+      if (into === undefined || into.includes("*") || into.includes(incomingId))
+        return true;
+    }
+    return false;
   }
 
   /** Compile `def`'s timeline into a fresh activation and run it in `lane`. */
@@ -310,6 +500,9 @@ export class Abilities extends Component {
     lane: string,
     forced: boolean,
   ): ActivationHandle {
+    // Any start on the lane clears its post-end chain memory (chain state
+    // resets when a new ability begins).
+    this.clearPostEndMemory(lane);
     const compiled = this.getCompiled(def);
     const activation = new ActivationHandle(
       def,
@@ -349,7 +542,7 @@ export class Abilities extends Component {
       keyframes,
       duration: compiled.duration,
       onComplete: () =>
-        this.runEntry(() => this.finishLane(lane, activation, false)),
+        this.runEntry(() => this.finishLane(lane, activation, "completed")),
     });
     this.lanes.set(lane, activation);
     this.pc.run(activation.process);
@@ -357,19 +550,29 @@ export class Abilities extends Component {
     return activation;
   }
 
-  /** Cancel `activation`'s process and close its lane out. Shared by `cancel`/`cancelAll` and interrupts inside `activate`. */
-  private cancelActivation(lane: string, activation: ActivationHandle): void {
+  /** Cancel `activation`'s still-running process and close its lane out with `end`. Used for every non-natural end (`cancel`/`cancelAll`, interrupts, chain hand-offs, `release`). */
+  private endActivation(
+    lane: string,
+    activation: ActivationHandle,
+    end: EndKind,
+  ): void {
     activation.process.cancel();
-    this.finishLane(lane, activation, true);
+    this.finishLane(lane, activation, end);
   }
 
   /**
-   * Natural completion and cancellation share this: close `activation`'s
-   * open windows, then clear it from `lane`, flip its state, and queue its
-   * `AbilityEnded` — but only if it's still the lane's current activation.
-   * Checked twice: once at entry (a `finishLane` reached via a stale
-   * closure, e.g. `onComplete` on a process already replaced by an
-   * interrupt, is a no-op), and again after `closeOpenWindows`.
+   * Natural completion and every forced end share this: close `activation`'s
+   * open windows, then clear it from `lane`, flip its state, arm/clear the
+   * post-end chain memory, and queue its `AbilityEnded` — but only if it's
+   * still the lane's current activation. Checked twice: once at entry (a
+   * `finishLane` reached via a stale closure, e.g. `onComplete` on a process
+   * already replaced by an interrupt, is a no-op), and again after
+   * `closeOpenWindows`.
+   *
+   * `end` drives two independent booleans: exit hooks receive `cancelled`
+   * true for anything cut short (`"cancelled"` or `"chained"`), false only
+   * for `"completed"`; `AbilityEnded.cancelled` is true only for
+   * `"cancelled"` — a chained hand-off is combat flow, not interruption.
    *
    * The second check exists because an exit hook run by `closeOpenWindows`
    * can itself call `play`/`force` and install a replacement into this same
@@ -384,16 +587,67 @@ export class Abilities extends Component {
   private finishLane(
     lane: string,
     activation: ActivationHandle,
-    cancelled: boolean,
+    end: EndKind,
   ): void {
     if (this.lanes.get(lane) !== activation) return;
-    this.closeOpenWindows(activation, cancelled);
+    this.closeOpenWindows(activation, end !== "completed");
     if (this.lanes.get(lane) !== activation) return;
     this.lanes.delete(lane);
-    activation.finish(cancelled);
+    activation.finish(end);
+    if (end === "completed") this.armPostEndMemory(lane, activation);
+    else this.clearPostEndMemory(lane);
+    const cancelled = end === "cancelled";
     this.enqueue(() =>
       this.entity.emit(AbilityEnded, { activation, cancelled }),
     );
+  }
+
+  /**
+   * Arm the lane's post-end chain memory when the just-completed def has a
+   * chain window reaching past its own `duration`. A dedicated `Process` ages
+   * `memory.age` in scaled time so `resolveChainLabel` can read the post-end
+   * segment while the lane is idle; it self-completes (and `ProcessComponent`
+   * drops it) once the reach lapses.
+   */
+  private armPostEndMemory(lane: string, activation: ActivationHandle): void {
+    const chains = activation.def.chains;
+    if (!chains) return this.clearPostEndMemory(lane);
+    let maxUntil = 0;
+    for (const window of chains) {
+      if (window.until !== undefined) maxUntil = Math.max(maxUntil, window.until);
+    }
+    const reach = maxUntil - activation.duration;
+    if (reach <= 0) return this.clearPostEndMemory(lane);
+
+    this.clearPostEndMemory(lane);
+    // The arming call runs inside `ProcessComponent`'s process loop, so this
+    // process is ticked once more this same frame — skip that first dt (it is
+    // the completion's sub-frame overshoot) and age from the next frame on.
+    let started = false;
+    const memory: LaneMemory = {
+      def: activation.def,
+      duration: activation.duration,
+      age: 0,
+      process: new Process({
+        update: (dt) => {
+          if (!started) {
+            started = true;
+            return;
+          }
+          memory.age += dt;
+          if (memory.age >= reach) return true;
+        },
+      }),
+    };
+    this.lastEnded.set(lane, memory);
+    this.pc.run(memory.process);
+  }
+
+  private clearPostEndMemory(lane: string): void {
+    const memory = this.lastEnded.get(lane);
+    if (!memory) return;
+    memory.process.cancel();
+    this.lastEnded.delete(lane);
   }
 
   private closeOpenWindows(
@@ -403,14 +657,41 @@ export class Abilities extends Component {
     if (activation.openWindows.size === 0) return;
     for (const step of activation.def.timeline) {
       if (isWindowStep(step) && activation.openWindows.delete(step)) {
+        if (step.to === "release") this.holdTickSlots.get(step)?.cancel();
         step.hooks.exit?.(step.params, activation.ctx, cancelled);
       }
     }
   }
 
   /**
-   * Wrap one public entry point — `play`/`force`/`cancel`/`cancelAll`, and
-   * the process `onComplete` path — so lifecycle events queued during it (by
+   * Drive a hold window's periodic `every` ticks while it is held: a reused
+   * slot (keyed by the step) that fires `tick` at each interval and stops
+   * itself if the lane moves on. Cancelled when the window closes.
+   */
+  private startHoldTick(activation: ActivationHandle, step: WindowStep): void {
+    const every = step.every!;
+    let next = every;
+    let slot = this.holdTickSlots.get(step);
+    if (!slot) {
+      slot = this.pc.slot();
+      this.holdTickSlots.set(step, slot);
+    }
+    slot.restart({
+      update: (_dt, elapsed) => {
+        if (this.lanes.get(activation.lane) !== activation) return true;
+        while (elapsed >= next) {
+          step.hooks.tick?.(step.params, activation.ctx);
+          next += every;
+        }
+        return false;
+      },
+    });
+  }
+
+  /**
+   * Wrap one public entry point — `play`/`force`/`cancel`/`cancelAll`/
+   * `release`/`chainWith`, and the process `onComplete` path — so lifecycle
+   * events queued during it (by
    * this call, or by any reentrant call it triggers, e.g. a step hook that
    * itself calls `force`) deliver only once every state change for the
    * whole call tree has settled, and in the order they were queued.
@@ -519,6 +800,7 @@ export class Abilities extends Component {
         return;
       }
 
+      const hold = step.to === "release";
       events.push({
         time: step.from,
         priority: 1,
@@ -526,27 +808,34 @@ export class Abilities extends Component {
         run: (activation) => {
           activation.openWindows.add(step);
           step.hooks.enter?.(step.params, activation.ctx);
+          // A hold window has no scheduled exit; its periodic ticks run off a
+          // slot for as long as it stays open (closed by `closeOpenWindows`).
+          if (hold && step.every !== undefined) this.startHoldTick(activation, step);
         },
       });
-      events.push({
-        time: step.to,
-        priority: 0,
-        order,
-        run: (activation) => {
-          activation.openWindows.delete(step);
-          step.hooks.exit?.(step.params, activation.ctx, false);
-        },
-      });
-      if (step.every !== undefined) {
-        const every = step.every;
-        for (let k = 1; step.from + k * every < step.to; k++) {
-          const time = step.from + k * every;
-          events.push({
-            time,
-            priority: 1,
-            order,
-            run: (activation) => step.hooks.tick?.(step.params, activation.ctx),
-          });
+      if (typeof step.to === "number") {
+        const to = step.to;
+        events.push({
+          time: to,
+          priority: 0,
+          order,
+          run: (activation) => {
+            activation.openWindows.delete(step);
+            step.hooks.exit?.(step.params, activation.ctx, false);
+          },
+        });
+        if (step.every !== undefined) {
+          const every = step.every;
+          for (let k = 1; step.from + k * every < to; k++) {
+            const time = step.from + k * every;
+            events.push({
+              time,
+              priority: 1,
+              order,
+              run: (activation) =>
+                step.hooks.tick?.(step.params, activation.ctx),
+            });
+          }
         }
       }
     });
@@ -577,6 +866,7 @@ const MIN_TRACK_DURATION = 1e-6;
  */
 function resolveDuration(def: AbilityDef): number {
   let maxEnd = 0;
+  let hasHold = false;
   const seen = new Set<AbilityStep>();
   def.timeline.forEach((step, index) => {
     if (seen.has(step)) {
@@ -598,19 +888,35 @@ function resolveDuration(def: AbilityDef): number {
           `Abilities: ability "${def.id}" step "${step.kind}" (step #${index}) has from=${step.from} < 0.`,
         );
       }
-      if (step.to <= step.from) {
-        throw new Error(
-          `Abilities: ability "${def.id}" step "${step.kind}" (step #${index}) has to=${step.to} <= from=${step.from}.`,
-        );
-      }
       if (step.every !== undefined && step.every <= 0) {
         throw new Error(
           `Abilities: ability "${def.id}" step "${step.kind}" (step #${index}) has every=${step.every} <= 0.`,
         );
       }
-      maxEnd = Math.max(maxEnd, step.to);
+      if (step.to === "release") {
+        hasHold = true;
+      } else {
+        if (step.to <= step.from) {
+          throw new Error(
+            `Abilities: ability "${def.id}" step "${step.kind}" (step #${index}) has to=${step.to} <= from=${step.from}.`,
+          );
+        }
+        maxEnd = Math.max(maxEnd, step.to);
+      }
     }
   });
+
+  // A hold window (`to: "release"`) makes the ability open-ended: it runs
+  // until `release`/`cancel`/interruption, so an explicit finite duration is
+  // contradictory.
+  if (hasHold) {
+    if (def.duration !== undefined) {
+      throw new Error(
+        `Abilities: ability "${def.id}" has a "release" hold window and an explicit duration ${def.duration} — a hold ability is open-ended, drop the duration.`,
+      );
+    }
+    return Infinity;
+  }
 
   if (def.duration !== undefined) {
     if (maxEnd > def.duration) {

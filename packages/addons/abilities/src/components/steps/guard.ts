@@ -65,7 +65,7 @@ export function parry(args: {
  */
 export function block(args: {
   from: number;
-  to: number;
+  to: number | "release";
   damageScale?: number;
   knockbackScale?: number;
   stunScale?: number;

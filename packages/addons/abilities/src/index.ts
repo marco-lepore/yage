@@ -12,9 +12,12 @@ export type {
   AbilitySpawnParams,
 } from "./core/AbilitySpawned.js";
 export type {
+  AbilitiesOptions,
   AbilityActivation,
   AbilityDef,
   AbilityStep,
+  CancelWindow,
+  ChainWindow,
   PlayRejection,
   PlayResult,
   PointStep,

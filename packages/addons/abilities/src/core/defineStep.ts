@@ -20,7 +20,9 @@ export function defineStep<P extends object>(
 export function defineStep<P extends object>(
   kind: string,
   hooks: WindowStepHooks<P>,
-): (args: P & { from: number; to: number; every?: number }) => WindowStep<P>;
+): (
+  args: P & { from: number; to: number | "release"; every?: number },
+) => WindowStep<P>;
 export function defineStep<P extends object>(
   kind: string,
   hooks: PointStepHooks<P> | WindowStepHooks<P>,
@@ -34,7 +36,7 @@ export function defineStep<P extends object>(
   return (args) => {
     const { from, to, every, ...rest } = args as P & {
       from: number;
-      to: number;
+      to: number | "release";
       every?: number;
     };
     const step: WindowStep<P> = { kind, from, to, params: rest as P, hooks };
