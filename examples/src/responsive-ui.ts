@@ -30,7 +30,7 @@ import {
 } from "@yagejs/renderer";
 import type { GradientFill, LayerDef } from "@yagejs/renderer";
 import { Anchor, UISurface, UIPlugin } from "@yagejs/ui";
-import { injectStyles, getContainer, installDebugFromUrl } from "./shared.js";
+import { injectStyles, getContainer, installDebugFromUrl } from "./shared/bootstrap.js";
 
 injectStyles(`
   #game-container {

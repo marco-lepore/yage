@@ -6,7 +6,7 @@ import {
 } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
 
 injectStyles();
 

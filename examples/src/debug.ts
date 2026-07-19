@@ -7,7 +7,7 @@ import {
 } from "@yagejs/physics";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared/bootstrap.js";
 
 injectStyles();
 

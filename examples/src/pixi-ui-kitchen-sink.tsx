@@ -16,11 +16,11 @@ import {
   PixiSelect,
   PixiRadioGroup,
 } from "@yagejs/ui-react";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap";
 import {
   textStyle, loadFonts, assets, allAssets,
   nineSlice, btnTextOffset, panelBg,
-} from "./ui-theme";
+} from "./shared/ui-theme";
 
 injectStyles();
 

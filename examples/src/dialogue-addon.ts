@@ -166,7 +166,7 @@ import {
   type DialogueTheme,
 } from "@yagejs-addons/dialogue/presenters";
 import { Assets, Texture } from "pixi.js";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;

@@ -17,7 +17,7 @@ import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { GridGraph, type Path } from "@yagejs/pathfinding";
 import { gridFromColliders } from "@yagejs/pathfinding/tilemap";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared/bootstrap.js";
 
 injectStyles();
 

@@ -59,8 +59,8 @@ import {
   panelBg,
   sprites as S,
   nineSlice,
-} from "./ui-theme.js";
-import { injectStyles, setupGameContainer } from "./shared.js";
+} from "./shared/ui-theme.js";
+import { injectStyles, setupGameContainer } from "./shared/bootstrap.js";
 
 injectStyles();
 

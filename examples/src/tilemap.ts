@@ -21,7 +21,7 @@ import type {
   HudDebugApi,
   WorldDebugApi,
 } from "@yagejs/debug/api";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared/bootstrap.js";
 
 injectStyles();
 

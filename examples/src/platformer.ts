@@ -17,7 +17,7 @@ import type { PhysicsWorld } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { DebugPlugin } from "@yagejs/debug";
-import { injectStyles, setupGameContainer } from "./shared.js";
+import { injectStyles, setupGameContainer } from "./shared/bootstrap.js";
 
 injectStyles(`
   #hud {

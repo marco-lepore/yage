@@ -10,10 +10,10 @@ import {
   Anchor,
 } from "@yagejs/ui";
 import { Transform } from "@yagejs/core";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
 import {
   textStyle, allAssets, defaultTextStyle, nineSliceBtn, panelBg,
-} from "./ui-theme.js";
+} from "./shared/ui-theme.js";
 
 injectStyles();
 
