@@ -35,7 +35,6 @@ let scoreText: TextComponent | undefined;
 
 function bindScore(text: TextComponent): void {
   scoreText = text;
-  setScore(score);
 }
 
 function setScore(v: number): void {

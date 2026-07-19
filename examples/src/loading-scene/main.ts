@@ -197,28 +197,29 @@ async function main(): Promise<void> {
   await engine.start();
   engine.assets.registerLoader("slow", slowLoader);
   await engine.scenes.push(new AutoBoot());
+
+  // UI wiring — attached after start so a click never runs a scene operation
+  // on an engine that hasn't started yet.
+  document.getElementById("btn-auto")?.addEventListener("click", () => {
+    void engine.scenes.replace(new AutoBoot());
+  });
+
+  document.getElementById("btn-press-any-key")?.addEventListener("click", () => {
+    void engine.scenes.replace(new PressAnyKeyBoot());
+  });
+
+  document.getElementById("btn-uncache")?.addEventListener("click", () => {
+    const salt = Math.random().toString(36).slice(2, 6);
+    class ReloadedGameScene extends GameScene {
+      override readonly preload = PRELOAD.map((h) =>
+        slowAsset(`${h.path}-${salt}`),
+      );
+    }
+    class ReloadBoot extends AutoBoot {
+      override readonly target = () => new ReloadedGameScene();
+    }
+    void engine.scenes.replace(new ReloadBoot());
+  });
 }
 
 main().catch(console.error);
-
-// ---------------------------------------------------------------------------
-// UI wiring
-// ---------------------------------------------------------------------------
-document.getElementById("btn-auto")?.addEventListener("click", () => {
-  void engine.scenes.replace(new AutoBoot());
-});
-
-document.getElementById("btn-press-any-key")?.addEventListener("click", () => {
-  void engine.scenes.replace(new PressAnyKeyBoot());
-});
-
-document.getElementById("btn-uncache")?.addEventListener("click", () => {
-  const salt = Math.random().toString(36).slice(2, 6);
-  class ReloadedGameScene extends GameScene {
-    override readonly preload = PRELOAD.map((h) => slowAsset(`${h.path}-${salt}`));
-  }
-  class ReloadBoot extends AutoBoot {
-    override readonly target = () => new ReloadedGameScene();
-  }
-  void engine.scenes.replace(new ReloadBoot());
-});

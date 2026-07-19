@@ -73,6 +73,8 @@ class EnemyController extends Component {
   private targetX = 0;
   private cooldownTimer = 0;
   private attackTimer = 0;
+  // Cached once found; the player entity is never destroyed in this demo.
+  private player?: Entity;
 
   // Slots
   private flashSlot!: ProcessSlot;
@@ -146,8 +148,12 @@ class EnemyController extends Component {
         this.anim.play("walk");
         this.updateFacing(this.patrolDir);
 
-        // Detect player
-        const player = this.scene.findEntitiesByTag("player")[0];
+        // Detect player (resolved once, then cached)
+        if (!this.player) {
+          const found = this.scene.findEntitiesByTag("player")[0];
+          if (found) this.player = found;
+        }
+        const player = this.player;
         if (player) {
           const playerPos = player.get(Transform).position;
           const dx = Math.abs(pos.x - playerPos.x);

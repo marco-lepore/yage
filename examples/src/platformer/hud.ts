@@ -1,8 +1,8 @@
 import { TextComponent } from "@yagejs/renderer";
 import { TOTAL_COINS } from "./constants.js";
 
-// Game state — encapsulated behind functions so scene/entity code never
-// reassigns these bindings (they become cross-module imports after the split).
+// Game state — module-private, mutated only through the functions below; no
+// other module reads or reassigns these directly.
 let coins = 0;
 let won = false;
 

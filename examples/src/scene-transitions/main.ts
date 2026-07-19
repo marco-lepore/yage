@@ -201,126 +201,131 @@ async function main(): Promise<void> {
   await engine.start();
   engine.assets.registerLoader("slow", slowLoader);
   await engine.scenes.push(new MenuScene());
+  wireControls();
 }
 
 main().catch(console.error);
 
-// ----- UI wiring -----------------------------------------------------------
-const durationSlider = document.getElementById("duration") as HTMLInputElement;
-const durationLabel = document.getElementById("duration-label") as HTMLElement;
-const statusEl = document.getElementById("status") as HTMLElement;
+// DOM controls, attached from main() after engine.start() so a click never
+// runs a scene operation before the engine has started.
+function wireControls(): void {
+  // ----- UI wiring -----------------------------------------------------------
+  const durationSlider = document.getElementById("duration") as HTMLInputElement;
+  const durationLabel = document.getElementById("duration-label") as HTMLElement;
+  const statusEl = document.getElementById("status") as HTMLElement;
 
-// The slider is labeled in milliseconds (human-friendly); the engine works in
-// seconds, so `currentDuration()` converts.
-function currentDurationMs(): number {
-  return parseInt(durationSlider.value, 10);
-}
+  // The slider is labeled in milliseconds (human-friendly); the engine works in
+  // seconds, so `currentDuration()` converts.
+  function currentDurationMs(): number {
+    return parseInt(durationSlider.value, 10);
+  }
 
-function currentDuration(): number {
-  return currentDurationMs() / 1000;
-}
+  function currentDuration(): number {
+    return currentDurationMs() / 1000;
+  }
 
-durationSlider.addEventListener("input", () => {
+  durationSlider.addEventListener("input", () => {
+    durationLabel.textContent = `${currentDurationMs()}ms`;
+  });
   durationLabel.textContent = `${currentDurationMs()}ms`;
-});
-durationLabel.textContent = `${currentDurationMs()}ms`;
 
-function nextScene(): LabeledScene {
-  const current = engine.scenes.active?.name;
-  if (current === "menu") return new LevelScene();
-  if (current === "level") return new GameOverScene();
-  return new MenuScene();
+  function nextScene(): LabeledScene {
+    const current = engine.scenes.active?.name;
+    if (current === "menu") return new LevelScene();
+    if (current === "level") return new GameOverScene();
+    return new MenuScene();
+  }
+
+  function bind(id: string, fn: () => void): void {
+    document.getElementById(id)?.addEventListener("click", fn);
+  }
+
+  bind("btn-push-fade", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: fade({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-flash", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: flash({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-crossfade", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: crossFade({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-slide", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: slideIn(currentDuration()),
+    });
+  });
+
+  bind("btn-push-iris", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: iris({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-iris-reveal", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: irisReveal({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-chessboard", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: chessboard({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-slidepush", () => {
+    void engine.scenes.push(nextScene(), {
+      transition: slidePush({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-default", () => {
+    // LevelScene has a defaultTransition — no call-site option needed.
+    void engine.scenes.push(new LevelScene());
+  });
+
+  bind("btn-pop", () => {
+    void engine.scenes.pop({ transition: fade({ duration: currentDuration() }) });
+  });
+
+  bind("btn-replace", () => {
+    void engine.scenes.replace(nextScene(), {
+      transition: fade({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-push-load", () => {
+    // Replace the top scene with a loading screen that fades in via the
+    // current duration, preloads synthetic "slow" assets, then fades to a
+    // dedicated LoadedLevel. Demonstrates LoadingScene composing cleanly
+    // with transitions on both ends — mount and handoff.
+    void engine.scenes.replace(new LoadThenShow(currentDuration()), {
+      transition: fade({ duration: currentDuration() }),
+    });
+  });
+
+  bind("btn-clear", () => {
+    void engine.scenes.popAll();
+    void engine.scenes.push(new MenuScene());
+  });
+
+  // ----- Live status panel ---------------------------------------------------
+  function renderStatus(): void {
+    const names = engine.scenes.all.map((s) => s.name).join(" → ") || "(empty)";
+    const transitioning = engine.scenes.isTransitioning ? "yes" : "no";
+    statusEl.textContent =
+      `Stack:         ${names}\n` + `Transitioning: ${transitioning}`;
+  }
+
+  setInterval(renderStatus, 50);
+  renderStatus();
 }
-
-function bind(id: string, fn: () => void): void {
-  document.getElementById(id)?.addEventListener("click", fn);
-}
-
-bind("btn-push-fade", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: fade({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-flash", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: flash({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-crossfade", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: crossFade({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-slide", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: slideIn(currentDuration()),
-  });
-});
-
-bind("btn-push-iris", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: iris({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-iris-reveal", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: irisReveal({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-chessboard", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: chessboard({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-slidepush", () => {
-  void engine.scenes.push(nextScene(), {
-    transition: slidePush({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-default", () => {
-  // LevelScene has a defaultTransition — no call-site option needed.
-  void engine.scenes.push(new LevelScene());
-});
-
-bind("btn-pop", () => {
-  void engine.scenes.pop({ transition: fade({ duration: currentDuration() }) });
-});
-
-bind("btn-replace", () => {
-  void engine.scenes.replace(nextScene(), {
-    transition: fade({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-push-load", () => {
-  // Replace the top scene with a loading screen that fades in via the
-  // current duration, preloads synthetic "slow" assets, then fades to a
-  // dedicated LoadedLevel. Demonstrates LoadingScene composing cleanly
-  // with transitions on both ends — mount and handoff.
-  void engine.scenes.replace(new LoadThenShow(currentDuration()), {
-    transition: fade({ duration: currentDuration() }),
-  });
-});
-
-bind("btn-clear", () => {
-  void engine.scenes.popAll();
-  void engine.scenes.push(new MenuScene());
-});
-
-// ----- Live status panel ---------------------------------------------------
-function renderStatus(): void {
-  const names = engine.scenes.all.map((s) => s.name).join(" → ") || "(empty)";
-  const transitioning = engine.scenes.isTransitioning ? "yes" : "no";
-  statusEl.textContent =
-    `Stack:         ${names}\n` + `Transitioning: ${transitioning}`;
-}
-
-setInterval(renderStatus, 50);
-renderStatus();
