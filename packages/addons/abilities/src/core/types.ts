@@ -16,10 +16,11 @@ export interface StepContext {
 /**
  * A stable handle to one ability run: identity-comparable with `===`, and
  * the same object everywhere it appears — `Abilities.active()`,
- * `StepContext`, `AbilitySpawnContext`, `PlayResult`, and both lifecycle
+ * `StepContext`, `AbilitySpawnContext`, `PlayResult`, and the lifecycle
  * event payloads. A same-def restart (see `Abilities`'s activation rule)
  * creates a new handle; it never reuses one, since a later run can share the
- * earlier run's ability id and lane.
+ * earlier run's ability id and lane. A run spans the whole phase graph: phase
+ * transitions keep the handle, only a new activation replaces it.
  */
 export interface AbilityActivation {
   readonly def: AbilityDef;
@@ -27,22 +28,37 @@ export interface AbilityActivation {
   readonly lane: string;
   /** The entity running this activation — the spawned attack itself for a nested run, not necessarily the original caster. */
   readonly entity: Entity;
-  /** Resolved duration: `def.duration`, or the timeline's last step end — floored to a small positive epsilon for a degenerate (empty, or all-instant-at-0) timeline that would otherwise resolve to 0. `Infinity` for a hold ability (a timeline with a `to: "release"` window), which runs until `release`/`cancel`/interruption. */
-  readonly duration: number;
-  /** Seconds since the run started, clamped to `duration`. Stops advancing once the run ends. */
+  /** Name of the current phase — `"main"` for a `timeline:` def. */
+  readonly phase: string;
+  /** Seconds since the current phase started, clamped to `phaseDuration`. */
+  readonly phaseElapsed: number;
+  /**
+   * The current phase's resolved duration: its explicit `duration`, or the
+   * phase timeline's last step end. `hold.max` for a capped hold phase,
+   * `Infinity` for an uncapped one.
+   */
+  readonly phaseDuration: number;
+  /** Seconds since the run started, summed across every phase visited. Stops advancing once the run ends. */
   readonly elapsed: number;
+  /** Seconds accumulated in `phase` during this activation — 0 if unvisited; re-entry accumulates. */
+  elapsedIn(phase: string): number;
+  /**
+   * Data passed to the `send` that entered (or last transitioned) this run,
+   * or `undefined`. Typed `unknown` — the game casts it (the same bare-token
+   * precedent as `HitDealt.data`). A late charge delivery carries the
+   * input-layer held time here.
+   */
+  readonly payload: unknown;
   /**
    * `"active"` while running; flips to a terminal value exactly once, when
    * the run ends.
-   * - `"completed"`: reached the timeline's end on its own, or ended via
-   *   `release()`.
-   * - `"cancelled"`: `cancel()`/`cancelAll()`, a priority interrupt, or a
-   *   forced same-def restart — a run cut short against its will.
-   * - `"chained"`: handed off to a def-sanctioned successor — a `chainWith`
-   *   resolution or a cancel-window admission. Combat flow, not interruption.
+   * - `"completed"`: the final phase reached its natural end, or a hold with
+   *   no `next` was released.
+   * - `"cancelled"`: `cancel()`/`cancelAll()`, a priority interrupt, a
+   *   cancel-window admission, or a forced same-def restart.
    */
-  readonly state: "active" | "completed" | "cancelled" | "chained";
-  /** Started via `force()` rather than `play()`. Does not mean uninterruptible — see `AbilityDef.priority`. */
+  readonly state: "active" | "completed" | "cancelled";
+  /** Started via `force()` rather than `send()`. Does not mean uninterruptible — see `AbilityDef.priority`. */
   readonly forced: boolean;
 }
 
@@ -62,44 +78,43 @@ export interface PointStepHooks<P> {
 export interface WindowStepHooks<P> {
   enter?(params: P, ctx: StepContext): void;
   /**
-   * `cancelled` is true when the window was cut short — `Abilities.cancel()`,
-   * an interruption, or a def-sanctioned chain/cancel-window hand-off — rather
-   * than reaching `to`. False only when it closed on its own (reaching `to`,
-   * or a hold window closed by `release()`).
+   * `cancelled` is true when the window was cut short against the ability's
+   * will — `Abilities.cancel()`, an interruption, or a cancel-window
+   * admission. False when it closed as flow: reaching `to`, a phase
+   * transition, a hold completed by `release()`, or the phase's natural end.
    */
   exit?(params: P, ctx: StepContext, cancelled: boolean): void;
   tick?(params: P, ctx: StepContext): void;
 }
 
-/** A single instant in an ability's timeline. */
+/** A single instant in a phase's timeline. */
 export interface PointStep<P extends object = object> {
   kind: string;
-  /** Seconds from ability start. */
+  /** Seconds from phase start. */
   at: number;
   params: P;
   hooks: PointStepHooks<P>;
 }
 
-/** A time span in an ability's timeline, half-open: fires `enter` at `from`, `exit` at `to`. */
+/** A time span in a phase's timeline, half-open: fires `enter` at `from`, `exit` at its end. */
 export interface WindowStep<P extends object = object> {
   kind: string;
-  /** Seconds from ability start. */
+  /** Seconds from phase start. */
   from: number;
   /**
-   * Seconds from ability start (must be greater than `from`), or `"release"`
-   * for a hold window: no scheduled end, closed by `Abilities.release()` (or
-   * `cancel`/interruption). A def with any `"release"` window is a hold
-   * ability with `Infinity` resolved duration.
+   * Seconds from phase start (must be greater than `from`), or `"end"`:
+   * the window closes at the phase's natural boundary — the resolved
+   * duration in a fixed phase, elastic (release/`hold.max`) in a hold phase.
    */
-  to: number | "release";
-  /** Interval in seconds for repeated `tick` calls between `from` and its end (strictly before a numeric `to`; indefinitely while a hold window is open). */
+  to: number | "end";
+  /** Interval in seconds for repeated `tick` calls between `from` and its end (strictly before a numeric `to`; indefinitely while an `"end"` window in a hold phase stays open). */
   every?: number;
   params: P;
   hooks: WindowStepHooks<P>;
 }
 
 /**
- * One entry in an ability's timeline. Steps carry different `params` shapes,
+ * One entry in a phase's timeline. Steps carry different `params` shapes,
  * so the union is widened to `object` params here — `defineStep` factories
  * still return the narrow `PointStep<P>`/`WindowStep<P>` for the step author.
  */
@@ -107,96 +122,139 @@ export type AbilityStep = PointStep | WindowStep;
 
 /**
  * A window during which a busy lane yields to an incoming activation instead
- * of refusing it — the declaring def's recovery being cancellable into a
- * dash, say. Bounds are on the activation clock (seconds from start).
+ * of refusing it — the declaring phase's recovery being cancellable into a
+ * dash, say. Bounds are on the phase-local clock (seconds from phase start).
  */
 export interface CancelWindow {
-  /** Seconds from start the window opens. */
+  /** Seconds from phase start the window opens. */
   from: number;
-  /** Seconds from start the window closes. Omitted = until the ability ends. */
+  /** Seconds from phase start the window closes. Omitted = until the phase ends. */
   to?: number;
   /**
-   * Ability ids this window admits. Omitted or `["*"]` (equivalent) admits
-   * any id — including the declaring def itself, a mash-restart; enumerate
-   * ids to exclude it.
+   * Ability ids this window admits — resolved def ids, never intent
+   * aliases (an `into: ["dash"]` admits a `send("evade")` that resolves to
+   * the dash def). Omitted or `["*"]` (equivalent) admits any id — including
+   * the declaring def itself, a mash-restart; enumerate ids to exclude it.
    */
   into?: readonly string[];
 }
 
 /**
- * A window during which the declaring def may hand off to a successor via
- * `Abilities.chainWith`. Bounds are on the activation clock; `until` MAY
- * exceed the ability's `duration`, and that post-end segment applies while
- * the lane sits idle after the ability completes (a per-lane memory the
- * runner keeps until the segment lapses or a new ability starts).
+ * The guarded form of an `on:` transition: `send(intent)` advances to `to`
+ * while the phase-local clock is within `[from, until]`. An `until` past the
+ * phase's natural end lingers: for the excess time after the ability
+ * completes, the same intent starts a NEW activation entering at `to`, with
+ * cooldown neither checked nor re-armed (see `Abilities.send`).
  */
-export interface ChainWindow {
-  /** Chain label the caller passes to `chainWith` — a game-chosen string, no gesture semantics. */
-  on: string;
-  /** Ability id to start when this window matches. Must share the declaring def's lane. */
+export interface PhaseTransition {
+  /** Target phase. */
   to: string;
-  /** Seconds from start the window opens. */
-  from: number;
-  /** Seconds from start the window closes. Defaults to the ability's end; may exceed `duration`. */
+  /** Seconds from phase start the transition becomes available. Default 0. */
+  from?: number;
+  /** Seconds from phase start it stops being available. Omitted = while the phase is active (no linger). */
   until?: number;
 }
 
-/**
- * A named, timed sequence of steps played by `Abilities.play` or forced by
- * `Abilities.force`. `lane` and `priority` govern the one activation rule
- * shared by both entry points (see `Abilities`): two defs in different lanes
- * run concurrently; two defs in the same lane resolve by priority, with a
- * forced def re-activating itself (same object) restarting in place.
- */
-export interface AbilityDef {
+/** One named state in an ability's phase graph. */
+export interface PhaseDef {
+  /** Steps on this phase's local clock (0 = phase entry). */
+  timeline: readonly AbilityStep[];
+  /** Explicit phase length past the last step end (recovery). Not allowed on a hold phase — use `hold.max`. */
+  duration?: number;
+  /**
+   * Marks an elastic phase bound to the intent that entered it: it runs until
+   * that intent's `release()` (→ `next`), `after` fires, or `hold.max`
+   * auto-completes. `true` = uncapped.
+   */
+  hold?: boolean | { max?: number };
+  /** Overrides the def's `priority` while this phase is current — the activation's effective priority is always the current phase's. */
+  priority?: number;
+  /** Cancel windows on this phase's local clock. Overrides the def-level `cancels` sugar for this phase. */
+  cancels?: readonly CancelWindow[];
+  /**
+   * Intent → transition map. A string is shorthand for `{ to }` (available
+   * for the phase's whole life). A declared intent whose guard fails refuses
+   * with `"noMatch"` and never falls through to cross-def entry; an
+   * undeclared intent does fall through (see `Abilities.send`).
+   */
+  on?: Readonly<Record<string, string | PhaseTransition>>;
+  /** Phase to auto-enter on natural end (duration reached, hold released, or `hold.max`). Omitted = the ability completes. */
+  next?: string;
+  /** Time-based auto-advance: enter `to` at phase-local `at`. In a hold phase this fires while still held (the charge-tier ladder). */
+  after?: { at: number; to: string };
+}
+
+interface AbilityDefBase {
   id: string;
   /** Exclusivity lane — only one activation per lane runs at a time. Default `"main"`. */
   lane?: string;
-  /** Compared against the lane's active def to decide interrupts. Default 0. */
+  /** Default priority for every phase (see `PhaseDef.priority`). Compared against the lane's active phase to decide interrupts. Default 0. */
   priority?: number;
   /**
-   * Seconds before `play(id)` can succeed again. Default 0 (no cooldown).
+   * Seconds before `send(id)` can succeed again, checked and armed at
+   * activation (cross-def entry only — phase transitions and linger
+   * continuations neither check nor re-arm it). Default 0 (no cooldown).
    * A `Scalar` function is resolved once each time the ability fires
    * (snapshot semantics), so a haste stat can shorten the next cooldown.
    */
   cooldown?: Scalar;
-  /** Seconds the ability runs for. Defaults to the latest step end time (`at` or `to`). */
-  duration?: number;
-  /** Windows during which this ability's run yields to an incoming activation (see `CancelWindow`). */
+  /** Sugar: cancel windows applied to every phase independently, each on that phase's local clock. A phase's own `cancels` overrides it. */
   cancels?: readonly CancelWindow[];
-  /** Windows during which this ability hands off to a successor via `chainWith` (see `ChainWindow`). */
-  chains?: readonly ChainWindow[];
-  timeline: readonly AbilityStep[];
+  /**
+   * Extra intent → phase entry doors, used when the intent reaches the
+   * cross-def entry step of `send`'s resolution (a late charge delivery, an
+   * AI-only entry). The def's own id is always a door to its `start` phase.
+   * Entry intents are global across the instance's defs — collisions are
+   * construction errors.
+   */
+  entry?: Readonly<Record<string, string>>;
 }
 
-/** Options for the `Abilities` constructor. */
-export interface AbilitiesOptions {
-  /**
-   * Chain labels resolved to ability ids when a lane is idle — the entry
-   * point of a chain (`{ light: "attack1" }`). `chainWith(label)` consults it
-   * after the active def's chain windows and the post-end memory. Entries are
-   * lane-scoped like chain windows: a target resolves only when the queried
-   * lane is the target's own lane (`chainWith(label, lane)`). Targets are
-   * validated at construction.
-   */
-  idle?: Readonly<Record<string, string>>;
+/** Single-phase sugar: `timeline:` authors exactly one phase named `"main"`. */
+export interface TimelineAbilityDef extends AbilityDefBase {
+  timeline: readonly AbilityStep[];
+  /** Seconds the ability runs for. Defaults to the latest step end time (`at` or `to`). */
+  duration?: number;
+  phases?: never;
+  start?: never;
+}
+
+/** The explicit phase-graph form. Mutually exclusive with `timeline:`. */
+export interface PhasedAbilityDef extends AbilityDefBase {
+  phases: Readonly<Record<string, PhaseDef>>;
+  /** Initial phase. Defaults to the first `phases` key — name it explicitly rather than trusting key order when the map is built dynamically. */
+  start?: string;
+  timeline?: never;
+  duration?: never;
 }
 
 /**
+ * A named state machine of timed phases, entered by `Abilities.send` (its id
+ * — or an `entry:` alias — is the intent) or forced by `Abilities.force`.
+ * `lane` and `priority` govern the one activation rule shared by both entry
+ * points (see `Abilities`): two defs in different lanes run concurrently;
+ * two defs in the same lane resolve by priority, with a forced def
+ * re-activating itself (same object) restarting in place.
+ */
+export type AbilityDef = TimelineAbilityDef | PhasedAbilityDef;
+
+/**
  * Why an activation was refused.
- * - `"cooldown"`: `play(id)`/`chainWith` — the target id's cooldown has not
- *   elapsed (read `cooldownRemaining(id)` for how long is left).
+ * - `"cooldown"`: the intent resolved to a cross-def entry whose cooldown
+ *   has not elapsed (read `cooldownRemaining(id)` for how long is left).
  * - `"busy"`: the target lane is occupied by a def the incoming one cannot
- *   take — same-or-higher priority, not a same-def restart, and no admitting
- *   cancel window. Read `activeId(lane)` (and that def's `priority`) for what
- *   holds the lane. This is also the super-armor signal on the forced path: a
- *   `force(def)` whose `priority` does not outrank the active def returns this.
- * - `"noMatch"`: `chainWith` only — the label resolved to no chain window,
- *   post-end memory, or idle-map entry for the lane's current state.
+ *   take — same-or-higher effective priority, not a same-def restart, and no
+ *   admitting cancel window. Read `activeId(lane)` for what holds the lane.
+ *   This is also the super-armor signal on the forced path: a `force(def)`
+ *   whose priority does not outrank the active phase's returns this.
+ * - `"noMatch"`: the intent is declared by the active (or lingering) phase
+ *   but its guard window doesn't cover the current time — a mistimed press
+ *   refuses rather than falling through — or it resolved to no entry at all
+ *   for the queried lane.
  */
 export type PlayRejection = "cooldown" | "busy" | "noMatch";
 
-/** Result of `play`/`force`: check `ok` for the common case; on success, `activation` is the new run's handle; on refusal, `reason` says why. */
+/** Result of `send`/`force`: check `ok` for the common case; on success, `activation` is the run's handle (the existing one for a phase transition); on refusal, `reason` says why. */
 export type PlayResult =
   | { readonly ok: true; readonly activation: AbilityActivation }
   | { readonly ok: false; readonly reason: PlayRejection };

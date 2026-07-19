@@ -20,7 +20,7 @@ type Who = "player" | "enemy";
 type StatKind = "atk" | "def" | "maxHp" | "atkSpeed";
 
 interface HostHandle {
-  play(who: Who, id: string): boolean;
+  send(who: Who, id: string): boolean;
   teleport(who: Who, x: number, y: number): void;
   setStat(who: Who, kind: StatKind, value: number): void;
   cooldownRemaining(who: Who, id: string): number;
@@ -34,10 +34,10 @@ function probe(page: Page, who: Who): Promise<ProbeData | undefined> {
   );
 }
 
-async function play(page: Page, who: Who, id: string): Promise<boolean> {
+async function send(page: Page, who: Who, id: string): Promise<boolean> {
   return page.evaluate(
     ({ who: w, id: abilityId }) =>
-      (window as unknown as { __abilities__: HostHandle }).__abilities__.play(
+      (window as unknown as { __abilities__: HostHandle }).__abilities__.send(
         w,
         abilityId,
       ),
@@ -90,7 +90,7 @@ test.describe("@yagejs-addons/abilities addon", () => {
     await teleport(page, "enemy", 130, 150);
     await stepFrames(page, 2);
 
-    expect(await play(page, "player", "slash")).toBe(true);
+    expect(await send(page, "player", "slash")).toBe(true);
     // The hitbox window is [0.05, 0.16]s — well under a second of frames.
     await stepFrames(page, 20);
 
@@ -122,7 +122,7 @@ test.describe("@yagejs-addons/abilities addon", () => {
     // Arm the guard before the enemy ever makes contact, so the very first
     // touch-damage delivery meets an open guard window (to: 0.6s, plenty of
     // margin over the few frames this takes).
-    expect(await play(page, "player", "guard")).toBe(true);
+    expect(await send(page, "player", "guard")).toBe(true);
     await stepFrames(page, 3);
 
     await teleport(page, "enemy", 80 + 26, 150);
@@ -150,7 +150,7 @@ test.describe("@yagejs-addons/abilities addon", () => {
     await teleport(page, "enemy", 80 + 90, 150);
     await stepFrames(page, 2);
 
-    expect(await play(page, "player", "dash")).toBe(true);
+    expect(await send(page, "player", "dash")).toBe(true);
     await stepFrames(page, 20); // > 0.18s dash window, contact begins mid-dash
 
     const after = await probe(page, "player");
@@ -172,12 +172,12 @@ test.describe("@yagejs-addons/abilities addon", () => {
     expect(stunned?.mainActive).toBe("stagger");
     expect(stunned?.hp).toBe(94);
 
-    // The item lane is independent of the busy main lane: `play` succeeds
+    // The item lane is independent of the busy main lane: `send` succeeds
     // (would be refused on the main lane, which is occupied by the
     // priority-100 stagger reaction) even though the player is still
     // stunned. The potion's single `heal` point step fires and completes
     // within a frame or two, well inside the stagger's 0.25s window.
-    expect(await play(page, "player", "potion")).toBe(true);
+    expect(await send(page, "player", "potion")).toBe(true);
     await stepFrames(page, 3);
 
     const healed = await probe(page, "player");
@@ -192,7 +192,7 @@ test.describe("@yagejs-addons/abilities addon", () => {
 
     // Default spawns: enemy (320,150), player (80,150) — 240px apart. The
     // projectile's `aim` resolver targets the player's live position.
-    expect(await play(page, "enemy", "shoot")).toBe(true);
+    expect(await send(page, "enemy", "shoot")).toBe(true);
 
     // speed 240px/s, contact at gap = radii sum (5 + 14 = 19), so travel
     // 240 - 19 = 221px ≈ 0.92s ≈ 55 frames; step comfortably past that
@@ -221,7 +221,7 @@ test.describe("@yagejs-addons/abilities stats boundary", () => {
     await teleport(page, "enemy", 130, 150);
     await stepFrames(page, 2);
 
-    expect(await play(page, "player", "slash")).toBe(true);
+    expect(await send(page, "player", "slash")).toBe(true);
     await stepFrames(page, 20);
 
     const enemy = await probe(page, "enemy");
@@ -239,7 +239,7 @@ test.describe("@yagejs-addons/abilities stats boundary", () => {
     await teleport(page, "enemy", 130, 150);
     await stepFrames(page, 2);
 
-    expect(await play(page, "player", "slash")).toBe(true);
+    expect(await send(page, "player", "slash")).toBe(true);
     await stepFrames(page, 20);
 
     const enemy = await probe(page, "enemy");
@@ -266,14 +266,14 @@ test.describe("@yagejs-addons/abilities stats boundary", () => {
     await waitForClock(page);
 
     // Default attack speed: dash's 1.0s cooldown arms in full.
-    expect(await play(page, "player", "dash")).toBe(true);
+    expect(await send(page, "player", "dash")).toBe(true);
     expect(await cooldownRemaining(page, "player", "dash")).toBeCloseTo(1.0, 2);
 
     // Let the dash and its cooldown finish, then double attack speed. The next
     // activation re-resolves the Scalar, so the same def arms a 0.5s cooldown.
     await stepFrames(page, 75);
     await setStat(page, "player", "atkSpeed", 2);
-    expect(await play(page, "player", "dash")).toBe(true);
+    expect(await send(page, "player", "dash")).toBe(true);
     expect(await cooldownRemaining(page, "player", "dash")).toBeCloseTo(0.5, 2);
   });
 });

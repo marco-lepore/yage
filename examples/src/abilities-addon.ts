@@ -2,22 +2,26 @@
  * The first example for @yagejs-addons/abilities: a close-quarters top-down
  * arena brawl exercising the full timeline-ability + hit-contract surface.
  *
- * - Player `Abilities`: a hand-rolled 1-2-3 combo (`attack1`/`attack2`/
- *   `attack3`, each a `hitbox` window) plus a tap-vs-hold charge attack,
- *   "dash" (`invulnerable` + a game-defined movement step, buffered mid-combo
- *   — see `PlayerController.updateCombat`'s dash-cancel), a hold-vs-tap
+ * - Player `Abilities`: a 1-2-3 combo authored as one `attack` def with
+ *   `jab`/`cross`/`hook` phases (each stage a `hitbox` window; `send("attack")`
+ *   enters when idle and advances through each phase's guarded `on:` window,
+ *   which lingers through the recovery gap after the run completes), a
+ *   tap-vs-hold charge (`CHARGE`: a hold phase completed by `release()` on
+ *   key-up into a super-armored `kick` phase), "dash" (`invulnerable` + a
+ *   game-defined movement step, buffered mid-combo — see
+ *   `PlayerController.updateCombat`'s dash-cancel), a hold-vs-tap
  *   guard (`GUARD_HOLD`/`PARRY`: holding reduces every landed hit in place
  *   with no stagger and never closes early, tapping cancels into a short
  *   negate-and-punish parry window with a hand-rolled counterattack/
  *   projectile-reflect on success — see `PlayerController.updateGuard`),
  *   "potion" (a `heal` point step on the `"item"` lane, so it plays even
- *   while the main lane is busy). Every player ability's timeline is windup
- *   → active (hitbox/effect) → recovery: `AbilityDef.duration` extends past
+ *   while the main lane is busy). Every player attack phase is windup
+ *   → active (hitbox/effect) → recovery: the phase `duration` extends past
  *   the active window so landing (or whiffing) a swing leaves the lane busy
- *   for a beat afterward. Every combo/charge/counter def additionally sets
- *   `priority: SUPER_ARMOR_PRIORITY` (above the addon's built-in stagger
- *   reaction) so a committed attack still takes damage but can't be flinched
- *   or knocked back out of it — see the ability defs below.
+ *   for a beat afterward. Every combo/charge-kick/counter phase additionally
+ *   carries `priority: SUPER_ARMOR_PRIORITY` (above the addon's built-in
+ *   stagger reaction) so a committed attack still takes damage but can't be
+ *   flinched or knocked back out of it — see the ability defs below.
  * - Enemies: a telegraphed melee `hitbox` (windup → active → recovery, with
  *   a `telegraph` step that flashes the sprite and bursts particles through
  *   the whole windup) plus a `projectile` ranged attack (`SHOOT`), aimed at
@@ -140,6 +144,7 @@ import {
   HitGuarded,
   HitReceived,
   HitReceiver,
+  PhaseChanged,
   Projectile,
   REACTION_PRIORITY,
   Stagger,
@@ -338,7 +343,7 @@ const BOXER_ANIM_SPECS: Record<BoxerAnim, BoxerAnimSpec> = {
   attack2: { sheet: "RightJab", frames: 11, speed: 0.714, loop: false },
   // The combo finisher: a leaping flying kick (48 real frames — the whole
   // sheet bar one empty trailing cell) instead of a third punch, paired with
-  // a real forward lunge (see `lungeMove`/`ATTACK_3`) so the drawn leap and
+  // a real forward lunge (see `lungeMove` / `ATTACK`'s hook phase) so the drawn leap and
   // the body's actual travel read as one motion.
   attack3: { sheet: "FlyingKick", frames: 48, speed: 0.893, loop: false },
   // A single held frame (no block/parry animation in the pack) — same
@@ -578,7 +583,7 @@ function installFootAnchorTracking(entity: Entity): void {
  *  from its `Facing` (falling back to `DEFAULT_DIR` without one). Records
  *  the (anim, dir) pair in `boxerAnimState` for `applyFootAnchor` to read.
  *  `startFrame` jumps a one-shot past its own opening frames instead of
- *  always starting at 0 — `CHARGE_RELEASE` uses this to open onto the kick's
+ *  always starting at 0 — `CHARGE`'s kick phase uses this to open onto the kick's
  *  windup already partway coiled, landing contact sooner without re-timing
  *  the whole clip. `lockDuration` overrides `AnimationController`'s own
  *  frames/speed-derived lock length to match, so `AnimationController.locked`
@@ -1016,11 +1021,11 @@ function velocityStep(kind: string) {
 }
 
 const dashMove = velocityStep("dashMove");
-/** A forward lunge — the finisher's leaping kick (`ATTACK_3`) and the
- *  charge release's kick-drive (`CHARGE_RELEASE`) both ride this same step
- *  kind at their own speed/window. */
+/** A forward lunge — the combo finisher (`ATTACK`'s hook phase) and the
+ *  charge kick (`CHARGE`'s kick phase) both ride this same step kind at
+ *  their own speed/window. */
 const lungeMove = velocityStep("lungeMove");
-/** The 1-2 combo jabs' forward step — see `ATTACK_1`/`ATTACK_2`. */
+/** The 1-2 combo jabs' forward step — see `ATTACK`'s jab/cross phases. */
 const punchMove = velocityStep("punchMove");
 
 /** A point step: restore HP through the sibling `Health`. */
@@ -1236,163 +1241,168 @@ function pushMaxHp(entity: Entity): void {
 
 const SUPER_ARMOR_PRIORITY = REACTION_PRIORITY + 10;
 
-/** Seconds a combo chain window stays open past the swing's own end (its
- *  `ChainWindow.until` = the stage's duration plus this), so a tap landing in
- *  the recovery gap still advances the combo before it resets to the idle
- *  entry. A touch more forgiving than the animations' in-swing pace. */
+/** Seconds a combo `on:` window stays open past the stage's own end (its
+ *  `until` = the stage's duration plus this), so a tap landing in the
+ *  recovery gap still advances the combo through the runner's linger before
+ *  the entry resets. A touch more forgiving than the animations' in-swing
+ *  pace. */
 const COMBO_WINDOW = 0.6;
 
-/** 1-2-3 combo, stage 1: a quick opening jab. Chained/buffered by the
- *  hand-rolled combo state machine in `PlayerController` — see the section
- *  below `PlayerController.updateCombat`. LeftJab's one-shot at this speed
- *  runs ~0.36s; the hitbox sits on the punch's extension and recovery
- *  stretches ~0.2s past it. `punchMove` rides the same window as the hitbox
- *  — a step into the punch, ~31px, so the jab reads as weight thrown forward
- *  rather than a stationary arm swing. */
-const ATTACK_1: AbilityDef = {
-  id: "attack1",
-  priority: SUPER_ARMOR_PRIORITY,
-  duration: 0.448,
-  // Chain into stage 2 on another "attack": a fully post-end window (`from` =
-  // this stage's own duration) that runs `COMBO_WINDOW` past the swing's end,
-  // so a tap chains the instant the swing finishes and through the recovery
-  // gap after it (the runner's post-end memory; `PlayerController.updateCombat`).
-  chains: [{ on: "attack", to: "attack2", from: 0.448, until: 0.448 + COMBO_WINDOW }],
-  // A buffered dash may cancel the recovery once the hit has landed.
-  cancels: [{ from: 0.246, into: ["dash"] }],
-  timeline: [
-    spriteAnim({ at: 0, name: "attack1" }),
-    punchMove({ from: 0.123, to: 0.246, speed: 250 }),
-    hitbox({
-      from: 0.123,
-      to: 0.246,
-      shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
-      offset: { x: 39, y: 0 },
-      hit: byAtk({ damage: 10, knockback: 240, stun: 0.16, hitstop: 0.05 }),
-    }),
-  ],
-};
-
-/** Combo stage 2: a faster follow-up cross. RightJab's shorter one-shot
- *  (~0.26s) lands its contact frame earlier; recovery still runs ~0.19s
- *  past it. `punchMove`'s window is narrower than stage 1's (the cross's
- *  hitbox window is itself narrower) at a higher speed, landing a
- *  comparable ~28px step. */
-const ATTACK_2: AbilityDef = {
-  id: "attack2",
-  priority: SUPER_ARMOR_PRIORITY,
-  duration: 0.358,
-  chains: [{ on: "attack", to: "attack3", from: 0.358, until: 0.358 + COMBO_WINDOW }],
-  cancels: [{ from: 0.168, into: ["dash"] }],
-  timeline: [
-    spriteAnim({ at: 0, name: "attack2" }),
-    punchMove({ from: 0.078, to: 0.168, speed: 310 }),
-    hitbox({
-      from: 0.078,
-      to: 0.168,
-      shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
-      offset: { x: 37, y: 0 },
-      hit: byAtk({ damage: 12, knockback: 265, stun: 0.18, hitstop: 0.05 }),
-    }),
-  ],
-};
-
-/** Combo finisher: a leaping flying kick that always resets the chain,
- *  whether it was reached by chaining or by the post-swing window (see
- *  `PlayerController.updateCombat`). Also the parry counter's sprite — see
- *  `COUNTER` below, which plays the same animation with different numbers
- *  and a shorter recovery (and no lunge — a point-blank counter has nowhere
- *  to travel to). `lungeMove` rides the FlyingKick sheet's own airborne
- *  extension (measured apex around frame 24 of 48, i.e. ~0.45s in at this
- *  speed): it opens partway through the leap so the kick is already
- *  carrying the body forward by the time the hitbox opens on top of it. The
- *  speed is tuned against a colliding target, not free space — a body-to-body
- *  collision with the struck target eats a big chunk of the requested
- *  velocity, so covering 90-120px on landing (measured at collider-contact
- *  distances from a tight clinch to `ENEMY_MELEE_RANGE`) takes ~820px/s,
- *  which covers ~180px if nothing is in the way. This is a one-shot attack,
- *  exempt from the per-frame foot compensation in `FOOT_ANCHOR_PX` — the
- *  leap's own in-frame motion is the point. The finisher's own recovery
- *  (~0.2s past the animation's natural end) is the longest of the three
- *  combo stages — the commitment move. `hitbox`'s `follow: true` re-anchors
- *  the sensor to the caster's position every frame through the whole active
- *  window — the lunge is still accelerating when the window opens, so a
- *  fire-time-snapshot hitbox lands short of where the kick visually
- *  connects. */
-const ATTACK_3: AbilityDef = {
-  id: "attack3",
-  priority: SUPER_ARMOR_PRIORITY,
-  duration: 1.12,
-  // The finisher declares no chain (a completed combo resets to the idle
-  // entry map), only the shared dash-cancel window.
-  cancels: [{ from: 0.515, into: ["dash"] }],
-  timeline: [
-    spriteAnim({ at: 0, name: "attack3" }),
-    lungeMove({ from: 0.32, to: 0.54, speed: 820 }),
-    hitbox({
-      from: 0.403,
-      to: 0.515,
-      shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
-      offset: { x: 46, y: 0 },
-      follow: true,
-      hit: byAtk({ damage: 26, knockback: 530, stun: 0.45, hitstop: 0.12 }),
-    }),
-  ],
-};
-
-/** Charge windup: a hold window — `chargeHold`'s single-frame sprite sits
- *  until `PlayerController` completes the window with `abilities.release()`
- *  on key-up. `to: "release"` is the addon's open-ended hold window (the run
- *  stays active until released/cancelled/interrupted). Force-only: never
- *  registered by id, only ever `force()`d. */
-const CHARGE_HOLD: AbilityDef = {
-  id: "chargeHold",
-  timeline: [spriteHold({ from: 0, to: "release", name: "chargeHold" })],
-};
-
-/** The heavy attack a completed charge releases: a bigger hitbox, more
- *  damage, and a longer stun/knockback than any combo stage, plus the
- *  longest recovery in the kit (~0.41s past the hit). Force-only, fired by
- *  `PlayerController` on key-up once the hold threshold is met.
+/** The 1-2-3 combo: one def, one phase per stage. `send("attack")` enters at
+ *  `jab` when the lane is idle and advances `jab` → `cross` → `hook` through
+ *  each stage's `on: { attack }` window — fully post-end (`from` = the
+ *  stage's own duration), reaching `COMBO_WINDOW` past it, so a tap advances
+ *  the instant a swing finishes and through the recovery gap after it (the
+ *  runner's linger). The gesture layer stays in
+ *  `PlayerController.updateCombat`: tap-vs-charge classification and the
+ *  claim-once buffered press.
  *
- *  The hold itself (`CHARGE_HOLD`, held past the `CHARGE_HOLD_TIME`
- *  threshold before this fires) already reads as the windup, so this
- *  shouldn't wind up a second time — `spriteAnim`'s `startFrame: 6` opens
- *  HighKick already 6 frames into its own coil (~0.18s of the sheet's real
- *  frames at this speed) instead of at frame 0, and `hitbox.from`/`to` are
- *  shifted back by the same amount so contact still lands on the same
- *  visual extension frame it always did — just ~0.18s after release instead
- *  of ~0.38s (measured end-to-end from a real keyup event to the hit
- *  landing: ~0.19-0.22s, the extra few ms being real dispatch/physics-step
- *  latency on top of the timeline's own 0.18s). `lockDuration` matches the
- *  trimmed total below so `AnimationController.locked` clears on schedule
- *  instead of holding for the un-skipped clip's full length. The active
- *  window's own width and the recovery tail after it (`duration - to`) are
- *  both unchanged from before. `lungeMove` covers the kick's drive
- *  (starting a touch before the hitbox opens, closing a touch after it does)
- *  so the heavy release closes distance instead of landing on a
+ *  Stage timings, all phase-local:
+ *  - `jab`: LeftJab's one-shot at this speed runs ~0.36s; the hitbox sits on
+ *    the punch's extension and recovery stretches ~0.2s past it. `punchMove`
+ *    rides the same window as the hitbox — a step into the punch, ~31px, so
+ *    the jab reads as weight thrown forward rather than a stationary arm
+ *    swing.
+ *  - `cross`: RightJab's shorter one-shot (~0.26s) lands its contact frame
+ *    earlier; recovery still runs ~0.19s past it. `punchMove`'s window is
+ *    narrower than the jab's (the cross's hitbox window is itself narrower)
+ *    at a higher speed, landing a comparable ~28px step.
+ *  - `hook`, the finisher: a leaping flying kick with no `on:` window — a
+ *    completed combo lingers nothing and the next tap re-enters at `jab`.
+ *    Also the parry counter's sprite — see `COUNTER` below, which plays the
+ *    same animation with different numbers and a shorter recovery (and no
+ *    lunge — a point-blank counter has nowhere to travel to). `lungeMove`
+ *    rides the FlyingKick sheet's own airborne extension (measured apex
+ *    around frame 24 of 48, i.e. ~0.45s in at this speed): it opens partway
+ *    through the leap so the kick is already carrying the body forward by
+ *    the time the hitbox opens on top of it. The speed is tuned against a
+ *    colliding target, not free space — a body-to-body collision with the
+ *    struck target eats a big chunk of the requested velocity, so covering
+ *    90-120px on landing (measured at collider-contact distances from a
+ *    tight clinch to `ENEMY_MELEE_RANGE`) takes ~820px/s, which covers
+ *    ~180px if nothing is in the way. This is a one-shot attack, exempt from
+ *    the per-frame foot compensation in `FOOT_ANCHOR_PX` — the leap's own
+ *    in-frame motion is the point. The finisher's recovery (~0.2s past the
+ *    animation's natural end) is the longest of the three stages — the
+ *    commitment move. `hitbox`'s `follow: true` re-anchors the sensor to the
+ *    caster's position every frame through the whole active window — the
+ *    lunge is still accelerating when the window opens, so a
+ *    fire-time-snapshot hitbox lands short of where the kick visually
+ *    connects.
+ *
+ *  Per-phase `cancels`: a buffered dash may cancel each stage's recovery
+ *  once its hit has landed. */
+const ATTACK: AbilityDef = {
+  id: "attack",
+  priority: SUPER_ARMOR_PRIORITY,
+  phases: {
+    jab: {
+      duration: 0.448,
+      on: { attack: { to: "cross", from: 0.448, until: 0.448 + COMBO_WINDOW } },
+      cancels: [{ from: 0.246, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "attack1" }),
+        punchMove({ from: 0.123, to: 0.246, speed: 250 }),
+        hitbox({
+          from: 0.123,
+          to: 0.246,
+          shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
+          offset: { x: 39, y: 0 },
+          hit: byAtk({ damage: 10, knockback: 240, stun: 0.16, hitstop: 0.05 }),
+        }),
+      ],
+    },
+    cross: {
+      duration: 0.358,
+      on: { attack: { to: "hook", from: 0.358, until: 0.358 + COMBO_WINDOW } },
+      cancels: [{ from: 0.168, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "attack2" }),
+        punchMove({ from: 0.078, to: 0.168, speed: 310 }),
+        hitbox({
+          from: 0.078,
+          to: 0.168,
+          shape: { type: "capsule", halfHeight: 24, radius: 14, axis: "x" },
+          offset: { x: 37, y: 0 },
+          hit: byAtk({ damage: 12, knockback: 265, stun: 0.18, hitstop: 0.05 }),
+        }),
+      ],
+    },
+    hook: {
+      duration: 1.12,
+      cancels: [{ from: 0.515, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "attack3" }),
+        lungeMove({ from: 0.32, to: 0.54, speed: 820 }),
+        hitbox({
+          from: 0.403,
+          to: 0.515,
+          shape: { type: "capsule", halfHeight: 26, radius: 16, axis: "x" },
+          offset: { x: 46, y: 0 },
+          follow: true,
+          hit: byAtk({ damage: 26, knockback: 530, stun: 0.45, hitstop: 0.12 }),
+        }),
+      ],
+    },
+  },
+};
+
+/** The tap-vs-hold charge attack: one def, two phases.
+ *
+ *  `charge` is the windup hold — `chargeHold`'s single-frame sprite sits on
+ *  an open-ended `to: "end"` window until `PlayerController` calls
+ *  `abilities.release("charge")` on key-up, which completes the hold into
+ *  `kick` through `next`. `hold.max` is a generous cap the gesture never
+ *  reaches in practice (the key-up releases long before) — it exists so a
+ *  stuck key can't hold the lane forever. No `priority` on the phase: the
+ *  windup is staggerable, and only the kick carries super armor.
+ *
+ *  `kick` is the heavy payoff: a bigger hitbox, more damage, and a longer
+ *  stun/knockback than any combo stage, plus the longest recovery in the
+ *  kit (~0.41s past the hit). The hold already reads as the windup, so the
+ *  kick shouldn't wind up a second time — `spriteAnim`'s `startFrame: 6`
+ *  opens HighKick already 6 frames into its own coil (~0.18s of the sheet's
+ *  real frames at this speed) instead of at frame 0, and `hitbox.from`/`to`
+ *  are shifted back by the same amount so contact still lands on the same
+ *  visual extension frame — ~0.18s after release (measured end-to-end from
+ *  a real keyup event to the hit landing: ~0.19-0.22s, the extra few ms
+ *  being real dispatch/physics-step latency on top of the timeline's own
+ *  0.18s). `lockDuration` matches the trimmed total so
+ *  `AnimationController.locked` clears on schedule instead of holding for
+ *  the un-skipped clip's full length. `lungeMove` covers the kick's drive
+ *  (starting a touch before the hitbox opens, closing a touch after it
+ *  does) so the heavy release closes distance instead of landing on a
  *  stationary-legged kick — ~72px in free space at this speed (measured
  *  frozen-clock: `Transform` before/after with `scene.timeScale` at 0 and
  *  single `Process` ticks), less against a colliding target the same way
- *  `ATTACK_3`'s lunge is. `hitbox`'s `follow: true` keeps the sensor over
- *  the caster through that same travel, matching `ATTACK_3`. */
-const CHARGE_RELEASE: AbilityDef = {
-  id: "chargeRelease",
-  priority: SUPER_ARMOR_PRIORITY,
-  duration: 0.751,
-  cancels: [{ from: 0.337, into: ["dash"] }],
-  timeline: [
-    spriteAnim({ at: 0, name: "chargeRelease", startFrame: 6, lockDuration: 0.751 }),
-    lungeMove({ from: 0.08, to: 0.32, speed: 300 }),
-    hitbox({
-      from: 0.18,
-      to: 0.337,
-      shape: { type: "capsule", halfHeight: 34, radius: 24, axis: "x" },
-      offset: { x: 60, y: 0 },
-      follow: true,
-      hit: byAtk({ damage: 32, knockback: 645, stun: 0.55, hitstop: 0.12 }),
-    }),
-  ],
+ *  the combo finisher's lunge is. `hitbox`'s `follow: true` keeps the
+ *  sensor over the caster through that same travel. */
+const CHARGE: AbilityDef = {
+  id: "charge",
+  phases: {
+    charge: {
+      hold: { max: 10 },
+      next: "kick",
+      timeline: [spriteHold({ from: 0, to: "end", name: "chargeHold" })],
+    },
+    kick: {
+      priority: SUPER_ARMOR_PRIORITY,
+      duration: 0.751,
+      cancels: [{ from: 0.337, into: ["dash"] }],
+      timeline: [
+        spriteAnim({ at: 0, name: "chargeRelease", startFrame: 6, lockDuration: 0.751 }),
+        lungeMove({ from: 0.08, to: 0.32, speed: 300 }),
+        hitbox({
+          from: 0.18,
+          to: 0.337,
+          shape: { type: "capsule", halfHeight: 34, radius: 24, axis: "x" },
+          offset: { x: 60, y: 0 },
+          follow: true,
+          hit: byAtk({ damage: 32, knockback: 645, stun: 0.55, hitstop: 0.12 }),
+        }),
+      ],
+    },
+  },
 };
 
 /** Fast punish thrown by `PlayerController.counterattack` on a successful
@@ -1451,25 +1461,31 @@ const DASH: AbilityDef = {
   ],
 };
 
-/** Hold-block: starts the instant the guard key is pressed and stays open
- *  for as long as it's held (`to: "release"` hold windows, completed by
- *  `abilities.release()` on key-up) — nothing in this def ever forces a
- *  higher-priority activation onto the lane, so the window stays open across
- *  as many hits as land while the key is down. `block` reduces every landed
- *  hit in place rather than negating it: damage and knockback both survive
- *  at a fraction (`damageScale`/`knockbackScale`), and stun stays at its
- *  default 0 so a blocked hit never triggers the stagger reaction. No parry
- *  punish — see `PARRY` below for the tap-release counter-punishing window
- *  this cancels into. `PlayerController.updateGuard` owns the
- *  press/hold/release state machine. */
+/** Hold-block: a single hold phase that starts the instant the guard key is
+ *  pressed and stays open for as long as it's held (`to: "end"` windows on
+ *  the elastic phase, completed by `abilities.release("guardHold")` on
+ *  key-up) — nothing in this def ever forces a higher-priority activation
+ *  onto the lane, so the window stays open across as many hits as land
+ *  while the key is down. `block` reduces every landed hit in place rather
+ *  than negating it: damage and knockback both survive at a fraction
+ *  (`damageScale`/`knockbackScale`), and stun stays at its default 0 so a
+ *  blocked hit never triggers the stagger reaction. No parry punish — see
+ *  `PARRY` below for the tap-release counter-punishing window this cancels
+ *  into. `PlayerController.updateGuard` owns the press/hold/release
+ *  gesture. */
 const GUARD_HOLD_ID = "guardHold";
 const GUARD_HOLD: AbilityDef = {
   id: GUARD_HOLD_ID,
   cooldown: hasten(0.4),
-  timeline: [
-    spriteHold({ from: 0, to: "release", name: "guard" }),
-    block({ from: 0, to: "release", damageScale: 0.3, knockbackScale: 0.4 }),
-  ],
+  phases: {
+    hold: {
+      hold: true,
+      timeline: [
+        spriteHold({ from: 0, to: "end", name: "guard" }),
+        block({ from: 0, to: "end", damageScale: 0.3, knockbackScale: 0.4 }),
+      ],
+    },
+  },
 };
 
 /** Parry: what a hold-block cancels into on a quick release (see
@@ -1585,12 +1601,11 @@ const SHOOT: AbilityDef = {
 
 /** The player abilities that share the attack/charge hotbar slot, keyed by id.
  *  `attackSlotState` only checks id membership against this table; it reads
- *  the active def's own `duration`/`elapsed` off `Abilities.active("main")`. */
+ *  the active run's `phaseElapsed`/`phaseDuration` off
+ *  `Abilities.active("main")`. */
 const PLAYER_MAIN_DEFS: Readonly<Record<string, AbilityDef>> = {
-  attack1: ATTACK_1,
-  attack2: ATTACK_2,
-  attack3: ATTACK_3,
-  chargeRelease: CHARGE_RELEASE,
+  attack: ATTACK,
+  charge: CHARGE,
   counter: COUNTER,
 };
 
@@ -1735,7 +1750,7 @@ class PlayerController extends Component {
   // Only a press that began from a free lane may grow into a charge — a press
   // begun mid-swing stays a tap (see `updateCombat`).
   private attackPressNeutral = false;
-  // Dash pressed mid-attack: retries `play("dash")` until a cancel window
+  // Dash pressed mid-attack: retries `send("dash")` until a cancel window
   // admits it or the buffer lapses.
   private dashBuffered = false;
   private dashBufferAge = 0;
@@ -1801,9 +1816,23 @@ class PlayerController extends Component {
     // Releases the hold-block whenever something else takes the "main" lane
     // away from it (e.g. death forcing a stagger reaction). A no-op for the
     // hold's own deliberate release (`updateGuard` already clears
-    // `guardHeld` before calling `cancel`, so this sees it already false).
+    // `guardHeld` before calling `release`, so this sees it already false).
     this.listen(this.entity, AbilityEnded, ({ activation }) => {
       if (activation.def.id === GUARD_HOLD_ID) this.guardHeld = false;
+    });
+    // Bullet-time tail on the charge kick, keyed to the phase entering — a
+    // timed request, not a `slowmo` window step on the kick phase: a window
+    // step would drop its scale request the moment the kick is cancelled,
+    // while this request ages on raw time and releases itself, so the
+    // slowed world always recovers on schedule. Firing on the phase change
+    // (rather than the key-up) also covers a `hold.max` auto-release.
+    this.listen(this.entity, PhaseChanged, ({ activation, to }) => {
+      if (activation.def !== CHARGE || to !== "kick") return;
+      this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
+        for: CHARGE_SLOWMO_DURATION,
+        key: "charge-bullet-time",
+        excludeUpdates: [this.entity],
+      });
     });
   }
 
@@ -1844,7 +1873,7 @@ class PlayerController extends Component {
       this.rb.setVelocity(Vec2.ZERO);
     }
     // The potion is on its own lane — usable even mid-action or mid-stagger.
-    if (this.input.isJustPressed("potion")) this.abilities.play("potion");
+    if (this.input.isJustPressed("potion")) this.abilities.send("potion");
 
     this.redraw();
   }
@@ -1859,31 +1888,37 @@ class PlayerController extends Component {
   }
 
   /** Hotbar read for the shared attack/charge slot: it has no single
-   *  `cooldownRemaining` id to poll (four ids share it — the three combo
-   *  stages plus the charge release, and the parry counter besides), so
-   *  it's driven off the active run's own `elapsed`/`duration` instead —
-   *  both resolved directly off the activation handle, no per-id def
-   *  lookup needed. Idle (or holding a def not in `PLAYER_MAIN_DEFS`, e.g.
-   *  `dash`/`guardHold`/`parry` occupying the same lane) reads as ready. */
+   *  `cooldownRemaining` id to poll (three ids share it — the combo, the
+   *  charge, and the parry counter), so it's driven off the active run's
+   *  current phase instead — `phaseElapsed`/`phaseDuration` resolved
+   *  directly off the activation handle, so each combo stage and the charge
+   *  kick each wipe over their own span. Idle (or holding a def not in
+   *  `PLAYER_MAIN_DEFS`, e.g. `dash`/`guardHold`/`parry` occupying the same
+   *  lane) reads as ready; an elastic hold phase (no finite duration) reads
+   *  as HOLD. */
   attackSlotState(): { ratio: number; label: string } {
     if (this.charging) return { ratio: 0, label: "HOLD" };
     const activation = this.abilities.active("main");
     if (!activation || !(activation.def.id in PLAYER_MAIN_DEFS)) {
       return { ratio: 1, label: "0.0" };
     }
-    const { elapsed, duration } = activation;
-    if (duration <= 0) return { ratio: 1, label: "0.0" };
-    const ratio = Math.min(1, elapsed / duration);
-    return { ratio, label: Math.max(0, duration - elapsed).toFixed(1) };
+    const { phaseElapsed, phaseDuration } = activation;
+    if (!Number.isFinite(phaseDuration)) return { ratio: 0, label: "HOLD" };
+    if (phaseDuration <= 0) return { ratio: 1, label: "0.0" };
+    const ratio = Math.min(1, phaseElapsed / phaseDuration);
+    return {
+      ratio,
+      label: Math.max(0, phaseDuration - phaseElapsed).toFixed(1),
+    };
   }
 
   // -------------------------------------------------------------------------
-  // 1-2-3 combo + charge attack. The combo itself is the addon's chain layer:
-  // the attack defs declare `chains`/`cancels` windows (and the runner's
-  // `idle` map holds the entry), so `chainWith`/`canChainWith`/`play` own
-  // stage resolution, the chain-reset memory, and the dash-cancel timing.
-  // What stays hand-rolled here is only the gesture layer (still #22's job):
-  // classifying a press as tap vs charge-hold (`isJustHeldFor` /
+  // 1-2-3 combo + charge attack. Stage resolution lives in the `ATTACK`
+  // def's phase graph: each stage's `on: { attack }` window (with its
+  // post-end linger) decides whether a press advances, and `send`/`canSend`
+  // enforce it — a declared press outside its window refuses instead of
+  // restarting the combo. What stays hand-rolled here is only the gesture
+  // layer: classifying a press as tap vs charge-hold (`isJustHeldFor` /
   // `consumeBufferedPress`), the small per-binding buffers, and
   // `resampleFacing` at each firing site.
   //
@@ -1891,7 +1926,7 @@ class PlayerController extends Component {
   // `CHARGE_HOLD_TIME` becomes a charge (no leading punch — `isJustHeldFor`
   // only fires mid-hold, never on the initial press). Any shorter press is a
   // tap; `consumeBufferedPress` claims it once, and the `!isPressed` guard
-  // keeps an ongoing charge-hold from being read as a chain tap.
+  // keeps an ongoing charge-hold from being read as a combo tap.
   // `attackPressNeutral` (latched at press time) keeps a press begun mid-swing
   // from ever becoming a charge, even if the lane frees before release.
   // -------------------------------------------------------------------------
@@ -1902,18 +1937,12 @@ class PlayerController extends Component {
       if (!this.input.isPressed("attack")) {
         this.charging = false;
         this.stopChargeSparks();
-        this.abilities.release("main"); // completes the chargeHold window
         this.resampleFacing();
-        this.abilities.force(CHARGE_RELEASE);
-        // Bullet-time tail as a timed request, not a `slowmo` step on
-        // `CHARGE_RELEASE`: a hold window would keep the attack lane locked,
-        // and a finite one cannot end past the def's duration. Ages on raw
-        // time and releases itself, so a cancelled release can't strand it.
-        this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
-          for: CHARGE_SLOWMO_DURATION,
-          key: "charge-bullet-time",
-          excludeUpdates: [this.entity],
-        });
+        // Completes the hold into the kick phase (the `PhaseChanged`
+        // listener in `onAdd` adds the bullet-time tail). Returns false
+        // when the hold is already gone — e.g. a stagger interrupted the
+        // windup — and then the kick simply doesn't happen.
+        this.abilities.release("charge");
       }
       return;
     }
@@ -1922,7 +1951,7 @@ class PlayerController extends Component {
     if (this.input.isJustPressed("attack")) this.attackPressNeutral = !mainBusy;
 
     // Charge: a neutral press crossing the hold threshold. Claim the buffered
-    // press so it can't later resolve into a chain tap.
+    // press so it can't later resolve into a combo tap.
     if (
       this.attackPressNeutral &&
       !mainBusy &&
@@ -1931,32 +1960,32 @@ class PlayerController extends Component {
       this.input.consumeBufferedPress("attack", CHARGE_HOLD_TIME);
       this.charging = true;
       this.startChargeSparks();
-      this.abilities.force(CHARGE_HOLD);
+      this.abilities.send("charge");
       return;
     }
 
-    // Tap → combo chain: the attack defs' chain windows (and the idle map)
-    // resolve which stage; the claim-once buffered press fires it the instant
-    // a chain opens. `!isPressed` keeps an ongoing charge-hold out.
+    // Tap → combo: the `attack` def's entry and per-stage `on:` windows
+    // resolve which stage; the claim-once buffered press fires it the
+    // instant a window opens. `!isPressed` keeps an ongoing charge-hold out.
     if (
       !this.input.isPressed("attack") &&
-      this.abilities.canChainWith("attack", "main") &&
+      this.abilities.canSend("attack", "main") &&
       this.input.consumeBufferedPress("attack", CHARGE_HOLD_TIME)
     ) {
       this.resampleFacing();
-      this.abilities.chainWith("attack", "main");
+      this.abilities.send("attack");
     }
 
     // Dash: immediate from a free lane; buffered mid-attack, where it retries
-    // `play("dash")` every frame until an attack's `cancels` window admits it
-    // (cancelling the recovery) or the buffer lapses. `play` is side-effect-
+    // `send("dash")` every frame until an attack's `cancels` window admits it
+    // (cancelling the recovery) or the buffer lapses. `send` is side-effect-
     // free on refusal, so the retry can't misfire against an unrelated lane
     // occupant. `resampleFacing` before each attempt rolls it in the
     // currently-held direction.
     if (this.input.isJustPressed("dash")) {
       if (!mainBusy) {
         this.resampleFacing();
-        this.abilities.play("dash");
+        this.abilities.send("dash");
       } else {
         this.dashBuffered = true;
         this.dashBufferAge = 0;
@@ -1968,7 +1997,7 @@ class PlayerController extends Component {
         this.dashBuffered = false;
       } else {
         this.resampleFacing();
-        if (this.abilities.play("dash").ok) this.dashBuffered = false;
+        if (this.abilities.send("dash").ok) this.dashBuffered = false;
       }
     }
   }
@@ -2010,13 +2039,13 @@ class PlayerController extends Component {
 
   // -------------------------------------------------------------------------
   // Guard/parry — hand-rolled press/hold/release gesture on top of the
-  // `GUARD_HOLD` hold window. Pressing guard starts it immediately, open for
+  // `GUARD_HOLD` hold phase. Pressing guard starts it immediately, open for
   // as long as the key stays down; a quick tap-release (`isJustTapped` within
-  // `PARRY_TAP_WINDOW`) completes the block via `release("main")` and plays
-  // `PARRY` instead — a tap parries, a hold blocks, a long hold never parries.
-  // See `06-guard-resolution.md`'s evidence note for why the split (rather
-  // than the old single `guard` def) is what actually fixes multi-hit
-  // blocking.
+  // `PARRY_TAP_WINDOW`) completes the block via `release("guardHold")` and
+  // sends `PARRY` instead — a tap parries, a hold blocks, a long hold never
+  // parries. The block-vs-parry split into two defs (each with its own
+  // cooldown) is what makes multi-hit blocking work: the hold never closes
+  // early, only the tap pays the parry's pricier cooldown.
   // -------------------------------------------------------------------------
 
   private updateGuard(): void {
@@ -2028,16 +2057,16 @@ class PlayerController extends Component {
         this.guardHeld = false;
         // A quick tap-release parries; a longer hold just ends the block.
         const parryTap = this.input.isJustTapped("guard", PARRY_TAP_WINDOW);
-        this.abilities.release("main"); // completes the guardHold window
+        this.abilities.release(GUARD_HOLD_ID); // completes the hold phase
         if (parryTap) {
           this.resampleFacing();
-          this.abilities.play(PARRY_ID);
+          this.abilities.send(PARRY_ID);
         }
       }
       return;
     }
     if (!this.abilities.isActive("main") && this.input.isJustPressed("guard")) {
-      if (this.abilities.play(GUARD_HOLD_ID).ok) this.guardHeld = true;
+      if (this.abilities.send(GUARD_HOLD_ID).ok) this.guardHeld = true;
     }
   }
 
@@ -2143,10 +2172,7 @@ class PlayerEntity extends Entity {
       new HitReceiver({ team: "player", iframes: 0.25, steps: playerHitSteps }),
     );
     this.add(
-      new Abilities(
-        [ATTACK_1, ATTACK_2, ATTACK_3, DASH, GUARD_HOLD, PARRY, POTION],
-        { idle: { attack: "attack1" } },
-      ),
+      new Abilities([ATTACK, CHARGE, DASH, GUARD_HOLD, PARRY, POTION]),
     );
     this.add(new PlayerController());
   }
@@ -2235,7 +2261,7 @@ class EnemyAI extends Component {
   private engage(toPlayer: Vec2, dist: number): boolean {
     if (dist <= ENEMY_MELEE_RANGE) {
       this.rb.setVelocity(Vec2.ZERO);
-      this.abilities.play("melee"); // no-ops (stands its ground) while on cooldown
+      this.abilities.send("melee"); // no-ops (stands its ground) while on cooldown
       return false;
     }
     if (dist <= ENEMY_FAR_RANGE) {
@@ -2243,7 +2269,7 @@ class EnemyAI extends Component {
       return true;
     }
     this.rb.setVelocity(Vec2.ZERO);
-    this.abilities.play("shoot");
+    this.abilities.send("shoot");
     return false;
   }
 

@@ -49,7 +49,7 @@ describe("guard step", () => {
     );
 
     expect(receiver.receive(makeHit(attacker))).toBe("hit"); // before the window
-    abilities.play("block");
+    abilities.send("block");
     pc._tick(0.1); // enter fires
     expect(receiver.receive(makeHit(attacker))).toBe("blocked");
     pc._tick(0.2); // exit fires
@@ -75,7 +75,7 @@ describe("guard step", () => {
       ]),
     );
 
-    abilities.play("block");
+    abilities.send("block");
     pc._tick(0.1);
     expect(receiver.receive(makeHit(attacker))).toBe("blocked");
     abilities.cancel();
@@ -101,7 +101,7 @@ describe("guard step", () => {
       ]),
     );
 
-    abilities.play("block");
+    abilities.send("block");
     expect(() => pc._tick(0.2)).toThrow(
       /step "guard" requires a HitReceiver component/,
     );
@@ -116,7 +116,7 @@ describe("parry wrapper", () => {
       new Abilities([{ id: "p", timeline: [parry({ from: 0, to: 1 })] }]),
     );
 
-    abilities.play("p");
+    abilities.send("p");
     pc._tick(0.1);
     expect(receiver.receive(makeHit(attacker))).toBe("parried");
   });
@@ -152,7 +152,7 @@ describe("block wrapper", () => {
       ]),
     );
 
-    abilities.play("b");
+    abilities.send("b");
     pc._tick(0.1);
     const hit = makeStandardHit(attacker);
     expect(receiver.receive(hit)).toBe("hit");
@@ -167,7 +167,7 @@ describe("block wrapper", () => {
       new Abilities([{ id: "b", timeline: [block({ from: 0, to: 1 })] }]),
     );
 
-    abilities.play("b");
+    abilities.send("b");
     pc._tick(0.1);
     const hit = makeStandardHit(attacker);
     expect(receiver.receive(hit)).toBe("hit");

@@ -87,8 +87,8 @@ describe("spawn step", () => {
       ]),
     );
 
-    const result = entity.get(Abilities).play("orb");
-    if (!result.ok) throw new Error("expected play to succeed");
+    const result = entity.get(Abilities).send("orb");
+    if (!result.ok) throw new Error("expected send to succeed");
     pc._tick(0.01);
 
     const context = findOrb(scene.findEntities()).abilitySpawnContext;
@@ -136,7 +136,7 @@ describe("spawn step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("telegraph");
+    entity.get(Abilities).send("telegraph");
     pc._tick(0.01);
 
     expect(
@@ -164,7 +164,7 @@ describe("spawn step", () => {
     const dealt: HitResult[] = [];
     entity.on(HitDealt, ({ result }) => dealt.push(result));
 
-    entity.get(Abilities).play("orb");
+    entity.get(Abilities).send("orb");
     pc._tick(0.01);
     const orb = findOrb(scene.findEntities());
     const target = scene.spawn(Target);
@@ -210,7 +210,7 @@ describe("spawn step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("invalid");
+    entity.get(Abilities).send("invalid");
     expect(() => pc._tick(0.01)).toThrow(/step "spawn".*AbilitySpawned trait/);
     expect(InvalidSpawn.latest).toBeUndefined();
   });
@@ -248,7 +248,7 @@ describe("spawn step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("broken");
+    entity.get(Abilities).send("broken");
     expect(() => pc._tick(0.01)).toThrow("broken attack");
     expect(BrokenSpawn.latest?.isDestroyed).toBe(true);
     expect(
@@ -301,7 +301,7 @@ describe("spawn step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("parent");
+    entity.get(Abilities).send("parent");
     pc._tick(0.01);
 
     const parent = scene
@@ -326,7 +326,7 @@ describe("spawn step", () => {
         },
       ]),
     );
-    entity.get(Abilities).play("orb");
+    entity.get(Abilities).send("orb");
     pc._tick(0.01);
     const orb = findOrb(scene.findEntities());
 
@@ -346,7 +346,7 @@ describe("spawn step", () => {
         },
       ]),
     );
-    orb.get(Abilities).play("child");
+    orb.get(Abilities).send("child");
     orbPc._tick(0.01);
 
     const children = scene

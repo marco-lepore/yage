@@ -153,7 +153,7 @@ describe("reactionStep with a sibling Abilities", () => {
     });
     const attacker = scene.spawn("attacker");
 
-    expect(abilities.play("swing")).toEqual({
+    expect(abilities.send("swing")).toEqual({
       ok: true,
       activation: expect.any(Object),
     });
@@ -171,7 +171,7 @@ describe("reactionStep with a sibling Abilities", () => {
     const attacker = scene.spawn("attacker");
 
     reactionStep(makeHit(attacker, { knockback: 100, stun: 0.2 }), receiver);
-    expect(abilities.play("swing")).toEqual({ ok: false, reason: "busy" });
+    expect(abilities.send("swing")).toEqual({ ok: false, reason: "busy" });
   });
 });
 

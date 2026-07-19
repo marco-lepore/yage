@@ -1,4 +1,9 @@
-export { Abilities, AbilityEnded, AbilityStarted } from "./core/Abilities.js";
+export {
+  Abilities,
+  AbilityEnded,
+  AbilityStarted,
+  PhaseChanged,
+} from "./core/Abilities.js";
 export { defineStep } from "./core/defineStep.js";
 export {
   AbilitySpawned,
@@ -12,17 +17,19 @@ export type {
   AbilitySpawnParams,
 } from "./core/AbilitySpawned.js";
 export type {
-  AbilitiesOptions,
   AbilityActivation,
   AbilityDef,
   AbilityStep,
   CancelWindow,
-  ChainWindow,
+  PhaseDef,
+  PhaseTransition,
+  PhasedAbilityDef,
   PlayRejection,
   PlayResult,
   PointStep,
   PointStepHooks,
   StepContext,
+  TimelineAbilityDef,
   WindowStep,
   WindowStepHooks,
 } from "./core/types.js";

@@ -20,7 +20,7 @@ describe("slowmo step", () => {
     );
 
     expect(time.effectiveScale).toBe(1);
-    abilities.play("bt");
+    abilities.send("bt");
     pc._tick(0.1); // enter
     expect(time.effectiveScale).toBe(0.25);
     pc._tick(0.25); // past to=0.3 → exit
@@ -35,7 +35,7 @@ describe("slowmo step", () => {
       ]),
     );
 
-    abilities.play("bt");
+    abilities.send("bt");
     pc._tick(0.01); // enter
     expect(time.effectiveScale).toBe(0.25); // world (and physics) slowed
     expect(time.effectiveScaleForUpdates(entity)).toBe(1); // owner unaffected
@@ -52,7 +52,7 @@ describe("slowmo step", () => {
       ]),
     );
 
-    abilities.play("bt");
+    abilities.send("bt");
     pc._tick(0.01);
     expect(time.effectiveScaleForUpdates(entity)).toBe(0.5);
   });
@@ -65,7 +65,7 @@ describe("slowmo step", () => {
       ]),
     );
 
-    abilities.play("bt");
+    abilities.send("bt");
     pc._tick(0.01);
     expect(time.effectiveScale).toBe(0.3);
     abilities.cancel();
@@ -85,7 +85,7 @@ describe("slowmo step", () => {
       ]),
     );
 
-    abilities.play("bt");
+    abilities.send("bt");
     pc._tick(0.01);
     expect(time.activeLabels).toEqual(["bullet-time"]);
   });
@@ -98,7 +98,7 @@ describe("slowmo step", () => {
       ]),
     );
 
-    abilities.play("stop");
+    abilities.send("stop");
     expect(() => pc._tick(0.01)).toThrow(/factor must be finite and > 0/);
   });
 });

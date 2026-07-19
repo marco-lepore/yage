@@ -45,7 +45,7 @@ describe("invulnerable step", () => {
     );
 
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("hit");
-    abilities.play("dodge");
+    abilities.send("dodge");
     pc._tick(0.1);
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
     pc._tick(0.2);
@@ -61,7 +61,7 @@ describe("invulnerable step", () => {
       ]),
     );
 
-    abilities.play("dodge");
+    abilities.send("dodge");
     pc._tick(0.1);
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
     abilities.cancel();
@@ -83,7 +83,7 @@ describe("invulnerable step", () => {
       ]),
     );
 
-    abilities.play("dodge");
+    abilities.send("dodge");
     pc._tick(0.6); // first window closed, second still open
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
     pc._tick(0.5); // past t=1 — both closed
@@ -104,8 +104,8 @@ describe("invulnerable step", () => {
       ]),
     );
 
-    abilities.play("a");
-    abilities.play("b");
+    abilities.send("a");
+    abilities.send("b");
     pc._tick(0.1); // both enter
     expect(receiver.receive(makeHit(attacker, "enemy"))).toBe("ignored");
 
@@ -125,7 +125,7 @@ describe("invulnerable step", () => {
       ]),
     );
 
-    abilities.play("dodge");
+    abilities.send("dodge");
     expect(() => pc._tick(0.2)).toThrow(
       /step "invulnerable" requires a HitReceiver component/,
     );

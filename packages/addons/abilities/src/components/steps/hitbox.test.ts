@@ -117,7 +117,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
 
     expect(findHitbox(scene).get(Transform).rotation).toBeCloseTo(Math.PI / 2);
@@ -142,7 +142,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
 
     expect(findHitbox(scene).get(Transform).rotation).toBeCloseTo(-Math.PI / 2);
@@ -169,7 +169,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
     dir = { x: 0, y: 1 }; // later state change must not move the already-spawned hitbox
 
@@ -195,7 +195,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     expect(() => pc._tick(0.01)).toThrow(/Facing|aim/);
   });
 
@@ -218,7 +218,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     expect(() => pc._tick(0.01)).toThrow(/zero vector/);
   });
 
@@ -242,7 +242,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
 
     const target = scene.spawn(Target);
@@ -273,7 +273,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
 
     const target = scene.spawn(Target);
@@ -303,7 +303,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
     damage = 99; // later state change must not affect the already-resolved hit
 
@@ -335,7 +335,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
 
     const collider = findHitbox(scene).get(ColliderComponent);
@@ -362,7 +362,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
     const spawned = findHitbox(scene);
     expect(spawned.isDestroyed).toBe(false);
@@ -390,7 +390,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    abilities.play("swing");
+    abilities.send("swing");
     pc._tick(0.01);
     const spawned = findHitbox(scene);
 
@@ -423,7 +423,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    abilities.play("combo");
+    abilities.send("combo");
     pc._tick(0.01); // both enter
     const [short, long] = findHitboxes(scene);
     expect(short).toBeDefined();
@@ -458,7 +458,7 @@ describe("hitbox step", () => {
     const dealt: HitResult[] = [];
     entity.on(HitDealt, (payload) => dealt.push(payload.result));
 
-    abilities.play("swing");
+    abilities.send("swing");
     pc._tick(0.01);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
@@ -468,7 +468,7 @@ describe("hitbox step", () => {
 
     abilities.cancel();
     dealt.length = 0;
-    abilities.play("swing");
+    abilities.send("swing");
     pc._tick(0.01);
     abilities.cancel(); // never contacts a target
 
@@ -506,7 +506,7 @@ describe("hitbox step", () => {
     const dealt: HitResult[] = [];
     caster.on(HitDealt, ({ result }) => dealt.push(result));
 
-    spawned.get(Abilities).play("child-hit");
+    spawned.get(Abilities).send("child-hit");
     pc._tick(0.01);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
@@ -551,7 +551,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    spawned.get(Abilities).play("child-hit");
+    spawned.get(Abilities).send("child-hit");
     pc._tick(0.01);
     const target = scene.spawn(Target);
     target.add(new Transform({ position: new Vec2(10, 0) }));
@@ -580,7 +580,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
     const spawned = findHitbox(scene);
 
@@ -609,7 +609,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    entity.get(Abilities).play("swing");
+    entity.get(Abilities).send("swing");
     pc._tick(0.01);
 
     expect(findHitbox(scene).tryGet(HitboxFollow)).toBeUndefined();
@@ -635,7 +635,7 @@ describe("hitbox step", () => {
       ]),
     );
 
-    abilities.play("swing");
+    abilities.send("swing");
     expect(() => pc._tick(0.01)).toThrow(
       /step "hitbox" requires a Transform component/,
     );

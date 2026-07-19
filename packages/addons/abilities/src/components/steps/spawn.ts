@@ -109,7 +109,12 @@ function ctxStepKind<TClass extends AbilitySpawnedClass, TData>(
   ctx: StepContext,
   params: SpawnParams<TClass, TData>,
 ): string {
-  return (
-    ctx.def.timeline.find((step) => step.params === params)?.kind ?? "spawn"
-  );
+  const timelines = ctx.def.phases
+    ? Object.values(ctx.def.phases).map((phase) => phase.timeline)
+    : [ctx.def.timeline ?? []];
+  for (const timeline of timelines) {
+    const step = timeline.find((entry) => entry.params === params);
+    if (step) return step.kind;
+  }
+  return "spawn";
 }

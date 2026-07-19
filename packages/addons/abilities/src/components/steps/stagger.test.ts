@@ -104,7 +104,7 @@ describe("scenario: a recovery skill breaks out of an active stagger", () => {
     expect(abilities.activeId()).toBe("stagger");
     expect(stagger.active).toBe(true);
 
-    expect(abilities.play("burst")).toEqual({
+    expect(abilities.send("burst")).toEqual({
       ok: true,
       activation: expect.any(Object),
     });
@@ -138,7 +138,7 @@ describe("scenario: a potion plays in its own lane during a main-lane stagger", 
     pc._tick(0.1);
     expect(abilities.isActive("main")).toBe(true);
 
-    expect(abilities.play("potion")).toEqual({
+    expect(abilities.send("potion")).toEqual({
       ok: true,
       activation: expect.any(Object),
     });

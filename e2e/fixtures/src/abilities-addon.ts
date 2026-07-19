@@ -2,7 +2,7 @@
  * Deterministic e2e fixture for @yagejs-addons/abilities.
  *
  * A stationary player and a stationary enemy, both driven entirely through
- * `window.__abilities__` (play an ability by id, teleport an entity) rather
+ * `window.__abilities__` (send an ability by id, teleport an entity) rather
  * than keyboard input or AI — the frozen clock and `RigidBodyComponent`
  * teleports keep every scenario reproducible. All assertions go through a
  * `CombatProbe` component (one per entity) read via the Inspector API
@@ -341,7 +341,7 @@ type Who = "player" | "enemy";
 type StatKind = "atk" | "def" | "maxHp" | "atkSpeed";
 
 interface AbilitiesHostHandle {
-  play(who: Who, id: string): boolean;
+  send(who: Who, id: string): boolean;
   teleport(who: Who, x: number, y: number): void;
   setStat(who: Who, kind: StatKind, value: number): void;
   cooldownRemaining(who: Who, id: string): number;
@@ -373,8 +373,8 @@ async function main(): Promise<void> {
   await engine.scenes.push(scene);
 
   const handle: AbilitiesHostHandle = {
-    play(who, id) {
-      return entityFor(scene, who).get(Abilities).play(id).ok;
+    send(who, id) {
+      return entityFor(scene, who).get(Abilities).send(id).ok;
     },
     teleport(who, x, y) {
       entityFor(scene, who).get(RigidBodyComponent).setPosition(x, y);
