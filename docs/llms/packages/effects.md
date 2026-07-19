@@ -56,7 +56,7 @@ Three presets read best at scene scope (or higher) rather than on a single compo
 - `bulgePinch` — distortion samples outside the host's bounding rect, so a sprite-scoped bulge clips at the sprite edges. Apply at scene/layer scope so the lens has room to bend pixels around its `radius`.
 - `shockwave` — the ring expands outward from `center` and is naturally clipped at the host's bounds, so a component-scoped shockwave on a small sprite reads as a tiny "bump" rather than a ring. Scene scope makes `trigger(heroX, heroY)` line up with the entity's transform.
 
-The `examples/src/effects-showcase.ts` demo wires each of these at the recommended scope — copy that as the worked-out reference.
+The `examples/src/effects-showcase/main.ts` demo wires each of these at the recommended scope — copy that as the worked-out reference.
 
 ## Unit reference (and a known limitation)
 

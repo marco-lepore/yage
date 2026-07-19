@@ -465,32 +465,61 @@ Summary:
 
 ### Add a New Example
 
-1. Create `examples/<name>/` directory
-2. Create `main.ts` entry point:
+Each example is one flat HTML file at the `examples/` root plus a source folder
+under `examples/src/`. The HTML's URL is `/<name>.html`; the source lives at
+`examples/src/<name>/main.ts` (use `main.tsx` for React examples).
+
+1. Create `examples/src/<name>/main.ts`. Larger examples split into sibling
+   files in the same folder (`scene.ts`, `player.ts`, `hud.ts`, `constants.ts`,
+   …) with `main.ts` reduced to plugin setup + boot. Relative imports use the
+   `./foo.js` form. Shared helpers come from `../shared/bootstrap.js`
+   (`installDebugFromUrl`, `setupGameContainer`, `getContainer`). Boot with:
 
 ```typescript
-import { Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Engine, Scene } from "@yagejs/core";
 import { RendererPlugin } from "@yagejs/renderer";
-// ... other imports
-
-const engine = new Engine({ debug: true });
-engine.use(new RendererPlugin({ width: 800, height: 600 }));
-// ... other plugins
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+// import "./styles.css"; // only if the example has a styles.css
 
 class MyScene extends Scene {
   readonly name = "my-scene";
-  onEnter() {
+  onEnter(): void {
     // Spawn entities
   }
 }
 
-await engine.start();
-engine.scenes.push(new MyScene());
+async function main(): Promise<void> {
+  const engine = new Engine({ debug: true });
+  engine.use(
+    new RendererPlugin({
+      width: 800,
+      height: 600,
+      container: setupGameContainer(800, 600),
+    }),
+  );
+  // ... other plugins
+  await installDebugFromUrl(engine); // opt-in DebugPlugin via ?debug
+  await engine.start();
+  await engine.scenes.push(new MyScene());
+}
+
+main().catch(console.error);
 ```
 
-3. Create `index.html` that loads `main.ts`
-4. Add to the example index page
-5. Write an E2E test in `e2e/<name>.spec.ts`
+2. Create `examples/<name>.html` at the root. It links `/shared.css`, holds a
+   `#game-container`, and loads the module — e.g.
+   `<script type="module" src="/src/<name>/main.ts"></script>`. Copy an existing
+   example's HTML as the template. Per-example CSS goes in
+   `examples/src/<name>/styles.css` and is `import`ed from `main.ts`. The DOM is
+   for static instructions and controls only. **Game state and gameplay feedback
+   (score, win/lose banners, toasts) render in-canvas**, not in DOM overlays. Use
+   a screen-space layer (`{ name: "hud", order: 1000, space: "screen" }`) plus
+   `TextComponent`s.
+3. Add a card to `examples/index.html`.
+4. Vite (`examples/vite.config.ts`) and the E2E smoke suite
+   (`e2e/specs/examples.spec.ts`) both auto-discover every root `*.html`, so a
+   new example is built and smoke-tested with no config change. Add an entry to
+   `e2e/specs/examples-atlas.ts` only to script input, set a warmup, or skip.
 
 ### Add a New AssetHandle Factory
 
