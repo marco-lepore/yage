@@ -456,7 +456,7 @@ export function uninstallBitmapFont(name: string): void {
  *
  * @internal
  */
-const registeredTextureKeys = new Set<string>();
+const registeredTextures = new Map<string, TextureResource>();
 
 /**
  * Register a runtime-created texture under an asset key, so every key-based
@@ -487,7 +487,7 @@ const registeredTextureKeys = new Set<string>();
  * ```
  */
 export function registerTexture(key: string, texture: TextureResource): void {
-  if (registeredTextureKeys.has(key)) {
+  if (registeredTextures.has(key)) {
     Assets.cache.remove(key);
   } else if (Assets.cache.has(key)) {
     throw new Error(
@@ -496,24 +496,31 @@ export function registerTexture(key: string, texture: TextureResource): void {
     );
   }
   Assets.cache.set(key, texture);
-  registeredTextureKeys.add(key);
+  registeredTextures.set(key, texture);
 }
 
 /**
  * Remove a texture registered by {@link registerTexture}. A no-op for keys
  * this API never registered. Never destroys the texture — the creator owns
  * the GPU resource; call `texture.destroy()` once nothing draws it anymore.
+ *
+ * Only evicts the cache entry while it still holds the registered texture: if
+ * an asset preloaded under the same key overwrote it after registration, that
+ * entry belongs to the asset pipeline and is left in place.
  */
 export function unregisterTexture(key: string): void {
-  if (!registeredTextureKeys.has(key)) return;
-  Assets.cache.remove(key);
-  registeredTextureKeys.delete(key);
+  const registered = registeredTextures.get(key);
+  if (registered === undefined) return;
+  if (Assets.cache.get(key) === registered) Assets.cache.remove(key);
+  registeredTextures.delete(key);
 }
 
 /** Drop every registered texture entry — test isolation only. @internal */
 export function clearRegisteredTextures(): void {
-  for (const key of registeredTextureKeys) Assets.cache.remove(key);
-  registeredTextureKeys.clear();
+  for (const [key, texture] of registeredTextures) {
+    if (Assets.cache.get(key) === texture) Assets.cache.remove(key);
+  }
+  registeredTextures.clear();
 }
 
 /**

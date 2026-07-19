@@ -625,6 +625,16 @@ describe("registerTexture() / unregisterTexture()", () => {
     expect(mocks.cacheMap.has("hero.png")).toBe(true);
   });
 
+  it("unregister leaves an asset entry that overwrote the key after registration", () => {
+    registerTexture("shared", makeTexture());
+    // A later preload of the same key: the asset pipeline overwrites the cache
+    // entry (Assets.load bypasses the ledger). unregister must not evict it.
+    const assetTex = makeTexture();
+    mocks.cacheMap.set("shared", assetTex);
+    unregisterTexture("shared");
+    expect(mocks.cacheMap.get("shared")).toBe(assetTex);
+  });
+
   it("resolveTextureInput throws on a missing string key, naming the key", () => {
     expect(() => resolveTextureInput("missing-key")).toThrowError(
       /Texture "missing-key" is not loaded/,
