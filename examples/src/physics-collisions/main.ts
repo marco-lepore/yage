@@ -8,7 +8,7 @@ import {
 } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 injectStyles(`
   #hud {

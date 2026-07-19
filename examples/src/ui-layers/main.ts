@@ -2,8 +2,8 @@ import { Engine, Scene, Transform, Vec2, Component } from "@yagejs/core";
 import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import type { LayerDef } from "@yagejs/renderer";
 import { UIPlugin, UISurface, Anchor } from "@yagejs/ui";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
-import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "./shared/ui-theme.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { textStyle, loadFonts, allAssets, nineSliceBtn, panelBg } from "../shared/ui-theme.js";
 
 injectStyles();
 

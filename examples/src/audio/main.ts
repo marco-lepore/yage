@@ -3,7 +3,7 @@ import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { AudioPlugin, AudioManagerKey, SoundComponent, sound } from "@yagejs/audio";
 import type { SoundHandle } from "@yagejs/audio";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 injectStyles(`
   .controls kbd { min-width: 24px; text-align: center; }

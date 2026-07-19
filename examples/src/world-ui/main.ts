@@ -25,7 +25,7 @@ import {
   UIProgressBar,
   UIText,
 } from "@yagejs/ui";
-import { getContainer, installDebugFromUrl } from "./shared/bootstrap.js";
+import { getContainer, installDebugFromUrl } from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
