@@ -26,7 +26,7 @@ import {
   ProgressBar,
   Anchor,
 } from "@yagejs/ui-react";
-import { getContainer, installDebugFromUrl } from "./shared/bootstrap.js";
+import { getContainer, installDebugFromUrl } from "../shared/bootstrap.js";
 
 const WIDTH = 900;
 const HEIGHT = 600;

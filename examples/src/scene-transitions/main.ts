@@ -28,7 +28,7 @@ import {
   UIPlugin,
 } from "@yagejs/ui";
 import type { Container } from "pixi.js";
-import { setupGameContainer, injectStyles, installDebugFromUrl } from "./shared/bootstrap.js";
+import { setupGameContainer, injectStyles, installDebugFromUrl } from "../shared/bootstrap.js";
 
 injectStyles(`
   .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }

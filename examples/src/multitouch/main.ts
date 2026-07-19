@@ -16,7 +16,7 @@ import {
   InputPlugin,
   type PointerInfo,
 } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 injectStyles(`
   /* Stop iOS / Android from interpreting touches as scroll, zoom, or
