@@ -32,7 +32,7 @@ import { RendererPlugin } from "@yagejs/renderer";
 import { PhysicsPlugin } from "@yagejs/physics";
 import { AudioPlugin } from "@yagejs/audio";
 import { InputPlugin } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 injectStyles(`
   #hud {

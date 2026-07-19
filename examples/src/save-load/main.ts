@@ -44,7 +44,7 @@ import type { PhysicsWorld } from "@yagejs/physics";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
 import type { SnapshotService } from "@yagejs/save";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
 // Styles + HUD

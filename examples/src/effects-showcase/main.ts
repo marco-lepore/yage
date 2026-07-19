@@ -65,7 +65,7 @@ import {
   wave,
 } from "@yagejs/effects";
 import type { HitFlashHandle, ShockwaveHandle } from "@yagejs/effects";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 const VIRTUAL_WIDTH = 900;
 const VIRTUAL_HEIGHT = 640;
