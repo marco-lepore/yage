@@ -13,14 +13,57 @@ import { HEIGHT, HUD_LAYER, WIDTH } from "./constants.js";
 import { statsOf } from "./stats.js";
 import { PlayerController } from "./player.js";
 import { GUARD_HOLD_ID } from "./player-abilities.js";
-import { createOverlay } from "../shared/win-overlay.js";
 
-export const deadBanner = createOverlay({
-  title: "You Died",
-  subtitle: "Reload to try again",
-  accent: "#ef4444",
-  subtitleColor: "#94a3b8",
-});
+/**
+ * Spawn the centered "You Died" banner on the screen-space HUD layer, hidden.
+ * Returns a handle to reveal it. The scene owns the banner entities, so a
+ * reset (which rebuilds the scene) starts with a fresh hidden banner.
+ */
+export function spawnDeadBanner(scene: Scene): { show(): void } {
+  const titleEntity = scene.spawn("dead-banner");
+  titleEntity.add(
+    new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 - 12) }),
+  );
+  const title = titleEntity.add(
+    new TextComponent({
+      text: "You Died",
+      anchor: { x: 0.5, y: 0.5 },
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 30,
+        fill: 0xef4444,
+        fontWeight: "bold",
+      },
+      layer: HUD_LAYER,
+      visible: false,
+    }),
+  );
+
+  const subEntity = scene.spawn("dead-banner-sub");
+  subEntity.add(
+    new Transform({ position: new Vec2(WIDTH / 2, HEIGHT / 2 + 18) }),
+  );
+  const sub = subEntity.add(
+    new TextComponent({
+      text: "Reload to try again",
+      anchor: { x: 0.5, y: 0.5 },
+      style: {
+        fontFamily: "system-ui, sans-serif",
+        fontSize: 14,
+        fill: 0x94a3b8,
+      },
+      layer: HUD_LAYER,
+      visible: false,
+    }),
+  );
+
+  return {
+    show(): void {
+      title.visible = true;
+      sub.visible = true;
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Combat log — a scene-wide listener on the addon's own events, so the HUD

@@ -20,7 +20,7 @@ import { BlockSfx, DeathSfx, HitSfx, createVfxHub } from "./feedback.js";
 import type { VfxHub } from "./feedback.js";
 import { EngagementToken, EnemyEntity } from "./enemies.js";
 import { GameDirector } from "./director.js";
-import { CombatLog, Hud, deadBanner, spawnHotbar } from "./hud.js";
+import { CombatLog, Hud, spawnDeadBanner, spawnHotbar } from "./hud.js";
 import { PlayerEntity } from "./player.js";
 
 // ---------------------------------------------------------------------------
@@ -58,11 +58,6 @@ export class AbilitiesDemoScene extends Scene {
   token!: EngagementToken;
 
   onEnter(): void {
-    // R (see `PlayerController.resetDemo`) rebuilds this scene from scratch —
-    // hide any banner left over from a previous run before anything below
-    // re-shows it.
-    deadBanner.hide();
-
     // Positioned at the arena's center so the layer transform this camera
     // drives is the identity at rest — `PlayerController` hands it a follow
     // target below once the player exists. Clamped to the arena so the
@@ -122,6 +117,7 @@ export class AbilitiesDemoScene extends Scene {
 
     spawnHotbar(this);
 
+    const deadBanner = spawnDeadBanner(this);
     this.on(HealthDied, (_data, entity) => {
       if (entity?.tags.has("player")) {
         deadBanner.show();
