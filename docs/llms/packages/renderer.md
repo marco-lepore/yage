@@ -26,6 +26,7 @@ Every exported field, parameter, and return type across `@yagejs/renderer` (and 
 | `ColorValue` | `ColorSource` | every `tint` option/accessor |
 | `PointLike` | `PointData` | point-shaped callbacks/options |
 | `TextStyle` | `TextStyleOptions` | every `style` option |
+| `TextureRef` | none — `string \| TextureHandle`, a serializable key/handle reference | `SpriteComponent.texture`, `setTexture()` |
 
 The aliases are transparent (`type DisplayContainer = Container`) — this is a discoverability and import-surface policy, not encapsulation. Escape hatches (`RendererPlugin.application`, every `renderObject` getter, `.sprite`/`.graphics`/`.text`/`.splitText`/`.animatedSprite`) still return the real Pixi object; only the *type* used to describe it is aliased, so calling any native Pixi method on it works exactly as it would on the raw type.
 
@@ -222,13 +223,15 @@ All five visual components below (Sprite, AnimatedSprite, Graphics, Text, SplitT
 import { SpriteComponent } from "@yagejs/renderer";
 
 entity.add(new SpriteComponent({
-  texture: "hero.png",   // string key (serializable) or Texture object
+  texture: "hero.png",   // TextureRef: asset key or handle — always serializable
   layer: "world",         // render layer name
   anchor: { x: 0.5, y: 0.5 },
   tint: 0xff0000,
   interactive: { consumeOnInteraction: true },
 }));
 ```
+
+`texture` takes a `TextureRef` (asset key or handle) — never a raw `Texture` object, so `serialize()` always yields a full snapshot. A key that is neither preloaded nor registered throws, naming the key. Runtime-created textures: register them under a key first — see "Runtime textures" under Asset Factories.
 
 **Escape hatch:** `.sprite` is the underlying pixi `Sprite` instance — full pixi API surface available, including `sprite.tint`. See [pixi Sprite docs](https://pixijs.com/8.x/guides/components/scene-objects/sprite).
 
@@ -920,6 +923,35 @@ class MyScene extends Scene {
   readonly preload = [heroTex, sheet, pixelFont, uiFont];
 }
 ```
+
+### Runtime textures
+
+**`registerTexture(key, texture)` / `unregisterTexture(key)`** — register a runtime-created texture under an asset key so every key-based surface resolves it exactly like a preloaded asset: `texture: key` on `SpriteComponent`, `{ sheet: key, frameWidth }` on any `FrameSource`, `textureKey: key` on particle emitters.
+
+```ts
+import { registerTexture, RendererKey, SpriteComponent, AnimatedSpriteComponent } from "@yagejs/renderer";
+
+// One-frame case: draw → register → reference by key.
+const renderer = this.context.resolve(RendererKey);  // in a Scene
+registerTexture("marker", renderer.createTexture((g) => g.circle(8, 8, 8).fill(0xff0000)));
+entity.add(new SpriteComponent({ texture: "marker" }));
+
+// Runtime animation: bake the frames as ONE horizontal strip (x = i * frameWidth),
+// register it, and reference it as a strip FrameSource.
+const strip = renderer.createTexture((g) => {
+  for (let i = 0; i < 4; i++) g.circle(i * 32 + 16, 16, 6 + i * 2).fill(0xffcc00);
+});
+registerTexture("boss-idle", strip);
+boss.add(new AnimatedSpriteComponent({ source: { sheet: "boss-idle", frameWidth: 32 } }));
+```
+
+Semantics:
+
+- **Save contract.** Snapshots store only the key. Re-register the texture under the same key before restoring (the same boot code that registered it on first run); on the sprite and animation surfaces, resolving a missing key throws, naming the key — no component is silently dropped. Particles' `textureKey` lookup has no such guard: a missing key resolves `undefined` with only Pixi's generic cache warning.
+- Registered keys are engine-global, outside the asset manager's ref counts, and live until `unregisterTexture(key)`.
+- `unregisterTexture` never destroys the texture — the creator owns the GPU resource; call `texture.destroy()` once nothing draws it. No-op for keys it never registered.
+- Re-registering a key replaces the entry; components constructed before the replacement keep the old texture instance (resolution happens at construction).
+- Registering a key already used by a loaded asset (or any cache entry the API didn't create) throws — shadowing a loaded asset would let that asset's unload destroy the registered texture.
 
 **`installBitmapFont(source, opts)`** — bake a bitmap glyph atlas from a `.ttf`/`.woff` at runtime via Pixi v8's `BitmapFont.install`. Returns the registered font name, ready to pass as `style.fontFamily` (with `bitmap: true`):
 

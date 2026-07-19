@@ -1,6 +1,7 @@
 import { Texture, Rectangle, Assets } from "pixi.js";
 import type { Spritesheet } from "pixi.js";
 import type { TextureSliceOptions } from "./public-types.js";
+import { resolveTextureInput } from "./assets.js";
 
 /** Grid options with defaults applied against a concrete texture. */
 interface GridLayout {
@@ -83,7 +84,10 @@ export function sliceSheet(
   frameWidth: number,
   frameHeight?: number,
 ): Texture[] {
-  const base = source instanceof Texture ? source : Texture.from(source);
+  // String keys resolve through the shared guard, so an unloaded /
+  // unregistered sheet fails loudly naming the key instead of slicing an
+  // empty texture.
+  const base = source instanceof Texture ? source : resolveTextureInput(source);
   base.source.scaleMode = "nearest";
   const count = Math.floor(base.width / frameWidth);
   if (count === 0) {
@@ -137,7 +141,9 @@ export function isAtlasSource(s: FrameSource): s is AtlasFrameSource {
 export function resolveFrames(source: FrameSource): Texture[] {
   if (isSheetSource(source)) {
     const { sheet, ...options } = source;
-    const base = Texture.from(sheet);
+    // Resolve through the shared guard so an unloaded / unregistered sheet
+    // fails loudly naming the key instead of reading an undefined texture.
+    const base = resolveTextureInput(sheet);
     base.source.scaleMode = "nearest";
     const layout = resolveGridLayout(base, options);
     for (const [name, value, min] of [

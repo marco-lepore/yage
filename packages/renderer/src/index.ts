@@ -31,6 +31,7 @@ export type {
   TextStyle,
   TextureHandle,
   TextureInput,
+  TextureRef,
   TextureResource,
   TextureSliceOptions,
   WebFontHandle,
@@ -170,12 +171,14 @@ export {
   createNineSlice,
   installBitmapFont,
   measureWrappedText,
+  registerTexture,
   renderAsset,
   resolveTextureInput,
   sliceTextureFrames,
   spritesheet,
   texture,
   uninstallBitmapFont,
+  unregisterTexture,
   webFont,
 } from "./assets.js";
 export type {

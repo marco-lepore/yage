@@ -90,12 +90,26 @@ const { mocks } = vi.hoisted(() => {
     });
   }
 
+  // Map-backed stand-in for Pixi's global asset cache — `Texture.from(key)`
+  // reads it just like installed Pixi, so `registerTexture` entries resolve
+  // and unknown keys come back undefined (which the resolver turns into a
+  // loud error).
+  const cacheMap = new Map<string, unknown>();
+  const cache = {
+    has: (key: string) => cacheMap.has(key),
+    get: (key: string) => cacheMap.get(key),
+    set: (key: string, value: unknown) => void cacheMap.set(key, value),
+    remove: (key: string) => void cacheMap.delete(key),
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-extraneous-class
   class MockTexture {
-    static from = vi.fn((input: unknown) => ({ input, kind: "texture" }));
+    static from = vi.fn((key: string) => cacheMap.get(key));
   }
 
-  return { mocks: { MockContainer, MockSprite, MockTexture, MockPoint } };
+  return {
+    mocks: { MockContainer, MockSprite, MockTexture, MockPoint, cacheMap, cache },
+  };
 });
 
 vi.mock("pixi.js", () => ({
@@ -103,19 +117,31 @@ vi.mock("pixi.js", () => ({
   Sprite: mocks.MockSprite,
   Texture: mocks.MockTexture,
   Point: mocks.MockPoint,
+  Assets: { cache: mocks.cache },
 }));
 
 import { Transform } from "@yagejs/core";
+import { clearRegisteredTextures, registerTexture } from "./assets.js";
 import { SpriteComponent } from "./SpriteComponent.js";
+import type { TextureResource } from "./public-types.js";
 import {
   createRendererTestContext,
   spawnEntityInScene,
 } from "./test-helpers.js";
 
+/** Register a fake texture under `key` and return it. */
+function registerFakeTexture(key: string): TextureResource {
+  const tex = { label: key } as unknown as TextureResource;
+  registerTexture(key, tex);
+  return tex;
+}
+
 describe("SpriteComponent", () => {
   beforeEach(() => {
     mocks.MockSprite.from.mockClear();
     mocks.MockTexture.from.mockClear();
+    clearRegisteredTextures();
+    mocks.cacheMap.clear();
   });
 
   it("creates a sprite from texture", () => {
@@ -177,14 +203,18 @@ describe("SpriteComponent", () => {
     expect(layerContainer.children).toContain(comp.sprite);
   });
 
-  it("setTexture replaces the sprite texture via string", () => {
+  it("setTexture replaces the sprite texture via a registered key", () => {
     const comp = new SpriteComponent({ texture: {} as never });
+    const next = registerFakeTexture("new-texture");
     comp.setTexture("new-texture");
     expect(mocks.MockTexture.from).toHaveBeenCalledWith("new-texture");
-    expect(comp.sprite.texture).toEqual({
-      input: "new-texture",
-      kind: "texture",
-    });
+    expect(comp.sprite.texture).toBe(next);
+  });
+
+  it("throws on an unresolvable texture key, naming the key", () => {
+    expect(() => new SpriteComponent({ texture: "missing.png" })).toThrowError(
+      /missing\.png/,
+    );
   });
 
   it("tint setter updates sprite tint", () => {
@@ -215,6 +245,61 @@ describe("SpriteComponent", () => {
     comp.onDestroy?.();
     expect(sprite.parent).toBeNull();
     expect(sprite.destroyed).toBe(true);
+  });
+
+  describe("serialization", () => {
+    it("serializes a key-constructed sprite to a full SpriteData", () => {
+      registerFakeTexture("hero.png");
+      const comp = new SpriteComponent({
+        texture: "hero.png",
+        anchor: { x: 0.5, y: 0.5 },
+        tint: 0xff0000,
+      });
+
+      const data = comp.serialize();
+      expect(data.textureKey).toBe("hero.png");
+      expect(data.layer).toBe("default");
+      expect(data.anchor).toEqual({ x: 0.5, y: 0.5 });
+      expect(data.tint).toBe(0xff0000);
+    });
+
+    it("setTexture(key) updates the serialized key", () => {
+      registerFakeTexture("idle.png");
+      registerFakeTexture("run.png");
+      const comp = new SpriteComponent({ texture: "idle.png" });
+
+      comp.setTexture("run.png");
+      expect(comp.serialize().textureKey).toBe("run.png");
+    });
+
+    it("round-trips via fromSnapshot after re-registration", () => {
+      registerFakeTexture("boss.png");
+      const comp = new SpriteComponent({
+        texture: "boss.png",
+        anchor: { x: 0.5, y: 1 },
+        alpha: 0.5,
+      });
+      const data = comp.serialize();
+
+      // A fresh boot: the old registration is gone; the game re-registers a
+      // new runtime texture under the same key before restoring.
+      clearRegisteredTextures();
+      const rebaked = registerFakeTexture("boss.png");
+
+      const restored = SpriteComponent.fromSnapshot(data);
+      expect(restored.sprite.texture).toBe(rebaked);
+      expect(restored.serialize()).toEqual(data);
+    });
+
+    it("fromSnapshot with a missing key throws, naming the key", () => {
+      const data = {
+        layer: "default",
+        textureKey: "never-registered.png",
+      };
+      expect(() =>
+        SpriteComponent.fromSnapshot(data as never),
+      ).toThrowError(/never-registered\.png/);
+    });
   });
 
   describe("inspectRender", () => {
