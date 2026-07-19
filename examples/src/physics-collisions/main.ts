@@ -1,5 +1,10 @@
 import { Engine, Scene, Entity, Component, Transform, Vec2, defineEvent } from "@yagejs/core";
-import { RendererPlugin, GraphicsComponent } from "@yagejs/renderer";
+import {
+  RendererPlugin,
+  GraphicsComponent,
+  TextComponent,
+  type LayerDef,
+} from "@yagejs/renderer";
 import {
   PhysicsPlugin,
   RigidBodyComponent,
@@ -8,34 +13,14 @@ import {
 } from "@yagejs/physics";
 import { AudioPlugin, AudioManagerKey, sound } from "@yagejs/audio";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
-
-injectStyles(`
-  #hud {
-    position: fixed;
-    top: 1rem;
-    right: 1rem;
-    background: rgba(0,0,0,0.7);
-    color: #ffe66d;
-    font-family: monospace;
-    font-size: 1.2rem;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    pointer-events: none;
-  }
-`);
-
-// Create a HUD element for the score
-const hud = document.createElement("div");
-hud.id = "hud";
-hud.textContent = "Score: 0";
-document.body.appendChild(hud);
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
 const WALL = 16;
 const PLAYER_SPEED = 200; // px per second
 const START_POS = new Vec2(WIDTH / 2, HEIGHT / 2);
+const HUD_LAYER = "hud";
 
 // Collision layer setup
 const layers = new CollisionLayers();
@@ -44,11 +29,18 @@ const LAYER_WALL = layers.define("wall");
 const LAYER_COIN = layers.define("coin");
 const LAYER_DANGER = layers.define("danger");
 
+// In-canvas score HUD, bound by the scene once it spawns the text.
 let score = 0;
+let scoreText: TextComponent | undefined;
+
+function bindScore(text: TextComponent): void {
+  scoreText = text;
+  setScore(score);
+}
 
 function setScore(v: number): void {
   score = v;
-  hud.textContent = `Score: ${score}`;
+  scoreText?.setText(`Score: ${score}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -60,8 +52,8 @@ const DangerEntered = defineEvent("danger:entered");
 // ---------------------------------------------------------------------------
 // Sound asset handles
 // ---------------------------------------------------------------------------
-const CoinSfx = sound("assets/coin.wav");
-const HurtSfx = sound("assets/hurt.wav");
+const CoinSfx = sound("/assets/coin.wav");
+const HurtSfx = sound("/assets/hurt.wav");
 
 // ---------------------------------------------------------------------------
 // PlayerController — WASD dynamic movement via velocity
@@ -205,10 +197,25 @@ class DangerEntity extends Entity {
 class CollisionsScene extends Scene {
   readonly name = "physics-collisions";
   readonly preload = [CoinSfx, HurtSfx];
+  readonly layers: readonly LayerDef[] = [
+    { name: HUD_LAYER, order: 1000, space: "screen" },
+  ];
 
   private readonly audio = this.service(AudioManagerKey);
 
   onEnter(): void {
+    const hudEntity = this.spawn("hud");
+    hudEntity.add(new Transform({ position: new Vec2(WIDTH - 16, 16) }));
+    const scoreText = hudEntity.add(
+      new TextComponent({
+        text: "",
+        anchor: { x: 1, y: 0 },
+        style: { fontFamily: "monospace", fontSize: 20, fill: 0xffe66d },
+        layer: HUD_LAYER,
+      }),
+    );
+    bindScore(scoreText);
+
     setScore(0);
 
     // Scene-level event listeners
