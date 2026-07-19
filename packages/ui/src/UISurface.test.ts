@@ -643,11 +643,17 @@ describe("UISurface", () => {
       expect(overlay.displayObject.position.y).toBe(0);
     });
 
-    it("sets a hitArea synced to the panel's computed box (no dead-zones)", () => {
-      // Regression for the un-painted dead-zone bug: a background-less panel
-      // with hover/click handlers must be hit-testable over its whole box —
-      // gaps, padding, the space around shrink-wrapped children — not just
-      // where a child actually paints.
+    it("puts the box-sized hitArea on a leaf catcher, not the container", () => {
+      // Two regressions guarded at once:
+      //  - un-painted dead-zone: a background-less panel with hover/click
+      //    handlers must be hit-testable over its whole box — gaps, padding,
+      //    the space around shrink-wrapped children — not just where a child
+      //    paints.
+      //  - overflow prune: Pixi treats a container's hitArea as a subtree prune
+      //    gate, so a point outside the box skips the container AND every
+      //    descendant. The box-sized hitArea therefore lives on a childless
+      //    leaf; on the container it would make a child that renders outside
+      //    the box (an open PixiSelect dropdown, a popover) unhittable.
       const panel = new UISurface({
         direction: "column",
         gap: 10,
@@ -660,16 +666,26 @@ describe("UISurface", () => {
       panel.root.yogaNode.calculateLayout(undefined, undefined, Direction.LTR);
       panel.root.applyLayout();
 
-      const hit = (
-        panel.container as unknown as {
-          hitArea: { x: number; y: number; width: number; height: number };
+      // The container must NOT carry a hitArea — it would prune descendants
+      // that render outside the box.
+      expect(
+        (panel.container as unknown as { hitArea?: unknown }).hitArea,
+      ).toBeUndefined();
+
+      const catcher = (
+        panel.root as unknown as {
+          _hitCatcher: {
+            eventMode: string;
+            hitArea: { x: number; y: number; width: number; height: number };
+          };
         }
-      ).hitArea;
-      expect(hit).toBeDefined();
+      )._hitCatcher;
+      expect(catcher.eventMode).toBe("static");
+      const hit = catcher.hitArea;
       expect(hit.x).toBe(0);
       expect(hit.y).toBe(0);
       // 100 wide content + 5px padding each side; two 30px rows + 10px gap +
-      // 5px padding each side — the gap/padding region is now inside the box.
+      // 5px padding each side — the gap/padding region is inside the box.
       expect(hit.width).toBe(panel.root.yogaNode.getComputedWidth());
       expect(hit.height).toBe(panel.root.yogaNode.getComputedHeight());
       expect(hit.width).toBe(110);
