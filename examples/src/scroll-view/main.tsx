@@ -12,7 +12,7 @@ import {
   Tooltip,
   Anchor,
 } from "@yagejs/ui-react";
-import { installDebugFromUrl, setupGameContainer } from "./shared/bootstrap";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap";
 
 // ---------------------------------------------------------------------------
 // A right-rail "Orders" panel: a declarative, scrollable list of card

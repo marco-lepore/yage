@@ -11,7 +11,7 @@ import {
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
 import { ParticlesPlugin, ParticleEmitterComponent, ParticlePresets } from "@yagejs/particles";
 import type { EmitterConfig } from "@yagejs/particles";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 injectStyles();
 
