@@ -28,35 +28,9 @@ import {
   UIPlugin,
 } from "@yagejs/ui";
 import type { Container } from "pixi.js";
-import { setupGameContainer, injectStyles, installDebugFromUrl } from "../shared/bootstrap.js";
+import { setupGameContainer, installDebugFromUrl } from "../shared/bootstrap.js";
+import "./styles.css";
 
-injectStyles(`
-  .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
-  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
-  .row button {
-    background: #1d4ed8;
-    border: 1px solid #2563eb;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-  .row button:hover { background: #2563eb; }
-  .row button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .slider-row { display: flex; gap: 0.5rem; align-items: center; justify-content: center; font-size: 0.85rem; }
-  .slider-row input { flex: 1; max-width: 280px; }
-  #status {
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-    color: #aaa;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 4px;
-    padding: 8px 12px;
-    white-space: pre;
-  }
-`);
 
 const WIDTH = 640;
 const HEIGHT = 360;

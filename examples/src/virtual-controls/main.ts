@@ -18,22 +18,9 @@ import {
   VirtualControls,
 } from "@yagejs-addons/virtual-controls";
 import { createControlsPresenter } from "@yagejs-addons/virtual-controls/presenters";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import "./styles.css";
 
-injectStyles(`
-  /* Keep the browser from turning touches into scroll/zoom/selection. */
-  #game-container { touch-action: none; user-select: none; -webkit-user-select: none; }
-  #layout-buttons button {
-    margin-left: 0.4rem;
-    padding: 0.3rem 0.7rem;
-    background: #1e293b;
-    color: #e2e8f0;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  #layout-buttons button:hover { border-color: #38bdf8; }
-`);
 
 const WIDTH = 800;
 const HEIGHT = 600;

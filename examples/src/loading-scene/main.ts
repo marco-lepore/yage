@@ -18,30 +18,9 @@ import {
   UISurface,
   UIPlugin,
 } from "@yagejs/ui";
-import { setupGameContainer, injectStyles, installDebugFromUrl } from "../shared/bootstrap.js";
+import { setupGameContainer, installDebugFromUrl } from "../shared/bootstrap.js";
+import "./styles.css";
 
-injectStyles(`
-  .controls { flex-direction: column; gap: 0.5rem; align-items: stretch; max-width: 640px; width: 100%; }
-  .row { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
-  .row button {
-    background: #1d4ed8;
-    border: 1px solid #2563eb;
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-  .row button:hover { background: #2563eb; }
-  .explain {
-    font-size: 0.85rem;
-    color: #999;
-    line-height: 1.5;
-    max-width: 640px;
-    text-align: center;
-  }
-  code { background: #222; padding: 2px 6px; border-radius: 3px; }
-`);
 
 const WIDTH = 640;
 const HEIGHT = 360;

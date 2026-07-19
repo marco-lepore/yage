@@ -30,25 +30,9 @@ import {
 } from "@yagejs/renderer";
 import type { GradientFill, LayerDef } from "@yagejs/renderer";
 import { Anchor, UISurface, UIPlugin } from "@yagejs/ui";
-import { injectStyles, getContainer, installDebugFromUrl } from "../shared/bootstrap.js";
+import { getContainer, installDebugFromUrl } from "../shared/bootstrap.js";
+import "./styles.css";
 
-injectStyles(`
-  #game-container {
-    max-width: 100%;
-    height: 70vh;
-    aspect-ratio: auto;
-  }
-  #readout {
-    font-family: ui-monospace, monospace;
-    font-size: 0.78rem;
-    color: #aaa;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 4px;
-    padding: 6px 10px;
-    text-align: center;
-  }
-`);
 
 const readout = document.createElement("div");
 readout.id = "readout";
