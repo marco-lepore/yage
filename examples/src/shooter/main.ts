@@ -146,14 +146,33 @@ const LAYER_PLATFORM = layers.define("platform");
 const LAYER_BULLET = layers.define("bullet");
 const LAYER_ENEMY = layers.define("enemy");
 
-// State
+// Game state — encapsulated behind functions so scene/entity code never
+// reassigns these bindings (they become cross-module imports after the split).
 let killCount = 0;
 let won = false;
-let playerEntity: Entity | null = null;
 
-function setKills(n: number): void {
-  killCount = n;
+function refreshHud(): void {
   hud.textContent = `Enemies: ${killCount} / ${TOTAL_ENEMIES}`;
+}
+
+/** Reset kills + win state and the HUD. Call on scene (re)enter. */
+function resetGame(): void {
+  killCount = 0;
+  won = false;
+  refreshHud();
+  winMsg.style.display = "none";
+}
+
+/** Count one kill; reveals the win banner once every enemy is down. */
+function registerKill(): void {
+  killCount += 1;
+  refreshHud();
+  if (killCount >= TOTAL_ENEMIES) showWin();
+}
+
+/** Whether the win condition has been reached. */
+function isWon(): boolean {
+  return won;
 }
 
 function showWin(): void {
@@ -368,7 +387,7 @@ class PlayerController extends Component {
   }
 
   update(dt: number): void {
-    if (won) {
+    if (isWon()) {
       this.rb.setVelocity(Vec2.ZERO);
       this.anim.unlock();
       this.anim.play("idle");
@@ -645,8 +664,9 @@ class EnemyController extends Component {
         this.updateFacing(this.patrolDir);
 
         // Detect player
-        if (playerEntity && playerEntity.tryScene) {
-          const playerPos = playerEntity.get(Transform).position;
+        const player = this.scene.findEntitiesByTag("player")[0];
+        if (player) {
+          const playerPos = player.get(Transform).position;
           const dx = Math.abs(pos.x - playerPos.x);
           const dy = Math.abs(pos.y - playerPos.y);
           if (
@@ -841,6 +861,7 @@ class EnemyController extends Component {
 // ---------------------------------------------------------------------------
 class PlayerEntity extends Entity {
   setup(params: { camera: CameraEntity }): void {
+    this.tags.add("player");
     this.add(new Transform({ position: new Vec2(SPAWN.x, SPAWN.y) }));
     const idleSource = { sheet: PlayerIdleTex.path, frameWidth: FRAME_SIZE };
     const spriteComp = this.add(
@@ -1062,9 +1083,7 @@ class ShooterScene extends Scene {
   private readonly audio = this.service(AudioManagerKey);
 
   onEnter(): void {
-    setKills(0);
-    won = false;
-    winMsg.style.display = "none";
+    resetGame();
 
     const cam = this.spawn(CameraEntity);
 
@@ -1072,15 +1091,12 @@ class ShooterScene extends Scene {
     this.audio.play(BgMusic.path, { channel: "music", loop: true });
 
     // Scene-level event listener: track enemy kills
-    this.on(EnemyKilled, () => {
-      setKills(killCount + 1);
-      if (killCount >= TOTAL_ENEMIES) showWin();
-    });
+    this.on(EnemyKilled, () => registerKill());
 
     this.drawBackground();
     this.buildLevel();
     this.spawnEnemies(cam);
-    playerEntity = this.spawn(PlayerEntity, { camera: cam });
+    this.spawn(PlayerEntity, { camera: cam });
   }
 
   // -- Background --
