@@ -129,6 +129,7 @@ export default defineConfig({
             { label: "Pathfinding", slug: "guides/pathfinding" },
             { label: "UI", slug: "guides/ui" },
             { label: "UI (React)", slug: "guides/ui-react" },
+            { label: "Localization", slug: "guides/localization" },
             { label: "Save & Load", slug: "guides/save-and-load" },
             {
               label: "Snapshot Quicksave",
