@@ -39,6 +39,7 @@ export class GameLoop {
   private rafId: number | null = null;
   private lastTime = 0;
   private _frameCount = 0;
+  private _lastTickAt = 0;
 
   constructor(config?: GameLoopConfig) {
     this.fixedTimestep = config?.fixedTimestep ?? 1 / 60;
@@ -58,6 +59,16 @@ export class GameLoop {
   /** Ratio of accumulated time to fixed timestep, for physics interpolation. */
   get interpolationAlpha(): number {
     return this.accumulator / this.fixedTimestep;
+  }
+
+  /**
+   * Wall-clock timestamp (ms, `performance.now()` scale) of the
+   * most recent `tick()` call, or 0 if `tick()` has never run. Lets a caller
+   * tell "frozen on purpose" apart from "stalled" without depending on the
+   * frame counter, which doesn't move either way.
+   */
+  get lastTickAt(): number {
+    return this._lastTickAt;
   }
 
   /** Provide the callbacks that the loop invokes each frame. */
@@ -119,6 +130,7 @@ export class GameLoop {
     if (!this.running || !this.callbacks) return;
 
     this._frameCount++;
+    this._lastTickAt = performance.now();
 
     const dt = dtMs / 1000;
 

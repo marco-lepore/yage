@@ -15,10 +15,11 @@ engine.use(new DebugPlugin({
   maxHudLines: 32,
   flags: { "walls.show-walls": true },  // format: "contributorName.flagName"
   deterministicSeed: 0x00c0ffee,        // optional: pin every scene RNG to this seed
+  eventLog: true,                       // record bus + entity events (default true)
 }));
 ```
 
-`deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state. Inspector frame stepping is synchronous:
+`deterministicSeed` is opt-in. Leave it unset for normal debug builds; set it from test fixtures so each `Inspector.setSeed(...)` call has a known starting state. Inspector frame stepping is synchronous by default:
 
 ```ts
 window.__yage__.inspector.time.freeze();
@@ -32,6 +33,24 @@ window.__yage__.inspector.time.thaw();
 
 The lower-level `window.__yage__.clock` exposes a custom-dt API: `clock.step(dtMs)` (one frame at `dtMs`) and `clock.stepFrames(count, dtMs?)` (loops `clock.step` `count` times). Avoid `clock.step(bigDt)` to "fast-forward" — it collapses everything into a single large frame. Physics still runs the right number of fixed sub-steps, but `Component.update(dt)`, tweens, and AI logic only see one update at the full `bigDt`, which diverges from real gameplay. Always advance frame-by-frame when simulating gameplay sequences.
 
+### Async stepping (`stepUntil` / `stepAsync`)
+
+`time.step(N)` is fully synchronous. A `SceneManager` transition, or any other logic that resolves through a promise chain, queues its continuation as a microtask. A plain, synchronous `step()` call never drains that queue, so a script waiting on the transition sees stale state and looks stuck. `stepUntil`/`stepAsync` yield to a real macrotask after every frame instead, which lets pending microtasks run before the next frame steps:
+
+```ts
+// Advance until a condition holds, or throw after too many frames:
+const frames = await inspector.time.stepUntil(
+  () => inspector.getSceneStack().some((s) => s.name === "level2"),
+  { maxFrames: 300 },   // default 600 (10s at 60fps); throws if never satisfied
+);
+
+// Advance a known number of frames, still draining async work between them:
+await inspector.time.stepAsync(45);
+await inspector.time.stepAsync(10, { dtMs: 32 });   // custom per-frame dt
+```
+
+`stepUntil` checks the predicate before stepping, resolving `0` immediately if it is already true, then again after each frame. It resolves with the number of frames it took. The clock must still be frozen first, same as `time.step`. Prefer `stepUntil`/`stepAsync` over `time.step(N)` whenever the sequence crosses a scene transition, an async dialogue or cutscene runner, or anything else that resolves off the synchronous call stack.
+
 ## Inspector test surface
 
 `window.__yage__.inspector` exposes deterministic test controls in addition to the snapshot/query API:
@@ -43,9 +62,21 @@ inspector.input.tap("Space", 1);
 inspector.input.fireAction("jump", 1);
 inspector.events.getLog();                     // EventLogEntry[] (bus + entity events)
 inspector.events.setCapacity(1_000);           // ring buffer size (default 500)
+inspector.events.setEnabled(false);            // stop recording (zero per-event allocation)
+inspector.events.isEnabled();                  // current on/off state
 await inspector.events.waitFor("scene:pushed", { withinFrames: 30 });
 inspector.snapshotJSON();                      // stable, sorted JSON for diffing
+inspector.snapshotScene("level2");             // one scene's snapshot, by name or by id
+inspector.time.isAdvancing();                  // true if a real frame ticked within the last 250ms
 ```
+
+`snapshotScene(nameOrId)` tries the public `scene.name` first, then falls back to the inspector-assigned id from `snapshot().scenes[].id` / `getSceneStack()[].id`. If more than one active scene shares the name it throws rather than guessing — pass the id instead.
+
+`time.isAdvancing(withinMs = 250)` reports whether the game loop actually ticked within the last `withinMs` milliseconds, independent of `time.isFrozen()`. A frozen clock that isn't being stepped reads `isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync` fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A game that has stalled without being frozen — a hung `await`, a runaway synchronous loop — also reads `false`. `isFrozen()` alone can't tell those two cases apart; `isAdvancing()` exists for that.
+
+### Component state reflection
+
+`snapshot()` and `getComponentData()` read a component's `serialize()` result if it defines one. A component with no `serialize()` still reports state. Both a snapshot's `components[].state` and `getComponentData()` fall back to the component's own enumerable fields plus its public getters (`get isReady()`, `get health()`, and similar), read straight off the instance. Fields and getters starting with `_` are excluded. Functions and non-plain-object values are excluded too — Pixi/Rapier handles and other class instances would either fail to serialize or leak meaningless object identities. A getter that throws is skipped rather than failing the whole snapshot. Define `serialize()` when a component needs a specific shape, such as renamed keys or a derived value that shouldn't be recomputed on every read. Otherwise the reflected state is enough to inspect a component with no configuration.
 
 ### Render facet — rendered geometry / visibility
 

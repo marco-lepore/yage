@@ -31,6 +31,7 @@ runtime.
 | `maxGraphics` | `number` | `256` | Graphics object pool size |
 | `maxHudLines` | `number` | `32` | Max HUD text lines |
 | `flags` | `Record<string, boolean>` | — | Initial flag overrides |
+| `eventLog` | `boolean` | `true` | Record bus + entity events at startup |
 
 ## Built-In Debug Views
 
@@ -213,6 +214,37 @@ The configured `stepKey` only advances frames while the inspector clock is
 frozen. This is useful for debugging physics, animations, or frame-specific
 logic.
 
+### Async stepping across scene transitions
+
+`time.step(N)` is fully synchronous, so it never gives async work a chance to
+run. A scene transition, a dialogue runner, or anything else that resolves
+through a promise chain queues its continuation as a microtask, and a plain
+`step()` call never drains that queue — a script waiting on the transition
+sees stale state and looks stuck.
+
+`time.stepUntil()` and `time.stepAsync()` solve this by yielding to a real
+macrotask after every frame, giving pending microtasks a chance to run before
+the next frame steps:
+
+```typescript
+// Advance frame-by-frame until a condition holds, checking before the first
+// frame and after each one. Throws if `maxFrames` (default 600, ~10s at
+// 60fps) is reached without the predicate becoming true.
+const frames = await window.__yage__.inspector.time.stepUntil(
+  () => window.__yage__.inspector.getSceneStack().some((s) => s.name === "level2"),
+  { maxFrames: 300 },
+);
+
+// Advance a known frame count, still draining async work between frames:
+await window.__yage__.inspector.time.stepAsync(45);
+await window.__yage__.inspector.time.stepAsync(10, { dtMs: 32 }); // custom per-frame dt
+```
+
+The clock still has to be frozen first, same as `time.step`. Reach for
+`stepUntil`/`stepAsync` whenever the sequence crosses a scene transition or an
+async runner; keep using `time.step(N)` for everything else, since it is the
+simpler call.
+
 ### Throwaway Inspector specs
 
 The Inspector + frozen clock + scripted input together make a tight short-loop
@@ -266,6 +298,36 @@ a time) over `clock.step(bigDt)` (collapses the interval into one fat frame).
 `Component.update`, tweens, and AI logic only see one update at the full
 `bigDt` under the latter, which diverges from real gameplay even though
 physics still substeps correctly.
+
+### Component state without `serialize()`
+
+A snapshot's `components[].state` and `getComponentData()` read a component's
+`serialize()` result when it defines one. A component with no `serialize()`
+still reports state: both fall back to reading the component's own enumerable
+fields plus its public getters (`get isReady()`, `get health()`, and similar)
+straight off the instance.
+
+```typescript
+class Cooldown extends Component {
+  private _ready = false;
+
+  get isReady() {
+    return this._ready;
+  }
+}
+
+// No serialize() defined — the reflected state still shows up:
+window.__yage__.inspector.getComponentData("turret", "Cooldown");
+// { isReady: true }
+```
+
+Fields and getters starting with `_` are excluded, along with functions and
+non-plain-object values — a Pixi/Rapier handle or other class instance would
+either fail to serialize or leak a meaningless object identity. A getter that
+throws is skipped rather than failing the whole snapshot. Define `serialize()`
+when a component needs a specific shape, such as renamed keys or a value that
+shouldn't be recomputed on every read; otherwise the reflected state is enough
+to inspect a component with no extra code.
 
 ### Reading rendered geometry and visibility
 
@@ -333,6 +395,38 @@ These are truths, not bugs to fix — keep them in mind when interpreting probe 
 - **Audio**: no introspection surface, and WebAudio doesn't pause in step mode. Probes can't tell you whether a sound effect played at the right frame.
 - **Wall-clock leaks**: `setTimeout`, `Date.now()`, and raw `performance.now()` reads bypass the frame clock. No callers in core YAGE today, but custom plugins might.
 - **`step(bigDt)` ≠ `stepFrames(N)`** for variable-update logic. Always prefer the latter in probes.
+
+### Scene lookup, the event log, and stall detection
+
+`snapshotScene(nameOrId)` takes either the public `scene.name` or the
+inspector-assigned id from `snapshot().scenes[].id` / `getSceneStack()[].id`,
+trying the name first:
+
+```typescript
+window.__yage__.inspector.snapshotScene("level2");
+```
+
+If more than one active scene shares that name, `snapshotScene` throws instead
+of guessing — pass the id in that case.
+
+The event log records bus and entity events for `events.getLog()` and
+`events.waitFor()`. It is on by default (`DebugConfig.eventLog`); turn it off
+at runtime when a probe doesn't read the log, to skip the per-event allocation
+entirely:
+
+```typescript
+window.__yage__.inspector.events.setEnabled(false);
+window.__yage__.inspector.events.isEnabled(); // false
+```
+
+`time.isAdvancing(withinMs = 250)` reports whether the game loop actually
+ticked within the last `withinMs` milliseconds, independent of
+`time.isFrozen()`. A frozen clock that isn't being stepped reads
+`isAdvancing() === false`, but a manual `time.step`/`stepUntil`/`stepAsync`
+fires a real tick, so `isAdvancing()` reads `true` for `withinMs` after one. A
+game that has stalled without being frozen — a hung `await`, a runaway
+synchronous loop — also reads `false`. `isFrozen()` alone can't distinguish
+those two cases; `isAdvancing()` exists for that.
 
 ## Logging
 

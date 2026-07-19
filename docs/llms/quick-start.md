@@ -110,6 +110,20 @@ await window.__yage__.inspector.events.waitFor("scene:pushed", { withinFrames: 3
 
 Snapshot and query calls work with `debug: true` alone. Frame stepping (`inspector.time.*`) needs `DebugPlugin`; synthetic input (`inspector.input.*`) needs `InputPlugin`. Without those plugins, the gated calls throw.
 
+`time.step(N)` is synchronous and never gives async work (a scene transition, a dialogue runner) a chance to resolve. When a step needs to cross one, use the async variants instead — they yield a real macrotask between frames so pending microtasks can drain:
+
+```ts
+// Advance until a condition holds (throws after `maxFrames`, default 600):
+await window.__yage__.inspector.time.stepUntil(() =>
+  window.__yage__.inspector.getSceneStack().some((s) => s.name === "level2"),
+);
+
+// Advance a known frame count, still draining async work between frames:
+await window.__yage__.inspector.time.stepAsync(45);
+```
+
+See `packages/debug.md` for `stepUntil`/`stepAsync` options, `snapshotScene(nameOrId)`, `events.setEnabled`/`isEnabled`, and `time.isAdvancing()`.
+
 Diagnostics that need optional plugins live under inspector extension
 namespaces. For example, `DebugPlugin` registers `debug` while installed.
 Pass the extension's interface as the type parameter so calls type-check:
