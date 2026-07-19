@@ -30,6 +30,7 @@ import {
   RendererPlugin,
   GraphicsComponent,
   GraphicsContext,
+  TextComponent,
   ySort,
   type LayerDef,
 } from "@yagejs/renderer";
@@ -44,45 +45,29 @@ import type { PhysicsWorld } from "@yagejs/physics";
 import { SnapshotPlugin, SnapshotServiceKey } from "@yagejs/save";
 import type { SnapshotService } from "@yagejs/save";
 import { InputPlugin, InputManagerKey } from "@yagejs/input";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 // ---------------------------------------------------------------------------
-// Styles + HUD
+// In-canvas HUD chrome — a screen-space readout plus a transient toast, both
+// bound by the scene once it spawns the text (rebuilt on restore too).
 // ---------------------------------------------------------------------------
-injectStyles(`
-  #hud {
-    position: fixed; top: 1rem; right: 1rem;
-    background: rgba(0,0,0,0.7); color: #ffe66d;
-    font-family: monospace; font-size: 1rem;
-    padding: 0.5rem 1rem; border-radius: 6px;
-    pointer-events: none; line-height: 1.6;
-  }
-  #toast {
-    position: fixed; bottom: 2rem; left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.85); color: #22c55e;
-    font-family: monospace; font-size: 0.9rem;
-    padding: 0.4rem 1.2rem; border-radius: 6px;
-    pointer-events: none; opacity: 0;
-    transition: opacity 0.2s;
-  }
-  #toast.show { opacity: 1; }
-`);
+const HUD_LAYER = "hud";
 
-const hud = document.createElement("div");
-hud.id = "hud";
-document.body.appendChild(hud);
-
-const toast = document.createElement("div");
-toast.id = "toast";
-document.body.appendChild(toast);
-
+let toastText: TextComponent | undefined;
 let toastTimer = 0;
-function showToast(msg: string) {
-  toast.textContent = msg;
-  toast.classList.add("show");
+
+function bindToast(text: TextComponent): void {
+  toastText = text;
+}
+
+function showToast(msg: string): void {
+  if (!toastText) return;
+  toastText.setText(msg);
+  toastText.visible = true;
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1500);
+  toastTimer = window.setTimeout(() => {
+    if (toastText) toastText.visible = false;
+  }, 1500);
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +442,7 @@ class SaveDemoScene extends Scene {
     // ySort makes the player correctly draw over a coin they're
     // physically in front of.
     { name: "entities", order: 0, sort: ySort },
+    { name: HUD_LAYER, order: 1000, space: "screen" },
   ];
   private gs!: GameState;
 
@@ -498,16 +484,31 @@ class SaveDemoScene extends Scene {
     // HUD update + quicksave/load via anonymous entity
     const gs = this.gs;
     const hudEntity = this.spawn("hud");
-    hudEntity.add(new Transform());
+    hudEntity.add(new Transform({ position: new Vec2(WIDTH - 16, 16) }));
+    hudEntity.add(
+      new TextComponent({
+        text: "",
+        anchor: { x: 1, y: 0 },
+        style: {
+          fontFamily: "monospace",
+          fontSize: 16,
+          fill: 0xffe66d,
+          lineHeight: 22,
+        },
+        layer: HUD_LAYER,
+      }),
+    );
     hudEntity.add(
       new (class extends Component {
         private readonly input = this.service(InputManagerKey);
         private readonly saveService = this.service(SnapshotServiceKey);
+        private readonly text = this.sibling(TextComponent);
 
         update() {
-          hud.innerHTML =
-            `Coins: ${gs.coins} | HP: ${gs.hp}<br>` +
-            `Best: ${gs.bestScore} (persisted)`;
+          this.text.setText(
+            `Coins: ${gs.coins} | HP: ${gs.hp}\n` +
+              `Best: ${gs.bestScore} (persisted)`,
+          );
 
           if (this.input.isJustPressed("quicksave")) {
             this.saveService.saveSnapshot("quick");
@@ -529,6 +530,22 @@ class SaveDemoScene extends Scene {
         }
       })(),
     );
+
+    // Transient toast, bottom-center on the HUD layer.
+    const toastEntity = this.spawn("toast");
+    toastEntity.add(
+      new Transform({ position: new Vec2(WIDTH / 2, HEIGHT - 24) }),
+    );
+    const toastText = toastEntity.add(
+      new TextComponent({
+        text: "",
+        anchor: { x: 0.5, y: 0.5 },
+        style: { fontFamily: "monospace", fontSize: 14, fill: 0x22c55e },
+        layer: HUD_LAYER,
+      }),
+    );
+    toastText.visible = false;
+    bindToast(toastText);
   }
 
   private buildStaticGeometry() {
