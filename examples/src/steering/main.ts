@@ -1,4 +1,4 @@
-import { Component, Engine, Scene, Transform, Vec2 } from "@yagejs/core";
+import { Component, Engine, MathUtils, Scene, Transform, Vec2 } from "@yagejs/core";
 import type { Entity } from "@yagejs/core";
 import { GraphicsComponent, RendererPlugin } from "@yagejs/renderer";
 import {
@@ -34,10 +34,6 @@ const ARROW_SCALE = 0.35;
 /** Keeps roaming agents (wander, flock) on the field via the contain behavior. */
 const FIELD = { x: 10, y: 10, width: WIDTH - 20, height: HEIGHT - 20 };
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
 // ---------------------------------------------------------------------------
 // Player — WASD, driven by @yagejs/input directly (not a steering agent).
 // Every other agent on screen chases/flees/avoids/orbits this dot.
@@ -51,8 +47,8 @@ class PlayerController extends Component {
     const dir = v.lengthSq() > 0 ? v.normalize() : v;
     const p = this.transform.position;
     this.transform.setPosition(
-      clamp(p.x + dir.x * PLAYER_SPEED * dt, 16, WIDTH - 16),
-      clamp(p.y + dir.y * PLAYER_SPEED * dt, 16, HEIGHT - 16),
+      MathUtils.clamp(p.x + dir.x * PLAYER_SPEED * dt, 16, WIDTH - 16),
+      MathUtils.clamp(p.y + dir.y * PLAYER_SPEED * dt, 16, HEIGHT - 16),
     );
   }
 }

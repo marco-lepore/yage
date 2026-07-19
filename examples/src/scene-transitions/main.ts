@@ -12,6 +12,7 @@ import {
 import {
   RendererPlugin,
   GraphicsComponent,
+  type DisplayContainer,
   SceneRenderTreeProviderKey,
   chessboard,
   crossFade,
@@ -27,7 +28,6 @@ import {
   UISurface,
   UIPlugin,
 } from "@yagejs/ui";
-import type { Container } from "pixi.js";
 import { setupGameContainer, installDebugFromUrl } from "../shared/bootstrap.js";
 import "./styles.css";
 
@@ -38,7 +38,7 @@ const HEIGHT = 360;
 // ----- Custom slideIn transition --------------------------------------------
 // Slides the incoming scene's root container in from the right.
 function slideIn(duration: number): SceneTransition {
-  let toRoot: Container | undefined;
+  let toRoot: DisplayContainer | undefined;
   return {
     duration,
     begin(ctx: SceneTransitionContext) {

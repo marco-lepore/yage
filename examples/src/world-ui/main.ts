@@ -88,7 +88,7 @@ class FaceTowardsPlayer extends Component {
     const target = player.get(Transform).worldPosition;
     const delta = target.sub(myWorld);
     // Parent Enemy doesn't rotate, so local = world for this Transform.
-    this.localTransform.setRotation(Math.atan2(delta.y, delta.x) + Math.PI / 2);
+    this.localTransform.setRotation(delta.angle() + Math.PI / 2);
   }
 }
 

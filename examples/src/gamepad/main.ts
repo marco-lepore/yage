@@ -1,12 +1,14 @@
 import {
   Component,
   Engine,
+  MathUtils,
   Scene,
   Transform,
   Vec2,
 } from "@yagejs/core";
 import {
   GraphicsComponent,
+  type GraphicsContext,
   RendererPlugin,
   TextComponent,
 } from "@yagejs/renderer";
@@ -49,8 +51,8 @@ class ShipController extends Component {
 
     // Keep ship in bounds
     const pos = this.transform.position;
-    const clampedX = Math.max(20, Math.min(WIDTH - 20, pos.x));
-    const clampedY = Math.max(20, Math.min(HEIGHT - 20, pos.y));
+    const clampedX = MathUtils.clamp(pos.x, 20, WIDTH - 20);
+    const clampedY = MathUtils.clamp(pos.y, 20, HEIGHT - 20);
     if (clampedX !== pos.x || clampedY !== pos.y) {
       this.transform.setPosition(clampedX, clampedY);
     }
@@ -58,7 +60,7 @@ class ShipController extends Component {
     // -- Aim: right stick OR mouse direction (when stick idle) --
     const aim = this.input.getStick("right");
     if (aim.x !== 0 || aim.y !== 0) {
-      const target = Math.atan2(aim.y, aim.x);
+      const target = aim.angle();
       this.transform.rotation = stepTowardAngle(
         this.transform.rotation,
         target,
@@ -97,9 +99,7 @@ class ShipController extends Component {
 }
 
 function stepTowardAngle(current: number, target: number, maxStep: number): number {
-  const TAU = Math.PI * 2;
-  let delta = ((target - current) % TAU + TAU) % TAU;
-  if (delta > Math.PI) delta -= TAU;
+  const delta = MathUtils.shortestAngleBetween(current, target);
   if (Math.abs(delta) < maxStep) return target;
   return current + Math.sign(delta) * maxStep;
 }
@@ -169,7 +169,7 @@ class GamepadHud extends Component {
 }
 
 function drawStick(
-  g: import("pixi.js").Graphics,
+  g: GraphicsContext,
   cx: number,
   cy: number,
   radius: number,
@@ -191,7 +191,7 @@ function drawStick(
 }
 
 function drawTriggerBar(
-  g: import("pixi.js").Graphics,
+  g: GraphicsContext,
   x: number,
   yTop: number,
   value: number,
@@ -199,7 +199,7 @@ function drawTriggerBar(
   const height = 56;
   const width = 14;
   g.rect(x, yTop, width, height).stroke({ color: 0x475569, width: 1.5 });
-  const filled = Math.min(1, Math.max(0, value)) * (height - 4);
+  const filled = MathUtils.clamp(value, 0, 1) * (height - 4);
   g.rect(x + 2, yTop + height - 2 - filled, width - 4, filled).fill({
     color: value > 0.05 ? 0x22d3ee : 0x334155,
   });
