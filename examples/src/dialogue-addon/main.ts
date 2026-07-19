@@ -143,17 +143,17 @@ import {
 import { loadYaml } from "@yagejs-addons/dialogue/yaml";
 // The dialogue itself lives in plain `.yaml` data files (a designer edits these
 // without touching code); Vite's `?raw` suffix imports each as a string.
-import miraYaml from "./dialogue/mira.yaml?raw";
-import quartermasterYaml from "./dialogue/quartermaster.yaml?raw";
-import merchantYaml from "./dialogue/merchant.yaml?raw";
-import guardYaml from "./dialogue/guard.yaml?raw";
-import rookYaml from "./dialogue/rook.yaml?raw";
-import sageYaml from "./dialogue/sage.yaml?raw";
-import captainYaml from "./dialogue/captain.yaml?raw";
-import gossipYaml from "./dialogue/gossip.yaml?raw";
+import miraYaml from "./scripts/mira.yaml?raw";
+import quartermasterYaml from "./scripts/quartermaster.yaml?raw";
+import merchantYaml from "./scripts/merchant.yaml?raw";
+import guardYaml from "./scripts/guard.yaml?raw";
+import rookYaml from "./scripts/rook.yaml?raw";
+import sageYaml from "./scripts/sage.yaml?raw";
+import captainYaml from "./scripts/captain.yaml?raw";
+import gossipYaml from "./scripts/gossip.yaml?raw";
 // One NPC's script is authored in the compact DSL instead of YAML — loaded with
 // `loadCompact` from the root entry (no `yaml` dep), same validated/frozen IR.
-import locksmithCompact from "./dialogue/locksmith.dlg?raw";
+import locksmithCompact from "./scripts/locksmith.dlg?raw";
 import {
   defaultDialogueTheme,
   createMixedDialogue,
@@ -166,7 +166,7 @@ import {
   type DialogueTheme,
 } from "@yagejs-addons/dialogue/presenters";
 import { Assets, Texture } from "pixi.js";
-import { injectStyles, installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;

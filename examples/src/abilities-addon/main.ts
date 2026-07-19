@@ -176,7 +176,7 @@ import type {
 } from "@yagejs-addons/abilities";
 import { AbilityDriverComponent } from "@yagejs-addons/abilities/input";
 import type { AbilityDriverOptions } from "@yagejs-addons/abilities/input";
-import { injectStyles, setupGameContainer } from "./shared/bootstrap.js";
+import { injectStyles, setupGameContainer } from "../shared/bootstrap.js";
 
 injectStyles(`
   #dead-banner {

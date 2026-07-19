@@ -68,7 +68,7 @@ import {
   INVENTORY_LAYERS,
 } from "@yagejs-addons/inventory/presenters";
 import { Assets, Texture } from "pixi.js";
-import { installDebugFromUrl, setupGameContainer } from "./shared/bootstrap.js";
+import { installDebugFromUrl, setupGameContainer } from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;

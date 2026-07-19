@@ -51,7 +51,7 @@ import {
   QuestCompletedEvent,
   QuestLog,
 } from "@yagejs-addons/quests";
-import { setupGameContainer } from "./shared/bootstrap.js";
+import { setupGameContainer } from "../shared/bootstrap.js";
 
 const WIDTH = 800;
 const HEIGHT = 600;
