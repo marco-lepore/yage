@@ -116,7 +116,7 @@ class PlayerController extends Component {
     const { up, down, left, right } = this.actions;
     const dir = this.input.getVector(left, right, up, down);
     if (dir.lengthSq() > 0) {
-      const move = dir.normalize().scale((this.speed * dt) / 1000);
+      const move = dir.normalize().scale(this.speed * dt);
       this.entity.get(Transform).translate(move.x, move.y);
     }
   }
