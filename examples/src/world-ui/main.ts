@@ -508,8 +508,10 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-await installDebugFromUrl(engine);
+async function main(): Promise<void> {
+  await installDebugFromUrl(engine);
+  await engine.start();
+  await engine.scenes.push(new DemoScene());
+}
 
-await engine.start();
-
-await engine.scenes.push(new DemoScene());
+main().catch(console.error);

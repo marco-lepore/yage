@@ -188,6 +188,10 @@ engine.use(
 );
 engine.use(new UIPlugin());
 engine.use(new UIReactPlugin());
-await installDebugFromUrl(engine);
-await engine.start();
-await engine.scenes.push(new DemoScene());
+async function main(): Promise<void> {
+  await installDebugFromUrl(engine);
+  await engine.start();
+  await engine.scenes.push(new DemoScene());
+}
+
+main().catch(console.error);

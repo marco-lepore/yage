@@ -196,10 +196,14 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-await installDebugFromUrl(engine);
-await engine.start();
-engine.assets.registerLoader("slow", slowLoader);
-await engine.scenes.push(new MenuScene());
+async function main(): Promise<void> {
+  await installDebugFromUrl(engine);
+  await engine.start();
+  engine.assets.registerLoader("slow", slowLoader);
+  await engine.scenes.push(new MenuScene());
+}
+
+main().catch(console.error);
 
 // ----- UI wiring -----------------------------------------------------------
 const durationSlider = document.getElementById("duration") as HTMLInputElement;

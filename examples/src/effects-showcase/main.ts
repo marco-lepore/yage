@@ -59,4 +59,4 @@ async function main(): Promise<void> {
   await engine.scenes.push(new ShowcaseScene());
 }
 
-void main();
+main().catch(console.error);

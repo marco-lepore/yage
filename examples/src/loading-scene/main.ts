@@ -192,11 +192,14 @@ engine.use(
   }),
 );
 engine.use(new UIPlugin());
-await installDebugFromUrl(engine);
-await engine.start();
-engine.assets.registerLoader("slow", slowLoader);
+async function main(): Promise<void> {
+  await installDebugFromUrl(engine);
+  await engine.start();
+  engine.assets.registerLoader("slow", slowLoader);
+  await engine.scenes.push(new AutoBoot());
+}
 
-await engine.scenes.push(new AutoBoot());
+main().catch(console.error);
 
 // ---------------------------------------------------------------------------
 // UI wiring
