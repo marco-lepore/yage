@@ -1,8 +1,14 @@
-import { defineStep } from "../../core/defineStep.js";
 import { HitReceiver } from "../HitReceiver.js";
 import type { GuardParams } from "../HitReceiver.js";
-import type { WindowStep } from "../../core/types.js";
+import type { StepContext, WindowStep } from "../../core/types.js";
 import type { StandardHitData } from "../../core/hit/types.js";
+
+/** Arguments accepted by the typed guard-window factory. */
+export type GuardStepArgs<TData = StandardHitData> = GuardParams<TData> & {
+  from: number;
+  to: number | "end";
+  every?: number;
+};
 
 /**
  * A window during which its `policy` evaluates every incoming hit against
@@ -10,29 +16,43 @@ import type { StandardHitData } from "../../core/hit/types.js";
  * `HitReceiver`'s resolution fold). `outcome` labels the `HitResult` this
  * guard reports when it engages ("blocked", "parried", ...); a held block
  * is the same step with an open-ended window on a channeled ability.
- * Concrete to `StandardHitData` — a per-system receiver with its own
- * `TData` supplies its own guard stage via `HitReceiverOptions.steps`.
+ * `TData` keeps the policy and optional punish payload typed to the same
+ * vocabulary as the receiving `HitReceiver`.
  */
-export const guard = defineStep<GuardParams>("guard", {
-  enter(params, ctx) {
-    const receiver = ctx.entity.tryGet(HitReceiver);
-    if (!receiver) {
-      throw new Error(
-        `Abilities: step "guard" requires a HitReceiver component on the entity.`,
-      );
-    }
-    receiver.openGuard(params);
-  },
-  exit(params, ctx) {
-    const receiver = ctx.entity.tryGet(HitReceiver);
-    if (!receiver) {
-      throw new Error(
-        `Abilities: step "guard" requires a HitReceiver component on the entity.`,
-      );
-    }
-    receiver.closeGuard(params);
-  },
-});
+export function guard<TData = StandardHitData>(
+  args: GuardStepArgs<TData>,
+): WindowStep<GuardParams<TData>> {
+  const { from, to, every, ...params } = args;
+  const step: WindowStep<GuardParams<TData>> = {
+    kind: "guard",
+    from,
+    to,
+    params,
+    hooks: { enter: enterGuard, exit: exitGuard },
+  };
+  if (every !== undefined) step.every = every;
+  return step;
+}
+
+function enterGuard<TData>(params: GuardParams<TData>, ctx: StepContext): void {
+  requireReceiver<TData>(ctx).openGuard(params);
+}
+
+function exitGuard<TData>(params: GuardParams<TData>, ctx: StepContext): void {
+  requireReceiver<TData>(ctx).closeGuard(params);
+}
+
+function requireReceiver<TData>(ctx: StepContext): HitReceiver<TData> {
+  const receiver = ctx.entity.tryGet(HitReceiver);
+  if (!receiver) {
+    throw new Error(
+      `Abilities: step "guard" requires a HitReceiver component on the entity.`,
+    );
+  }
+  // Component lookup erases the receiver's type argument. The guard and
+  // receiver must use the same TData at their authoring boundary.
+  return receiver as unknown as HitReceiver<TData>;
+}
 
 /**
  * Full-negate guard tuned for a parry: engages on every incoming hit, ends
@@ -45,7 +65,7 @@ export function parry(args: {
   to: number;
   punish?: StandardHitData;
 }): WindowStep<GuardParams> {
-  return guard({
+  return guard<StandardHitData>({
     from: args.from,
     to: args.to,
     outcome: "parried",
@@ -73,7 +93,7 @@ export function block(args: {
   const damageScale = args.damageScale ?? 0;
   const knockbackScale = args.knockbackScale ?? 0;
   const stunScale = args.stunScale ?? 0;
-  return guard({
+  return guard<StandardHitData>({
     from: args.from,
     to: args.to,
     outcome: "blocked",

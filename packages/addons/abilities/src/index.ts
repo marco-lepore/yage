@@ -68,6 +68,12 @@ export type {
   HitFilter,
   HitReceiverOptions,
 } from "./components/HitReceiver.js";
+export { createHitTools } from "./components/createHitTools.js";
+export type {
+  CreateHitToolsOptions,
+  HitDataPredicate,
+  HitTools,
+} from "./components/createHitTools.js";
 export {
   Health,
   HealthDamaged,
@@ -91,6 +97,7 @@ export { aimAt, resolveAim } from "./components/aim.js";
 export type { Aim } from "./components/aim.js";
 export { anim } from "./components/steps/anim.js";
 export { block, guard, parry } from "./components/steps/guard.js";
+export type { GuardStepArgs } from "./components/steps/guard.js";
 export { invulnerable } from "./components/steps/invulnerable.js";
 export { slowmo } from "./components/steps/slowmo.js";
 export type { SlowmoParams } from "./components/steps/slowmo.js";
@@ -103,7 +110,10 @@ export {
 export { Projectile } from "./entities/Projectile.js";
 export type { ProjectileConfig } from "./entities/Projectile.js";
 export { hitbox } from "./components/steps/hitbox.js";
-export type { HitboxParams } from "./components/steps/hitbox.js";
+export type {
+  HitboxParams,
+  HitboxStepArgs,
+} from "./components/steps/hitbox.js";
 export { spawn } from "./components/steps/spawn.js";
 export type { SpawnParams, SpawnStepArgs } from "./components/steps/spawn.js";
 export { TouchDamage } from "./components/TouchDamage.js";

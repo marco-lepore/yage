@@ -106,9 +106,8 @@ export interface HitReceiverOptions<TData = StandardHitData> {
  * `StandardHitData`. A per-system receiver (`new HitReceiver<SpiritHitData>({...})`)
  * gets fully typed custom `steps` — the entity's `receiveHit` narrows the
  * incoming `Hit` with the system's type guard before calling `receive`. The
- * `guard`/`invulnerable` default steps are concrete to `StandardHitData`
- * (see `src/components/steps/`); a per-system receiver supplies its own
- * guard stage if it needs one.
+ * `guard` accepts the same `TData` as the receiver; `invulnerable` reads no
+ * hit data and works with every vocabulary.
  */
 export class HitReceiver<TData = StandardHitData> extends Component {
   /** This entity's team, checked by the default filter. Writable for runtime team changes. */

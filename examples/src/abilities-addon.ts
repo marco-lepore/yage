@@ -151,13 +151,12 @@ import {
   Stagger,
   aimAt,
   block,
+  createHitTools,
   createReportingDelivery,
   defaultHitSteps,
   defineStep,
-  hitbox,
   invulnerable,
   parry,
-  spawn,
 } from "@yagejs-addons/abilities";
 import type {
   AbilityDef,
@@ -173,6 +172,20 @@ import type {
 } from "@yagejs-addons/abilities";
 import { AbilityDriver } from "@yagejs-addons/abilities/input";
 import { injectStyles, setupGameContainer } from "./shared.js";
+
+function isStandardHitData(data: unknown): data is StandardHitData {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return false;
+  }
+  const candidate = data as Record<string, unknown>;
+  return ["damage", "knockback", "stun", "hitstop"].every(
+    (field) =>
+      candidate[field] === undefined || typeof candidate[field] === "number",
+  );
+}
+
+const hitTools = createHitTools<StandardHitData>({ isData: isStandardHitData });
+const { hitbox, spawn } = hitTools;
 
 injectStyles(`
   #dead-banner {
@@ -1815,16 +1828,14 @@ class PlayerController extends Component {
     });
     this.listen(this.entity, HitDealt, ({ result, data }) => {
       if (result !== "hit") return;
-      // `HitDealt.data` rides as `unknown` (the event token is unparameterized);
-      // this game runs one hit vocabulary, so it narrows to `StandardHitData`.
-      const hit = data as StandardHitData;
+      if (!hitTools.isData(data)) return;
       // Freeze frame: the ability def declares its own hitstop next to its
       // damage numbers (see the attack defs' `hit.hitstop`), so the arbitration
       // primitive freezes the whole scene without a parallel id->weight table.
-      if (hit.hitstop) this.time.freezeFor(hit.hitstop);
+      if (data.hitstop) this.time.freezeFor(data.hitstop);
       // Camera shake / attacker flash stay game-side (feedback, not
       // arbitration), keyed off how hard the hit landed.
-      const weight = damageWeight(hit.damage ?? 0);
+      const weight = damageWeight(data.damage ?? 0);
       if (weight !== "light") {
         flashAttacker(this.entity, this.pc, PLAYER_TINT);
         const shake = SHAKE_BY_WEIGHT[weight];
