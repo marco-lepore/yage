@@ -1157,6 +1157,44 @@ describe("InputManager", () => {
       expect(input.snapshotState().actions).toEqual([]);
     });
 
+    it("reports elapsed input time in seconds", () => {
+      expect(input.getClockTime()).toBe(0);
+
+      input._advanceTime(250);
+      input._advanceTime(16);
+
+      expect(input.getClockTime()).toBe(0.266);
+    });
+
+    it("does not reset the input clock when clearing state", () => {
+      input._advanceTime(250);
+      input.fireActionDown("jump");
+
+      input.clearAll();
+
+      expect(input.getClockTime()).toBe(0.25);
+    });
+
+    it("lets action listeners observe the input clock at each edge", () => {
+      const edges: Array<{ edge: "press" | "release"; time: number }> = [];
+      input.onAction("jump", () => {
+        edges.push({ edge: "press", time: input.getClockTime() });
+      });
+      input.onActionReleased("jump", () => {
+        edges.push({ edge: "release", time: input.getClockTime() });
+      });
+
+      input._advanceTime(125);
+      input.fireActionDown("jump");
+      input._advanceTime(75);
+      input.fireActionUp("jump");
+
+      expect(edges).toEqual([
+        { edge: "press", time: 0.125 },
+        { edge: "release", time: 0.2 },
+      ]);
+    });
+
     it("fireActionDown / fireActionUp / setActionHeld throw for unknown actions", () => {
       expect(() => input.fireActionDown("unknown")).toThrow(
         'unknown action "unknown"',

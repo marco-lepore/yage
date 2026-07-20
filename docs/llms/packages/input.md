@@ -33,6 +33,9 @@ import { InputManagerKey } from "@yagejs/input";
 
 const input = context.resolve(InputManagerKey);
 
+// Raw input time (seconds). Scene pause and time scaling do not affect it.
+input.getClockTime();
+
 // Pressed state
 input.isPressed("jump"); // held this frame
 input.isJustPressed("fire"); // pressed this frame (edge)

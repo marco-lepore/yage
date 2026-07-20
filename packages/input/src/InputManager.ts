@@ -261,6 +261,16 @@ export class InputManager {
     return this.holdDurationMs(action) / 1000;
   }
 
+  /**
+   * Seconds elapsed on the raw input clock.
+   *
+   * This clock advances from the engine's unscaled frame time. Scene pause and
+   * time scaling do not affect it.
+   */
+  getClockTime(): number {
+    return this.elapsedMs / 1000;
+  }
+
   /** Whether the action has been held for at least `minSeconds`. */
   isHeldFor(action: string, minSeconds: number): boolean {
     return this.getHoldDuration(action) >= minSeconds;
