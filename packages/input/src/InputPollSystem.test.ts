@@ -28,6 +28,13 @@ describe("InputPollSystem", () => {
     expect(spy).toHaveBeenCalledWith(16);
   });
 
+  it("accumulates raw frame time on the public input clock", () => {
+    system.update(0.016);
+    system.update(0.024);
+
+    expect(manager.getClockTime()).toBe(0.04);
+  });
+
   it("polls gamepads when pollingEnabled is true (default)", () => {
     const spy = vi.spyOn(manager, "_pollGamepads");
     system.update(16);

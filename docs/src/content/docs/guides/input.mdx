@@ -48,6 +48,11 @@ import { InputManagerKey } from "@yagejs/input";
 const input = engine.resolve(InputManagerKey);
 ```
 
+`input.getClockTime()` returns the input system's elapsed time in seconds. The
+clock advances from raw engine frame time, so scene pause and time scaling do
+not affect it. Use this clock when input edges and later deadlines must share
+one deterministic time source.
+
 ### Press State
 
 ```typescript
