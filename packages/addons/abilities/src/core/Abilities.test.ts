@@ -1492,6 +1492,31 @@ describe("Abilities — cancel windows", () => {
     expect(abilities.send("dash")).toEqual(okResult);
   });
 
+  it("ORs exact ids and definition tags while refusing unrelated definitions", () => {
+    const { pc, abilities } = setup([
+      swingWithCancel([{ from: 0, into: ["parry", { tag: "movement" }] }]),
+      {
+        id: "dash",
+        tags: ["movement"],
+        timeline: [beep({ at: 0, id: "d" })],
+      },
+      { id: "parry", timeline: [beep({ at: 0, id: "p" })] },
+      {
+        id: "spell",
+        tags: ["magic"],
+        timeline: [beep({ at: 0, id: "m" })],
+      },
+    ]);
+    abilities.send("swing");
+    pc._tick(0.1);
+
+    expect(abilities.canSend("spell")).toBe(false);
+    expect(abilities.send("spell")).toEqual({ ok: false, reason: "busy" });
+    expect(abilities.canSend("parry")).toBe(true);
+    expect(abilities.canSend("dash")).toBe(true);
+    expect(abilities.send("dash")).toEqual(okResult);
+  });
+
   it("`into` matches the resolved def id, not the intent alias used to reach it", () => {
     const { pc, abilities } = setup([
       swingWithCancel([{ from: 0, into: ["dash"] }]),
@@ -1504,6 +1529,23 @@ describe("Abilities — cancel windows", () => {
     abilities.send("swing");
     pc._tick(0.1);
     expect(abilities.send("evade")).toEqual(okResult); // alias resolves to "dash"
+    expect(abilities.activeId()).toBe("dash");
+  });
+
+  it("tag matching reads the resolved definition behind an intent alias", () => {
+    const { pc, abilities } = setup([
+      swingWithCancel([{ from: 0, into: [{ tag: "movement" }] }]),
+      {
+        id: "dash",
+        tags: ["movement"],
+        entry: { evade: "main" },
+        timeline: [beep({ at: 0, id: "d" })],
+      },
+    ]);
+    abilities.send("swing");
+    pc._tick(0.1);
+    expect(abilities.canSend("evade")).toBe(true);
+    expect(abilities.send("evade")).toEqual(okResult);
     expect(abilities.activeId()).toBe("dash");
   });
 
@@ -1530,10 +1572,11 @@ describe("Abilities — cancel windows", () => {
 
   it("admits a force() inside the window even when priority does not outrank", () => {
     const { pc, abilities } = setup([
-      swingWithCancel([{ from: 0, into: ["dash"] }]),
+      swingWithCancel([{ from: 0, into: [{ tag: "movement" }] }]),
     ]);
     const dash: AbilityDef = {
       id: "dash",
+      tags: ["movement"],
       priority: 0,
       timeline: [beep({ at: 0, id: "d" })],
     };

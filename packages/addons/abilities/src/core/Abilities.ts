@@ -513,7 +513,7 @@ export class Abilities extends Component {
         .priority;
       if (entryPriority > occupant.compiledPhase.priority) return true;
     }
-    return this.cancelWindowAdmits(occupant, door.def.id);
+    return this.cancelWindowAdmits(occupant, door.def);
   }
 
   /**
@@ -645,7 +645,7 @@ export class Abilities extends Component {
       }
       const restart = forced && active.def === def;
       const interrupt = entryPriority > active.compiledPhase.priority;
-      if (restart || interrupt || this.cancelWindowAdmits(active, def.id)) {
+      if (restart || interrupt || this.cancelWindowAdmits(active, def)) {
         this.endActivation(lane, active, "cancelled");
         continue;
       }
@@ -653,10 +653,10 @@ export class Abilities extends Component {
     }
   }
 
-  /** Whether the occupant's current phase sits in a cancel window (phase-local clock) that admits `incomingId` — a resolved def id, never an intent alias. */
+  /** Whether the occupant's current phase sits in a cancel window (phase-local clock) that admits the resolved incoming definition. */
   private cancelWindowAdmits(
     active: ActivationHandle,
-    incomingId: string,
+    incoming: AbilityDef,
   ): boolean {
     const cancels = active.compiledPhase.cancels;
     if (!cancels) return false;
@@ -665,8 +665,14 @@ export class Abilities extends Component {
       if (elapsed < window.from) continue;
       if (window.to !== undefined && elapsed > window.to) continue;
       const into = window.into;
-      if (into === undefined || into.includes("*") || into.includes(incomingId))
-        return true;
+      if (into === undefined) return true;
+      for (const matcher of into) {
+        if (typeof matcher === "string") {
+          if (matcher === "*" || matcher === incoming.id) return true;
+        } else if (incoming.tags?.includes(matcher.tag)) {
+          return true;
+        }
+      }
     }
     return false;
   }

@@ -19,6 +19,7 @@ export type {
 export type {
   AbilityActivation,
   AbilityDef,
+  AbilityMatcher,
   AbilityStep,
   CancelWindow,
   PhaseDef,

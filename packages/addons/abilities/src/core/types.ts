@@ -120,6 +120,9 @@ export interface WindowStep<P extends object = object> {
  */
 export type AbilityStep = PointStep | WindowStep;
 
+/** An exact ability id, `"*"` for any ability, or one definition tag. */
+export type AbilityMatcher = string | { readonly tag: string };
+
 /**
  * A window during which a busy lane yields to an incoming activation instead
  * of refusing it — the declaring phase's recovery being cancellable into a
@@ -131,12 +134,13 @@ export interface CancelWindow {
   /** Seconds from phase start the window closes. Omitted = until the phase ends. */
   to?: number;
   /**
-   * Ability ids this window admits — resolved def ids, never intent
-   * aliases (an `into: ["dash"]` admits a `send("evade")` that resolves to
-   * the dash def). Omitted or `["*"]` (equivalent) admits any id — including
-   * the declaring def itself, a mash-restart; enumerate ids to exclude it.
+   * Ability matchers this window admits. Strings match resolved definition
+   * ids, never intent aliases; `{ tag }` matches a tag on the resolved
+   * definition. Omitted or `["*"]` (equivalent) admits any definition —
+   * including the declaring def itself, a mash-restart; enumerate matchers to
+   * exclude it.
    */
-  into?: readonly string[];
+  into?: readonly AbilityMatcher[];
 }
 
 /**
@@ -186,6 +190,8 @@ export interface PhaseDef {
 
 interface AbilityDefBase {
   id: string;
+  /** Categories used by cancel-window `{ tag }` matchers. */
+  tags?: readonly string[];
   /** Exclusivity lane — only one activation per lane runs at a time. Default `"main"`. */
   lane?: string;
   /** Default priority for every phase (see `PhaseDef.priority`). Compared against the lane's active phase to decide interrupts. Default 0. */
