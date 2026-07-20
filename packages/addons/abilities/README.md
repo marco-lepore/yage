@@ -112,27 +112,126 @@ Rules worth knowing:
 
 ## Input composition
 
-The runtime buffers nothing — `send` admits or refuses. Buffering and
-gesture logic live in the game's controller, built on `canSend` and the
-input plugin's primitives. This is the whole recipe for buffered combo
-taps:
+Use `AbilityDriver` from the optional `/input` entry when player input drives
+these abilities:
 
 ```ts
-if (
-  abilities.canSend("attack") &&
-  input.consumeBufferedPress("attack", BUFFER_WINDOW)
-) {
+import { AbilityDriver } from "@yagejs-addons/abilities/input";
+
+const driver = new AbilityDriver(input, abilities, {
+  defaults: { holdAt: 0.5 },
+  bindings: {
+    attack: {
+      tap: { send: "attack", buffer: 0.5 },
+      hold: { send: "charge", fromNeutral: true },
+    },
+    dash: { press: { send: "dash", buffer: 0.3 } },
+  },
+});
+```
+
+Call `driver.update()` once from the normal gameplay update, not from
+`fixedUpdate()`, and call `driver.dispose()` when its owner is removed. These
+are lifecycle calls. The driver owns edge capture, gesture classification,
+raw-time buffers, admission retries, payload capture, hold release, and
+interrupted-hold resumption.
+
+### Press, tap, and hold
+
+- `press` sends when the action goes down.
+- `tap` sends on release within `within`. It can use
+  `defaults.tapWithin`, or the paired hold threshold when neither is set.
+- `hold` sends once at `at`. It can use `defaults.holdAt`. A triggered hold
+  suppresses the tap from the same press.
+- Per-interaction thresholds override driver defaults.
+- A binding uses the `"main"` lane unless it declares another `lane`.
+- A successful `press` or `hold` send is paired with key-up. For a hold,
+  omitting `hold.release` calls `abilities.release(hold.send)` automatically.
+
+A charge that flows directly to its next phase needs no release config:
+
+```ts
+const CHARGE: AbilityDef = {
+  id: "charge",
+  phases: {
+    charge: { hold: true, next: "kick", timeline: [] },
+    kick: { timeline: [] },
+  },
+};
+
+const bindings = {
+  attack: { hold: { send: "charge", at: 0.5 } },
+};
+```
+
+Use nested `hold.release` when release is a real intent. The active hold phase
+can handle it through `on:`; an `entry:` door can deliver it after an
+interruption:
+
+```ts
+const CHARGE: AbilityDef = {
+  id: "charge",
+  entry: { "attack-release": "kick" },
+  phases: {
+    charge: {
+      hold: true,
+      on: { "attack-release": "kick" },
+      timeline: [],
+    },
+    kick: { timeline: [] },
+  },
+};
+
+const bindings = {
+  attack: {
+    hold: {
+      at: 0.5,
+      send: "charge",
+      resume: true,
+      release: { send: "attack-release", buffer: 1.5 },
+    },
+  },
+};
+```
+
+`resume: true` politely re-sends a cancelled hold while the action remains
+pressed. It does not restart a hold that completed naturally or reached its
+maximum duration.
+
+### Buffers, data, and hooks
+
+Every send interaction accepts the same optional `buffer`. The window starts at
+that interaction's raw input edge: press-down, tap release, hold threshold, or
+explicit release. Buffered sends retry through `canSend` without using priority
+to interrupt an occupant.
+
+`data` can be a fixed value or an edge-time resolver. The resolver receives the
+action, gesture, lane, raw `heldFor`, and the activation owned by the press. The
+captured result becomes `activation.payload`, even when a buffered send fires
+later.
+
+Gesture thresholds, buffers, and `heldFor` use raw input time. Ability phases
+still use scaled scene time. A release resolver can compare `heldFor` with
+`activation?.elapsedIn("charge")` when a mechanic needs both; the controller
+does not scale either clock.
+
+Use a binding's `gate(context)` for game-side admission such as stamina. Use
+the driver's `beforeFire(context)` to sample boundary state immediately before
+an admitted send. Neither hook needs to manage retries or release sequencing.
+
+### Raw composition
+
+Games that do not want the input adapter can call the runner directly. This is
+also the path for AI:
+
+```ts
+if (abilities.canSend("attack") && input.consumeBufferedPress("attack", 0.12)) {
   abilities.send("attack");
 }
 ```
 
-Hold gestures pair one `send` at the hold threshold with one `release` on
-key-up (`input.isJustHeldFor` / `isJustReleased`). `release` returns false
-when the hold is already gone (cancelled, or advanced past by a timer) —
-that's the signal for late-delivery logic, e.g. sending an `entry:`-door
-intent with the held time as payload. An `AbilityDriver` that owns this
-gesture bookkeeping declaratively is planned; until then the raw verbs plus
-the input plugin's buffers are the supported path.
+Do not handle the same action through both a driver binding and raw input code.
+Both consumers would receive the edge.
 
 ## Out of scope
 
@@ -151,5 +250,6 @@ This addon excludes:
 
 ## Peer dependencies
 
-`@yagejs/core` and `@yagejs/physics` are required. `@yagejs/renderer` is
-optional — only presentation code needs it.
+`@yagejs/core` and `@yagejs/physics` are required. `@yagejs/input` is optional
+and used only by the `/input` entry. `@yagejs/renderer` is optional and used
+only by presentation code.

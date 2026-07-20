@@ -6,14 +6,14 @@
  *   `jab`/`cross`/`hook` phases (each stage a `hitbox` window; `send("attack")`
  *   enters when idle and advances through each phase's guarded `on:` window,
  *   which lingers through the recovery gap after the run completes), a
- *   tap-vs-hold charge (`CHARGE`: a hold phase completed by `release()` on
- *   key-up into a super-armored `kick` phase), "dash" (`invulnerable` + a
- *   game-defined movement step, buffered mid-combo — see
- *   `PlayerController.updateCombat`'s dash-cancel), a hold-vs-tap
+ *   tap-vs-hold charge (`CHARGE`: a hold phase released through a declared
+ *   intent into a super-armored `kick` phase), "dash" (`invulnerable` + a
+ *   game-defined movement step, buffered mid-combo by `AbilityDriver`), a
+ *   hold-vs-tap
  *   guard (`GUARD_HOLD`/`PARRY`: holding reduces every landed hit in place
  *   with no stagger and never closes early, tapping cancels into a short
  *   negate-and-punish parry window with a hand-rolled counterattack/
- *   projectile-reflect on success — see `PlayerController.updateGuard`),
+ *   projectile-reflect on success),
  *   "potion" (a `heal` point step on the `"item"` lane, so it plays even
  *   while the main lane is busy). Every player attack phase is windup
  *   → active (hitbox/effect) → recovery: the phase `duration` extends past
@@ -37,12 +37,12 @@
  *   frame, and attacks gate movement the same way the cast always has.
  * - `Health` + `Stagger` + `HitReceiver` on both sides. `Facing` on every
  *   combatant drives both ability aim and which 8-directional sprite frame
- *   plays. While an ability gates the player's movement, `PlayerController`
- *   freezes Facing except at the next action boundary — a combo stage
- *   firing, a buffered dash executing, a charge releasing, a parry starting
- *   — where it re-samples whatever movement direction is currently held (see
- *   `PlayerController.resampleFacing`), so a buffered action rolls out in
- *   the direction held when it actually fires rather than when it queued.
+ *   plays. A sustained charge re-samples the held movement direction each
+ *   frame so the player can turn in place. Other abilities freeze Facing
+ *   except at the next action boundary — a combo stage firing, a buffered
+ *   dash executing, a charge releasing, or a parry starting — where
+ *   `PlayerController.resampleFacing` aims the action in the direction held
+ *   when it fires rather than when it queued.
  *   Death turns an entity into an inert corpse — dead-specific
  *   components removed, body translation locked — instead of leaving it
  *   dealing damage or sliding around. A pale strobe on the sprite marks
@@ -134,6 +134,7 @@ import { AudioManagerKey, AudioPlugin, sound } from "@yagejs/audio";
 import {
   Abilities,
   AbilityEnded,
+  AbilityStarted,
   Facing,
   Health,
   HealthDamaged,
@@ -170,6 +171,7 @@ import type {
   StandardHitData,
   WindowStep,
 } from "@yagejs-addons/abilities";
+import { AbilityDriver } from "@yagejs-addons/abilities/input";
 import { injectStyles, setupGameContainer } from "./shared.js";
 
 injectStyles(`
@@ -1253,9 +1255,8 @@ const COMBO_WINDOW = 0.6;
  *  each stage's `on: { attack }` window — fully post-end (`from` = the
  *  stage's own duration), reaching `COMBO_WINDOW` past it, so a tap advances
  *  the instant a swing finishes and through the recovery gap after it (the
- *  runner's linger). The gesture layer stays in
- *  `PlayerController.updateCombat`: tap-vs-charge classification and the
- *  claim-once buffered press.
+ *  runner's linger). `AbilityDriver` owns tap-vs-charge classification and
+ *  the buffered intent.
  *
  *  Stage timings, all phase-local:
  *  - `jab`: LeftJab's one-shot at this speed runs ~0.36s; the hitbox sits on
@@ -1350,12 +1351,13 @@ const ATTACK: AbilityDef = {
 /** The tap-vs-hold charge attack: one def, two phases.
  *
  *  `charge` is the windup hold — `chargeHold`'s single-frame sprite sits on
- *  an open-ended `to: "end"` window until `PlayerController` calls
- *  `abilities.release("charge")` on key-up, which completes the hold into
- *  `kick` through `next`. `hold.max` is a generous cap the gesture never
- *  reaches in practice (the key-up releases long before) — it exists so a
- *  stuck key can't hold the lane forever. No `priority` on the phase: the
- *  windup is staggerable, and only the kick carries super armor.
+ *  an open-ended `to: "end"` window until the input driver sends
+ *  `attack-release` on key-up. The active phase handles that intent through
+ *  `on:`; the matching `entry:` door can deliver the kick after an
+ *  interruption. `hold.max` is a generous cap the gesture never reaches in
+ *  practice — it exists so a stuck key can't hold the lane forever. No
+ *  `priority` on the phase: the windup is staggerable, and only the kick
+ *  carries super armor.
  *
  *  `kick` is the heavy payoff: a bigger hitbox, more damage, and a longer
  *  stun/knockback than any combo stage, plus the longest recovery in the
@@ -1379,10 +1381,12 @@ const ATTACK: AbilityDef = {
  *  sensor over the caster through that same travel. */
 const CHARGE: AbilityDef = {
   id: "charge",
+  entry: { "attack-release": "kick" },
   phases: {
     charge: {
       hold: { max: 10 },
       next: "kick",
+      on: { "attack-release": "kick" },
       timeline: [spriteHold({ from: 0, to: "end", name: "chargeHold" })],
     },
     kick: {
@@ -1463,7 +1467,7 @@ const DASH: AbilityDef = {
 
 /** Hold-block: a single hold phase that starts the instant the guard key is
  *  pressed and stays open for as long as it's held (`to: "end"` windows on
- *  the elastic phase, completed by `abilities.release("guardHold")` on
+ *  the elastic phase, completed by the input driver's automatic release on
  *  key-up) — nothing in this def ever forces a higher-priority activation
  *  onto the lane, so the window stays open across as many hits as land
  *  while the key is down. `block` reduces every landed hit in place rather
@@ -1471,8 +1475,7 @@ const DASH: AbilityDef = {
  *  (`damageScale`/`knockbackScale`), and stun stays at its default 0 so a
  *  blocked hit never triggers the stagger reaction. No parry punish — see
  *  `PARRY` below for the tap-release counter-punishing window this cancels
- *  into. `PlayerController.updateGuard` owns the press/hold/release
- *  gesture. */
+ *  into. The input driver owns the press/tap/release gesture. */
 const GUARD_HOLD_ID = "guardHold";
 const GUARD_HOLD: AbilityDef = {
   id: GUARD_HOLD_ID,
@@ -1489,7 +1492,7 @@ const GUARD_HOLD: AbilityDef = {
 };
 
 /** Parry: what a hold-block cancels into on a quick release (see
- *  `PARRY_TAP_WINDOW`/`PlayerController.updateGuard`) — a window where any
+ *  `PARRY_TAP_WINDOW`) — a window where any
  *  landed hit is negated and punished back at the attacker (see
  *  `HitReceiver`'s guard resolution). `PlayerController` layers a
  *  hand-rolled counterattack/reflect on top via `HitGuarded` — see `COUNTER`
@@ -1674,12 +1677,14 @@ function drawHealthBar(gfx: GraphicsComponent, hpFrac: number, color: number): v
 // Player
 // ---------------------------------------------------------------------------
 
-/** Seconds the attack key must be held before it's a charge rather than a
- *  tap. Doubles as the combo tap-buffer window — a press shorter than this
- *  (a tap, never a charge) stays claimable that long. */
+/** Seconds the attack key must be held before it's a charge rather than a tap. */
 const CHARGE_HOLD_TIME = 0.5;
+/** Raw seconds after a tap release during which the combo intent may fire. */
+const ATTACK_BUFFER_WINDOW = 0.5;
 /** Seconds a mid-attack dash press keeps retrying its cancel before it lapses. */
 const DASH_BUFFER_WINDOW = 0.3;
+/** Seconds a charge release may wait for the main lane after an interruption. */
+const CHARGE_RELEASE_BUFFER_WINDOW = 1.5;
 /** Bullet-time tail on a charge release: from the moment the release fires,
  *  the world runs at this scale for `CHARGE_SLOWMO_DURATION` seconds with
  *  the player excluded — so once the release's own recovery ends, the
@@ -1697,8 +1702,7 @@ const REFLECT_STUN = 0.3;
 const REFLECT_SPEED = 260;
 
 /** Seconds: releasing the guard key at or before this elapsed hold time
- *  cancels the hold-block into a parry (see `PlayerController.updateGuard`
- *  and `GUARD_HOLD`/`PARRY` above) — a tap, not a hold. Widened from 0.25s
+ *  completes the hold-block and sends a parry — a tap, not a hold. Widened from 0.25s
  *  alongside `PARRY_ACTIVE_WINDOW` — see its doc. */
 const PARRY_TAP_WINDOW = 0.3;
 
@@ -1743,30 +1747,54 @@ class PlayerController extends Component {
   private readonly health = this.sibling(Health);
   private readonly pc = this.sibling(ProcessComponent);
   private readonly stagger = this.sibling(Stagger);
+  private driver: AbilityDriver | null = null;
   dead = false;
 
   charging = false;
   private chargeSparks: ChargeSpark[] = [];
-  // Only a press that began from a free lane may grow into a charge — a press
-  // begun mid-swing stays a tap (see `updateCombat`).
-  private attackPressNeutral = false;
-  // Dash pressed mid-attack: retries `send("dash")` until a cancel window
-  // admits it or the buffer lapses.
-  private dashBuffered = false;
-  private dashBufferAge = 0;
-
-  // Hand-rolled guard/parry press/hold/release state — see `updateGuard`.
-  private guardHeld = false;
 
   onAdd(): void {
+    const alive = () => !this.dead;
+    this.driver = new AbilityDriver(this.input, this.abilities, {
+      defaults: { holdAt: CHARGE_HOLD_TIME },
+      beforeFire: () => this.resampleFacing(),
+      bindings: {
+        attack: {
+          tap: { send: "attack", buffer: ATTACK_BUFFER_WINDOW },
+          hold: {
+            send: "charge",
+            fromNeutral: true,
+            resume: true,
+            release: {
+              send: "attack-release",
+              buffer: CHARGE_RELEASE_BUFFER_WINDOW,
+              data: ({ heldFor }) => heldFor,
+            },
+          },
+          gate: alive,
+        },
+        dash: {
+          press: { send: "dash", buffer: DASH_BUFFER_WINDOW },
+          gate: alive,
+        },
+        guard: {
+          press: { send: GUARD_HOLD_ID },
+          tap: { send: PARRY_ID, within: PARRY_TAP_WINDOW },
+          gate: alive,
+        },
+        potion: {
+          lane: "item",
+          press: { send: "potion" },
+          gate: alive,
+        },
+      },
+    });
     this.listen(this.entity, HealthDied, () => {
       this.dead = true;
       if (this.charging) {
         this.charging = false;
         this.stopChargeSparks();
       }
-      this.dashBuffered = false;
-      this.guardHeld = false;
       this.rb.setVelocity(Vec2.ZERO);
       this.rb.setEnabledTranslations(false, false); // corpse: physics can't push it
       playBoxerAnim(this.entity, "death", { oneShot: true });
@@ -1813,26 +1841,26 @@ class PlayerController extends Component {
       playHitSfx(this.entity, { speed: 1.8, volume: 0.55 });
       this.counterattack(hit.source);
     });
-    // Releases the hold-block whenever something else takes the "main" lane
-    // away from it (e.g. death forcing a stagger reaction). A no-op for the
-    // hold's own deliberate release (`updateGuard` already clears
-    // `guardHeld` before calling `release`, so this sees it already false).
-    this.listen(this.entity, AbilityEnded, ({ activation }) => {
-      if (activation.def.id === GUARD_HOLD_ID) this.guardHeld = false;
+    this.listen(this.entity, AbilityStarted, ({ activation }) => {
+      if (activation.def !== CHARGE) return;
+      if (activation.phase === "charge") {
+        this.charging = true;
+        this.startChargeSparks();
+      } else if (activation.phase === "kick") {
+        this.startChargeKickEffects();
+      }
     });
-    // Bullet-time tail on the charge kick, keyed to the phase entering — a
-    // timed request, not a `slowmo` window step on the kick phase: a window
-    // step would drop its scale request the moment the kick is cancelled,
-    // while this request ages on raw time and releases itself, so the
-    // slowed world always recovers on schedule. Firing on the phase change
-    // (rather than the key-up) also covers a `hold.max` auto-release.
+    this.listen(this.entity, AbilityEnded, ({ activation }) => {
+      if (activation.def !== CHARGE) return;
+      this.charging = false;
+      this.stopChargeSparks();
+    });
+    // The normal charge flow enters kick through a phase change. Interrupted
+    // late delivery enters the def directly at kick and is handled by the
+    // AbilityStarted branch above.
     this.listen(this.entity, PhaseChanged, ({ activation, to }) => {
       if (activation.def !== CHARGE || to !== "kick") return;
-      this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
-        for: CHARGE_SLOWMO_DURATION,
-        key: "charge-bullet-time",
-        excludeUpdates: [this.entity],
-      });
+      this.startChargeKickEffects();
     });
   }
 
@@ -1841,15 +1869,16 @@ class PlayerController extends Component {
       this.resetDemo();
       return;
     }
+    this.driver?.update();
     if (this.dead) {
       this.redraw();
       return;
     }
 
-    this.updateCombat(dt);
-    this.updateGuard();
+    if (this.charging) this.updateChargeSparks(dt);
 
-    if (!this.abilities.isActive("main")) {
+    const activeMain = this.abilities.active("main");
+    if (!activeMain) {
       const dx = this.input.getAxis("left", "right");
       const dy = this.input.getAxis("up", "down");
       const moving = dx !== 0 || dy !== 0;
@@ -1864,18 +1893,25 @@ class PlayerController extends Component {
       if (!this.anim.locked) {
         playBoxerAnim(this.entity, moving ? "run" : "idle", { oneShot: false });
       }
-    } else if (!velocityOwnedByStep.has(this.entity) && !this.stagger.active) {
-      // Movement is gated by an ability (attack/guard/charge/counter) with
-      // no movement step of its own — a hard stop instead of coasting on
-      // whatever WASD velocity was live when the ability started. Skipped
-      // while `dashMove`/`lungeMove` or `Stagger`'s knockback ramp owns the
-      // body's velocity themselves.
-      this.rb.setVelocity(Vec2.ZERO);
+    } else {
+      if (activeMain.def === CHARGE && activeMain.phase === "charge") {
+        this.resampleFacing();
+        playBoxerAnim(this.entity, "chargeHold", { oneShot: false });
+      }
+      if (!velocityOwnedByStep.has(this.entity) && !this.stagger.active) {
+        // Movement is gated by an ability (attack/guard/charge/counter) with
+        // no movement step of its own — a hard stop instead of coasting on
+        // whatever WASD velocity was live when the ability started. Skipped
+        // while `dashMove`/`lungeMove` or `Stagger`'s knockback ramp owns the
+        // body's velocity themselves.
+        this.rb.setVelocity(Vec2.ZERO);
+      }
     }
-    // The potion is on its own lane — usable even mid-action or mid-stagger.
-    if (this.input.isJustPressed("potion")) this.abilities.send("potion");
-
     this.redraw();
+  }
+
+  onDestroy(): void {
+    this.driver?.dispose();
   }
 
   /** Tears down and rebuilds the whole scene from scratch — a fresh
@@ -1913,99 +1949,9 @@ class PlayerController extends Component {
   }
 
   // -------------------------------------------------------------------------
-  // 1-2-3 combo + charge attack. Stage resolution lives in the `ATTACK`
-  // def's phase graph: each stage's `on: { attack }` window (with its
-  // post-end linger) decides whether a press advances, and `send`/`canSend`
-  // enforce it — a declared press outside its window refuses instead of
-  // restarting the combo. What stays hand-rolled here is only the gesture
-  // layer: classifying a press as tap vs charge-hold (`isJustHeldFor` /
-  // `consumeBufferedPress`), the small per-binding buffers, and
-  // `resampleFacing` at each firing site.
-  //
-  // Tap vs charge, both on the attack key: a neutral press held past
-  // `CHARGE_HOLD_TIME` becomes a charge (no leading punch — `isJustHeldFor`
-  // only fires mid-hold, never on the initial press). Any shorter press is a
-  // tap; `consumeBufferedPress` claims it once, and the `!isPressed` guard
-  // keeps an ongoing charge-hold from being read as a combo tap.
-  // `attackPressNeutral` (latched at press time) keeps a press begun mid-swing
-  // from ever becoming a charge, even if the lane frees before release.
-  // -------------------------------------------------------------------------
-
-  private updateCombat(dt: number): void {
-    if (this.charging) {
-      this.updateChargeSparks(dt);
-      if (!this.input.isPressed("attack")) {
-        this.charging = false;
-        this.stopChargeSparks();
-        this.resampleFacing();
-        // Completes the hold into the kick phase (the `PhaseChanged`
-        // listener in `onAdd` adds the bullet-time tail). Returns false
-        // when the hold is already gone — e.g. a stagger interrupted the
-        // windup — and then the kick simply doesn't happen.
-        this.abilities.release("charge");
-      }
-      return;
-    }
-
-    const mainBusy = this.abilities.isActive("main");
-    if (this.input.isJustPressed("attack")) this.attackPressNeutral = !mainBusy;
-
-    // Charge: a neutral press crossing the hold threshold. Claim the buffered
-    // press so it can't later resolve into a combo tap.
-    if (
-      this.attackPressNeutral &&
-      !mainBusy &&
-      this.input.isJustHeldFor("attack", CHARGE_HOLD_TIME)
-    ) {
-      this.input.consumeBufferedPress("attack", CHARGE_HOLD_TIME);
-      this.charging = true;
-      this.startChargeSparks();
-      this.abilities.send("charge");
-      return;
-    }
-
-    // Tap → combo: the `attack` def's entry and per-stage `on:` windows
-    // resolve which stage; the claim-once buffered press fires it the
-    // instant a window opens. `!isPressed` keeps an ongoing charge-hold out.
-    if (
-      !this.input.isPressed("attack") &&
-      this.abilities.canSend("attack", "main") &&
-      this.input.consumeBufferedPress("attack", CHARGE_HOLD_TIME)
-    ) {
-      this.resampleFacing();
-      this.abilities.send("attack");
-    }
-
-    // Dash: immediate from a free lane; buffered mid-attack, where it retries
-    // `send("dash")` every frame until an attack's `cancels` window admits it
-    // (cancelling the recovery) or the buffer lapses. `send` is side-effect-
-    // free on refusal, so the retry can't misfire against an unrelated lane
-    // occupant. `resampleFacing` before each attempt rolls it in the
-    // currently-held direction.
-    if (this.input.isJustPressed("dash")) {
-      if (!mainBusy) {
-        this.resampleFacing();
-        this.abilities.send("dash");
-      } else {
-        this.dashBuffered = true;
-        this.dashBufferAge = 0;
-      }
-    }
-    if (this.dashBuffered) {
-      this.dashBufferAge += dt;
-      if (this.dashBufferAge >= DASH_BUFFER_WINDOW) {
-        this.dashBuffered = false;
-      } else {
-        this.resampleFacing();
-        if (this.abilities.send("dash").ok) this.dashBuffered = false;
-      }
-    }
-  }
-
-  // -------------------------------------------------------------------------
   // Charge convergence sparks — see the `ChargeSpark`/`CHARGE_SPARK_*`
   // section above for why this is hand-rolled Graphics rather than a
-  // `@yagejs/particles` emitter. Ticked from `updateCombat` while charging,
+  // `@yagejs/particles` emitter. Ticked while the charge phase is active,
   // drawn from `redraw` alongside the HP bar (one entity, one
   // `GraphicsComponent` — see the codebase's one-component-per-class rule).
   // -------------------------------------------------------------------------
@@ -2016,6 +1962,18 @@ class PlayerController extends Component {
 
   private stopChargeSparks(): void {
     this.chargeSparks = [];
+  }
+
+  /** Starts the charge kick's timed bullet-time tail. This is a timed request,
+   *  not a `slowmo` window: cancelling the kick must not end the effect early. */
+  private startChargeKickEffects(): void {
+    this.charging = false;
+    this.stopChargeSparks();
+    this.time.scaleBy(CHARGE_SLOWMO_SCALE, {
+      for: CHARGE_SLOWMO_DURATION,
+      key: "charge-bullet-time",
+      excludeUpdates: [this.entity],
+    });
   }
 
   private updateChargeSparks(dt: number): void {
@@ -2037,50 +1995,12 @@ class PlayerController extends Component {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Guard/parry — hand-rolled press/hold/release gesture on top of the
-  // `GUARD_HOLD` hold phase. Pressing guard starts it immediately, open for
-  // as long as the key stays down; a quick tap-release (`isJustTapped` within
-  // `PARRY_TAP_WINDOW`) completes the block via `release("guardHold")` and
-  // sends `PARRY` instead — a tap parries, a hold blocks, a long hold never
-  // parries. The block-vs-parry split into two defs (each with its own
-  // cooldown) is what makes multi-hit blocking work: the hold never closes
-  // early, only the tap pays the parry's pricier cooldown.
-  // -------------------------------------------------------------------------
-
-  private updateGuard(): void {
-    if (this.guardHeld) {
-      // If something else already ended the hold (e.g. death forcing a
-      // stagger reaction), the `AbilityEnded` listener in `onAdd` has
-      // already cleared `guardHeld` by the time this runs.
-      if (this.input.isJustReleased("guard")) {
-        this.guardHeld = false;
-        // A quick tap-release parries; a longer hold just ends the block.
-        const parryTap = this.input.isJustTapped("guard", PARRY_TAP_WINDOW);
-        this.abilities.release(GUARD_HOLD_ID); // completes the hold phase
-        if (parryTap) {
-          this.resampleFacing();
-          this.abilities.send(PARRY_ID);
-        }
-      }
-      return;
-    }
-    if (!this.abilities.isActive("main") && this.input.isJustPressed("guard")) {
-      if (this.abilities.send(GUARD_HOLD_ID).ok) this.guardHeld = true;
-    }
-  }
-
-  /** Re-aims Facing to the currently-held movement axis, if any — called at
-   *  every action boundary (a combo stage firing, a buffered dash executing,
-   *  a charge releasing, a parry starting) so a queued or buffered action
-   *  picks up whatever direction is held the instant it actually starts,
-   *  rather than whatever was held when the chain began or the buffer was
-   *  set. Reads the raw input axis instead of `Facing.unit` because these
-   *  boundaries can fire from `updateCombat`/`updateGuard`, which both run
-   *  before `update`'s own WASD-driven Facing refresh this frame. `Facing.set`
-   *  no-ops on a zero vector, so nothing held leaves Facing wherever it
-   *  already points — mid-action framing (frozen while movement stays
-   *  gated) is otherwise unaffected. */
+  /** Re-aims Facing to the currently-held movement axis, if any. The input
+   *  driver calls this at action boundaries so buffered actions use the
+   *  direction held when they fire. The charge phase also calls it each
+   *  frame so the player can turn its stationary pose. Reads the raw input
+   *  axis because the driver runs before `update`'s WASD refresh. `Facing.set`
+   *  ignores a zero vector, so releasing WASD preserves the last direction. */
   private resampleFacing(): void {
     this.facing.set(this.input.getAxis("left", "right"), this.input.getAxis("up", "down"));
   }

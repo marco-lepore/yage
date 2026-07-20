@@ -234,11 +234,13 @@ reuse, to avoid sprawl.
   `import`/`require`/`types` triples; `tsup` has two entries (`src/index.ts`,
   `src/presenters.ts`). See `packages/renderer/package.json` for the two-key
   shape and `packages/addons/dialogue/` for the worked example.
-- Input bindings over `@yagejs/input` (not pixi) belong with the **root** entry
-  alongside the controller. When the controller needs view geometry (e.g.
-  pointer hit-testing a choice row), it must reach the presenter **through an
-  interface seam**, never by importing the presenter module — that preserves the
-  no-pixi guarantee on root.
+- Input bindings over `@yagejs/input` (not pixi) may belong with the **root**
+  entry when input is part of the addon's required controller. When input is an
+  optional adapter over an otherwise input-agnostic model, expose it through an
+  `./input` subpath and mark `@yagejs/input` as an optional peer. When a
+  controller needs view geometry (e.g. pointer hit-testing a choice row), it
+  must reach the presenter **through an interface seam**, never by importing the
+  presenter module — that preserves the no-pixi guarantee on root.
 - **Copy tooling from `packages/particles/`**: `tsconfig.json` (extends
   `../../../tsconfig.base.json` — note the extra `../` for the nested addon
   path), `tsup.config.ts`, `vitest.config.ts` (keep the oxc legacy-decorator
