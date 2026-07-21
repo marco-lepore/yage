@@ -759,12 +759,25 @@ export abstract class Scene {
     this.destroyQueue.length = 0;
   }
 
-  /** Remove a class-spawned entity whose setup failed. */
+  /** Remove a class-spawned entity and its descendants when setup fails. */
   private _discardFailedSpawn(entity: Entity): void {
+    const subtree: Entity[] = [];
+    const collectChildrenFirst = (member: Entity): void => {
+      for (const child of member.children.values()) {
+        collectChildrenFirst(child);
+      }
+      subtree.push(member);
+    };
+    collectChildrenFirst(entity);
+
     entity.destroy();
-    const queueIndex = this.destroyQueue.lastIndexOf(entity);
-    if (queueIndex >= 0) this.destroyQueue.splice(queueIndex, 1);
-    this._finalizeEntityDestroy(entity);
+    const discarded = new Set(subtree);
+    this.destroyQueue = this.destroyQueue.filter(
+      (pending) => !discarded.has(pending),
+    );
+    for (const member of subtree) {
+      this._finalizeEntityDestroy(member);
+    }
   }
 
   private _finalizeEntityDestroy(entity: Entity): void {
