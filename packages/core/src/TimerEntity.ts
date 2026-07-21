@@ -29,6 +29,10 @@ export class TimerEntity extends Entity {
     return this.pc.slot(config);
   }
 
+  removeSlot(slot: ProcessSlot): boolean {
+    return this.pc.removeSlot(slot);
+  }
+
   cancel(tag?: string): void {
     this.pc.cancel(tag);
   }

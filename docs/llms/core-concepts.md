@@ -305,6 +305,7 @@ Pre-built entity with `ProcessComponent` API. No manual component wiring:
 const timers = scene.spawn(TimerEntity);
 timers.run(Process.delay(0.5, () => { /* ... */ }));
 const cd = timers.slot({ duration: 0.3 });
+timers.removeSlot(cd); // cancel and unregister a slot that will not be reused
 ```
 
 ## Serialization
